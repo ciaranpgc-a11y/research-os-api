@@ -14,6 +14,7 @@ import type {
 } from '@/types/impact'
 
 import { dashboardTileStyles } from './dashboard-tile-styles'
+import { HouseDrilldownHeaderShell, drilldownTabFlexGrow } from './HouseDrilldownHeaderShell'
 import {
   publicationsHouseActions,
   publicationsHouseDividers,
@@ -6318,52 +6319,40 @@ export function PublicationsTopStrip({
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
           {activeTile ? (
-            <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
-              <div className={cn('house-drilldown-title-block', HOUSE_SURFACE_LEFT_BORDER_CLASS, HOUSE_SURFACE_LEFT_BORDER_PUBLICATIONS_CLASS)}>
-                <p className={HOUSE_DRILLDOWN_TITLE_CLASS}>{activeDrilldownTitle}</p>
-                {showActiveTileDefinition ? (
-                  <p className={HOUSE_DRILLDOWN_TITLE_EXPANDER_CLASS}>{activeDrilldownExpanderText}</p>
-                ) : null}
-                {detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : null}
-              </div>
-              <div className="house-drilldown-navigation-block house-publications-drilldown-tabs rounded-sm bg-card" role="tablist" aria-label="Metric drilldown sections">
-                {DRILLDOWN_TABS.map((tab) => {
-                  const isActive = activeDrilldownTab === tab.value
-                  return (
-                    <button
-                      key={tab.value}
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      aria-controls={`drilldown-panel-${tab.value}`}
-                      className={cn(
-                        'house-nav-item approved-drilldown-nav-item house-publications-drilldown-tab-item',
-                        isActive && 'approved-drilldown-nav-item-active',
-                      )}
-                      style={{
-                        flexGrow: Math.max(1, tab.label.length),
-                        flexBasis: 0,
-                      }}
-                      onClick={() => setActiveDrilldownTab(tab.value)}
-                    >
-                      <span className="house-nav-item-label">{tab.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-              <div className="house-drilldown-content-block house-publications-drilldown-tab-panel" id={`drilldown-panel-${activeDrilldownTab}`} role="tabpanel">
-                {activeTile.key === 'this_year_vs_last' ? (
-                  <TotalPublicationsDrilldownWorkspace
-                    tile={activeTile}
-                    activeTab={activeDrilldownTab}
-                    onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
-                  />
-                ) : (
-                  <GenericMetricDrilldownWorkspace
-                    tile={activeTile}
-                    activeTab={activeDrilldownTab}
-                  />
-                )}
+            <div className={cn(HOUSE_DRILLDOWN_SHEET_BODY_CLASS, 'house-drilldown-panel-no-pad')}>
+              <div className="house-drilldown-flow-shell">
+                <HouseDrilldownHeaderShell
+                  title={<p className={HOUSE_DRILLDOWN_TITLE_CLASS}>{activeDrilldownTitle}</p>}
+                  subtitle={showActiveTileDefinition ? <p className={HOUSE_DRILLDOWN_TITLE_EXPANDER_CLASS}>{activeDrilldownExpanderText}</p> : undefined}
+                  alert={detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : undefined}
+                  titleBlockClassName={cn(HOUSE_SURFACE_LEFT_BORDER_CLASS, HOUSE_SURFACE_LEFT_BORDER_PUBLICATIONS_CLASS)}
+                  navAriaLabel="Metric drilldown sections"
+                  tabs={DRILLDOWN_TABS.map((tab) => ({ id: tab.value, label: tab.label }))}
+                  activeTab={activeDrilldownTab}
+                  onTabChange={(tabId) => setActiveDrilldownTab(tabId as DrilldownTab)}
+                  panelIdPrefix="drilldown-panel-"
+                  tabIdPrefix="drilldown-tab-"
+                  tabFlexGrow={drilldownTabFlexGrow}
+                />
+                <div
+                  className="house-drilldown-content-block house-drilldown-tab-panel"
+                  id={`drilldown-panel-${activeDrilldownTab}`}
+                  role="tabpanel"
+                  aria-labelledby={`drilldown-tab-${activeDrilldownTab}`}
+                >
+                  {activeTile.key === 'this_year_vs_last' ? (
+                    <TotalPublicationsDrilldownWorkspace
+                      tile={activeTile}
+                      activeTab={activeDrilldownTab}
+                      onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
+                    />
+                  ) : (
+                    <GenericMetricDrilldownWorkspace
+                      tile={activeTile}
+                      activeTab={activeDrilldownTab}
+                    />
+                  )}
+                </div>
               </div>
             </div>
           ) : (

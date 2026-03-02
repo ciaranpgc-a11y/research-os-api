@@ -195,6 +195,7 @@ from research_os.api.schemas import (
     PublicationAuthorsResponse,
     PublicationDetailResponse,
     PublicationMetricDetailResponse,
+    PublicationStructuredAbstractRefreshResponse,
     PublicationFileDeleteResponse,
     PublicationFileLinkResponse,
     PublicationFileResponse,
@@ -413,6 +414,7 @@ from research_os.services.publication_console_service import (
     PublicationConsoleNotFoundError,
     PublicationConsoleValidationError,
     delete_publication_file,
+    trigger_publication_structured_abstract_refresh,
     get_publication_ai_insights,
     get_publication_authors,
     get_publication_details,
@@ -2545,6 +2547,34 @@ def v1_publication_detail(
         return _build_unauthorized_response(str(exc))
     except PublicationConsoleNotFoundError as exc:
         return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/publications/{publication_id}/structured-abstract/refresh",
+    response_model=PublicationStructuredAbstractRefreshResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publication_structured_abstract_refresh(
+    request: Request,
+    publication_id: str,
+) -> PublicationStructuredAbstractRefreshResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = trigger_publication_structured_abstract_refresh(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+        )
+        return PublicationStructuredAbstractRefreshResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PublicationConsoleValidationError as exc:
+        return _build_bad_request_response(str(exc))
 
 
 @app.get(
@@ -5703,4 +5733,3 @@ def draft_section(request: DraftSectionRequest, http_request: Request):
     if isinstance(response, JSONResponse):
         return response
     return {"section": response.section, "draft": response.draft}
-

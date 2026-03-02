@@ -26,6 +26,9 @@ from research_os.services.persona_sync_job_service import (
     list_persona_sync_jobs,
     serialize_persona_sync_job,
 )
+from research_os.services.publication_console_service import (
+    enqueue_publication_structured_abstract_refresh,
+)
 
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 ALLOWED_PROVIDERS = {"openalex", "semantic_scholar", "manual"}
@@ -483,6 +486,7 @@ def bootstrap_publication_insights_from_orcid(
 
     upserted_ids: list[str] = []
     seen_upserted: set[str] = set()
+    structured_abstract_refresh_ids: set[str] = set()
     imported_count = 0
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
@@ -515,6 +519,8 @@ def bootstrap_publication_insights_from_orcid(
                 continue
             seen_upserted.add(work_id)
             upserted_ids.append(work_id)
+            if bool(record.get("structured_abstract_refresh_needed")):
+                structured_abstract_refresh_ids.add(work_id)
             if work_id not in existing_work_ids_before:
                 imported_count += 1
             openalex_work_id = _extract_openalex_work_id(
@@ -534,6 +540,15 @@ def bootstrap_publication_insights_from_orcid(
             imported_count = max(0, int(current_count) - int(baseline_count))
         user.orcid_last_synced_at = _utcnow()
         session.flush()
+
+    for work_id in structured_abstract_refresh_ids:
+        try:
+            enqueue_publication_structured_abstract_refresh(
+                user_id=user_id,
+                publication_id=work_id,
+            )
+        except Exception:
+            pass
 
     sync_job_payload: dict[str, Any] | None = None
     metrics_sync_enqueued = False

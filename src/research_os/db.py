@@ -331,6 +331,9 @@ class User(Base):
     publication_ai_caches: Mapped[list["PublicationAiCache"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
     )
+    publication_structured_abstract_caches: Mapped[
+        list["PublicationStructuredAbstractCache"]
+    ] = relationship(back_populates="owner_user", cascade="all, delete-orphan")
     publication_files: Mapped[list["PublicationFile"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
     )
@@ -721,6 +724,9 @@ class Work(Base):
     ai_cache_rows: Mapped[list["PublicationAiCache"]] = relationship(
         back_populates="publication", cascade="all, delete-orphan"
     )
+    structured_abstract_cache_rows: Mapped[list["PublicationStructuredAbstractCache"]] = (
+        relationship(back_populates="publication", cascade="all, delete-orphan")
+    )
     files: Mapped[list["PublicationFile"]] = relationship(
         back_populates="publication", cascade="all, delete-orphan"
     )
@@ -988,6 +994,47 @@ class PublicationAiCache(Base):
 
     publication: Mapped[Work] = relationship(back_populates="ai_cache_rows")
     owner_user: Mapped[User] = relationship(back_populates="publication_ai_caches")
+
+
+class PublicationStructuredAbstractCache(Base):
+    __tablename__ = "publication_structured_abstract_cache"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "publication_id"),
+        Index("ix_pub_structured_abstract_cache_owner", "owner_user_id"),
+        Index("ix_pub_structured_abstract_cache_publication", "publication_id"),
+        Index("ix_pub_structured_abstract_cache_computed", "computed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    publication_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("works.id", ondelete="CASCADE"), index=True
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_abstract_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    parser_version: Mapped[str] = mapped_column(
+        String(64), default="publication_structured_abstract_v1"
+    )
+    model_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(16), default="READY")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    publication: Mapped[Work] = relationship(back_populates="structured_abstract_cache_rows")
+    owner_user: Mapped[User] = relationship(
+        back_populates="publication_structured_abstract_caches"
+    )
 
 
 class PublicationFile(Base):

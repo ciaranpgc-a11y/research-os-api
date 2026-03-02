@@ -1717,6 +1717,12 @@ class PublicationDetailResponse(BaseModel):
     pmid: str | None = None
     openalex_work_id: str | None = None
     abstract: str | None = None
+    structured_abstract: dict[str, Any] | None = None
+    structured_abstract_status: Literal["READY", "RUNNING", "FAILED", "MISSING"] = (
+        "MISSING"
+    )
+    structured_abstract_computed_at: datetime | None = None
+    structured_abstract_last_error: str | None = None
     keywords_json: list[str] = Field(default_factory=list)
     authors_json: list[dict[str, Any]] = Field(default_factory=list)
     affiliations_json: list[dict[str, Any]] = Field(default_factory=list)
@@ -1825,6 +1831,11 @@ class PublicationAiInsightsResponse(BaseModel):
     is_stale: bool = False
     is_updating: bool = False
     last_error: str | None = None
+
+
+class PublicationStructuredAbstractRefreshResponse(BaseModel):
+    enqueued: bool = False
+    status: Literal["READY", "RUNNING", "FAILED", "MISSING"] = "RUNNING"
 
 
 class PublicationFileResponse(BaseModel):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
@@ -22,11 +23,13 @@ from research_os.db import (
     PublicationAiCache,
     PublicationFile,
     PublicationImpactCache,
+    PublicationStructuredAbstractCache,
     User,
     Work,
     create_all_tables,
     session_scope,
 )
+from research_os.clients.openai_client import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,7 @@ FILE_TYPE_PDF = "PDF"
 FILE_TYPE_DOCX = "DOCX"
 FILE_TYPE_OTHER = "OTHER"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v1"
 
 _executor_lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
@@ -139,6 +143,17 @@ def _ai_ttl_seconds() -> int:
 def _authors_ttl_seconds() -> int:
     value = _safe_int(os.getenv("PUB_AUTHORS_TTL_SECONDS", "604800"))
     return max(3600, value if value is not None else 604800)
+
+
+def _structured_abstract_model() -> str:
+    return (
+        str(os.getenv("PUB_STRUCTURED_ABSTRACT_MODEL", "gpt-4.1-mini")).strip()
+        or "gpt-4.1-mini"
+    )
+
+
+def _structured_abstract_fallback_model() -> str:
+    return str(os.getenv("PUB_STRUCTURED_ABSTRACT_FALLBACK_MODEL", "gpt-4.1")).strip()
 
 
 def _openalex_timeout_seconds() -> float:
@@ -1482,6 +1497,383 @@ def _build_caution_flags(
     return flags[:6]
 
 
+def _normalize_abstract_text(value: str | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    clean = str(text or "").strip()
+    if clean.startswith("```"):
+        clean = re.sub(r"^```(?:json)?\s*", "", clean)
+        clean = re.sub(r"\s*```$", "", clean)
+    match = re.search(r"\{.*\}", clean, flags=re.DOTALL)
+    if not match:
+        raise ValueError("No JSON object found in model response.")
+    payload = json.loads(match.group(0))
+    if not isinstance(payload, dict):
+        raise ValueError("Model response JSON is not an object.")
+    return payload
+
+
+def _canonical_structured_section_key(value: str) -> str:
+    clean = re.sub(r"[\s_-]+", " ", str(value or "").strip().lower())
+    if not clean:
+        return ""
+    if any(token in clean for token in ["intro", "background", "objective", "aim"]):
+        return "introduction"
+    if any(token in clean for token in ["method", "design", "approach"]):
+        return "methods"
+    if any(
+        token in clean
+        for token in ["result", "finding", "outcome", "observation", "analysis"]
+    ):
+        return "results"
+    if any(
+        token in clean for token in ["conclusion", "interpretation", "implication"]
+    ):
+        return "conclusions"
+    return "other"
+
+
+def _structured_section_label(key: str) -> str:
+    if key == "introduction":
+        return "Introduction"
+    if key == "methods":
+        return "Methods"
+    if key == "results":
+        return "Results"
+    if key == "conclusions":
+        return "Conclusions"
+    return "Summary"
+
+
+def _normalize_structured_content(value: Any) -> str:
+    if isinstance(value, list):
+        joined = " ".join(str(item or "").strip() for item in value)
+        return _normalize_abstract_text(joined)
+    return _normalize_abstract_text(str(value or ""))
+
+
+def _coerce_structured_sections(payload: dict[str, Any]) -> list[dict[str, str]]:
+    ordered_keys = ["introduction", "methods", "results", "conclusions", "other"]
+    sections_by_key: dict[str, str] = {}
+
+    section_items = payload.get("sections")
+    if isinstance(section_items, list):
+        for item in section_items:
+            if not isinstance(item, dict):
+                continue
+            key_hint = (
+                item.get("key")
+                or item.get("heading")
+                or item.get("label")
+                or item.get("title")
+            )
+            content = _normalize_structured_content(item.get("content") or item.get("text"))
+            key = _canonical_structured_section_key(str(key_hint or ""))
+            if not key or not content:
+                continue
+            if key not in sections_by_key:
+                sections_by_key[key] = content
+
+    direct_fields = {
+        "introduction": [
+            "introduction",
+            "background",
+            "objective",
+            "objectives",
+            "aim",
+            "aims",
+            "purpose",
+        ],
+        "methods": ["methods", "method", "study_design", "design"],
+        "results": ["results", "result", "main_findings", "findings", "outcomes"],
+        "conclusions": ["conclusion", "conclusions", "interpretation", "implications"],
+    }
+    for key, options in direct_fields.items():
+        if key in sections_by_key:
+            continue
+        for option in options:
+            text_value = _normalize_structured_content(payload.get(option))
+            if text_value:
+                sections_by_key[key] = text_value
+                break
+
+    if not sections_by_key:
+        summary = _normalize_structured_content(payload.get("summary"))
+        if summary:
+            sections_by_key["other"] = summary
+
+    result: list[dict[str, str]] = []
+    for key in ordered_keys:
+        content = _normalize_structured_content(sections_by_key.get(key))
+        if not content:
+            continue
+        result.append(
+            {
+                "key": key,
+                "label": _structured_section_label(key),
+                "content": content,
+            }
+        )
+    return result
+
+
+def _fallback_structured_sections(abstract: str | None) -> tuple[str, list[dict[str, str]]]:
+    text = _normalize_abstract_text(abstract)
+    if not text:
+        return "UNAVAILABLE", []
+
+    key_points = _extract_key_points_from_abstract(text)
+
+    def _is_stated(value: str | None) -> bool:
+        clean = _normalize_abstract_text(value)
+        return bool(clean) and clean.lower() != "not stated in abstract."
+
+    imrad_sections: list[dict[str, str]] = []
+    for key, source in [
+        ("introduction", key_points.get("objective")),
+        ("methods", key_points.get("methods")),
+        ("results", key_points.get("main_findings")),
+        ("conclusions", key_points.get("conclusion")),
+    ]:
+        if not _is_stated(source):
+            continue
+        imrad_sections.append(
+            {
+                "key": key,
+                "label": _structured_section_label(key),
+                "content": _normalize_abstract_text(source),
+            }
+        )
+    if len(imrad_sections) >= 2:
+        return "IMRAD", imrad_sections
+
+    sentences = _split_sentences(text)
+    if not sentences:
+        return (
+            "STRUCTURED_PARAGRAPHS",
+            [
+                {
+                    "key": "other",
+                    "label": "Summary",
+                    "content": text,
+                }
+            ],
+        )
+
+    buckets = min(4, max(1, len(sentences)))
+    bucketed: list[list[str]] = [[] for _ in range(buckets)]
+    total = len(sentences)
+    for index, sentence in enumerate(sentences):
+        position = min(buckets - 1, int((index * buckets) / max(1, total)))
+        bucketed[position].append(sentence)
+
+    section_keys = ["introduction", "methods", "results", "conclusions"]
+    sections: list[dict[str, str]] = []
+    for index, chunk in enumerate(bucketed):
+        content = _normalize_abstract_text(" ".join(chunk))
+        if not content:
+            continue
+        key = section_keys[min(index, len(section_keys) - 1)]
+        sections.append(
+            {
+                "key": key,
+                "label": _structured_section_label(key),
+                "content": content,
+            }
+        )
+    return "STRUCTURED_PARAGRAPHS", sections
+
+
+def _build_structured_abstract_prompt(
+    *, title: str, journal: str, year: int | None, abstract: str
+) -> str:
+    year_text = str(year) if isinstance(year, int) else "Not available"
+    return (
+        "You are structuring a publication abstract for UI display.\n"
+        "Return JSON only (no markdown, no commentary).\n"
+        "The output must follow this schema exactly:\n"
+        "{\n"
+        '  "format": "IMRAD" | "STRUCTURED_PARAGRAPHS",\n'
+        '  "introduction": "<string>",\n'
+        '  "methods": "<string>",\n'
+        '  "results": "<string>",\n'
+        '  "conclusions": "<string>"\n'
+        "}\n"
+        "Rules:\n"
+        "1) Preserve factual meaning from the source abstract.\n"
+        "2) If headings are absent, infer a best-effort structure.\n"
+        "3) Keep each field concise and readable.\n"
+        "4) Use empty string when a section cannot be inferred.\n\n"
+        f"TITLE: {title}\n"
+        f"JOURNAL: {journal}\n"
+        f"YEAR: {year_text}\n"
+        f"ABSTRACT: {abstract}\n"
+    )
+
+
+def _generate_structured_abstract_with_model(
+    *, title: str, journal: str, year: int | None, abstract: str
+) -> tuple[str, list[dict[str, str]], str]:
+    client = get_client()
+    prompt = _build_structured_abstract_prompt(
+        title=title, journal=journal, year=year, abstract=abstract
+    )
+    preferred = _structured_abstract_model()
+    fallback = _structured_abstract_fallback_model()
+    candidates = [preferred]
+    if fallback and fallback not in candidates:
+        candidates.append(fallback)
+
+    last_error: Exception | None = None
+    for model_name in candidates:
+        try:
+            response = client.responses.create(model=model_name, input=prompt)
+            payload = _extract_json_object(str(response.output_text or ""))
+            sections = _coerce_structured_sections(payload)
+            if not sections:
+                raise ValueError("No structured sections found in model output.")
+            format_value = str(payload.get("format") or "").strip().upper()
+            if format_value not in {"IMRAD", "STRUCTURED_PARAGRAPHS"}:
+                format_value = "IMRAD" if len(sections) >= 3 else "STRUCTURED_PARAGRAPHS"
+            return format_value, sections, model_name
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Structured abstract model returned no response.")
+
+
+def _empty_structured_abstract_payload() -> dict[str, Any]:
+    return {
+        "format": "UNAVAILABLE",
+        "sections": [],
+        "source_abstract": None,
+        "metadata": {
+            "parser_version": STRUCTURED_ABSTRACT_CACHE_VERSION,
+            "generation_method": "empty",
+        },
+    }
+
+
+def _build_structured_abstract_payload(
+    *, publication: dict[str, Any]
+) -> tuple[dict[str, Any], str | None]:
+    title = _normalize_abstract_text(str(publication.get("title") or ""))
+    journal = _normalize_abstract_text(str(publication.get("journal") or ""))
+    year = _safe_int(publication.get("year"))
+    abstract = _normalize_abstract_text(publication.get("abstract"))
+    if not abstract:
+        return _empty_structured_abstract_payload(), None
+
+    source_hash = _sha256_text(abstract)
+    generated_at = _utcnow().isoformat()
+    parser_version = STRUCTURED_ABSTRACT_CACHE_VERSION
+
+    fallback_format, fallback_sections = _fallback_structured_sections(abstract)
+    fallback_payload = {
+        "format": fallback_format,
+        "sections": fallback_sections,
+        "source_abstract": abstract,
+        "metadata": {
+            "parser_version": parser_version,
+            "source_abstract_sha256": source_hash,
+            "generation_method": "fallback",
+            "generated_at": generated_at,
+        },
+    }
+
+    try:
+        format_value, sections, model_name = _generate_structured_abstract_with_model(
+            title=title,
+            journal=journal or "Not available",
+            year=year,
+            abstract=abstract,
+        )
+        return (
+            {
+                "format": format_value,
+                "sections": sections,
+                "source_abstract": abstract,
+                "metadata": {
+                    "parser_version": parser_version,
+                    "source_abstract_sha256": source_hash,
+                    "generation_method": "openai",
+                    "model_name": model_name,
+                    "generated_at": generated_at,
+                },
+            },
+            model_name,
+        )
+    except Exception as exc:
+        fallback_payload["metadata"]["model_error"] = str(exc)[:400]
+        return fallback_payload, None
+
+
+def _structured_abstract_view_payload(
+    *,
+    row: PublicationStructuredAbstractCache | None,
+    abstract: str | None,
+) -> tuple[dict[str, Any], str, datetime | None, str | None]:
+    normalized_abstract = _normalize_abstract_text(abstract)
+    source_hash = _sha256_text(normalized_abstract) if normalized_abstract else None
+
+    if row is not None:
+        payload = row.payload_json if isinstance(row.payload_json, dict) else {}
+        row_hash = _normalize_abstract_text(str(row.source_abstract_sha256 or "")) or None
+        status = _normalize_status(row.status, fallback=RUNNING_STATUS)
+        computed_at = _coerce_utc_or_none(row.computed_at)
+        last_error = _normalize_abstract_text(str(row.last_error or "")) or None
+        if payload and row_hash == source_hash:
+            return payload, status, computed_at, last_error
+        if status in {RUNNING_STATUS, FAILED_STATUS} and normalized_abstract:
+            fallback_format, fallback_sections = _fallback_structured_sections(
+                normalized_abstract
+            )
+            return (
+                {
+                    "format": fallback_format,
+                    "sections": fallback_sections,
+                    "source_abstract": normalized_abstract,
+                    "metadata": {
+                        "parser_version": STRUCTURED_ABSTRACT_CACHE_VERSION,
+                        "source_abstract_sha256": source_hash,
+                        "generation_method": "raw_fallback",
+                    },
+                },
+                status,
+                computed_at,
+                last_error,
+            )
+
+    if normalized_abstract:
+        fallback_format, fallback_sections = _fallback_structured_sections(
+            normalized_abstract
+        )
+        return (
+            {
+                "format": fallback_format,
+                "sections": fallback_sections,
+                "source_abstract": normalized_abstract,
+                "metadata": {
+                    "parser_version": STRUCTURED_ABSTRACT_CACHE_VERSION,
+                    "source_abstract_sha256": source_hash,
+                    "generation_method": "raw_fallback",
+                },
+            },
+            "MISSING",
+            None,
+            None,
+        )
+    return _empty_structured_abstract_payload(), "MISSING", None, None
+
+
 def _build_ai_payload(
     *, publication: dict[str, Any], impact_payload: dict[str, Any]
 ) -> dict[str, Any]:
@@ -1558,6 +1950,18 @@ def _load_ai_cache(
     query = select(PublicationAiCache).where(
         PublicationAiCache.owner_user_id == user_id,
         PublicationAiCache.publication_id == publication_id,
+    )
+    if for_update:
+        query = query.with_for_update()
+    return session.scalars(query).first()
+
+
+def _load_structured_abstract_cache(
+    session, *, user_id: str, publication_id: str, for_update: bool = False
+) -> PublicationStructuredAbstractCache | None:
+    query = select(PublicationStructuredAbstractCache).where(
+        PublicationStructuredAbstractCache.owner_user_id == user_id,
+        PublicationStructuredAbstractCache.publication_id == publication_id,
     )
     if for_update:
         query = query.with_for_update()
@@ -1679,6 +2083,79 @@ def _enqueue_ai_if_needed(*, user_id: str, publication_id: str) -> bool:
         user_id=user_id,
         publication_id=publication_id,
         fn=_run_ai_compute_job,
+    )
+
+
+def _enqueue_structured_abstract_if_needed(
+    *, user_id: str, publication_id: str, force: bool = False
+) -> bool:
+    with session_scope() as session:
+        work = _resolve_work_or_raise(
+            session, user_id=user_id, publication_id=publication_id, for_update=True
+        )
+        row = _load_structured_abstract_cache(
+            session, user_id=user_id, publication_id=publication_id, for_update=True
+        )
+        now = _utcnow()
+        abstract = _normalize_abstract_text(work.abstract)
+        abstract_hash = _sha256_text(abstract) if abstract else None
+        parser_version = STRUCTURED_ABSTRACT_CACHE_VERSION
+        if row is None:
+            row = PublicationStructuredAbstractCache(
+                owner_user_id=user_id,
+                publication_id=publication_id,
+                payload_json={},
+                source_abstract_sha256=abstract_hash,
+                parser_version=parser_version,
+                model_name=None,
+                computed_at=None,
+                status=RUNNING_STATUS,
+                last_error=None,
+                updated_at=now,
+            )
+            session.add(row)
+            session.flush()
+            should_enqueue = bool(abstract)
+        else:
+            payload = row.payload_json if isinstance(row.payload_json, dict) else {}
+            status = _normalize_status(row.status)
+            hash_changed = str(row.source_abstract_sha256 or "") != str(abstract_hash or "")
+            version_changed = (
+                _normalize_abstract_text(str(row.parser_version or "")) != parser_version
+            )
+            should_enqueue = bool(abstract) and (
+                force or not payload or hash_changed or version_changed
+            )
+            if should_enqueue and status != RUNNING_STATUS:
+                row.status = RUNNING_STATUS
+                row.last_error = None
+                row.updated_at = now
+                row.source_abstract_sha256 = abstract_hash
+                row.parser_version = parser_version
+                session.flush()
+            elif not abstract:
+                row.payload_json = _empty_structured_abstract_payload()
+                row.source_abstract_sha256 = None
+                row.parser_version = parser_version
+                row.model_name = None
+                row.status = READY_STATUS
+                row.last_error = None
+                row.computed_at = now
+                row.updated_at = now
+                session.flush()
+                return False
+        if not should_enqueue:
+            return False
+
+    return _submit_background_job(
+        kind="structured_abstract",
+        user_id=user_id,
+        publication_id=publication_id,
+        fn=lambda *, user_id, publication_id: _run_structured_abstract_compute_job(
+            user_id=user_id,
+            publication_id=publication_id,
+            force=force,
+        ),
     )
 
 
@@ -1850,6 +2327,121 @@ def _run_ai_compute_job(*, user_id: str, publication_id: str) -> None:
             session.flush()
 
 
+def _run_structured_abstract_compute_job(
+    *, user_id: str, publication_id: str, force: bool = False
+) -> None:
+    now = _utcnow()
+    try:
+        with session_scope() as session:
+            work = _resolve_work_or_raise(
+                session, user_id=user_id, publication_id=publication_id, for_update=True
+            )
+            row = _load_structured_abstract_cache(
+                session, user_id=user_id, publication_id=publication_id, for_update=True
+            )
+            if row is None:
+                row = PublicationStructuredAbstractCache(
+                    owner_user_id=user_id,
+                    publication_id=publication_id,
+                )
+                session.add(row)
+                session.flush()
+
+            publication = _build_publication_summary(
+                work, citations_total=max(0, int(work.citations_total or 0))
+            )
+            abstract = _normalize_abstract_text(publication.get("abstract"))
+            abstract_hash = _sha256_text(abstract) if abstract else None
+            parser_version = STRUCTURED_ABSTRACT_CACHE_VERSION
+
+            existing_payload = row.payload_json if isinstance(row.payload_json, dict) else {}
+            if (
+                not force
+                and abstract
+                and existing_payload
+                and str(row.source_abstract_sha256 or "") == str(abstract_hash or "")
+                and _normalize_abstract_text(str(row.parser_version or ""))
+                == parser_version
+            ):
+                row.status = READY_STATUS
+                row.last_error = None
+                row.updated_at = now
+                if row.computed_at is None:
+                    row.computed_at = now
+                session.flush()
+                return
+
+            if not abstract:
+                payload = _empty_structured_abstract_payload()
+                model_name = None
+            else:
+                payload, model_name = _build_structured_abstract_payload(
+                    publication=publication
+                )
+            row.payload_json = payload
+            row.source_abstract_sha256 = abstract_hash
+            row.parser_version = parser_version
+            row.model_name = model_name
+            row.status = READY_STATUS
+            row.last_error = None
+            row.computed_at = now
+            row.updated_at = now
+            session.flush()
+    except Exception as exc:
+        with session_scope() as session:
+            _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
+            row = _load_structured_abstract_cache(
+                session, user_id=user_id, publication_id=publication_id, for_update=True
+            )
+            if row is None:
+                row = PublicationStructuredAbstractCache(
+                    owner_user_id=user_id,
+                    publication_id=publication_id,
+                    payload_json={},
+                    computed_at=None,
+                )
+                session.add(row)
+                session.flush()
+            row.status = FAILED_STATUS
+            row.last_error = str(exc)[:2000]
+            row.updated_at = _utcnow()
+            session.flush()
+
+
+def enqueue_publication_structured_abstract_refresh(
+    *, user_id: str, publication_id: str, force: bool = False
+) -> bool:
+    create_all_tables()
+    return _enqueue_structured_abstract_if_needed(
+        user_id=user_id,
+        publication_id=publication_id,
+        force=force,
+    )
+
+
+def trigger_publication_structured_abstract_refresh(
+    *, user_id: str, publication_id: str
+) -> dict[str, Any]:
+    create_all_tables()
+    enqueued = _enqueue_structured_abstract_if_needed(
+        user_id=user_id, publication_id=publication_id, force=True
+    )
+    with session_scope() as session:
+        _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
+        row = _load_structured_abstract_cache(
+            session, user_id=user_id, publication_id=publication_id
+        )
+        status = "MISSING"
+        if row is not None:
+            status = _normalize_status(row.status)
+        elif enqueued:
+            status = RUNNING_STATUS
+        return {
+            "enqueued": bool(enqueued),
+            "status": status,
+        }
+
+
 def get_publication_details(*, user_id: str, publication_id: str) -> dict[str, Any]:
     create_all_tables()
     with session_scope() as session:
@@ -1862,7 +2454,23 @@ def get_publication_details(*, user_id: str, publication_id: str) -> dict[str, A
             if latest is not None
             else int(work.citations_total or 0)
         )
-        return _build_publication_summary(work, citations_total=max(0, citations_total))
+        summary = _build_publication_summary(work, citations_total=max(0, citations_total))
+        structured_row = _load_structured_abstract_cache(
+            session, user_id=user_id, publication_id=publication_id
+        )
+        (
+            structured_payload,
+            structured_status,
+            structured_computed_at,
+            structured_last_error,
+        ) = _structured_abstract_view_payload(
+            row=structured_row, abstract=summary.get("abstract")
+        )
+        summary["structured_abstract"] = structured_payload
+        summary["structured_abstract_status"] = structured_status
+        summary["structured_abstract_computed_at"] = structured_computed_at
+        summary["structured_abstract_last_error"] = structured_last_error
+        return summary
 
 
 def get_publication_authors(*, user_id: str, publication_id: str) -> dict[str, Any]:

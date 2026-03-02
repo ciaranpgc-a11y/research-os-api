@@ -55,6 +55,10 @@ function buildTileToggleThumbStyle(activeIndex: number, optionCount: number) {
   }
 }
 
+function drilldownTabFlexGrow(label: string) {
+  return Math.max(1, Math.round(Math.sqrt(label.length) * 2))
+}
+
 const FIELD_PERCENTILE_TOGGLE_ACTIVE_BUTTON_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
   50: 'house-toggle-button-threshold-50',
   75: 'house-toggle-button-threshold-75',
@@ -538,6 +542,212 @@ function AnimationLabEntryToggle({
   )
 }
 
+function useHouseClassTooltips(scopeRef: { current: HTMLElement | null }, dependencies: unknown[] = []) {
+  useEffect(() => {
+    const scope = scopeRef.current
+    if (!scope) {
+      return
+    }
+
+    const tooltipTargets = Array.from(scope.querySelectorAll<HTMLElement>('[class*="house-"]'))
+    tooltipTargets.forEach((element) => {
+      const classTokens = Array.from(element.classList).filter((token) => token.startsWith('house-'))
+      if (!classTokens.length) {
+        return
+      }
+      const dividerToken = classTokens.includes('house-drilldown-divider-top')
+      const blockTooltip = dividerToken
+        ? `Separator class: ${classTokens.join(' + ')}`
+        : `CSS blocks: ${classTokens.join(' + ')}`
+      const existing = element.getAttribute('title')
+      element.title = existing ? `${existing} · ${blockTooltip}` : blockTooltip
+    })
+  }, [scopeRef, ...dependencies])
+}
+
+function ApprovedDrilldownMarkerStyles() {
+  return (
+    <style>{`
+      .approved-drilldown-marker-map .house-drilldown-title-block,
+      .approved-drilldown-marker-map .house-drilldown-heading-block,
+      .approved-drilldown-marker-map .house-drilldown-subheading-block,
+      .approved-drilldown-marker-map .house-drilldown-content-block,
+      .approved-drilldown-marker-map .house-drilldown-summary-stat-card,
+      .approved-drilldown-marker-map .house-drilldown-stat-card,
+      .approved-drilldown-marker-map .house-drilldown-navigation-block {
+        position: relative;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-title-block::before,
+      .approved-drilldown-marker-map .house-drilldown-title-block::after {
+        content: '';
+        position: absolute;
+        width: 7px;
+        height: 7px;
+        border-radius: 9999px;
+        background: #0ea5e9;
+        top: -4px;
+        pointer-events: none;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-title-block::before {
+        left: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-title-block::after {
+        right: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-heading-block::before,
+      .approved-drilldown-marker-map .house-drilldown-heading-block::after {
+        content: '';
+        position: absolute;
+        width: 7px;
+        height: 7px;
+        border-radius: 9999px;
+        background: #8b5cf6;
+        top: -4px;
+        pointer-events: none;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-heading-block::before {
+        left: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-heading-block::after {
+        right: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-subheading-block::before,
+      .approved-drilldown-marker-map .house-drilldown-subheading-block::after {
+        content: '';
+        position: absolute;
+        width: 7px;
+        height: 7px;
+        border-radius: 9999px;
+        background: #06b6d4;
+        top: -4px;
+        pointer-events: none;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-subheading-block::before {
+        left: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-subheading-block::after {
+        right: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-content-block::before,
+      .approved-drilldown-marker-map .house-drilldown-content-block::after {
+        content: '';
+        position: absolute;
+        width: 7px;
+        height: 7px;
+        border-radius: 9999px;
+        background: #6b7280;
+        top: -4px;
+        pointer-events: none;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-content-block::before {
+        left: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-content-block::after {
+        right: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-summary-stat-card::before,
+      .approved-drilldown-marker-map .house-drilldown-summary-stat-card::after {
+        content: '';
+        position: absolute;
+        width: 7px;
+        height: 7px;
+        border-radius: 9999px;
+        background: #f59e0b;
+        top: -4px;
+        pointer-events: none;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-summary-stat-card::before {
+        left: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-summary-stat-card::after {
+        right: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-stat-card::before,
+      .approved-drilldown-marker-map .house-drilldown-stat-card::after {
+        content: '';
+        position: absolute;
+        width: 7px;
+        height: 7px;
+        border-radius: 9999px;
+        background: #ec4899;
+        top: -4px;
+        pointer-events: none;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-stat-card::before {
+        left: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-stat-card::after {
+        right: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-navigation-block::before,
+      .approved-drilldown-marker-map .house-drilldown-navigation-block::after {
+        content: '';
+        position: absolute;
+        width: 7px;
+        height: 7px;
+        border-radius: 9999px;
+        background: #22c55e;
+        top: -4px;
+        pointer-events: none;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-navigation-block::before {
+        left: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-navigation-block::after {
+        right: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-divider-top {
+        position: relative;
+        border-top: 1px dashed #f97316;
+        margin-top: 0.22rem;
+        margin-bottom: 0.22rem;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-divider-top::before,
+      .approved-drilldown-marker-map .house-drilldown-divider-top::after {
+        content: '';
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        border-radius: 9999px;
+        background: #ef4444;
+        top: -4px;
+        pointer-events: none;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-divider-top::before {
+        left: -4px;
+      }
+
+      .approved-drilldown-marker-map .house-drilldown-divider-top::after {
+        right: -4px;
+      }
+    `}</style>
+  )
+}
+
 const meta: Meta = {
   title: 'Design System/APPROVED/Approved',
   tags: ['autodocs'],
@@ -886,155 +1096,435 @@ function ApprovedLeftPanel() {
 }
 
 function ApprovedPublicationsDrilldownSection() {
-  const [activeDrilldownTab, setActiveDrilldownTab] = useState<'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'>('summary')
+  type PublicationTileTab = 'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'
+  const drilldownScopeRef = useRef<HTMLDivElement>(null)
+  const [activeTab, setActiveTab] = useState<PublicationTileTab>('summary')
+  const [windowMode, setWindowMode] = useState<'1y' | '3y' | '5y' | 'all'>('all')
+  useHouseClassTooltips(drilldownScopeRef, [activeTab])
 
-  const headlineResultTiles = [
-    { id: 'total-publications', label: 'Total publications', value: '120', emphasize: true },
-    { id: 'active-years', label: 'Active years', value: '6', emphasize: false },
-    { id: 'mean-per-year', label: 'Mean per year (5y rolling)', value: '22', emphasize: false },
-    { id: 'latest-year-count', label: 'Latest year count', value: '22', emphasize: false },
-  ] as const
+  const headlineResultTiles: Array<{ id: string; label: string; value: string }> = [
+    { id: 'total-publications', label: 'Total publications', value: '120' },
+    { id: 'active-years', label: 'Active years', value: '6' },
+    { id: 'mean-per-year', label: 'Mean yearly publications', value: '22' },
+    { id: 'highest-yield', label: 'Highest yield', value: '41 (2022)' },
+  ]
 
-  const drilldownTabs = [
+  const drilldownTabs: Array<{ id: PublicationTileTab; label: string }> = [
     { id: 'summary', label: 'Summary' },
     { id: 'breakdown', label: 'Breakdown' },
     { id: 'trajectory', label: 'Trajectory' },
     { id: 'context', label: 'Context' },
     { id: 'methods', label: 'Methods' },
-  ] as const
+  ]
+
+  const subsectionTitleByTab: Partial<Record<PublicationTileTab, string>> = {
+    breakdown: 'Publication count by year',
+    trajectory: 'Year-over-year trajectory',
+    context: 'Top publication venues',
+    methods: 'Method details',
+  }
 
   return (
     <section>
+      <ApprovedDrilldownMarkerStyles />
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-2 border-b border-neutral-200">
           <p className="text-sm font-semibold text-neutral-900">Approved Publications Tile Drilldown</p>
           <p className="text-xs text-neutral-600">Canonical publications metric drilldown panel showing summary stats and typography with horizontal tab navigation.</p>
         </div>
         <div className="bg-card p-4">
-          <div className="max-w-4xl rounded-md border border-border bg-background overflow-hidden">
-            {/* Tab Content */}
-            <div className="p-4">
+          <div
+            ref={drilldownScopeRef}
+            className="mx-auto w-full rounded-md border border-border bg-background overflow-hidden approved-drilldown-marker-map house-drilldown-sheet"
+          >
+            <div className="house-drilldown-sheet-body house-publications-drilldown-panel-no-pad">
               <div className="house-drilldown-title-block house-left-border house-left-border-publications">
                 <p className="house-drilldown-title">Total publication insights</p>
                 <p className="house-drilldown-title-expander">Your publication records</p>
               </div>
+              <div className="house-drilldown-divider-top" />
 
-              <div className="house-drilldown-navigation-block gap-1 bg-card p-2 rounded-sm">
+              <div className="house-drilldown-navigation-block house-publications-drilldown-tabs rounded-sm bg-card" role="tablist" aria-label="Publication tile drilldown sections">
                 {drilldownTabs.map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveDrilldownTab(tab.id as typeof activeDrilldownTab)}
-                    className={`house-nav-item approved-drilldown-nav-item flex-1 ${activeDrilldownTab === tab.id ? 'approved-drilldown-nav-item-active' : ''}`}
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    aria-controls={`publication-drilldown-panel-${tab.id}`}
+                    id={`publication-drilldown-tab-${tab.id}`}
+                    style={{
+                      flexGrow: drilldownTabFlexGrow(tab.label),
+                      flexBasis: 0,
+                    }}
+                    className={`house-nav-item approved-drilldown-nav-item house-publications-drilldown-tab-item ${activeTab === tab.id ? 'approved-drilldown-nav-item-active' : ''}`}
                     type="button"
+                    onClick={() => setActiveTab(tab.id)}
                   >
                     <span className="house-nav-item-label">{tab.label}</span>
                   </button>
                 ))}
               </div>
 
-              <div className="house-drilldown-content-block house-publications-drilldown-stack-3">
-                {activeDrilldownTab === 'summary' ? (
-                  <>
-                    <div className="house-drilldown-heading-block">
-                      <p className="house-drilldown-heading-block-title">Headline results</p>
-                    </div>
-                    <div className="house-drilldown-content-block">
-                      <div className="house-drilldown-summary-stats-grid">
-                        {headlineResultTiles.map((tile) => (
-                          <div key={tile.id} className="house-drilldown-summary-stat-card">
-                            <p className="house-drilldown-summary-stat-title">{tile.label}</p>
-                            <div className="house-drilldown-summary-stat-value-wrap">
-                              <p className={`${tile.emphasize ? 'house-drilldown-summary-stat-value-emphasis' : 'house-drilldown-summary-stat-value'} tabular-nums`}>
-                                {tile.value}
-                              </p>
+              <div
+                className="house-drilldown-content-block house-publications-drilldown-tab-panel"
+                id={`publication-drilldown-panel-${activeTab}`}
+                role="tabpanel"
+                aria-labelledby={`publication-drilldown-tab-${activeTab}`}
+              >
+                {activeTab === 'summary' ? (
+                  <div className="house-publications-drilldown-stack-3" data-metric-key={APPROVED_DRILLDOWN_TILE_KEY}>
+                    <div className="house-section-panel house-publications-drilldown-panel-no-pad">
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Headline results</p>
+                      </div>
+                      <div className="house-drilldown-content-block house-publications-headline-content w-full">
+                        <div
+                          className="house-drilldown-summary-stats-grid house-publications-headline-metric-grid mt-0"
+                          style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+                        >
+                          {headlineResultTiles.map((tile) => (
+                            <div key={tile.id} className="house-drilldown-summary-stat-card">
+                              <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">{tile.label}</p>
+                              <div className="house-drilldown-summary-stat-value-wrap">
+                                <p className="house-drilldown-summary-stat-value tabular-nums">{tile.value}</p>
+                              </div>
                             </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Publication trends</p>
+                      </div>
+                      <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
+                        <PublicationsPerYearChart
+                          tile={APPROVED_PUBLICATION_TRENDS_TEMPLATE_TILE}
+                          showAxes
+                          enableWindowToggle
+                          showPeriodHint={false}
+                          showCurrentPeriodSemantic
+                          useCompletedMonthWindowLabels
+                          autoScaleByWindow
+                          showMeanLine
+                          showMeanValueLabel
+                          showVisualModeToggle
+                          activeWindowMode={windowMode}
+                          onWindowModeChange={setWindowMode}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeTab !== 'summary' ? (
+                  <div className="house-publications-drilldown-stack-3" data-metric-key={APPROVED_DRILLDOWN_TILE_KEY}>
+                    <div className="house-section-panel house-publications-drilldown-panel-no-pad">
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Headline results</p>
+                      </div>
+                      <div className="house-drilldown-content-block w-full" />
+                      <div className="house-drilldown-heading-block-secondary">
+                        <p className="house-drilldown-overline">{subsectionTitleByTab[activeTab]}</p>
+                      </div>
+                      <div className="house-drilldown-content-block w-full" />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+function ApprovedPublicationLibraryDrilldownSection() {
+  type PublicationLibraryTab = 'overview' | 'content' | 'impact' | 'files' | 'ai'
+  const libraryDrilldownScopeRef = useRef<HTMLDivElement>(null)
+  const [activeTab, setActiveTab] = useState<PublicationLibraryTab>('overview')
+  useHouseClassTooltips(libraryDrilldownScopeRef, [activeTab])
+
+  const libraryTabs: Array<{ id: PublicationLibraryTab; label: string }> = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'content', label: 'Content' },
+    { id: 'impact', label: 'Impact' },
+    { id: 'files', label: 'Files' },
+    { id: 'ai', label: 'AI insights' },
+  ]
+
+  return (
+    <section>
+      <ApprovedDrilldownMarkerStyles />
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Publication Library Drilldown</p>
+          <p className="text-xs text-neutral-600">Canonical publication library drilldown layout with all tab blocks rendered for end-to-end visual parity.</p>
+        </div>
+        <div className="bg-card p-4">
+          <div
+            ref={libraryDrilldownScopeRef}
+            className="mx-auto w-full rounded-md border border-border bg-background overflow-hidden approved-drilldown-marker-map house-drilldown-sheet"
+          >
+            <div className="house-drilldown-sheet-body house-publications-drilldown-panel-no-pad">
+              <div className="house-drilldown-title-block house-left-border house-left-border-profile">
+                <p className="house-drilldown-title">Advances in cardiovascular biomarker discovery from longitudinal cohort imaging</p>
+                <p className="house-drilldown-title-expander">Nature Medicine | 2026</p>
+              </div>
+              <div className="house-drilldown-divider-top" />
+              <div className="house-drilldown-navigation-block house-publications-drilldown-tabs rounded-sm bg-card" role="tablist" aria-label="Publication drilldown sections">
+                {libraryTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    aria-controls={`publication-library-drilldown-panel-${tab.id}`}
+                    id={`publication-library-drilldown-tab-${tab.id}`}
+                    style={{
+                      flexGrow: drilldownTabFlexGrow(tab.label),
+                      flexBasis: 0,
+                    }}
+                    className={`house-nav-item approved-drilldown-nav-item house-publications-drilldown-tab-item ${activeTab === tab.id ? 'approved-drilldown-nav-item-active' : ''}`}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    <span className="house-nav-item-label">{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div
+                className="house-drilldown-content-block house-publications-drilldown-tab-panel"
+                id={`publication-library-drilldown-panel-${activeTab}`}
+                role="tabpanel"
+                aria-labelledby={`publication-library-drilldown-tab-${activeTab}`}
+              >
+                {activeTab === 'overview' ? (
+                  <>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Publication overview</p>
+                    </div>
+                    <div className="house-drilldown-content-block house-drilldown-summary-stats-grid">
+                      <div className="house-drilldown-summary-stat-card">
+                        <p className="house-drilldown-summary-stat-title">Year</p>
+                        <div className="house-drilldown-summary-stat-value-wrap">
+                          <p className="house-drilldown-summary-stat-value">2026</p>
+                        </div>
+                      </div>
+                      <div className="house-drilldown-summary-stat-card">
+                        <p className="house-drilldown-summary-stat-title">Journal</p>
+                        <div className="house-drilldown-summary-stat-value-wrap">
+                          <p className="house-drilldown-summary-stat-value">Nature Medicine</p>
+                        </div>
+                      </div>
+                      <div className="house-drilldown-summary-stat-card">
+                        <p className="house-drilldown-summary-stat-title">Type</p>
+                        <div className="house-drilldown-summary-stat-value-wrap">
+                          <p className="house-drilldown-summary-stat-value">Research Article</p>
+                        </div>
+                      </div>
+                      <div className="house-drilldown-summary-stat-card">
+                        <p className="house-drilldown-summary-stat-title">Citations</p>
+                        <div className="house-drilldown-summary-stat-value-wrap">
+                          <p className="house-drilldown-summary-stat-value">182</p>
+                        </div>
+                      </div>
+                      <div className="house-drilldown-summary-stat-card">
+                        <p className="house-drilldown-summary-stat-title">PMID</p>
+                        <div className="house-drilldown-summary-stat-value-wrap">
+                          <a className="house-drilldown-link house-drilldown-summary-stat-value" href="https://pubmed.ncbi.nlm.nih.gov/3421001/" target="_blank" rel="noreferrer">
+                            3421001
+                          </a>
+                        </div>
+                      </div>
+                      <div className="house-drilldown-summary-stat-card">
+                        <p className="house-drilldown-summary-stat-title">DOI</p>
+                        <div className="house-drilldown-summary-stat-value-wrap">
+                          <a className="house-drilldown-link house-drilldown-summary-stat-value break-all" href="https://doi.org/10.1038/sXXXX-026-0001-2" target="_blank" rel="noreferrer">
+                            10.1038/sXXXX-026-0001-2
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="house-drilldown-content-block">
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Authors</p>
+                      </div>
+                      <div className="house-drilldown-content-block">
+                        <p className="leading-relaxed house-drilldown-note">
+                          A. Smith, B. Jones, C. Patel, D. Chen, <span className="house-drilldown-owner">Your name (you)</span>
+                        </p>
+                      </div>
+                      <div className="house-drilldown-divider-top" />
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Actions</p>
+                      </div>
+                      <div className="house-drilldown-content-block">
+                        <div className="flex flex-wrap gap-2">
+                          <button type="button" className="house-drilldown-action">Open DOI</button>
+                          <button type="button" className="house-drilldown-action">Open PubMed</button>
+                          <button type="button" className="house-drilldown-action">Copy citation</button>
+                          <button type="button" className="house-drilldown-action">Add to manuscript</button>
+                        </div>
+                      </div>
+                      <div className="house-drilldown-divider-top" />
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Record timeline</p>
+                      </div>
+                      <div className="house-drilldown-content-block">
+                        <div className="house-drilldown-stat-card">
+                          <p className="house-drilldown-note">Added: 12 Mar 2026</p>
+                          <p className="house-drilldown-note">Updated: 14 Mar 2026</p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
+                {activeTab === 'content' ? (
+                  <>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Content</p>
+                    </div>
+                    <div className="house-drilldown-content-block space-y-3">
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Display mode</p>
+                      </div>
+                      <div className="house-drilldown-content-block">
+                        <div className="flex items-center gap-2">
+                          <button type="button" className="house-drilldown-action">Plain</button>
+                          <button type="button" className="house-drilldown-action">Highlighted</button>
+                        </div>
+                      </div>
+                      <div className="house-drilldown-divider-top" />
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Abstract</p>
+                      </div>
+                      <div className="house-drilldown-content-block">
+                        <div className="house-drilldown-stat-card">
+                          <p className="house-drilldown-note-soft">Abstract preview content appears here. Example: this publication explores novel methods in cardiovascular biomarker discovery across large cohorts using advanced imaging and longitudinal follow-up.</p>
+                        </div>
+                      </div>
+                      <div className="house-drilldown-divider-top" />
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Keywords</p>
+                      </div>
+                      <div className="house-drilldown-content-block">
+                        <div className="flex flex-wrap gap-1">
+                          {['Imaging', 'Cardiology', 'Biomarker', 'Cohort'].map((keyword) => (
+                            <span key={keyword} className="house-drilldown-chip">
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
+                {activeTab === 'impact' ? (
+                  <>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Impact</p>
+                    </div>
+                    <div className="house-drilldown-content-block space-y-3">
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Citation snapshot</p>
+                      </div>
+                      <div className="house-drilldown-content-block">
+                        <div className="house-drilldown-summary-stats-grid">
+                          <div className="house-drilldown-stat-card">
+                            <p className="house-drilldown-overline">Total citations</p>
+                            <p className="house-drilldown-stat-value">182</p>
                           </div>
-                        ))}
+                          <div className="house-drilldown-stat-card">
+                            <p className="house-drilldown-overline">Citations (12m)</p>
+                            <p className="house-drilldown-stat-value">48</p>
+                          </div>
+                          <div className="house-drilldown-stat-card">
+                            <p className="house-drilldown-overline">YoY %</p>
+                            <p className="house-drilldown-stat-value">+18%</p>
+                          </div>
+                          <div className="house-drilldown-stat-card">
+                            <p className="house-drilldown-overline">Acceleration</p>
+                            <p className="house-drilldown-stat-value">+2 / month</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="house-drilldown-divider-top" />
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Key citing papers</p>
+                      </div>
+                      <div className="house-drilldown-content-block">
+                        <div className="house-drilldown-stat-card">
+                          <p className="house-drilldown-note-soft">2025 | Follow-up trial demonstrates translation into multicenter practice.</p>
+                        </div>
                       </div>
                     </div>
                   </>
                 ) : null}
 
-                {activeDrilldownTab === 'breakdown' ? (
+                {activeTab === 'files' ? (
                   <>
                     <div className="house-drilldown-heading-block">
-                      <p className="house-drilldown-heading-block-title">Headline results</p>
+                      <p className="house-drilldown-heading-block-title">Files</p>
                     </div>
-                    <div className="house-drilldown-content-block">
-                      <p className="house-drilldown-note">120 publications across 6 active years (since first publication)</p>
-                    </div>
-                    <div className="house-drilldown-subheading-block">
-                      <p className="house-drilldown-overline">Publication count by year</p>
-                    </div>
-                    <div className="house-drilldown-content-block">
-                      <div className="house-publications-drilldown-stack-2">
-                        <div className="house-drilldown-row"><span>2024</span><span className="house-drilldown-note">32</span></div>
-                        <div className="house-drilldown-row"><span>2023</span><span className="house-drilldown-note">7</span></div>
-                        <div className="house-drilldown-row"><span>2022</span><span className="house-drilldown-note">41</span></div>
+                    <div className="house-drilldown-content-block space-y-3">
+                      <div className="house-drilldown-stat-card">
+                        <p className="house-drilldown-note-soft">No files linked to this publication.</p>
+                      </div>
+                      <div className="house-drilldown-divider-top" />
+                      <div className="house-drilldown-file-drop">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="house-drilldown-stat-title">Add files</p>
+                            <p className="house-drilldown-note-soft">Drag and drop files here, or use upload.</p>
+                          </div>
+                          <div className="flex items-start">
+                            <button type="button" className="house-drilldown-action">Upload file</button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </>
                 ) : null}
 
-                {activeDrilldownTab === 'trajectory' ? (
+                {activeTab === 'ai' ? (
                   <>
                     <div className="house-drilldown-heading-block">
-                      <p className="house-drilldown-heading-block-title">Headline results</p>
+                      <p className="house-drilldown-heading-block-title">AI insights</p>
                     </div>
-                    <div className="house-drilldown-content-block">
-                      <p className="house-drilldown-note">Rolling window trajectory from the same publication-trend source.</p>
-                    </div>
-                    <div className="house-drilldown-subheading-block">
-                      <p className="house-drilldown-overline">Year-over-year trajectory</p>
-                    </div>
-                    <div className="house-drilldown-content-block">
-                      <div className="house-publications-drilldown-stack-2">
-                        <div className="house-drilldown-row"><span>2026 vs 2025</span><span className="house-drilldown-note">+14</span></div>
-                        <div className="house-drilldown-row"><span>2025 vs 2024</span><span className="house-drilldown-note">-24</span></div>
-                        <div className="house-drilldown-row"><span>2024 vs 2023</span><span className="house-drilldown-note">+25</span></div>
+                    <div className="house-drilldown-content-block space-y-3">
+                      <p className="house-banner house-banner-info text-micro">AI-generated draft insights. Verify against full text.</p>
+                      <p className="house-drilldown-note-soft">Generating impact insights...</p>
+                      <div className="house-drilldown-divider-top" />
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Performance summary</p>
                       </div>
-                    </div>
-                  </>
-                ) : null}
-
-                {activeDrilldownTab === 'context' ? (
-                  <>
-                    <div className="house-drilldown-heading-block">
-                      <p className="house-drilldown-heading-block-title">Headline results</p>
-                    </div>
-                    <div className="house-drilldown-content-block">
-                      <p className="house-drilldown-note">120 publication records with rolling-window context derived from chart data.</p>
-                    </div>
-                    <div className="house-drilldown-subheading-block">
-                      <p className="house-drilldown-overline">Top publication venues</p>
-                    </div>
-                    <div className="house-drilldown-content-block">
-                      <div className="house-publications-drilldown-stack-2">
-                        <div className="house-drilldown-row"><span>Nature</span><span className="house-drilldown-note">18</span></div>
-                        <div className="house-drilldown-row"><span>Science</span><span className="house-drilldown-note">12</span></div>
-                        <div className="house-drilldown-row"><span>Cell</span><span className="house-drilldown-note">10</span></div>
+                      <div className="house-drilldown-stat-card">
+                        <p className="house-drilldown-note">Topical relevance increased in the last 12 months.</p>
                       </div>
-                    </div>
-                  </>
-                ) : null}
-
-                {activeDrilldownTab === 'methods' ? (
-                  <>
-                    <div className="house-drilldown-heading-block">
-                      <p className="house-drilldown-heading-block-title">Headline results</p>
-                    </div>
-                    <div className="house-drilldown-content-block">
-                      <p className="house-drilldown-note">Method metadata for total publication insights.</p>
-                    </div>
-                    <div className="house-drilldown-subheading-block">
-                      <p className="house-drilldown-overline">Method details</p>
-                    </div>
-                    <div className="house-drilldown-content-block house-drilldown-note">
-                      <p><strong>Formula:</strong> Count of indexed publications linked to the profile.</p>
-                      <p><strong>Definition:</strong> Total number of scholarly works across the publication history.</p>
-                      <p><strong>Data sources:</strong> OpenAlex, profile-linked records</p>
-                      <p><strong>Update frequency:</strong> Daily</p>
-                      <p><strong>Confidence:</strong> 0.92</p>
+                      <div className="house-drilldown-divider-top" />
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Trajectory</p>
+                      </div>
+                      <div className="house-drilldown-stat-card">
+                        <p className="house-drilldown-stat-value">Growth sustaining</p>
+                      </div>
+                      <div className="house-drilldown-divider-top" />
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Reuse suggestions</p>
+                      </div>
+                      <div className="house-drilldown-stat-card space-y-1">
+                        <p className="house-drilldown-note">- Add to translational methods section.</p>
+                        <p className="house-drilldown-note">- Reference in biomarker validation summary.</p>
+                      </div>
+                      <div className="house-drilldown-divider-top" />
+                      <div className="house-drilldown-heading-block">
+                        <p className="house-drilldown-heading-block-title">Caution flags</p>
+                      </div>
+                      <div className="house-drilldown-stat-card space-y-1">
+                        <p className="house-drilldown-note-soft">No caution flags.</p>
+                      </div>
                     </div>
                   </>
                 ) : null}
@@ -1046,7 +1536,6 @@ function ApprovedPublicationsDrilldownSection() {
     </section>
   )
 }
-
 function ApprovedMarkersSection() {
   return (
     <section>
@@ -1102,6 +1591,111 @@ function ApprovedMarkersSection() {
               <div className="border-t border-[hsl(var(--section-style-profile-accent)/var(--marker-opacity))]" />
             </div>
             <p className="mt-3 text-xs text-neutral-600">Classes: <code>approved-drilldown-nav-item</code> + <code>approved-drilldown-nav-item-active</code> with profile marker divider</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ApprovedDividersSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Dividers</p>
+          <p className="text-xs text-neutral-600">Canonical divider and separator contracts for main, left nav, metric tiles, toolbox, and drilldowns.</p>
+        </div>
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Line dividers</p>
+
+            <div className="space-y-2">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-neutral-600"><code>.house-divider-border-soft</code></p>
+              <div className="rounded-md border house-divider-border-soft p-2 text-xs text-neutral-700">Soft border divider on container edge</div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-neutral-600"><code>.house-divider-fill-soft</code></p>
+              <div className="house-divider-fill-soft h-px w-full" />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-neutral-600"><code>.house-divider-strong</code></p>
+              <div className="house-divider-strong" />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-neutral-600"><code>.house-drilldown-divider-top</code></p>
+              <div className="house-drilldown-divider-top" />
+            </div>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Structural separators</p>
+
+            <div className="space-y-2">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-neutral-600"><code>.house-nav-section-separator</code></p>
+              <div className="rounded-md border border-neutral-200 p-2">
+                <div className="text-xs text-neutral-600">Section A</div>
+                <div className="house-nav-section-separator" />
+                <div className="text-xs text-neutral-600">Section B</div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-neutral-600"><code>.house-publications-toolbox-divider</code></p>
+              <div className="flex items-center gap-2 rounded-md border border-neutral-200 p-2 text-xs text-neutral-700">
+                <span>Generate</span>
+                <span className="house-publications-toolbox-divider" aria-hidden="true" />
+                <span>Download</span>
+                <span className="house-publications-toolbox-divider" aria-hidden="true" />
+                <span>Share</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-neutral-600"><code>.house-metric-tile-separator</code></p>
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center rounded-md border border-neutral-200 p-2">
+                <span className="text-xs text-neutral-700">Tile copy</span>
+                <span className="house-metric-tile-separator h-6 mx-3" />
+                <span className="text-xs text-neutral-700">Tile chart</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Spacing separators</p>
+              <div className="rounded-md border border-neutral-200 p-2 text-xs text-neutral-700">
+                <div className="house-separator-left-panel-subheading-to-content">Subheading to content spacer (<code>.house-separator-left-panel-subheading-to-content</code>)</div>
+                <div className="house-separator-left-panel-content-to-subheading">Content to subheading spacer (<code>.house-separator-left-panel-content-to-subheading</code>)</div>
+              </div>
+            </div>
+          </article>
+
+          <article className="lg:col-span-2 rounded-md border border-neutral-200 bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Class and token map</p>
+            <div className="mt-3 overflow-hidden rounded-md border border-neutral-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-neutral-700">
+                  <tr>
+                    <th className="px-2 py-1.5 font-semibold">Class</th>
+                    <th className="px-2 py-1.5 font-semibold">Type</th>
+                    <th className="px-2 py-1.5 font-semibold">Token/source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-divider-border-soft</code></td><td className="px-2 py-1.5">border color utility</td><td className="px-2 py-1.5"><code>hsl(var(--stroke-soft) / 0.92)</code></td></tr>
+                  <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-divider-fill-soft</code></td><td className="px-2 py-1.5">line fill utility</td><td className="px-2 py-1.5"><code>hsl(var(--stroke-soft) / 0.92)</code></td></tr>
+                  <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-divider-strong</code></td><td className="px-2 py-1.5">strong 1px horizontal divider</td><td className="px-2 py-1.5"><code>hsl(var(--stroke-strong) / 0.98)</code></td></tr>
+                  <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-nav-section-separator</code></td><td className="px-2 py-1.5">left-nav section divider</td><td className="px-2 py-1.5"><code>--left-nav-divider-height/color/margin</code></td></tr>
+                  <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-publications-toolbox-divider</code></td><td className="px-2 py-1.5">toolbar vertical divider</td><td className="px-2 py-1.5"><code>1px @ hsl(var(--stroke-strong) / 0.74)</code></td></tr>
+                  <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-metric-tile-separator</code></td><td className="px-2 py-1.5">metric tile vertical separator</td><td className="px-2 py-1.5"><code>--metric-tile-separator-color/width</code></td></tr>
+                  <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-divider-top</code></td><td className="px-2 py-1.5">drilldown section divider</td><td className="px-2 py-1.5"><code>border-top: 1px solid hsl(var(--stroke-soft) / 0.92)</code></td></tr>
+                  <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-separator-left-panel-subheading-to-content</code></td><td className="px-2 py-1.5">spacing separator utility</td><td className="px-2 py-1.5"><code>margin-bottom: var(--separator-left-panel-subheading-to-content)</code></td></tr>
+                  <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-separator-left-panel-content-to-subheading</code></td><td className="px-2 py-1.5">spacing separator utility</td><td className="px-2 py-1.5"><code>margin-top: var(--separator-left-panel-content-to-subheading)</code></td></tr>
+                </tbody>
+              </table>
+            </div>
           </article>
         </div>
       </div>
@@ -2508,16 +3102,56 @@ function ApprovedDrilldownMetricTileSection() {
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown metric tile preview</p>
             <div className="mt-3 grid max-w-md grid-cols-2 gap-2">
               <div className="house-drilldown-summary-stat-card">
-                <p className="house-drilldown-summary-stat-title">Total publications</p>
+                <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Total publications</p>
                 <div className="house-drilldown-summary-stat-value-wrap">
                   <p className="house-drilldown-summary-stat-value-emphasis tabular-nums">150</p>
                 </div>
               </div>
               <div className="house-drilldown-summary-stat-card">
-                <p className="house-drilldown-summary-stat-title">Active years</p>
+                <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Active years</p>
                 <div className="house-drilldown-summary-stat-value-wrap">
                   <p className="house-drilldown-summary-stat-value tabular-nums">12</p>
                 </div>
+              </div>
+            </div>
+          </article>
+          <article className="rounded-md border border-neutral-200 bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown metric tile (small)</p>
+            <div className="mt-3 grid max-w-md grid-cols-2 gap-2">
+              <div className="house-drilldown-summary-stat-card-small">
+                <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Total publications</p>
+                <div className="house-drilldown-summary-stat-value-wrap">
+                  <p className="house-drilldown-summary-stat-value-emphasis tabular-nums">150</p>
+                </div>
+              </div>
+              <div className="house-drilldown-summary-stat-card-small">
+                <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Active years</p>
+                <div className="house-drilldown-summary-stat-value-wrap">
+                  <p className="house-drilldown-summary-stat-value tabular-nums">12</p>
+                </div>
+              </div>
+            </div>
+          </article>
+          <article className="rounded-md border border-neutral-200 bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown metric tile (small) type 2</p>
+            <div className="mt-3">
+              <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
+                <p className="leading-relaxed">
+                  Novak E<sup className="ml-0.5 text-[0.62rem] leading-none align-super text-muted-foreground">1</sup>, Kim D<sup className="ml-0.5 text-[0.62rem] leading-none align-super text-muted-foreground">2</sup>,{' '}
+                  <span className="font-semibold text-[hsl(var(--section-style-profile-accent))]">User LT</span>
+                  <sup className="ml-0.5 text-[0.62rem] leading-none align-super text-muted-foreground">1,3</sup>, Fischer L<sup className="ml-0.5 text-[0.62rem] leading-none align-super text-muted-foreground">3</sup>
+                </p>
+                <div className="mt-2 space-y-1">
+                  <p className="house-drilldown-note-soft house-publication-affiliation-line"><sup className="mr-1 text-[0.62rem] leading-none align-super">1</sup>Division of Cardiology, Journal 12 Institute</p>
+                  <p className="house-drilldown-note-soft house-publication-affiliation-line"><sup className="mr-1 text-[0.62rem] leading-none align-super">2</sup>Center for Translational Medicine, Northbridge University</p>
+                  <p className="house-drilldown-note-soft house-publication-affiliation-line"><sup className="mr-1 text-[0.62rem] leading-none align-super">3</sup>Department of Biostatistics, Midlands Research Hospital</p>
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className="house-publication-contribution-leading font-semibold">Leading</span>
+                <span className="house-publication-contribution-co-leading font-semibold">Co-leading</span>
+                <span className="house-publication-contribution-contributor font-semibold">Contributor</span>
+                <span className="house-publication-contribution-senior font-semibold">Senior</span>
               </div>
             </div>
           </article>
@@ -2534,16 +3168,48 @@ function ApprovedDrilldownMetricTileSection() {
                 </thead>
                 <tbody>
                   <tr className="border-t border-neutral-200">
-                    <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-title</code></td>
-                    <td className="px-2 py-1.5">0.6875rem / 0.95rem · 600 · 0.07em · uppercase</td>
+                    <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-title + .house-drilldown-stat-title</code></td>
+                    <td className="px-2 py-1.5">0.75rem / 1rem, 600, 0.05em, uppercase (summary class adds centering and min-height layout)</td>
                   </tr>
                   <tr className="border-t border-neutral-200">
                     <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-value</code></td>
-                    <td className="px-2 py-1.5">1.2rem / 1.5rem · 600 · neutral-800 · centered</td>
+                    <td className="px-2 py-1.5">1.2rem / 1.5rem, 600, neutral-800, centered</td>
                   </tr>
                   <tr className="border-t border-neutral-200">
                     <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-value-emphasis</code></td>
-                    <td className="px-2 py-1.5">2.275rem / 1.05 · 700 · neutral-900 · centered</td>
+                    <td className="px-2 py-1.5">2.275rem / 1.05, 700, neutral-900, centered</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Typography spec (small)</p>
+            <div className="mt-3 overflow-hidden rounded-md border border-neutral-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-neutral-700">
+                  <tr>
+                    <th className="px-2 py-1.5 font-semibold">Typography label</th>
+                    <th className="px-2 py-1.5 font-semibold">Property</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-card-small</code></td>
+                    <td className="px-2 py-1.5">display:flex, flex-direction:column, justify-content:center, align-items:center, min-height:5rem, text-align:center, border:1px solid neutral-900, border-radius:0.375rem, background:surface-drilldown-elevated, box-shadow:inset outline, padding:0.55rem 0.75rem, gap:0.28rem</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-title + .house-drilldown-stat-title</code></td>
+                    <td className="px-2 py-1.5">0.75rem / 1rem, 600, 0.05em, uppercase (summary class adds centering and min-height layout)</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-value</code></td>
+                    <td className="px-2 py-1.5">1.2rem / 1.5rem, 600, neutral-800, centered</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-value-emphasis</code></td>
+                    <td className="px-2 py-1.5">2.275rem / 1.05, 700, neutral-900, centered</td>
                   </tr>
                 </tbody>
               </table>
@@ -3927,9 +4593,10 @@ function ApprovedPage() {
           </div>
           <ApprovedHeaderBar />
           <ApprovedMarkersSection />
+          <ApprovedDividersSection />
           <details className="rounded-lg border border-neutral-200 bg-neutral-50 p-3" open>
             <summary className="cursor-pointer text-[0.72rem] font-semibold uppercase tracking-[0.09em] text-neutral-700">Reference tables: layout + typography</summary>
-            <div className="mt-3 space-y-4">
+            <div className="mt-3 grid gap-4 grid-cols-2">
               <ApprovedLayoutTitlePositioning />
               <ApprovedTypographySection />
             </div>
@@ -3958,15 +4625,18 @@ function ApprovedPage() {
           <ApprovedNotificationBannersSection />
         </section>
 
-        <section id="drilldown-system" className="scroll-mt-24 space-y-4">
-          <div className="rounded-lg border border-teal-200 border-l-4 border-l-teal-500 bg-teal-50 p-4">
-            <h2 className="text-2xl font-bold tracking-tight text-neutral-900">3. Publications drilldown system</h2>
-            <p className="mt-1 text-sm text-neutral-600">Drilldown block contracts, navigation flow, headline tiles, and approved source-of-truth chart behavior.</p>
-          </div>
+          <section id="drilldown-system" className="scroll-mt-24 space-y-4">
+            <div className="rounded-lg border border-teal-200 border-l-4 border-l-teal-500 bg-teal-50 p-4">
+              <h2 className="text-2xl font-bold tracking-tight text-neutral-900">3. Publications drilldown system</h2>
+              <p className="mt-1 text-sm text-neutral-600">Drilldown block contracts, navigation flow, headline tiles, and approved source-of-truth chart behavior.</p>
+            </div>
           <details className="rounded-lg border border-neutral-200 bg-neutral-50 p-3" open>
             <summary className="cursor-pointer text-[0.72rem] font-semibold uppercase tracking-[0.09em] text-neutral-700">Reference-heavy drilldown architecture</summary>
-            <div className="mt-3 space-y-4">
-              <ApprovedPublicationsDrilldownSection />
+            <div className="mt-3 overflow-x-auto">
+              <div className="grid min-w-[1180px] grid-cols-2 gap-4 items-start">
+                <ApprovedPublicationsDrilldownSection />
+                <ApprovedPublicationLibraryDrilldownSection />
+              </div>
             </div>
           </details>
           <ApprovedDrilldownMetricTileSection />
@@ -4011,4 +4681,6 @@ function ApprovedPage() {
 export const Approved: Story = {
   render: () => <ApprovedPage />,
 }
+
+
 

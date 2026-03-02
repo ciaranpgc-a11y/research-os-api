@@ -660,6 +660,19 @@ export type PublicationDetailPayload = {
   pmid: string | null
   openalex_work_id: string | null
   abstract: string | null
+  structured_abstract?: {
+    format: string
+    sections: Array<{
+      key: string
+      label: string
+      content: string
+    }>
+    source_abstract: string | null
+    metadata: Record<string, unknown>
+  } | null
+  structured_abstract_status?: 'READY' | 'RUNNING' | 'FAILED' | 'MISSING'
+  structured_abstract_computed_at?: string | null
+  structured_abstract_last_error?: string | null
   keywords_json: string[]
   authors_json: Array<Record<string, unknown>>
   affiliations_json: Array<Record<string, unknown>>

@@ -524,6 +524,11 @@ def upsert_work(
             title_lower=title_lower,
             year=year,
         )
+        previous_abstract = (
+            re.sub(r"\s+", " ", str(existing.abstract or "").strip()) or None
+            if existing is not None
+            else None
+        )
 
         mutable_fields = {
             "title": title,
@@ -632,6 +637,7 @@ def upsert_work(
                     db_session.delete(link)
 
         db_session.flush()
+        current_abstract = re.sub(r"\s+", " ", str(existing.abstract or "").strip()) or None
         return {
             "id": existing.id,
             "title": existing.title,
@@ -640,12 +646,26 @@ def upsert_work(
             "work_type": existing.work_type,
             "provenance": existing.provenance,
             "updated_at": existing.updated_at,
+            "structured_abstract_refresh_needed": previous_abstract != current_abstract,
         }
 
     if session is not None:
         return _upsert(session)
     with session_scope() as owned_session:
-        return _upsert(owned_session)
+        result = _upsert(owned_session)
+    if bool(result.get("structured_abstract_refresh_needed")):
+        try:
+            from research_os.services.publication_console_service import (
+                enqueue_publication_structured_abstract_refresh,
+            )
+
+            enqueue_publication_structured_abstract_refresh(
+                user_id=user_id,
+                publication_id=str(result.get("id") or ""),
+            )
+        except Exception:
+            pass
+    return result
 
 
 def list_works(*, user_id: str) -> list[dict[str, Any]]:
@@ -1193,6 +1213,7 @@ def sync_metrics(
 
     synced = 0
     provider_counts: dict[str, int] = defaultdict(int)
+    structured_abstract_refresh_ids: set[str] = set()
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
         works_by_id: dict[str, Work] = {}
@@ -1231,6 +1252,7 @@ def sync_metrics(
             if re.sub(r"\s+", " ", str(work.abstract or "").strip()):
                 continue
             work.abstract = abstract
+            structured_abstract_refresh_ids.add(work_id)
         for work_id, (_, article_type) in best_article_type_by_work.items():
             work = works_by_id.get(work_id)
             if work is None:
@@ -1248,6 +1270,20 @@ def sync_metrics(
                 continue
             work.pmid = pmid_value
         session.flush()
+
+    if structured_abstract_refresh_ids:
+        try:
+            from research_os.services.publication_console_service import (
+                enqueue_publication_structured_abstract_refresh,
+            )
+
+            for work_id in structured_abstract_refresh_ids:
+                enqueue_publication_structured_abstract_refresh(
+                    user_id=user_id,
+                    publication_id=work_id,
+                )
+        except Exception:
+            pass
 
     collaboration = recompute_collaborator_edges(user_id=user_id)
     return {

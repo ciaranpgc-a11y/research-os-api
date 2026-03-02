@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
+import { HouseDrilldownHeaderShell, drilldownTabFlexGrow } from '@/components/publications/HouseDrilldownHeaderShell'
 import { publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
 import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -82,6 +83,15 @@ type PublicationOaPdfStatusRecord = {
   fileName: string | null
   updatedAt: string
 }
+
+const PUBLICATION_DETAIL_TABS: Array<{ id: PublicationDetailTab; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'content', label: 'Abstract' },
+  { id: 'impact', label: 'Impact' },
+  { id: 'files', label: 'Files' },
+  { id: 'ai', label: 'AI insights' },
+]
+const PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT = 8
 
 const PUBLICATION_TABLE_COLUMN_ORDER: PublicationTableColumnKey[] = ['title', 'year', 'venue', 'work_type', 'article_type', 'citations']
 const PUBLICATION_TABLE_COLUMN_DEFINITIONS: Record<PublicationTableColumnKey, { label: string; sortField: PublicationSortField }> = {
@@ -190,15 +200,28 @@ const HOUSE_BANNER_PUBLICATIONS_CLASS = houseSurfaces.bannerPublications
 const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
 const HOUSE_PUBLICATION_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
+const HOUSE_PUBLICATION_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
 const HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS = publicationsHouseDrilldown.caption
+const HOUSE_PUBLICATION_DRILLDOWN_CHIP_CLASS = publicationsHouseDrilldown.chip
 const HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS = publicationsHouseDrilldown.action
 const HOUSE_PUBLICATION_DRILLDOWN_ROW_CLASS = publicationsHouseDrilldown.row
 const HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS = publicationsHouseDrilldown.noteSoft
+const HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS = publicationsHouseDrilldown.noteWarning
 const HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS = publicationsHouseDrilldown.dividerTop
+const HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS = publicationsHouseDrilldown.link
+const HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_CARD_CLASS = publicationsHouseDrilldown.summaryStatCard
+const HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = publicationsHouseDrilldown.summaryStatTitle
+const HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS = publicationsHouseDrilldown.summaryStatValue
+const HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS = publicationsHouseDrilldown.summaryStatValueWrap
+const HOUSE_PUBLICATION_DRILLDOWN_OWNER_CLASS = publicationsHouseDrilldown.owner
+const HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_CLASS = publicationsHouseDrilldown.fileDrop
+const HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_ACTIVE_CLASS = publicationsHouseDrilldown.fileDropActive
 const HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS = publicationsHouseMotion.labelTransition
 const HOUSE_PUBLICATION_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS = publicationsHouseDrilldown.sheetBody
+const HOUSE_PUBLICATION_DRILLDOWN_VALUE_POSITIVE_CLASS = publicationsHouseDrilldown.valuePositive
+const HOUSE_PUBLICATION_DRILLDOWN_VALUE_NEGATIVE_CLASS = publicationsHouseDrilldown.valueNegative
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -1362,6 +1385,24 @@ function extractAuthorNamesFromAuthorsJson(items: Array<Record<string, unknown>>
   return names
 }
 
+function formatAuthorSurnameInitials(value: string): string {
+  const clean = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!clean) {
+    return ''
+  }
+  const parts = clean.split(' ').filter(Boolean)
+  if (parts.length === 1) {
+    return parts[0]
+  }
+  const surname = parts[parts.length - 1]
+  const initials = parts
+    .slice(0, -1)
+    .map((part) => part.charAt(0).toUpperCase())
+    .filter(Boolean)
+    .join('')
+  return initials ? `${surname} ${initials}` : surname
+}
+
 function formatVancouverCitation(input: {
   title: string
   journal: string
@@ -1612,15 +1653,15 @@ function citationCellTone(citations: number, hIndex: number): string {
 
 function growthToneClass(value: number | null): string {
   if (value === null || Number.isNaN(value)) {
-    return 'text-muted-foreground'
+    return HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS
   }
   if (value > 0) {
-    return 'text-emerald-700'
+    return HOUSE_PUBLICATION_DRILLDOWN_VALUE_POSITIVE_CLASS
   }
   if (value < 0) {
-    return 'text-rose-700'
+    return HOUSE_PUBLICATION_DRILLDOWN_VALUE_NEGATIVE_CLASS
   }
-  return 'text-muted-foreground'
+  return HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS
 }
 
 function formatSignedPercent(value: number | null): string {
@@ -2901,6 +2942,144 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     return selectedWork?.authors || []
   }, [selectedAuthorsPayload?.authors_json, selectedDetail?.authors_json, selectedWork?.authors])
+  const [overviewAuthorsExpanded, setOverviewAuthorsExpanded] = useState(false)
+  const overviewAuthorsModel = useMemo(() => {
+    const currentOwnerName = user?.name || ''
+    const currentOwnerEmail = user?.email || ''
+    const roleFromItem = (item: Record<string, unknown>): Array<'First author' | 'Senior author' | 'Corresponding'> => {
+      const roles: Array<'First author' | 'Senior author' | 'Corresponding'> = []
+      const roleText = String(item.role || item.author_role || item.position_role || '').toLowerCase()
+      const correspondingFlag = Boolean(item.corresponding || item.is_corresponding || item.corresponding_author)
+      const firstFlag = Boolean(item.first_author || item.is_first_author || item.co_first_author)
+      const seniorFlag = Boolean(item.senior_author || item.is_senior_author || item.last_author || item.is_last_author || item.co_senior_author)
+      if (firstFlag || roleText.includes('first')) {
+        roles.push('First author')
+      }
+      if (seniorFlag || roleText.includes('senior') || roleText.includes('last')) {
+        roles.push('Senior author')
+      }
+      if (correspondingFlag || roleText.includes('correspond')) {
+        roles.push('Corresponding')
+      }
+      return roles
+    }
+    const equalContributionFlag = (item: Record<string, unknown>) =>
+      Boolean(item.equal_contribution || item.contributed_equally || item.equal_contributor || item.co_first_author || item.co_senior_author)
+    const affiliationsFromItem = (item: Record<string, unknown>): string[] => {
+      const values: string[] = []
+      const append = (value: unknown) => {
+        const text = String(value || '').replace(/\s+/g, ' ').trim()
+        if (text && !values.includes(text)) {
+          values.push(text)
+        }
+      }
+      const rawAffiliations = item.affiliations || item.affiliations_json || item.institutions || item.institution_list
+      if (Array.isArray(rawAffiliations)) {
+        for (const entry of rawAffiliations) {
+          if (typeof entry === 'string') {
+            append(entry)
+          } else if (entry && typeof entry === 'object') {
+            const record = entry as Record<string, unknown>
+            append(record.name || record.institution || record.affiliation || record.display_name || record.label)
+          }
+        }
+      } else {
+        append(item.affiliation)
+        append(item.institution)
+        append(item.organization)
+      }
+      return values
+    }
+
+    const fromJson = (selectedAuthorsPayload?.authors_json?.length
+      ? selectedAuthorsPayload.authors_json
+      : selectedDetail?.authors_json?.length
+        ? selectedDetail.authors_json
+        : []) as Array<Record<string, unknown>>
+    const rawNames = selectedAuthorNames
+    const jsonByName = new Map<string, Record<string, unknown>>()
+    for (const item of fromJson) {
+      const rawName = String(item?.name || item?.full_name || '').trim()
+      if (!rawName) continue
+      jsonByName.set(rawName.toLowerCase(), item)
+    }
+    const affiliationIndexByText = new Map<string, number>()
+    const affiliationLegend: Array<{ index: number; label: string }> = []
+    const ensureAffiliationIndex = (label: string): number => {
+      const existing = affiliationIndexByText.get(label)
+      if (existing) return existing
+      const next = affiliationLegend.length + 1
+      affiliationIndexByText.set(label, next)
+      affiliationLegend.push({ index: next, label })
+      return next
+    }
+
+    const authors = rawNames.map((rawName) => {
+      const item = jsonByName.get(rawName.toLowerCase())
+      const roles = item ? roleFromItem(item) : []
+      const hasEqualContribution = item ? equalContributionFlag(item) : false
+      const affiliationIndices = item
+        ? affiliationsFromItem(item).map((label) => ensureAffiliationIndex(label))
+        : []
+      return {
+        rawName,
+        displayName: formatAuthorSurnameInitials(rawName),
+        isYou: isOwnerAuthor(rawName, currentOwnerName, currentOwnerEmail),
+        roles,
+        hasEqualContribution,
+        affiliationIndices,
+      }
+    })
+    return { authors, affiliationLegend }
+  }, [selectedAuthorNames, selectedAuthorsPayload?.authors_json, selectedDetail?.authors_json, user?.email, user?.name])
+  const overviewAuthors = overviewAuthorsModel.authors
+  const overviewAuthorAffiliations = overviewAuthorsModel.affiliationLegend
+  const overviewOwnerAuthorIndex = useMemo(
+    () => overviewAuthors.findIndex((author) => author.isYou),
+    [overviewAuthors],
+  )
+  const overviewOwnerAuthorPosition = useMemo(() => {
+    if (overviewOwnerAuthorIndex < 0 || overviewAuthors.length === 0) {
+      return 'n/a'
+    }
+    return `${overviewOwnerAuthorIndex + 1}/${overviewAuthors.length}`
+  }, [overviewAuthors.length, overviewOwnerAuthorIndex])
+  const overviewOwnerContribution = useMemo(() => {
+    if (overviewOwnerAuthorIndex < 0 || overviewAuthors.length === 0) {
+      return 'Not identified'
+    }
+    const ownerAuthor = overviewAuthors[overviewOwnerAuthorIndex]
+    if (overviewAuthors.length === 1) {
+      return 'Leading'
+    }
+    if (overviewOwnerAuthorIndex === 0) {
+      if (ownerAuthor?.hasEqualContribution) {
+        return 'Co-leading'
+      }
+      return 'Leading'
+    }
+    if (overviewOwnerAuthorIndex === overviewAuthors.length - 1) {
+      return 'Senior'
+    }
+    return 'Contributor'
+  }, [overviewAuthors, overviewAuthors.length, overviewOwnerAuthorIndex])
+  const overviewOwnerContributionToneClass = useMemo(() => {
+    switch (overviewOwnerContribution) {
+      case 'Leading':
+        return 'house-publication-contribution-leading'
+      case 'Co-leading':
+        return 'house-publication-contribution-co-leading'
+      case 'Senior':
+        return 'house-publication-contribution-senior'
+      case 'Contributor':
+        return 'house-publication-contribution-contributor'
+      default:
+        return 'house-publication-contribution-not-identified'
+    }
+  }, [overviewOwnerContribution])
+  useEffect(() => {
+    setOverviewAuthorsExpanded(false)
+  }, [selectedWorkId])
 
   useEffect(() => {
     if (!token || !selectedWorkId || activeDetailTab !== 'overview') {
@@ -3058,19 +3237,28 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (works.length === 0) {
       return
     }
+    if (publicationTableResizingColumn) {
+      publicationTableResizeRef.current = null
+      setPublicationTableResizingColumn(null)
+    }
+    const availableWidth = Math.max(
+      760,
+      Math.round(
+        publicationTableLayoutRef.current?.clientWidth && publicationTableLayoutRef.current.clientWidth > 0
+          ? publicationTableLayoutRef.current.clientWidth
+          : publicationTableLayoutWidth,
+      ),
+    )
     setPublicationTableColumns((current) => {
       const next = autoFitPublicationTableColumns({
         works,
         metricsByWorkId,
         current,
-        availableWidth: publicationTableLayoutWidth,
+        availableWidth,
       })
-      if (publicationTableColumnsEqual(current, next)) {
-        return current
-      }
       return next
     })
-  }, [filteredWorks, metricsByWorkId, personaState?.works, publicationTableLayoutWidth])
+  }, [filteredWorks, metricsByWorkId, personaState?.works, publicationTableLayoutWidth, publicationTableResizingColumn])
 
   const onDownloadPublicationLibrary = useCallback(() => {
     const selectedFieldKeys = PUBLICATION_EXPORT_FIELD_OPTIONS
@@ -3465,6 +3653,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const detailYear = selectedDetail?.year ?? selectedWork?.year ?? null
   const detailJournal = selectedDetail?.journal || formatJournalName(selectedWork?.venue_name || '')
   const detailPublicationType = selectedDetail?.publication_type || (selectedWork ? derivePublicationTypeLabel(selectedWork) : 'Not available')
+  const detailArticleType = selectedDetail?.article_type || (selectedWork ? deriveArticleTypeLabel(selectedWork) : 'n/a')
   const detailCitations = selectedDetail?.citations_total ?? (selectedWork ? Number(metricsByWorkId.get(selectedWork.id)?.citations || 0) : 0)
   const detailDoi = selectedDetail?.doi || selectedWork?.doi || null
   const detailPmid = selectedDetail?.pmid || selectedWork?.pmid || null
@@ -4125,15 +4314,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     ref={publicationLibrarySettingsPopoverRef}
                     className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[18.75rem]"
                   >
-                    <div className="house-publications-filter-header">
-                      <p className="house-publications-filter-title">Table settings</p>
-                      <div className="inline-flex items-center gap-2">
-                        <button type="button" className="house-publications-filter-clear" onClick={onAutoAdjustPublicationTableWidths}>
-                          Auto width
-                        </button>
-                        <button type="button" className="house-publications-filter-clear" onClick={onResetPublicationTableSettings}>
-                          Reset
-                        </button>
+                      <div className="house-publications-filter-header">
+                        <p className="house-publications-filter-title">Table settings</p>
+                        <div className="inline-flex items-center gap-2">
+                          <button type="button" className="house-publications-filter-clear" onClick={onAutoAdjustPublicationTableWidths}>
+                            Auto fit
+                          </button>
+                          <button type="button" className="house-publications-filter-clear" onClick={onResetPublicationTableSettings}>
+                            Reset
+                          </button>
                       </div>
                     </div>
                     <details className="house-publications-filter-group" open>
@@ -4554,187 +4743,240 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             >
               <SheetContent side="right" className={HOUSE_PUBLICATION_DRILLDOWN_SHEET_CLASS}>
                 {selectedWork ? (
-                  <div className={HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS}>
+                  <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS, 'house-drilldown-panel-no-pad')}>
                     <Tabs value={activeDetailTab} onValueChange={onDetailTabChange} className="w-full">
-                      <div className="max-h-[78vh] overflow-auto">
-                      <div className={cn('house-drilldown-title-block', HOUSE_LEFT_BORDER_CLASS, HOUSE_LEFT_BORDER_PROFILE_CLASS)}>
-                        <p className="house-drilldown-title">
-                          {selectedDetail?.title || selectedWork.title}
-                        </p>
-                        <p className="house-drilldown-title-expander">
-                          {[detailJournal || 'Publication record', detailYear ? String(detailYear) : null].filter(Boolean).join(' • ')}
-                        </p>
-                      </div>
-                      <div className="house-drilldown-navigation-block">
-                        <div className="house-publications-drilldown-tabs">
-                          {([
-                            { id: 'overview', label: 'Overview' },
-                            { id: 'content', label: 'Content' },
-                            { id: 'impact', label: 'Impact' },
-                            { id: 'files', label: 'Files' },
-                            { id: 'ai', label: 'AI insights' },
-                          ] as const).map((tab) => {
-                            const isActive = activeDetailTab === tab.id
-                            return (
-                              <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => onDetailTabChange(tab.id)}
-                                className={cn(
-                                  'house-nav-item approved-drilldown-nav-item house-publications-drilldown-tab-item',
-                                  isActive && 'approved-drilldown-nav-item-active',
-                                )}
-                                aria-pressed={isActive}
-                              >
-                                <span className="house-nav-item-label">{tab.label}</span>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
+                      <div className="house-drilldown-flow-shell max-h-[78vh] overflow-auto">
+                        <HouseDrilldownHeaderShell
+                          title={(
+                            <p className="house-drilldown-title">
+                              {selectedDetail?.title || selectedWork.title}
+                            </p>
+                          )}
+                          subtitle={(
+                            <p className="house-drilldown-title-expander">
+                              {[detailJournal || 'Publication record', detailYear ? String(detailYear) : null].filter(Boolean).join(' | ')}
+                            </p>
+                          )}
+                          titleBlockClassName={cn(HOUSE_LEFT_BORDER_CLASS, HOUSE_LEFT_BORDER_PROFILE_CLASS)}
+                          dividerClassName={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS}
+                          navAriaLabel="Publication drilldown sections"
+                          tabs={PUBLICATION_DETAIL_TABS}
+                          activeTab={activeDetailTab}
+                          onTabChange={(tabId) => onDetailTabChange(tabId as PublicationDetailTab)}
+                          panelIdPrefix="publication-drilldown-panel-"
+                          tabIdPrefix="publication-drilldown-tab-"
+                          tabFlexGrow={drilldownTabFlexGrow}
+                        />
 
-                      <div className="space-y-0">
+                        <div className="house-drilldown-content-block house-drilldown-tab-panel">
                         {activePaneError ? (
-                          <p className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">{activePaneError}</p>
+                          <p className={HOUSE_PUBLICATION_DRILLDOWN_ALERT_CLASS}>{activePaneError}</p>
                         ) : null}
 
-                        <TabsContent value="overview" className="space-y-0">
+                        <TabsContent value="overview" className="mt-0" role="tabpanel" id="publication-drilldown-panel-overview" aria-labelledby="publication-drilldown-tab-overview">
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Publication overview</p>
                           </div>
-                          <div className="house-drilldown-content-block rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.55)] p-2">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
-                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Year</p>
-                                <p className="house-drilldown-stat-value">{detailYear ?? 'n/a'}</p>
+                          <div className="house-drilldown-content-block house-drilldown-summary-stats-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                            <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
+                              <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>Year</p>
+                              <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
+                                <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'house-publication-overview-stat-value')}>{detailYear ?? 'n/a'}</p>
                               </div>
-                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
-                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Journal</p>
-                                <p className="house-drilldown-stat-value">{detailJournal || 'Not available'}</p>
+                            </div>
+                            <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
+                              <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>Journal</p>
+                              <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
+                                <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'house-publication-overview-stat-value')}>{detailJournal || 'Not available'}</p>
                               </div>
-                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
-                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Type</p>
-                                <p className="house-drilldown-stat-value">{detailPublicationType || 'Not available'}</p>
+                            </div>
+                            <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
+                              <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>Type</p>
+                              <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
+                                <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'house-publication-overview-stat-value')}>{detailPublicationType || 'Not available'}</p>
                               </div>
-                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
-                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Citations</p>
-                                <p className="house-drilldown-stat-value">{detailCitations}</p>
+                            </div>
+                            <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
+                              <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>Article type</p>
+                              <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
+                                <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'house-publication-overview-stat-value')}>{detailArticleType || 'n/a'}</p>
                               </div>
-                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
-                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>PMID</p>
-                                {detailPmid ? (
-                                  <a className="house-drilldown-stat-value text-emerald-700 underline-offset-2 hover:underline" href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">
-                                    {detailPmid}
-                                  </a>
-                                ) : (
-                                  <p className="house-drilldown-stat-value text-muted-foreground">Not available</p>
-                                )}
-                              </div>
-                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
-                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>DOI</p>
+                            </div>
+                            <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
+                              <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>DOI</p>
+                              <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
                                 {detailDoi ? (
-                                  <a className="house-drilldown-stat-value break-all text-emerald-700 underline-offset-2 hover:underline" href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">
+                                  <a className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS} href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">
                                     {detailDoi}
                                   </a>
                                 ) : (
-                                  <p className="house-drilldown-stat-value text-muted-foreground">Not available</p>
+                                  <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Not available</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
+                              <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>PMID</p>
+                              <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
+                                {detailPmid ? (
+                                  <a className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS} href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">
+                                    {detailPmid}
+                                  </a>
+                                ) : (
+                                  <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Not available</p>
                                 )}
                               </div>
                             </div>
                           </div>
-
-                          <div className="house-drilldown-content-block space-y-3">
-                          <div className="space-y-1">
-                            <p className="text-micro uppercase text-muted-foreground">Authors</p>
-                            {selectedAuthorsPayload?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Fetching authors...</p> : null}
-                            {selectedAuthorsPayload?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last author hydration failed. Showing cached data.</p> : null}
-                            {selectedAuthorNames.length > 0 ? (
-                              <p className="leading-relaxed">
-                                {selectedAuthorNames.slice(0, 6).map((author, index) => {
-                                  const owner = (Boolean(ownerName) || Boolean(ownerEmail)) && isOwnerAuthor(author, ownerName, ownerEmail)
-                                  return (
-                                    <span key={`${author}-${index}`} className={owner ? 'font-semibold text-emerald-700' : undefined}>
-                                      {author}{owner ? ' (you)' : ''}{index < Math.min(5, selectedAuthorNames.length - 1) ? ', ' : ''}
-                                    </span>
-                                  )
-                                })}
-                                {selectedAuthorNames.length > 6 ? <span className="text-muted-foreground"> +{selectedAuthorNames.length - 6} more</span> : null}
-                              </p>
-                            ) : <p className="text-muted-foreground">Not available</p>}
-                          </div>
-
-                          <div className="flex flex-wrap gap-2">
-                            <Button type="button" size="sm" variant="secondary" disabled={!Boolean(detailDoi)} asChild={Boolean(detailDoi)}>
-                              {detailDoi ? <a href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">Open DOI</a> : <span>Open DOI</span>}
-                            </Button>
-                            <Button type="button" size="sm" variant="secondary" disabled={!Boolean(detailPmid)} asChild={Boolean(detailPmid)}>
-                              {detailPmid ? <a href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">Open PubMed</a> : <span>Open PubMed</span>}
-                            </Button>
-                            <Button type="button" size="sm" variant="secondary" onClick={onCopyVancouverCitation}>Copy citation</Button>
-                            <Button type="button" size="sm" variant="secondary" onClick={() => navigate('/workspace')}>Add to manuscript</Button>
-                          </div>
-
-                          <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2 text-xs text-muted-foreground">
-                            <p>Added: {formatShortDate(selectedDetail?.created_at || selectedWork.created_at)}</p>
-                            <p>Updated: {formatShortDate(selectedDetail?.updated_at || selectedWork.updated_at)}</p>
-                          </div>
-                          </div>
-                        </TabsContent>
-
-                        <TabsContent value="content" className="space-y-0">
                           <div className="house-drilldown-heading-block">
-                            <p className="house-drilldown-heading-block-title">Content</p>
+                            <p className="house-drilldown-heading-block-title">Authors</p>
+                          </div>
+                          <div className="house-drilldown-content-block">
+                            <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
+                              {overviewAuthors.length > 0 ? (
+                                <>
+                                  <p className="leading-relaxed">
+                                    {(overviewAuthorsExpanded ? overviewAuthors : overviewAuthors.slice(0, PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT)).map((author, index, list) => (
+                                      <span key={`${author.rawName}-${index}`}>
+                                        <span className={author.isYou ? 'font-semibold text-[hsl(var(--section-style-profile-accent))]' : undefined}>{author.displayName}</span>
+                                        {author.affiliationIndices.length > 0 ? (
+                                          <sup className="ml-0.5 text-[0.62rem] leading-none align-super text-muted-foreground">
+                                            {author.affiliationIndices.join(',')}
+                                          </sup>
+                                        ) : null}
+                                        {author.hasEqualContribution ? '*' : ''}
+                                        {author.roles.map((role) => (
+                                          <span key={`${author.rawName}-${role}`} className="ml-1 inline-flex items-center rounded border border-neutral-300 px-1 py-0 text-[0.62rem] leading-none text-neutral-700">{role}</span>
+                                        ))}
+                                        {index < list.length - 1 ? ', ' : ''}
+                                      </span>
+                                    ))}
+                                    {!overviewAuthorsExpanded && overviewAuthors.length > PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT ? (
+                                      <>
+                                        {' '}
+                                        <button
+                                          type="button"
+                                          className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS}
+                                          onClick={() => setOverviewAuthorsExpanded(true)}
+                                        >
+                                          +{overviewAuthors.length - PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT} more
+                                        </button>
+                                      </>
+                                    ) : null}
+                                  </p>
+                                  {overviewAuthorsExpanded ? (
+                                    <div className="mt-1 space-y-1">
+                                      {overviewAuthors.some((author) => author.hasEqualContribution) ? (
+                                        <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>* indicates equal contribution.</p>
+                                      ) : null}
+                                      {overviewAuthors.some((author) => author.roles.length > 0) ? (
+                                        <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Role badges indicate author position metadata when available.</p>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                  {overviewAuthorAffiliations.length > 0 ? (
+                                    <div className="mt-2 space-y-1">
+                                      {overviewAuthorAffiliations.map((affiliation) => (
+                                        <p key={`affiliation-${affiliation.index}`} className={cn(HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS, 'house-publication-affiliation-line')}>
+                                          <sup className="mr-1 text-[0.62rem] leading-none align-super">{affiliation.index}</sup>
+                                          {affiliation.label}
+                                        </p>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Not available</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Contribution</p>
+                          </div>
+                          <div className="house-drilldown-content-block">
+                            <div className="house-drilldown-summary-stats-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                              <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
+                                <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>Author position</p>
+                                <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
+                                  <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'house-publication-overview-stat-value')}>{overviewOwnerAuthorPosition}</p>
+                                </div>
+                              </div>
+                              <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
+                                <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>Contribution</p>
+                                <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
+                                  <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'house-publication-overview-stat-value', overviewOwnerContributionToneClass)}>{overviewOwnerContribution}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                        </TabsContent>
+
+                        <TabsContent value="content" className="mt-0" role="tabpanel" id="publication-drilldown-panel-content" aria-labelledby="publication-drilldown-tab-content">
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Abstract</p>
                           </div>
                           <div className="house-drilldown-content-block space-y-3">
-                          <div className="flex items-center gap-2">
-                            <Button type="button" size="sm" variant={contentMode === 'plain' ? 'primary' : 'secondary'} onClick={() => void onContentModeChange('plain')}>Plain</Button>
-                            <Button type="button" size="sm" variant={contentMode === 'highlighted' ? 'primary' : 'secondary'} onClick={() => void onContentModeChange('highlighted')}>Highlighted</Button>
-                          </div>
-                          <div className="space-y-2 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
-                            <p className="house-drilldown-overline">Abstract</p>
-                            <p className="whitespace-pre-wrap text-xs leading-relaxed">{detailAbstract ? abstractPreview : 'No abstract available.'}</p>
-                            {detailAbstract.length > 700 ? <Button type="button" size="sm" variant="secondary" onClick={onToggleAbstractExpanded}>{abstractExpanded ? 'Collapse' : 'Expand'}</Button> : null}
-                          </div>
-                          {contentMode === 'highlighted' ? (
-                            <div className="space-y-1 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2 text-xs">
-                              <p><span className="font-semibold">Objective:</span> {selectedAiResponse?.payload?.extractive_key_points?.objective || 'Not stated in abstract.'}</p>
-                              <p><span className="font-semibold">Methods:</span> {selectedAiResponse?.payload?.extractive_key_points?.methods || 'Not stated in abstract.'}</p>
-                              <p><span className="font-semibold">Findings:</span> {selectedAiResponse?.payload?.extractive_key_points?.main_findings || 'Not stated in abstract.'}</p>
-                              <p><span className="font-semibold">Conclusion:</span> {selectedAiResponse?.payload?.extractive_key_points?.conclusion || 'Not stated in abstract.'}</p>
-                            </div>
-                          ) : null}
-                          <div className="space-y-1">
-                            <p className="text-micro uppercase text-muted-foreground">Keywords</p>
-                            {detailKeywords.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {detailKeywords.map((keyword) => <span key={keyword} className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-xs">{keyword}</span>)}
+                            {selectedDetail?.structured_abstract_status === 'RUNNING' ? (
+                              <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Structuring abstract...</p>
+                            ) : null}
+                            {selectedDetail?.structured_abstract_status === 'FAILED' ? (
+                              <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>Structured abstract generation failed. Showing raw abstract.</p>
+                            ) : null}
+                            {selectedDetail?.structured_abstract_last_error ? (
+                              <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>{selectedDetail.structured_abstract_last_error}</p>
+                            ) : null}
+                            {selectedDetail?.structured_abstract?.sections?.length ? (
+                              <div className="space-y-3">
+                                {selectedDetail.structured_abstract.sections.map((section, index) => (
+                                  <div key={`abstract-section-${section.key || index}`} className="space-y-2">
+                                    <div className="house-drilldown-heading-block">
+                                      <p className="house-drilldown-heading-block-title">{section.label || 'Summary'}</p>
+                                    </div>
+                                    <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                      <p className="leading-relaxed">{section.content || 'Not available'}</p>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            ) : <p className="text-xs text-muted-foreground">No keywords saved.</p>}
-                          </div>
+                            ) : detailAbstract ? (
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                <p className="leading-relaxed">{detailAbstract}</p>
+                              </div>
+                            ) : (
+                              <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No abstract available.</p>
+                            )}
                           </div>
                         </TabsContent>
 
-                        <TabsContent value="impact" className="space-y-0">
+                        <TabsContent value="impact" className="mt-0" role="tabpanel" id="publication-drilldown-panel-impact" aria-labelledby="publication-drilldown-tab-impact">
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Impact</p>
                           </div>
                           <div className="house-drilldown-content-block space-y-3">
-                          {selectedImpactResponse?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Computing impact insights...</p> : null}
-                          {selectedImpactResponse?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last impact update failed. Showing cached data.</p> : null}
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2"><p className="house-drilldown-overline">Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
-                            <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2"><p className="house-drilldown-overline">Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
-                            <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2"><p className="house-drilldown-overline">YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
-                            <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2"><p className="house-drilldown-overline">Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
+                          {selectedImpactResponse?.status === 'RUNNING' ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Computing impact insights...</p> : null}
+                          {selectedImpactResponse?.status === 'FAILED' ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>Last impact update failed. Showing cached data.</p> : null}
+                            <div className="house-drilldown-heading-block">
+                              <p className="house-drilldown-heading-block-title">Citation snapshot</p>
+                            </div>
+                          <div className="house-drilldown-content-block">
+                            <div className="house-drilldown-summary-stats-grid">
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
+                            </div>
                           </div>
-                          <div className="space-y-1 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
-                            <p className="house-drilldown-overline">Key citing papers</p>
-                            {(selectedImpactResponse?.payload?.key_citing_papers || []).length === 0 ? <p className="text-xs text-muted-foreground">Not available from source.</p> : (selectedImpactResponse?.payload?.key_citing_papers || []).slice(0, 5).map((paper, index) => <p key={`${paper.title}-${index}`} className="text-xs">{paper.year ?? 'n/a'} | {paper.title}</p>)}
+                          <div className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Key citing papers</p>
+                          </div>
+                          <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                            {(selectedImpactResponse?.payload?.key_citing_papers || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Not available from source.</p> : (selectedImpactResponse?.payload?.key_citing_papers || []).slice(0, 5).map((paper, index) => <p key={`${paper.title}-${index}`}>{paper.year ?? 'n/a'} | {paper.title}</p>)}
                           </div>
                           </div>
                         </TabsContent>
 
-                        <TabsContent value="files" className="space-y-0">
+                        <TabsContent value="files" className="mt-0" role="tabpanel" id="publication-drilldown-panel-files" aria-labelledby="publication-drilldown-tab-files">
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Files</p>
                           </div>
@@ -4770,7 +5012,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           )}
                           <div data-house-role="files-tab-divider" className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
                           <div
-                            className={`${HOUSE_PUBLICATION_DRILLDOWN_ROW_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS} border-dashed p-3 ${filesDragOver ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.55)]' : 'bg-[hsl(var(--tone-neutral-50)/0.55)]'}`}
+                            className={cn(
+                              HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_CLASS,
+                              HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS,
+                              filesDragOver ? HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_ACTIVE_CLASS : '',
+                            )}
                             onDragOver={(event) => {
                               event.preventDefault()
                               setFilesDragOver(true)
@@ -4796,33 +5042,45 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           </div>
                         </TabsContent>
 
-                        <TabsContent value="ai" className="space-y-0">
+                        <TabsContent value="ai" className="mt-0" role="tabpanel" id="publication-drilldown-panel-ai" aria-labelledby="publication-drilldown-tab-ai">
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">AI insights</p>
                           </div>
                           <div className="house-drilldown-content-block space-y-3">
                           <p className={`${HOUSE_BANNER_CLASS} text-micro`}>AI-generated draft insights. Verify against full text.</p>
-                          {selectedAiResponse?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Generating insights...</p> : null}
-                          {selectedAiResponse?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last AI update failed. Showing cached data.</p> : null}
-                          <div className="space-y-1 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
-                            <p className="house-drilldown-overline">Performance summary</p>
-                            <p className="text-xs leading-relaxed">{selectedAiResponse?.payload?.performance_summary || 'Not available'}</p>
+                          {selectedAiResponse?.status === 'RUNNING' ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Generating insights...</p> : null}
+                          {selectedAiResponse?.status === 'FAILED' ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>Last AI update failed. Showing cached data.</p> : null}
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
+                            <div className="house-drilldown-heading-block">
+                              <p className="house-drilldown-heading-block-title">Performance summary</p>
+                            </div>
+                          <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                            <p className="leading-relaxed">{selectedAiResponse?.payload?.performance_summary || 'Not available'}</p>
                           </div>
-                          <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
-                            <p className="house-drilldown-overline">Trajectory</p>
-                            <p className="text-xs font-medium">{(selectedAiResponse?.payload?.trajectory_classification || 'UNKNOWN').replace(/_/g, ' ')}</p>
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
+                            <div className="house-drilldown-heading-block">
+                              <p className="house-drilldown-heading-block-title">Trajectory</p>
+                            </div>
+                          <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                            <p className="font-medium">{(selectedAiResponse?.payload?.trajectory_classification || 'UNKNOWN').replace(/_/g, ' ')}</p>
                           </div>
-                          <div className="space-y-1 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
-                            <p className="house-drilldown-overline">Reuse suggestions</p>
-                            {(selectedAiResponse?.payload?.reuse_suggestions || []).length === 0 ? <p className="text-xs text-muted-foreground">No suggestions yet.</p> : (selectedAiResponse?.payload?.reuse_suggestions || []).map((item, index) => <p key={`${item}-${index}`} className="text-xs">- {item}</p>)}
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
+                            <div className="house-drilldown-heading-block">
+                              <p className="house-drilldown-heading-block-title">Reuse suggestions</p>
+                            </div>
+                          <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} space-y-1`}>
+                            {(selectedAiResponse?.payload?.reuse_suggestions || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No suggestions yet.</p> : (selectedAiResponse?.payload?.reuse_suggestions || []).map((item, index) => <p key={`${item}-${index}`}>- {item}</p>)}
                           </div>
-                          <div className="space-y-1 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
-                            <p className="house-drilldown-overline">Caution flags</p>
-                            {(selectedAiResponse?.payload?.caution_flags || []).length === 0 ? <p className="text-xs text-muted-foreground">No caution flags.</p> : (selectedAiResponse?.payload?.caution_flags || []).map((item, index) => <p key={`${item}-${index}`} className="text-xs">- {item}</p>)}
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
+                            <div className="house-drilldown-heading-block">
+                              <p className="house-drilldown-heading-block-title">Caution flags</p>
+                            </div>
+                          <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} space-y-1`}>
+                            {(selectedAiResponse?.payload?.caution_flags || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No caution flags.</p> : (selectedAiResponse?.payload?.caution_flags || []).map((item, index) => <p key={`${item}-${index}`}>- {item}</p>)}
                           </div>
                           </div>
                         </TabsContent>
-                      </div>
+                        </div>
                       </div>
                     </Tabs>
                   </div>
@@ -4857,5 +5115,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     </section>
   )
 }
+
+
 
 
