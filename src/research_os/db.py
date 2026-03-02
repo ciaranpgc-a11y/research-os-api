@@ -1019,7 +1019,7 @@ class PublicationStructuredAbstractCache(Base):
         String(64), nullable=True
     )
     parser_version: Mapped[str] = mapped_column(
-        String(64), default="publication_structured_abstract_v1"
+        String(64), default="publication_structured_abstract_v2"
     )
     model_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     computed_at: Mapped[datetime | None] = mapped_column(
