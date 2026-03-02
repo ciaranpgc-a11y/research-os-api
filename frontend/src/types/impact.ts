@@ -655,6 +655,7 @@ export type PublicationDetailPayload = {
   year: number | null
   journal: string
   publication_type: string
+  article_type?: string | null
   citations_total: number
   doi: string | null
   pmid: string | null

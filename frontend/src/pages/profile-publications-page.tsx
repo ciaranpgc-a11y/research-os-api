@@ -203,18 +203,14 @@ const HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.s
 const HOUSE_PUBLICATION_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
 const HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS = publicationsHouseDrilldown.caption
-const HOUSE_PUBLICATION_DRILLDOWN_CHIP_CLASS = publicationsHouseDrilldown.chip
 const HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS = publicationsHouseDrilldown.action
-const HOUSE_PUBLICATION_DRILLDOWN_ROW_CLASS = publicationsHouseDrilldown.row
 const HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS = publicationsHouseDrilldown.noteSoft
 const HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS = publicationsHouseDrilldown.noteWarning
 const HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS = publicationsHouseDrilldown.dividerTop
 const HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS = publicationsHouseDrilldown.link
-const HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_CARD_CLASS = publicationsHouseDrilldown.summaryStatCard
 const HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = publicationsHouseDrilldown.summaryStatTitle
 const HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS = publicationsHouseDrilldown.summaryStatValue
 const HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS = publicationsHouseDrilldown.summaryStatValueWrap
-const HOUSE_PUBLICATION_DRILLDOWN_OWNER_CLASS = publicationsHouseDrilldown.owner
 const HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_CLASS = publicationsHouseDrilldown.fileDrop
 const HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_ACTIVE_CLASS = publicationsHouseDrilldown.fileDropActive
 const HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS = publicationsHouseMotion.labelTransition
@@ -3150,8 +3146,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }, [activeDetailTab, loadPublicationAiData, selectedAiResponse?.status, selectedWorkId, token])
 
-  const ownerName = user?.name || ''
-  const ownerEmail = user?.email || ''
   const hIndex = analyticsSummary?.h_index ?? 0
 
   const onSortColumn = (column: PublicationSortField) => {
@@ -3658,7 +3652,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const detailDoi = selectedDetail?.doi || selectedWork?.doi || null
   const detailPmid = selectedDetail?.pmid || selectedWork?.pmid || null
   const detailAbstract = selectedDetail?.abstract || selectedWork?.abstract || ''
-  const detailKeywords = selectedDetail?.keywords_json?.length ? selectedDetail.keywords_json : (selectedWork?.keywords || [])
   const contentMode = selectedWorkId ? (contentModeByWorkId[selectedWorkId] || 'plain') : 'plain'
   const abstractExpanded = selectedWorkId ? Boolean(expandedAbstractByWorkId[selectedWorkId]) : false
   const abstractPreview = abstractExpanded ? detailAbstract : detailAbstract.slice(0, 700)
@@ -4916,6 +4909,32 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             <p className="house-drilldown-heading-block-title">Abstract</p>
                           </div>
                           <div className="house-drilldown-content-block space-y-3">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={contentMode === 'plain' ? 'primary' : 'secondary'}
+                                onClick={() => void onContentModeChange('plain')}
+                              >
+                                Plain
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={contentMode === 'highlighted' ? 'primary' : 'secondary'}
+                                onClick={() => void onContentModeChange('highlighted')}
+                              >
+                                Highlighted
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => void onCopyVancouverCitation()}
+                              >
+                                Copy citation
+                              </Button>
+                            </div>
                             {selectedDetail?.structured_abstract_status === 'RUNNING' ? (
                               <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Structuring abstract...</p>
                             ) : null}
@@ -4939,8 +4958,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 ))}
                               </div>
                             ) : detailAbstract ? (
-                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
-                                <p className="leading-relaxed">{detailAbstract}</p>
+                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} space-y-2`}>
+                                <p className="leading-relaxed">{abstractPreview}</p>
+                                {detailAbstract.length > 700 ? (
+                                  <button
+                                    type="button"
+                                    className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS}
+                                    onClick={onToggleAbstractExpanded}
+                                  >
+                                    {abstractExpanded ? 'Show less' : 'Show more'}
+                                  </button>
+                                ) : null}
                               </div>
                             ) : (
                               <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No abstract available.</p>
