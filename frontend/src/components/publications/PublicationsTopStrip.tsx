@@ -1029,6 +1029,23 @@ function parseMonthIndex(value: string): number | null {
   return typeof fromFirstWord === 'number' ? fromFirstWord : null
 }
 
+function parseIsoMonthStart(value: string): Date | null {
+  const token = String(value || '').trim()
+  if (!token) {
+    return null
+  }
+  const match = token.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/)
+  if (!match) {
+    return null
+  }
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return null
+  }
+  return new Date(Date.UTC(Math.round(year), Math.round(month) - 1, 1))
+}
+
 function buildRollingWindowLabel(monthLabels: string[], endYear: number): string | null {
   if (!monthLabels.length || !Number.isFinite(endYear)) {
     return null
@@ -2073,6 +2090,7 @@ export function PublicationsPerYearChart({
     current: boolean
     axisLabel: string
     axisSubLabel?: string
+    monthStartMs?: number
   }
 
   type PublicationLineAxisTick = {
@@ -2107,7 +2125,7 @@ export function PublicationsPerYearChart({
     rangeLabel: string | null
   }
 
-  const compactTileBars = useMemo(() => (
+  const compactTileBars = useMemo<PublicationChartBar[]>(() => (
     historyBars
       .slice(-6)
       .map((bar) => ({
@@ -2116,6 +2134,7 @@ export function PublicationsPerYearChart({
         current: bar.current,
         axisLabel: String(bar.year).slice(-2),
         axisSubLabel: undefined,
+        monthStartMs: undefined,
       }))
   ), [historyBars, showCurrentPeriodSemantic])
 
@@ -2211,7 +2230,6 @@ export function PublicationsPerYearChart({
     const currentMonthIndex = new Date().getUTCMonth()
     const sourceLastMonthIndex = sourceLabels.length ? parseMonthIndex(sourceLabels[sourceLabels.length - 1]) : null
     const sourceLikelyIncludesCurrentMonth = sourceLastMonthIndex !== null && sourceLastMonthIndex === currentMonthIndex
-    const annualFallback = Math.max(0, historyBars[historyBars.length - 1]?.value || 0)
     const sourceValuesWindow = sourceValues.length >= 13 && sourceLikelyIncludesCurrentMonth
       ? sourceValues.slice(-13, -1)
       : sourceValues.length >= 12
@@ -2221,15 +2239,17 @@ export function PublicationsPerYearChart({
       ? sourceValuesWindow.slice(-12)
       : sourceValues.length > 0
         ? [...Array.from({ length: 12 - sourceValuesWindow.length }, () => 0), ...sourceValuesWindow]
-        : Array.from({ length: 12 }, () => annualFallback / 12)
+        : Array.from({ length: 12 }, () => 0)
     const monthLabels12 = fallbackMonthLabels(12, true)
     const yearShortLabels12 = fallbackMonthYearShortLabels(12, true)
+    const monthStarts12 = buildTrailingMonthStarts(12, true)
     const bars: PublicationChartBar[] = values12.map((value, index) => ({
       key: `month-${yearShortLabels12[index] || '00'}-${monthLabels12[index] || `M${index + 1}`}-${index}`,
       value: Math.max(0, value),
       current: false,
       axisLabel: monthLabels12[index] || `M${index + 1}`,
       axisSubLabel: yearShortLabels12[index] || undefined,
+      monthStartMs: monthStarts12[index]?.getTime(),
     }))
     return {
       bars,
@@ -2237,6 +2257,45 @@ export function PublicationsPerYearChart({
       rangeLabel: `${monthLabels12[0] || 'Start'} ${yearShortLabels12[0] || ''}-${monthLabels12[monthLabels12.length - 1] || 'End'} ${yearShortLabels12[yearShortLabels12.length - 1] || ''}`.trim(),
     }
   }, [chartData.month_labels_12m, chartData.monthly_values_12m, historyBars])
+
+  const lifetimeMonthlyBars = useMemo(() => {
+    const sourceValues = toNumberArray(chartData.monthly_values_lifetime).map((item) => Math.max(0, item))
+    const sourceLabels = toStringArray(chartData.month_labels_lifetime)
+    if (!sourceValues.length) {
+      return {
+        bars: [] as PublicationChartBar[],
+        bucketSize: 1,
+        rangeLabel: null as string | null,
+      }
+    }
+    const fallbackMonthStarts = buildTrailingMonthStarts(sourceValues.length, true)
+    const bars: PublicationChartBar[] = sourceValues.map((value, index) => {
+      const parsed = parseIsoMonthStart(sourceLabels[index] || '')
+      const monthStart = parsed || fallbackMonthStarts[index] || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1))
+      const monthLabel = MONTH_SHORT[monthStart.getUTCMonth()] || `M${index + 1}`
+      const yearShort = shortYearLabel(monthStart.getUTCFullYear())
+      return {
+        key: `lmonth-${monthStart.getUTCFullYear()}-${String(monthStart.getUTCMonth() + 1).padStart(2, '0')}-${index}`,
+        value: Math.max(0, value),
+        current: false,
+        axisLabel: monthLabel,
+        axisSubLabel: yearShort,
+        monthStartMs: monthStart.getTime(),
+      }
+    })
+    const firstMs = bars[0]?.monthStartMs
+    const lastMs = bars[bars.length - 1]?.monthStartMs
+    const firstDate = Number.isFinite(firstMs) ? new Date(firstMs as number) : null
+    const lastDate = Number.isFinite(lastMs) ? new Date(lastMs as number) : null
+    const rangeLabel = firstDate && lastDate
+      ? `${MONTH_SHORT[firstDate.getUTCMonth()]} ${shortYearLabel(firstDate.getUTCFullYear())}-${MONTH_SHORT[lastDate.getUTCMonth()]} ${shortYearLabel(lastDate.getUTCFullYear())}`
+      : null
+    return {
+      bars,
+      bucketSize: 1,
+      rangeLabel,
+    }
+  }, [chartData.month_labels_lifetime, chartData.monthly_values_lifetime])
 
   const resolveBarsForWindowMode = (mode: PublicationsWindowMode): PublicationYearWindowBars => {
     if (mode === '1y') {
@@ -2246,12 +2305,96 @@ export function PublicationsPerYearChart({
         rangeLabel: groupedMonthBars.rangeLabel,
       }
     }
+    if ((mode === '3y' || mode === '5y') && lifetimeMonthlyBars.bars.length) {
+      const monthCount = mode === '3y' ? 36 : 60
+      const sourceBars = lifetimeMonthlyBars.bars.slice(-monthCount)
+      if (sourceBars.length > 0) {
+        const grouped: PublicationChartBar[] = []
+        for (let index = 0; index < sourceBars.length; index += 12) {
+          const chunk = sourceBars.slice(index, index + 12)
+          if (!chunk.length) {
+            continue
+          }
+          const firstMs = chunk[0]?.monthStartMs
+          const lastMs = chunk[chunk.length - 1]?.monthStartMs
+          const firstDate = Number.isFinite(firstMs) ? new Date(firstMs as number) : null
+          const lastDate = Number.isFinite(lastMs) ? new Date(lastMs as number) : null
+          grouped.push({
+            key: firstDate && lastDate
+              ? `${firstDate.getUTCFullYear()}-${lastDate.getUTCFullYear()}-${index}`
+              : `${mode}-${index}`,
+            value: chunk.reduce((sum, item) => sum + Math.max(0, item.value), 0),
+            current: false,
+            axisLabel: firstDate && lastDate
+              ? `${MONTH_SHORT[firstDate.getUTCMonth()]}-${MONTH_SHORT[lastDate.getUTCMonth()]}`
+              : String(index + 1),
+            axisSubLabel: firstDate && lastDate
+              ? (firstDate.getUTCFullYear() === lastDate.getUTCFullYear()
+                ? shortYearLabel(firstDate.getUTCFullYear())
+                : `${shortYearLabel(firstDate.getUTCFullYear())}-${shortYearLabel(lastDate.getUTCFullYear())}`)
+              : undefined,
+          })
+        }
+        const firstMs = sourceBars[0]?.monthStartMs
+        const lastMs = sourceBars[sourceBars.length - 1]?.monthStartMs
+        const firstDate = Number.isFinite(firstMs) ? new Date(firstMs as number) : null
+        const lastDate = Number.isFinite(lastMs) ? new Date(lastMs as number) : null
+        const rangeLabel = firstDate && lastDate
+          ? `${MONTH_SHORT[firstDate.getUTCMonth()]} ${shortYearLabel(firstDate.getUTCFullYear())}-${MONTH_SHORT[lastDate.getUTCMonth()]} ${shortYearLabel(lastDate.getUTCFullYear())}`
+          : null
+        return {
+          bars: grouped,
+          bucketSize: 12,
+          rangeLabel,
+        }
+      }
+    }
     return groupedYearBarsByWindow[mode]
   }
 
+  const resolveLineBarsForWindowMode = (mode: PublicationsWindowMode): PublicationYearWindowBars => {
+    if (!lifetimeMonthlyBars.bars.length) {
+      return resolveBarsForWindowMode(mode)
+    }
+    const monthCount = mode === '1y'
+      ? 12
+      : mode === '3y'
+        ? 36
+        : mode === '5y'
+          ? 60
+          : null
+    const bars = monthCount === null
+      ? lifetimeMonthlyBars.bars
+      : lifetimeMonthlyBars.bars.slice(-monthCount)
+    if (!bars.length) {
+      return { bars: [], bucketSize: 1, rangeLabel: null }
+    }
+    const firstMs = bars[0]?.monthStartMs
+    const lastMs = bars[bars.length - 1]?.monthStartMs
+    const firstDate = Number.isFinite(firstMs) ? new Date(firstMs as number) : null
+    const lastDate = Number.isFinite(lastMs) ? new Date(lastMs as number) : null
+    const rangeLabel = firstDate && lastDate
+      ? `${MONTH_SHORT[firstDate.getUTCMonth()]} ${shortYearLabel(firstDate.getUTCFullYear())}-${MONTH_SHORT[lastDate.getUTCMonth()]} ${shortYearLabel(lastDate.getUTCFullYear())}`
+      : null
+    return {
+      bars,
+      bucketSize: 1,
+      rangeLabel,
+    }
+  }
+
+  const activeLineWindowBars = isCompactTileMode
+    ? { bars: compactTileBars, bucketSize: 1, rangeLabel: null as string | null }
+    : resolveLineBarsForWindowMode(effectiveWindowMode)
+  const lineUsesMonthlyTimeline = activeLineWindowBars.bars.length > 0
+    && activeLineWindowBars.bars.every((bar) => Number.isFinite(bar.monthStartMs ?? Number.NaN))
+  const usingMonthlyTimelineForMode = effectiveWindowMode === '1y' || (effectiveVisualMode === 'line' && lineUsesMonthlyTimeline)
+
   const activeWindowBars = isCompactTileMode
     ? { bars: compactTileBars, bucketSize: 1, rangeLabel: null as string | null }
-    : resolveBarsForWindowMode(effectiveWindowMode)
+    : effectiveVisualMode === 'line'
+      ? activeLineWindowBars
+      : resolveBarsForWindowMode(effectiveWindowMode)
 
   const activeBars = activeWindowBars.bars
   const activeBucketSize = activeWindowBars.bucketSize
@@ -2307,7 +2450,9 @@ export function PublicationsPerYearChart({
   const maxWindowValueBars = Math.max(maxYearlyValue, maxMonthlyValue)
   const maxWindowValueLine = Math.max(
     1,
-    historyBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0),
+    ...PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+      resolveLineBarsForWindowMode(option.value).bars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+    )),
   )
   const maxWindowValue = effectiveVisualMode === 'line' ? maxWindowValueLine : maxWindowValueBars
   const maxAnimatedDisplayValue = Math.max(1, Math.max(maxWindowValue, maxValue) * 1.5)
@@ -2340,6 +2485,24 @@ export function PublicationsPerYearChart({
   const showXAxisTickTabs = !hideYearTickTabs
   const buildLineModeTicksForWindow = (mode: PublicationsWindowMode): PublicationLineAxisTick[] => {
     const positions = [0, 0.5, 1]
+    const lineWindowBars = resolveLineBarsForWindowMode(mode).bars
+    const monthStartMsValues = lineWindowBars.map((bar) => Number(bar.monthStartMs))
+    const hasLineMonthTimeline = monthStartMsValues.length > 0
+      && monthStartMsValues.length === lineWindowBars.length
+      && monthStartMsValues.every((value) => Number.isFinite(value))
+    if (hasLineMonthTimeline) {
+      return positions.map((position, index) => {
+        const rawMonthIndex = Math.round((monthStartMsValues.length - 1) * position)
+        const monthIndex = Math.max(0, Math.min(monthStartMsValues.length - 1, rawMonthIndex))
+        const date = new Date(monthStartMsValues[monthIndex])
+        return {
+          key: `line-axis-${mode}-${index}`,
+          label: MONTH_SHORT[date.getUTCMonth()],
+          subLabel: String(date.getUTCFullYear()),
+          leftPct: position * 100,
+        }
+      })
+    }
     if (mode === 'all') {
       const firstYear = historyBars[0]?.year
       const lastYear = historyBars[historyBars.length - 1]?.year
@@ -2381,9 +2544,9 @@ export function PublicationsPerYearChart({
   }
   const lineModeXAxisTicks = useMemo(
     () => (effectiveVisualMode === 'line' ? buildLineModeTicksForWindow(effectiveWindowMode) : []),
-    [effectiveVisualMode, effectiveWindowMode, historyBars],
+    [effectiveVisualMode, effectiveWindowMode, historyBars, lifetimeMonthlyBars],
   )
-  const activePeriodRangeLabel = usingMonthlyBars ? groupedMonthBars.rangeLabel : activeWindowBars.rangeLabel
+  const activePeriodRangeLabel = activeWindowBars.rangeLabel
   const resolveXAxisTitleForWindowMode = (
     mode: PublicationsWindowMode,
     visualMode: PublicationTrendsVisualMode = effectiveVisualMode,
@@ -2512,8 +2675,8 @@ export function PublicationsPerYearChart({
     return HOUSE_CHART_BAR_ACCENT_CLASS
   }
   const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === effectiveWindowMode)
-  const monthRangeLabel = usingMonthlyBars ? groupedMonthBars.rangeLabel : null
-  const yearRangeLabel = usingMonthlyBars ? null : activeWindowBars.rangeLabel
+  const monthRangeLabel = usingMonthlyTimelineForMode ? activeWindowBars.rangeLabel : null
+  const yearRangeLabel = usingMonthlyTimelineForMode ? null : activeWindowBars.rangeLabel
   const periodHintText = monthRangeLabel || yearRangeLabel || '\u00A0'
   const periodHintVisible = Boolean(monthRangeLabel || yearRangeLabel)
   const rightMetaVisible = showPeriodHint
@@ -2530,6 +2693,22 @@ export function PublicationsPerYearChart({
         return (index * slotMetrics.slotStepPct) + (slotMetrics.slotWidthPct / 2)
       }
       const fallbackEven = renderBars.length <= 1 ? 1 : (index / Math.max(1, renderBars.length - 1))
+      const monthStartMsValues = renderBars.map((item) => Number(item.monthStartMs))
+      const hasExplicitMonthlyTimeline = monthStartMsValues.length === renderBars.length
+        && monthStartMsValues.every((value) => Number.isFinite(value))
+      if (hasExplicitMonthlyTimeline) {
+        const startMs = monthStartMsValues[0]
+        const endMonthDate = new Date(monthStartMsValues[monthStartMsValues.length - 1])
+        const endBoundaryMs = Date.UTC(
+          endMonthDate.getUTCFullYear(),
+          endMonthDate.getUTCMonth() + 1,
+          1,
+        )
+        const spanMs = Math.max(1, endBoundaryMs - startMs)
+        const pointMs = monthStartMsValues[index]
+        const normalized = Math.max(0, Math.min(1, (pointMs - startMs) / spanMs))
+        return normalized * 100
+      }
       if (usingMonthlyBars) {
         const monthStarts = buildTrailingMonthStarts(renderBars.length, true)
         if (monthStarts.length !== renderBars.length || !monthStarts.length) {

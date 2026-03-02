@@ -1216,12 +1216,17 @@
     background-color: var(--metric-tile-chart-bg-hover);
   }
 
-  /* Field-percentile vertical toggle should read as one continuous track while inactive. */
+  /* Field-percentile vertical toggle should read as one continuous track while inactive.
+     Keep threshold label text static while switching states. */
   .house-metric-tile-shell .house-field-percentile-toggle-button {
     border-radius: 0 !important;
-    transition-property: background-color, color, filter, transform;
+    transition-property: background-color, border-color;
     transition-duration: var(--motion-duration-chart-toggle);
     transition-timing-function: var(--motion-ease-chart-series);
+  }
+
+  .house-metric-tile-shell .house-field-percentile-toggle-button:active {
+    transform: none;
   }
 
   .house-metric-tile-shell .house-field-percentile-toggle-button.house-drilldown-toggle-button-muted,
@@ -3127,6 +3132,15 @@
     transform: scale(0.98);
   }
 
+  /* Vertical percentile toggles (approved + production): no text motion on click. */
+  .house-field-percentile-toggle-button {
+    transition-property: background-color, border-color;
+  }
+
+  .house-field-percentile-toggle-button:active {
+    transform: none;
+  }
+
   .house-toggle-chart-bar {
     transition-property: transform, filter, box-shadow;
     transition-duration: var(--motion-duration-slower);
@@ -3478,7 +3492,7 @@
   }
 
   .house-table-context-profile {
-    --house-table-head-bg: hsl(var(--section-style-profile-accent) / 0.13);
+    --house-table-head-bg: hsl(var(--tone-positive-400) / 0.13);
     --house-table-head-fg: hsl(var(--tone-positive-900));
   }
 

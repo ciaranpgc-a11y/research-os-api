@@ -10,7 +10,7 @@ import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimiti
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives/TablePrimitive'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
-import { houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import { houseForms, houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
   downloadPublicationFile,
@@ -227,6 +227,8 @@ const HOUSE_PUBLICATION_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS = publicationsHouseDrilldown.sheetBody
 const HOUSE_PUBLICATION_DRILLDOWN_VALUE_POSITIVE_CLASS = publicationsHouseDrilldown.valuePositive
 const HOUSE_PUBLICATION_DRILLDOWN_VALUE_NEGATIVE_CLASS = publicationsHouseDrilldown.valueNegative
+const HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS = houseForms.actionButton
+const HOUSE_PUBLICATION_NEGATIVE_BUTTON_CLASS = houseForms.actionButtonDanger
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -5472,13 +5474,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       <p className={HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
                                       <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS}`}>
                                         {file.source === 'OA_LINK' && file.download_url ? (
-                                          <Button type="button" size="sm" variant="primary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
+                                          <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
                                         ) : (
-                                          <Button type="button" size="sm" variant="primary" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
+                                          <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
                                         )}
-                                        <Button type="button" size="sm" variant="secondary" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
-                                        <Button type="button" size="sm" variant="secondary" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
-                                        <Button type="button" size="sm" variant="secondary" className="ml-auto" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
+                                        <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
+                                        <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
+                                        <Button type="button" size="sm" variant="secondary" className={cn(HOUSE_PUBLICATION_NEGATIVE_BUTTON_CLASS, 'ml-auto')} disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
                                       </div>
                                     </div>
                                   )
@@ -5513,7 +5515,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Drag and drop files here, or use upload.</p>
                               </div>
                               <div className="flex items-start">
-                                <Button type="button" size="sm" variant="secondary" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
+                                <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
                                 <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
                               </div>
                             </div>

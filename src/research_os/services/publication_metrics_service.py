@@ -3293,6 +3293,71 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         if current_year_publications > 0
         else f"0 in {now.year} (to date)"
     )
+    lifetime_publication_year_start = (
+        int(min(publication_counts_by_year.keys()))
+        if publication_counts_by_year
+        else int(now.year)
+    )
+    lifetime_publication_year_start = max(
+        1900, min(int(now.year), lifetime_publication_year_start)
+    )
+    publication_counts_for_chart: dict[int, int] = {
+        int(year): max(0, int(count or 0))
+        for year, count in publication_counts_by_year.items()
+        if 1900 <= int(year) <= int(now.year)
+    }
+    if unknown_year_publications > 0:
+        publication_counts_for_chart[lifetime_publication_year_start] = (
+            publication_counts_for_chart.get(lifetime_publication_year_start, 0)
+            + int(unknown_year_publications)
+        )
+    lifetime_publication_years = list(
+        range(lifetime_publication_year_start, int(now.year) + 1)
+    )
+    lifetime_publication_values = [
+        max(0, int(publication_counts_for_chart.get(year, 0)))
+        for year in lifetime_publication_years
+    ]
+    last_complete_month_end = _month_start(now) - timedelta(seconds=1)
+    last_complete_month_start = _month_start(last_complete_month_end)
+    lifetime_publication_month_count = max(
+        1,
+        ((last_complete_month_start.year - lifetime_publication_year_start) * 12)
+        + last_complete_month_start.month,
+    )
+    monthly_publication_values_lifetime = _monthly_from_yearly_counts(
+        yearly_counts=publication_counts_for_chart,
+        now=last_complete_month_end,
+        months=lifetime_publication_month_count,
+    )
+    monthly_publication_values_lifetime = _normalize_monthly_to_total(
+        monthly_added=monthly_publication_values_lifetime,
+        target_total=int(sum(lifetime_publication_values)),
+    )
+    lifetime_month_start_point = _shift_month(
+        last_complete_month_start, -(lifetime_publication_month_count - 1)
+    )
+    lifetime_month_points = [
+        _shift_month(lifetime_month_start_point, index)
+        for index in range(lifetime_publication_month_count)
+    ]
+    lifetime_month_labels = [
+        f"{point.year:04d}-{point.month:02d}" for point in lifetime_month_points
+    ]
+    monthly_publication_values_12m_raw = monthly_publication_values_lifetime[-12:]
+    monthly_publication_values_12m = [0 for _ in range(max(0, 12 - len(monthly_publication_values_12m_raw)))] + [
+        int(value) for value in monthly_publication_values_12m_raw
+    ]
+    month_points_12m = [
+        _shift_month(last_complete_month_start, -offset) for offset in range(11, -1, -1)
+    ]
+    month_labels_12m = [point.strftime("%b") for point in month_points_12m]
+    lifetime_month_start_iso = (
+        f"{lifetime_month_start_point.year:04d}-{lifetime_month_start_point.month:02d}-01"
+    )
+    lifetime_month_end_iso = (
+        f"{last_complete_month_start.year:04d}-{last_complete_month_start.month:02d}-01"
+    )
     influence_monthly_added_totals = [0 for _ in range(24)]
     for row in influence_candidates:
         additions = row.get("semantic_monthly_added_24")
@@ -3824,8 +3889,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             badge={"label": "", "severity": "neutral"},
             chart_type="bar_year_5",
             chart_data={
-                "years": last5_complete_years,
-                "values": last5_publication_values,
+                "years": lifetime_publication_years,
+                "values": lifetime_publication_values,
+                "monthly_values_12m": monthly_publication_values_12m,
+                "month_labels_12m": month_labels_12m,
+                "monthly_values_lifetime": monthly_publication_values_lifetime,
+                "month_labels_lifetime": lifetime_month_labels,
+                "lifetime_month_start": lifetime_month_start_iso,
+                "lifetime_month_end": lifetime_month_end_iso,
                 "mean_value": round(publication_mean_5y, 2),
                 "projected_year": now.year,
                 "projected_value": projected_current_publications,
@@ -3854,11 +3925,19 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "metadata": {
                     "intermediate_values": {
                         "total_publications": total_publications,
-                        "known_year_publications": sum(last5_publication_values)
-                        + current_year_publications,
+                        "known_year_publications": int(
+                            sum(
+                                max(0, int(value or 0))
+                                for value in publication_counts_by_year.values()
+                            )
+                        ),
                         "unknown_year_publications": unknown_year_publications,
                         "last5_years": last5_complete_years,
                         "last5_values": last5_publication_values,
+                        "lifetime_years": lifetime_publication_years,
+                        "lifetime_values": lifetime_publication_values,
+                        "lifetime_month_start": lifetime_month_start_iso,
+                        "lifetime_month_end": lifetime_month_end_iso,
                         "current_year_ytd": current_year_publications,
                         "projected_current_year": projected_current_publications,
                         "projection_confidence": projection_confidence,
