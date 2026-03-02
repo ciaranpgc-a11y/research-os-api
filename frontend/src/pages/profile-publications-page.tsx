@@ -4960,7 +4960,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 {selectedWork ? (
                   <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS, 'house-drilldown-panel-no-pad')}>
                     <Tabs value={activeDetailTab} onValueChange={onDetailTabChange} className="w-full">
-                      <div className="house-drilldown-flow-shell max-h-[78vh] overflow-auto">
+                      <div className="house-drilldown-flow-shell">
                         <HouseDrilldownHeaderShell
                           title={(
                             <p className="house-drilldown-title">
