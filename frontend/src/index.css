@@ -4221,6 +4221,17 @@
     font-size: 0.9rem;
   }
 
+  .house-drilldown-abstract-paragraph-stack {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 0.55rem;
+  }
+
+  .house-drilldown-abstract-paragraph-stack > p {
+    margin: 0;
+  }
+
   .house-publication-overview-stat-card {
     min-height: 3.35rem;
     align-items: flex-start;

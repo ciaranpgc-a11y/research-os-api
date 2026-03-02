@@ -1611,6 +1611,77 @@ function formatAuthorSurnameInitials(value: string): string {
   return initials ? `${surname} ${initials}` : surname
 }
 
+function normalizeAbstractDisplayText(value: string): string {
+  const decoded = String(value || '')
+    .replace(/&lt;br\s*\/?&gt;/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+    .replace(/<\/?p[^>]*>/gi, '\n')
+    .replace(/\u00a0/g, ' ')
+  return decoded
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+}
+
+function splitLongTextIntoParagraphs(value: string, maxParagraphLength = 300): string[] {
+  const raw = normalizeAbstractDisplayText(value).replace(/\r\n/g, '\n').trim()
+  if (!raw) {
+    return []
+  }
+
+  const manualParagraphs = raw
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\s*\n+\s*/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+  if (manualParagraphs.length > 1) {
+    return manualParagraphs
+  }
+
+  const normalized = raw.replace(/\s+/g, ' ').trim()
+  const sentenceMatches = normalized.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g) || []
+  const sentences = sentenceMatches.map((sentence) => sentence.trim()).filter(Boolean)
+  if (sentences.length < 3) {
+    return [normalized]
+  }
+
+  const paragraphs: string[] = []
+  let current = ''
+  for (const sentence of sentences) {
+    if (!current) {
+      current = sentence
+      continue
+    }
+    if (current.length + sentence.length + 1 <= maxParagraphLength) {
+      current = `${current} ${sentence}`
+      continue
+    }
+    paragraphs.push(current)
+    current = sentence
+  }
+  if (current) {
+    paragraphs.push(current)
+  }
+
+  return paragraphs
+}
+
+function extractRegistrationSectionContent(value: string): string {
+  const text = normalizeAbstractDisplayText(value)
+  if (!text) {
+    return ''
+  }
+  const sentencePattern = /[^.!?]+(?:[.!?]+(?=\s|$)|$)/g
+  const sentences = (text.match(sentencePattern) || [])
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+  const registrationPattern =
+    /\b(prospero|trial registration|registration number|clinicaltrials\.gov|nct\d{8}|crd\d{6,}|isrctn\d+)\b/i
+  const matches = sentences.filter((sentence) => registrationPattern.test(sentence))
+  return matches.join(' ').trim()
+}
+
 function createDefaultPublicationExportFieldSelection(): Record<PublicationExportFieldKey, boolean> {
   return PUBLICATION_EXPORT_FIELD_OPTIONS.reduce<Record<PublicationExportFieldKey, boolean>>(
     (accumulator, option) => {
@@ -3903,8 +3974,25 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const abstractKeywordList = (structuredAbstractKeywords.length > 0 ? structuredAbstractKeywords : detailKeywords)
     .map((item) => String(item || '').trim())
     .filter((item, index, array) => item.length > 0 && array.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
+  const structuredSections = selectedDetail?.structured_abstract?.sections || []
+  const hasStructuredRegistrationSection = structuredSections.some((section) =>
+    /\b(registration|prospero)\b/i.test(String(section?.label || section?.key || '')),
+  )
+  const inferredRegistrationSectionContent = hasStructuredRegistrationSection
+    ? ''
+    : extractRegistrationSectionContent(effectiveDetailAbstract)
   const abstractExpanded = selectedWorkId ? Boolean(expandedAbstractByWorkId[selectedWorkId]) : false
   const abstractPreview = abstractExpanded ? effectiveDetailAbstract : effectiveDetailAbstract.slice(0, 700)
+  const abstractPreviewParagraphs = useMemo(() => {
+    if (!effectiveDetailAbstract) {
+      return []
+    }
+    if (!abstractExpanded && effectiveDetailAbstract.length > 700) {
+      const preview = normalizeAbstractDisplayText(abstractPreview)
+      return preview ? [preview] : []
+    }
+    return splitLongTextIntoParagraphs(abstractPreview)
+  }, [abstractExpanded, abstractPreview, effectiveDetailAbstract])
 
   const onDetailTabChange = (tabValue: string) => {
     if (tabValue === 'overview' || tabValue === 'content' || tabValue === 'impact' || tabValue === 'files' || tabValue === 'ai') {
@@ -3917,12 +4005,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!normalizedWorkId) {
       return
     }
+    void loadPublicationDetailData(normalizedWorkId)
     if (tab === 'files') {
       void loadPublicationFilesData(normalizedWorkId)
     }
     setSelectedWorkId(normalizedWorkId)
     setActiveDetailTab(tab)
-  }, [activeDetailTab, loadPublicationFilesData])
+  }, [activeDetailTab, loadPublicationDetailData, loadPublicationFilesData])
 
   const onToggleAbstractExpanded = () => {
     if (!selectedWorkId) {
@@ -5149,18 +5238,41 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 </div>
                               </div>
                             ) : null}
-                            {selectedDetail?.structured_abstract?.sections?.length ? (
+                            {structuredSections.length ? (
                               <>
-                                {selectedDetail.structured_abstract.sections.map((section, index) => ([
-                                  <div key={`abstract-section-heading-${section.key || index}`} className="house-drilldown-heading-block">
-                                    <p className="house-drilldown-heading-block-title">{section.label || 'Summary'}</p>
-                                  </div>,
-                                  <div key={`abstract-section-content-${section.key || index}`} className="house-drilldown-content-block">
-                                    <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
-                                      <p className="leading-relaxed">{section.content || 'Not available'}</p>
+                                {structuredSections.map((section, index) => {
+                                  const sectionParagraphs = splitLongTextIntoParagraphs(section.content || '')
+                                  return [
+                                    <div key={`abstract-section-heading-${section.key || index}`} className="house-drilldown-heading-block">
+                                      <p className="house-drilldown-heading-block-title">{section.label || 'Summary'}</p>
+                                    </div>,
+                                    <div key={`abstract-section-content-${section.key || index}`} className="house-drilldown-content-block">
+                                      <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
+                                        {sectionParagraphs.length > 0 ? (
+                                          <div className="house-drilldown-abstract-paragraph-stack">
+                                            {sectionParagraphs.map((paragraph, paragraphIndex) => (
+                                              <p key={`abstract-section-paragraph-${section.key || index}-${paragraphIndex}`} className="leading-relaxed">{paragraph}</p>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <p className="leading-relaxed">Not available</p>
+                                        )}
+                                      </div>
+                                    </div>,
+                                  ]
+                                })}
+                                {inferredRegistrationSectionContent ? (
+                                  <>
+                                    <div className="house-drilldown-heading-block">
+                                      <p className="house-drilldown-heading-block-title">Registration</p>
                                     </div>
-                                  </div>,
-                                ]))}
+                                    <div className="house-drilldown-content-block">
+                                      <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
+                                        <p className="leading-relaxed">{inferredRegistrationSectionContent}</p>
+                                      </div>
+                                    </div>
+                                  </>
+                                ) : null}
                                 {abstractKeywordList.length > 0 ? (
                                   <>
                                     <div className="house-drilldown-heading-block">
@@ -5177,7 +5289,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             ) : effectiveDetailAbstract ? (
                               <div className="house-drilldown-content-block">
                                 <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
-                                  <p className="leading-relaxed">{abstractPreview}</p>
+                                  <div className="house-drilldown-abstract-paragraph-stack">
+                                    {abstractPreviewParagraphs.map((paragraph, paragraphIndex) => (
+                                      <p key={`abstract-preview-paragraph-${paragraphIndex}`} className="leading-relaxed">{paragraph}</p>
+                                    ))}
+                                  </div>
                                   {effectiveDetailAbstract.length > 700 ? (
                                     <button
                                       type="button"

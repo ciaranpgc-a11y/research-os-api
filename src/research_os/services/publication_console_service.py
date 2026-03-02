@@ -1620,6 +1620,8 @@ def _build_caution_flags(
 
 def _normalize_abstract_text(value: str | None) -> str:
     decoded = html.unescape(str(value or ""))
+    decoded = re.sub(r"(?i)<br\s*/?>", "\n", decoded)
+    decoded = re.sub(r"(?i)</?p\b[^>]*>", "\n", decoded)
     decoded = decoded.replace("\xa0", " ")
     return re.sub(r"\s+", " ", decoded.strip())
 
@@ -1715,6 +1717,20 @@ def _canonical_structured_section_key(value: str) -> str:
         return "methods"
     if any(
         token in clean
+        for token in [
+            "trial registration",
+            "registration number",
+            "registration",
+            "prospero",
+            "clinicaltrials.gov",
+            "nct",
+            "isrctn",
+            "crd",
+        ]
+    ):
+        return "registration"
+    if any(
+        token in clean
         for token in ["result", "finding", "outcome", "observation", "analysis"]
     ):
         return "results"
@@ -1730,6 +1746,8 @@ def _structured_section_label(key: str) -> str:
         return "Introduction"
     if key == "methods":
         return "Methods"
+    if key == "registration":
+        return "Registration"
     if key == "results":
         return "Results"
     if key == "conclusions":
@@ -1788,6 +1806,11 @@ def _coerce_structured_sections(payload: dict[str, Any]) -> list[dict[str, str]]
         ("Main findings", "main_findings"),
         ("Conclusions", "conclusions"),
         ("Conclusion", "conclusion"),
+        ("Registration", "registration"),
+        ("Trial registration", "trial_registration"),
+        ("Registration number", "registration_number"),
+        ("PROSPERO registration", "prospero_registration"),
+        ("Trial registration number", "trial_registration_number"),
         ("Summary", "summary"),
     ]
     seen: set[str] = set()
@@ -1820,7 +1843,7 @@ def _extract_inline_heading_sections(text: str | None) -> list[dict[str, str]]:
         r"methods?|materials and methods|study design|design|"
         r"results?|findings?|"
         r"conclusion|conclusions|discussion|"
-        r"trial registration(?: number)?"
+        r"trial registration(?: number)?|registration(?: number)?|prospero registration|prospero"
         r")\s*:"
     )
     matches = list(heading_pattern.finditer(clean_text))
@@ -1925,7 +1948,8 @@ def _build_structured_abstract_prompt(
         "1) Preserve factual meaning from the source abstract.\n"
         "2) If source headings exist (e.g., Aims, Background, Methods), keep them.\n"
         "3) If headings are absent, infer best-effort section headings.\n"
-        "4) Keep each section concise and readable.\n\n"
+        "4) Keep each section concise and readable.\n"
+        "5) If trial/PROSPERO registration details are present, include them as a dedicated Registration section.\n\n"
         f"TITLE: {title}\n"
         f"JOURNAL: {journal}\n"
         f"YEAR: {year_text}\n"
