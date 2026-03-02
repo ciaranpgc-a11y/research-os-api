@@ -3727,9 +3727,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const detailDoi = selectedDetail?.doi || selectedWork?.doi || null
   const detailPmid = selectedDetail?.pmid || selectedWork?.pmid || null
   const detailAbstract = selectedDetail?.abstract || selectedWork?.abstract || ''
+  const structuredAbstractSource = String(selectedDetail?.structured_abstract?.source_abstract || '').trim()
+  const effectiveDetailAbstract = detailAbstract || structuredAbstractSource
+  const structuredAbstractKeywords = Array.isArray(selectedDetail?.structured_abstract?.keywords)
+    ? selectedDetail?.structured_abstract?.keywords
+    : []
+  const detailKeywords = Array.isArray(selectedDetail?.keywords_json) ? selectedDetail.keywords_json : []
+  const abstractKeywordList = (structuredAbstractKeywords.length > 0 ? structuredAbstractKeywords : detailKeywords)
+    .map((item) => String(item || '').trim())
+    .filter((item, index, array) => item.length > 0 && array.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
   const contentMode = selectedWorkId ? (contentModeByWorkId[selectedWorkId] || 'plain') : 'plain'
   const abstractExpanded = selectedWorkId ? Boolean(expandedAbstractByWorkId[selectedWorkId]) : false
-  const abstractPreview = abstractExpanded ? detailAbstract : detailAbstract.slice(0, 700)
+  const abstractPreview = abstractExpanded ? effectiveDetailAbstract : effectiveDetailAbstract.slice(0, 700)
 
   const onDetailTabChange = (tabValue: string) => {
     if (tabValue === 'overview' || tabValue === 'content' || tabValue === 'impact' || tabValue === 'files' || tabValue === 'ai') {
@@ -5026,24 +5035,51 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     <div className="house-drilldown-heading-block">
                                       <p className="house-drilldown-heading-block-title">{section.label || 'Summary'}</p>
                                     </div>
-                                    <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
-                                      <p className="leading-relaxed">{section.content || 'Not available'}</p>
+                                    <div className="house-drilldown-content-block">
+                                      <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                        <p className="leading-relaxed">{section.content || 'Not available'}</p>
+                                      </div>
                                     </div>
                                   </div>
                                 ))}
-                              </div>
-                            ) : detailAbstract ? (
-                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} space-y-2`}>
-                                <p className="leading-relaxed">{abstractPreview}</p>
-                                {detailAbstract.length > 700 ? (
-                                  <button
-                                    type="button"
-                                    className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS}
-                                    onClick={onToggleAbstractExpanded}
-                                  >
-                                    {abstractExpanded ? 'Show less' : 'Show more'}
-                                  </button>
+                                {abstractKeywordList.length > 0 ? (
+                                  <div className="space-y-2">
+                                    <div className="house-drilldown-heading-block">
+                                      <p className="house-drilldown-heading-block-title">Keywords</p>
+                                    </div>
+                                    <div className="house-drilldown-content-block">
+                                      <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                        <p className="leading-relaxed">{abstractKeywordList.join(', ')}</p>
+                                      </div>
+                                    </div>
+                                  </div>
                                 ) : null}
+                              </div>
+                            ) : effectiveDetailAbstract ? (
+                              <div className="house-drilldown-content-block">
+                                <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} space-y-2`}>
+                                  <p className="leading-relaxed">{abstractPreview}</p>
+                                  {effectiveDetailAbstract.length > 700 ? (
+                                    <button
+                                      type="button"
+                                      className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS}
+                                      onClick={onToggleAbstractExpanded}
+                                    >
+                                      {abstractExpanded ? 'Show less' : 'Show more'}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ) : abstractKeywordList.length > 0 ? (
+                              <div className="space-y-2">
+                                <div className="house-drilldown-heading-block">
+                                  <p className="house-drilldown-heading-block-title">Keywords</p>
+                                </div>
+                                <div className="house-drilldown-content-block">
+                                  <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                    <p className="leading-relaxed">{abstractKeywordList.join(', ')}</p>
+                                  </div>
+                                </div>
                               </div>
                             ) : (
                               <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No abstract available.</p>

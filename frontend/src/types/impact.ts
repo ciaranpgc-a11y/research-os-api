@@ -668,6 +668,7 @@ export type PublicationDetailPayload = {
       label: string
       content: string
     }>
+    keywords?: string[]
     source_abstract: string | null
     metadata: Record<string, unknown>
   } | null

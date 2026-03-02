@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import hashlib
 import json
 import logging
@@ -54,7 +55,7 @@ FILE_TYPE_PDF = "PDF"
 FILE_TYPE_DOCX = "DOCX"
 FILE_TYPE_OTHER = "OTHER"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v2"
+STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v3"
 
 _executor_lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
@@ -339,6 +340,68 @@ def _extract_pmid_from_text(value: str) -> str | None:
         match = pattern.search(clean)
         if match:
             return match.group(1)
+    return None
+
+
+def _search_pubmed_ids(term: str, *, max_results: int = 5) -> list[str]:
+    clean_term = _normalize_abstract_text(term)
+    if not clean_term:
+        return []
+    xml_text = _request_text_with_retry(
+        url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+        params={
+            "db": "pubmed",
+            "retmode": "xml",
+            "retmax": str(max(1, min(25, int(max_results)))),
+            "term": clean_term,
+        },
+        timeout_seconds=_pubmed_timeout_seconds(),
+        retries=_pubmed_retry_count(),
+    )
+    if not xml_text.strip():
+        return []
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception:
+        return []
+    ids: list[str] = []
+    for node in root.findall(".//IdList/Id"):
+        candidate = _normalize_pmid(str(node.text or ""))
+        if candidate and candidate not in ids:
+            ids.append(candidate)
+    return ids
+
+
+def _resolve_pubmed_pmid(
+    *,
+    pmid: str | None,
+    doi: str | None,
+    title: str | None,
+    year: int | None,
+) -> str | None:
+    normalized_pmid = _normalize_pmid(pmid)
+    if normalized_pmid:
+        return normalized_pmid
+
+    normalized_doi = _normalize_doi(doi)
+    if normalized_doi:
+        by_doi = _search_pubmed_ids(f"\"{normalized_doi}\"[AID]", max_results=3)
+        if by_doi:
+            return by_doi[0]
+
+    clean_title = _normalize_abstract_text(title)
+    if len(clean_title) < 12:
+        return None
+    safe_title = re.sub(r"[\[\]\"]+", " ", clean_title).strip()
+    if not safe_title:
+        return None
+    if isinstance(year, int) and 1800 <= year <= 2100:
+        term = f"\"{safe_title}\"[Title] AND ({year}[DP] OR {year}[PDAT])"
+    else:
+        term = f"\"{safe_title}\"[Title]"
+    by_title = _search_pubmed_ids(term, max_results=1)
+    if by_title:
+        return by_title[0]
     return None
 
 
@@ -786,7 +849,7 @@ def _extract_authors_from_pubmed(
 
 def _extract_structured_abstract_from_pubmed(
     pmid: str,
-) -> tuple[str | None, list[dict[str, str]]]:
+) -> tuple[str | None, list[dict[str, str]], list[str]]:
     xml_text = _request_text_with_retry(
         url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
         params={"db": "pubmed", "id": pmid, "retmode": "xml"},
@@ -794,14 +857,26 @@ def _extract_structured_abstract_from_pubmed(
         retries=_pubmed_retry_count(),
     )
     if not xml_text.strip():
-        return None, []
+        return None, [], []
     try:
         root = ET.fromstring(xml_text)
     except Exception:
-        return None, []
+        return None, [], []
 
     sections: list[dict[str, str]] = []
     summary_parts: list[str] = []
+    keywords: list[str] = []
+    seen_keywords: set[str] = set()
+    for node in root.findall(".//KeywordList/Keyword"):
+        keyword_text = _normalize_abstract_text(str("".join(node.itertext()) or ""))
+        if not keyword_text:
+            continue
+        marker = keyword_text.casefold()
+        if marker in seen_keywords:
+            continue
+        seen_keywords.add(marker)
+        keywords.append(keyword_text)
+
     for node in root.findall(".//Abstract/AbstractText"):
         content = re.sub(r"\s+", " ", str("".join(node.itertext()) or "").strip())
         if not content:
@@ -823,11 +898,11 @@ def _extract_structured_abstract_from_pubmed(
             continue
 
         summary_parts.append(content)
-        sections.append({"key": key, "label": label, "content": content})
+            sections.append({"key": key, "label": label, "content": content})
 
     if not summary_parts:
-        return None, []
-    return _normalize_abstract_text(" ".join(summary_parts)), sections
+        return None, [], keywords
+    return _normalize_abstract_text(" ".join(summary_parts)), sections, keywords
 
 
 def _extract_authors_from_crossref(
@@ -1544,7 +1619,26 @@ def _build_caution_flags(
 
 
 def _normalize_abstract_text(value: str | None) -> str:
-    return re.sub(r"\s+", " ", str(value or "").strip())
+    decoded = html.unescape(str(value or ""))
+    decoded = decoded.replace("\xa0", " ")
+    return re.sub(r"\s+", " ", decoded.strip())
+
+
+def _normalize_keywords(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        keyword = _normalize_abstract_text(str(value or ""))
+        if not keyword:
+            continue
+        marker = keyword.casefold()
+        if marker in seen:
+            continue
+        seen.add(marker)
+        result.append(keyword)
+    return result
 
 
 def _sha256_text(value: str) -> str:
@@ -1561,11 +1655,38 @@ def _normalize_heading_label(value: str | None) -> str:
     return clean[0].upper() + clean[1:] if len(clean) > 1 else clean.upper()
 
 
-def _structured_abstract_seed_hash(*, abstract: str | None, pmid: str | None) -> str | None:
+def _structured_abstract_seed_hash(
+    *,
+    abstract: str | None,
+    pmid: str | None,
+    doi: str | None = None,
+    title: str | None = None,
+    year: int | None = None,
+) -> str | None:
     normalized_abstract = _normalize_abstract_text(abstract)
     normalized_pmid = _normalize_abstract_text(pmid)
-    seed = f"{normalized_abstract}|{normalized_pmid}"
-    if not normalized_abstract and not normalized_pmid:
+    normalized_doi = _normalize_abstract_text(doi)
+    normalized_title = _normalize_abstract_text(title)
+    normalized_year = (
+        str(year)
+        if isinstance(year, int) and 1800 <= year <= 2100
+        else ""
+    )
+    seed = "|".join(
+        [
+            normalized_abstract,
+            normalized_pmid,
+            normalized_doi,
+            normalized_title,
+            normalized_year,
+        ]
+    )
+    if (
+        not normalized_abstract
+        and not normalized_pmid
+        and not normalized_doi
+        and not normalized_title
+    ):
         return None
     return _sha256_text(seed)
 
@@ -1857,6 +1978,7 @@ def _empty_structured_abstract_payload() -> dict[str, Any]:
     return {
         "format": "UNAVAILABLE",
         "sections": [],
+        "keywords": [],
         "source_abstract": None,
         "metadata": {
             "parser_version": STRUCTURED_ABSTRACT_CACHE_VERSION,
@@ -1871,15 +1993,27 @@ def _build_structured_abstract_payload(
     title = _normalize_abstract_text(str(publication.get("title") or ""))
     journal = _normalize_abstract_text(str(publication.get("journal") or ""))
     year = _safe_int(publication.get("year"))
-    pmid = _normalize_pmid(publication.get("pmid"))
+    doi = _normalize_doi(publication.get("doi"))
+    pmid = _resolve_pubmed_pmid(
+        pmid=_normalize_pmid(publication.get("pmid")),
+        doi=doi,
+        title=title,
+        year=year,
+    )
     abstract = _normalize_abstract_text(publication.get("abstract"))
-    pubmed_abstract, pubmed_sections = (None, [])
+    publication_keywords = _normalize_keywords(publication.get("keywords_json"))
+    pubmed_abstract, pubmed_sections, pubmed_keywords = (None, [], [])
     if pmid:
-        pubmed_abstract, pubmed_sections = _extract_structured_abstract_from_pubmed(pmid)
+        pubmed_abstract, pubmed_sections, pubmed_keywords = (
+            _extract_structured_abstract_from_pubmed(pmid)
+        )
         if pubmed_abstract:
             abstract = _normalize_abstract_text(pubmed_abstract)
+    effective_keywords = _normalize_keywords(pubmed_keywords) or publication_keywords
     if not abstract:
-        return _empty_structured_abstract_payload(), None
+        empty = _empty_structured_abstract_payload()
+        empty["keywords"] = effective_keywords
+        return empty, None
 
     source_hash = _sha256_text(abstract)
     generated_at = _utcnow().isoformat()
@@ -1890,6 +2024,7 @@ def _build_structured_abstract_payload(
             {
                 "format": "HEADING_BASED",
                 "sections": pubmed_sections,
+                "keywords": effective_keywords,
                 "source_abstract": abstract,
                 "metadata": {
                     "parser_version": parser_version,
@@ -1907,6 +2042,7 @@ def _build_structured_abstract_payload(
         {
             "format": fallback_format,
             "sections": fallback_sections,
+            "keywords": effective_keywords,
             "source_abstract": abstract,
             "metadata": {
                 "parser_version": parser_version,
@@ -1927,11 +2063,17 @@ def _structured_abstract_view_payload(
     row: PublicationStructuredAbstractCache | None,
     abstract: str | None,
     pmid: str | None,
+    doi: str | None = None,
+    title: str | None = None,
+    year: int | None = None,
 ) -> tuple[dict[str, Any], str, datetime | None, str | None]:
     normalized_abstract = _normalize_abstract_text(abstract)
     source_hash = _structured_abstract_seed_hash(
         abstract=normalized_abstract,
         pmid=pmid,
+        doi=doi,
+        title=title,
+        year=year,
     )
 
     if row is not None:
@@ -1950,6 +2092,7 @@ def _structured_abstract_view_payload(
                 {
                     "format": fallback_format,
                     "sections": fallback_sections,
+                    "keywords": [],
                     "source_abstract": normalized_abstract,
                     "metadata": {
                         "parser_version": STRUCTURED_ABSTRACT_CACHE_VERSION,
@@ -1970,6 +2113,7 @@ def _structured_abstract_view_payload(
             {
                 "format": fallback_format,
                 "sections": fallback_sections,
+                "keywords": [],
                 "source_abstract": normalized_abstract,
                 "metadata": {
                     "parser_version": STRUCTURED_ABSTRACT_CACHE_VERSION,
@@ -2209,28 +2353,36 @@ def _enqueue_structured_abstract_if_needed(
         now = _utcnow()
         abstract = _normalize_abstract_text(work.abstract)
         pmid = _normalize_pmid(work.pmid) or _extract_pmid_from_text(work.url)
-        has_source_seed = bool(abstract or pmid)
+        doi = _normalize_doi(work.doi)
+        title = _normalize_abstract_text(work.title)
+        year = _safe_int(work.year)
+        has_source_seed = bool(abstract or pmid or doi)
         abstract_seed_hash = _structured_abstract_seed_hash(
             abstract=abstract,
             pmid=pmid,
+            doi=doi,
+            title=title,
+            year=year,
         )
         parser_version = STRUCTURED_ABSTRACT_CACHE_VERSION
         if row is None:
             row = PublicationStructuredAbstractCache(
                 owner_user_id=user_id,
                 publication_id=publication_id,
-                payload_json={},
+                payload_json={} if has_source_seed else _empty_structured_abstract_payload(),
                 source_abstract_sha256=abstract_seed_hash,
                 parser_version=parser_version,
                 model_name=None,
-                computed_at=None,
-                status=RUNNING_STATUS,
+                computed_at=None if has_source_seed else now,
+                status=RUNNING_STATUS if has_source_seed else READY_STATUS,
                 last_error=None,
                 updated_at=now,
             )
             session.add(row)
             session.flush()
             should_enqueue = has_source_seed
+            if not has_source_seed:
+                return False
         else:
             payload = row.payload_json if isinstance(row.payload_json, dict) else {}
             status = _normalize_status(row.status)
@@ -2469,10 +2621,16 @@ def _run_structured_abstract_compute_job(
             )
             abstract = _normalize_abstract_text(publication.get("abstract"))
             pmid = _normalize_pmid(publication.get("pmid"))
-            has_source_seed = bool(abstract or pmid)
+            doi = _normalize_doi(publication.get("doi"))
+            title = _normalize_abstract_text(publication.get("title"))
+            year = _safe_int(publication.get("year"))
+            has_source_seed = bool(abstract or pmid or doi)
             abstract_seed_hash = _structured_abstract_seed_hash(
                 abstract=abstract,
                 pmid=pmid,
+                doi=doi,
+                title=title,
+                year=year,
             )
             parser_version = STRUCTURED_ABSTRACT_CACHE_VERSION
 
@@ -2623,6 +2781,9 @@ def get_publication_details(*, user_id: str, publication_id: str) -> dict[str, A
             row=structured_row,
             abstract=summary.get("abstract"),
             pmid=summary.get("pmid"),
+            doi=summary.get("doi"),
+            title=summary.get("title"),
+            year=_safe_int(summary.get("year")),
         )
         summary["structured_abstract"] = structured_payload
         summary["structured_abstract_status"] = structured_status
