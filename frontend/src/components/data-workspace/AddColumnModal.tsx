@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Button } from '@/components/ui'
+import { Input } from '@/components/ui'
+import { Label } from '@/components/ui'
+import { Select } from '@/components/ui'
+import { Sheet, SheetContent } from '@/components/ui'
 import { houseForms, houseTypography } from '@/lib/house-style'
 import type { WorkingTableColumnMeta, WorkingTableColumnType } from '@/types/data-workspace'
 

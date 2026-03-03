@@ -1,15 +1,32 @@
-import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
-import { cn } from '@/lib/utils'
+import { PageHeader, Row, Stack } from '@/components/primitives'
+import { SectionMarker } from '@/components/patterns'
+import { getSectionMarkerTone } from '@/lib/section-tone'
+import { PageFrame } from '@/pages/page-frame'
 
 export function ProfilePage() {
   return (
-    <section data-house-role="page" className="space-y-4">
-      <header
-        data-house-role="page-header"
-        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderProfile)}
-      >
-        <h1 data-house-role="page-title" className={houseTypography.title}>Profile home</h1>
-      </header>
-    </section>
+    <PageFrame tone="profile" hideScaffoldHeader>
+      <Stack space="lg">
+        <Row
+          align="center"
+          gap="md"
+          wrap={false}
+          className="house-page-title-row"
+        >
+          <SectionMarker tone={getSectionMarkerTone('profile')} size="title" className="self-stretch h-auto" />
+          <PageHeader
+            heading="Profile home"
+            description="Your research identity and professional profile."
+            className="!ml-0 !mt-0"
+          />
+        </Row>
+
+        <section data-house-role="section-content" className="space-y-4">
+          <p className="m-0 text-body text-[hsl(var(--muted-foreground))]">
+            Profile dashboard content will appear here.
+          </p>
+        </section>
+      </Stack>
+    </PageFrame>
   )
 }

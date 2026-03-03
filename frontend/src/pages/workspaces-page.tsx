@@ -19,25 +19,31 @@ import {
 } from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
-import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { PageHeader, Row } from '@/components/primitives'
+import { SectionMarker } from '@/components/patterns'
 import {
+  Button,
+  Input,
   SelectPrimitive,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/primitives/SelectPrimitive'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { TooltipPrimitive as Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/primitives/TooltipPrimitive'
+  Sheet,
+  SheetContent,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  ScrollArea,
+} from '@/components/ui'
 import { WorkspacesDataLibraryView } from '@/pages/workspaces-data-library-view'
 import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
 } from '@/lib/workspace-owner'
 import { houseActions, houseCollaborators, houseDrilldown, houseForms, houseLayout, houseNavigation, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
-import { getHouseLeftBorderToneClass, getHouseNavToneClass } from '@/lib/section-tone'
+import { getHouseLeftBorderToneClass, getHouseNavToneClass, getSectionMarkerTone } from '@/lib/section-tone'
 import { matchesScopedStorageEventKey } from '@/lib/user-scoped-storage'
 import { cn } from '@/lib/utils'
 import { useAaweStore } from '@/store/use-aawe-store'
@@ -102,7 +108,6 @@ const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
   { key: 'archived', label: 'Archived' },
 ]
 
-const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
 const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
@@ -329,6 +334,7 @@ function isWorkspaceOwner(workspace: WorkspaceRecord, currentUserName: string | 
 }
 
 function workspaceOwnerLabel(workspace: WorkspaceRecord, _currentUserName: string | null): string {
+  void _currentUserName
   const ownerName = normalizeCollaboratorName(workspace.ownerName) || 'Unknown'
   return `${ownerName} (Owner)`
 }
@@ -3058,12 +3064,19 @@ export function WorkspacesPage() {
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
           <ScrollArea className="h-full">
             <div data-house-role="content-container" className="house-content-container house-content-container-wide space-y-4">
-              <header data-house-role="page-header" className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
-                <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>My Workspaces</h1>
-                <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
-                  Create and collaborate on research manuscripts with your team.
-                </p>
-              </header>
+              <Row
+                align="center"
+                gap="md"
+                wrap={false}
+                className="house-page-title-row"
+              >
+                <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
+                <PageHeader
+                  heading="My Workspaces"
+                  description="Create and collaborate on research manuscripts with your team."
+                  className="!ml-0 !mt-0"
+                />
+              </Row>
 
               <section className={cn('rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}>
                 <div className="house-page-toolbar">

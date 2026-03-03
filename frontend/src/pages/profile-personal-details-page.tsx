@@ -2,17 +2,12 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent 
 import { ChevronRight, GripVertical, Loader2, Plus, ShieldCheck, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
-import {
-  SelectPrimitive,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/primitives/SelectPrimitive'
+import { PageHeader, Row, Stack } from '@/components/primitives'
+import { SectionMarker } from '@/components/patterns'
+import { getSectionMarkerTone } from '@/lib/section-tone'
+import { Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import { clearAuthSessionToken, getAuthSessionToken, getCachedAuthRole } from '@/lib/auth-session'
-import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseLayout, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import {
   fetchAffiliationAddressForMe,
@@ -129,13 +124,8 @@ const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
 const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
 const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-300)/0.92)] bg-[hsl(var(--tone-accent-50))] px-3.5 text-[hsl(var(--tone-accent-800))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-400)/0.94)] hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]`
 const HOUSE_ACTION_BUTTON_PRIMARY_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-700))] bg-[hsl(var(--tone-accent-700))] px-3.5 text-[hsl(var(--tone-neutral-50))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-800))] hover:text-[hsl(var(--tone-neutral-50))]`
-const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
-const HOUSE_PAGE_MAIN_CONTENT_CLASS = houseLayout.pageMainContent
-const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
-const HOUSE_PAGE_TITLE_EXPANDER_CLASS = houseTypography.titleExpander
+const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
-const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
-const HOUSE_LEFT_BORDER_PROFILE_CLASS = houseSurfaces.leftBorderProfile
 const HOUSE_PROFILE_PHOTO_PANEL_CLASS = 'sm:col-span-2 flex items-start gap-3'
 const HOUSE_PROFILE_PHOTO_EDITOR_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] p-2.5'
 const HOUSE_ACCOUNT_PANEL_CLASS = 'space-y-2.5'
@@ -755,7 +745,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [profilePhotoEditorOpen, setProfilePhotoEditorOpen] = useState(false)
   const [affiliationMetadataByName, setAffiliationMetadataByName] = useState<Record<string, AffiliationMetadataItem>>({})
   const [affiliationEditorOpen, setAffiliationEditorOpen] = useState(
-    () => !Boolean(initialDraft.jobRoles[0] || initialDraft.affiliations[0] || initialDraft.country),
+    () => !(initialDraft.jobRoles[0] || initialDraft.affiliations[0] || initialDraft.country),
   )
   const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
   const [affiliationEditorBaseline, setAffiliationEditorBaseline] = useState<AffiliationEditorSnapshot>(
@@ -893,7 +883,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setCommittedJournalByline(buildJournalBylineFromDraft(fixtureDraft))
     setPrimaryAffiliationInput(sanitizeAffiliation(fixtureDraft.organisation))
     setPrimaryAffiliationInputFocused(false)
-    setAffiliationEditorOpen(!Boolean(fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country))
+    setAffiliationEditorOpen(!(fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country))
     setAccountEmail(resolveEditableAccountEmail({
       email: fixtureUser?.email,
       orcidLinked: fixtureOrcidLinked,
@@ -929,8 +919,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     primaryAddressLookupSequenceRef.current = 0
     lastResolvedPrimaryAffiliationKeyRef.current = ''
     lastAutoPopulateAffiliationKeyRef.current = ''
-    wasAffiliationEditorOpenRef.current = !Boolean(
-      fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country,
+    wasAffiliationEditorOpenRef.current = !(
+      fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country
     )
     if (affiliationSaveFlashTimerRef.current !== null) {
       window.clearTimeout(affiliationSaveFlashTimerRef.current)
@@ -1030,7 +1020,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           setCommittedJournalByline(buildJournalBylineFromDraft(resolvedDraft))
           setPrimaryAffiliationInput(sanitizeAffiliation(resolvedDraft.organisation))
           setPrimaryAffiliationInputFocused(false)
-          setAffiliationEditorOpen(!Boolean(resolvedDraft.jobRoles[0] || resolvedDraft.affiliations[0] || resolvedDraft.country))
+          setAffiliationEditorOpen(!(resolvedDraft.jobRoles[0] || resolvedDraft.affiliations[0] || resolvedDraft.country))
           setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
             draft: resolvedDraft,
             primaryAffiliationInput: sanitizeAffiliation(resolvedDraft.organisation),
@@ -2021,23 +2011,27 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   }
 
   return (
-    <section data-house-role="page" className="space-y-4">
-      <header
-        data-house-role="page-header"
-        className={cn(HOUSE_PAGE_HEADER_CLASS, 'house-main-title-block', HOUSE_LEFT_BORDER_CLASS, HOUSE_LEFT_BORDER_PROFILE_CLASS)}
+    <Stack data-house-role="page" space="sm">
+      <Row
+        align="center"
+        gap="md"
+        wrap={false}
+        className="house-page-title-row"
       >
-        <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Personal details</h1>
-        <p data-house-role="page-title-expander" className={HOUSE_PAGE_TITLE_EXPANDER_CLASS}>
-          Your professional information and research affiliations.
-        </p>
-      </header>
+        <SectionMarker tone={getSectionMarkerTone('profile')} size="title" className="self-stretch h-auto" />
+        <PageHeader
+          heading="Personal details"
+          description="Your professional information and research affiliations."
+          className="!ml-0 !mt-0"
+        />
+      </Row>
 
-      <section className={cn(HOUSE_PAGE_MAIN_CONTENT_CLASS, 'space-y-3')}>
+      <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3')}>
         <div className="house-main-heading-block">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className={HOUSE_SECTION_TITLE_CLASS}>
-              Profile
-            </h2>
+          <h2 className={HOUSE_SECTION_TITLE_CLASS}>
+            Profile
+          </h2>
+          <div className="flex flex-wrap items-center gap-2 self-center">
             {badges.map((badge) => (
               <span
                 key={badge.id}
@@ -2321,7 +2315,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         </div>
       </section>
 
-      <section className={cn(HOUSE_PAGE_MAIN_CONTENT_CLASS, 'space-y-3')}>
+      <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3')}>
         <div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className={HOUSE_SECTION_TITLE_CLASS}>
@@ -2654,7 +2648,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         </div>
       </section>
 
-      <section className={cn(HOUSE_PAGE_MAIN_CONTENT_CLASS, 'space-y-3')}>
+      <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3')}>
         <div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className={HOUSE_SECTION_TITLE_CLASS}>
@@ -2803,7 +2797,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         </div>
       </section>
 
-      <div className={cn(HOUSE_PAGE_MAIN_CONTENT_CLASS, 'space-y-2')}>
+      <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-2')}>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -2831,7 +2825,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
         {loading ? <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Loading personal details...</p> : null}
       </div>
-    </section>
+    </Stack>
   )
 }
+
 

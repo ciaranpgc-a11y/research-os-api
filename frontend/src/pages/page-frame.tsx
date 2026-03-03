@@ -1,13 +1,12 @@
 import type { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { houseDividers, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
-import { getHouseLeftBorderToneClass, resolveSectionTone, type HouseSectionTone } from '@/lib/section-tone'
-import { cn } from '@/lib/utils'
+import { PageHeader, Row, Stack } from '@/components/primitives'
+import { PanelShell, SectionMarker } from '@/components/patterns'
+import { getSectionMarkerTone, resolveSectionTone, type HouseSectionTone } from '@/lib/section-tone'
 
 type PageFrameProps = {
-  title: string
+  title?: string
   description?: string
   tone?: HouseSectionTone
   hideScaffoldHeader?: boolean
@@ -19,28 +18,24 @@ export function PageFrame({ title, description = '', tone, hideScaffoldHeader = 
   const resolvedTone = tone ?? resolveSectionTone(location.pathname)
 
   return (
-    <section data-house-role="page" className="space-y-4">
-      <header
-        data-house-role="page-header"
-        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass(resolvedTone))}
-      >
-        <h1 data-house-role="page-title" className={houseTypography.title}>{title}</h1>
-        {description.trim().length > 0 ? (
-          <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>{description}</p>
-        ) : null}
-      </header>
-      <div data-house-role="section-divider" className={houseDividers.strong} />
-      <Card data-house-role="page-card">
-        {hideScaffoldHeader ? null : (
-          <CardHeader>
-            <CardTitle data-house-role="section-title">Workspace scaffold</CardTitle>
-            <CardDescription data-house-role="section-subtitle">
-              Interactive UI elements can be expanded here as backend features are connected.
-            </CardDescription>
-          </CardHeader>
-        )}
-        <CardContent data-house-role="page-content">{children}</CardContent>
-      </Card>
-    </section>
+    <Stack data-house-role="page" space="lg">
+      {!hideScaffoldHeader ? (
+        <Row align="center" gap="sm" wrap={false}>
+          <SectionMarker tone={getSectionMarkerTone(resolvedTone)} size="header" />
+          <PageHeader heading={title} description={description.trim().length > 0 ? description : undefined} />
+        </Row>
+      ) : null}
+
+      {hideScaffoldHeader ? (
+        children
+      ) : (
+        <PanelShell
+          heading="Workspace scaffold"
+          description="Interactive UI elements can be expanded here as backend features are connected."
+        >
+          {children}
+        </PanelShell>
+      )}
+    </Stack>
   )
 }

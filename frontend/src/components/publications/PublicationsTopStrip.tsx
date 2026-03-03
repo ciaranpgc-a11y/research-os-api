@@ -1,9 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Download, Eye, EyeOff, FileText, Hammer, Share2 } from 'lucide-react'
 
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Card, CardContent } from '@/components/ui'
+import { Button } from '@/components/ui'
+import { Sheet, SheetContent } from '@/components/ui'
 import { readAccountSettings } from '@/lib/account-preferences'
 import { fetchPublicationMetricDetail } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
@@ -14,7 +14,8 @@ import type {
 } from '@/types/impact'
 
 import { dashboardTileStyles } from './dashboard-tile-styles'
-import { HouseDrilldownHeaderShell, drilldownTabFlexGrow } from './HouseDrilldownHeaderShell'
+import { HouseDrilldownHeaderShell } from './HouseDrilldownHeaderShell'
+import { drilldownTabFlexGrow } from './house-drilldown-header-utils'
 import {
   publicationsHouseActions,
   publicationsHouseDividers,
@@ -237,14 +238,14 @@ function buildChartAxisLayout({
     : 0
   const axisLineHeightRem = 0.82
   const subAxisLineHeightRem = 0.78
-  const axisMinHeightRem = (labelLineCount * axisLineHeightRem) + (subLabelLineCount * subAxisLineHeightRem) + 0.58
+  const axisMinHeightRem = (labelLineCount * axisLineHeightRem) + (subLabelLineCount * subAxisLineHeightRem) + 0.28
   const xAxisNameHeightRem = hasXAxisName
     ? (axisNameLineCount * subAxisLineHeightRem) + 0.24
     : 0
   const xAxisNameBottomRem = hasXAxisName ? 0.24 : 0
-  const axisBottomRem = hasXAxisName ? xAxisNameBottomRem + xAxisNameHeightRem + 0.2 : 0.5
-  const plotBottomRem = axisBottomRem + axisMinHeightRem + 0.5
-  const framePaddingBottomRem = plotBottomRem + 0.72
+  const axisBottomRem = hasXAxisName ? xAxisNameBottomRem + xAxisNameHeightRem + 0.2 : 0.3
+  const plotBottomRem = axisBottomRem + axisMinHeightRem + 0.28
+  const framePaddingBottomRem = plotBottomRem + 0.45
   return {
     framePaddingBottomRem,
     plotBottomRem,
@@ -425,8 +426,6 @@ const HOUSE_CHART_RING_THRESHOLD_75_SVG_CLASS = publicationsHouseCharts.ringThre
 const HOUSE_CHART_RING_THRESHOLD_90_SVG_CLASS = publicationsHouseCharts.ringThreshold90Svg
 const HOUSE_CHART_RING_THRESHOLD_95_SVG_CLASS = publicationsHouseCharts.ringThreshold95Svg
 const HOUSE_CHART_RING_THRESHOLD_99_SVG_CLASS = publicationsHouseCharts.ringThreshold99Svg
-const HOUSE_CHART_RING_TOGGLE_LAYOUT_CLASS = publicationsHouseCharts.ringToggleLayout
-const HOUSE_CHART_RING_TOGGLE_CONTROL_CLASS = publicationsHouseCharts.ringToggleControl
 const HOUSE_CHART_RING_TOGGLE_VISUAL_CLASS = publicationsHouseCharts.ringToggleVisual
 const HOUSE_CHART_RING_CENTER_LABEL_CLASS = publicationsHouseCharts.ringCenterLabel
 const HOUSE_CHART_RING_PANEL_CLASS = publicationsHouseCharts.ringPanel
@@ -446,27 +445,82 @@ const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
   )
 const HOUSE_LINE_CHART_SURFACE_CLASS =
   cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'relative flex-1 px-1.5 pb-1.5 pt-2')
-const HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS = 'w-10'
-const HOUSE_FIELD_PERCENTILE_LEFT_CHART_TRACK_CLASS = cn(
-  HOUSE_TOGGLE_TRACK_CLASS,
-  'house-field-percentile-toggle-track',
-  HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS,
-  'relative grid items-stretch',
-)
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_SLOT_CLASS = 'pointer-events-none flex h-full items-stretch justify-center'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_CLASS = 'grid w-full min-h-0 items-stretch'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_COLUMNS_CLASS = 'grid-cols-[2.5rem_minmax(0,1fr)]'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_GAP_CLASS = 'gap-2'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_PANEL_CLASS = 'h-full min-h-0 min-w-0 w-full'
-const HOUSE_FIELD_PERCENTILE_TOGGLE_BUTTON_CLASS = 'house-field-percentile-toggle-button'
 const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
-const TILE_MOTION_ENTRY_DURATION_MS = 1000
-const TILE_MOTION_TOGGLE_DURATION_MS = 460
-const TILE_MOTION_AXIS_DURATION_MS = 420
-const TILE_MOTION_ENTRY_BAR_STAGGER_MS = 70
-const TILE_MOTION_ENTRY_STAGGER_MAX_MS = 420
-const TILE_MOTION_ENTRY_START_DELAY_MS = 120
-const PUBLICATIONS_CHART_TOP_INSET_REM = 1
+
+/**
+ * Chart Animation Token System - Semantic Motion Timing
+ * 
+ * This system provides context-aware animation durations and staggers for chart elements.
+ * Values mirror CSS custom properties in index.css for consistency across the application.
+ * 
+ * Key Principles:
+ * 1. Animation CONTEXT matters more than duration numbers
+ * 2. Entry animations are theatrical (slow, staggered)
+ * 3. Toggle animations are responsive (fast, immediate)
+ * 4. Morph animations are graceful (medium, minimal stagger)
+ * 5. Axis animations coordinate with data (overlap by ~100ms)
+ * 
+ * Usage Examples:
+ * ```ts
+ * // Bar charts
+ * const duration = getChartAnimationDuration('entry', 'bar')  // 560ms
+ * const stagger = getChartStaggerDelay(index, 'entry')        // 0-390ms
+ * 
+ * // Ring charts
+ * const ringDuration = ringChartDurationVar(isEntryCycle)     // '520ms' or '380ms'
+ * 
+ * // Axis updates
+ * const axisDuration = getAxisAnimationDuration('toggle')     // 340ms
+ * ```
+ * 
+ * Animation Flow:
+ * - Entry:   delay(140ms) → stagger each bar(65ms) → max stagger(390ms)
+ * - Toggle:  immediate(0ms) → all at once(0ms stagger)
+ * - Morph:   minimal stagger(25ms) → graceful transition
+ */
+type ChartAnimationContext = 'entry' | 'toggle' | 'morph' | 'refresh'
+type ChartType = 'bar' | 'ring' | 'line'
+
+const CHART_MOTION = {
+  entry: {
+    duration: 560,      // --motion-chart-entry-duration
+    delay: 140,         // --motion-chart-entry-delay
+    stagger: 65,        // --motion-chart-entry-stagger
+    staggerMax: 390,    // --motion-chart-entry-stagger-max
+  },
+  toggle: {
+    duration: 360,      // --motion-chart-toggle-duration
+    delay: 0,           // --motion-chart-toggle-delay
+    stagger: 0,         // --motion-chart-toggle-stagger
+  },
+  morph: {
+    duration: 440,      // --motion-chart-morph-duration
+    stagger: 25,        // --motion-chart-morph-stagger
+  },
+  axis: {
+    entry: 380,         // --motion-chart-axis-entry
+    toggle: 340,        // --motion-chart-axis-toggle
+    overlap: 100,       // --motion-chart-axis-overlap
+  },
+  refresh: {
+    duration: 420,      // --motion-chart-refresh-duration
+  },
+  ring: {
+    entry: 520,         // --motion-chart-ring-entry
+    toggle: 380,        // --motion-chart-ring-toggle
+  },
+  line: {
+    entry: 580,         // --motion-chart-line-entry
+    toggle: 400,        // --motion-chart-line-toggle
+  },
+} as const
+
+const PUBLICATIONS_CHART_TOP_INSET_REM = 0.625
 const PUBLICATIONS_CHART_RIGHT_INSET_REM = 0.5
 const PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM = 0.25
 const PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM = 0.55
@@ -490,29 +544,56 @@ const FIELD_PERCENTILE_EMPHASIS_TONE_VAR_BY_THRESHOLD: Record<FieldPercentileThr
   95: '--tone-accent-700',
   99: '--tone-accent-800',
 }
-const FIELD_PERCENTILE_TOGGLE_ACTIVE_BUTTON_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
-  50: 'house-toggle-button-threshold-50',
-  75: 'house-toggle-button-threshold-75',
-  90: 'house-toggle-button-threshold-90',
-  95: 'house-toggle-button-threshold-95',
-  99: 'house-toggle-button-threshold-99',
-}
 const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
   cn(
     HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS,
-    'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out',
+    'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-[opacity,transform] duration-[var(--motion-micro)] ease-out',
   )
 const MAX_PUBLICATION_CHART_BARS = 12
 const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
+
+// Chart Animation Helpers - Semantic timing by context
+function getChartAnimationDuration(context: ChartAnimationContext, chartType: ChartType = 'bar'): number {
+  if (chartType === 'ring') {
+    return context === 'entry' ? CHART_MOTION.ring.entry : CHART_MOTION.ring.toggle
+  }
+  if (chartType === 'line') {
+    return context === 'entry' ? CHART_MOTION.line.entry : CHART_MOTION.line.toggle
+  }
+  // Bar charts
+  if (context === 'entry') return CHART_MOTION.entry.duration
+  if (context === 'toggle') return CHART_MOTION.toggle.duration
+  if (context === 'morph') return CHART_MOTION.morph.duration
+  return CHART_MOTION.refresh.duration
+}
+
+function getAxisAnimationDuration(context: ChartAnimationContext): number {
+  return context === 'entry' ? CHART_MOTION.axis.entry : CHART_MOTION.axis.toggle
+}
+
+function getChartStaggerDelay(index: number, context: ChartAnimationContext): string {
+  if (context === 'toggle') {
+    return '0ms' // Toggles are immediate, no stagger
+  }
+  if (context === 'morph') {
+    return `${Math.max(0, index) * CHART_MOTION.morph.stagger}ms`
+  }
+  // Entry animation with stagger cap
+  return `${Math.min(CHART_MOTION.entry.staggerMax, Math.max(0, index) * CHART_MOTION.entry.stagger)}ms`
+}
+
+function getChartInitialDelay(context: ChartAnimationContext): number {
+  return context === 'entry' ? CHART_MOTION.entry.delay : CHART_MOTION.toggle.delay
+}
 
 function tileMotionEntryDelay(index = 0, animateIn = false): string {
   if (!animateIn) {
     return '0ms'
   }
-  return `${Math.min(TILE_MOTION_ENTRY_STAGGER_MAX_MS, Math.max(0, index) * TILE_MOTION_ENTRY_BAR_STAGGER_MS)}ms`
+  return getChartStaggerDelay(index, 'entry')
 }
 
-function buildTileToggleThumbStyle(activeIndex: number, optionCount: number): CSSProperties {
+function buildTileToggleThumbStyle(activeIndex: number, optionCount: number, isEntryCycle = false): CSSProperties {
   const safeCount = Math.max(1, optionCount)
   const safeIndex = Math.max(0, Math.min(activeIndex, safeCount - 1))
   const widthPercent = 100 / safeCount
@@ -522,6 +603,7 @@ function buildTileToggleThumbStyle(activeIndex: number, optionCount: number): CS
     width: finalWidth,
     left: `${leftPercent}%`,
     willChange: 'left,width',
+    transitionDuration: isEntryCycle ? '0ms' : undefined,
   }
 }
 
@@ -643,11 +725,26 @@ function useIsFirstChartEntry(animationKey: string, enabled: boolean): boolean {
 }
 
 function tileChartDurationVar(isEntryCycle: boolean): string {
-  return isEntryCycle ? 'var(--motion-duration-chart-refresh)' : 'var(--motion-duration-chart-toggle)'
+  const context: ChartAnimationContext = isEntryCycle ? 'entry' : 'toggle'
+  const duration = getChartAnimationDuration(context, 'bar')
+  return `${duration}ms`
+}
+
+function ringChartDurationVar(isEntryCycle: boolean): string {
+  const context: ChartAnimationContext = isEntryCycle ? 'entry' : 'toggle'
+  const duration = getChartAnimationDuration(context, 'ring')
+  return `${duration}ms`
+}
+
+function lineChartDurationVar(isEntryCycle: boolean): string {
+  const context: ChartAnimationContext = isEntryCycle ? 'entry' : 'toggle'
+  const duration = getChartAnimationDuration(context, 'line')
+  return `${duration}ms`
 }
 
 function tileAxisDurationMs(isEntryCycle: boolean): number {
-  return isEntryCycle ? TILE_MOTION_ENTRY_DURATION_MS : TILE_MOTION_AXIS_DURATION_MS
+  const context: ChartAnimationContext = isEntryCycle ? 'entry' : 'toggle'
+  return getAxisAnimationDuration(context)
 }
 
 function useHouseBarSetTransition<T extends { key: string }>({
@@ -656,7 +753,7 @@ function useHouseBarSetTransition<T extends { key: string }>({
   enabled,
   collapseMs = 0,
   structureSwap = 'collapse',
-  crossfadeMs = TILE_MOTION_TOGGLE_DURATION_MS,
+  crossfadeMs = CHART_MOTION.toggle.duration,
   barExpandMode = 'replay-on-change',
 }: {
   bars: T[]
@@ -794,7 +891,7 @@ function useHouseBarSetTransition<T extends { key: string }>({
   }
 }
 
-function useEasedValue(target: number, animationKey: string, enabled: boolean, durationMs = TILE_MOTION_AXIS_DURATION_MS): number {
+function useEasedValue(target: number, animationKey: string, enabled: boolean, durationMs = CHART_MOTION.axis.toggle): number {
   const [value, setValue] = useState<number>(() => (enabled ? 0 : target))
   const valueRef = useRef(value)
 
@@ -840,7 +937,7 @@ function useEasedValue(target: number, animationKey: string, enabled: boolean, d
   return value
 }
 
-function useEasedSeries(target: number[], animationKey: string, enabled: boolean, durationMs = TILE_MOTION_AXIS_DURATION_MS): number[] {
+function useEasedSeries(target: number[], animationKey: string, enabled: boolean, durationMs = CHART_MOTION.axis.toggle): number[] {
   const [values, setValues] = useState<number[]>(() => (enabled ? target.map(() => 0) : target))
   const valuesRef = useRef(values)
 
@@ -1495,12 +1592,14 @@ function TotalCitationsModeChart({
     axisLabels: model.bars.map((bar) => bar.axisLabel),
     axisSubLabels: model.bars.map((bar) => bar.axisSubLabel || null),
     dense: model.bars.length >= 6,
+    maxLabelLines: 2,
+    maxSubLabelLines: 2,
   })
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {chartTitle ? (
-        <p className={cn(chartTitleClassName || HOUSE_CHART_AXIS_TITLE_CLASS, 'mb-1')}>
+        <p className={cn(chartTitleClassName || HOUSE_CHART_AXIS_TITLE_CLASS, 'mb-0.5')}>
           {chartTitle}
         </p>
       ) : null}
@@ -1631,9 +1730,9 @@ function TotalCitationsTile({
         }
       }}
       className={cn(
-        dashboardTileStyles.tileShell,
+        dashboardTileStyles.tileShellPublications,
         tile.stability === 'unstable' && dashboardTileStyles.tileShellUnstable,
-        'w-full min-h-36 px-3 py-2.5',
+        'w-full px-3 py-2.5',
       )}
     >
       <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
@@ -1725,9 +1824,9 @@ function StructuredMetricTile({
         }
       }}
       className={cn(
-        dashboardTileStyles.tileShell,
+        dashboardTileStyles.tileShellPublications,
         tile.stability === 'unstable' && dashboardTileStyles.tileShellUnstable,
-        'w-full min-h-36 px-3 py-2.5',
+        'w-full px-3 py-2.5',
       )}
     >
       <div className={cn('grid h-full min-h-[9.5rem] gap-3', contentGridClassName || 'grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)]')}>
@@ -1829,12 +1928,15 @@ function HIndexYearChart({
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const hasValidSeries = years.length > 0 && values.length > 0 && years.length === values.length
-  const bars: Array<{ year: number; value: number }> = hasValidSeries
-    ? years.map((year, index) => ({
-        year,
-        value: values[index],
-      }))
-    : []
+  const bars = useMemo<Array<{ year: number; value: number }>>(
+    () => (hasValidSeries
+      ? years.map((year, index) => ({
+          year,
+          value: values[index],
+        }))
+      : []),
+    [hasValidSeries, values, years],
+  )
   const animationKey = bars.map((bar) => `${bar.year}-${bar.value}`).join('|')
   const hasBars = bars.length > 0
   const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-year`, hasBars)
@@ -2032,13 +2134,13 @@ export function PublicationsPerYearChart({
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const hasValidSeries = years.length > 0 && values.length > 0 && years.length === values.length
-  const validYears = hasValidSeries ? years : []
-  const validValues = hasValidSeries ? values : []
   const meanValueRaw = Number(chartData.mean_value)
   const projectedYearRaw = Number(chartData.projected_year)
   const currentYearYtdRaw = Number(chartData.current_year_ytd)
   const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
   const historyBars = useMemo(() => {
+    const validYears = hasValidSeries ? years : []
+    const validValues = hasValidSeries ? values : []
     const baseBars: Array<{
       year: number
       value: number
@@ -2065,7 +2167,7 @@ export function PublicationsPerYearChart({
       })
     }
     return nextHistoryBars
-  }, [currentYearYtdRaw, hasValidSeries, projectedYear, validValues, validYears])
+  }, [currentYearYtdRaw, hasValidSeries, projectedYear, values, years])
 
   const isCompactTileMode = !showAxes && !enableWindowToggle
 
@@ -2085,7 +2187,7 @@ export function PublicationsPerYearChart({
     leftPct: number
   }
 
-  const parseYearRangeFromBarKey = (key: string): { startYear: number; endYear: number } | null => {
+  const parseYearRangeFromBarKey = useCallback((key: string): { startYear: number; endYear: number } | null => {
     const raw = String(key || '').trim()
     if (!raw) {
       return null
@@ -2102,7 +2204,7 @@ export function PublicationsPerYearChart({
       return null
     }
     return { startYear, endYear }
-  }
+  }, [])
 
   type PublicationYearWindowBars = {
     bars: PublicationChartBar[]
@@ -2121,7 +2223,7 @@ export function PublicationsPerYearChart({
         axisSubLabel: undefined,
         monthStartMs: undefined,
       }))
-  ), [historyBars, showCurrentPeriodSemantic])
+  ), [historyBars])
 
   const groupedYearBarsByWindow = useMemo(() => {
     const build = (
@@ -2241,7 +2343,7 @@ export function PublicationsPerYearChart({
       bucketSize: 1,
       rangeLabel: `${monthLabels12[0] || 'Start'} ${yearShortLabels12[0] || ''}-${monthLabels12[monthLabels12.length - 1] || 'End'} ${yearShortLabels12[yearShortLabels12.length - 1] || ''}`.trim(),
     }
-  }, [chartData.month_labels_12m, chartData.monthly_values_12m, historyBars])
+  }, [chartData.month_labels_12m, chartData.monthly_values_12m])
 
   const lifetimeMonthlyBars = useMemo(() => {
     const sourceValues = toNumberArray(chartData.monthly_values_lifetime).map((item) => Math.max(0, item))
@@ -2337,7 +2439,7 @@ export function PublicationsPerYearChart({
     return groupedYearBarsByWindow[mode]
   }
 
-  const resolveLineBarsForWindowMode = (mode: PublicationsWindowMode): PublicationYearWindowBars => {
+  const resolveLineBarsForWindowMode = useCallback((mode: PublicationsWindowMode): PublicationYearWindowBars => {
     if (!lifetimeMonthlyBars.bars.length) {
       if (mode === '1y') {
         const hasMonthlySignal = groupedMonthBars.bars.some((bar) => Math.max(0, bar.value) > 0)
@@ -2401,7 +2503,7 @@ export function PublicationsPerYearChart({
       bucketSize: 1,
       rangeLabel,
     }
-  }
+  }, [groupedMonthBars.bars, groupedMonthBars.bucketSize, groupedMonthBars.rangeLabel, historyBars, lifetimeMonthlyBars.bars])
 
   const activeLineWindowBars = isCompactTileMode
     ? { bars: compactTileBars, bucketSize: 1, rangeLabel: null as string | null }
@@ -2448,9 +2550,9 @@ export function PublicationsPerYearChart({
   )
   const hasBars = hasValidSeries && historyBars.length > 0 && activeBars.length > 0
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
-  const entrySweepDurationMs = Math.max(160, TILE_MOTION_ENTRY_DURATION_MS - TILE_MOTION_ENTRY_STAGGER_MAX_MS)
-  const barTransitionDuration = `${isEntryCycle ? entrySweepDurationMs : TILE_MOTION_TOGGLE_DURATION_MS}ms`
-  const axisDurationMs = TILE_MOTION_AXIS_DURATION_MS
+  const entrySweepDurationMs = Math.max(160, CHART_MOTION.entry.duration - CHART_MOTION.entry.staggerMax)
+  const barTransitionDuration = `${isEntryCycle ? entrySweepDurationMs : CHART_MOTION.toggle.duration}ms`
+  const axisDurationMs = getAxisAnimationDuration(isEntryCycle ? 'entry' : 'toggle')
   const renderBars = activeBars
   const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars, 'entry-only')
   const renderedValuesTarget = useMemo(
@@ -2514,7 +2616,7 @@ export function PublicationsPerYearChart({
   const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * axisMax)
   const hideYearTickTabs = false
   const showXAxisTickTabs = !hideYearTickTabs
-  const buildLineModeTicksForWindow = (mode: PublicationsWindowMode): PublicationLineAxisTick[] => {
+  const buildLineModeTicksForWindow = useCallback((mode: PublicationsWindowMode): PublicationLineAxisTick[] => {
     const positions = [0, 0.5, 1]
     const lineWindowBars = resolveLineBarsForWindowMode(mode).bars
     const monthStartMsValues = lineWindowBars.map((bar) => Number(bar.monthStartMs))
@@ -2572,10 +2674,10 @@ export function PublicationsPerYearChart({
         leftPct: position * 100,
       }
     })
-  }
+  }, [historyBars, resolveLineBarsForWindowMode])
   const lineModeXAxisTicks = useMemo(
     () => (effectiveVisualMode === 'line' ? buildLineModeTicksForWindow(effectiveWindowMode) : []),
-    [effectiveVisualMode, effectiveWindowMode, historyBars, lifetimeMonthlyBars],
+    [buildLineModeTicksForWindow, effectiveVisualMode, effectiveWindowMode],
   )
   const activePeriodRangeLabel = activeWindowBars.rangeLabel
   const resolveXAxisTitleForWindowMode = (
@@ -2631,10 +2733,18 @@ export function PublicationsPerYearChart({
         buildXAxisLayoutForWindow(option.value, 'line'),
       ])),
     )
-    : mergeChartAxisLayouts([
-      buildXAxisLayoutForWindow(effectiveWindowMode, 'bars'),
-      buildXAxisLayoutForWindow(effectiveWindowMode, 'line'),
-    ])
+    : isCompactTileMode
+      ? buildChartAxisLayout({
+        axisLabels: compactTileBars.map((bar) => bar.axisLabel),
+        axisSubLabels: compactTileBars.map((bar) => bar.axisSubLabel || null),
+        dense: compactTileBars.length >= 6,
+        maxLabelLines: 2,
+        maxSubLabelLines: 2,
+      })
+      : mergeChartAxisLayouts([
+        buildXAxisLayoutForWindow(effectiveWindowMode, 'bars'),
+        buildXAxisLayoutForWindow(effectiveWindowMode, 'line'),
+      ])
   const yAxisPanelWidthRem = showAxes
     ? buildYAxisPanelWidthRem(stableToggleTickValues, Boolean(yAxisLabel))
     : 0
@@ -2957,7 +3067,7 @@ export function PublicationsPerYearChart({
       data-house-role="metric-chart"
     >
       {chartTitle ? (
-        <p className={cn(chartTitleClassName || HOUSE_CHART_AXIS_TITLE_CLASS, 'mb-1')}>
+        <p className={cn(chartTitleClassName || HOUSE_CHART_AXIS_TITLE_CLASS, 'mb-0.5')}>
           {chartTitle}
         </p>
       ) : null}
@@ -2972,7 +3082,7 @@ export function PublicationsPerYearChart({
             >
                 <span
                   className={HOUSE_TOGGLE_THUMB_CLASS}
-                  style={buildTileToggleThumbStyle(activeWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length)}
+                  style={buildTileToggleThumbStyle(activeWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length, isEntryCycle)}
                   aria-hidden="true"
                 />
               {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
@@ -3112,7 +3222,7 @@ export function PublicationsPerYearChart({
               {lineSeriesPoints.map((point, index) => (
                 <span
                   key={`pub-cumulative-point-${index}`}
-                  className="absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[hsl(var(--tone-accent-500))] shadow-[0_0_0_1px_hsl(var(--tone-accent-700)/0.28)]"
+                  className="absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[hsl(var(--tone-accent-500))] shadow-[var(--elevation-1)]"
                   style={{
                     left: `${Math.max(0, Math.min(100, point.xPct))}%`,
                     bottom: `calc(${Math.max(0, Math.min(100, point.yPct))}% - 0.15rem)`,
@@ -3140,7 +3250,7 @@ export function PublicationsPerYearChart({
               const baseScaleX = isActive ? 1.035 : 1
               const barScaleY = effectiveVisualMode === 'bars' && barsExpanded ? 1 : 0
               const entryDelayMs = isEntryCycle && barsExpanded
-                ? TILE_MOTION_ENTRY_START_DELAY_MS + Math.min(TILE_MOTION_ENTRY_STAGGER_MAX_MS, Math.max(0, index) * TILE_MOTION_ENTRY_BAR_STAGGER_MS)
+                ? CHART_MOTION.entry.delay + Math.min(CHART_MOTION.entry.staggerMax, Math.max(0, index) * CHART_MOTION.entry.stagger)
                 : 0
               return (
                 <div
@@ -3223,7 +3333,7 @@ export function PublicationsPerYearChart({
                 {formatInt(hoveredLinePoint.value)}
               </span>
               <span
-                className="pointer-events-none absolute z-[4] h-2 w-2 -translate-x-1/2 rounded-full border border-white/85 bg-[hsl(var(--tone-accent-700))] shadow-[0_0_0_1px_hsl(var(--tone-accent-800)/0.35)]"
+                className="pointer-events-none absolute z-[4] h-2 w-2 -translate-x-1/2 rounded-full border border-white/85 bg-[hsl(var(--tone-accent-700))] shadow-[var(--elevation-1)]"
                 style={{
                   left: `${Math.max(0, Math.min(100, hoveredLinePoint.xPct))}%`,
                   bottom: `calc(${Math.max(0, Math.min(100, hoveredLinePoint.yPct))}% - 0.22rem)`,
@@ -3387,54 +3497,59 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
     () => `${top3PctRounded}|${totalPublications ?? 'na'}|${effectiveTopPapersCount}`,
     [effectiveTopPapersCount, top3PctRounded, totalPublications],
   )
+  const isImpactConcentrationEntryCycle = useIsFirstChartEntry(ringAnimationKey, total > 0)
   const ringVisible = useUnifiedToggleBarAnimation(ringAnimationKey, total > 0)
   const ringVisibleDash = ringVisible ? top3AnimatedDash : 0
+  const ringTransitionDuration = ringChartDurationVar(isImpactConcentrationEntryCycle)
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div
-        className={cn(
-          HOUSE_CHART_TRANSITION_CLASS,
-          'pb-2 pt-2.5',
-          HOUSE_CHART_RING_ENTERED_CLASS,
-        )}
-      >
-        {total > 0 ? (
-          <div className={HOUSE_CHART_RING_PANEL_CLASS}>
-            <svg
-              viewBox="0 0 100 100"
-              className={HOUSE_CHART_RING_SIZE_CLASS}
-              data-stop-tile-open="true"
-            >
-              <circle
-                cx="50"
-                cy="50"
-                r={ringRadius}
-                fill="none"
-                className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
-                strokeWidth={ringStrokeWidth}
-                strokeLinecap="round"
-                transform="rotate(-90 50 50)"
-              />
-              <circle
-                cx="50"
-                cy="50"
-                r={ringRadius}
-                fill="none"
-                className={cn(HOUSE_CHART_RING_MAIN_SVG_CLASS, 'house-chart-ring-dasharray-motion')}
-                strokeWidth={ringStrokeWidth}
-                strokeLinecap="round"
-                transform="rotate(-90 50 50)"
-                style={{
-                  strokeDasharray: `${ringVisibleDash} ${ringCircumference}`,
-                  strokeDashoffset: 0,
-                }}
-              />
-            </svg>
-          </div>
-        ) : (
-          <div className={dashboardTileStyles.emptyChart}>No concentration data</div>
-        )}
+      <div className="flex-1 min-h-0 flex flex-col py-1.5">
+        <div className="flex-1" />
+        <div
+          className={cn(
+            HOUSE_CHART_TRANSITION_CLASS,
+            HOUSE_CHART_RING_ENTERED_CLASS,
+          )}
+        >
+          {total > 0 ? (
+            <div className={HOUSE_CHART_RING_PANEL_CLASS}>
+              <svg
+                viewBox="0 0 100 100"
+                className={HOUSE_CHART_RING_SIZE_CLASS}
+                data-stop-tile-open="true"
+              >
+                <circle
+                  cx="50"
+                  cy="50"
+                  r={ringRadius}
+                  fill="none"
+                  className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
+                  strokeWidth={ringStrokeWidth}
+                  strokeLinecap="round"
+                  transform="rotate(-90 50 50)"
+                />
+                <circle
+                  cx="50"
+                  cy="50"
+                  r={ringRadius}
+                  fill="none"
+                  className={cn(HOUSE_CHART_RING_MAIN_SVG_CLASS, 'house-chart-ring-dasharray-motion')}
+                  strokeWidth={ringStrokeWidth}
+                  strokeLinecap="round"
+                  transform="rotate(-90 50 50)"
+                  style={{
+                    strokeDasharray: `${ringVisibleDash} ${ringCircumference}`,
+                    strokeDashoffset: 0,
+                  }}
+                />
+              </svg>
+            </div>
+          ) : (
+            <div className={dashboardTileStyles.emptyChart}>No concentration data</div>
+          )}
+        </div>
+        <div className="flex-1" />
       </div>
     </div>
   )
@@ -3503,8 +3618,6 @@ function MomentumTilePanel({
   }, [
     yearBreakdown?.rate1y,
     yearBreakdown?.rate4y,
-    yearBreakdown?.priorYearsLabel,
-    yearBreakdown?.recentYearLabel,
   ])
   const comparisonBars = useYearMode ? yearlyComparisonBars : monthlyComparisonBars
   const getMomentumAxisLabel = (bar: { label: string; subLabel?: string | null }) =>
@@ -3597,7 +3710,7 @@ function MomentumTilePanel({
         style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
         <div
-          className="absolute inset-x-2 top-4"
+          className="absolute inset-x-2 top-[0.625rem]"
           style={{ bottom: `${axisLayout.plotBottomRem}rem` }}
         >
           {[50].map((pct) => (
@@ -3732,7 +3845,7 @@ function FieldPercentilePanel({
     hasPercentileData && isRingEntryCycle,
   )
   const ringVisible = isRingEntryCycle ? entryRingVisible : true
-  const ringTransitionDuration = tileChartDurationVar(isRingEntryCycle)
+  const ringTransitionDuration = ringChartDurationVar(isRingEntryCycle)
   const ringTargetOffset = ringCircumference - ringAnimatedDash
   const ringVisibleOffset = ringVisible ? ringTargetOffset : ringCircumference
   const ringShareToneClass = FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD[threshold] || HOUSE_CHART_RING_MAIN_SVG_CLASS
@@ -3743,66 +3856,58 @@ function FieldPercentilePanel({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="h-full">
-        <div className={HOUSE_CHART_RING_TOGGLE_LAYOUT_CLASS}>
-          <div
-            className={cn(
-              HOUSE_CHART_RING_PANEL_CLASS,
-              HOUSE_CHART_RING_TOGGLE_VISUAL_CLASS,
-              HOUSE_CHART_TRANSITION_CLASS,
-              HOUSE_CHART_RING_ENTERED_CLASS,
-            )}
-          >
-            <div
-              className="grid h-full w-full items-stretch"
-              style={{
-                gridTemplateColumns: 'calc((100% - 2.5rem - 8.47rem) / 3) 2.5rem calc((100% - 2.5rem - 8.47rem) / 3) 8.47rem calc((100% - 2.5rem - 8.47rem) / 3)',
-              }}
-            >
-              <div className="col-start-2 flex h-full items-center justify-center">
-                <div className={cn(HOUSE_CHART_RING_TOGGLE_CONTROL_CLASS, '-translate-y-[0.5rem]')}>
-                  {toggleControl}
-                </div>
-              </div>
-              <div className="col-start-4 flex h-full min-w-0 items-center justify-center">
-                <svg
-                  viewBox="0 0 100 100"
-                  className={cn(HOUSE_CHART_RING_SIZE_CLASS, 'shrink-0')}
-                  data-stop-tile-open="true"
-                >
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r={ringRadius}
-                    fill="none"
-                    className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
-                    strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
-                    strokeLinecap="round"
-                    transform="rotate(-90 50 50)"
-                  />
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r={ringRadius}
-                    fill="none"
-                    className={cn(ringShareToneClass, 'house-chart-ring-dashoffset-motion')}
-                    strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
-                    strokeLinecap="round"
-                    transform="rotate(-90 50 50)"
-                    style={{
-                      strokeDasharray: ringCircumference,
-                      strokeDashoffset: ringVisibleOffset,
-                      '--chart-transition-duration': ringTransitionDuration,
-                    } as React.CSSProperties}
-                  />
-                  <text x="50" y="50" textAnchor="middle" dominantBaseline="central" className={HOUSE_CHART_RING_CENTER_LABEL_CLASS}>
-                    {papersAtThresholdLabel}
-                  </text>
-                </svg>
-              </div>
-            </div>
-          </div>
+      {toggleControl ? (
+        <div className="flex justify-center">
+          <div className="pointer-events-auto">{toggleControl}</div>
         </div>
+      ) : null}
+      <div className="flex-1 min-h-0 flex flex-col py-1.5">
+        <div className="flex-1" />
+        <div
+          className={cn(
+            HOUSE_CHART_RING_PANEL_CLASS,
+            HOUSE_CHART_RING_TOGGLE_VISUAL_CLASS,
+            HOUSE_CHART_TRANSITION_CLASS,
+            HOUSE_CHART_RING_ENTERED_CLASS,
+            'flex items-center justify-center',
+          )}
+        >
+          <svg
+            viewBox="0 0 100 100"
+            className={cn(HOUSE_CHART_RING_SIZE_CLASS, 'shrink-0')}
+            data-stop-tile-open="true"
+          >
+            <circle
+              cx="50"
+              cy="50"
+              r={ringRadius}
+              fill="none"
+              className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
+              strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
+              strokeLinecap="round"
+              transform="rotate(-90 50 50)"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r={ringRadius}
+              fill="none"
+              className={cn(ringShareToneClass, 'house-chart-ring-dashoffset-motion')}
+              strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
+              strokeLinecap="round"
+              transform="rotate(-90 50 50)"
+              style={{
+                strokeDasharray: ringCircumference,
+                strokeDashoffset: ringVisibleOffset,
+                '--chart-transition-duration': ringTransitionDuration,
+              } as React.CSSProperties}
+            />
+            <text x="50" y="50" textAnchor="middle" dominantBaseline="central" className={HOUSE_CHART_RING_CENTER_LABEL_CLASS}>
+              {papersAtThresholdLabel}
+            </text>
+          </svg>
+        </div>
+        <div className="flex-1" />
       </div>
     </div>
   )
@@ -4232,18 +4337,6 @@ function normalizeRoleLabel(value: string): string {
 
 void normalizeRoleLabel
 
-export function median(values: number[]): number {
-  if (!values.length) {
-    return 0
-  }
-  const sorted = [...values].sort((left, right) => left - right)
-  const middle = Math.floor(sorted.length / 2)
-  if (sorted.length % 2 === 1) {
-    return sorted[middle]
-  }
-  return (sorted[middle - 1] + sorted[middle]) / 2
-}
-
 type PublicationCategoryDimension = 'publication' | 'article'
 
 type PublicationCategoryWindowBars = {
@@ -4584,7 +4677,7 @@ export function PublicationCategoryDistributionChart({
           >
                 <span
                   className={HOUSE_TOGGLE_THUMB_CLASS}
-                  style={buildTileToggleThumbStyle(activeWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length)}
+                  style={buildTileToggleThumbStyle(activeWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length, isEntryCycle)}
                   aria-hidden="true"
                 />
             {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
@@ -4621,7 +4714,7 @@ export function PublicationCategoryDistributionChart({
             >
                 <span
                   className={HOUSE_TOGGLE_THUMB_CLASS}
-                  style={buildTileToggleThumbStyle(activeValueModeIndex, PUBLICATION_VALUE_MODE_OPTIONS.length)}
+                  style={buildTileToggleThumbStyle(activeValueModeIndex, PUBLICATION_VALUE_MODE_OPTIONS.length, isEntryCycle)}
                   aria-hidden="true"
                 />
               {PUBLICATION_VALUE_MODE_OPTIONS.map((option) => (
@@ -4658,7 +4751,7 @@ export function PublicationCategoryDistributionChart({
           >
                 <span
                   className={HOUSE_TOGGLE_THUMB_CLASS}
-                  style={buildTileToggleThumbStyle(activeDisplayModeIndex, PUBLICATION_DISPLAY_MODE_OPTIONS.length)}
+                  style={buildTileToggleThumbStyle(activeDisplayModeIndex, PUBLICATION_DISPLAY_MODE_OPTIONS.length, isEntryCycle)}
                   aria-hidden="true"
                 />
             {PUBLICATION_DISPLAY_MODE_OPTIONS.map((option) => (
@@ -4867,6 +4960,8 @@ function TotalPublicationsDrilldownWorkspace({
     0,
     PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === publicationTrendsWindowMode),
   )
+  const publicationTrendsAnimationKey = `pub-trends|${publicationTrendsWindowMode}|${publicationTrendsVisualMode}`
+  const publicationTrendsIsEntryCycle = useIsFirstChartEntry(publicationTrendsAnimationKey, true)
 
   useEffect(() => {
     setPublicationTrendsWindowMode('5y')
@@ -5040,7 +5135,7 @@ function TotalPublicationsDrilldownWorkspace({
                     >
                       <span
                         className={HOUSE_TOGGLE_THUMB_CLASS}
-                        style={buildTileToggleThumbStyle(publicationTrendsWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length)}
+                        style={buildTileToggleThumbStyle(publicationTrendsWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length, publicationTrendsIsEntryCycle)}
                         aria-hidden="true"
                       />
                       {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
@@ -6054,9 +6149,16 @@ export function PublicationsTopStrip({
   )
   const [toolboxOpen, setToolboxOpen] = useState(false)
   const [chartRefreshCycle, setChartRefreshCycle] = useState(0)
+  
+  // Entry cycle tracking for tile toggles (top-level hooks)
+  const momentumAnimationKey = `momentum|${momentumWindowMode}`
+  const isEntryCycle = useIsFirstChartEntry(momentumAnimationKey, true)
+  const fieldPercentileAnimationKey = `field_percentile|${fieldPercentileThreshold}`
+  const isFieldPercentileEntryCycle = useIsFirstChartEntry(fieldPercentileAnimationKey, true)
+  
   const tileMotionStyle = useMemo(() => ({
-    '--motion-duration-chart-refresh': `${TILE_MOTION_ENTRY_DURATION_MS}ms`,
-    '--motion-duration-chart-toggle': `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
+    '--motion-duration-chart-refresh': `${CHART_MOTION.entry.duration}ms`,
+    '--motion-duration-chart-toggle': `${CHART_MOTION.toggle.duration}ms`,
   }) as CSSProperties, [])
 
   useEffect(() => {
@@ -6195,16 +6297,14 @@ export function PublicationsTopStrip({
       <Card className={HOUSE_SURFACE_PANEL_BARE_CLASS} style={tileMotionStyle}>
         <CardContent className="p-0">
           <div className="house-main-heading-block">
-            <div className="min-w-0 flex items-center gap-2">
-              <p className={HOUSE_HEADING_SECTION_TITLE_CLASS}>{PUBLICATION_INSIGHTS_TITLE}</p>
-              {metrics?.status === 'FAILED' ? (
-                <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
-              ) : null}
-            </div>
-            <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible">
+            <p className={HOUSE_HEADING_SECTION_TITLE_CLASS}>{PUBLICATION_INSIGHTS_TITLE}</p>
+            {metrics?.status === 'FAILED' ? (
+              <p className={cn('self-center', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
+            ) : null}
+            <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible self-center">
               <div
                 className={cn(
-                  'overflow-visible transition-[max-width,opacity,transform] duration-200 ease-out',
+                  'overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
                   insightsVisible && toolboxOpen
                     ? 'max-w-[20rem] translate-x-0 opacity-100'
                     : 'pointer-events-none max-w-0 translate-x-1 opacity-0',
@@ -6292,7 +6392,7 @@ export function PublicationsTopStrip({
                     variant="house"
                     size="icon"
                     className={cn(
-                      'h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                      'h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
                       HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
                       toolboxOpen && 'house-publications-tools-toggle-open',
                     )}
@@ -6366,6 +6466,7 @@ export function PublicationsTopStrip({
                 const shouldHideLegacyTrendText =
                   tile.key === 'total_citations' && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
                 const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
+                
                 if (tile.key === 'total_citations') {
                   return (
                     <TotalCitationsTile
@@ -6437,7 +6538,7 @@ export function PublicationsTopStrip({
                       >
                         <span
                           className={HOUSE_TOGGLE_THUMB_CLASS}
-                          style={buildTileToggleThumbStyle(momentumWindowMode === '5y' ? 1 : 0, 2)}
+                          style={buildTileToggleThumbStyle(momentumWindowMode === '5y' ? 1 : 0, 2, isEntryCycle)}
                           aria-hidden="true"
                         />
                         <button
@@ -6595,16 +6696,23 @@ export function PublicationsTopStrip({
                   )
                   detailText = undefined
                   contentGridClassName = 'grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)]'
+                  const activeThresholdIndex = Math.max(0, availableThresholds.indexOf(activeThreshold))
                   const percentileToggleNode = (
                     <div
-                      className={HOUSE_FIELD_PERCENTILE_LEFT_CHART_TRACK_CLASS}
+                      className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-5 w-full max-w-[13.5rem]')}
                       style={{
-                        gridTemplateRows: `repeat(${availableThresholds.length}, minmax(0, 1fr))`,
-                        minHeight: `${availableThresholds.length * 1.785}rem`,
-                        padding: 0,
+                        gridTemplateColumns: `repeat(${availableThresholds.length}, minmax(0, 1fr))`,
                       }}
                       data-stop-tile-open="true"
                     >
+                      <span
+                        className={cn(
+                          HOUSE_TOGGLE_THUMB_CLASS,
+                          `house-toggle-thumb-threshold-${activeThreshold}`,
+                        )}
+                        style={buildTileToggleThumbStyle(activeThresholdIndex, availableThresholds.length, isFieldPercentileEntryCycle)}
+                        aria-hidden="true"
+                      />
                       {availableThresholds.map((threshold) => (
                         <button
                           key={`field-threshold-${threshold}`}
@@ -6612,10 +6720,9 @@ export function PublicationsTopStrip({
                           data-stop-tile-open="true"
                           className={cn(
                             HOUSE_TOGGLE_BUTTON_CLASS,
-                            HOUSE_FIELD_PERCENTILE_TOGGLE_BUTTON_CLASS,
                             'inline-flex h-full w-full min-h-0 flex-1 items-center justify-center px-0 py-0',
                             activeThreshold === threshold
-                              ? FIELD_PERCENTILE_TOGGLE_ACTIVE_BUTTON_CLASS_BY_THRESHOLD[threshold]
+                              ? 'text-white'
                               : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
                           )}
                           onClick={(event) => {

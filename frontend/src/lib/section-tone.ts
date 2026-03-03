@@ -13,6 +13,8 @@ export type HouseSectionTone =
   | 'profile'
   | 'neutral'
 
+export type HouseMarkerTone = 'accent' | 'neutral' | 'positive' | 'warning' | 'danger'
+
 type ToneRule = {
   pattern: RegExp
   tone: HouseSectionTone
@@ -34,6 +36,14 @@ const LEFT_BORDER_CLASS_BY_TONE: Record<CanonicalHouseSectionTone, string> = {
   'learning-centre': houseSurfaces.leftBorderLearningCentre,
   opportunities: houseSurfaces.leftBorderOpportunities,
   neutral: '',
+}
+
+const MARKER_TONE_BY_TONE: Record<CanonicalHouseSectionTone, HouseMarkerTone> = {
+  profile: 'accent',
+  workspace: 'positive',
+  'learning-centre': 'warning',
+  opportunities: 'danger',
+  neutral: 'neutral',
 }
 
 function toCanonicalSectionTone(tone: HouseSectionTone): CanonicalHouseSectionTone {
@@ -144,6 +154,10 @@ export function getHouseNavToneClass(tone: HouseSectionTone): string {
 
 export function getHouseLeftBorderToneClass(tone: HouseSectionTone): string {
   return LEFT_BORDER_CLASS_BY_TONE[toCanonicalSectionTone(tone)]
+}
+
+export function getSectionMarkerTone(tone: HouseSectionTone): HouseMarkerTone {
+  return MARKER_TONE_BY_TONE[toCanonicalSectionTone(tone)]
 }
 
 export function resolveAccountSectionTone(pathname: string): HouseSectionTone {

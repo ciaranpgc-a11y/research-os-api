@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui'
 import { API_BASE_URL } from '@/lib/api'
 import { fetchResearchOverviewSuggestions } from '@/lib/study-core-api'
 import type { ResearchOverviewSuggestionsPayload } from '@/types/study-core'
@@ -949,7 +949,7 @@ export function Step1Panel({
   const applyDisabled = loading
   const pendingToRender = pendingKeys.slice(0, 3)
   const hiddenPendingCount = Math.max(0, pendingKeys.length - pendingToRender.length)
-  const primaryAction = useMemo(() => {
+  const primaryAction = (() => {
     if (!summary.trim()) {
       return null
     }
@@ -968,13 +968,7 @@ export function Step1Panel({
       }
     }
     return null
-  }, [
-    loading,
-    onApplyAllPending,
-    pendingKeys.length,
-    refinementsEnabled,
-    summary,
-  ])
+  })()
 
   const suggestionCardPulseClass = (key: AppliedKey, colourClass: string) =>
     `${colourClass} ${CARD_TRANSITION_CLASS} ${

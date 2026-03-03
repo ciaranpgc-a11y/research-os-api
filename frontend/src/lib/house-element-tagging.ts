@@ -77,7 +77,6 @@ export function installHouseElementTagging(): () => void {
     const inspectedCount = applyHouseRoleTags(document.body)
     if (import.meta.env.DEV && !hasLoggedDevSummary) {
       hasLoggedDevSummary = true
-      // eslint-disable-next-line no-console
       console.info(`[house-style] Auto-tagging active. Tagged scan size: ${inspectedCount} elements.`)
     }
   }

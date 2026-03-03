@@ -203,6 +203,63 @@
     --motion-duration-chart-ring-fill: var(--motion-duration-slower);
     --motion-duration-chart-toggle: 540ms;
     --motion-duration-chart-refresh: 1200ms;
+
+    /* Chart Animation Tokens - Semantic Motion System
+     * 
+     * Animation contexts define WHEN an animation occurs:
+     * - entry:   First appearance after mount (theatrical, welcoming)
+     * - toggle:  User interaction/mode change (responsive, snappy)
+     * - morph:   Structural change (bar count changes, graceful)
+     * - axis:    Labels/scales update (coordinated with data)
+     * - refresh: Background data updates (smooth, non-disruptive)
+     *
+     * Chart types have specialized timing:
+     * - bar:  Standard bar/column charts with stagger
+     * - ring: Circular/donut charts with rotation
+     * - line: Path-based charts (currently shares bar timing when bimodal)
+     *
+     * Timing hierarchy (slowest → fastest):
+     * Entry > Morph > Refresh > Toggle
+     * 560ms > 440ms > 420ms > 360ms
+     *
+     * Usage:
+     * - BAR CHARTS: Use getChartAnimationDuration(context, 'bar')
+     * - RING CHARTS: Use ringChartDurationVar(isEntryCycle)
+     * - AXIS: Use getAxisAnimationDuration(context)
+     * - STAGGER: Use getChartStaggerDelay(index, context)
+     */
+    
+    /* Entry: First appearance (theatrical, welcoming) */
+    --motion-chart-entry-duration: 560ms;
+    --motion-chart-entry-delay: 140ms;
+    --motion-chart-entry-stagger: 65ms;
+    --motion-chart-entry-stagger-max: 390ms;
+    
+    /* Toggle: User interaction (responsive, snappy) */
+    --motion-chart-toggle-duration: 360ms;
+    --motion-chart-toggle-delay: 0ms;
+    --motion-chart-toggle-stagger: 0ms;
+    
+    /* Morph: Bar count changes (graceful transition) */
+    --motion-chart-morph-duration: 440ms;
+    --motion-chart-morph-stagger: 25ms;
+    
+    /* Axis: Label/scale updates (coordinated) */
+    --motion-chart-axis-entry: 380ms;
+    --motion-chart-axis-toggle: 340ms;
+    --motion-chart-axis-overlap: 100ms;
+    
+    /* Refresh: Background data updates (smooth, non-disruptive) */
+    --motion-chart-refresh-duration: 420ms;
+    
+    /* Ring Charts: Rotation and fill */
+    --motion-chart-ring-entry: 520ms;
+    --motion-chart-ring-toggle: 380ms;
+    
+    /* Line Charts: Path drawing */
+    --motion-chart-line-entry: 580ms;
+    --motion-chart-line-toggle: 400ms;
+    
     --motion-ease-default: ease-out;
     --motion-ease-elastic: cubic-bezier(0.22, 1, 0.36, 1);
     --motion-ease-chart-series: cubic-bezier(0.2, 0.68, 0.16, 1);
@@ -252,12 +309,16 @@
 
     --marker-width: 3px;
     --marker-width-header: var(--marker-width);
+    --marker-width-title: 4px;
     --marker-width-left-nav: var(--marker-width);
     --marker-width-panel: var(--marker-width);
     --marker-height-header: 1rem;
+    --marker-height-title: var(--text-display-size);
     --marker-height-left-nav: 1rem;
+    --marker-gap-title: var(--space-1);
     --marker-radius: 9999px;
     --marker-opacity: 0.92;
+    --page-header-title-gap: var(--space-1);
     --left-nav-divider-height: 1.5px;
     --left-nav-divider-color: hsl(var(--tone-neutral-300) / 0.9);
     --left-nav-divider-margin: 0.5rem;
@@ -324,10 +385,10 @@
     --top-nav-active-bg-profile: hsl(var(--section-style-profile-accent) / 0.18);
     --top-nav-active-bg-learning-centre: hsl(var(--section-style-learning-centre-accent) / 0.18);
     --top-nav-active-bg-opportunities: hsl(var(--section-style-opportunities-accent) / 0.18);
-    --section-style-workspace-accent: var(--tone-accent-500);
-    --section-style-profile-accent: var(--tone-positive-500);
-    --section-style-learning-centre-accent: var(--tone-warning-500);
-    --section-style-opportunities-accent: var(--tone-danger-500);
+    --section-style-workspace-accent: var(--tone-accent-400);
+    --section-style-profile-accent: var(--tone-positive-400);
+    --section-style-learning-centre-accent: var(--tone-warning-400);
+    --section-style-opportunities-accent: var(--tone-danger-400);
 
     --top-nav-accent-workspace: var(--section-style-workspace-accent);
     --top-nav-accent-profile: var(--section-style-profile-accent);
@@ -511,7 +572,7 @@
   .house-main-section-heading-row {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 0.5rem;
     padding-block: 0.375rem;
@@ -623,7 +684,7 @@
   }
 
   .house-metric-right-chart-panel {
-    --metric-right-chart-top-inset: 1rem;
+    --metric-right-chart-top-inset: 0.625rem;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -727,6 +788,10 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
+  }
+
+  .house-page-title-row {
+    margin-inline-start: calc(var(--layout-section-anchor-inline) - 0.75rem);
   }
 
   .house-section-anchor {
@@ -1011,6 +1076,10 @@
   @media (min-width: 768px) {
     .house-section-anchor {
       margin-inline-start: var(--layout-section-anchor-inline-md);
+    }
+
+    .house-page-title-row {
+      margin-inline-start: calc(var(--layout-section-anchor-inline-md) - 0.75rem);
     }
 
     [data-house-role="page-header"] {
@@ -3477,8 +3546,8 @@
   }
 
   .house-chart-ring-size {
-    width: 8.47rem;
-    height: 8.47rem;
+    width: 9.35rem;
+    height: 9.35rem;
   }
 
   .house-chart-mini-donut {
@@ -4874,7 +4943,7 @@
   .publications-insights-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-auto-rows: minmax(var(--metric-tile-grid-row-min-height), 1fr);
+    grid-auto-rows: var(--metric-tile-grid-row-min-height);
     align-items: stretch;
     justify-items: stretch;
     align-content: stretch;

@@ -1,6 +1,7 @@
 import * as React from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
+import type { VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
+import { cardPrimitiveVariants } from './CardPrimitive.variants'
 
 /**
  * CardPrimitive token contract:
@@ -8,7 +9,7 @@ import { cn } from '@/lib/utils'
  * - Spacing: --space-3 (default), --space-2 (header/footer tight edge)
  * - Surface: --card / --card-foreground / --border
  * - Elevation: --elevation-1 (rest), --elevation-2 (hover interactive)
- * - Motion: --motion-ui (fallback --motion-duration-ui), --motion-ease-default
+ * - Motion: --motion-duration-ui, --motion-ease-default
  *
  * Usage guidance:
  * - Use `variant="default"` for elevated containers.
@@ -16,34 +17,6 @@ import { cn } from '@/lib/utils'
  * - Use `variant="outlined"` for border-forward separation.
  * - Set `interactive` when the whole card is clickable/hover-reactive.
  */
-
-const cardPrimitiveVariants = cva(
-  [
-    'rounded-[var(--radius-md)]',
-    'border border-[hsl(var(--border))]',
-    'bg-[hsl(var(--card))] text-[hsl(var(--card-foreground))]',
-    'transition-[box-shadow,transform,border-color]',
-    'duration-ui ease-out',
-    'shadow-[var(--card-elevation-rest)]',
-  ].join(' '),
-  {
-    variants: {
-      variant: {
-        default: 'shadow-[var(--card-elevation-rest)]',
-        flat: 'shadow-none',
-        outlined: 'border-[hsl(var(--tone-neutral-400))] shadow-none',
-      },
-      interactive: {
-        true: 'cursor-pointer hover:shadow-[var(--card-elevation-hover)]',
-        false: '',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
-      interactive: false,
-    },
-  },
-)
 
 export interface CardPrimitiveProps
   extends React.HTMLAttributes<HTMLDivElement>,
@@ -62,9 +35,7 @@ const CardPrimitive = React.forwardRef<HTMLDivElement, CardPrimitiveProps>(
         data-ui-interactive={String(resolvedInteractive)}
         className={cn(cardPrimitiveVariants({ variant: resolvedVariant, interactive: resolvedInteractive }), className)}
         style={{
-          ['--card-elevation-rest' as string]: 'var(--elevation-1, var(--elevation-xs))',
-          ['--card-elevation-hover' as string]: 'var(--elevation-2, var(--elevation-sm))',
-          transitionDuration: 'var(--motion-ui, var(--motion-duration-ui))',
+          transitionDuration: 'var(--motion-duration-ui)',
           transitionTimingFunction: 'var(--motion-ease-default)',
           ...style,
         }}
@@ -161,4 +132,4 @@ const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
 )
 CardFooter.displayName = 'CardFooter'
 
-export { CardPrimitive, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, cardPrimitiveVariants }
+export { CardPrimitive, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }

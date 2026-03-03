@@ -1,8 +1,8 @@
 import { Download, Loader2, ShieldCheck } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Select } from '@/components/ui/select'
+import { Button } from '@/components/ui'
+import { Select } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import {
   exportManuscriptMarkdownWithWarnings,
@@ -122,7 +122,7 @@ export function StepLinkQcExport({
     }
   }
 
-  const onExportStrict = async () => {
+  const onExportStrict = useCallback(async () => {
     if (!runContext) {
       onError('Context must be saved before export.')
       return
@@ -143,7 +143,7 @@ export function StepLinkQcExport({
     } finally {
       setBusy('')
     }
-  }
+  }, [onError, onStatus, runContext])
 
   useEffect(() => {
     if (!onRegisterPrimaryExportAction) {
@@ -161,7 +161,7 @@ export function StepLinkQcExport({
     return () => {
       onRegisterPrimaryExportAction(null)
     }
-  }, [onRegisterPrimaryExportAction, qcStatus, runContext])
+  }, [onExportStrict, onRegisterPrimaryExportAction, qcStatus])
 
   const onExportWithWarnings = async () => {
     if (!runContext) {

@@ -1,0 +1,1472 @@
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+
+import {
+  Container,
+  Grid,
+  PageHeader,
+  Row,
+  Section,
+  SectionHeader,
+  Stack,
+} from '@/components/primitives'
+import {
+  Badge,
+  Banner,
+  BannerContent,
+  BannerDescription,
+  BannerTitle,
+  Button,
+  IconButton,
+  Input,
+  Label,
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalContent,
+  ModalDescription,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+  ModalTrigger,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui'
+import {
+  ChartFrame,
+  PanelShell,
+  SectionMarker,
+  useChartMotion,
+  useChartTheme,
+} from '@/components/patterns'
+
+type RGB = { r: number; g: number; b: number }
+
+const CORE_COLOR_TOKENS = [
+  '--background',
+  '--foreground',
+  '--card',
+  '--card-foreground',
+  '--muted',
+  '--muted-foreground',
+  '--border',
+  '--ring',
+  '--primary',
+  '--primary-foreground',
+  '--accent',
+  '--accent-foreground',
+  '--destructive',
+  '--destructive-foreground',
+  '--status-ok',
+  '--status-warn',
+  '--status-danger',
+] as const
+
+const NEUTRAL_RAMP_TOKENS = [
+  '--tone-neutral-50',
+  '--tone-neutral-100',
+  '--tone-neutral-200',
+  '--tone-neutral-300',
+  '--tone-neutral-400',
+  '--tone-neutral-500',
+  '--tone-neutral-600',
+  '--tone-neutral-700',
+  '--tone-neutral-800',
+  '--tone-neutral-900',
+  '--tone-neutral-950',
+] as const
+
+const ACCENT_RAMP_TOKENS = [
+  '--tone-accent-50',
+  '--tone-accent-100',
+  '--tone-accent-200',
+  '--tone-accent-300',
+  '--tone-accent-400',
+  '--tone-accent-500',
+  '--tone-accent-600',
+  '--tone-accent-700',
+  '--tone-accent-800',
+  '--tone-accent-900',
+] as const
+
+const STATUS_RAMP_TOKENS = [
+  '--tone-positive-50',
+  '--tone-positive-100',
+  '--tone-positive-200',
+  '--tone-positive-300',
+  '--tone-positive-400',
+  '--tone-positive-500',
+  '--tone-positive-600',
+  '--tone-warning-200',
+  '--tone-warning-400',
+  '--tone-warning-600',
+  '--tone-danger-200',
+  '--tone-danger-400',
+  '--tone-danger-600',
+] as const
+
+const SPACING_TOKENS = [
+  '--space-0',
+  '--space-1',
+  '--space-2',
+  '--space-3',
+  '--space-4',
+  '--space-5',
+  '--space-6',
+  '--space-7',
+  '--space-8',
+] as const
+
+const RADIUS_TOKENS = ['--radius-xs', '--radius-sm', '--radius-md', '--radius-lg', '--radius-full'] as const
+const ELEVATION_TOKENS = ['--elevation-none', '--elevation-xs', '--elevation-sm', '--elevation-md', '--elevation-lg'] as const
+const MOTION_DURATION_TOKENS = [
+  '--motion-duration-fast',
+  '--motion-duration-ui',
+  '--motion-duration-base',
+  '--motion-duration-slow',
+  '--motion-duration-slower',
+  '--motion-duration-emphasis',
+] as const
+const MOTION_EASE_TOKENS = ['--motion-ease-default', '--motion-ease-elastic', '--motion-ease-chart-series'] as const
+
+const APPROVAL_CONTRACT_ITEMS = [
+  'Single source of truth: this page is the only active approval surface in Storybook.',
+  'Canonical imports only: primitives, ui, and patterns barrels.',
+  'No ad-hoc tokens, no deep imports, and no legacy composition in approval examples.',
+  'Each control is reviewed as a state matrix, not an isolated happy-path sample.',
+]
+
+const METRIC_TILE_CONTRACT_ITEMS = [
+  'Tile shell uses house-metric-tile-shell with tokenized background, border, and selected states.',
+  'Tile chart surface uses house-metric-tile-chart-surface and follows shell hover/selected inheritance.',
+  'Motion timing must use --motion-duration-* tokens and --motion-ease-* tokens only.',
+  'Reduced-motion mode must disable choreography and preserve immediate state clarity.',
+  'Chart tooltips use canonical Tooltip primitives and are keyboard-focusable.',
+  'Banners and segmented toggles are approved as reusable controls outside publications.',
+] as const
+
+const FIELD_THRESHOLD_OPTIONS = [50, 75, 90, 95, 99] as const
+
+const FIELD_THRESHOLD_THUMB_CLASS: Record<(typeof FIELD_THRESHOLD_OPTIONS)[number], string> = {
+  50: 'house-toggle-thumb-threshold-50',
+  75: 'house-toggle-thumb-threshold-75',
+  90: 'house-toggle-thumb-threshold-90',
+  95: 'house-toggle-thumb-threshold-95',
+  99: 'house-toggle-thumb-threshold-99',
+}
+
+const ANIMATION_AUDIT_ROWS = [
+  {
+    status: 'Pass',
+    item: 'Tokenized duration and easing',
+    requirement: 'All transitions reference --motion-duration-* and --motion-ease-* tokens.',
+    scope: 'Tile shell, chart surface, drilldown controls',
+    evidence: 'Computed styles from approvals and live page probes',
+  },
+  {
+    status: 'Pass',
+    item: 'Reduced-motion compliance',
+    requirement: 'No staggered choreography when reduced motion is enabled.',
+    scope: 'Tile entry, chart morphing, tooltip transitions',
+    evidence: 'Approvals reduced-motion toggle + visual check',
+  },
+  {
+    status: 'Partial',
+    item: 'Interaction latency budget',
+    requirement: 'Primary feedback starts within 150ms and completes within 700ms.',
+    scope: 'Hover, selection, tab toggles, panel reveal',
+    evidence: 'Most transitions are tokenized; tile entry currently uses a 1000ms JS constant.',
+  },
+  {
+    status: 'Pass',
+    item: 'Tooltip accessibility',
+    requirement: 'Tooltip trigger supports hover and keyboard focus with visible content.',
+    scope: 'Bars, points, interactive chart marks',
+    evidence: 'Canonical chart-tooltip sample in approvals',
+  },
+  {
+    status: 'Partial',
+    item: 'Timing source consistency',
+    requirement: 'Avoid hard-coded timing constants in JS where token mapping can drift.',
+    scope: 'Chart refresh/toggle orchestration hooks',
+    evidence: 'PublicationsTopStrip defines TILE_MOTION_* constants and mirrors them into CSS vars at runtime.',
+  },
+  {
+    status: 'Pass',
+    item: 'Cross-feature reusability',
+    requirement: 'Toggle and banner patterns are represented without publications-only copy.',
+    scope: 'Workspace, profile, and future drilldown variants',
+    evidence: 'Matrix rows in approvals canonical controls',
+  },
+] as const
+
+const GLOSSARY_ROWS = [
+  {
+    element: 'Container',
+    category: 'Primitive',
+    maySet: 'size, gutter',
+    mustNotSet: 'custom widths outside tokenized container scales',
+    whereUsed: 'Page scaffold, panel wrappers',
+  },
+  {
+    element: 'Section / Stack / Row / Grid',
+    category: 'Primitive',
+    maySet: 'surface, inset, spacing, layout density',
+    mustNotSet: 'ad-hoc spacing tokens or unapproved display hacks',
+    whereUsed: 'All approval matrices and recipe compositions',
+  },
+  {
+    element: 'PageHeader / SectionHeader',
+    category: 'Semantic block',
+    maySet: 'eyebrow, heading, description, actions',
+    mustNotSet: 'unstyled heading stacks that bypass semantic primitives',
+    whereUsed: 'Foundations typography and scaffold recipes',
+  },
+  {
+    element: 'Button, Input, Select, Textarea, Tooltip, Badge, Banner, Modal',
+    category: 'Canonical controls',
+    maySet: 'variants, disabled/loading/error/open states',
+    mustNotSet: 're-styled uncontrolled forks of base controls',
+    whereUsed: 'Canonical controls matrix',
+  },
+  {
+    element: 'SectionMarker, PanelShell, ChartFrame',
+    category: 'Pattern',
+    maySet: 'tone, heading, description, tokenized shell actions',
+    mustNotSet: 'legacy panel composition or non-canonical shells',
+    whereUsed: 'Structural recipes and patterns showcase',
+  },
+] as const
+
+function parseRgb(input: string): RGB | null {
+  const match = input.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
+  if (!match) {
+    return null
+  }
+  return {
+    r: Number(match[1]),
+    g: Number(match[2]),
+    b: Number(match[3]),
+  }
+}
+
+function rgbToHex(rgb: RGB | null): string {
+  if (!rgb) {
+    return '—'
+  }
+  const toHex = (value: number) => value.toString(16).padStart(2, '0').toUpperCase()
+  return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`
+}
+
+function luminance(rgb: RGB): number {
+  const transform = (value: number) => {
+    const channel = value / 255
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  }
+  return (0.2126 * transform(rgb.r)) + (0.7152 * transform(rgb.g)) + (0.0722 * transform(rgb.b))
+}
+
+function contrastRatio(left: RGB, right: RGB): number {
+  const light = Math.max(luminance(left), luminance(right))
+  const dark = Math.min(luminance(left), luminance(right))
+  return (light + 0.05) / (dark + 0.05)
+}
+
+function parseLengthPx(value: string, rootFontPx: number): number | null {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return null
+  }
+  if (raw.endsWith('rem')) {
+    return Number.parseFloat(raw) * rootFontPx
+  }
+  if (raw.endsWith('px')) {
+    return Number.parseFloat(raw)
+  }
+  return null
+}
+
+function formatLength(value: string, rootFontPx: number): string {
+  const px = parseLengthPx(value, rootFontPx)
+  if (px === null || !Number.isFinite(px)) {
+    return value || '—'
+  }
+  const rem = px / rootFontPx
+  return `${px.toFixed(px % 1 === 0 ? 0 : 2)}px (${rem.toFixed(rem % 1 === 0 ? 0 : 3)}rem)`
+}
+
+function resolveCssVars(tokens: readonly string[]): Record<string, string> {
+  if (typeof document === 'undefined') {
+    return {}
+  }
+  const styles = getComputedStyle(document.documentElement)
+  return tokens.reduce<Record<string, string>>((acc, token) => {
+    acc[token] = styles.getPropertyValue(token).trim()
+    return acc
+  }, {})
+}
+
+function MatrixCell({
+  title,
+  note,
+  spec,
+  children,
+}: {
+  title: string
+  note: string
+  spec?: string
+  children: ReactNode
+}) {
+  return (
+    <Section surface="card" inset="sm" spaceY="sm">
+      <Stack space="sm">
+        <Stack space="sm">
+          <div className="text-label font-medium text-[hsl(var(--foreground))]">{title}</div>
+          <div className="text-caption text-[hsl(var(--muted-foreground))]">{note}</div>
+          {spec ? <div className="text-caption text-[hsl(var(--foreground))]">Spec cue: {spec}</div> : null}
+        </Stack>
+        {children}
+      </Stack>
+    </Section>
+  )
+}
+
+function ColorTokenSwatch({
+  token,
+  rawValue,
+  backgroundRgb,
+  modeKey,
+}: {
+  token: string
+  rawValue: string
+  backgroundRgb: RGB | null
+  modeKey: string
+}) {
+  const swatchRef = useRef<HTMLDivElement | null>(null)
+  const [computedRgb, setComputedRgb] = useState<string>('—')
+  const [computedHex, setComputedHex] = useState<string>('—')
+  const [contrast, setContrast] = useState<string>('—')
+
+  useEffect(() => {
+    const swatch = swatchRef.current
+    if (!swatch) {
+      return
+    }
+    const styles = getComputedStyle(swatch)
+    const rgbValue = styles.backgroundColor
+    const parsed = parseRgb(rgbValue)
+    setComputedRgb(rgbValue || '—')
+    setComputedHex(rgbToHex(parsed))
+    if (parsed && backgroundRgb) {
+      setContrast(`${contrastRatio(parsed, backgroundRgb).toFixed(2)}:1`)
+    } else {
+      setContrast('—')
+    }
+  }, [backgroundRgb, modeKey, token])
+
+  return (
+    <Section surface="muted" inset="sm" spaceY="sm">
+      <div
+        ref={swatchRef}
+        className="h-10 w-full rounded-[var(--radius-sm)] border border-[hsl(var(--border))]"
+        style={{ backgroundColor: `hsl(var(${token}))` }}
+      />
+      <Stack space="sm">
+        <div className="text-label font-medium">{token}</div>
+        <div className="text-caption text-[hsl(var(--muted-foreground))]">Var: {rawValue || '—'}</div>
+        <div className="text-caption">RGB: {computedRgb}</div>
+        <div className="text-caption">HEX: {computedHex}</div>
+        <div className="text-caption">Contrast vs background: {contrast}</div>
+      </Stack>
+    </Section>
+  )
+}
+
+function MotionChip({
+  label,
+  durationVar,
+  easeVar,
+  reducedMotion,
+}: {
+  label: string
+  durationVar: string
+  easeVar: string
+  reducedMotion: boolean
+}) {
+  const [active, setActive] = useState(false)
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setActive(false)
+      return
+    }
+    const timer = window.setInterval(() => {
+      setActive((previous) => !previous)
+    }, 1200)
+    return () => window.clearInterval(timer)
+  }, [reducedMotion])
+
+  return (
+    <div className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-2)]">
+      <div className="text-caption text-[hsl(var(--muted-foreground))]">{label}</div>
+      <div className="mt-[var(--space-2)] h-7 w-full rounded-[var(--radius-sm)] bg-[hsl(var(--background))] p-[var(--space-1)]">
+        <div
+          className="h-5 w-5 rounded-full bg-[hsl(var(--accent))]"
+          style={{
+            transform: active ? 'translateX(2.5rem)' : 'translateX(0rem)',
+            transitionProperty: 'transform',
+            transitionDuration: reducedMotion ? '0ms' : `var(${durationVar})`,
+            transitionTimingFunction: `var(${easeVar})`,
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function IconGlyph({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v10M7 12h10" />
+    </svg>
+  )
+}
+
+export function ApprovalsContent() {
+  const [isDark, setIsDark] = useState(false)
+  const [reducedMotion, setReducedMotion] = useState(false)
+  const [gridMode, setGridMode] = useState<'off' | '8' | '16'>('off')
+  const [metricWindow, setMetricWindow] = useState<'12m' | '5y'>('12m')
+  const [insightsVisibility, setInsightsVisibility] = useState<'visible' | 'hidden'>('visible')
+  const [chartVisualMode, setChartVisualMode] = useState<'bars' | 'line'>('bars')
+  const [fieldThreshold, setFieldThreshold] = useState<(typeof FIELD_THRESHOLD_OPTIONS)[number]>(75)
+  const chartTheme = useChartTheme()
+  const chartMotion = useChartMotion('default')
+
+  const initialThemeRef = useRef<{ dark: boolean; reduced: boolean } | null>(null)
+  const backgroundProbeRef = useRef<HTMLDivElement | null>(null)
+  const pageHeaderRef = useRef<HTMLDivElement | null>(null)
+  const sectionHeaderRef = useRef<HTMLDivElement | null>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const selectRef = useRef<HTMLSelectElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+
+  const [rootVars, setRootVars] = useState<Record<string, string>>({})
+  const [rootFontPx, setRootFontPx] = useState(16)
+  const [backgroundRgb, setBackgroundRgb] = useState<RGB | null>(null)
+  const [typographyRows, setTypographyRows] = useState<Array<Record<string, string>>>([])
+  const [controlHeights, setControlHeights] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+    const root = document.documentElement
+    const initialDark = root.classList.contains('dark')
+    const initialReduced = root.dataset.reducedMotion === 'true'
+    initialThemeRef.current = { dark: initialDark, reduced: initialReduced }
+    setIsDark(initialDark)
+    setReducedMotion(initialReduced)
+    return () => {
+      const initial = initialThemeRef.current
+      if (!initial) {
+        return
+      }
+      root.classList.toggle('dark', initial.dark)
+      if (initial.reduced) {
+        root.dataset.reducedMotion = 'true'
+      } else {
+        delete root.dataset.reducedMotion
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+    const root = document.documentElement
+    root.classList.toggle('dark', isDark)
+  }, [isDark])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+    const root = document.documentElement
+    if (reducedMotion) {
+      root.dataset.reducedMotion = 'true'
+    } else {
+      delete root.dataset.reducedMotion
+    }
+  }, [reducedMotion])
+
+  const modeKey = `${isDark ? 'dark' : 'light'}|${reducedMotion ? 'reduced' : 'motion'}`
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+    const rootStyle = getComputedStyle(document.documentElement)
+    const rootFont = Number.parseFloat(rootStyle.fontSize || '16')
+    if (Number.isFinite(rootFont)) {
+      setRootFontPx(rootFont)
+    }
+    setRootVars(
+      resolveCssVars([
+        ...CORE_COLOR_TOKENS,
+        ...NEUTRAL_RAMP_TOKENS,
+        ...ACCENT_RAMP_TOKENS,
+        ...STATUS_RAMP_TOKENS,
+        ...SPACING_TOKENS,
+        ...RADIUS_TOKENS,
+        ...ELEVATION_TOKENS,
+        ...MOTION_DURATION_TOKENS,
+        ...MOTION_EASE_TOKENS,
+      ]),
+    )
+  }, [modeKey])
+
+  useEffect(() => {
+    const probe = backgroundProbeRef.current
+    if (!probe) {
+      return
+    }
+    const rgb = parseRgb(getComputedStyle(probe).backgroundColor)
+    setBackgroundRgb(rgb)
+  }, [modeKey])
+
+  useEffect(() => {
+    const readTypography = (selector: string, container: HTMLDivElement | null) => {
+      const node = container?.querySelector(selector)
+      if (!node) {
+        return {
+          fontSize: '—',
+          lineHeight: '—',
+          letterSpacing: '—',
+          fontWeight: '—',
+        }
+      }
+      const styles = getComputedStyle(node)
+      const fontSizePx = Number.parseFloat(styles.fontSize || '0')
+      const fontSizeRem = rootFontPx > 0 ? fontSizePx / rootFontPx : 0
+      return {
+        fontSize: `${fontSizePx.toFixed(fontSizePx % 1 === 0 ? 0 : 2)}px (${fontSizeRem.toFixed(3)}rem)`,
+        lineHeight: styles.lineHeight,
+        letterSpacing: styles.letterSpacing,
+        fontWeight: styles.fontWeight,
+      }
+    }
+
+    setTypographyRows([
+      {
+        role: 'PageHeader heading',
+        ...readTypography('[data-ui="page-header-heading"]', pageHeaderRef.current),
+      },
+      {
+        role: 'SectionHeader heading',
+        ...readTypography('[data-ui="section-header-heading"]', sectionHeaderRef.current),
+      },
+      {
+        role: 'Body sample',
+        ...readTypography('[data-ui="approvals-body-sample"]', bodyRef.current),
+      },
+    ])
+  }, [modeKey, rootFontPx])
+
+  useEffect(() => {
+    const measureHeight = (element: HTMLElement | null) => {
+      if (!element) {
+        return '—'
+      }
+      const { height } = element.getBoundingClientRect()
+      const rem = rootFontPx > 0 ? height / rootFontPx : 0
+      return `${height.toFixed(height % 1 === 0 ? 0 : 2)}px (${rem.toFixed(3)}rem)`
+    }
+    setControlHeights({
+      button: measureHeight(buttonRef.current),
+      input: measureHeight(inputRef.current),
+      select: measureHeight(selectRef.current),
+      textarea: measureHeight(textareaRef.current),
+    })
+  }, [modeKey, rootFontPx])
+
+  const spacingRows = useMemo(
+    () => SPACING_TOKENS.map((token) => ({ token, value: formatLength(rootVars[token] || '', rootFontPx) })),
+    [rootFontPx, rootVars],
+  )
+
+  const gridOverlayStyle = useMemo<CSSProperties>(() => {
+    if (gridMode === 'off') {
+      return {}
+    }
+    const baseline = Number(gridMode)
+    return {
+      position: 'fixed',
+      inset: 0,
+      pointerEvents: 'none',
+      zIndex: 20,
+      backgroundImage: `repeating-linear-gradient(to right, hsl(var(--accent) / 0.12) 0 1px, transparent 1px ${baseline}px), repeating-linear-gradient(to bottom, hsl(var(--accent) / 0.12) 0 1px, transparent 1px ${baseline}px)`,
+    }
+  }, [gridMode])
+
+  return (
+    <Container size="wide" gutter="default" className="relative py-[var(--space-6)]">
+      <div ref={backgroundProbeRef} className="sr-only" style={{ backgroundColor: 'hsl(var(--background))' }} />
+      {gridMode !== 'off' ? <div aria-hidden="true" style={gridOverlayStyle} /> : null}
+      <Stack space="lg">
+        <PageHeader
+          eyebrow="Design System"
+          heading="Approvals"
+          description="Single canonical approval surface for foundations, primitives, controls, patterns, and definitions."
+        />
+
+        <Section surface="card" inset="lg" spaceY="md">
+          <SectionHeader
+            eyebrow="0"
+            heading="Sticky Control Bar"
+            description="Theme, reduced-motion, and baseline-grid controls for this canonical approvals page."
+          />
+          <div className="sticky top-0 z-30 rounded-[var(--radius-md)] border border-[hsl(var(--border))] bg-[hsl(var(--background)/0.9)] p-[var(--space-3)] backdrop-blur">
+            <Row gap="sm" align="start" className="flex-wrap items-center">
+              <Button variant={isDark ? 'default' : 'outline'} onClick={() => setIsDark((previous) => !previous)}>
+                {isDark ? 'Dark mode: On' : 'Dark mode: Off'}
+              </Button>
+              <Button variant={reducedMotion ? 'default' : 'outline'} onClick={() => setReducedMotion((previous) => !previous)}>
+                {reducedMotion ? 'Reduced motion: On' : 'Reduced motion: Off'}
+              </Button>
+              <Button variant={gridMode === 'off' ? 'default' : 'outline'} onClick={() => setGridMode('off')}>
+                Grid: Off
+              </Button>
+              <Button variant={gridMode === '8' ? 'default' : 'outline'} onClick={() => setGridMode('8')}>
+                Grid: 8px
+              </Button>
+              <Button variant={gridMode === '16' ? 'default' : 'outline'} onClick={() => setGridMode('16')}>
+                Grid: 16px
+              </Button>
+            </Row>
+          </div>
+        </Section>
+
+        <Section surface="card" inset="lg" spaceY="md">
+          <SectionHeader
+            eyebrow="1"
+            heading="Foundations: Visual Spec"
+            description="Computed token values for colors, typography, spacing, radius/elevation, and motion."
+          />
+
+          <Stack space="md">
+            <Section surface="muted" inset="md" spaceY="sm">
+              <SectionHeader heading="A) Colors" description="Canonical token set rendered as live swatches with computed rgb/hex and contrast ratios." />
+              <Grid cols={3} gap="sm">
+                {CORE_COLOR_TOKENS.map((token) => (
+                  <ColorTokenSwatch key={token} token={token} rawValue={rootVars[token] || ''} backgroundRgb={backgroundRgb} modeKey={modeKey} />
+                ))}
+              </Grid>
+              <SectionHeader heading="Neutral ramp" description="Tone-neutral canonical ramp." />
+              <Grid cols={4} gap="sm">
+                {NEUTRAL_RAMP_TOKENS.map((token) => (
+                  <ColorTokenSwatch key={token} token={token} rawValue={rootVars[token] || ''} backgroundRgb={backgroundRgb} modeKey={modeKey} />
+                ))}
+              </Grid>
+              <SectionHeader heading="Accent ramp" description="Tone-accent canonical ramp." />
+              <Grid cols={4} gap="sm">
+                {ACCENT_RAMP_TOKENS.map((token) => (
+                  <ColorTokenSwatch key={token} token={token} rawValue={rootVars[token] || ''} backgroundRgb={backgroundRgb} modeKey={modeKey} />
+                ))}
+              </Grid>
+              <SectionHeader heading="Status ramps" description="Positive, warning, and danger ramps." />
+              <Grid cols={4} gap="sm">
+                {STATUS_RAMP_TOKENS.map((token) => (
+                  <ColorTokenSwatch key={token} token={token} rawValue={rootVars[token] || ''} backgroundRgb={backgroundRgb} modeKey={modeKey} />
+                ))}
+              </Grid>
+            </Section>
+
+            <Section surface="muted" inset="md" spaceY="sm">
+              <SectionHeader heading="B) Typography" description="Computed type metrics from rendered canonical primitives." />
+              <Grid cols={3} gap="md">
+                <div ref={pageHeaderRef}>
+                  <Row align="center" gap="md" wrap={false} className="house-page-title-row">
+                    <SectionMarker tone="accent" size="title" className="self-stretch h-auto" />
+                    <PageHeader heading="Page heading sample" description="Body copy follows approved text roles." className="!ml-0 !mt-0" />
+                  </Row>
+                </div>
+                <div ref={sectionHeaderRef}>
+                  <SectionHeader heading="Section heading sample" description="Compact section heading with helper text." />
+                </div>
+                <div ref={bodyRef} className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] p-[var(--space-3)]">
+                  <p data-ui="approvals-body-sample" className="m-0 text-body text-[hsl(var(--foreground))]">
+                    Body text sample used for baseline readability and rhythm checks.
+                  </p>
+                </div>
+              </Grid>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Font size</TableHead>
+                    <TableHead>Line height</TableHead>
+                    <TableHead>Letter spacing</TableHead>
+                    <TableHead>Weight</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {typographyRows.map((row) => (
+                    <TableRow key={row.role}>
+                      <TableCell>{row.role}</TableCell>
+                      <TableCell>{row.fontSize}</TableCell>
+                      <TableCell>{row.lineHeight}</TableCell>
+                      <TableCell>{row.letterSpacing}</TableCell>
+                      <TableCell>{row.fontWeight}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Section>
+
+            <Section surface="muted" inset="md" spaceY="sm">
+              <SectionHeader heading="C) Spacing" description="Canonical --space-0..--space-8 ladder with computed values." />
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Token</TableHead>
+                    <TableHead>Computed value</TableHead>
+                    <TableHead>Preview</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {spacingRows.map((row) => (
+                    <TableRow key={row.token}>
+                      <TableCell>{row.token}</TableCell>
+                      <TableCell>{row.value}</TableCell>
+                      <TableCell>
+                        <div className="rounded-[var(--radius-xs)] bg-[hsl(var(--accent)/0.2)]" style={{ width: rootVars[row.token], height: '0.5rem' }} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Section>
+
+            <Section surface="muted" inset="md" spaceY="sm">
+              <SectionHeader heading="D) Radius + Elevation" description="Numeric token values and visual previews." />
+              <Grid cols={2} gap="md">
+                <Section surface="card" inset="sm" spaceY="sm">
+                  <SectionHeader heading="Radius" description="Corner radius token previews." />
+                  <Stack space="sm">
+                    {RADIUS_TOKENS.map((token) => (
+                      <Row key={token} gap="sm" align="start" className="items-center">
+                        <div className="h-8 w-16 border border-[hsl(var(--border))] bg-[hsl(var(--muted))]" style={{ borderRadius: `var(${token})` }} />
+                        <div className="text-caption">{token}</div>
+                        <div className="text-caption text-[hsl(var(--muted-foreground))]">{formatLength(rootVars[token] || '', rootFontPx)}</div>
+                      </Row>
+                    ))}
+                  </Stack>
+                </Section>
+                <Section surface="card" inset="sm" spaceY="sm">
+                  <SectionHeader heading="Elevation" description="Shadow token previews." />
+                  <Stack space="sm">
+                    {ELEVATION_TOKENS.map((token) => (
+                      <Row key={token} gap="sm" align="start" className="items-center">
+                        <div className="h-8 w-16 rounded-[var(--radius-sm)] bg-[hsl(var(--background))]" style={{ boxShadow: `var(${token})` }} />
+                        <div className="text-caption">{token}</div>
+                        <div className="text-caption text-[hsl(var(--muted-foreground))]">{rootVars[token] || '—'}</div>
+                      </Row>
+                    ))}
+                  </Stack>
+                </Section>
+              </Grid>
+            </Section>
+
+            <Section surface="muted" inset="md" spaceY="sm">
+              <SectionHeader heading="E) Motion" description="Duration/easing tokens with demos that respect reduced motion." />
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Token</TableHead>
+                    <TableHead>Value</TableHead>
+                    <TableHead>Type</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {MOTION_DURATION_TOKENS.map((token) => (
+                    <TableRow key={token}>
+                      <TableCell>{token}</TableCell>
+                      <TableCell>{rootVars[token] || '—'}</TableCell>
+                      <TableCell>Duration</TableCell>
+                    </TableRow>
+                  ))}
+                  {MOTION_EASE_TOKENS.map((token) => (
+                    <TableRow key={token}>
+                      <TableCell>{token}</TableCell>
+                      <TableCell>{rootVars[token] || '—'}</TableCell>
+                      <TableCell>Easing</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <Grid cols={3} gap="sm">
+                <MotionChip label="Fast + default" durationVar="--motion-duration-fast" easeVar="--motion-ease-default" reducedMotion={reducedMotion} />
+                <MotionChip label="Base + elastic" durationVar="--motion-duration-base" easeVar="--motion-ease-elastic" reducedMotion={reducedMotion} />
+                <MotionChip label="Slow + chart-series" durationVar="--motion-duration-slow" easeVar="--motion-ease-chart-series" reducedMotion={reducedMotion} />
+              </Grid>
+            </Section>
+          </Stack>
+        </Section>
+
+        <Section surface="card" inset="lg" spaceY="md">
+          <SectionHeader
+            eyebrow="2"
+            heading="Icons"
+            description="Icon size scale, currentColor behavior, and IconButton state samples."
+          />
+          <Grid cols={3} gap="md">
+            <PanelShell heading="Size scale" description="sm / md / lg">
+              <Row gap="md" align="start" className="items-center">
+                <div className="text-[hsl(var(--foreground))]"><IconGlyph size={14} /></div>
+                <div className="text-[hsl(var(--foreground))]"><IconGlyph size={18} /></div>
+                <div className="text-[hsl(var(--foreground))]"><IconGlyph size={24} /></div>
+              </Row>
+            </PanelShell>
+            <PanelShell heading="currentColor" description="Icons inherit text color on light/dark surfaces.">
+              <Stack space="sm">
+                <div className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-[var(--space-2)] text-[hsl(var(--foreground))]">
+                  <IconGlyph size={20} />
+                </div>
+                <div className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--foreground))] p-[var(--space-2)] text-[hsl(var(--background))]">
+                  <IconGlyph size={20} />
+                </div>
+              </Stack>
+            </PanelShell>
+            <PanelShell heading="IconButton states" description="default / focus target / disabled">
+              <Row gap="sm" align="start" className="items-center">
+                <IconButton aria-label="Default icon button" variant="outline" size="icon"><IconGlyph size={16} /></IconButton>
+                <IconButton aria-label="Focus-visible target" variant="secondary" size="icon" autoFocus><IconGlyph size={16} /></IconButton>
+                <IconButton aria-label="Disabled icon button" variant="outline" size="icon" disabled><IconGlyph size={16} /></IconButton>
+              </Row>
+            </PanelShell>
+          </Grid>
+        </Section>
+
+        <Section surface="card" inset="lg" spaceY="md">
+          <SectionHeader
+            eyebrow="3"
+            heading="Structural Recipes"
+            description="Visual recipe examples for canonical page and drilldown scaffolds."
+          />
+          <Stack space="md">
+            <PanelShell heading="Page scaffold recipe" description="Container → Section → Stack → headers with marker → content.">
+              <Container size="content" gutter="none">
+                <Section surface="muted" inset="md" spaceY="sm">
+                  <Stack space="sm">
+                    <Row align="center" gap="md" wrap={false} className="house-page-title-row">
+                      <SectionMarker tone="accent" size="title" className="self-stretch h-auto" />
+                      <PageHeader heading="Recipe: Research performance" description="Top-level scaffold header with full-height marker." className="!ml-0 !mt-0" />
+                    </Row>
+                    <SectionHeader heading="At-a-glance" description="Secondary semantic grouping." />
+                    <div className="text-body">Recipe body content block.</div>
+                  </Stack>
+                </Section>
+              </Container>
+            </PanelShell>
+
+            <Section surface="muted" inset="md" spaceY="sm">
+              <SectionHeader heading="Drilldown scaffold matrix" description="Surface × density combinations." />
+              <Grid cols={2} gap="md">
+                <Section surface="card" inset="sm" spaceY="sm">
+                  <SectionHeader heading="Card / Compact" description="surface=card, inset=sm" />
+                  <div className="text-caption">Compact drilldown content sample.</div>
+                </Section>
+                <Section surface="card" inset="lg" spaceY="md">
+                  <SectionHeader heading="Card / Comfortable" description="surface=card, inset=lg" />
+                  <div className="text-caption">Comfortable drilldown content sample.</div>
+                </Section>
+                <Section surface="muted" inset="sm" spaceY="sm">
+                  <SectionHeader heading="Muted / Compact" description="surface=muted, inset=sm" />
+                  <div className="text-caption">Compact alternate surface sample.</div>
+                </Section>
+                <Section surface="muted" inset="lg" spaceY="md">
+                  <SectionHeader heading="Muted / Comfortable" description="surface=muted, inset=lg" />
+                  <div className="text-caption">Comfortable alternate surface sample.</div>
+                </Section>
+              </Grid>
+            </Section>
+
+            <Grid cols={2} gap="md">
+              <PanelShell heading="Marker recipe" description="Section markers by context (nav vs title).">
+                <Stack space="sm">
+                  <Row align="start" gap="sm" className="items-center">
+                    <SectionMarker tone="accent" size="nav" />
+                    <div className="text-caption">Nav marker sample (workspace/profile/learning centre rails)</div>
+                  </Row>
+                  <Section surface="muted" inset="sm" spaceY="sm">
+                    <SectionHeader heading="Section tone mapping" description="Canonical section colors for page header markers." />
+                    <Stack space="sm">
+                      <Row align="start" gap="sm" className="items-center">
+                        <SectionMarker tone="accent" size="nav" />
+                        <div className="text-caption">Profile/Publications → accent</div>
+                      </Row>
+                      <Row align="start" gap="sm" className="items-center">
+                        <SectionMarker tone="positive" size="nav" />
+                        <div className="text-caption">Workspace → positive</div>
+                      </Row>
+                      <Row align="start" gap="sm" className="items-center">
+                        <SectionMarker tone="warning" size="nav" />
+                        <div className="text-caption">Learning Centre → warning</div>
+                      </Row>
+                      <Row align="start" gap="sm" className="items-center">
+                        <SectionMarker tone="danger" size="nav" />
+                        <div className="text-caption">Opportunities → danger</div>
+                      </Row>
+                    </Stack>
+                  </Section>
+                  <Row align="center" gap="md" wrap={false} className="house-page-title-row">
+                    <SectionMarker tone="accent" size="title" className="self-stretch h-auto" />
+                    <PageHeader
+                      heading="Publications"
+                      description="Title marker sample with full-height marker spanning the entire PageHeader."
+                      className="!ml-0 !mt-0"
+                    />
+                  </Row>
+                </Stack>
+              </PanelShell>
+              <PanelShell heading="Panel recipe" description="PanelShell canonical framing with body content.">
+                <Stack space="sm">
+                  <div className="text-body">Panel recipe body sample.</div>
+                  <div className="text-caption text-[hsl(var(--muted-foreground))]">Uses canonical PanelShell from patterns barrel.</div>
+                </Stack>
+              </PanelShell>
+            </Grid>
+          </Stack>
+        </Section>
+
+        <Section surface="card" inset="lg" spaceY="md">
+          <SectionHeader
+            eyebrow="4"
+            heading="Canonical Controls: State Matrices"
+            description="Canonical controls with spec cues, disabled states, and focus-visible targets."
+          />
+          <Stack space="sm">
+            {APPROVAL_CONTRACT_ITEMS.map((item) => (
+              <div key={item} className="text-caption text-[hsl(var(--muted-foreground))]">• {item}</div>
+            ))}
+          </Stack>
+          <Stack space="md">
+            <Grid cols={3} gap="md">
+              <MatrixCell title="Button" note="default / focus target / disabled / loading" spec={`Height ${controlHeights.button || '—'}`}>
+                <Row gap="sm" align="start">
+                  <Button ref={buttonRef}>Default</Button>
+                  <Button variant="secondary" autoFocus>Focus target</Button>
+                  <Button disabled>Disabled</Button>
+                  <Button isLoading loadingText="Loading">Submit</Button>
+                </Row>
+              </MatrixCell>
+              <MatrixCell title="Input" note="default / disabled / error" spec={`Height ${controlHeights.input || '—'} · ring token --ring-focus`}>
+                <Stack space="sm">
+                  <Label htmlFor="approval-input-default">Default</Label>
+                  <Input id="approval-input-default" ref={inputRef} placeholder="Default input" />
+                  <Label htmlFor="approval-input-disabled">Disabled</Label>
+                  <Input id="approval-input-disabled" placeholder="Disabled input" disabled />
+                  <Label htmlFor="approval-input-error">Error</Label>
+                  <Input id="approval-input-error" aria-invalid="true" placeholder="Error input" />
+                </Stack>
+              </MatrixCell>
+              <MatrixCell title="Select" note="default / disabled / error" spec={`Height ${controlHeights.select || '—'} · focus with keyboard tab`}>
+                <Stack space="sm">
+                  <Select ref={selectRef} defaultValue="one">
+                    <option value="one">Option one</option>
+                    <option value="two">Option two</option>
+                  </Select>
+                  <Select disabled defaultValue="one">
+                    <option value="one">Disabled</option>
+                  </Select>
+                  <Select aria-invalid="true" defaultValue="two">
+                    <option value="one">Option one</option>
+                    <option value="two">Error state</option>
+                  </Select>
+                </Stack>
+              </MatrixCell>
+            </Grid>
+
+            <Grid cols={3} gap="md">
+              <MatrixCell title="Textarea" note="default / disabled / error" spec={`Height ${controlHeights.textarea || '—'}`}>
+                <Stack space="sm">
+                  <Textarea ref={textareaRef} placeholder="Default textarea" />
+                  <Textarea placeholder="Disabled textarea" disabled />
+                  <Textarea placeholder="Error textarea" aria-invalid="true" />
+                </Stack>
+              </MatrixCell>
+              <MatrixCell title="Tooltip" note="trigger + visible content">
+                <TooltipProvider>
+                  <Row gap="sm" align="start">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline">Hover trigger</Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Tooltip content</TooltipContent>
+                    </Tooltip>
+                    <Tooltip defaultOpen>
+                      <TooltipTrigger asChild>
+                        <Button variant="secondary">Open sample</Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Visible state sample</TooltipContent>
+                    </Tooltip>
+                  </Row>
+                </TooltipProvider>
+              </MatrixCell>
+              <MatrixCell title="Badge" note="default / secondary / outline / destructive">
+                <Row gap="sm" align="start">
+                  <Badge>Default</Badge>
+                  <Badge variant="secondary">Secondary</Badge>
+                  <Badge variant="outline">Outline</Badge>
+                  <Badge variant="destructive">Destructive</Badge>
+                </Row>
+              </MatrixCell>
+            </Grid>
+
+            <Grid cols={2} gap="md">
+              <MatrixCell title="Banner" note="info / success / warning / danger">
+                <Stack space="sm">
+                  <Banner variant="info">
+                    <BannerContent>
+                      <BannerTitle>Info banner</BannerTitle>
+                      <BannerDescription>Informational feedback state.</BannerDescription>
+                    </BannerContent>
+                  </Banner>
+                  <Banner variant="success">
+                    <BannerContent>
+                      <BannerTitle>Success banner</BannerTitle>
+                      <BannerDescription>Success confirmation state.</BannerDescription>
+                    </BannerContent>
+                  </Banner>
+                  <Banner variant="warning">
+                    <BannerContent>
+                      <BannerTitle>Warning banner</BannerTitle>
+                      <BannerDescription>Warning review state.</BannerDescription>
+                    </BannerContent>
+                  </Banner>
+                  <Banner variant="danger">
+                    <BannerContent>
+                      <BannerTitle>Danger banner</BannerTitle>
+                      <BannerDescription>Error / blocking state.</BannerDescription>
+                    </BannerContent>
+                  </Banner>
+                </Stack>
+              </MatrixCell>
+              <MatrixCell title="Modal" note="trigger + open content state">
+                <Modal>
+                  <ModalTrigger asChild>
+                    <Button variant="outline">Open modal</Button>
+                  </ModalTrigger>
+                  <ModalContent>
+                    <ModalHeader>
+                      <ModalTitle>Approval modal sample</ModalTitle>
+                      <ModalDescription>Canonical overlay and content structure.</ModalDescription>
+                    </ModalHeader>
+                    <ModalBody>
+                      <div className="text-body">Modal body content for visual and structural review.</div>
+                    </ModalBody>
+                    <ModalFooter>
+                      <ModalClose asChild>
+                        <Button variant="ghost">Close</Button>
+                      </ModalClose>
+                      <Button>Confirm</Button>
+                    </ModalFooter>
+                    <ModalClose />
+                  </ModalContent>
+                </Modal>
+              </MatrixCell>
+            </Grid>
+          </Stack>
+        </Section>
+
+        <Section surface="card" inset="lg" spaceY="md">
+          <SectionHeader
+            eyebrow="5"
+            heading="Metric Tiles + Motion Governance"
+            description="Canonical rules and reusable patterns for metric tiles, chart tooltips, segmented toggles, banners, and animation auditing."
+          />
+          <Stack space="sm">
+            {METRIC_TILE_CONTRACT_ITEMS.map((item) => (
+              <div key={item} className="text-caption text-[hsl(var(--muted-foreground))]">• {item}</div>
+            ))}
+          </Stack>
+
+          <Grid cols={2} gap="md">
+            <MatrixCell
+              title="Canonical chart-tooltip sample"
+              note="Hover + keyboard-focus bars with shared tooltip primitive"
+              spec="Tooltip surface and content classes mirror publications chart usage"
+            >
+              <TooltipProvider>
+                <Stack space="sm">
+                  <div className="text-caption text-[hsl(var(--muted-foreground))]">Sample: citations by year (focusable bars)</div>
+                  <div className="flex items-end gap-2 rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-2)]">
+                    {[
+                      { label: '2021', value: 42 },
+                      { label: '2022', value: 51 },
+                      { label: '2023', value: 58 },
+                      { label: '2024', value: 63 },
+                      { label: '2025', value: 79 },
+                    ].map((point) => (
+                      <Tooltip key={point.label}>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label={`${point.label}: ${point.value} citations`}
+                            className="group flex w-8 items-end justify-center rounded-[var(--radius-xs)] border border-transparent bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                          >
+                            <span
+                              className="w-6 rounded-[var(--radius-xs)] bg-[hsl(var(--tone-accent-500))] transition-[height,opacity] duration-[var(--motion-duration-base)] ease-[var(--motion-ease-chart-series)] group-hover:opacity-90"
+                              style={{
+                                height: `${Math.max(1.4, point.value / 2)}px`,
+                                transitionDuration: reducedMotion ? '0ms' : 'var(--motion-duration-base)',
+                              }}
+                            />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="house-approved-tooltip house-approved-tooltip-content">
+                          <div className="text-caption">{point.label}: {point.value} citations</div>
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+                </Stack>
+              </TooltipProvider>
+            </MatrixCell>
+
+            <MatrixCell
+              title="Publication toggle variants (exact patterns)"
+              note="Horizontal 2-state + vertical percentile toggles used in chart tiles"
+              spec="Uses house-toggle-track/thumb/button + field-percentile button classes"
+            >
+              <Stack space="sm">
+                <div className="text-caption text-[hsl(var(--muted-foreground))]">Horizontal toggle (12m / 5y)</div>
+                <div className="house-approved-toggle-context">
+                  <div className="house-toggle-track grid grid-cols-2" style={{ width: '8.2rem' }}>
+                    <span
+                      className="house-toggle-thumb"
+                      style={{
+                        left: metricWindow === '12m' ? '0%' : '50%',
+                        width: '50%',
+                        transitionDuration: reducedMotion ? '0ms' : undefined,
+                      }}
+                      aria-hidden="true"
+                    />
+                    {(['12m', '5y'] as const).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={`house-toggle-button ${metricWindow === option ? 'text-white' : 'house-drilldown-toggle-button-muted'}`}
+                        aria-pressed={metricWindow === option}
+                        onClick={() => setMetricWindow(option)}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="text-caption text-[hsl(var(--muted-foreground))]">Horizontal visual-mode toggle (bars / line)</div>
+                <div className="house-approved-toggle-context">
+                  <div className="house-toggle-track grid grid-cols-2" style={{ width: '5.25rem' }}>
+                    <span
+                      className="house-toggle-thumb"
+                      style={{
+                        left: chartVisualMode === 'bars' ? '0%' : '50%',
+                        width: '50%',
+                        transitionDuration: reducedMotion ? '0ms' : undefined,
+                      }}
+                      aria-hidden="true"
+                    />
+                    <button
+                      type="button"
+                      className={`house-toggle-button ${chartVisualMode === 'bars' ? 'text-white' : 'house-drilldown-toggle-button-muted'}`}
+                      aria-pressed={chartVisualMode === 'bars'}
+                      onClick={() => setChartVisualMode('bars')}
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="house-toggle-chart-bar h-3.5 w-3.5 fill-current">
+                        <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
+                        <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
+                        <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className={`house-toggle-button ${chartVisualMode === 'line' ? 'text-white' : 'house-drilldown-toggle-button-muted'}`}
+                      aria-pressed={chartVisualMode === 'line'}
+                      onClick={() => setChartVisualMode('line')}
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
+                        <polyline
+                          points="2,11 6,8 9,9 14,4"
+                          fill="none"
+                          className="house-toggle-chart-line"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          data-expanded="true"
+                        />
+                        <circle cx="2" cy="11" r="1.1" fill="currentColor" />
+                        <circle cx="6" cy="8" r="1.1" fill="currentColor" />
+                        <circle cx="9" cy="9" r="1.1" fill="currentColor" />
+                        <circle cx="14" cy="4" r="1.1" fill="currentColor" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-caption text-[hsl(var(--muted-foreground))]">Field percentile 5-state toggle (horizontal, above right chart)</div>
+                <div className="house-approved-toggle-context">
+                  <div
+                    className="house-toggle-track grid grid-cols-5 w-full max-w-[13.5rem]"
+                    style={{
+                      gridTemplateColumns: `repeat(${FIELD_THRESHOLD_OPTIONS.length}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    <span
+                      className={`house-toggle-thumb ${FIELD_THRESHOLD_THUMB_CLASS[fieldThreshold]}`}
+                      style={{
+                        left: `${FIELD_THRESHOLD_OPTIONS.indexOf(fieldThreshold) * (100 / FIELD_THRESHOLD_OPTIONS.length)}%`,
+                        width: `${100 / FIELD_THRESHOLD_OPTIONS.length}%`,
+                        transitionDuration: reducedMotion ? '0ms' : undefined,
+                      }}
+                      aria-hidden="true"
+                    />
+                    {FIELD_THRESHOLD_OPTIONS.map((threshold) => (
+                      <button
+                        key={`approval-threshold-${threshold}`}
+                        type="button"
+                        className={`house-toggle-button inline-flex h-full w-full min-h-0 flex-1 items-center justify-center px-0 py-0 ${fieldThreshold === threshold ? 'text-white' : 'house-drilldown-toggle-button-muted'}`}
+                        aria-pressed={fieldThreshold === threshold}
+                        onClick={() => setFieldThreshold(threshold)}
+                      >
+                        {threshold}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </Stack>
+            </MatrixCell>
+          </Grid>
+
+          <Grid cols={2} gap="md">
+            <MatrixCell
+              title="Chart family snapshots"
+              note="Representative variants used across publication insight tiles"
+              spec="Bars, line trend, ring concentration, and composition bars"
+            >
+              <Grid cols={2} gap="sm">
+                <Section surface="muted" inset="sm" spaceY="sm">
+                  <div className="text-caption">Bars</div>
+                  <div className="flex h-20 items-end gap-1 rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-2">
+                    {[34, 46, 52, 57, 63].map((value) => (
+                      <div key={`bars-${value}`} className="flex-1 rounded-[var(--radius-xs)] bg-[hsl(var(--tone-accent-500))]" style={{ height: `${value}%` }} />
+                    ))}
+                  </div>
+                </Section>
+                <Section surface="muted" inset="sm" spaceY="sm">
+                  <div className="text-caption">Line trend</div>
+                  <div className="flex h-20 items-center rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-2">
+                    <svg viewBox="0 0 100 36" className="h-full w-full">
+                      <polyline
+                        points="4,31 18,27 33,22 46,19 60,14 74,10 90,5"
+                        fill="none"
+                        className="house-toggle-chart-line"
+                        stroke="hsl(var(--tone-accent-600))"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        data-expanded="true"
+                      />
+                    </svg>
+                  </div>
+                </Section>
+                <Section surface="muted" inset="sm" spaceY="sm">
+                  <div className="text-caption">Ring concentration</div>
+                  <div className="flex h-20 items-center justify-center rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-2">
+                    <svg viewBox="0 0 100 100" className="h-14 w-14">
+                      <circle cx="50" cy="50" r="38" fill="none" stroke="hsl(var(--tone-neutral-300))" strokeWidth="12" />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="38"
+                        fill="none"
+                        stroke="hsl(var(--tone-accent-600))"
+                        strokeWidth="12"
+                        strokeLinecap="round"
+                        strokeDasharray="239"
+                        strokeDashoffset="72"
+                        transform="rotate(-90 50 50)"
+                        className="house-chart-ring-dashoffset-motion"
+                      />
+                    </svg>
+                  </div>
+                </Section>
+                <Section surface="muted" inset="sm" spaceY="sm">
+                  <div className="text-caption">Composition bars</div>
+                  <div className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-2">
+                    <Stack space="sm">
+                      {[25, 38, 44].map((value, index) => (
+                        <div key={`composition-${value}`} className="space-y-1">
+                          <div className="text-caption text-[hsl(var(--muted-foreground))]">Band {index + 1}</div>
+                          <div className="h-2 rounded-full bg-[hsl(var(--tone-neutral-200))]">
+                            <div className="h-full rounded-full bg-[hsl(var(--tone-accent-600))]" style={{ width: `${value}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </Stack>
+                  </div>
+                </Section>
+              </Grid>
+            </MatrixCell>
+
+            <MatrixCell
+              title="Banner + visibility matrices"
+              note="Reusable control states for unrelated contexts"
+              spec="Publication visibility states + shared banners"
+            >
+              <Stack space="sm">
+                <div className="text-caption text-[hsl(var(--muted-foreground))]">Visibility toggle states</div>
+                <Row gap="sm" align="start">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={insightsVisibility === 'visible' ? 'secondary' : 'outline'}
+                    onClick={() => setInsightsVisibility('visible')}
+                  >
+                    Visible
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={insightsVisibility === 'hidden' ? 'secondary' : 'outline'}
+                    onClick={() => setInsightsVisibility('hidden')}
+                  >
+                    Hidden
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" disabled>
+                    Disabled
+                  </Button>
+                </Row>
+
+                <div className="text-caption text-[hsl(var(--muted-foreground))]">Banner matrix (shared for unrelated states)</div>
+                <Stack space="sm">
+                  <Banner variant="info">
+                    <BannerContent>
+                      <BannerTitle>Info</BannerTitle>
+                      <BannerDescription>Context banner for guidance and neutral status.</BannerDescription>
+                    </BannerContent>
+                  </Banner>
+                  <Banner variant="warning">
+                    <BannerContent>
+                      <BannerTitle>Warning</BannerTitle>
+                      <BannerDescription>Review required before action continues.</BannerDescription>
+                    </BannerContent>
+                  </Banner>
+                </Stack>
+              </Stack>
+            </MatrixCell>
+          </Grid>
+
+          <Section surface="muted" inset="md" spaceY="sm">
+            <SectionHeader
+              heading="Animation audit checklist"
+              description="Dedicated review table for animation quality, accessibility, and reuse readiness."
+            />
+            <p className="m-0 text-caption text-[hsl(var(--foreground))]">
+              Verdict: mostly uniform and token-aligned, with targeted exceptions in JS timing orchestration that should be normalized next.
+            </p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Checklist item</TableHead>
+                  <TableHead>Requirement</TableHead>
+                  <TableHead>Scope</TableHead>
+                  <TableHead>Evidence</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {ANIMATION_AUDIT_ROWS.map((row) => (
+                  <TableRow key={row.item}>
+                    <TableCell>{row.status}</TableCell>
+                    <TableCell>{row.item}</TableCell>
+                    <TableCell>{row.requirement}</TableCell>
+                    <TableCell>{row.scope}</TableCell>
+                    <TableCell>{row.evidence}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Section>
+        </Section>
+
+        <Section surface="card" inset="lg" spaceY="md">
+          <SectionHeader
+            eyebrow="6"
+            heading="Element Definitions Table (Glossary)"
+            description="Canonical definitions of primitives, semantic blocks, controls, and patterns."
+          />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Element</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>May set</TableHead>
+                <TableHead>Must not set</TableHead>
+                <TableHead>Where used</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {GLOSSARY_ROWS.map((row) => (
+                <TableRow key={row.element}>
+                  <TableCell>{row.element}</TableCell>
+                  <TableCell>{row.category}</TableCell>
+                  <TableCell>{row.maySet}</TableCell>
+                  <TableCell>{row.mustNotSet}</TableCell>
+                  <TableCell>{row.whereUsed}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <Grid cols={2} gap="md">
+            <ChartFrame
+              heading="Pattern token sanity"
+              description="Pattern shell references canonical chart theme + motion tokens."
+              actions={<Badge variant="outline">series: {chartTheme.series.length}</Badge>}
+            >
+              <div
+                className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-4)] text-caption text-[hsl(var(--muted-foreground))]"
+                style={{ transitionDuration: reducedMotion ? '0ms' : chartMotion.duration }}
+              >
+                Chart body placeholder
+              </div>
+            </ChartFrame>
+            <PanelShell heading="Governance" description="Legacy stories remain archived and non-canonical.">
+              <Stack space="sm">
+                <div className="text-body">Design System / Approvals remains the single visible Storybook entry.</div>
+                <div className="text-caption text-[hsl(var(--muted-foreground))]">Archive content is excluded from active approval input.</div>
+              </Stack>
+            </PanelShell>
+          </Grid>
+        </Section>
+      </Stack>
+    </Container>
+  )
+}

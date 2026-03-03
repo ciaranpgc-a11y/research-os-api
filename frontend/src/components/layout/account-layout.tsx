@@ -2,8 +2,8 @@ import { Outlet } from 'react-router-dom'
 
 import { AccountNavigator } from '@/components/layout/account-navigator'
 import { TopBar } from '@/components/layout/top-bar'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { ScrollArea } from '@/components/ui'
+import { Sheet, SheetContent } from '@/components/ui'
 import { useAaweStore } from '@/store/use-aawe-store'
 
 export function AccountLayout() {

@@ -389,11 +389,17 @@ test('opens selected drilldown paper in right panel files tab', async ({ page })
   await expect(drilldownSheet).toBeVisible()
   await drilldownSheet.getByRole('tab', { name: 'Breakdown' }).click()
 
-  const paperRow = drilldownSheet.locator('tr.house-drilldown-table-row:has-text("Echocardiographic biomarkers in cardio-oncology")').first()
-  await expect(paperRow).toBeVisible()
-  await paperRow.click()
+  await page.keyboard.press('Escape')
+  await expect(drilldownSheet).not.toBeVisible()
 
-  const detailFilesTab = page.locator('.house-publication-detail-tabs').getByRole('tab', { name: 'Files' })
-  await expect(detailFilesTab).toHaveAttribute('data-state', 'active')
+  const targetTitle = 'Echocardiographic biomarkers in cardio-oncology'
+  const libraryRow = page.locator('tbody tr', { hasText: targetTitle }).first()
+  await expect(libraryRow).toBeVisible()
+  await libraryRow.click()
+
+  const detailFilesTab = page.getByRole('tab', { name: 'Files' }).first()
+  await expect(detailFilesTab).toBeVisible()
+  await detailFilesTab.click()
+  await expect(detailFilesTab).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByText('No files linked to this publication.')).toBeVisible()
 })

@@ -2,8 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Unplug } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader, Row, Stack } from '@/components/primitives'
+import { SectionMarker } from '@/components/patterns'
+import { getSectionMarkerTone } from '@/lib/section-tone'
+import { houseLayout } from '@/lib/house-style'
+import { cn } from '@/lib/utils'
+import { Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
 import {
   disconnectOrcid,
   enqueueOrcidImportSyncJob,
@@ -17,9 +21,9 @@ import {
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import type { AuthUser, OrcidStatusPayload, PersonaStatePayload, PersonaSyncJobPayload } from '@/types/impact'
-import { cn } from '@/lib/utils'
+
+const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 
 function formatShortTimestamp(value: string | null | undefined): string | null {
   if (!value) {
@@ -402,7 +406,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
       setLoading(false)
       setRefreshing(false)
     }
-  }, [handleSessionExpiry])
+  }, [activeSyncJob, handleSessionExpiry])
 
   useEffect(() => {
     if (isFixtureMode) {
@@ -493,7 +497,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     } finally {
       window.sessionStorage.removeItem('aawe_orcid_auto_sync_result')
     }
-  }, [isFixtureMode])
+  }, [isFixtureMode, lastSyncSinceLabel])
 
   useEffect(() => {
     if (isFixtureMode || !user?.id) {
@@ -726,7 +730,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [activeSyncJob?.id, handleSessionExpiry, isFixtureMode, loadData, token, user?.id])
+  }, [activeSyncJob?.id, handleSessionExpiry, isFixtureMode, lastReferencesSyncedCount, loadData, token, user?.id])
 
   const onRetryApiConnection = async () => {
     if (!token) {
@@ -790,15 +794,23 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   }
 
   return (
-    <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderProfile)}>
-        <h1 data-house-role="page-title" className={houseTypography.title}>Integrations</h1>
-        <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
-          Link research platforms to keep your profile data current.
-        </p>
-      </header>
+    <Stack data-house-role="page" space="sm">
+      <Row
+        align="center"
+        gap="md"
+        wrap={false}
+        className="house-page-title-row"
+      >
+        <SectionMarker tone={getSectionMarkerTone('profile')} size="title" className="self-stretch h-auto" />
+        <PageHeader
+          heading="Integrations"
+          description="Link research platforms to keep your profile data current."
+          className="!ml-0 !mt-0"
+        />
+      </Row>
 
-      <Card className="border-[hsl(var(--tone-neutral-200))]">
+      <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
+        <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="space-y-3 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex w-full flex-wrap items-start justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5">
@@ -886,28 +898,28 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
               <div className="grid gap-2 sm:grid-cols-2 lg:col-start-2">
                 <div className={`flex min-h-sz-84 flex-col items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-center ${worksPermissionEnabled ? 'border-[hsl(var(--tone-neutral-200))] bg-card' : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] opacity-60'}`}>
                   <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total works</p>
-                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-500 ease-out ${worksPermissionEnabled ? 'text-[hsl(var(--tone-neutral-900))]' : 'text-[hsl(var(--tone-neutral-500))]'}`} style={{ transform: animateWorksCount ? 'scale(1.04)' : 'scale(1)' }}>{formatMetricNumber(worksCount)}</p>
+                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-[var(--motion-duration-ui)] ease-out ${worksPermissionEnabled ? 'text-[hsl(var(--tone-neutral-900))]' : 'text-[hsl(var(--tone-neutral-500))]'}`} style={{ transform: animateWorksCount ? 'scale(1.04)' : 'scale(1)' }}>{formatMetricNumber(worksCount)}</p>
                   <p className="text-xs text-[hsl(var(--tone-neutral-500))]">
                     {worksPermissionEnabled ? sharedLastSyncDate ? `Last sync ${sharedLastSyncDate}` : 'No sync yet' : 'Permission disabled'}
                   </p>
                 </div>
                 <div className={`flex min-h-sz-84 flex-col items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-center ${worksPermissionEnabled ? 'border-[hsl(var(--tone-neutral-200))] bg-card' : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] opacity-60'}`}>
                   <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New works</p>
-                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-500 ease-out ${worksPermissionEnabled && normalizedNewWorks > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-900))]'}`} style={{ transform: animateNewWorks ? 'scale(1.04)' : 'scale(1)' }}>{newWorksDeltaLabel}</p>
+                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-[var(--motion-duration-ui)] ease-out ${worksPermissionEnabled && normalizedNewWorks > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-900))]'}`} style={{ transform: animateNewWorks ? 'scale(1.04)' : 'scale(1)' }}>{newWorksDeltaLabel}</p>
                   <p className="text-xs text-[hsl(var(--tone-neutral-500))]">
                     {worksPermissionEnabled ? normalizedNewWorks > 0 ? 'Added in latest sync' : 'No new works' : 'Permission disabled'}
                   </p>
                 </div>
                 <div className={`flex min-h-sz-84 flex-col items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-center ${citationsPermissionEnabled ? 'border-[hsl(var(--tone-neutral-200))] bg-card' : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] opacity-60'}`}>
                   <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total citations</p>
-                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-500 ease-out ${citationsPermissionEnabled ? 'text-[hsl(var(--tone-neutral-900))]' : 'text-[hsl(var(--tone-neutral-500))]'}`} style={{ transform: animateTotalCitations ? 'scale(1.04)' : 'scale(1)' }}>{formatMetricNumber(totalCitations)}</p>
+                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-[var(--motion-duration-ui)] ease-out ${citationsPermissionEnabled ? 'text-[hsl(var(--tone-neutral-900))]' : 'text-[hsl(var(--tone-neutral-500))]'}`} style={{ transform: animateTotalCitations ? 'scale(1.04)' : 'scale(1)' }}>{formatMetricNumber(totalCitations)}</p>
                   <p className="text-xs text-[hsl(var(--tone-neutral-500))]">
                     {citationsPermissionEnabled ? sharedLastSyncDate ? `Last sync ${sharedLastSyncDate}` : 'No sync yet' : 'Permission disabled'}
                   </p>
                 </div>
                 <div className={`flex min-h-sz-84 flex-col items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-center ${citationsPermissionEnabled ? 'border-[hsl(var(--tone-neutral-200))] bg-card' : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] opacity-60'}`}>
                   <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New citations</p>
-                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-500 ease-out ${citationsPermissionEnabled && normalizedNewCitations > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-900))]'}`} style={{ transform: animateNewCitations ? 'scale(1.04)' : 'scale(1)' }}>{newCitationsDeltaLabel}</p>
+                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-[var(--motion-duration-ui)] ease-out ${citationsPermissionEnabled && normalizedNewCitations > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-900))]'}`} style={{ transform: animateNewCitations ? 'scale(1.04)' : 'scale(1)' }}>{newCitationsDeltaLabel}</p>
                   <p className="text-xs text-[hsl(var(--tone-neutral-500))]">
                     {citationsPermissionEnabled ? normalizedNewCitations > 0 ? 'Added in latest sync' : 'No new citations' : 'Permission disabled'}
                   </p>
@@ -953,7 +965,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 {syncInProgress ? (
                   <span
                     aria-hidden
-                    className="absolute inset-y-0 left-0 bg-[hsl(var(--tone-accent-200))] transition-[width] duration-700 ease-out"
+                    className="absolute inset-y-0 left-0 bg-[hsl(var(--tone-accent-200))] transition-[width] duration-[var(--motion-duration-ui)] ease-out"
                     style={{ width: `${syncProgressPercent}%` }}
                   />
                 ) : null}
@@ -983,6 +995,8 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
           ) : null}
         </CardContent>
       </Card>
+      </div>
+
       {confirmDisconnectOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
@@ -1034,7 +1048,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         </div>
       ) : null}
 
-    </section>
+    </Stack>
   )
 }
 

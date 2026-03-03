@@ -1,0 +1,207 @@
+{
+  "generatedAt": "2026-03-02T22:26:18.871Z",
+  "results": [
+    {
+      "input": "#root > div > div > main > div > div > div > div > div > div.flex.w-full.min-w-0.items-center.justify-start.flex-nowrap.gap-[var(--marker-gap-title)].ml-[var(--layout-section-anchor-inline)] > header > div > div",
+      "rawInput": "#root > div > div > main > div > div > div > div > div > div.flex.w-full.min-w-0.items-center.justify-start.flex-nowrap.gap-[var(--marker-gap-title)].ml-[var(--layout-section-anchor-inline)] > header > div > div",
+      "classification": "Class",
+      "approvedStatus": "🟡 Allowed temporarily (needs migration)",
+      "why": "Class-based styling may be valid now, but canonical approvals prefer primitive and pattern composition.",
+      "sources": [
+        {
+          "file": "src/components/layout/top-bar.tsx",
+          "origin": "layout shell (frontend/src/components/layout/**)",
+          "score": 7,
+          "matches": [
+            {
+              "line": 97,
+              "snippet": "<header className=\"border-b border-[hsl(var(--stroke-soft)/0.82)] bg-card/95 backdrop-blur\">",
+              "matched": [
+                "header"
+              ]
+            },
+            {
+              "line": 98,
+              "snippet": "<div className=\"flex h-14 items-center px-[var(--header-side-padding)] xl:px-[var(--header-side-padding-xl)]\">",
+              "matched": [
+                "div",
+                "header"
+              ]
+            },
+            {
+              "line": 99,
+              "snippet": "<div className=\"flex min-w-[11.5rem] shrink-0 items-center gap-[var(--header-gap-group)] xl:min-w-[14.5rem] 2xl:min-w-72\">",
+              "matched": [
+                "div",
+                "header"
+              ]
+            },
+            {
+              "line": 114,
+              "snippet": "<div className=\"flex min-w-0 items-center gap-[var(--header-gap-tight)]\">",
+              "matched": [
+                "div",
+                "header"
+              ]
+            }
+          ]
+        },
+        {
+          "file": "src/components/layout/account-navigator.tsx",
+          "origin": "layout shell (frontend/src/components/layout/**)",
+          "score": 6,
+          "matches": [
+            {
+              "line": 106,
+              "snippet": "<div className={houseLayout.sidebarHeader}>",
+              "matched": [
+                "div",
+                "header"
+              ]
+            },
+            {
+              "line": 107,
+              "snippet": "<div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('overview'))}>",
+              "matched": [
+                "div",
+                "header"
+              ]
+            },
+            {
+              "line": 109,
+              "snippet": "</div>",
+              "matched": [
+                "div"
+              ]
+            },
+            {
+              "line": 110,
+              "snippet": "</div>",
+              "matched": [
+                "div"
+              ]
+            }
+          ]
+        },
+        {
+          "file": "src/components/layout/study-navigator.tsx",
+          "origin": "layout shell (frontend/src/components/layout/**)",
+          "score": 6,
+          "matches": [
+            {
+              "line": 80,
+              "snippet": "{item.dividerBefore ? <Separator className=\"house-nav-section-separator\" /> : null}",
+              "matched": [
+                "div"
+              ]
+            },
+            {
+              "line": 134,
+              "snippet": "<div className={houseLayout.sidebarHeader}>",
+              "matched": [
+                "div",
+                "header"
+              ]
+            },
+            {
+              "line": 135,
+              "snippet": "<div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))}>",
+              "matched": [
+                "div",
+                "header"
+              ]
+            },
+            {
+              "line": 136,
+              "snippet": "<div className=\"flex items-center gap-2\">",
+              "matched": [
+                "div"
+              ]
+            }
+          ]
+        },
+        {
+          "file": "src/components/layout/workspace-navigator.tsx",
+          "origin": "layout shell (frontend/src/components/layout/**)",
+          "score": 6,
+          "matches": [
+            {
+              "line": 97,
+              "snippet": "<div className={houseLayout.sidebarHeader}>",
+              "matched": [
+                "div",
+                "header"
+              ]
+            },
+            {
+              "line": 98,
+              "snippet": "<div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))}>",
+              "matched": [
+                "div",
+                "header"
+              ]
+            },
+            {
+              "line": 99,
+              "snippet": "<div className=\"flex items-center gap-2\">",
+              "matched": [
+                "div"
+              ]
+            },
+            {
+              "line": 109,
+              "snippet": "</div>",
+              "matched": [
+                "div"
+              ]
+            }
+          ]
+        },
+        {
+          "file": "src/pages/workspaces-data-library-view.tsx",
+          "origin": "page (frontend/src/pages/**)",
+          "score": 6,
+          "matches": [
+            {
+              "line": 564,
+              "snippet": "<div className=\"house-main-heading-block flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3\">",
+              "matched": [
+                "div",
+                "main"
+              ]
+            },
+            {
+              "line": 565,
+              "snippet": "<div className=\"house-main-title-block\">",
+              "matched": [
+                "div",
+                "main"
+              ]
+            },
+            {
+              "line": 570,
+              "snippet": "</div>",
+              "matched": [
+                "div"
+              ]
+            },
+            {
+              "line": 571,
+              "snippet": "<div className=\"flex flex-wrap items-center gap-2\">",
+              "matched": [
+                "div"
+              ]
+            }
+          ]
+        }
+      ],
+      "approvalsSection": "Patterns (PanelShell/ChartFrame/SectionMarker etc)",
+      "recommendedReplacement": "Use Stack/Section recipe for rhythm instead of utility spacing classes.",
+      "snippet": "<Section surface=\"card\" inset=\"md\" spaceY=\"sm\">\n  <Stack space=\"md\">\n    <SectionHeader heading=\"Title\" />\n    <div>Content</div>\n  </Stack>\n</Section>",
+      "scopeSuggestion": "Fix in this page only",
+      "confidence": "Medium",
+      "detectedCanonical": "",
+      "context": ""
+    }
+  ]
+}

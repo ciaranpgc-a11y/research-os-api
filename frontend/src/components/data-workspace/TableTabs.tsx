@@ -1,11 +1,11 @@
 import { Download, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui'
+import { Button } from '@/components/ui'
+import { Input } from '@/components/ui'
+import { Textarea } from '@/components/ui'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui'
 import { houseTypography } from '@/lib/house-style'
 import type { WorkingTable, WorkingTableAbbreviation, WorkingTableColumnMeta } from '@/types/data-workspace'
 

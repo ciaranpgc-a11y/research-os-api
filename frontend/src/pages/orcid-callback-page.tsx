@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container, Stack } from '@/components/primitives'
+import { PanelShell } from '@/components/patterns'
 import { completeOrcidLink } from '@/lib/impact-api'
 
 export function OrcidCallbackPage() {
@@ -45,25 +46,26 @@ export function OrcidCallbackPage() {
   }, [navigate, params])
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="house-content-container house-content-container-wide">
-        <div className="mx-auto w-full max-w-md">
-        <Card>
-          <CardHeader>
-            <CardTitle>ORCID callback</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {error ? <p className="text-red-700">{error}</p> : <p className="text-slate-700">{status}</p>}
-            {!error ? (
-              <p className="flex items-center gap-2 text-xs text-slate-500">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Finalising ORCID account link...
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
+    <main className="min-h-screen bg-[hsl(var(--muted))]">
+      <Container size="content" gutter="default" className="py-[var(--space-7)]">
+        <div className="mx-auto w-full max-w-sz-560">
+          <PanelShell heading="ORCID callback">
+            <Stack space="sm">
+              {error ? (
+                <p className="m-0 text-body text-[hsl(var(--tone-danger-700))]">{error}</p>
+              ) : (
+                <p className="m-0 text-body text-[hsl(var(--tone-neutral-700))]">{status}</p>
+              )}
+              {!error ? (
+                <p className="m-0 flex items-center gap-[var(--space-2)] text-caption text-[hsl(var(--tone-neutral-500))]">
+                  <Loader2 className="h-[var(--space-3)] w-[var(--space-3)] animate-spin" />
+                  Finalizing ORCID account link...
+                </p>
+              ) : null}
+            </Stack>
+          </PanelShell>
         </div>
-      </div>
-    </div>
+      </Container>
+    </main>
   )
 }

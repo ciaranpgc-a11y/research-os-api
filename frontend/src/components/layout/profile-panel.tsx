@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui'
+import { ScrollArea } from '@/components/ui'
 import { fetchMe, fetchPersonaState } from '@/lib/impact-api'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import type { AuthUser, PersonaStatePayload } from '@/types/impact'

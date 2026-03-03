@@ -1,13 +1,13 @@
 import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
-import { BadgePrimitive } from '@/components/primitives/BadgePrimitive'
+import { BadgePrimitive } from './BadgePrimitive'
 import {
   TooltipProvider,
   TooltipPrimitive,
   TooltipTrigger,
   TooltipContent,
-} from '@/components/primitives/TooltipPrimitive'
+} from './TooltipPrimitive'
 
 type NavigationVariant = 'default' | 'collapsed'
 type NavigationAlign = 'vertical' | 'horizontal'
@@ -344,6 +344,8 @@ NavigationItem.Label = NavigationItemLabel
 NavigationItem.Badge = NavigationItemBadge
 
 export {
+  NavigationPrimitive as SidebarNav,
+  NavigationItem as NavItem,
   NavigationPrimitive,
   NavigationHeader,
   NavigationSection,

@@ -1,8 +1,8 @@
 import { Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { Button } from '@/components/ui'
+import { Textarea } from '@/components/ui'
 import { applyRecommendedSectionFix, assessPlanSection, type PlanSectionKey } from '@/lib/plan-section-readiness'
 import { editPlanManuscriptSection, fetchNextPlanClarificationQuestion } from '@/lib/study-core-api'
 import type { PlanClarificationQuestion, Step2ClarificationResponse } from '@/types/study-core'
@@ -240,7 +240,7 @@ export function Step2Panel({
 
   useEffect(() => {
     void loadNextQuestion(clarificationResponses)
-  }, [])
+  }, [clarificationResponses, loadNextQuestion])
 
   useEffect(() => {
     setEditInstruction('')

@@ -23,16 +23,8 @@ import {
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
-import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
-import {
-  SelectPrimitive,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/primitives/SelectPrimitive'
+import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives'
+import { Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import {
@@ -790,21 +782,21 @@ export function AdminPage() {
     }
   }
 
-  const usersItems = users?.items || []
-  const organisationItems = organisations?.items || []
+  const usersItems = useMemo(() => users?.items || [], [users?.items])
+  const organisationItems = useMemo(() => organisations?.items || [], [organisations?.items])
   const selectedOrganisation =
     organisationItems.find((item) => item.id === selectedOrganisationId) || organisationItems[0] || null
-  const workspaceItems = workspaces?.items || []
+  const workspaceItems = useMemo(() => workspaces?.items || [], [workspaces?.items])
   const selectedWorkspace =
     workspaceItems.find((item) => item.id === selectedWorkspaceId) || workspaceItems[0] || null
   const usageSummary = usageCosts?.summary || null
-  const usageModelItems = usageCosts?.model_usage || []
-  const usageToolItems = usageCosts?.tool_usage || []
-  const usageOrganisationItems = usageCosts?.organisation_usage || []
-  const usageUserItems = usageCosts?.user_usage || []
-  const usageTrendItems = usageCosts?.monthly_trend || []
-  const jobsItems = jobs?.items || []
-  const auditItems = auditEvents?.items || []
+  const usageModelItems = useMemo(() => usageCosts?.model_usage || [], [usageCosts?.model_usage])
+  const usageToolItems = useMemo(() => usageCosts?.tool_usage || [], [usageCosts?.tool_usage])
+  const usageOrganisationItems = useMemo(() => usageCosts?.organisation_usage || [], [usageCosts?.organisation_usage])
+  const usageUserItems = useMemo(() => usageCosts?.user_usage || [], [usageCosts?.user_usage])
+  const usageTrendItems = useMemo(() => usageCosts?.monthly_trend || [], [usageCosts?.monthly_trend])
+  const jobsItems = useMemo(() => jobs?.items || [], [jobs?.items])
+  const auditItems = useMemo(() => auditEvents?.items || [], [auditEvents?.items])
   const reconcileAuditItems = useMemo(
     () =>
       auditItems

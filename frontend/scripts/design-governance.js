@@ -9,7 +9,7 @@ const SRC_DIR = path.join(ROOT, 'src')
 const INDEX_CSS_PATH = path.join(SRC_DIR, 'index.css')
 const BASELINE_PATH = path.join(__dirname, 'design-governance-baseline.json')
 const LEGACY_BACKLOG_PATH = path.resolve(ROOT, '..', 'docs', 'design', 'MIGRATION_BACKLOG.md')
-const ALLOWED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css'])
+const ALLOWED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css', '.mdx'])
 
 const CHECK_TYPES = {
   HARDCODED_DURATION: 'hardcoded-duration',
@@ -23,13 +23,6 @@ function toPosixPath(value) {
   return value.replace(/\\/g, '/')
 }
 
-function shouldSkipFile(relativePath) {
-  return (
-    relativePath.startsWith('src/components/primitives/') ||
-    relativePath.startsWith('src/stories/')
-  )
-}
-
 function listFiles(dir) {
   const files = []
   if (!fs.existsSync(dir)) {
@@ -41,6 +34,10 @@ function listFiles(dir) {
     }
     const fullPath = path.join(dir, entry.name)
     if (entry.isDirectory()) {
+      const relDir = toPosixPath(path.relative(ROOT, fullPath))
+      if (relDir.startsWith('src/stories/__archive__') || relDir.startsWith('src/stories/_archive')) {
+        continue
+      }
       files.push(...listFiles(fullPath))
       continue
     }
@@ -258,10 +255,6 @@ function main() {
   const allFiles = listFiles(SRC_DIR)
   const violations = []
   for (const file of allFiles) {
-    const relativePath = toPosixPath(path.relative(ROOT, file))
-    if (shouldSkipFile(relativePath)) {
-      continue
-    }
     violations.push(...scanFile(file, definedCssVars))
   }
 

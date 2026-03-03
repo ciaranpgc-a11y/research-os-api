@@ -3,13 +3,14 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText
 import { useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
+import { PageHeader, Row, Stack } from '@/components/primitives'
+import { SectionMarker } from '@/components/patterns'
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
-import { HouseDrilldownHeaderShell, drilldownTabFlexGrow } from '@/components/publications/HouseDrilldownHeaderShell'
+import { HouseDrilldownHeaderShell } from '@/components/publications/HouseDrilldownHeaderShell'
+import { drilldownTabFlexGrow } from '@/components/publications/house-drilldown-header-utils'
 import { publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
-import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives/TablePrimitive'
-import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { Button, Sheet, SheetContent, Tabs, TabsContent } from '@/components/ui'
+import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives'
 import { houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
@@ -29,6 +30,7 @@ import {
   listPersonaSyncJobs,
   uploadPublicationFile,
 } from '@/lib/impact-api'
+import { getSectionMarkerTone } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
@@ -195,10 +197,8 @@ const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
 const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
-const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
 const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
 const HOUSE_LEFT_BORDER_PROFILE_CLASS = houseSurfaces.leftBorderProfile
-const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
 const HOUSE_TABLE_HEAD_TEXT_CLASS = houseTypography.tableHead
 const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
@@ -467,7 +467,7 @@ function formatJournalName(value: string | null | undefined): string {
       if (acronymMap[lowerCore]) {
         return `${leading}${acronymMap[lowerCore]}${trailing}`
       }
-      if (/^[A-Z0-9&.\-]{2,}$/.test(core)) {
+      if (/^[A-Z0-9&.-]{2,}$/.test(core)) {
         return `${leading}${core}${trailing}`
       }
       const isJoiner = lowerCaseJoiners.has(lowerCore)
@@ -2301,7 +2301,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         setLoading(false)
       }
     }
-  }, [])
+  }, [navigate])
 
   useEffect(() => {
     saveActivePublicationDetailTab(activeDetailTab)
@@ -2754,7 +2754,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         setActiveSyncJob(null)
         setStatus('')
         setError(job.error_detail || 'Background sync failed.')
-      } catch (pollError) {
+      } catch {
         if (cancelled) {
           return
         }
@@ -3020,7 +3020,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       columnOrder: publicationTableColumnOrder,
       availableWidth: resolvePublicationTableAvailableWidth(),
     })
-  ), [publicationTableColumnOrder, publicationTableColumns, publicationTableLayoutWidth, resolvePublicationTableAvailableWidth])
+  ), [publicationTableColumnOrder, publicationTableColumns, resolvePublicationTableAvailableWidth])
 
   const visiblePublicationTableColumns = useMemo(() => (
     publicationTableColumnOrder.filter((key) => effectivePublicationTableColumns[key].visible)
@@ -3402,7 +3402,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return 'n/a'
     }
     return `${overviewOwnerAuthorIndex + 1}/${overviewAuthors.length}`
-  }, [overviewAuthors.length, overviewOwnerAuthorIndex])
+  }, [overviewAuthors, overviewOwnerAuthorIndex])
   const overviewOwnerContribution = useMemo(() => {
     if (overviewOwnerAuthorIndex < 0 || overviewAuthors.length === 0) {
       return 'Not identified'
@@ -3421,7 +3421,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return 'Senior'
     }
     return 'Contributor'
-  }, [overviewAuthors, overviewAuthors.length, overviewOwnerAuthorIndex])
+  }, [overviewAuthors, overviewOwnerAuthorIndex])
   const overviewOwnerContributionToneClass = useMemo(() => {
     switch (overviewOwnerContribution) {
       case 'Leading':
@@ -4045,7 +4045,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const abstractKeywordList = (structuredAbstractKeywords.length > 0 ? structuredAbstractKeywords : detailKeywords)
     .map((item) => String(item || '').trim())
     .filter((item, index, array) => item.length > 0 && array.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
-  const structuredSections = selectedDetail?.structured_abstract?.sections || []
+  const structuredSections = useMemo(
+    () => selectedDetail?.structured_abstract?.sections || [],
+    [selectedDetail?.structured_abstract?.sections],
+  )
   const structuredSourceAbstract = normalizeAbstractDisplayText(String(selectedDetail?.structured_abstract?.source_abstract || effectiveDetailAbstract || ''))
   const structuredSectionsJoined = normalizeAbstractDisplayText(
     structuredSections.map((section) => String(section?.content || '')).join(' '),
@@ -4264,16 +4267,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }
 
   return (
-    <section data-house-role="page">
-      <header
-        data-house-role="page-header"
-        className={cn(HOUSE_PAGE_HEADER_CLASS, 'house-main-title-block', HOUSE_LEFT_BORDER_CLASS, HOUSE_LEFT_BORDER_PROFILE_CLASS)}
-      >
-        <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Publications</h1>
-        <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
-          Track your research metrics and manage your publication library.
-        </p>
-      </header>
+    <Stack data-house-role="page" space="sm">
+      <Row align="center" gap="md" wrap={false} className="house-page-title-row">
+        <SectionMarker tone={getSectionMarkerTone('profile')} size="title" className="self-stretch h-auto" />
+        <PageHeader
+          heading="Publications"
+          description="Track your research metrics and manage your publication library."
+          className="!ml-0 !mt-0"
+        />
+      </Row>
 
       <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
         <PublicationsTopStrip
@@ -4293,12 +4295,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
         <div className="house-main-heading-block">
           <h2 className={publicationsHouseHeadings.sectionTitle}>Publication library</h2>
-          <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible">
+          <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible self-center">
             <div
               className={cn(
-                'relative order-3 overflow-visible transition-[max-width,opacity,transform] duration-200 ease-out',
+                'relative order-3 overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
                 publicationLibraryVisible && publicationLibraryToolsOpen
-                  ? 'z-[70] max-w-[20rem] translate-x-0 opacity-100'
+                  ? 'z-30 max-w-[20rem] translate-x-0 opacity-100'
                   : 'pointer-events-none z-0 max-w-0 translate-x-1 opacity-0',
               )}
               aria-hidden={!publicationLibraryVisible || !publicationLibraryToolsOpen}
@@ -4313,7 +4315,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     <FileText className="h-4 w-4" strokeWidth={2.1} />
                   </button>
                   <span
-                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                     aria-hidden="true"
                   >
                     Generate report
@@ -4468,7 +4470,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     </div>
                   ) : null}
                   <span
-                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                     aria-hidden="true"
                   >
                     Download
@@ -4484,7 +4486,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     <Share2 className="h-4 w-4" strokeWidth={2.1} />
                   </button>
                   <span
-                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                     aria-hidden="true"
                   >
                     Share
@@ -4499,7 +4501,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   type="button"
                   data-state={publicationLibrarySearchVisible ? 'open' : 'closed'}
                   className={cn(
-                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-search-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-search-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
                     publicationLibrarySearchVisible && 'house-publications-tools-toggle-open',
                   )}
                   onClick={() => {
@@ -4549,7 +4551,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   data-state={publicationLibraryFiltersVisible ? 'open' : 'closed'}
                   data-filtered={selectedPublicationTypes.length > 0 || selectedArticleTypes.length > 0 ? 'true' : 'false'}
                   className={cn(
-                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-filter-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-filter-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
                     publicationLibraryFiltersVisible && 'house-publications-tools-toggle-open',
                   )}
                   onClick={() => {
@@ -4655,7 +4657,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 type="button"
                 data-state={publicationLibraryToolsOpen ? 'open' : 'closed'}
                 className={cn(
-                  'order-4 h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                    'order-4 h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
                   publicationLibraryToolsOpen && 'house-publications-tools-toggle-open',
                 )}
                 onClick={() => {
@@ -4682,7 +4684,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   type="button"
                   data-state={publicationLibrarySettingsVisible ? 'open' : 'closed'}
                   className={cn(
-                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-settings-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-settings-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
                     publicationLibrarySettingsVisible && 'house-publications-tools-toggle-open',
                   )}
                   onClick={() => {
@@ -5074,7 +5076,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     `align-top whitespace-normal break-words leading-tight ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass} transition-colors`,
                                     publicationTableMetricHighlights
                                       ? citationCellTone(metrics?.citations ?? 0, hIndex)
-                                      : 'text-[hsl(var(--tone-neutral-750))]',
+                                      : 'text-[hsl(var(--tone-neutral-700))]',
                                   )}
                                 >
                                   {metrics?.citations ?? 0}
@@ -5087,7 +5089,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     </TableBody>
                   </Table>
                   <div className="mt-1 flex items-center justify-between gap-2 px-1">
-                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-650))]">
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
                       Showing {publicationLibraryRangeStart}-{publicationLibraryRangeEnd} of {totalFilteredPublicationWorks}
                     </p>
                     {publicationLibraryPageSize === 'all' ? null : (
@@ -5608,9 +5610,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           {autoOaFinding ? ' (running in background)' : ''}
         </p>
       ) : null}
-    </section>
+    </Stack>
   )
 }
+
 
 
 

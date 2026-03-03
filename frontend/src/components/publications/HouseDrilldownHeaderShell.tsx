@@ -1,15 +1,11 @@
 import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
+import { drilldownTabFlexGrow } from './house-drilldown-header-utils'
 
 export type HouseDrilldownHeaderTab = {
   id: string
   label: string
-}
-
-export function drilldownTabFlexGrow(label: string) {
-  void label
-  return 1
 }
 
 type HouseDrilldownHeaderShellProps = {

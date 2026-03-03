@@ -1,10 +1,10 @@
 import { Loader2, Play, RotateCcw, Square } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+import { Button } from '@/components/ui'
+import { Input } from '@/components/ui'
+import { Select } from '@/components/ui'
+import { Textarea } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import {
   cancelGeneration,
@@ -281,7 +281,7 @@ export function StepRun({
     return lines
   }, [recommendations.conservativeWithLimitations, recommendations.mechanisticAsHypothesis, recommendations.uncertaintyInResults])
 
-  const buildNotesContext = (forceRecommended: boolean): string => {
+  const buildNotesContext = useCallback((forceRecommended: boolean): string => {
     const activeRecommendationLines = forceRecommended
       ? [
           'Use conservative associative phrasing and emphasize study limitations.',
@@ -298,7 +298,7 @@ export function StepRun({
     ]
       .filter(Boolean)
       .join('\n')
-  }
+  }, [generationBrief, reasoningEffort, recommendationLines, temperature])
 
   const onEstimateCost = async () => {
     if (selectedSections.length === 0) {
@@ -321,7 +321,7 @@ export function StepRun({
     }
   }
 
-  const runGeneration = async (forceRecommended: boolean) => {
+  const runGeneration = useCallback(async (forceRecommended: boolean) => {
     setAttemptedRun(true)
     setInlineError('')
     if (!runContext) {
@@ -368,7 +368,7 @@ export function StepRun({
     } finally {
       setBusy('')
     }
-  }
+  }, [buildNotesContext, dailyBudgetUsd, generationBrief, maxCostUsd, onActiveJobChange, onError, onJobStatusChange, onStatus, runContext, selectedSections])
 
   useEffect(() => {
     if (!onRegisterRunActions) {
@@ -385,19 +385,7 @@ export function StepRun({
     return () => {
       onRegisterRunActions(null)
     }
-  }, [
-    dailyBudgetUsd,
-    generationBrief,
-    maxCostUsd,
-    onRegisterRunActions,
-    recommendations.conservativeWithLimitations,
-    recommendations.mechanisticAsHypothesis,
-    recommendations.uncertaintyInResults,
-    reasoningEffort,
-    runContext,
-    selectedSections,
-    temperature,
-  ])
+  }, [onRegisterRunActions, runGeneration])
 
   const onCancel = async () => {
     if (!activeJob || !isActive(activeJob)) {

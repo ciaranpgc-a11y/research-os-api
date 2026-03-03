@@ -1,16 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, PanelRightOpen, RefreshCw, Save, Search, UserPlus, X } from 'lucide-react'
 
-import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  SelectPrimitive,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/primitives/SelectPrimitive'
+import { Button, Input, ScrollArea, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseActions, houseCollaborators, houseForms, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import { listCollaborators } from '@/lib/impact-api'

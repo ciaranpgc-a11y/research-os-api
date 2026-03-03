@@ -1,8 +1,8 @@
 import { useCallback, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
 
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
+import { ScrollArea } from '@/components/ui'
+import { Separator } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { fetchOrcidStatus, fetchPersonaState } from '@/lib/impact-api'

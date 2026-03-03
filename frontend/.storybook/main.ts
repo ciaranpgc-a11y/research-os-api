@@ -10,8 +10,7 @@ const __dirname = dirname(__filename);
 
 const config: StorybookConfig = {
   stories: [
-    '../src/stories/design-system/**/*.stories.@(ts|tsx|mdx)',
-    '../src/stories/pages-review/**/*.stories.@(ts|tsx|mdx)',
+    '../src/stories/design-system/approvals/Approvals.stories.@(ts|tsx|mdx)',
   ],
   addons: ['@storybook/addon-a11y', '@storybook/addon-docs'],
   framework: {

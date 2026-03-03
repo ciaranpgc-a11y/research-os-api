@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui'
 
 type Props = {
   children: ReactNode
@@ -25,7 +25,6 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    // eslint-disable-next-line no-console
     console.error('AAWE UI crash', error, info)
   }
 

@@ -214,6 +214,7 @@ const ModalClose = React.forwardRef<
 ModalClose.displayName = RadixDialog.Close.displayName
 
 export {
+  ModalPrimitive as Modal,
   ModalPrimitive,
   ModalTrigger,
   ModalPortal,

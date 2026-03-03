@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
-import { BadgePrimitive as Badge } from '@/components/primitives/BadgePrimitive'
-import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
-import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives'
+import { Badge, Button, Input, ScrollArea } from '@/components/ui'
 import { PageFrame } from '@/pages/page-frame'
 import { useDataWorkspaceStore } from '@/store/use-data-workspace-store'
 import type { ManuscriptTable } from '@/types/data-workspace'

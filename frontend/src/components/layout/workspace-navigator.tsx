@@ -1,8 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
+import { ScrollArea } from '@/components/ui'
+import { Select } from '@/components/ui'
+import { Separator } from '@/components/ui'
 import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass, type HouseSectionTone } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'

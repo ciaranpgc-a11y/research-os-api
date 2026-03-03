@@ -2,13 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Check, ExternalLink, Loader2, Search } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 
-import { BadgePrimitive as Badge } from '@/components/primitives/BadgePrimitive'
-import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
-import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives'
+import { Badge, Button, Input, ScrollArea, Separator, Sheet, SheetContent } from '@/components/ui'
 import {
   exportClaimCitations,
   fetchCitationLibrary,
@@ -333,7 +328,7 @@ export function ManuscriptPage() {
                         <p className="text-muted-foreground">Claim strength</p>
                         <div className="mt-1 h-2 w-full rounded-full bg-muted">
                           <div
-                            className="h-2 rounded-full bg-primary transition-all"
+                            className="h-2 rounded-full bg-primary transition-[width]"
                             style={{ width: `${paragraph.claimStrength}%` }}
                           />
                         </div>

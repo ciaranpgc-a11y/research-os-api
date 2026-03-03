@@ -3,6 +3,8 @@ import { houseMotion, houseTypography } from '@/lib/house-style'
 export const dashboardTileStyles = {
   tileShell:
     'group/tile house-metric-tile-shell flex h-full min-h-32 cursor-pointer flex-col rounded-md border p-3 text-left',
+  tileShellPublications:
+    'group/tile house-metric-tile-shell flex h-full min-h-36 cursor-pointer flex-col rounded-md border p-3 text-left',
   tileShellSelected: 'house-metric-tile-shell-selected',
   tileShellUnstable: 'bg-[hsl(var(--tone-warning-50)/0.44)]',
   tileHeader: 'flex items-start justify-between gap-1.5',

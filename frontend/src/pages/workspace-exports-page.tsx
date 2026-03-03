@@ -1,10 +1,10 @@
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
-import { getHouseLeftBorderToneClass } from '@/lib/section-tone'
-import { cn } from '@/lib/utils'
+import { PageHeader, Row, Stack } from '@/components/primitives'
+import { SectionMarker } from '@/components/patterns'
+import { Button } from '@/components/ui'
+import { getSectionMarkerTone } from '@/lib/section-tone'
+import { PageFrame } from '@/pages/page-frame'
 
 export function WorkspaceExportsPage() {
   const navigate = useNavigate()
@@ -12,33 +12,42 @@ export function WorkspaceExportsPage() {
   const workspaceId = params.workspaceId || 'hf-registry'
 
   return (
-    <section data-house-role="page" className="space-y-4">
-      <header
-        data-house-role="page-header"
-        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))}
-      >
-        <h1 data-house-role="page-title" className={houseTypography.title}>Exports</h1>
-        <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
-          Package manuscript outputs and quality checks for submission workflows.
-        </p>
-      </header>
-      <Card>
-        <CardHeader>
-          <CardTitle>Export checklist</CardTitle>
-          <CardDescription>Run QC first, then export manuscript and supporting evidence.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={() => navigate(`/w/${workspaceId}/qc`)}>
-            Open quality check
-          </Button>
-          <Button type="button" variant="outline" onClick={() => navigate(`/w/${workspaceId}/manuscript/introduction`)}>
-            Open manuscript
-          </Button>
-          <Button type="button" variant="outline" onClick={() => navigate(`/w/${workspaceId}/run-wizard`)}>
-            Open run wizard
-          </Button>
-        </CardContent>
-      </Card>
-    </section>
+    <PageFrame tone="workspace" hideScaffoldHeader>
+      <Stack space="lg">
+        <Row
+          align="center"
+          gap="md"
+          wrap={false}
+          className="house-page-title-row"
+        >
+          <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
+          <PageHeader
+            heading="Exports"
+            description="Package manuscript outputs and quality checks for submission workflows."
+            className="!ml-0 !mt-0"
+          />
+        </Row>
+
+        <section data-house-role="section-content" className="space-y-4">
+          <div>
+            <h2 data-house-role="section-title" className="house-section-title">Export checklist</h2>
+            <p data-house-role="section-subtitle" className="house-section-subtitle mt-1">
+              Run QC first, then export manuscript and supporting evidence.
+            </p>
+          </div>
+          <Stack space="sm">
+            <Button type="button" variant="outline" onClick={() => navigate(`/w/${workspaceId}/qc`)}>
+              Open quality check
+            </Button>
+            <Button type="button" variant="outline" onClick={() => navigate(`/w/${workspaceId}/manuscript/introduction`)}>
+              Open manuscript
+            </Button>
+            <Button type="button" variant="outline" onClick={() => navigate(`/w/${workspaceId}/run-wizard`)}>
+              Open run wizard
+            </Button>
+          </Stack>
+        </section>
+      </Stack>
+    </PageFrame>
   )
 }

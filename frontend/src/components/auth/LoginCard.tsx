@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 
 import { AxiomosMark } from '@/components/auth/AxiomosMark'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
 type OAuthAction = {

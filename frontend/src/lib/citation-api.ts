@@ -53,7 +53,7 @@ function inferFilename(contentDisposition: string | null): string {
   if (!contentDisposition) {
     return 'aawe-references.txt'
   }
-  const match = /filename=\"?([^\";]+)\"?/i.exec(contentDisposition)
+  const match = /filename="?([^";]+)"?/i.exec(contentDisposition)
   return match?.[1] || 'aawe-references.txt'
 }
 
@@ -70,4 +70,3 @@ export async function exportClaimCitations(claimId: string): Promise<{ filename:
   const filename = inferFilename(response.headers.get('content-disposition'))
   return { filename, content }
 }
-

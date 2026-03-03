@@ -1,10 +1,10 @@
 import { MoreHorizontal, Plus } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+import { Button } from '@/components/ui'
+import { Input } from '@/components/ui'
+import { Label } from '@/components/ui'
+import { Select } from '@/components/ui'
+import { Textarea } from '@/components/ui'
 import { houseTypography } from '@/lib/house-style'
 import type { WorkingTable, WorkingTableMetadata } from '@/types/data-workspace'
 

@@ -3,8 +3,7 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { LoginCard } from '@/components/auth/LoginCard'
-import { ButtonPrimitive } from '@/components/primitives/ButtonPrimitive'
-import { InputPrimitive } from '@/components/primitives/InputPrimitive'
+import { Button as ButtonPrimitive, Input as InputPrimitive } from '@/components/ui'
 import { clearAuthSessionToken, getAuthSessionToken, isAuthBypassEnabled, setAuthSessionToken } from '@/lib/auth-session'
 import {
   confirmEmailVerification,
@@ -764,10 +763,10 @@ export function AuthPage() {
     lineHeight: '1.25',
   }
   const authPrimaryButtonClass =
-    'w-full !h-[calc(var(--button-auth-height)-4px)] !min-h-[calc(var(--button-auth-height)-4px)] !rounded-[0.25rem] !border px-[var(--space-3)] !text-[0.9rem] !font-medium uppercase tracking-[0.06em] !text-[hsl(var(--tone-neutral-50))] !transition-none !transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed !active:scale-100 !active:translate-y-0'
+    'w-full !h-9 !min-h-9 !rounded-[var(--radius-sm)] !border px-[var(--space-3)] !text-[0.9rem] !font-medium uppercase tracking-[0.06em] !text-[hsl(var(--tone-neutral-50))] !transition-none !transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed !active:scale-100 !active:translate-y-0'
   const authPrimaryButtonStyle: CSSProperties = {
-    height: 'calc(var(--button-auth-height, 2.5rem) - 4px)',
-    minHeight: 'calc(var(--button-auth-height, 2.5rem) - 4px)',
+    height: '2.25rem',
+    minHeight: '2.25rem',
     borderRadius: '0.25rem',
     fontSize: '0.9rem',
     fontWeight: 500,
@@ -785,9 +784,9 @@ export function AuthPage() {
     transform: 'none',
   }
   const authSecondaryButtonClassBlock =
-    '!h-[calc(var(--button-auth-height)-6px)] !min-h-[calc(var(--button-auth-height)-6px)] w-full !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.86rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
+    '!h-[2.125rem] !min-h-[2.125rem] w-full !rounded-[var(--radius-sm)] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.86rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
   const authSecondaryButtonClassInline =
-    '!h-[calc(var(--button-auth-height)-6px)] !min-h-[calc(var(--button-auth-height)-6px)] !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.86rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
+    '!h-[2.125rem] !min-h-[2.125rem] !rounded-[var(--radius-sm)] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.86rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
   const passwordCriteriaClass = (met: boolean): string =>
     met ? 'text-[hsl(var(--tone-accent-700))]' : 'text-[hsl(var(--tone-danger-700))]'
 

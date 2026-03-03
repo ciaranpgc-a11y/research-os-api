@@ -1,12 +1,12 @@
 import { CircleHelp, ExternalLink, Loader2, Mic, RotateCcw, Save, Square } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Button } from '@/components/ui'
+import { Input } from '@/components/ui'
+import { Label } from '@/components/ui'
+import { Select } from '@/components/ui'
+import { Textarea } from '@/components/ui'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
 import {
   INTERPRETATION_MODE_OPTIONS,
   getCategoryForStudyType,
@@ -44,6 +44,38 @@ type StepContextProps = {
   onStudyTypeDefaultsResolved: (defaults: { interpretationMode: string; enableConservativeGuardrails: boolean }) => void
   onStatus: (message: string) => void
   onError: (message: string) => void
+}
+
+type SpeechRecognitionAlternativeLike = {
+  transcript?: string
+}
+
+type SpeechRecognitionResultLike = {
+  isFinal?: boolean
+  [index: number]: SpeechRecognitionAlternativeLike
+}
+
+type SpeechRecognitionEventLike = {
+  resultIndex: number
+  results: ArrayLike<SpeechRecognitionResultLike>
+}
+
+type SpeechRecognitionLike = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null
+  onerror: (() => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
+
+type WindowWithSpeechRecognition = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor
+  webkitSpeechRecognition?: SpeechRecognitionConstructor
 }
 
 const PRIMARY_ACTION_BUTTON_CLASS =
@@ -195,7 +227,7 @@ export function StepContext({
   const [attemptedSubmit, setAttemptedSubmit] = useState(false)
   const [saving, setSaving] = useState(false)
   const [isListening, setIsListening] = useState(false)
-  const recognitionRef = useRef<any | null>(null)
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const summaryValueRef = useRef(values.researchObjective)
   const lastExternalSaveRequestRef = useRef<number>(saveRequestId ?? 0)
 
@@ -203,10 +235,7 @@ export function StepContext({
     if (typeof window === 'undefined') {
       return false
     }
-    const speechWindow = window as Window & {
-      SpeechRecognition?: new () => any
-      webkitSpeechRecognition?: new () => any
-    }
+    const speechWindow = window as WindowWithSpeechRecognition
     return Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition)
   }, [])
 
@@ -305,10 +334,7 @@ export function StepContext({
       return
     }
 
-    const speechWindow = window as Window & {
-      SpeechRecognition?: new () => any
-      webkitSpeechRecognition?: new () => any
-    }
+    const speechWindow = window as WindowWithSpeechRecognition
 
     if (!recognitionRef.current) {
       const SpeechRecognitionCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition
@@ -320,7 +346,7 @@ export function StepContext({
       recognition.continuous = true
       recognition.interimResults = false
       recognition.lang = 'en-GB'
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEventLike) => {
         let transcript = ''
         for (let index = event.resultIndex; index < event.results.length; index += 1) {
           const result = event.results[index]
@@ -355,7 +381,7 @@ export function StepContext({
     }
   }
 
-  const onSaveContext = async () => {
+  const onSaveContext = useCallback(async () => {
     if (saving) {
       return
     }
@@ -399,7 +425,7 @@ export function StepContext({
     } finally {
       setSaving(false)
     }
-  }
+  }, [collaboratorNames, errors, onContextSaved, onError, saving, targetJournal, token, values, workspaceId])
 
   useEffect(() => {
     if (saveRequestId === undefined) {
@@ -410,7 +436,7 @@ export function StepContext({
     }
     lastExternalSaveRequestRef.current = saveRequestId
     void onSaveContext()
-  }, [saveRequestId])
+  }, [onSaveContext, saveRequestId])
 
   const onToggleSummaryHelper = (helperText: string) => {
     const current = values.researchObjective

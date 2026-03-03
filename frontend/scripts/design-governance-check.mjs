@@ -3,7 +3,7 @@ import path from 'node:path'
 
 const ROOT = process.cwd()
 const TARGET_DIRS = [path.join(ROOT, 'src'), path.join(ROOT, '.storybook')]
-const ALLOWED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css'])
+const ALLOWED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css', '.mdx'])
 const JSX_EXTENSIONS = new Set(['.tsx', '.jsx'])
 const HOUSE_ROLE_BASELINE_PATH = path.join(ROOT, 'scripts', 'house-role-baseline.json')
 const RAW_FORM_CONTROLS_BASELINE_PATH = path.join(ROOT, 'scripts', 'raw-form-controls-baseline.json')

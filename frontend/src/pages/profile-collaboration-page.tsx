@@ -2,16 +2,30 @@ import { useEffect, useMemo, useState } from 'react'
 import { Download, Lightbulb, Plus, RefreshCcw, Sparkles, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
+import {
+  PageHeader,
+  Row,
+  Stack,
+  CardPrimitive as Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  TablePrimitive as Table,
+  TableBody,
+  TableCell,
+  TableHead as TableHeader,
+  TableHeaderCell as TableHead,
+  TableRow,
+  TextareaPrimitive as Textarea,
+} from '@/components/primitives'
+import { SectionMarker } from '@/components/patterns'
+import { getSectionMarkerTone } from '@/lib/section-tone'
+import { houseLayout } from '@/lib/house-style'
+import { cn } from '@/lib/utils'
 import { UKCollaborationMap } from '@/components/collaboration/UKCollaborationMap'
-import { BadgePrimitive as Badge } from '@/components/primitives/BadgePrimitive'
-import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
-import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
-import { SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/primitives/SelectPrimitive'
-import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives/TablePrimitive'
-import { TextareaPrimitive as Textarea } from '@/components/primitives/TextareaPrimitive'
+import { Badge, Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import {
   createCollaborator,
   deleteCollaborator,
@@ -38,7 +52,6 @@ import type {
   CollaborationImportOpenAlexPayload,
   CollaborationMetricsSummaryPayload,
 } from '@/types/impact'
-import { cn } from '@/lib/utils'
 
 type CollaboratorFormState = {
   full_name: string
@@ -74,6 +87,8 @@ const EMPTY_FORM: CollaboratorFormState = {
   research_domains: '',
   notes: '',
 }
+
+const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
@@ -1023,15 +1038,23 @@ export function ProfileCollaborationPage() {
   }
 
   return (
-    <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderProfile)}>
-        <h1 data-house-role="page-title" className={houseTypography.title}>Collaboration</h1>
-        <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
-          View collaborative research metrics and shared impact.
-        </p>
-      </header>
+    <Stack data-house-role="page" space="sm">
+      <Row
+        align="center"
+        gap="md"
+        wrap={false}
+        className="house-page-title-row"
+      >
+        <SectionMarker tone={getSectionMarkerTone('profile')} size="title" className="self-stretch h-auto" />
+        <PageHeader
+          heading="Collaboration"
+          description="View collaborative research metrics and shared impact."
+          className="!ml-0 !mt-0"
+        />
+      </Row>
 
-      <Card>
+      <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
+        <Card>
         <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded border border-border px-3 py-2">
             <p className="text-xs text-muted-foreground">Total collaborators</p>
@@ -1591,8 +1614,9 @@ export function ProfileCollaborationPage() {
           {aiError ? <p className="text-xs text-destructive">{aiError}</p> : null}
         </CardContent>
       </Card>
+      </div>
 
       {loading ? <p className="text-xs text-muted-foreground">Loading collaboration data...</p> : null}
-    </section>
+    </Stack>
   )
 }

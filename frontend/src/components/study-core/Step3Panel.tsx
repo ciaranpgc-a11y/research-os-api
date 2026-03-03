@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui'
 import { RecommendationCard } from '@/components/study-core/RecommendationCard'
 
 type RunRecommendations = {

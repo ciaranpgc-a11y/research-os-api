@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui'
 import { qcItems } from '@/mock/qc'
 import { PageFrame } from '@/pages/page-frame'
 import { useAaweStore } from '@/store/use-aawe-store'

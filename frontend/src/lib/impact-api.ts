@@ -1224,7 +1224,7 @@ function parseDispositionFilename(disposition: string | null): string | null {
       // fall through
     }
   }
-  const plainMatch = raw.match(/filename=\"?([^\";]+)\"?/i)
+  const plainMatch = raw.match(/filename="?([^";]+)"?/i)
   if (plainMatch?.[1]) {
     return plainMatch[1].trim()
   }
@@ -1419,7 +1419,7 @@ export async function exportCollaboratorsCsv(
     throw new Error(await parseApiError(response, `Collaborator export failed (${response.status})`))
   }
   const content = await response.text()
-  const filename = response.headers.get('content-disposition')?.match(/filename=\"?([^\";]+)\"?/i)?.[1] || 'collaborators.csv'
+  const filename = response.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/i)?.[1] || 'collaborators.csv'
   return { filename, content }
 }
 

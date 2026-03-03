@@ -376,6 +376,7 @@ const BannerClose = React.forwardRef<HTMLButtonElement, BannerCloseProps>(
 BannerClose.displayName = 'BannerClose'
 
 export {
+  BannerPrimitive as Banner,
   BannerPrimitive,
   BannerIcon,
   BannerContent,

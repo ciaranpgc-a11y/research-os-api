@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
+import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { PublicationMetricTilePayload } from '@/types/impact'
 

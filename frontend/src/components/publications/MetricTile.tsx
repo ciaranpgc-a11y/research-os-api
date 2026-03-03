@@ -1,7 +1,7 @@
 ﻿import { Info } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { PublicationMetricTilePayload } from '@/types/impact'
 

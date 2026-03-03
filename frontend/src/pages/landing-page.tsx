@@ -1,80 +1,77 @@
 import { useNavigate } from 'react-router-dom'
 
 import { AxiomosMark } from '@/components/auth/AxiomosMark'
-import { ButtonPrimitive } from '@/components/primitives/ButtonPrimitive'
-import { houseSurfaces, houseTypography } from '@/lib/house-style'
-import { cn } from '@/lib/utils'
+import { Container, Grid, PageHeader, Row, Section, Stack } from '@/components/primitives'
+import { PanelShell } from '@/components/patterns'
+import { Button } from '@/components/ui'
 
 export function LandingPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="house-content-container house-content-container-wide flex w-full flex-col gap-8">
-        <header className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <AxiomosMark className="h-8 text-[hsl(var(--primary))]" />
-            <div className="min-w-0">
-              <span className="block truncate text-2xl font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
-                Axiomos
-              </span>
-              <span className="hidden truncate text-caption uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))] md:block">
-                The Research Operating System
-              </span>
-            </div>
-          </div>
-          <ButtonPrimitive type="button" variant="secondary" onClick={() => navigate('/auth')}>
-            Sign in
-          </ButtonPrimitive>
-        </header>
+    <main className="min-h-screen bg-[hsl(var(--background))]">
+      <Container size="wide" gutter="default" className="py-[var(--space-6)]">
+        <Stack space="xl">
+          <Row align="between" gap="md">
+            <Row align="center" gap="md" wrap={false}>
+              <AxiomosMark className="h-[var(--space-6)] text-[hsl(var(--primary))]" />
+              <Stack space="sm">
+                <span className="block truncate text-h2 font-semibold text-[hsl(var(--tone-neutral-900))]">
+                  Axiomos
+                </span>
+                <span className="hidden truncate text-caption uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))] md:block">
+                  The Research Operating System
+                </span>
+              </Stack>
+            </Row>
+            <Button type="button" variant="secondary" onClick={() => navigate('/auth')}>
+              Sign in
+            </Button>
+          </Row>
 
-        <main className={cn('rounded-xl border border-border p-8 md:p-10', houseSurfaces.card)}>
-          <div className="max-w-3xl space-y-5">
-            <p className={houseTypography.h1}>
-              Research writing workspace
-            </p>
-            <h1 className={houseTypography.title}>
-              Plan, draft, and quality-check manuscripts in one workflow
-            </h1>
-            <p className={houseTypography.subtitle}>
-              Axiomos helps you structure research context, build a rigorous manuscript plan, and
-              produce draft-ready sections with transparent guardrails.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <ButtonPrimitive type="button" variant="primary" onClick={() => navigate('/auth')}>
-                Get started
-              </ButtonPrimitive>
-              <ButtonPrimitive type="button" variant="secondary" onClick={() => navigate('/auth')}>
-                Create account
-              </ButtonPrimitive>
-            </div>
-          </div>
+          <Section surface="card" inset="lg" spaceY="lg">
+            <PageHeader
+              eyebrow="Research writing workspace"
+              heading="Plan, draft, and quality-check manuscripts in one workflow"
+              description="Axiomos helps you structure research context, build a rigorous manuscript plan, and produce draft-ready sections with transparent guardrails."
+              actions={
+                <Row gap="sm" align="center">
+                  <Button type="button" onClick={() => navigate('/auth')}>
+                    Get started
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => navigate('/auth')}>
+                    Create account
+                  </Button>
+                </Row>
+              }
+            />
 
-          <div className="mt-10 grid gap-3 md:grid-cols-3">
-            <div className={cn('rounded-lg p-4', houseSurfaces.softPanel)}>
-              <p className={houseTypography.sectionTitle}>Structured planning</p>
-              <p data-house-role="feature-description" className={cn('mt-1', houseTypography.textSoft)}>
-                Build manuscript plans section-by-section with explicit assumptions and unresolved items.
-              </p>
-            </div>
-            <div className={cn('rounded-lg p-4', houseSurfaces.softPanel)}>
-              <p className={houseTypography.sectionTitle}>Profile-driven context</p>
-              <p data-house-role="feature-description" className={cn('mt-1', houseTypography.textSoft)}>
-                Connect account and publication context so planning decisions are traceable and reusable.
-              </p>
-            </div>
-            <div className={cn('rounded-lg p-4', houseSurfaces.softPanel)}>
-              <p className={houseTypography.sectionTitle}>QC-ready outputs</p>
-              <p data-house-role="feature-description" className={cn('mt-1', houseTypography.textSoft)}>
-                Keep methods and interpretations constrained before generation and export.
-              </p>
-            </div>
-          </div>
-        </main>
-      </div>
-    </div>
+            <Grid cols={1} gap="md" className="md:grid-cols-3">
+              <PanelShell
+                heading="Structured planning"
+                description="Build manuscript plans section-by-section with explicit assumptions and unresolved items."
+                surface="muted"
+                inset="sm"
+                spaceY="sm"
+              />
+              <PanelShell
+                heading="Profile-driven context"
+                description="Connect account and publication context so planning decisions are traceable and reusable."
+                surface="muted"
+                inset="sm"
+                spaceY="sm"
+              />
+              <PanelShell
+                heading="QC-ready outputs"
+                description="Keep methods and interpretations constrained before generation and export."
+                surface="muted"
+                inset="sm"
+                spaceY="sm"
+              />
+            </Grid>
+          </Section>
+        </Stack>
+      </Container>
+    </main>
   )
 }
-
-
-

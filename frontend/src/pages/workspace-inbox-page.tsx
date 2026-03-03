@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { TopBar } from '@/components/layout/top-bar'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { PageHeader, Row } from '@/components/primitives'
+import { SectionMarker } from '@/components/patterns'
+import { Button, Textarea } from '@/components/ui'
 import { API_BASE_URL } from '@/lib/api'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { decryptWorkspaceInboxText } from '@/lib/workspace-inbox-crypto'
 import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
-import { getHouseLeftBorderToneClass, getHouseNavToneClass } from '@/lib/section-tone'
+import { getHouseLeftBorderToneClass, getHouseNavToneClass, getSectionMarkerTone } from '@/lib/section-tone'
 import { matchesScopedStorageEventKey } from '@/lib/user-scoped-storage'
 import { readWorkspaceOwnerNameFromProfile, WORKSPACE_OWNER_REQUIRED_MESSAGE } from '@/lib/workspace-owner'
 import { cn } from '@/lib/utils'
@@ -1488,12 +1489,15 @@ export function WorkspaceInboxPage() {
 
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
           <div data-house-role="content-container" className="house-content-container house-content-container-wide h-full">
-            <header
-              data-house-role="page-header"
-              className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_WORKSPACE_CLASS)}
+            <Row
+              align="center"
+              gap="md"
+              wrap={false}
+              className="house-page-title-row"
             >
-              <h1 data-house-role="page-title" className={houseTypography.title}>Inbox</h1>
-            </header>
+              <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
+              <PageHeader heading="Inbox" className="!ml-0 !mt-0" />
+            </Row>
             <section className={cn('flex h-full min-h-0 flex-col rounded-lg border border-border', houseSurfaces.card)}>
               {isAllConversationsView ? (
                 <>

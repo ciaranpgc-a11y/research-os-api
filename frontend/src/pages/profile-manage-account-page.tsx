@@ -2,14 +2,20 @@ import { useCallback, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
-import { deleteMe, fetchMe, updateMe } from '@/lib/impact-api'
+import { PageHeader, Row, Stack } from '@/components/primitives'
+import { SectionMarker } from '@/components/patterns'
+import { Button, Input } from '@/components/ui'
+import { getSectionMarkerTone } from '@/lib/section-tone'
+import { houseLayout, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
+import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
+import { deleteMe, fetchMe, updateMe } from '@/lib/impact-api'
+import { PageFrame } from '@/pages/page-frame'
 import type { AuthUser } from '@/types/impact'
+
+const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
+const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
+const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
 
 const ACCOUNT_CACHE_KEYS = [
   'aawe_integrations_user_cache',
@@ -22,10 +28,6 @@ const ACCOUNT_CACHE_PREFIXES = [
   'aawe_orcid_sync_summary:',
   'aawe_orcid_active_sync_job:',
 ]
-const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
-const HOUSE_PAGE_TITLE_EXPANDER_CLASS = houseTypography.titleExpander
-const HOUSE_FIELD_LABEL_CLASS = houseTypography.fieldLabel
-const HOUSE_HELPER_TEXT_CLASS = houseTypography.fieldHelper
 
 function clearAccountCache(): void {
   if (typeof window === 'undefined') {
@@ -168,28 +170,32 @@ export function ProfileManageAccountPage() {
   }
 
   return (
-    <section data-house-role="page" className="space-y-4">
-      <header
-        data-house-role="page-header"
-        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderProfile)}
-      >
-        <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Manage account</h1>
-        <p data-house-role="page-title-expander" className={HOUSE_PAGE_TITLE_EXPANDER_CLASS}>
-          Password and account lifecycle controls for this profile.
-        </p>
-      </header>
+    <PageFrame tone="profile" hideScaffoldHeader>
+      <Stack space="sm">
+        <Row
+          align="center"
+          gap="md"
+          wrap={false}
+          className="house-page-title-row"
+        >
+          <SectionMarker tone={getSectionMarkerTone('profile')} size="title" className="self-stretch h-auto" />
+          <PageHeader
+            heading="Manage account"
+            description="Password and account lifecycle controls for this profile."
+            className="!ml-0 !mt-0"
+          />
+        </Row>
 
-      <Card data-house-role="section-card" className="border-[hsl(var(--tone-neutral-200))]">
-        <CardHeader className="pb-2">
-          <CardTitle data-house-role="section-title">Change password</CardTitle>
-          <CardDescription data-house-role="section-subtitle">
-            Use a strong password with uppercase, lowercase, and numeric characters.
-          </CardDescription>
-        </CardHeader>
-        <CardContent data-house-role="section-content" className="space-y-3">
+        <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3')}>
+          <div className="house-main-heading-block">
+            <h2 className={HOUSE_SECTION_TITLE_CLASS}>Change password</h2>
+            <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
+              Use a strong password with uppercase, lowercase, and numeric characters.
+            </p>
+          </div>
           <div className="grid gap-3 md:max-w-xl md:grid-cols-2">
             <label data-house-role="field-group" className="space-y-1 md:col-span-2">
-              <span data-house-role="field-label" className={HOUSE_FIELD_LABEL_CLASS}>New password</span>
+              <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">New password</span>
               <Input
                 type="password"
                 value={password}
@@ -200,7 +206,7 @@ export function ProfileManageAccountPage() {
               />
             </label>
             <label data-house-role="field-group" className="space-y-1 md:col-span-2">
-              <span data-house-role="field-label" className={HOUSE_FIELD_LABEL_CLASS}>Confirm password</span>
+              <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">Confirm password</span>
               <Input
                 type="password"
                 value={confirmPassword}
@@ -229,22 +235,20 @@ export function ProfileManageAccountPage() {
               {passwordError}
             </div>
           ) : null}
-        </CardContent>
-      </Card>
+        </section>
 
-      <Card data-house-role="section-card-danger" className="border-[hsl(var(--tone-danger-200))]">
-        <CardHeader className="pb-2">
-          <CardTitle data-house-role="section-title-danger" className="text-[hsl(var(--tone-danger-800))]">Delete account</CardTitle>
-          <CardDescription data-house-role="section-subtitle">
-            This permanently removes your sign-in and profile records. This action cannot be undone.
-          </CardDescription>
-        </CardHeader>
-        <CardContent data-house-role="section-content" className="space-y-3">
-          <p data-house-role="body-text" className={HOUSE_HELPER_TEXT_CLASS}>
+        <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3 rounded-lg border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] p-4')}>
+          <div className="house-main-heading-block">
+            <h2 className={cn(HOUSE_SECTION_TITLE_CLASS, 'text-[hsl(var(--tone-danger-800))]')}>Delete account</h2>
+            <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
+              This permanently removes your sign-in and profile records. This action cannot be undone.
+            </p>
+          </div>
+          <p data-house-role="body-text" className="m-0 text-body-secondary text-[hsl(var(--muted-foreground))]">
             Account email: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{user?.email || 'Not available'}</span>
           </p>
           <label data-house-role="field-group" className="space-y-1 md:max-w-sm">
-            <span data-house-role="field-label" className={HOUSE_FIELD_LABEL_CLASS}>Type DELETE to confirm</span>
+            <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">Type DELETE to confirm</span>
             <Input
               value={deletePhrase}
               onChange={(event) => setDeletePhrase(event.target.value)}
@@ -270,8 +274,8 @@ export function ProfileManageAccountPage() {
               {deleteError}
             </div>
           ) : null}
-        </CardContent>
-      </Card>
-    </section>
+        </section>
+      </Stack>
+    </PageFrame>
   )
 }

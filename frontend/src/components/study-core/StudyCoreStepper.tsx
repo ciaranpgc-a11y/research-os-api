@@ -1,6 +1,6 @@
 import { CheckCircle2, Circle } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { WizardStep } from '@/store/use-study-core-wizard-store'
 

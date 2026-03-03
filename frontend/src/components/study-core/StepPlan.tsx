@@ -1,10 +1,10 @@
 import { ChevronDown, ChevronUp, Database, FileText, Loader2, Paperclip, UploadCloud, Wand2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { Button } from '@/components/ui'
+import { Input } from '@/components/ui'
+import { Label } from '@/components/ui'
+import { Textarea } from '@/components/ui'
 import { getJournalQualityScore, getJournalQualityStars } from '@/lib/research-frame-options'
 import { type PlanSectionKey } from '@/lib/plan-section-readiness'
 import {
