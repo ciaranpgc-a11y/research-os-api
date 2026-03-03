@@ -29,6 +29,7 @@ from research_os.services.generation_job_service import (
     GenerationJobStateError,
     enqueue_generation_job,
 )
+from research_os.services.api_telemetry_service import summarize_api_usage_for_admin
 
 PERSONAL_EMAIL_DOMAINS = {
     "gmail.com",
@@ -1507,6 +1508,119 @@ def get_admin_usage_costs(*, query: str = "") -> dict[str, object]:
         "organisation_usage": org_items[:50],
         "user_usage": user_items[:50],
         "monthly_trend": trend_items,
+    }
+
+
+def _provider_configured(provider: str) -> bool:
+    key_map = {
+        "openai": "OPENAI_API_KEY",
+        "openalex": "OPENALEX_MAILTO",
+        "orcid": "ORCID_CLIENT_ID",
+        "google": "GOOGLE_CLIENT_ID",
+        "microsoft": "MICROSOFT_CLIENT_ID",
+        "pubmed": "PUBMED_FETCH_TIMEOUT_SECONDS",
+        "semantic_scholar": "SEMANTIC_SCHOLAR_API_KEY",
+        "crossref": "CROSSREF_MAILTO",
+    }
+    key = key_map.get(provider)
+    if not key:
+        return False
+    if provider == "pubmed":
+        return True
+    return bool(str(os.getenv(key, "")).strip())
+
+
+def get_admin_api_monitor(*, query: str = "") -> dict[str, object]:
+    telemetry = summarize_api_usage_for_admin(query=query)
+    provider_rows = (
+        telemetry.get("providers")
+        if isinstance(telemetry.get("providers"), list)
+        else []
+    )
+    provider_map: dict[str, dict[str, object]] = {}
+    for row in provider_rows:
+        if not isinstance(row, dict):
+            continue
+        key = str(row.get("provider") or "").strip().lower()
+        if not key:
+            continue
+        provider_map[key] = row
+
+    inventory = [
+        {"provider": "openai", "category": "llm"},
+        {"provider": "openalex", "category": "bibliography"},
+        {"provider": "orcid", "category": "identity"},
+        {"provider": "google", "category": "identity"},
+        {"provider": "microsoft", "category": "identity"},
+        {"provider": "pubmed", "category": "bibliography"},
+        {"provider": "semantic_scholar", "category": "bibliography"},
+        {"provider": "crossref", "category": "bibliography"},
+    ]
+    items: list[dict[str, object]] = []
+    for item in inventory:
+        provider = str(item["provider"])
+        usage = provider_map.get(provider, {})
+        configured = _provider_configured(provider)
+        calls = int(usage.get("calls_current_month") or 0)
+        errors = int(usage.get("errors_current_month") or 0)
+        health = "healthy"
+        if not configured:
+            health = "not_configured"
+        elif calls > 0 and errors >= max(3, int(calls * 0.25)):
+            health = "degraded"
+        items.append(
+            {
+                "provider": provider,
+                "category": str(item["category"]),
+                "configured": configured,
+                "health": health,
+                "calls_current_month": calls,
+                "errors_current_month": errors,
+                "error_rate_pct_current_month": float(
+                    usage.get("error_rate_pct_current_month") or 0.0
+                ),
+                "avg_latency_ms_current_month": float(
+                    usage.get("avg_latency_ms_current_month") or 0.0
+                ),
+                "tokens_current_month": int(usage.get("tokens_current_month") or 0),
+                "cost_usd_current_month": round(
+                    float(usage.get("cost_usd_current_month") or 0.0), 6
+                ),
+                "last_called_at": usage.get("last_called_at"),
+                "operations": (
+                    usage.get("operations")
+                    if isinstance(usage.get("operations"), list)
+                    else []
+                ),
+                "recent_errors": (
+                    usage.get("recent_errors")
+                    if isinstance(usage.get("recent_errors"), list)
+                    else []
+                ),
+            }
+        )
+    items.sort(
+        key=lambda row: (-int(row.get("calls_current_month") or 0), str(row["provider"]))
+    )
+    return {
+        "generated_at": telemetry.get("generated_at"),
+        "summary": (
+            telemetry.get("summary")
+            if isinstance(telemetry.get("summary"), dict)
+            else {
+                "calls_current_month": 0,
+                "errors_current_month": 0,
+                "error_rate_pct_current_month": 0.0,
+                "tokens_current_month": 0,
+                "cost_usd_current_month": 0.0,
+            }
+        ),
+        "providers": items,
+        "monthly_trend": (
+            telemetry.get("monthly_trend")
+            if isinstance(telemetry.get("monthly_trend"), list)
+            else []
+        ),
     }
 
 

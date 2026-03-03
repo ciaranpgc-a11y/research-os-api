@@ -31,6 +31,7 @@ import {
   cancelAdminJob,
   deleteAdminUserAccount,
   fetchAdminAuditEvents,
+  fetchAdminApiMonitor,
   fetchAdminJobs,
   fetchAdminOrganisations,
   fetchAdminOverview,
@@ -48,6 +49,7 @@ import type {
   AdminAuditEventPayload,
   AdminAuditEventsListPayload,
   AdminJobsListPayload,
+  AdminApiMonitorPayload,
   AdminOrganisationsListPayload,
   AdminOverviewPayload,
   AdminUsageCostsPayload,
@@ -455,6 +457,7 @@ export function AdminPage() {
   const [organisations, setOrganisations] = useState<AdminOrganisationsListPayload | null>(null)
   const [workspaces, setWorkspaces] = useState<AdminWorkspacesListPayload | null>(null)
   const [usageCosts, setUsageCosts] = useState<AdminUsageCostsPayload | null>(null)
+  const [apiMonitor, setApiMonitor] = useState<AdminApiMonitorPayload | null>(null)
   const [jobs, setJobs] = useState<AdminJobsListPayload | null>(null)
   const [auditEvents, setAuditEvents] = useState<AdminAuditEventsListPayload | null>(null)
   const [userQuery, setUserQuery] = useState('')
@@ -516,6 +519,7 @@ export function AdminPage() {
           organisationsPayload,
           workspacesPayload,
           usagePayload,
+          apiMonitorPayload,
           jobsPayload,
           auditPayload,
         ] = await Promise.all([
@@ -538,6 +542,9 @@ export function AdminPage() {
           fetchAdminUsageCosts(token, {
             query: nextUsageQuery,
           }),
+          fetchAdminApiMonitor(token, {
+            query: nextUsageQuery,
+          }),
           fetchAdminJobs(token, {
             query: nextJobsQuery,
             status: nextJobStatus,
@@ -554,6 +561,7 @@ export function AdminPage() {
         setOrganisations(organisationsPayload)
         setWorkspaces(workspacesPayload)
         setUsageCosts(usagePayload)
+        setApiMonitor(apiMonitorPayload)
         setJobs(jobsPayload)
         setAuditEvents(auditPayload)
         setSelectedOrganisationId((current) => {
@@ -795,6 +803,9 @@ export function AdminPage() {
   const usageOrganisationItems = useMemo(() => usageCosts?.organisation_usage || [], [usageCosts?.organisation_usage])
   const usageUserItems = useMemo(() => usageCosts?.user_usage || [], [usageCosts?.user_usage])
   const usageTrendItems = useMemo(() => usageCosts?.monthly_trend || [], [usageCosts?.monthly_trend])
+  const apiMonitorSummary = apiMonitor?.summary || null
+  const apiMonitorProviders = useMemo(() => apiMonitor?.providers || [], [apiMonitor?.providers])
+  const apiMonitorTrend = useMemo(() => apiMonitor?.monthly_trend || [], [apiMonitor?.monthly_trend])
   const jobsItems = useMemo(() => jobs?.items || [], [jobs?.items])
   const auditItems = useMemo(() => auditEvents?.items || [], [auditEvents?.items])
   const reconcileAuditItems = useMemo(
@@ -2371,54 +2382,137 @@ export function AdminPage() {
             ) : null}
 
             {activeCapability.id === 'integrations' ? (
-              <Card className="border-[hsl(var(--tone-neutral-200))]">
-                <CardHeader className="pb-2">
-                  <CardTitle>Integration health center</CardTitle>
-                  <CardDescription>Provider readiness by tenant integration status.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-md border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] px-3 py-2">
-                      <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-positive-700))]">Connected</p>
-                      <p className="text-xl font-semibold text-[hsl(var(--tone-positive-700))]">{formatInteger(integrationStatusSummary.summary.connected)}</p>
+              <div className="space-y-4">
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>Integration health center</CardTitle>
+                    <CardDescription>Provider readiness by tenant integration status.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-md border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-positive-700))]">Connected</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-positive-700))]">{formatInteger(integrationStatusSummary.summary.connected)}</p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-warning-900))]">Degraded</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-warning-900))]">{formatInteger(integrationStatusSummary.summary.degraded)}</p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-neutral-700))]">Not configured</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(integrationStatusSummary.summary.notConfigured)}</p>
+                      </div>
                     </div>
-                    <div className="rounded-md border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] px-3 py-2">
-                      <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-warning-900))]">Degraded</p>
-                      <p className="text-xl font-semibold text-[hsl(var(--tone-warning-900))]">{formatInteger(integrationStatusSummary.summary.degraded)}</p>
-                    </div>
-                    <div className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] px-3 py-2">
-                      <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-neutral-700))]">Not configured</p>
-                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(integrationStatusSummary.summary.notConfigured)}</p>
-                    </div>
-                  </div>
-                  {integrationStatusSummary.byProvider.length ? (
-                    <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
-                      <table className="w-full min-w-full text-left text-sm">
-                        <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
-                          <tr>
-                            <th className="px-3 py-2">Provider</th>
-                            <th className="px-3 py-2">Connected</th>
-                            <th className="px-3 py-2">Degraded</th>
-                            <th className="px-3 py-2">Not configured</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {integrationStatusSummary.byProvider.map((row) => (
-                            <tr key={row.provider} className="border-t border-[hsl(var(--tone-neutral-200))]">
-                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-900))]">{row.provider}</td>
-                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.connected)}</td>
-                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.degraded)}</td>
-                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.notConfigured)}</td>
+                    {integrationStatusSummary.byProvider.length ? (
+                      <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                        <table className="w-full min-w-full text-left text-sm">
+                          <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2">Provider</th>
+                              <th className="px-3 py-2">Connected</th>
+                              <th className="px-3 py-2">Degraded</th>
+                              <th className="px-3 py-2">Not configured</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {integrationStatusSummary.byProvider.map((row) => (
+                              <tr key={row.provider} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-900))]">{row.provider}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.connected)}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.degraded)}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.notConfigured)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No integration status rows available.</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>API usage and cost monitor</CardTitle>
+                    <CardDescription>Live provider inventory with monthly usage, errors, and spend.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-5">
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">API calls</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(apiMonitorSummary?.calls_current_month || 0)}</p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Errors</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(apiMonitorSummary?.errors_current_month || 0)}</p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Error rate</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatPercent(apiMonitorSummary?.error_rate_pct_current_month || 0)}</p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Tokens</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(apiMonitorSummary?.tokens_current_month || 0)}</p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Cost (month)</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatCurrency(apiMonitorSummary?.cost_usd_current_month || 0)}</p>
+                      </div>
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No integration status rows available.</p>
-                  )}
-                </CardContent>
-              </Card>
+                    {apiMonitorProviders.length ? (
+                      <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                        <table className="w-full min-w-full text-left text-sm">
+                          <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2">Provider</th>
+                              <th className="px-3 py-2">Category</th>
+                              <th className="px-3 py-2">Health</th>
+                              <th className="px-3 py-2">Calls</th>
+                              <th className="px-3 py-2">Errors</th>
+                              <th className="px-3 py-2">Latency</th>
+                              <th className="px-3 py-2">Cost</th>
+                              <th className="px-3 py-2">Last call</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {apiMonitorProviders.map((row) => (
+                              <tr key={row.provider} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                                <td className="px-3 py-2 font-medium text-[hsl(var(--tone-neutral-900))]">{row.provider}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{row.category}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">
+                                  <span className="inline-flex rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] px-2 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">
+                                    {row.health}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.calls_current_month)}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.errors_current_month)}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.avg_latency_ms_current_month)} ms</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatCurrency(row.cost_usd_current_month)}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(row.last_called_at)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No API monitor rows available yet.</p>
+                    )}
+                    {apiMonitorTrend.length ? (
+                      <div className="rounded-lg border border-[hsl(var(--tone-neutral-200))] p-3">
+                        <p className="mb-2 text-sm uppercase tracking-wide text-muted-foreground">3-month trend by provider</p>
+                        <div className="space-y-1 text-sm text-[hsl(var(--tone-neutral-700))]">
+                          {apiMonitorTrend.map((row) => (
+                            <p key={`${row.provider}-${row.month}`}>
+                              <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{row.provider}</span> {row.month}: {formatInteger(row.calls)} calls, {formatInteger(row.errors)} errors, {formatCurrency(row.cost_usd)}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </div>
             ) : null}
 
             {activeCapability.id === 'support' ? (

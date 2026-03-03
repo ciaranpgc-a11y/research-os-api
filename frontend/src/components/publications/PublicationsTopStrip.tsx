@@ -5110,6 +5110,7 @@ function TotalPublicationsDrilldownWorkspace({
   const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
   const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
+  const [articleTypeTrendsExpanded, setArticleTypeTrendsExpanded] = useState(true)
   const publicationTrendsAnimationKey = `pub-trends|${publicationTrendsWindowMode}|${publicationTrendsVisualMode}`
   const publicationTrendsIsEntryCycle = useIsFirstChartEntry(publicationTrendsAnimationKey, true)
   const publicationTrendsWindowThumbStyle: CSSProperties = publicationTrendsWindowMode === 'all'
@@ -5145,6 +5146,7 @@ function TotalPublicationsDrilldownWorkspace({
     setPublicationTrendsVisualMode('bars')
     setPublicationTrendsExpanded(true)
     setPublicationTypeTrendsExpanded(true)
+    setArticleTypeTrendsExpanded(true)
   }, [tile.key])
 
   const publicationDrilldownRecords = useMemo<PublicationDrilldownRecord[]>(() => {
@@ -5438,6 +5440,33 @@ function TotalPublicationsDrilldownWorkspace({
                     dimension="publication"
                     xAxisLabel="Publication type"
                     emptyLabel="No publication type data"
+                    enableValueModeToggle
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            <div className="house-drilldown-heading-block">
+              <div className="flex items-center justify-between gap-2">
+                <p className="house-drilldown-heading-block-title">Article type trends</p>
+                <DrilldownSheet.HeadingToggle
+                  expanded={articleTypeTrendsExpanded}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setArticleTypeTrendsExpanded((value) => !value)
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                />
+              </div>
+            </div>
+            {articleTypeTrendsExpanded ? (
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <div className="house-drilldown-content-block house-publications-drilldown-summary-trend-chart-tall w-full">
+                  <PublicationCategoryDistributionChart
+                    publications={publicationDrilldownRecords}
+                    dimension="article"
+                    xAxisLabel="Article type"
+                    emptyLabel="No article type data"
                     enableValueModeToggle
                   />
                 </div>

@@ -12,6 +12,11 @@ const badgeVariants = cva(
         secondary: 'border-transparent bg-muted text-foreground',
         outline: 'border-border text-foreground',
         destructive: 'border-transparent bg-destructive text-destructive-foreground',
+        userAdmin:
+          'border-[hsl(var(--tone-warning-400))] bg-[linear-gradient(135deg,hsl(var(--tone-warning-100)),hsl(var(--tone-warning-200)))] text-[hsl(var(--tone-warning-900))] shadow-[var(--elevation-2)] ring-1 ring-[hsl(var(--tone-warning-300)/0.75)]',
+        userMember:
+          'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]',
+        userGuest: 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]',
       },
     },
     defaultVariants: {

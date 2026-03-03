@@ -10,8 +10,10 @@ import re
 from threading import Lock
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
+from research_os.services.api_telemetry_service import record_api_usage_event
 
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 SUGGESTION_SOURCE_PRIORITY = {
@@ -253,17 +255,45 @@ def _request_json(
     retry_count: int | None = None,
 ) -> dict[str, Any]:
     retries = _retry_count() if retry_count is None else max(0, int(retry_count))
+    host = (urlparse(url).hostname or "").lower()
+    provider = "openalex" if "openalex" in host else "external_api"
     for attempt in range(retries + 1):
+        started = time.perf_counter()
         try:
             response = client.get(url, params=params, headers=headers or {})
         except Exception:
+            record_api_usage_event(
+                provider=provider,
+                operation="affiliation_lookup",
+                endpoint=url,
+                success=False,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                error_code="exception",
+            )
             if attempt < retries:
                 time.sleep(0.3 * (attempt + 1))
                 continue
             return {}
         if response.status_code < 400:
+            record_api_usage_event(
+                provider=provider,
+                operation="affiliation_lookup",
+                endpoint=url,
+                success=True,
+                status_code=response.status_code,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            )
             payload = response.json()
             return payload if isinstance(payload, dict) else {}
+        record_api_usage_event(
+            provider=provider,
+            operation="affiliation_lookup",
+            endpoint=url,
+            success=False,
+            status_code=response.status_code,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            error_code=f"http_{response.status_code}",
+        )
         if response.status_code not in RETRYABLE_STATUS_CODES or attempt >= retries:
             return {}
         time.sleep(0.3 * (attempt + 1))
@@ -279,19 +309,47 @@ def _request_json_list(
     retry_count: int | None = None,
 ) -> list[dict[str, Any]]:
     retries = _retry_count() if retry_count is None else max(0, int(retry_count))
+    host = (urlparse(url).hostname or "").lower()
+    provider = "openalex" if "openalex" in host else "external_api"
     for attempt in range(retries + 1):
+        started = time.perf_counter()
         try:
             response = client.get(url, params=params, headers=headers or {})
         except Exception:
+            record_api_usage_event(
+                provider=provider,
+                operation="affiliation_lookup",
+                endpoint=url,
+                success=False,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                error_code="exception",
+            )
             if attempt < retries:
                 time.sleep(0.3 * (attempt + 1))
                 continue
             return []
         if response.status_code < 400:
+            record_api_usage_event(
+                provider=provider,
+                operation="affiliation_lookup",
+                endpoint=url,
+                success=True,
+                status_code=response.status_code,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            )
             payload = response.json()
             if isinstance(payload, list):
                 return [item for item in payload if isinstance(item, dict)]
             return []
+        record_api_usage_event(
+            provider=provider,
+            operation="affiliation_lookup",
+            endpoint=url,
+            success=False,
+            status_code=response.status_code,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            error_code=f"http_{response.status_code}",
+        )
         if response.status_code not in RETRYABLE_STATUS_CODES or attempt >= retries:
             return []
         time.sleep(0.3 * (attempt + 1))

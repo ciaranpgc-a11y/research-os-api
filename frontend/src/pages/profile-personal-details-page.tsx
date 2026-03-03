@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
-import { Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
+import { Badge, Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import { clearAuthSessionToken, getAuthSessionToken, getCachedAuthRole } from '@/lib/auth-session'
 import { houseLayout, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
@@ -2026,28 +2026,30 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       </Row>
 
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
-        <SectionHeader
-          heading="Profile"
-          className="house-section-header-marker-aligned"
-          actions={(
+        <div className="house-section-header-marker-aligned flex w-full flex-col gap-2">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+            <h2 className="m-0 text-h3 font-semibold text-[hsl(var(--foreground))]">Profile</h2>
             <div className="flex flex-wrap items-center gap-2">
               {badges.map((badge) => (
-                <span
+                <Badge
                   key={badge.id}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${badgeToneClass(badge.tone)} ${
-                    badge.variant === 'admin'
-                      ? 'ring-1 ring-[hsl(var(--tone-warning-300)/0.75)]'
-                      : ''
-                  }`}
+                  className="gap-1 leading-none shadow-none"
                   title={badge.detail}
+                  variant={
+                    badge.variant === 'admin'
+                      ? 'userAdmin'
+                      : badge.id === 'member'
+                        ? 'userMember'
+                        : 'userGuest'
+                  }
                 >
                   {badge.variant === 'admin' ? <ShieldCheck className="h-3.5 w-3.5" /> : null}
                   {badge.label}
-                </span>
+                </Badge>
               ))}
             </div>
-          )}
-        />
+          </div>
+        </div>
         <div className="space-y-3 text-sm">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className={HOUSE_PROFILE_PHOTO_PANEL_CLASS}>

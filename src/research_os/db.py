@@ -686,6 +686,10 @@ class Work(Base):
     publication_type: Mapped[str] = mapped_column(String(128), default="")
     citations_total: Mapped[int] = mapped_column(Integer, default=0)
     work_type: Mapped[str] = mapped_column(String(128), default="")
+    work_type_source: Mapped[str] = mapped_column(String(32), default="")
+    work_type_llm_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     venue_name: Mapped[str] = mapped_column(String(255), default="")
     publisher: Mapped[str] = mapped_column(String(255), default="")
     abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -1451,6 +1455,47 @@ class AdminAuditEvent(Base):
     )
 
     actor_user: Mapped[User | None] = relationship(back_populates="admin_audit_events")
+
+
+class ApiProviderUsageEvent(Base):
+    __tablename__ = "api_provider_usage_events"
+    __table_args__ = (
+        Index("ix_api_provider_usage_events_created_at", "created_at"),
+        Index(
+            "ix_api_provider_usage_events_provider_created",
+            "provider",
+            "created_at",
+        ),
+        Index(
+            "ix_api_provider_usage_events_success_created",
+            "success",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    provider: Mapped[str] = mapped_column(String(64), index=True, default="")
+    operation: Mapped[str] = mapped_column(String(128), default="")
+    endpoint: Mapped[str] = mapped_column(String(255), default="")
+    success: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_input: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_output: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    error_code: Mapped[str | None] = mapped_column(String(96), nullable=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    project_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
 
 
 class GenerationJob(Base):

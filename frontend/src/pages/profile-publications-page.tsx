@@ -238,6 +238,16 @@ const WORK_TYPE_LABELS: Record<string, string> = {
   dissertation: 'Dissertation',
   'data-set': 'Dataset',
   'review-article': 'Review article',
+  report: 'Report',
+  'working-paper': 'Working paper',
+  thesis: 'Dissertation',
+  patent: 'Patent',
+  standard: 'Standard',
+  software: 'Software',
+  editorial: 'Editorial',
+  letter: 'Letter',
+  erratum: 'Erratum',
+  retracted: 'Retracted',
 }
 
 const CONFERENCE_HINT_PATTERN =
@@ -310,7 +320,7 @@ function inferArticleTypeFromTitle(title: string | null | undefined): string {
     return 'Original'
   }
   if (ARTICLE_TYPE_META_ANALYSIS_PATTERN.test(clean)) {
-    return 'Meta-analysis'
+    return 'Systematic review'
   }
   if (ARTICLE_TYPE_SCOPING_PATTERN.test(clean)) {
     return 'Scoping'
@@ -358,7 +368,7 @@ function deriveArticleTypeLabel(work: {
       return 'Literature review'
     }
     if (normalizedClassification === 'meta-analysis') {
-      return 'Meta-analysis'
+      return 'Systematic review'
     }
     if (normalizedClassification === 'scoping review') {
       return 'Scoping'
@@ -5344,11 +5354,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         {sectionParagraphs.length > 0 ? (
                                           <div className="house-drilldown-abstract-paragraph-stack">
                                             {sectionParagraphs.map((paragraph, paragraphIndex) => (
-                                              <p key={`abstract-section-paragraph-${section.key || index}-${paragraphIndex}`} className="leading-relaxed">{paragraph}</p>
+                                              <p key={`abstract-section-paragraph-${section.key || index}-${paragraphIndex}`} className="text-sm leading-relaxed">{paragraph}</p>
                                             ))}
                                           </div>
                                         ) : (
-                                          <p className="leading-relaxed">Not available</p>
+                                          <p className="text-sm leading-relaxed">Not available</p>
                                         )}
                                       </div>
                                     </div>,
@@ -5361,7 +5371,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     </div>
                                     <div className="house-drilldown-content-block">
                                       <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
-                                        <p className="leading-relaxed">{inferredRegistrationSectionContent}</p>
+                                        <p className="text-sm leading-relaxed">{inferredRegistrationSectionContent}</p>
                                       </div>
                                     </div>
                                   </>
@@ -5373,7 +5383,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     </div>
                                     <div className="house-drilldown-content-block">
                                       <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
-                                        <p className="leading-relaxed">{abstractKeywordList.join(', ')}</p>
+                                        <p className="text-sm leading-relaxed">{abstractKeywordList.join(', ')}</p>
                                       </div>
                                     </div>
                                   </>
@@ -5384,7 +5394,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
                                   <div className="house-drilldown-abstract-paragraph-stack">
                                     {abstractPreviewParagraphs.map((paragraph, paragraphIndex) => (
-                                      <p key={`abstract-preview-paragraph-${paragraphIndex}`} className="leading-relaxed">{paragraph}</p>
+                                      <p key={`abstract-preview-paragraph-${paragraphIndex}`} className="text-sm leading-relaxed">{paragraph}</p>
                                     ))}
                                   </div>
                                   {effectiveDetailAbstract.length > 700 ? (
@@ -5406,7 +5416,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 </div>
                                 <div className="house-drilldown-content-block">
                                   <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
-                                    <p className="leading-relaxed">{abstractKeywordList.join(', ')}</p>
+                                    <p className="text-sm leading-relaxed">{abstractKeywordList.join(', ')}</p>
                                   </div>
                                 </div>
                               </>

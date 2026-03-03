@@ -42,6 +42,7 @@ from research_os.api.schemas import (
     AdminWorkspacesListResponse,
     AdminOrganisationsListResponse,
     AdminOverviewResponse,
+    AdminApiMonitorResponse,
     AdminUsageCostsResponse,
     AdminUsersListResponse,
     AnalysisScaffoldRequest,
@@ -242,6 +243,7 @@ from research_os.services.admin_service import (
     admin_reconcile_user_library,
     admin_retry_job,
     create_admin_org_impersonation,
+    get_admin_api_monitor,
     get_admin_overview,
     get_admin_usage_costs,
     list_admin_audit_events,
@@ -1622,6 +1624,23 @@ def v1_admin_usage_costs(
         return auth_error
     payload = get_admin_usage_costs(query=query)
     return AdminUsageCostsResponse(**payload)
+
+
+@app.get(
+    "/v1/admin/apis",
+    response_model=AdminApiMonitorResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_apis(
+    request: Request,
+    query: str = Query(default="", max_length=120),
+) -> AdminApiMonitorResponse | JSONResponse:
+    _, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    payload = get_admin_api_monitor(query=query)
+    return AdminApiMonitorResponse(**payload)
 
 
 @app.get(

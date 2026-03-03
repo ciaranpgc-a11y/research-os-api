@@ -13,6 +13,7 @@ import type {
   AdminOrganisationsListPayload,
   AdminOverviewPayload,
   AdminOrganisationImpersonationStartPayload,
+  AdminApiMonitorPayload,
   AdminUsageCostsPayload,
   AdminUsersListPayload,
   AdminWorkspacesListPayload,
@@ -417,6 +418,28 @@ export async function fetchAdminUsageCosts(
       headers: authHeaders(token),
     },
     'Admin usage and costs lookup failed',
+  )
+}
+
+export async function fetchAdminApiMonitor(
+  token: string,
+  options?: {
+    query?: string
+  },
+): Promise<AdminApiMonitorPayload> {
+  const params = new URLSearchParams()
+  if (String(options?.query || '').trim()) {
+    params.set('query', String(options?.query || '').trim())
+  }
+  const queryString = params.toString()
+  const suffix = queryString ? `?${queryString}` : ''
+  return requestJson<AdminApiMonitorPayload>(
+    `${API_BASE_URL}/v1/admin/apis${suffix}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Admin API monitor lookup failed',
   )
 }
 

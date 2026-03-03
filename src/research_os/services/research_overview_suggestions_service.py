@@ -8,7 +8,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from research_os.clients.openai_client import get_client
+from research_os.clients.openai_client import create_response
 
 PREFERRED_MODEL = "gpt-5.2"
 FALLBACK_MODEL = "gpt-4.1-mini"
@@ -530,12 +530,11 @@ def _strip_json_fences(raw_text: str) -> str:
 
 
 def _ask_model(prompt: str, preferred_model: str) -> tuple[str, str]:
-    client = get_client()
     try:
-        response = client.responses.create(model=preferred_model, input=prompt)
+        response = create_response(model=preferred_model, input=prompt)
         return response.output_text, preferred_model
     except Exception:
-        fallback_response = client.responses.create(model=FALLBACK_MODEL, input=prompt)
+        fallback_response = create_response(model=FALLBACK_MODEL, input=prompt)
         return fallback_response.output_text, FALLBACK_MODEL
 
 

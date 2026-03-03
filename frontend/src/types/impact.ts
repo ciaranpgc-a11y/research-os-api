@@ -307,6 +307,58 @@ export type AdminUsageCostsPayload = {
   monthly_trend: AdminUsageCostsMonthlyTrendPointPayload[]
 }
 
+export type AdminApiMonitorSummaryPayload = {
+  calls_current_month: number
+  errors_current_month: number
+  error_rate_pct_current_month: number
+  tokens_current_month: number
+  cost_usd_current_month: number
+}
+
+export type AdminApiMonitorOperationPayload = {
+  operation: string
+  calls: number
+}
+
+export type AdminApiMonitorErrorPayload = {
+  operation: string
+  endpoint: string
+  status_code: number | null
+  error_code: string | null
+  created_at: string | null
+}
+
+export type AdminApiMonitorProviderPayload = {
+  provider: string
+  category: string
+  configured: boolean
+  health: string
+  calls_current_month: number
+  errors_current_month: number
+  error_rate_pct_current_month: number
+  avg_latency_ms_current_month: number
+  tokens_current_month: number
+  cost_usd_current_month: number
+  last_called_at: string | null
+  operations: AdminApiMonitorOperationPayload[]
+  recent_errors: AdminApiMonitorErrorPayload[]
+}
+
+export type AdminApiMonitorMonthlyTrendPointPayload = {
+  provider: string
+  month: string
+  calls: number
+  errors: number
+  cost_usd: number
+}
+
+export type AdminApiMonitorPayload = {
+  generated_at: string
+  summary: AdminApiMonitorSummaryPayload
+  providers: AdminApiMonitorProviderPayload[]
+  monthly_trend: AdminApiMonitorMonthlyTrendPointPayload[]
+}
+
 export type AdminJobSummaryPayload = {
   id: string
   status: string

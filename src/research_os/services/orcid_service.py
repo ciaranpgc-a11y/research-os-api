@@ -6,6 +6,7 @@ import inspect
 import os
 import re
 import secrets
+import time
 from typing import Any
 from urllib.parse import urlencode, urlparse
 
@@ -22,6 +23,7 @@ from research_os.services.persona_service import (
     upsert_work,
 )
 from research_os.services.security_service import decrypt_secret, encrypt_secret
+from research_os.services.api_telemetry_service import record_api_usage_event
 
 ORCID_CONNECT_TTL_MINUTES = 20
 ORCID_IMPORT_DETAIL_FETCH_MAX_STANDARD = max(
@@ -324,9 +326,21 @@ def _exchange_authorization_code(
         "redirect_uri": _orcid_redirect_uri(frontend_origin),
     }
     with httpx.Client(timeout=15.0) as client:
+        started = time.perf_counter()
         response = client.post(
             _orcid_token_url(), data=payload, headers=_token_headers()
         )
+    record_api_usage_event(
+        provider="orcid",
+        operation="oauth_token_exchange",
+        endpoint=_orcid_token_url(),
+        success=response.status_code < 400,
+        status_code=response.status_code,
+        duration_ms=int((time.perf_counter() - started) * 1000),
+        error_code=(
+            None if response.status_code < 400 else f"http_{response.status_code}"
+        ),
+    )
     if response.status_code >= 400:
         raise OrcidValidationError("ORCID token exchange failed.")
     return response.json()
@@ -340,9 +354,21 @@ def _refresh_access_token(refresh_token: str) -> dict[str, Any]:
         "refresh_token": refresh_token,
     }
     with httpx.Client(timeout=15.0) as client:
+        started = time.perf_counter()
         response = client.post(
             _orcid_token_url(), data=payload, headers=_token_headers()
         )
+    record_api_usage_event(
+        provider="orcid",
+        operation="oauth_token_refresh",
+        endpoint=_orcid_token_url(),
+        success=response.status_code < 400,
+        status_code=response.status_code,
+        duration_ms=int((time.perf_counter() - started) * 1000),
+        error_code=(
+            None if response.status_code < 400 else f"http_{response.status_code}"
+        ),
+    )
     if response.status_code >= 400:
         raise OrcidValidationError("ORCID token refresh failed.")
     return response.json()
@@ -582,9 +608,23 @@ def _fetch_orcid_work_detail(
     detail_url = f"{_orcid_api_base()}/{orcid_id}/work/{put_code}"
     try:
         with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
+            started = time.perf_counter()
             detail_response = client.get(
                 detail_url, headers=_orcid_headers(access_token)
             )
+        record_api_usage_event(
+            provider="orcid",
+            operation="work_detail",
+            endpoint=detail_url,
+            success=detail_response.status_code < 400,
+            status_code=detail_response.status_code,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            error_code=(
+                None
+                if detail_response.status_code < 400
+                else f"http_{detail_response.status_code}"
+            ),
+        )
         if detail_response.status_code >= 400:
             return None
         payload = detail_response.json()
@@ -592,6 +632,13 @@ def _fetch_orcid_work_detail(
             return None
         return payload
     except Exception:
+        record_api_usage_event(
+            provider="orcid",
+            operation="work_detail",
+            endpoint=detail_url,
+            success=False,
+            error_code="exception",
+        )
         return None
 
 
@@ -641,8 +688,29 @@ def import_orcid_works(
     works_url = f"{_orcid_api_base()}/{orcid_id}/works"
     try:
         with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
+            started = time.perf_counter()
             works_response = client.get(works_url, headers=_orcid_headers(access_token))
+        record_api_usage_event(
+            provider="orcid",
+            operation="works_list",
+            endpoint=works_url,
+            success=works_response.status_code < 400,
+            status_code=works_response.status_code,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            error_code=(
+                None
+                if works_response.status_code < 400
+                else f"http_{works_response.status_code}"
+            ),
+        )
     except httpx.HTTPError as exc:
+        record_api_usage_event(
+            provider="orcid",
+            operation="works_list",
+            endpoint=works_url,
+            success=False,
+            error_code=type(exc).__name__,
+        )
         raise OrcidValidationError(
             "Failed to fetch ORCID works list due to network timeout."
         ) from exc
@@ -663,10 +731,31 @@ def import_orcid_works(
                 )
         try:
             with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
+                started = time.perf_counter()
                 works_response = client.get(
                     works_url, headers=_orcid_headers(access_token)
                 )
+            record_api_usage_event(
+                provider="orcid",
+                operation="works_list",
+                endpoint=works_url,
+                success=works_response.status_code < 400,
+                status_code=works_response.status_code,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                error_code=(
+                    None
+                    if works_response.status_code < 400
+                    else f"http_{works_response.status_code}"
+                ),
+            )
         except httpx.HTTPError as exc:
+            record_api_usage_event(
+                provider="orcid",
+                operation="works_list",
+                endpoint=works_url,
+                success=False,
+                error_code=type(exc).__name__,
+            )
             raise OrcidValidationError(
                 "Failed to fetch ORCID works list after token refresh."
             ) from exc

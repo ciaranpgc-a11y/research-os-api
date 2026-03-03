@@ -16,7 +16,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from research_os.clients.openai_client import get_client
+from research_os.clients.openai_client import create_response, get_client
 from research_os.db import (
     Author,
     CollaboratorEdge,
@@ -30,6 +30,7 @@ from research_os.db import (
     session_scope,
 )
 from research_os.services.metrics_provider_service import get_metrics_provider
+from research_os.services.api_telemetry_service import record_api_usage_event
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 FALLBACK_EMBEDDING_MODEL = "local-hash-1"
@@ -96,10 +97,184 @@ ARTICLE_TYPE_PROTOCOL_PATTERN = re.compile(
 ARTICLE_TYPE_LETTER_PATTERN = re.compile(
     r"\b(letter|correspondence)\b", re.IGNORECASE
 )
+WORK_TYPE_CONFERENCE_PATTERN = re.compile(
+    r"\b(conference|congress|symposium|workshop|annual meeting|scientific sessions|proceedings|poster session)\b",
+    re.IGNORECASE,
+)
+WORK_TYPE_CONFERENCE_TYPE_PATTERN = re.compile(
+    r"\b(conference|proceedings|meeting|congress|symposium|workshop)\b",
+    re.IGNORECASE,
+)
+WORK_TYPE_PREPRINT_PATTERN = re.compile(
+    r"\b(preprint|arxiv|biorxiv|medrxiv|ssrn|research square|preprints\.org)\b",
+    re.IGNORECASE,
+)
+WORK_TYPE_POSTER_PATTERN = re.compile(r"\bposter\b", re.IGNORECASE)
+WORK_TYPE_ABSTRACT_PATTERN = re.compile(r"\babstract\b", re.IGNORECASE)
+WORK_TYPE_THESIS_PATTERN = re.compile(r"\b(thesis|dissertation)\b", re.IGNORECASE)
+WORK_TYPE_DATASET_PATTERN = re.compile(r"\b(dataset|data set|data-set)\b", re.IGNORECASE)
+WORK_TYPE_BOOK_CHAPTER_PATTERN = re.compile(r"\bbook chapter\b", re.IGNORECASE)
+WORK_TYPE_BOOK_PATTERN = re.compile(r"\bbook\b", re.IGNORECASE)
+WORK_TYPE_REPORT_PATTERN = re.compile(r"\b(report|white paper|technical report)\b", re.IGNORECASE)
+
+WORK_TYPE_ALIASES = {
+    "journal-article": "journal-article",
+    "journal article": "journal-article",
+    "article": "journal-article",
+    "research-article": "journal-article",
+    "original-article": "journal-article",
+    "original-research": "journal-article",
+    "review-article": "journal-article",
+    "conference-paper": "conference-paper",
+    "conference paper": "conference-paper",
+    "proceedings-article": "conference-paper",
+    "proceedings article": "conference-paper",
+    "conference-abstract": "conference-abstract",
+    "conference abstract": "conference-abstract",
+    "meeting-abstract": "conference-abstract",
+    "meeting abstract": "conference-abstract",
+    "conference-poster": "conference-poster",
+    "conference poster": "conference-poster",
+    "conference-presentation": "conference-presentation",
+    "conference presentation": "conference-presentation",
+    "book-chapter": "book-chapter",
+    "book chapter": "book-chapter",
+    "book": "book",
+    "preprint": "preprint",
+    "working-paper": "working-paper",
+    "working paper": "working-paper",
+    "report": "report",
+    "technical-report": "report",
+    "dataset": "data-set",
+    "data-set": "data-set",
+    "data set": "data-set",
+    "dissertation": "dissertation",
+    "thesis": "dissertation",
+    "patent": "patent",
+    "standard": "standard",
+    "technical-standard": "standard",
+    "software": "software",
+    "erratum": "erratum",
+    "retracted": "retracted",
+    "editorial": "editorial",
+    "letter": "letter",
+}
+WORK_TYPE_CHOICES = [
+    "journal-article",
+    "conference-paper",
+    "conference-abstract",
+    "conference-poster",
+    "conference-presentation",
+    "book-chapter",
+    "book",
+    "preprint",
+    "dissertation",
+    "data-set",
+    "report",
+    "working-paper",
+    "patent",
+    "standard",
+    "software",
+    "editorial",
+    "letter",
+    "erratum",
+    "retracted",
+    "other",
+]
 
 
 def _normalize_publication_type_hint(value: Any) -> str:
     return re.sub(r"[\s_]+", "-", str(value or "").strip().lower())
+
+
+def _classify_work_type_with_llm(
+    *,
+    title: str,
+    venue_name: str,
+    publisher: str,
+    url: str,
+    abstract: str,
+) -> str | None:
+    prompt = (
+        "Classify the publication type using ONLY the allowed slugs below.\n"
+        f"Allowed: {', '.join(WORK_TYPE_CHOICES)}\n\n"
+        f"Title: {title or ''}\n"
+        f"Venue: {venue_name or ''}\n"
+        f"Publisher: {publisher or ''}\n"
+        f"URL: {url or ''}\n"
+        f"Abstract: {abstract or ''}\n\n"
+        "Return a single slug from the allowed list, or 'other' if unsure."
+    )
+    try:
+        response = create_response(model="gpt-4.1-mini", input=prompt)
+        text = (response.output_text or "").strip().lower()
+        token = re.split(r"[\\s\\n\\r\\t,.;:]+", text)[0]
+        if token in WORK_TYPE_CHOICES:
+            return token
+        return None
+    except Exception:
+        return None
+
+
+def _normalize_work_type(
+    *,
+    work_type: Any,
+    title: str,
+    venue_name: str,
+    publisher: str,
+    url: str,
+    abstract: str,
+    allow_llm: bool,
+) -> tuple[str, str | None]:
+    raw = re.sub(r"\s+", " ", str(work_type or "").strip())
+    normalized = raw.lower().replace("_", " ").strip()
+    if normalized in WORK_TYPE_ALIASES:
+        return WORK_TYPE_ALIASES[normalized], None
+    if normalized:
+        dashed = normalized.replace(" ", "-")
+        if dashed in WORK_TYPE_ALIASES:
+            return WORK_TYPE_ALIASES[dashed], None
+
+    combined = " ".join(
+        item for item in [title, venue_name, publisher, url] if str(item).strip()
+    )
+    if WORK_TYPE_PREPRINT_PATTERN.search(combined):
+        return "preprint", None
+    if WORK_TYPE_THESIS_PATTERN.search(combined):
+        return "dissertation", None
+    if WORK_TYPE_BOOK_CHAPTER_PATTERN.search(combined):
+        return "book-chapter", None
+    if WORK_TYPE_BOOK_PATTERN.search(combined):
+        return "book", None
+    if WORK_TYPE_DATASET_PATTERN.search(combined):
+        return "data-set", None
+    if WORK_TYPE_REPORT_PATTERN.search(combined):
+        return "report", None
+
+    if WORK_TYPE_CONFERENCE_TYPE_PATTERN.search(combined):
+        if WORK_TYPE_POSTER_PATTERN.search(combined):
+            return "conference-poster", None
+        if WORK_TYPE_ABSTRACT_PATTERN.search(combined):
+            return "conference-abstract", None
+        return "conference-paper", None
+    if WORK_TYPE_CONFERENCE_PATTERN.search(combined):
+        return "conference-paper", None
+
+    if venue_name.strip():
+        return "journal-article", None
+
+    if allow_llm:
+        llm = _classify_work_type_with_llm(
+            title=title,
+            venue_name=venue_name,
+            publisher=publisher,
+            url=url,
+            abstract=abstract,
+        )
+        if llm:
+            return llm, "llm"
+
+    return raw, None
 
 
 def _infer_article_type_from_title(title: str) -> str:
@@ -107,7 +282,7 @@ def _infer_article_type_from_title(title: str) -> str:
     if not clean_title:
         return "Original"
     if ARTICLE_TYPE_META_ANALYSIS_PATTERN.search(clean_title):
-        return "Meta-analysis"
+        return "Systematic review"
     if ARTICLE_TYPE_SCOPING_PATTERN.search(clean_title):
         return "Scoping"
     if ARTICLE_TYPE_SR_PATTERN.search(clean_title):
@@ -152,16 +327,16 @@ def _infer_article_type_for_work(
             "rapid-review",
         }:
             inferred = _infer_article_type_from_title(title)
-            if inferred in {"Meta-analysis", "Scoping", "Systematic review"}:
+            if inferred in {"Scoping", "Systematic review"}:
                 return inferred
             if hint == "meta-analysis":
-                return "Meta-analysis"
+                return "Systematic review"
             if hint == "scoping-review":
                 return "Scoping"
             return "Systematic review"
         if hint in {"review", "review-article", "narrative-review", "literature-review"}:
             inferred = _infer_article_type_from_title(title)
-            if inferred in {"Meta-analysis", "Scoping", "Systematic review", "Literature review"}:
+            if inferred in {"Scoping", "Systematic review", "Literature review"}:
                 return inferred
             return "Literature review"
         if hint in {"editorial", "commentary", "perspective", "opinion"}:
@@ -202,7 +377,21 @@ def _pubmed_request_xml(pmid: str) -> str:
     with httpx.Client(timeout=PUBMED_FETCH_TIMEOUT_SECONDS) as client:
         response: httpx.Response | None = None
         for attempt in range(PUBMED_FETCH_RETRY_COUNT + 1):
+            started = time.perf_counter()
             response = client.get(url, params=params)
+            record_api_usage_event(
+                provider="pubmed",
+                operation="efetch",
+                endpoint=url,
+                success=response.status_code < 400,
+                status_code=response.status_code,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                error_code=(
+                    None
+                    if response.status_code < 400
+                    else f"http_{response.status_code}"
+                ),
+            )
             if (
                 response.status_code not in RETRYABLE_STATUS_CODES
                 or attempt >= PUBMED_FETCH_RETRY_COUNT
@@ -266,7 +455,7 @@ def _classify_pubmed_publication_types(
         return None
 
     if any("meta-analysis" in item for item in lowered):
-        return "Meta-analysis"
+        return "Systematic review"
     if any("scoping review" in item for item in lowered):
         return "Scoping"
     if any(
@@ -276,7 +465,7 @@ def _classify_pubmed_publication_types(
         return "Systematic review"
     if any("review" in item for item in lowered):
         inferred = _infer_article_type_from_title(title)
-        if inferred in {"Meta-analysis", "Scoping", "Systematic review", "Literature review"}:
+        if inferred in {"Scoping", "Systematic review", "Literature review"}:
             return inferred
         return "Literature review"
     if any("editorial" in item for item in lowered):
@@ -530,15 +719,35 @@ def upsert_work(
             else None
         )
 
+        venue_name = re.sub(r"\s+", " ", str(work.get("venue_name", "")).strip())
+        publisher = re.sub(r"\s+", " ", str(work.get("publisher", "")).strip())
+        raw_work_type = re.sub(r"\s+", " ", str(work.get("work_type", "")).strip())
+        allow_llm = bool(
+            str(os.getenv("OPENAI_API_KEY", "")).strip()
+            and str(os.getenv("ENABLE_WORK_TYPE_LLM", "true")).strip().lower()
+            in {"1", "true", "yes"}
+            and (not existing or str(existing.work_type_source or "").strip().lower() != "llm")
+            and (not raw_work_type or raw_work_type.strip().lower() == "other")
+        )
+        normalized_work_type, work_type_source = _normalize_work_type(
+            work_type=raw_work_type,
+            title=title,
+            venue_name=venue_name,
+            publisher=publisher,
+            url=url,
+            abstract=re.sub(r"\s+", " ", str(work.get("abstract", "")).strip()),
+            allow_llm=allow_llm,
+        )
+
         mutable_fields = {
             "title": title,
             "title_lower": title_lower,
             "year": year,
             "doi": doi,
             "pmid": pmid,
-            "work_type": re.sub(r"\s+", " ", str(work.get("work_type", "")).strip()),
-            "venue_name": re.sub(r"\s+", " ", str(work.get("venue_name", "")).strip()),
-            "publisher": re.sub(r"\s+", " ", str(work.get("publisher", "")).strip()),
+            "work_type": normalized_work_type,
+            "venue_name": venue_name,
+            "publisher": publisher,
             "abstract": re.sub(r"\s+", " ", str(work.get("abstract", "")).strip())
             or None,
             "keywords": _normalize_keywords(work.get("keywords")),
@@ -562,6 +771,9 @@ def upsert_work(
                 url=mutable_fields["url"],
                 provenance=mutable_fields["provenance"] or "manual",
             )
+            if work_type_source == "llm":
+                existing.work_type_source = "llm"
+                existing.work_type_llm_at = _utcnow()
             db_session.add(existing)
             db_session.flush()
         else:
@@ -575,6 +787,9 @@ def upsert_work(
                 existing.abstract = mutable_fields["abstract"]
                 existing.keywords = mutable_fields["keywords"]
                 existing.url = mutable_fields["url"]
+                if work_type_source == "llm":
+                    existing.work_type_source = "llm"
+                    existing.work_type_llm_at = _utcnow()
             if doi and not existing.doi:
                 existing.doi = doi
             if mutable_fields["pmid"] and not _extract_pmid(existing.pmid):

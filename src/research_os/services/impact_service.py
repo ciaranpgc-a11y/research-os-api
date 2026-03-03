@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from research_os.clients.openai_client import get_client
+from research_os.clients.openai_client import create_response
 from research_os.db import ImpactSnapshot, User, create_all_tables, session_scope
 from research_os.services.persona_service import (
     get_persona_context,
@@ -195,12 +195,11 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 
 def _ask_model(prompt: str) -> tuple[dict[str, Any], str]:
-    client = get_client()
     try:
-        response = client.responses.create(model=PREFERRED_MODEL, input=prompt)
+        response = create_response(model=PREFERRED_MODEL, input=prompt)
         return _extract_json(response.output_text), PREFERRED_MODEL
     except Exception:
-        fallback = client.responses.create(model=FALLBACK_MODEL, input=prompt)
+        fallback = create_response(model=FALLBACK_MODEL, input=prompt)
         return _extract_json(fallback.output_text), FALLBACK_MODEL
 
 

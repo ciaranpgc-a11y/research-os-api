@@ -1056,6 +1056,62 @@ class AdminUsageCostsResponse(BaseModel):
     )
 
 
+class AdminApiMonitorSummaryResponse(BaseModel):
+    calls_current_month: int = 0
+    errors_current_month: int = 0
+    error_rate_pct_current_month: float = 0.0
+    tokens_current_month: int = 0
+    cost_usd_current_month: float = 0.0
+
+
+class AdminApiMonitorOperationResponse(BaseModel):
+    operation: str
+    calls: int = 0
+
+
+class AdminApiMonitorErrorResponse(BaseModel):
+    operation: str
+    endpoint: str = ""
+    status_code: int | None = None
+    error_code: str | None = None
+    created_at: datetime | None = None
+
+
+class AdminApiMonitorProviderResponse(BaseModel):
+    provider: str
+    category: str
+    configured: bool = False
+    health: str = "healthy"
+    calls_current_month: int = 0
+    errors_current_month: int = 0
+    error_rate_pct_current_month: float = 0.0
+    avg_latency_ms_current_month: float = 0.0
+    tokens_current_month: int = 0
+    cost_usd_current_month: float = 0.0
+    last_called_at: datetime | None = None
+    operations: list[AdminApiMonitorOperationResponse] = Field(default_factory=list)
+    recent_errors: list[AdminApiMonitorErrorResponse] = Field(default_factory=list)
+
+
+class AdminApiMonitorMonthlyTrendPointResponse(BaseModel):
+    provider: str
+    month: str
+    calls: int = 0
+    errors: int = 0
+    cost_usd: float = 0.0
+
+
+class AdminApiMonitorResponse(BaseModel):
+    generated_at: datetime
+    summary: AdminApiMonitorSummaryResponse = Field(
+        default_factory=AdminApiMonitorSummaryResponse
+    )
+    providers: list[AdminApiMonitorProviderResponse] = Field(default_factory=list)
+    monthly_trend: list[AdminApiMonitorMonthlyTrendPointResponse] = Field(
+        default_factory=list
+    )
+
+
 class AdminJobSummaryResponse(BaseModel):
     id: str
     status: str

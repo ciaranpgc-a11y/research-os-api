@@ -32,6 +32,7 @@ from research_os.db import (
     create_all_tables,
     session_scope,
 )
+from research_os.services.api_telemetry_service import record_api_usage_event
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -1406,17 +1407,43 @@ def _openalex_request_with_retry(*, url: str, params: dict[str, Any]) -> dict[st
     last_exception: Exception | None = None
     with httpx.Client(timeout=timeout) as client:
         for attempt in range(retries + 1):
+            started = time.perf_counter()
             try:
                 response = client.get(url, params=params)
             except Exception as exc:
                 last_exception = exc
+                record_api_usage_event(
+                    provider="openalex",
+                    operation="authors_or_works_lookup",
+                    endpoint=url,
+                    success=False,
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                    error_code=type(exc).__name__,
+                )
                 if attempt < retries:
                     time.sleep(0.35 * (attempt + 1))
                     continue
                 break
             if response.status_code < 400:
                 payload = response.json()
+                record_api_usage_event(
+                    provider="openalex",
+                    operation="authors_or_works_lookup",
+                    endpoint=url,
+                    success=True,
+                    status_code=response.status_code,
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                )
                 return payload if isinstance(payload, dict) else {}
+            record_api_usage_event(
+                provider="openalex",
+                operation="authors_or_works_lookup",
+                endpoint=url,
+                success=False,
+                status_code=response.status_code,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                error_code=f"http_{response.status_code}",
+            )
             if response.status_code not in RETRYABLE_STATUS_CODES or attempt >= retries:
                 return {}
             time.sleep(0.35 * (attempt + 1))

@@ -30,7 +30,7 @@ from research_os.db import (
     create_all_tables,
     session_scope,
 )
-from research_os.clients.openai_client import get_client
+from research_os.clients.openai_client import create_response
 
 logger = logging.getLogger(__name__)
 
@@ -1960,7 +1960,6 @@ def _build_structured_abstract_prompt(
 def _generate_structured_abstract_with_model(
     *, title: str, journal: str, year: int | None, abstract: str
 ) -> tuple[str, list[dict[str, str]], str]:
-    client = get_client()
     prompt = _build_structured_abstract_prompt(
         title=title, journal=journal, year=year, abstract=abstract
     )
@@ -1973,7 +1972,7 @@ def _generate_structured_abstract_with_model(
     last_error: Exception | None = None
     for model_name in candidates:
         try:
-            response = client.responses.create(model=model_name, input=prompt)
+            response = create_response(model=model_name, input=prompt)
             payload = _extract_json_object(str(response.output_text or ""))
             sections = _coerce_structured_sections(payload)
             if not sections:

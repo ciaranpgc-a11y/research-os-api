@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import os
 import secrets
+import time
 from typing import Any
 from urllib.parse import urlencode, urlparse
 
@@ -20,6 +21,7 @@ from research_os.db import (
     session_scope,
 )
 from research_os.services.auth_service import AuthNotFoundError, AuthValidationError
+from research_os.services.api_telemetry_service import record_api_usage_event
 from research_os.services.security_service import (
     encrypt_secret,
     generate_session_token,
@@ -298,7 +300,19 @@ def _exchange_oauth_code(
     }
     headers = {"Accept": "application/json"}
     with httpx.Client(timeout=20.0) as client:
+        started = time.perf_counter()
         response = client.post(config["token_url"], data=payload, headers=headers)
+    record_api_usage_event(
+        provider=provider,
+        operation="oauth_token_exchange",
+        endpoint=str(config.get("token_url") or ""),
+        success=response.status_code < 400,
+        status_code=response.status_code,
+        duration_ms=int((time.perf_counter() - started) * 1000),
+        error_code=(
+            None if response.status_code < 400 else f"http_{response.status_code}"
+        ),
+    )
     if response.status_code >= 400:
         provider_label = "ORCID" if provider == "orcid" else provider.capitalize()
         error_code = ""
@@ -345,7 +359,19 @@ def _fetch_userinfo(
 
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
     with httpx.Client(timeout=20.0) as client:
+        started = time.perf_counter()
         response = client.get(config["userinfo_url"], headers=headers)
+    record_api_usage_event(
+        provider=provider,
+        operation="oauth_userinfo",
+        endpoint=str(config.get("userinfo_url") or ""),
+        success=response.status_code < 400,
+        status_code=response.status_code,
+        duration_ms=int((time.perf_counter() - started) * 1000),
+        error_code=(
+            None if response.status_code < 400 else f"http_{response.status_code}"
+        ),
+    )
     if response.status_code >= 400:
         raise AuthValidationError(
             f"Failed to fetch {provider.capitalize()} user profile."
