@@ -35,7 +35,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 21
+TOP_METRICS_SCHEMA_VERSION = 22
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 DRILLDOWN_TILE_ID_BY_KEY = {
@@ -2385,10 +2385,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "journal": str(work.venue_name or "").strip()
                 or str(work.journal or "").strip()
                 or "Not available",
-                "publication_type": str(work.publication_type or "").strip()
-                or str(work.work_type or "").strip()
+                # Publication type tracks work-format (e.g., journal article, conference abstract).
+                "publication_type": str(work.work_type or "").strip()
+                or str(work.publication_type or "").strip()
                 or None,
                 "work_type": str(work.work_type or "").strip() or None,
+                # Article type tracks study/editorial style (e.g., original, review, protocol).
                 "article_type": str(work.publication_type or "").strip() or None,
                 "doi": str(work.doi or "").strip() or None,
                 "pmid": str(work.pmid or "").strip() or None,

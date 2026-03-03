@@ -4483,9 +4483,9 @@ function categoryLabelFromPublication(
   dimension: PublicationCategoryDimension,
 ): string {
   if (dimension === 'article') {
-    return formatPublicationCategoryLabel(record.articleType || record.type || '')
+    return formatPublicationCategoryLabel(record.articleType || '')
   }
-  const label = formatPublicationCategoryLabel(record.publicationType || record.type || '')
+  const label = formatPublicationCategoryLabel(record.publicationType || '')
   const normalized = normalizePublicationCategoryKey(label)
   if (normalized === 'conference-abstract') {
     return 'Abstract'
@@ -5206,7 +5206,7 @@ function TotalPublicationsDrilldownWorkspace({
         const title = String(record.title || '').trim()
         const role = String(record.role || '').trim()
         const type = String(record.type || '').trim()
-        const publicationType = String(record.publication_type || record.publicationType || record.type || '').trim()
+        const publicationType = String(record.publication_type || record.publicationType || '').trim()
         const articleType = String(record.article_type || record.articleType || '').trim()
         const venue = String(record.venue || record.journal || '').trim()
         const citationsRaw = Number(record.citations ?? record.cited_by_count ?? 0)
