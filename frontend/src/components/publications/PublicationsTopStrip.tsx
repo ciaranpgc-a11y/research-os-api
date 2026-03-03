@@ -770,19 +770,43 @@ function useIsFirstChartEntry(animationKey: string, enabled: boolean): boolean {
   useEffect(() => {
     if (!enabled) {
       setIsEntryCycle(false)
+      hasEnteredRef.current = false
       logChartDebug('useIsFirstChartEntry:disabled', {
         animationKey,
       })
       return
     }
-    const entryCycle = !hasEnteredRef.current
-    setIsEntryCycle(entryCycle)
+    if (hasEnteredRef.current) {
+      logChartDebug('useIsFirstChartEntry:reuse', {
+        animationKey,
+        entryCycle: false,
+      })
+      return
+    }
+
     hasEnteredRef.current = true
+    setIsEntryCycle(true)
     logChartDebug('useIsFirstChartEntry:update', {
       animationKey,
-      entryCycle,
+      entryCycle: true,
     })
   }, [animationKey, enabled])
+
+  useEffect(() => {
+    if (!isEntryCycle) {
+      return
+    }
+    const timeoutId = window.setTimeout(() => {
+      setIsEntryCycle(false)
+      logChartDebug('useIsFirstChartEntry:complete', {
+        animationKey,
+        entryCycle: false,
+      })
+    }, CHART_MOTION.entry.duration)
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [animationKey, isEntryCycle])
 
   return isEntryCycle
 }
