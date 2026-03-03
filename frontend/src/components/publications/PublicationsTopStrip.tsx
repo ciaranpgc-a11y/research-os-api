@@ -3118,6 +3118,32 @@ export function PublicationsPerYearChart({
     ),
     [effectiveVisualMode, lineSeriesMarkerPoints],
   )
+  const linePathD = useMemo(() => {
+    if (effectiveVisualMode !== 'line' || lineMarkerPoints.length < 2) {
+      return ''
+    }
+    const points = lineMarkerPoints
+      .map((point) => {
+        const clampedX = Math.max(0, Math.min(100, Number(point.xPct)))
+        const clampedY = Math.max(0, Math.min(100, 100 - Number(point.yPct)))
+        if (!Number.isFinite(clampedX) || !Number.isFinite(clampedY)) {
+          return null
+        }
+        return { x: clampedX, y: clampedY }
+      })
+      .filter((point): point is { x: number; y: number } => point !== null)
+    if (points.length < 2) {
+      return ''
+    }
+    const cumulativeMaxValue = lineMarkerPoints[lineMarkerPoints.length - 1]?.value ?? 0
+    const shouldUseSmoothPath = points.length >= 6 || cumulativeMaxValue >= 40
+    if (shouldUseSmoothPath) {
+      return monotonePathFromPoints(points)
+    }
+    return points
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+      .join(' ')
+  }, [effectiveVisualMode, lineMarkerPoints])
   const hoveredLinePoint = effectiveVisualMode === 'line' && hoveredIndex !== null
     ? lineMarkerPoints[hoveredIndex] || null
     : null
@@ -3303,18 +3329,21 @@ export function PublicationsPerYearChart({
           ) : null}
           {effectiveVisualMode === 'line' ? (
             <>
-              <div className="pointer-events-none absolute inset-0 z-[3]" aria-hidden="true">
-                {lineMarkerPoints.map((point, index) => (
-                  <span
-                    key={`pub-cumulative-point-${index}`}
-                    className="absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[hsl(var(--tone-accent-500))] shadow-[var(--elevation-1)]"
-                    style={{
-                      left: `${Math.max(0, Math.min(100, point.xPct))}%`,
-                      bottom: `calc(${Math.max(0, Math.min(100, point.yPct))}% - 0.15rem)`,
-                    }}
-                  />
-                ))}
-              </div>
+              {linePathD ? (
+                <div className="pointer-events-none absolute inset-0 z-[3] overflow-hidden" aria-hidden="true">
+                  <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <path
+                      d={linePathD}
+                      fill="none"
+                      stroke="hsl(var(--tone-accent-600) / 0.96)"
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </svg>
+                </div>
+              ) : null}
             </>
           ) : null}
           <div className="absolute inset-0" data-ui="chart-bars" data-house-role="chart-bars">
@@ -3415,14 +3444,6 @@ export function PublicationsPerYearChart({
               >
                 {formatInt(hoveredLinePoint.value)}
               </span>
-              <span
-                className="pointer-events-none absolute z-[4] h-2 w-2 -translate-x-1/2 rounded-full border border-white/85 bg-[hsl(var(--tone-accent-700))] shadow-[var(--elevation-1)]"
-                style={{
-                  left: `${Math.max(0, Math.min(100, hoveredLinePoint.xPct))}%`,
-                  bottom: `calc(${Math.max(0, Math.min(100, hoveredLinePoint.yPct))}% - 0.22rem)`,
-                }}
-                aria-hidden="true"
-              />
             </>
           ) : null}
         </div>
@@ -4742,27 +4763,27 @@ export function PublicationCategoryDistributionChart({
   const yAxisTickOffsetRem = 0.4
   const windowModeThumbStyle: CSSProperties = windowMode === 'all'
     ? {
-      width: '34%',
-      left: '66%',
+      width: '28%',
+      left: '72%',
       willChange: 'left,width',
       transitionDuration: isEntryCycle ? '0ms' : undefined,
     }
     : windowMode === '5y'
       ? {
-        width: '22%',
-        left: '44%',
+        width: '24%',
+        left: '48%',
         willChange: 'left,width',
         transitionDuration: isEntryCycle ? '0ms' : undefined,
       }
       : windowMode === '3y'
         ? {
-          width: '22%',
-          left: '22%',
+          width: '24%',
+          left: '24%',
           willChange: 'left,width',
           transitionDuration: isEntryCycle ? '0ms' : undefined,
         }
         : {
-          width: '22%',
+          width: '24%',
           left: '0%',
           willChange: 'left,width',
           transitionDuration: isEntryCycle ? '0ms' : undefined,
@@ -4790,11 +4811,11 @@ export function PublicationCategoryDistributionChart({
         <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
           <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
             <div
-              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[22%_22%_22%_34%]')}
+              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
                 data-stop-tile-open="true"
                 data-ui={`${dimension}-window-toggle`}
                 data-house-role="chart-toggle"
-                style={{ width: '8.75rem' }}
+                style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
               >
                 <span
                   className={HOUSE_TOGGLE_THUMB_CLASS}
@@ -4916,13 +4937,13 @@ export function PublicationCategoryDistributionChart({
           className={cn(
             HOUSE_CHART_TRANSITION_CLASS,
             HOUSE_CHART_ENTERED_CLASS,
-            'min-h-0 overflow-auto',
+            'overflow-visible',
           )}
           data-ui={`${dimension}-distribution-table-frame`}
           data-house-role="chart-frame"
         >
-          <div className="house-table-shell h-full min-h-0 overflow-auto rounded-md bg-background">
-            <table className="w-full min-w-sz-500 border-collapse" data-house-no-column-controls="true">
+          <div className="house-table-shell h-auto overflow-visible rounded-md bg-background">
+            <table className="w-full border-collapse" data-house-no-column-controls="true">
               <thead className="house-table-head">
                 <tr>
                   <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
@@ -5087,16 +5108,43 @@ function TotalPublicationsDrilldownWorkspace({
   void _onOpenPublication
   const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('5y')
   const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
-  const publicationTrendsWindowIndex = Math.max(
-    0,
-    PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === publicationTrendsWindowMode),
-  )
+  const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
+  const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
   const publicationTrendsAnimationKey = `pub-trends|${publicationTrendsWindowMode}|${publicationTrendsVisualMode}`
   const publicationTrendsIsEntryCycle = useIsFirstChartEntry(publicationTrendsAnimationKey, true)
+  const publicationTrendsWindowThumbStyle: CSSProperties = publicationTrendsWindowMode === 'all'
+    ? {
+      width: '28%',
+      left: '72%',
+      willChange: 'left,width',
+      transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
+    }
+    : publicationTrendsWindowMode === '5y'
+      ? {
+        width: '24%',
+        left: '48%',
+        willChange: 'left,width',
+        transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
+      }
+      : publicationTrendsWindowMode === '3y'
+        ? {
+          width: '24%',
+          left: '24%',
+          willChange: 'left,width',
+          transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
+        }
+        : {
+          width: '24%',
+          left: '0%',
+          willChange: 'left,width',
+          transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
+        }
 
   useEffect(() => {
     setPublicationTrendsWindowMode('5y')
     setPublicationTrendsVisualMode('bars')
+    setPublicationTrendsExpanded(true)
+    setPublicationTypeTrendsExpanded(true)
   }, [tile.key])
 
   const publicationDrilldownRecords = useMemo<PublicationDrilldownRecord[]>(() => {
@@ -5287,21 +5335,33 @@ function TotalPublicationsDrilldownWorkspace({
         {activeTab === 'summary' ? (
           <>
             <div className="house-drilldown-heading-block">
-              <p className="house-drilldown-heading-block-title">Publication trends</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="house-drilldown-heading-block-title">Publication trends</p>
+                <DrilldownSheet.HeadingToggle
+                  expanded={publicationTrendsExpanded}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setPublicationTrendsExpanded((value) => !value)
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                />
+              </div>
             </div>
-            <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+            {publicationTrendsExpanded ? (
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
               <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
                 <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
                   <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
                     <div
-                      className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
+                      className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
                       data-stop-tile-open="true"
                       data-ui="publications-trends-window-toggle"
                       data-house-role="chart-toggle"
+                      style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
                     >
                       <span
                         className={HOUSE_TOGGLE_THUMB_CLASS}
-                        style={buildTileToggleThumbStyle(publicationTrendsWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length, publicationTrendsIsEntryCycle)}
+                        style={publicationTrendsWindowThumbStyle}
                         aria-hidden="true"
                       />
                       {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
@@ -5354,22 +5414,35 @@ function TotalPublicationsDrilldownWorkspace({
                   showWindowToggle={false}
                 />
               </div>
-            </div>
+              </div>
+            ) : null}
 
             <div className="house-drilldown-heading-block">
-              <p className="house-drilldown-heading-block-title">Publication type trends</p>
-            </div>
-            <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-              <div className="house-drilldown-content-block house-publications-drilldown-summary-trend-chart-tall w-full">
-                <PublicationCategoryDistributionChart
-                  publications={publicationDrilldownRecords}
-                  dimension="publication"
-                  xAxisLabel="Publication type"
-                  emptyLabel="No publication type data"
-                  enableValueModeToggle
+              <div className="flex items-center justify-between gap-2">
+                <p className="house-drilldown-heading-block-title">Publication type trends</p>
+                <DrilldownSheet.HeadingToggle
+                  expanded={publicationTypeTrendsExpanded}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setPublicationTypeTrendsExpanded((value) => !value)
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
                 />
               </div>
             </div>
+            {publicationTypeTrendsExpanded ? (
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <div className="house-drilldown-content-block house-publications-drilldown-summary-trend-chart-tall w-full">
+                  <PublicationCategoryDistributionChart
+                    publications={publicationDrilldownRecords}
+                    dimension="publication"
+                    xAxisLabel="Publication type"
+                    emptyLabel="No publication type data"
+                    enableValueModeToggle
+                  />
+                </div>
+              </div>
+            ) : null}
           </>
         ) : null}
 

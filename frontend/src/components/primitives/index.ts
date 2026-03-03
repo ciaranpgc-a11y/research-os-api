@@ -58,6 +58,7 @@ export {
 	DrilldownTabPanel,
 	DrilldownTitle,
 	DrilldownHeading,
+	DrilldownHeadingToggle,
 	DrilldownContent,
 	DrilldownStatCard,
 	DrilldownRow,

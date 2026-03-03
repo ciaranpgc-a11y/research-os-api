@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { houseDrilldown, houseTypography } from '@/lib/house-style'
@@ -116,6 +117,47 @@ const DrilldownHeading = React.forwardRef<HTMLDivElement, DrilldownHeadingProps>
   },
 )
 DrilldownHeading.displayName = 'DrilldownSheet.Heading'
+
+/* -------------------------------- Heading Toggle ------------------------------- */
+
+interface DrilldownHeadingToggleProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  expanded: boolean
+  expandedLabel?: string
+  collapsedLabel?: string
+}
+
+const DrilldownHeadingToggle = React.forwardRef<HTMLButtonElement, DrilldownHeadingToggleProps>(
+  (
+    {
+      className,
+      expanded,
+      expandedLabel = 'Collapse',
+      collapsedLabel = 'Expand',
+      ...props
+    },
+    ref,
+  ) => {
+    const label = expanded ? expandedLabel : collapsedLabel
+    return (
+      <button
+        ref={ref}
+        type="button"
+        data-ui="drilldown-heading-toggle"
+        data-house-role="heading-toggle"
+        className={cn(
+          'inline-flex items-center justify-center rounded-sm p-1 text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]',
+          className,
+        )}
+        aria-label={label}
+        title={label}
+        {...props}
+      >
+        {expanded ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
+      </button>
+    )
+  },
+)
+DrilldownHeadingToggle.displayName = 'DrilldownSheet.HeadingToggle'
 
 /* -------------------------------- Content Block ------------------------------- */
 
@@ -477,6 +519,7 @@ const DrilldownSheet = Object.assign(DrilldownSheetRoot, {
   TabPanel: DrilldownTabPanel,
   Title: DrilldownTitle,
   Heading: DrilldownHeading,
+  HeadingToggle: DrilldownHeadingToggle,
   Content: DrilldownContent,
   StatCard: DrilldownStatCard,
   Row: DrilldownRow,
@@ -493,6 +536,7 @@ export {
   DrilldownTabPanel,
   DrilldownTitle,
   DrilldownHeading,
+  DrilldownHeadingToggle,
   DrilldownContent,
   DrilldownStatCard,
   DrilldownRow,
