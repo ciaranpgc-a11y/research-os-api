@@ -9,6 +9,7 @@ import {
   Section,
   SectionHeader,
   Stack,
+  Subheading,
 } from '@/components/primitives'
 import {
   Badge,
@@ -353,7 +354,7 @@ const GLOSSARY_ROWS = [
     whereUsed: 'All approval matrices and recipe compositions',
   },
   {
-    element: 'PageHeader / SectionHeader',
+    element: 'PageHeader / SectionHeader / Subheading',
     category: 'Semantic block',
     maySet: 'eyebrow, heading, description, actions',
     mustNotSet: 'unstyled heading stacks that bypass semantic primitives',
@@ -851,6 +852,7 @@ export function ApprovalsContent() {
   const pageHeaderRef = useRef<HTMLDivElement | null>(null)
   const sectionHeaderRef = useRef<HTMLDivElement | null>(null)
   const bodyRef = useRef<HTMLDivElement | null>(null)
+  const subheadingRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const selectRef = useRef<HTMLSelectElement | null>(null)
@@ -972,6 +974,10 @@ export function ApprovalsContent() {
       {
         role: 'SectionHeader heading',
         ...readTypography('[data-ui="section-header-heading"]', sectionHeaderRef.current),
+      },
+      {
+        role: 'Subheading',
+        ...readTypography('[data-ui="approvals-subheading-sample"]', subheadingRef.current),
       },
       {
         role: 'Body sample',
@@ -1156,6 +1162,10 @@ export function ApprovalsContent() {
                 <div ref={sectionHeaderRef}>
                   <SectionHeader heading="Section heading sample" description="Compact section heading with helper text." />
                 </div>
+                <div ref={subheadingRef} className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] p-[var(--space-3)]">
+                  <Subheading data-ui="approvals-subheading-sample">Profile photo</Subheading>
+                  <p className="mt-[var(--space-2)] text-caption text-[hsl(var(--muted-foreground))]">Subheading sample</p>
+                </div>
                 <div ref={bodyRef} className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] p-[var(--space-3)]">
                   <p data-ui="approvals-body-sample" className="m-0 text-body text-[hsl(var(--foreground))]">
                     Body text sample used for baseline readability and rhythm checks.
@@ -1321,6 +1331,33 @@ export function ApprovalsContent() {
                   </Table>
                 </Grid>
               </Section>
+            </Section>
+
+            <Section surface="muted" inset="md" spaceY="sm">
+              <SectionHeader heading="D) Dividers" description="Canonical divider treatments, including metric tile separators." />
+              <Grid cols={2} gap="md">
+                <div className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-[var(--space-3)] space-y-[var(--space-2)]">
+                  <p className="text-caption text-[hsl(var(--muted-foreground))]">Soft border divider</p>
+                  <div className="rounded-md border house-divider-border-soft p-2 text-caption text-[hsl(var(--foreground))]">
+                    .house-divider-border-soft
+                  </div>
+                  <p className="text-caption text-[hsl(var(--muted-foreground))]">Soft fill divider</p>
+                  <div className="house-divider-fill-soft h-px w-full" />
+                  <p className="text-caption text-[hsl(var(--muted-foreground))]">Strong divider</p>
+                  <div className="house-divider-strong" />
+                </div>
+
+                <div className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-[var(--space-3)] space-y-[var(--space-2)]">
+                  <p className="text-caption text-[hsl(var(--muted-foreground))]">Metric tile separator</p>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center">
+                    <div className="text-caption text-[hsl(var(--muted-foreground))]">Primary</div>
+                    <div className="house-metric-tile-separator h-10 mx-3" />
+                    <div className="text-caption text-[hsl(var(--muted-foreground))]">Secondary</div>
+                  </div>
+                  <p className="text-caption text-[hsl(var(--muted-foreground))]">Left nav section divider</p>
+                  <div className="house-nav-section-separator" />
+                </div>
+              </Grid>
             </Section>
 
             <Section surface="muted" inset="md" spaceY="sm">

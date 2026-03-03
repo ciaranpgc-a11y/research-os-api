@@ -5243,65 +5243,65 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           </div>
                           <div className="house-drilldown-content-block">
                             <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
-                              {overviewAuthors.length > 0 ? (
-                                <>
-                                  <p className="leading-relaxed">
-                                    {(overviewAuthorsExpanded ? overviewAuthors : overviewAuthors.slice(0, PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT)).map((author, index, list) => (
-                                      <span key={`${author.rawName}-${index}`}>
-                                        <span className={author.isYou ? 'font-semibold text-[hsl(var(--section-style-profile-accent))]' : undefined}>{author.displayName}</span>
-                                        {author.affiliationIndices.length > 0 ? (
-                                          <sup className="ml-0.5 text-[0.62rem] leading-none align-super text-muted-foreground">
-                                            {author.affiliationIndices.join(',')}
-                                          </sup>
-                                        ) : null}
-                                        {author.hasEqualContribution ? '*' : ''}
-                                        {author.roles.map((role) => (
-                                          <span key={`${author.rawName}-${role}`} className="ml-1 inline-flex items-center rounded border border-neutral-300 px-1 py-0 text-[0.62rem] leading-none text-neutral-700">{role}</span>
-                                        ))}
-                                        {index < list.length - 1 ? ', ' : ''}
-                                      </span>
-                                    ))}
-                                    {overviewAuthors.length > PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT ? (
-                                      <>
-                                        {' '}
-                                        <button
-                                          type="button"
-                                          className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS}
-                                          onClick={() => setOverviewAuthorsExpanded((current) => !current)}
-                                        >
-                                          {overviewAuthorsExpanded
-                                            ? 'Show less'
-                                            : `+${overviewAuthors.length - PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT} more`}
-                                        </button>
-                                      </>
-                                    ) : null}
-                                  </p>
-                                  {overviewAuthorsExpanded ? (
-                                    <div className="mt-1 space-y-1">
-                                      {overviewAuthors.some((author) => author.hasEqualContribution) ? (
-                                        <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>* indicates equal contribution.</p>
-                                      ) : null}
-                                      {overviewAuthors.some((author) => author.roles.length > 0) ? (
-                                        <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Role badges indicate author position metadata when available.</p>
-                                      ) : null}
-                                    </div>
-                                  ) : null}
-                                  {overviewAuthorAffiliations.length > 0 ? (
-                                    <div className="mt-2 space-y-1">
-                                      {overviewAuthorAffiliations.map((affiliation) => (
-                                        <p key={`affiliation-${affiliation.index}`} className={cn(HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS, 'house-publication-affiliation-line')}>
-                                          <sup className="mr-1 text-[0.62rem] leading-none align-super">{affiliation.index}</sup>
-                                          {affiliation.label}
-                                        </p>
+                                {overviewAuthors.length > 0 ? (
+                                  <>
+                                    <p className="leading-relaxed">
+                                      {(overviewAuthorsExpanded ? overviewAuthors : overviewAuthors.slice(0, PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT)).map((author, index, list) => (
+                                        <span key={`${author.rawName}-${index}`}>
+                                          <span className={author.isYou ? 'font-semibold text-[hsl(var(--section-style-profile-accent))]' : undefined}>{author.displayName}</span>
+                                          {author.affiliationIndices.length > 0 ? (
+                                            <sup className="ml-0.5 text-[0.62rem] leading-none align-super text-muted-foreground">
+                                              {author.affiliationIndices.join(',')}
+                                            </sup>
+                                          ) : null}
+                                          {author.hasEqualContribution ? '*' : ''}
+                                          {author.roles.map((role) => (
+                                            <span key={`${author.rawName}-${role}`} className="ml-1 inline-flex items-center rounded border border-neutral-300 px-1 py-0 text-[0.62rem] leading-none text-neutral-700">{role}</span>
+                                          ))}
+                                          {index < list.length - 1 ? ', ' : ''}
+                                        </span>
                                       ))}
-                                    </div>
-                                  ) : null}
-                                </>
-                              ) : (
-                                <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Not available</p>
-                              )}
+                                      {overviewAuthors.length > PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT ? (
+                                        <>
+                                          {' '}
+                                          <button
+                                            type="button"
+                                            className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS}
+                                            onClick={() => setOverviewAuthorsExpanded((current) => !current)}
+                                          >
+                                            {overviewAuthorsExpanded
+                                              ? 'Show less'
+                                              : `+${overviewAuthors.length - PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT} more`}
+                                          </button>
+                                        </>
+                                      ) : null}
+                                    </p>
+                                    {overviewAuthorsExpanded ? (
+                                      <div className="mt-1 space-y-1">
+                                        {overviewAuthors.some((author) => author.hasEqualContribution) ? (
+                                          <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>* indicates equal contribution.</p>
+                                        ) : null}
+                                        {overviewAuthors.some((author) => author.roles.length > 0) ? (
+                                          <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Role badges indicate author position metadata when available.</p>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                    {overviewAuthorAffiliations.length > 0 ? (
+                                      <div className="mt-2 space-y-1">
+                                        {overviewAuthorAffiliations.map((affiliation) => (
+                                          <p key={`affiliation-${affiliation.index}`} className={cn(HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS, 'house-publication-affiliation-line')}>
+                                            <sup className="mr-1 text-[0.62rem] leading-none align-super">{affiliation.index}</sup>
+                                            {affiliation.label}
+                                          </p>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </>
+                                ) : (
+                                  <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Not available</p>
+                                )}
+                              </div>
                             </div>
-                          </div>
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Contribution</p>
                           </div>

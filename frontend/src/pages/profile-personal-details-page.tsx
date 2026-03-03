@@ -1984,14 +1984,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         </div>
         <div className="space-y-3 text-sm">
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--primary-foreground))] p-3">
-              <div className="grid items-start gap-4 sm:grid-cols-[1fr_3fr]">
-                <div className="flex items-start gap-3">
-                  <div className="flex flex-col items-center gap-2">
-                    <Subheading>Profile photo</Subheading>
+            <div className="sm:col-span-2 house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+              <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,0.7fr)_auto_minmax(0,4.3fr)]">
+                <div className="flex items-start gap-3 sm:justify-center sm:pr-3">
+                  <div className="flex w-full flex-col items-center gap-2">
+                    <Subheading className="w-full text-left">Profile photo</Subheading>
                     {draft.profilePhotoDataUrl ? (
                       <div
-                        className="relative h-[7.5rem] w-[7.5rem] shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[var(--elevation-1)]"
+                        className="relative mt-2 h-[9.75rem] w-[9.75rem] shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[var(--elevation-1)]"
                       >
                         <img
                           src={draft.profilePhotoDataUrl}
@@ -2004,7 +2004,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                         />
                       </div>
                     ) : (
-                      <div className="inline-flex h-[7.5rem] w-[7.5rem] items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-2xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[var(--elevation-1)]">
+                      <div className="mt-2 inline-flex h-[9.75rem] w-[9.75rem] items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-2xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[var(--elevation-1)]">
                         {profileInitials}
                       </div>
                     )}
@@ -2025,8 +2025,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       Upload photo
                     </Button>
                   </div>
-                  <div className="space-y-2 flex-1">
-                    {draft.profilePhotoDataUrl ? (
+                  {draft.profilePhotoDataUrl ? (
+                    <div className="space-y-2 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
                           type="button"
@@ -2038,68 +2038,76 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                           <SlidersHorizontal className="mr-1.5 h-4 w-4" />
                           {profilePhotoEditorOpen ? 'Close editor' : 'Adjust framing'}
                         </Button>
-                        <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRemoveProfilePhoto}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className={HOUSE_ACTION_BUTTON_CLASS}
+                          onClick={onRemoveProfilePhoto}
+                        >
                           <Trash2 className="mr-1.5 h-4 w-4" />
                           Remove
                         </Button>
                       </div>
-                    ) : null}
-                    {draft.profilePhotoDataUrl && profilePhotoEditorOpen ? (
-                      <div className={HOUSE_PROFILE_PHOTO_EDITOR_CLASS}>
-                        <p className="house-field-label">Mini photo editor</p>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                          <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] shadow-[var(--elevation-1)] sm:mx-0">
-                            <img
-                              src={draft.profilePhotoDataUrl}
-                              alt="Profile photo editor preview"
-                              decoding="async"
-                              className="h-full w-full object-cover"
-                              style={{
-                                objectPosition: `${draft.profilePhotoPositionX}% ${draft.profilePhotoPositionY}%`,
-                              }}
-                            />
-                          </div>
-                          <div className="flex-1 space-y-2">
-                            <label className="space-y-1">
-                              <span className="house-field-label">Horizontal framing</span>
-                              <input
-                                type="range"
-                                min={0}
-                                max={100}
-                                step={0.5}
-                                value={draft.profilePhotoPositionX}
-                                onChange={(event) => onProfilePhotoPositionSliderChange('x', event.target.value)}
-                                className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
+                      {profilePhotoEditorOpen ? (
+                        <div className={HOUSE_PROFILE_PHOTO_EDITOR_CLASS}>
+                          <p className="house-field-label">Mini photo editor</p>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                            <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] shadow-[var(--elevation-1)] sm:mx-0">
+                              <img
+                                src={draft.profilePhotoDataUrl}
+                                alt="Profile photo editor preview"
+                                decoding="async"
+                                className="h-full w-full object-cover"
+                                style={{
+                                  objectPosition: `${draft.profilePhotoPositionX}% ${draft.profilePhotoPositionY}%`,
+                                }}
                               />
-                            </label>
-                            <label className="space-y-1">
-                              <span className="house-field-label">Vertical framing</span>
-                              <input
-                                type="range"
-                                min={0}
-                                max={100}
-                                step={0.5}
-                                value={draft.profilePhotoPositionY}
-                                onChange={(event) => onProfilePhotoPositionSliderChange('y', event.target.value)}
-                                className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
-                              />
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                              <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
-                                Reset
-                              </Button>
-                              <Button type="button" size="sm" variant="primary" className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS} onClick={() => setProfilePhotoEditorOpen(false)}>
-                                Done
-                              </Button>
+                            </div>
+                            <div className="flex-1 space-y-2">
+                              <label className="space-y-1">
+                                <span className="house-field-label">Horizontal framing</span>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  step={0.5}
+                                  value={draft.profilePhotoPositionX}
+                                  onChange={(event) => onProfilePhotoPositionSliderChange('x', event.target.value)}
+                                  className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
+                                />
+                              </label>
+                              <label className="space-y-1">
+                                <span className="house-field-label">Vertical framing</span>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  step={0.5}
+                                  value={draft.profilePhotoPositionY}
+                                  onChange={(event) => onProfilePhotoPositionSliderChange('y', event.target.value)}
+                                  className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
+                                />
+                              </label>
+                              <div className="flex flex-wrap gap-2">
+                                <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
+                                  Reset
+                                </Button>
+                                <Button type="button" size="sm" variant="primary" className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS} onClick={() => setProfilePhotoEditorOpen(false)}>
+                                  Done
+                                </Button>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ) : null}
-                  </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
 
-                <div className="space-y-3">
+                <div className="house-divider-fill-soft h-px w-full sm:h-auto sm:w-px sm:self-stretch" />
+                <div className="space-y-3 sm:pr-3">
+                  <Subheading>Personal details</Subheading>
                   <label className="space-y-1 block">
                     <span className="house-field-label">Account email</span>
                     <Input
@@ -2225,30 +2233,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               </div>
             </div>
 
-          </div>
-        </div>
-      </Section>
-
-      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
-        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-3 shadow-[var(--elevation-1)]">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-[hsl(var(--tone-neutral-700))] space-y-1">
-              <p>
-                Member since: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatDate(user?.created_at)}</span>
-              </p>
-              <p>
-                Account age: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatAccountAge(user?.created_at)}</span>
-              </p>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              className={HOUSE_ACTION_BUTTON_CLASS}
-              onClick={() => navigate('/profile/manage-account')}
-            >
-              Manage account
-            </Button>
           </div>
         </div>
       </Section>

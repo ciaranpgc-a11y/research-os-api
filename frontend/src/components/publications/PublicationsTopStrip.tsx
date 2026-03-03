@@ -591,6 +591,22 @@ function tileMotionEntryDuration(index = 0, animateIn = false): string {
   return `${durationMs}ms`
 }
 
+const SUBTLE_BAR_TOGGLE_DURATION_MS = 220
+
+function tileMotionBarDelay(index: number, useEntryStagger: boolean): string {
+  return useEntryStagger ? tileMotionEntryDelay(index, true) : '0ms'
+}
+
+function tileMotionBarDuration(index: number, useEntryStagger: boolean, subtleToggle = false): string {
+  if (useEntryStagger) {
+    return tileMotionEntryDuration(index, true)
+  }
+  if (subtleToggle) {
+    return `${SUBTLE_BAR_TOGGLE_DURATION_MS}ms`
+  }
+  return `${CHART_MOTION.toggle.duration}ms`
+}
+
 function buildTileToggleThumbStyle(activeIndex: number, optionCount: number, isEntryCycle = false): CSSProperties {
   const safeCount = Math.max(1, optionCount)
   const safeIndex = Math.max(0, Math.min(activeIndex, safeCount - 1))
@@ -2223,6 +2239,7 @@ function HIndexYearChart({
 
 export function PublicationsPerYearChart({
   tile,
+  animate = true,
   showCaption = false,
   showAxes = false,
   fullYearLabels = false,
@@ -2246,6 +2263,7 @@ export function PublicationsPerYearChart({
   showVisualModeToggle = false,
 }: {
   tile: PublicationMetricTilePayload
+  animate?: boolean
   showCaption?: boolean
   showAxes?: boolean
   fullYearLabels?: boolean
@@ -2657,10 +2675,15 @@ export function PublicationsPerYearChart({
   const hasBars = effectiveVisualMode === 'line'
     ? activeBars.length > 0
     : hasValidSeries && historyBars.length > 0 && activeBars.length > 0
-  const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
+  const isEntryCycle = useIsFirstChartEntry(animationKey, animate && hasBars)
   const axisDurationMs = 0
   const renderBars = activeBars
-  const barsExpanded = true
+  const barsExpanded = useUnifiedToggleBarAnimation(
+    `${animationKey}|publications-bars`,
+    animate && hasBars && effectiveVisualMode === 'bars',
+    'entry-only',
+  )
+  const useEntryStagger = isEntryCycle && barsExpanded
   const renderedValuesTarget = useMemo(
     () => renderBars.map((bar) => Math.max(0, bar.value)),
     [renderBars],
@@ -3367,10 +3390,12 @@ export function PublicationsPerYearChart({
               const toneClass = resolveBarToneClass(bar.value, bar.current)
               const baseScaleX = isActive ? 1.035 : 1
               const barScaleY = effectiveVisualMode === 'bars' && barsExpanded ? 1 : 0
+              const barTransitionDelay = tileMotionBarDelay(index, useEntryStagger)
+              const barTransitionDuration = tileMotionBarDuration(index, useEntryStagger, true)
               return (
                 <div
                   key={`slot-${index}`}
-                  className={cn('absolute inset-y-0 z-[1]', enableWindowToggle && HOUSE_TOGGLE_CHART_MORPH_CLASS)}
+                  className="absolute inset-y-0 z-[1]"
                   style={{
                     left: `${leftPct}%`,
                     width: `${slotWidthPct}%`,
@@ -3396,7 +3421,6 @@ export function PublicationsPerYearChart({
                       'absolute bottom-0 block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
                       enableWindowToggle && HOUSE_TOGGLE_CHART_MORPH_CLASS,
-                      enableWindowToggle && HOUSE_TOGGLE_CHART_SWAP_CLASS,
                       effectiveVisualMode === 'line' && 'opacity-0',
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
@@ -3405,6 +3429,9 @@ export function PublicationsPerYearChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${baseScaleX}) scaleY(${barScaleY})`,
                       transformOrigin: 'bottom',
+                      transitionProperty: 'height,transform,filter,box-shadow,opacity',
+                      transitionDelay: barTransitionDelay,
+                      transitionDuration: barTransitionDuration,
                     }}
                   />
                 </div>
@@ -4477,12 +4504,14 @@ export function PublicationCategoryDistributionChart({
   dimension,
   xAxisLabel,
   emptyLabel,
+  animate = true,
   enableValueModeToggle = false,
 }: {
   publications: PublicationDrilldownRecord[]
   dimension: PublicationCategoryDimension
   xAxisLabel: string
   emptyLabel: string
+  animate?: boolean
   enableValueModeToggle?: boolean
 }) {
   const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
@@ -4668,9 +4697,14 @@ export function PublicationCategoryDistributionChart({
     () => `${dimension}|${windowMode}|${valueMode}|${activeBars.map((bar) => `${bar.label}-${bar.count}`).join('|')}`,
     [activeBars, dimension, valueMode, windowMode],
   )
-  const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
+  const isEntryCycle = useIsFirstChartEntry(animationKey, animate && hasBars)
   const renderBars = activeBars
-  const barsExpanded = true
+  const barsExpanded = useUnifiedToggleBarAnimation(
+    `${animationKey}|distribution-bars`,
+    animate && hasBars && renderDisplayMode === 'chart',
+    'entry-only',
+  )
+  const useEntryStagger = isEntryCycle && barsExpanded
   const renderedValuesTarget = useMemo(
     () => renderBars.map((bar) => (showPercentageMode ? Math.max(0, bar.percentage) : Math.max(0, bar.count))),
     [renderBars, showPercentageMode],
@@ -4804,9 +4838,12 @@ export function PublicationCategoryDistributionChart({
     }
   const tableHeadingLabel = dimension === 'article' ? 'Article type' : 'Publication type'
   const tableTotalCount = tableRows.reduce((sum, row) => sum + row.count, 0)
+  const distributionRootClassName = renderDisplayMode === 'table'
+    ? 'flex h-auto min-h-0 w-full flex-col'
+    : 'flex h-[17.6rem] min-h-[17.6rem] w-full flex-col'
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
+    <div className={distributionRootClassName}>
       <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
         <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
           <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
@@ -4918,6 +4955,9 @@ export function PublicationCategoryDistributionChart({
                     onClick={(event) => {
                       event.stopPropagation()
                       if (displayMode === option.value) {
+                        if (option.value === 'table') {
+                          setDisplayMode('chart')
+                        }
                         return
                       }
                       setDisplayMode(option.value)
@@ -4933,17 +4973,12 @@ export function PublicationCategoryDistributionChart({
         </div>
       </div>
       {renderDisplayMode === 'table' ? (
-        <div
-          className={cn(
-            HOUSE_CHART_TRANSITION_CLASS,
-            HOUSE_CHART_ENTERED_CLASS,
-            'overflow-visible',
-          )}
-          data-ui={`${dimension}-distribution-table-frame`}
-          data-house-role="chart-frame"
-        >
-          <div className="house-table-shell h-auto overflow-visible rounded-md bg-background">
-            <table className="w-full border-collapse" data-house-no-column-controls="true">
+        <div className="w-full overflow-visible" data-ui={`${dimension}-distribution-table-frame`}>
+          <div
+            className="house-table-shell house-publications-trend-table-shell-plain h-auto w-full overflow-hidden rounded-md bg-background"
+            style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
+          >
+            <table className="w-full table-fixed border-collapse" data-house-no-column-controls="true">
               <thead className="house-table-head">
                 <tr>
                   <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
@@ -4989,7 +5024,9 @@ export function PublicationCategoryDistributionChart({
         <div
           className={cn(
             HOUSE_CHART_TRANSITION_CLASS,
+            HOUSE_CHART_SERIES_BY_SLOT_CLASS,
             HOUSE_CHART_ENTERED_CLASS,
+            'house-publications-trend-chart-frame-borderless',
           )}
           style={chartFrameStyle}
           data-ui={`${dimension}-distribution-chart-frame`}
@@ -5010,6 +5047,8 @@ export function PublicationCategoryDistributionChart({
               const heightPct = animatedValue <= 0 ? 3 : Math.min(100, Math.max(6, (animatedValue / axisMax) * 100))
               const isActive = hoveredIndex === index
               const hoverScaleX = isActive && renderBars.length > 1 ? 1.035 : 1
+              const barTransitionDelay = tileMotionBarDelay(index, useEntryStagger)
+              const barTransitionDuration = tileMotionBarDuration(index, useEntryStagger, true)
               return (
                 <div
                   key={`${bar.key}-${index}`}
@@ -5031,7 +5070,7 @@ export function PublicationCategoryDistributionChart({
                     className={cn(
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
-                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
+                      HOUSE_TOGGLE_CHART_MORPH_CLASS,
                       HOUSE_CHART_BAR_ACCENT_CLASS,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
@@ -5039,8 +5078,9 @@ export function PublicationCategoryDistributionChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${hoverScaleX}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
+                      transitionProperty: 'height,transform,filter,box-shadow',
+                      transitionDelay: barTransitionDelay,
+                      transitionDuration: barTransitionDuration,
                     }}
                   />
                 </div>
@@ -5099,10 +5139,12 @@ export function PublicationCategoryDistributionChart({
 function TotalPublicationsDrilldownWorkspace({
   tile,
   activeTab,
+  animateCharts = true,
   onOpenPublication: _onOpenPublication,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
+  animateCharts?: boolean
   onOpenPublication?: (workId: string) => void
 }) {
   void _onOpenPublication
@@ -5336,142 +5378,151 @@ function TotalPublicationsDrilldownWorkspace({
 
         {activeTab === 'summary' ? (
           <>
-            <div className="house-drilldown-heading-block">
-              <div className="flex items-center justify-between gap-2">
-                <p className="house-drilldown-heading-block-title">Publication trends</p>
-                <DrilldownSheet.HeadingToggle
-                  expanded={publicationTrendsExpanded}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setPublicationTrendsExpanded((value) => !value)
-                  }}
-                  onMouseDown={(event) => event.stopPropagation()}
-                />
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Publication trends</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={publicationTrendsExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setPublicationTrendsExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
               </div>
-            </div>
-            {publicationTrendsExpanded ? (
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-              <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
-                <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
-                  <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
-                    <div
-                      className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
-                      data-stop-tile-open="true"
-                      data-ui="publications-trends-window-toggle"
-                      data-house-role="chart-toggle"
-                      style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
-                    >
-                      <span
-                        className={HOUSE_TOGGLE_THUMB_CLASS}
-                        style={publicationTrendsWindowThumbStyle}
-                        aria-hidden="true"
-                      />
-                      {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-                        <button
-                          key={`pub-trends-window-${option.value}`}
-                          type="button"
+              {publicationTrendsExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
+                    <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+                      <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                        <div
+                          className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
                           data-stop-tile-open="true"
-                          className={cn(
-                            HOUSE_TOGGLE_BUTTON_CLASS,
-                            publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                          )}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            if (publicationTrendsWindowMode === option.value) {
-                              return
-                            }
-                            setPublicationTrendsWindowMode(option.value)
-                          }}
-                          onMouseDown={(event) => event.stopPropagation()}
-                          aria-pressed={publicationTrendsWindowMode === option.value}
+                          data-ui="publications-trends-window-toggle"
+                          data-house-role="chart-toggle"
+                          style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
                         >
-                          {option.label}
-                        </button>
-                      ))}
+                          <span
+                            className={HOUSE_TOGGLE_THUMB_CLASS}
+                            style={publicationTrendsWindowThumbStyle}
+                            aria-hidden="true"
+                          />
+                          {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+                            <button
+                              key={`pub-trends-window-${option.value}`}
+                              type="button"
+                              data-stop-tile-open="true"
+                              className={cn(
+                                HOUSE_TOGGLE_BUTTON_CLASS,
+                                publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                              )}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                if (publicationTrendsWindowMode === option.value) {
+                                  return
+                                }
+                                setPublicationTrendsWindowMode(option.value)
+                              }}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              aria-pressed={publicationTrendsWindowMode === option.value}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
+                    <PublicationTrendsVisualToggle
+                      value={publicationTrendsVisualMode}
+                      onChange={setPublicationTrendsVisualMode}
+                    />
+                  </div>
+
+                  <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
+                    <PublicationsPerYearChart
+                      tile={tile}
+                      animate={animateCharts}
+                      showAxes
+                      enableWindowToggle
+                      showPeriodHint
+                      showCurrentPeriodSemantic
+                      useCompletedMonthWindowLabels
+                      autoScaleByWindow
+                      showMeanLine
+                      showMeanValueLabel
+                      subtleGrid
+                      activeWindowMode={publicationTrendsWindowMode}
+                      onWindowModeChange={setPublicationTrendsWindowMode}
+                      visualMode={publicationTrendsVisualMode}
+                      onVisualModeChange={setPublicationTrendsVisualMode}
+                      showWindowToggle={false}
+                    />
                   </div>
                 </div>
-                <PublicationTrendsVisualToggle
-                  value={publicationTrendsVisualMode}
-                  onChange={setPublicationTrendsVisualMode}
-                />
-              </div>
-
-              <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
-                <PublicationsPerYearChart
-                  tile={tile}
-                  showAxes
-                  enableWindowToggle
-                  showPeriodHint
-                  showCurrentPeriodSemantic
-                  useCompletedMonthWindowLabels
-                  autoScaleByWindow
-                  showMeanLine
-                  showMeanValueLabel
-                  subtleGrid
-                  activeWindowMode={publicationTrendsWindowMode}
-                  onWindowModeChange={setPublicationTrendsWindowMode}
-                  visualMode={publicationTrendsVisualMode}
-                  onVisualModeChange={setPublicationTrendsVisualMode}
-                  showWindowToggle={false}
-                />
-              </div>
-              </div>
-            ) : null}
-
-            <div className="house-drilldown-heading-block">
-              <div className="flex items-center justify-between gap-2">
-                <p className="house-drilldown-heading-block-title">Publication type trends</p>
-                <DrilldownSheet.HeadingToggle
-                  expanded={publicationTypeTrendsExpanded}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setPublicationTypeTrendsExpanded((value) => !value)
-                  }}
-                  onMouseDown={(event) => event.stopPropagation()}
-                />
-              </div>
+              ) : null}
             </div>
-            {publicationTypeTrendsExpanded ? (
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="house-drilldown-content-block house-publications-drilldown-summary-trend-chart-tall w-full">
-                  <PublicationCategoryDistributionChart
-                    publications={publicationDrilldownRecords}
-                    dimension="publication"
-                    xAxisLabel="Publication type"
-                    emptyLabel="No publication type data"
-                    enableValueModeToggle
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Article type trends</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={articleTypeTrendsExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setArticleTypeTrendsExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
                   />
                 </div>
               </div>
-            ) : null}
-
-            <div className="house-drilldown-heading-block">
-              <div className="flex items-center justify-between gap-2">
-                <p className="house-drilldown-heading-block-title">Article type trends</p>
-                <DrilldownSheet.HeadingToggle
-                  expanded={articleTypeTrendsExpanded}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setArticleTypeTrendsExpanded((value) => !value)
-                  }}
-                  onMouseDown={(event) => event.stopPropagation()}
-                />
-              </div>
+              {articleTypeTrendsExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className="house-drilldown-content-block w-full">
+                    <PublicationCategoryDistributionChart
+                      publications={publicationDrilldownRecords}
+                      dimension="article"
+                      xAxisLabel="Article type"
+                      emptyLabel="No article type data"
+                      animate={animateCharts}
+                      enableValueModeToggle
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
-            {articleTypeTrendsExpanded ? (
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="house-drilldown-content-block house-publications-drilldown-summary-trend-chart-tall w-full">
-                  <PublicationCategoryDistributionChart
-                    publications={publicationDrilldownRecords}
-                    dimension="article"
-                    xAxisLabel="Article type"
-                    emptyLabel="No article type data"
-                    enableValueModeToggle
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Publication type trends</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={publicationTypeTrendsExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setPublicationTypeTrendsExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
                   />
                 </div>
               </div>
-            ) : null}
+              {publicationTypeTrendsExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className="house-drilldown-content-block w-full">
+                    <PublicationCategoryDistributionChart
+                      publications={publicationDrilldownRecords}
+                      dimension="publication"
+                      xAxisLabel="Publication type"
+                      emptyLabel="No publication type data"
+                      animate={animateCharts}
+                      enableValueModeToggle
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </>
         ) : null}
 
@@ -7180,6 +7231,7 @@ export function PublicationsTopStrip({
                 <TotalPublicationsDrilldownWorkspace
                   tile={activeTile}
                   activeTab={activeDrilldownTab}
+                  animateCharts={drawerOpen && activeDrilldownTab === 'summary'}
                   onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
                 />
               ) : (
