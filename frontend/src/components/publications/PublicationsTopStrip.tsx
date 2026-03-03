@@ -511,11 +511,11 @@ const CHART_MOTION = {
     duration: 420,      // --motion-chart-refresh-duration
   },
   ring: {
-    entry: 520,         // --motion-chart-ring-entry
+    entry: 560,         // --motion-chart-ring-entry
     toggle: 380,        // --motion-chart-ring-toggle
   },
   line: {
-    entry: 580,         // --motion-chart-line-entry
+    entry: 560,         // --motion-chart-line-entry
     toggle: 400,        // --motion-chart-line-toggle
   },
 } as const
@@ -591,6 +591,15 @@ function tileMotionEntryDelay(index = 0, animateIn = false): string {
     return '0ms'
   }
   return getChartStaggerDelay(index, 'entry')
+}
+
+function tileMotionEntryDuration(index = 0, animateIn = false): string {
+  if (!animateIn) {
+    return `${CHART_MOTION.toggle.duration}ms`
+  }
+  const delayMs = Math.min(CHART_MOTION.entry.staggerMax, Math.max(0, index) * CHART_MOTION.entry.stagger)
+  const durationMs = Math.max(160, CHART_MOTION.entry.duration - delayMs)
+  return `${durationMs}ms`
 }
 
 function buildTileToggleThumbStyle(activeIndex: number, optionCount: number, isEntryCycle = false): CSSProperties {
@@ -670,6 +679,36 @@ function prefersReducedMotion(): boolean {
   )
 }
 
+function isChartDebugEnabled(): boolean {
+  if (typeof window === 'undefined' || !import.meta.env.DEV) {
+    return false
+  }
+  const debugWindow = window as Window & { __HOUSE_CHART_DEBUG__?: boolean }
+  if (typeof debugWindow.__HOUSE_CHART_DEBUG__ === 'boolean') {
+    return debugWindow.__HOUSE_CHART_DEBUG__
+  }
+  try {
+    if (window.localStorage.getItem('house:chart-debug') === '1') {
+      return true
+    }
+  } catch {
+    return false
+  }
+  try {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('chartDebug') === '1'
+  } catch {
+    return false
+  }
+}
+
+function logChartDebug(scope: string, payload: Record<string, unknown>): void {
+  if (!isChartDebugEnabled()) {
+    return
+  }
+  console.info(`[chart-debug] ${scope}`, payload)
+}
+
 function useUnifiedToggleBarAnimation(
   animationKey: string,
   enabled: boolean,
@@ -679,18 +718,32 @@ function useUnifiedToggleBarAnimation(
   const hasAnimatedEntryRef = useRef(false)
 
   useEffect(() => {
+    logChartDebug('useUnifiedToggleBarAnimation:start', {
+      animationKey,
+      enabled,
+      mode,
+    })
     if (!enabled) {
       setBarsExpanded(false)
       hasAnimatedEntryRef.current = false
+      logChartDebug('useUnifiedToggleBarAnimation:disabled', {
+        animationKey,
+      })
       return
     }
     if (prefersReducedMotion()) {
       setBarsExpanded(true)
       hasAnimatedEntryRef.current = true
+      logChartDebug('useUnifiedToggleBarAnimation:reduced-motion', {
+        animationKey,
+      })
       return
     }
     if (mode === 'entry-only' && hasAnimatedEntryRef.current) {
       setBarsExpanded(true)
+      logChartDebug('useUnifiedToggleBarAnimation:entry-only-reuse', {
+        animationKey,
+      })
       return
     }
     setBarsExpanded(false)
@@ -698,6 +751,9 @@ function useUnifiedToggleBarAnimation(
     raf = window.requestAnimationFrame(() => {
       setBarsExpanded(true)
       hasAnimatedEntryRef.current = true
+      logChartDebug('useUnifiedToggleBarAnimation:expanded', {
+        animationKey,
+      })
     })
     return () => {
       window.cancelAnimationFrame(raf)
@@ -714,11 +770,18 @@ function useIsFirstChartEntry(animationKey: string, enabled: boolean): boolean {
   useEffect(() => {
     if (!enabled) {
       setIsEntryCycle(false)
+      logChartDebug('useIsFirstChartEntry:disabled', {
+        animationKey,
+      })
       return
     }
     const entryCycle = !hasEnteredRef.current
     setIsEntryCycle(entryCycle)
     hasEnteredRef.current = true
+    logChartDebug('useIsFirstChartEntry:update', {
+      animationKey,
+      entryCycle,
+    })
   }, [animationKey, enabled])
 
   return isEntryCycle
@@ -903,18 +966,37 @@ function useEasedValue(target: number, animationKey: string, enabled: boolean, d
     if (!Number.isFinite(target)) {
       setValue(0)
       valueRef.current = 0
+      logChartDebug('useEasedValue:invalid-target', {
+        animationKey,
+        target,
+      })
       return
     }
     if (!enabled || prefersReducedMotion()) {
       setValue(target)
       valueRef.current = target
+      logChartDebug('useEasedValue:direct-set', {
+        animationKey,
+        target,
+        enabled,
+      })
       return
     }
     const from = Number.isFinite(valueRef.current) ? valueRef.current : 0
     const to = target
     if (Math.abs(from - to) < 0.0001) {
+      logChartDebug('useEasedValue:unchanged', {
+        animationKey,
+        value: to,
+      })
       return
     }
+    logChartDebug('useEasedValue:animate-start', {
+      animationKey,
+      from,
+      to,
+      durationMs,
+    })
     let raf = 0
     const startedAt = performance.now()
     const easeOutCubic = (progress: number) => 1 - ((1 - progress) ** 3)
@@ -926,6 +1008,12 @@ function useEasedValue(target: number, animationKey: string, enabled: boolean, d
       setValue(nextValue)
       if (progress < 1) {
         raf = window.requestAnimationFrame(step)
+      } else {
+        logChartDebug('useEasedValue:animate-end', {
+          animationKey,
+          value: to,
+          durationMs,
+        })
       }
     }
     raf = window.requestAnimationFrame(step)
@@ -951,6 +1039,9 @@ function useEasedSeries(target: number[], animationKey: string, enabled: boolean
         setValues([])
         valuesRef.current = []
       }
+      logChartDebug('useEasedSeries:empty', {
+        animationKey,
+      })
       return
     }
     const to = target.map((value) => (Number.isFinite(value) ? value : 0))
@@ -961,6 +1052,11 @@ function useEasedSeries(target: number[], animationKey: string, enabled: boolean
         setValues(to)
         valuesRef.current = to
       }
+      logChartDebug('useEasedSeries:direct-set', {
+        animationKey,
+        enabled,
+        count: to.length,
+      })
       return
     }
     const from = to.map((_, index) => {
@@ -969,8 +1065,18 @@ function useEasedSeries(target: number[], animationKey: string, enabled: boolean
     })
     const unchanged = from.length === to.length && from.every((value, index) => Math.abs(value - to[index]) < 0.0001)
     if (unchanged) {
+      logChartDebug('useEasedSeries:unchanged', {
+        animationKey,
+        count: to.length,
+      })
       return
     }
+
+    logChartDebug('useEasedSeries:animate-start', {
+      animationKey,
+      count: to.length,
+      durationMs,
+    })
 
     let raf = 0
     const startedAt = performance.now()
@@ -983,6 +1089,12 @@ function useEasedSeries(target: number[], animationKey: string, enabled: boolean
       setValues(next)
       if (progress < 1) {
         raf = window.requestAnimationFrame(step)
+      } else {
+        logChartDebug('useEasedSeries:animate-end', {
+          animationKey,
+          count: to.length,
+          durationMs,
+        })
       }
     }
     raf = window.requestAnimationFrame(step)
@@ -1670,7 +1782,7 @@ function TotalCitationsModeChart({
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
                       transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: barTransitionDuration,
+                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
                     }}
                   />
                 </div>
@@ -2034,7 +2146,7 @@ function HIndexYearChart({
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
                       transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: barTransitionDuration,
+                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
                     }}
                   />
                 </div>
@@ -2550,8 +2662,7 @@ export function PublicationsPerYearChart({
   )
   const hasBars = hasValidSeries && historyBars.length > 0 && activeBars.length > 0
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
-  const entrySweepDurationMs = Math.max(160, CHART_MOTION.entry.duration - CHART_MOTION.entry.staggerMax)
-  const barTransitionDuration = `${isEntryCycle ? entrySweepDurationMs : CHART_MOTION.toggle.duration}ms`
+  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
   const axisDurationMs = getAxisAnimationDuration(isEntryCycle ? 'entry' : 'toggle')
   const renderBars = activeBars
   const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars, 'entry-only')
@@ -3249,9 +3360,7 @@ export function PublicationsPerYearChart({
               const toneClass = resolveBarToneClass(bar.value, bar.current)
               const baseScaleX = isActive ? 1.035 : 1
               const barScaleY = effectiveVisualMode === 'bars' && barsExpanded ? 1 : 0
-              const entryDelayMs = isEntryCycle && barsExpanded
-                ? CHART_MOTION.entry.delay + Math.min(CHART_MOTION.entry.staggerMax, Math.max(0, index) * CHART_MOTION.entry.stagger)
-                : 0
+              const entryDelay = tileMotionEntryDelay(index, barsExpanded)
               return (
                 <div
                   key={`slot-${index}`}
@@ -3291,8 +3400,8 @@ export function PublicationsPerYearChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${baseScaleX}) scaleY(${barScaleY})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: `${entryDelayMs}ms`,
-                      transitionDuration: barTransitionDuration,
+                      transitionDelay: entryDelay,
+                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
                     }}
                   />
                 </div>
@@ -3541,6 +3650,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                   style={{
                     strokeDasharray: `${ringVisibleDash} ${ringCircumference}`,
                     strokeDashoffset: 0,
+                    '--chart-transition-duration': ringTransitionDuration,
                   }}
                 />
               </svg>
@@ -3759,7 +3869,7 @@ function MomentumTilePanel({
                       opacity: 1,
                       transformOrigin: 'bottom',
                       transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: barTransitionDuration,
+                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
                     }}
                   />
                 </div>
@@ -3938,8 +4048,6 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
     [firstAuthorshipPct, leadershipIndexPct, secondAuthorshipPct, seniorAuthorshipPct, totalPapers],
   )
   const barsExpanded = useUnifiedToggleBarAnimation(animationKey, totalPapers > 0)
-  const isEntryCycle = useIsFirstChartEntry(animationKey, totalPapers > 0)
-  const progressTransitionDuration = tileChartDurationVar(isEntryCycle)
 
   if (totalPapers <= 0) {
     return <div className={dashboardTileStyles.emptyChart}>No authorship data</div>
@@ -3974,7 +4082,7 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
                 style={{
                   width: `${barsExpanded ? row.value : 0}%`,
                   transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                  '--chart-transition-duration': progressTransitionDuration,
+                  '--chart-transition-duration': tileMotionEntryDuration(index, barsExpanded),
                 } as React.CSSProperties}
                 aria-hidden="true"
               />
@@ -4888,7 +4996,7 @@ export function PublicationCategoryDistributionChart({
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
                       transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: barTransitionDuration,
+                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
                     }}
                   />
                 </div>
@@ -5372,7 +5480,7 @@ function HIndexNeedsChart({
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
                       transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: barTransitionDuration,
+                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
                     }}
                   />
                 </div>
@@ -5597,7 +5705,7 @@ function HIndexToggleBarsChart({
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
                       transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: barTransitionDuration,
+                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
                     }}
                   />
                 </div>
@@ -5709,6 +5817,12 @@ function HIndexViewToggle({
   const trajectoryButtonRef = useRef<HTMLButtonElement>(null)
   const neededButtonRef = useRef<HTMLButtonElement>(null)
   const [thumbStyle, setThumbStyle] = useState<CSSProperties>({ left: '0px', width: '0px' })
+  const [motionReady, setMotionReady] = useState(false)
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setMotionReady(true), CHART_MOTION.entry.duration)
+    return () => window.clearTimeout(id)
+  }, [])
 
   useLayoutEffect(() => {
     const updateThumbStyle = () => {
@@ -5724,6 +5838,7 @@ function HIndexViewToggle({
       setThumbStyle({
         left: `${Math.max(0, leftPx)}px`,
         width: `${Math.max(0, widthPx)}px`,
+        transitionDuration: motionReady ? undefined : '0ms',
       })
     }
 
@@ -5754,7 +5869,7 @@ function HIndexViewToggle({
         observer.disconnect()
       }
     }
-  }, [mode])
+  }, [mode, motionReady])
 
   return (
     <div className="flex items-center">
@@ -6149,13 +6264,14 @@ export function PublicationsTopStrip({
   )
   const [toolboxOpen, setToolboxOpen] = useState(false)
   const [chartRefreshCycle, setChartRefreshCycle] = useState(0)
-  
-  // Entry cycle tracking for tile toggles (top-level hooks)
-  const momentumAnimationKey = `momentum|${momentumWindowMode}`
-  const isEntryCycle = useIsFirstChartEntry(momentumAnimationKey, true)
-  const fieldPercentileAnimationKey = `field_percentile|${fieldPercentileThreshold}`
-  const isFieldPercentileEntryCycle = useIsFirstChartEntry(fieldPercentileAnimationKey, true)
-  
+
+  // Suppress toggle-thumb sliding transitions until entry animations complete
+  const [tileToggleMotionReady, setTileToggleMotionReady] = useState(false)
+  useEffect(() => {
+    const id = window.setTimeout(() => setTileToggleMotionReady(true), CHART_MOTION.entry.duration)
+    return () => window.clearTimeout(id)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const tileMotionStyle = useMemo(() => ({
     '--motion-duration-chart-refresh': `${CHART_MOTION.entry.duration}ms`,
     '--motion-duration-chart-toggle': `${CHART_MOTION.toggle.duration}ms`,
@@ -6538,7 +6654,7 @@ export function PublicationsTopStrip({
                       >
                         <span
                           className={HOUSE_TOGGLE_THUMB_CLASS}
-                          style={buildTileToggleThumbStyle(momentumWindowMode === '5y' ? 1 : 0, 2, isEntryCycle)}
+                          style={buildTileToggleThumbStyle(momentumWindowMode === '5y' ? 1 : 0, 2, !tileToggleMotionReady)}
                           aria-hidden="true"
                         />
                         <button
@@ -6710,7 +6826,7 @@ export function PublicationsTopStrip({
                           HOUSE_TOGGLE_THUMB_CLASS,
                           `house-toggle-thumb-threshold-${activeThreshold}`,
                         )}
-                        style={buildTileToggleThumbStyle(activeThresholdIndex, availableThresholds.length, isFieldPercentileEntryCycle)}
+                        style={buildTileToggleThumbStyle(activeThresholdIndex, availableThresholds.length, !tileToggleMotionReady)}
                         aria-hidden="true"
                       />
                       {availableThresholds.map((threshold) => (

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Download, Lightbulb, Plus, RefreshCcw, Sparkles, Upload } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
   PageHeader,
@@ -68,6 +68,25 @@ type CollaboratorFormState = {
 }
 
 type HeatmapMode = 'country' | 'institution' | 'domain'
+type HeatmapMetric = 'collaborators' | 'works' | 'strength' | 'citations_last_12m' | 'recency'
+type HeatmapSelection = {
+  mode: HeatmapMode
+  label: string
+} | null
+type HeatmapCell = {
+  key: string
+  label: string
+  value: number
+  collaborators: number
+  bucketLabels: string[]
+}
+type HeatmapQuantiles = {
+  q20: number
+  q40: number
+  q60: number
+  q80: number
+  max: number
+}
 
 type MockMetricsSeed = Pick<
   CollaboratorPayload['metrics'],
@@ -89,6 +108,11 @@ const EMPTY_FORM: CollaboratorFormState = {
 }
 
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
+const COLLABORATORS_PAGE_SIZE = 50
+const COLLABORATORS_FETCH_PAGE_SIZE = 200
+const MAX_COLLABORATOR_FETCH_PAGES = 250
+const HEATMAP_TOP_CELL_LIMIT = 24
+const HEATMAP_OTHERS_KEY = '__others__'
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
@@ -148,21 +172,157 @@ function classificationTone(value: string): 'default' | 'secondary' | 'outline' 
   return 'outline'
 }
 
-function heatmapTone(count: number, maxCount: number): string {
-  if (maxCount <= 0) {
+function heatmapTone(value: number, quantiles: HeatmapQuantiles | null): string {
+  if (!quantiles || quantiles.max <= 0 || value <= 0) {
     return 'bg-muted'
   }
-  const ratio = count / maxCount
-  if (ratio >= 0.8) {
-    return 'bg-emerald-600 text-white'
+  if (value <= quantiles.q20) {
+    return 'bg-emerald-100 text-emerald-900'
   }
-  if (ratio >= 0.55) {
-    return 'bg-emerald-500 text-white'
+  if (value <= quantiles.q40) {
+    return 'bg-emerald-200 text-emerald-900'
   }
-  if (ratio >= 0.3) {
+  if (value <= quantiles.q60) {
     return 'bg-emerald-300 text-emerald-950'
   }
-  return 'bg-emerald-100 text-emerald-900'
+  if (value <= quantiles.q80) {
+    return 'bg-emerald-500 text-white'
+  }
+  return 'bg-emerald-700 text-white'
+}
+
+function heatmapMetricLabel(metric: HeatmapMetric): string {
+  if (metric === 'collaborators') {
+    return 'Collaborator count'
+  }
+  if (metric === 'works') {
+    return 'Coauthored works'
+  }
+  if (metric === 'strength') {
+    return 'Strength score'
+  }
+  if (metric === 'citations_last_12m') {
+    return 'Citations (12m)'
+  }
+  return 'Recency score'
+}
+
+function heatmapMetricValue(item: CollaboratorPayload, metric: HeatmapMetric, nowYear: number): number {
+  if (metric === 'collaborators') {
+    return 1
+  }
+  if (metric === 'works') {
+    return Math.max(0, Number(item.metrics.coauthored_works_count || 0))
+  }
+  if (metric === 'strength') {
+    return Math.max(0, Number(item.metrics.collaboration_strength_score || 0))
+  }
+  if (metric === 'citations_last_12m') {
+    return Math.max(0, Number(item.metrics.citations_last_12m || 0))
+  }
+  const lastYear = Number(item.metrics.last_collaboration_year || 0)
+  if (!lastYear) {
+    return 0
+  }
+  const age = Math.max(0, nowYear - lastYear)
+  return Math.max(0, 6 - age)
+}
+
+function formatHeatmapMetricValue(value: number, metric: HeatmapMetric): string {
+  if (metric === 'strength') {
+    return value.toFixed(1)
+  }
+  return Math.round(value).toLocaleString('en-GB')
+}
+
+function normalizeHeatmapBucket(value: string | null | undefined, fallback: string): string {
+  return (value || fallback).trim() || fallback
+}
+
+function parsePositiveInteger(value: string | null | undefined, fallback: number): number {
+  const parsed = Number(value || '')
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+  return Math.max(1, Math.floor(parsed))
+}
+
+function normalizeSortValue(value: string | null | undefined): string {
+  const clean = String(value || '').trim()
+  if (clean === 'works' || clean === 'last_collaboration_year' || clean === 'strength') {
+    return clean
+  }
+  return 'name'
+}
+
+function normalizeHeatmapMode(value: string | null | undefined): HeatmapMode {
+  if (value === 'institution' || value === 'domain') {
+    return value
+  }
+  return 'country'
+}
+
+function normalizeHeatmapMetric(value: string | null | undefined): HeatmapMetric {
+  if (
+    value === 'collaborators' ||
+    value === 'strength' ||
+    value === 'citations_last_12m' ||
+    value === 'recency'
+  ) {
+    return value
+  }
+  return 'works'
+}
+
+function normalizeGeoView(value: string | null | undefined): 'map' | 'grid' {
+  return value === 'grid' ? 'grid' : 'map'
+}
+
+function quantile(values: number[], percentile: number): number {
+  if (values.length === 0) {
+    return 0
+  }
+  const sorted = [...values].sort((left, right) => left - right)
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(percentile * sorted.length) - 1))
+  return sorted[index] || 0
+}
+
+async function fetchAllCollaborators(
+  token: string,
+  options: {
+    query: string
+    sort: string
+  },
+): Promise<CollaboratorsListPayload> {
+  const firstPage = await listCollaborators(token, {
+    query: options.query,
+    sort: options.sort,
+    page: 1,
+    pageSize: COLLABORATORS_FETCH_PAGE_SIZE,
+  })
+  const items = [...firstPage.items]
+  let currentPage = 1
+  let hasMore = firstPage.has_more
+
+  while (hasMore && currentPage < MAX_COLLABORATOR_FETCH_PAGES) {
+    currentPage += 1
+    const nextPage = await listCollaborators(token, {
+      query: options.query,
+      sort: options.sort,
+      page: currentPage,
+      pageSize: COLLABORATORS_FETCH_PAGE_SIZE,
+    })
+    items.push(...nextPage.items)
+    hasMore = nextPage.has_more
+  }
+
+  return {
+    items,
+    total: Number(firstPage.total || items.length),
+    page: 1,
+    page_size: COLLABORATORS_FETCH_PAGE_SIZE,
+    has_more: false,
+  }
 }
 
 function hydrateMockMetrics(metrics: MockMetricsSeed): CollaboratorPayload['metrics'] {
@@ -202,11 +362,12 @@ function downloadTextFile(filename: string, content: string, mimeType: string): 
 
 export function ProfileCollaborationPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [summary, setSummary] = useState<CollaborationMetricsSummaryPayload | null>(null)
   const [listing, setListing] = useState<CollaboratorsListPayload | null>(null)
-  const [query, setQuery] = useState('')
-  const [sort, setSort] = useState('name')
-  const [page, setPage] = useState(1)
+  const [query, setQuery] = useState(() => String(searchParams.get('query') || '').trim())
+  const [sort, setSort] = useState(() => normalizeSortValue(searchParams.get('sort')))
+  const [page, setPage] = useState(() => parsePositiveInteger(searchParams.get('page'), 1))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [form, setForm] = useState<CollaboratorFormState>(EMPTY_FORM)
@@ -225,8 +386,21 @@ export function ProfileCollaborationPage() {
   const [aiAffiliationDraft, setAiAffiliationDraft] = useState<CollaborationAiAffiliationsNormalisePayload | null>(null)
   const [aiLoading, setAiLoading] = useState<string | null>(null)
   const [aiError, setAiError] = useState('')
-  const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('country')
-  const [geoView, setGeoView] = useState<'map' | 'grid'>('map')
+  const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>(() => normalizeHeatmapMode(searchParams.get('heatmap_mode')))
+  const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>(
+    () => normalizeHeatmapMetric(searchParams.get('heatmap_metric')),
+  )
+  const [heatmapSelection, setHeatmapSelection] = useState<HeatmapSelection>(() => {
+    const selectionLabel = String(searchParams.get('heatmap_selection') || '').trim()
+    if (!selectionLabel) {
+      return null
+    }
+    return {
+      mode: normalizeHeatmapMode(searchParams.get('heatmap_mode')),
+      label: selectionLabel,
+    }
+  })
+  const [geoView, setGeoView] = useState<'map' | 'grid'>(() => normalizeGeoView(searchParams.get('geo_view')))
 
   // Mock data for dev visualization
   useEffect(() => {
@@ -645,7 +819,7 @@ export function ProfileCollaborationPage() {
     if (selectedCollaborator) {
       seeds.push(selectedCollaborator)
     }
-    for (const item of listing?.items || []) {
+    for (const item of filteredCollaborators) {
       if (seeds.length >= 3) {
         break
       }
@@ -655,7 +829,7 @@ export function ProfileCollaborationPage() {
       seeds.push(item)
     }
     return seeds
-  }, [listing?.items, selectedCollaborator])
+  }, [filteredCollaborators, selectedCollaborator])
 
   const strongCollaborations = useMemo(() => {
     const items = [...(listing?.items || [])]
@@ -671,36 +845,208 @@ export function ProfileCollaborationPage() {
       .slice(0, 10)
   }, [listing?.items])
 
-  const heatmapCells = useMemo(() => {
-    const buckets = new Map<string, number>()
+  const nowYear = new Date().getUTCFullYear()
+  const heatmapCells = useMemo<HeatmapCell[]>(() => {
+    const buckets = new Map<
+      string,
+      {
+        label: string
+        value: number
+        collaborator_ids: Set<string>
+      }
+    >()
     for (const item of listing?.items || []) {
-      const weight = Math.max(1, Number(item.metrics.coauthored_works_count || 0))
+      const weight = heatmapMetricValue(item, heatmapMetric, nowYear)
       if (heatmapMode === 'country') {
-        const key = (item.country || 'Unknown').trim() || 'Unknown'
-        buckets.set(key, (buckets.get(key) || 0) + weight)
+        const key = normalizeHeatmapBucket(item.country, 'Unknown')
+        const existing = buckets.get(key) || { label: key, value: 0, collaborator_ids: new Set<string>() }
+        existing.value += weight
+        existing.collaborator_ids.add(item.id)
+        buckets.set(key, existing)
         continue
       }
       if (heatmapMode === 'institution') {
-        const key = (item.primary_institution || 'Unknown').trim() || 'Unknown'
-        buckets.set(key, (buckets.get(key) || 0) + weight)
+        const key = normalizeHeatmapBucket(item.primary_institution, 'Unknown')
+        const existing = buckets.get(key) || { label: key, value: 0, collaborator_ids: new Set<string>() }
+        existing.value += weight
+        existing.collaborator_ids.add(item.id)
+        buckets.set(key, existing)
         continue
       }
       const domains = item.research_domains.length > 0 ? item.research_domains : ['General']
       for (const domain of domains) {
-        const key = (domain || 'General').trim() || 'General'
-        buckets.set(key, (buckets.get(key) || 0) + weight)
+        const key = normalizeHeatmapBucket(domain, 'General')
+        const existing = buckets.get(key) || { label: key, value: 0, collaborator_ids: new Set<string>() }
+        existing.value += weight
+        existing.collaborator_ids.add(item.id)
+        buckets.set(key, existing)
       }
     }
-    return Array.from(buckets.entries())
-      .map(([label, count]) => ({ label, count }))
-      .sort((left, right) => {
-        if (left.count === right.count) {
+    const sortedBuckets = Array.from(buckets.values()).sort((left, right) => {
+        if (left.value === right.value) {
           return left.label.localeCompare(right.label)
         }
-        return right.count - left.count
+        return right.value - left.value
       })
-      .slice(0, 24)
-  }, [heatmapMode, listing?.items])
+    const primaryBuckets = sortedBuckets.slice(0, HEATMAP_TOP_CELL_LIMIT)
+    const remainingBuckets = sortedBuckets.slice(HEATMAP_TOP_CELL_LIMIT)
+    const cells: HeatmapCell[] = primaryBuckets.map((entry) => ({
+      key: entry.label,
+      label: entry.label,
+      value: entry.value,
+      collaborators: entry.collaborator_ids.size,
+      bucketLabels: [entry.label],
+    }))
+
+    if (remainingBuckets.length > 0) {
+      let value = 0
+      const collaboratorIds = new Set<string>()
+      const bucketLabels: string[] = []
+      for (const entry of remainingBuckets) {
+        value += entry.value
+        bucketLabels.push(entry.label)
+        for (const id of entry.collaborator_ids) {
+          collaboratorIds.add(id)
+        }
+      }
+      cells.push({
+        key: HEATMAP_OTHERS_KEY,
+        label: 'Others',
+        value,
+        collaborators: collaboratorIds.size,
+        bucketLabels,
+      })
+    }
+
+    return cells
+  }, [heatmapMetric, heatmapMode, listing?.items, nowYear])
+
+  const heatmapQuantiles = useMemo<HeatmapQuantiles | null>(() => {
+    const values = heatmapCells.map((cell) => cell.value).filter((value) => value > 0)
+    if (values.length === 0) {
+      return null
+    }
+    return {
+      q20: quantile(values, 0.2),
+      q40: quantile(values, 0.4),
+      q60: quantile(values, 0.6),
+      q80: quantile(values, 0.8),
+      max: Math.max(...values),
+    }
+  }, [heatmapCells])
+
+  const activeHeatmapCell = useMemo(() => {
+    if (!heatmapSelection || heatmapSelection.mode !== heatmapMode) {
+      return null
+    }
+    return heatmapCells.find((cell) => cell.key === heatmapSelection.label) || null
+  }, [heatmapCells, heatmapMode, heatmapSelection])
+
+  const filteredCollaborators = useMemo(() => {
+    const items = listing?.items || []
+    if (!heatmapSelection) {
+      return items
+    }
+    const matchedCell =
+      heatmapSelection.mode === heatmapMode
+        ? heatmapCells.find((cell) => cell.key === heatmapSelection.label)
+        : null
+    const selectedBucketLabels = matchedCell ? new Set(matchedCell.bucketLabels) : null
+    if (!selectedBucketLabels && heatmapSelection.label === HEATMAP_OTHERS_KEY) {
+      return items
+    }
+
+    const matchesSingle = (value: string | null | undefined, fallback: string): boolean => {
+      const key = normalizeHeatmapBucket(value, fallback)
+      if (selectedBucketLabels) {
+        return selectedBucketLabels.has(key)
+      }
+      return key === heatmapSelection.label
+    }
+
+    return items.filter((item) => {
+      if (heatmapSelection.mode === 'country') {
+        return matchesSingle(item.country, 'Unknown')
+      }
+      if (heatmapSelection.mode === 'institution') {
+        return matchesSingle(item.primary_institution, 'Unknown')
+      }
+      const domains = item.research_domains.length > 0 ? item.research_domains : ['General']
+      if (selectedBucketLabels) {
+        return domains.some((domain) => selectedBucketLabels.has(normalizeHeatmapBucket(domain, 'General')))
+      }
+      return domains.some((domain) => normalizeHeatmapBucket(domain, 'General') === heatmapSelection.label)
+    })
+  }, [heatmapCells, heatmapMode, heatmapSelection, listing?.items])
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredCollaborators.length / COLLABORATORS_PAGE_SIZE)),
+    [filteredCollaborators.length],
+  )
+
+  const pagedCollaborators = useMemo(() => {
+    const start = (page - 1) * COLLABORATORS_PAGE_SIZE
+    return filteredCollaborators.slice(start, start + COLLABORATORS_PAGE_SIZE)
+  }, [filteredCollaborators, page])
+
+  useEffect(() => {
+    if (!listing) {
+      return
+    }
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [listing, page, totalPages])
+
+  useEffect(() => {
+    setHeatmapSelection((current) => {
+      if (!current || current.mode === heatmapMode) {
+        return current
+      }
+      return null
+    })
+  }, [heatmapMode])
+
+  useEffect(() => {
+    const next = new URLSearchParams()
+    const cleanQuery = query.trim()
+    if (cleanQuery) {
+      next.set('query', cleanQuery)
+    }
+    if (sort !== 'name') {
+      next.set('sort', sort)
+    }
+    if (page > 1) {
+      next.set('page', String(page))
+    }
+    if (heatmapMode !== 'country') {
+      next.set('heatmap_mode', heatmapMode)
+    }
+    if (heatmapMetric !== 'works') {
+      next.set('heatmap_metric', heatmapMetric)
+    }
+    if (heatmapMode === 'country' && geoView !== 'map') {
+      next.set('geo_view', geoView)
+    }
+    if (heatmapSelection && heatmapSelection.mode === heatmapMode && heatmapSelection.label.trim()) {
+      next.set('heatmap_selection', heatmapSelection.label)
+    }
+    const nextEncoded = next.toString()
+    const currentEncoded = searchParams.toString()
+    if (nextEncoded !== currentEncoded) {
+      setSearchParams(next, { replace: true })
+    }
+  }, [
+    geoView,
+    heatmapMetric,
+    heatmapMode,
+    heatmapSelection,
+    page,
+    query,
+    searchParams,
+    setSearchParams,
+    sort,
+  ])
 
   const load = async (token: string) => {
     setLoading(true)
@@ -708,19 +1054,27 @@ export function ProfileCollaborationPage() {
     try {
       const [summaryPayload, listPayload] = await Promise.all([
         fetchCollaborationMetricsSummary(token),
-        listCollaborators(token, {
+        fetchAllCollaborators(token, {
           query,
           sort,
-          page,
-          pageSize: 50,
         }),
       ])
       setSummary(summaryPayload)
       setListing(listPayload)
-      if (!selectedId && listPayload.items.length > 0 && !isCreating) {
-        const first = listPayload.items[0]
-        setSelectedId(first.id)
-        setForm(toFormState(first))
+      if (!isCreating) {
+        const selectedStillPresent = selectedId
+          ? listPayload.items.some((item) => item.id === selectedId)
+          : false
+        if (!selectedStillPresent && listPayload.items.length > 0) {
+          const first = listPayload.items[0]
+          setSelectedId(first.id)
+          setForm(toFormState(first))
+        }
+        if (listPayload.items.length === 0) {
+          setSelectedId(null)
+          setForm(EMPTY_FORM)
+          setDuplicateWarnings([])
+        }
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load collaboration page.')
@@ -737,7 +1091,7 @@ export function ProfileCollaborationPage() {
     }
     void load(token)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate, page, sort])
+  }, [navigate, sort])
 
   useEffect(() => {
     if (!summary || summary.status !== 'RUNNING') {
@@ -778,7 +1132,31 @@ export function ProfileCollaborationPage() {
       return
     }
     setPage(1)
+    setHeatmapSelection(null)
     await load(token)
+  }
+
+  const onSortChange = (value: string) => {
+    setPage(1)
+    setSort(value)
+  }
+
+  const onToggleHeatmapSelection = (cellKey: string) => {
+    setPage(1)
+    setHeatmapSelection((current) => {
+      if (current && current.mode === heatmapMode && current.label === cellKey) {
+        return null
+      }
+      return { mode: heatmapMode, label: cellKey }
+    })
+  }
+
+  const onMapMarkerDrilldown = (institution: string) => {
+    const label = normalizeHeatmapBucket(institution, 'Unknown')
+    setHeatmapMode('institution')
+    setGeoView('grid')
+    setPage(1)
+    setHeatmapSelection({ mode: 'institution', label })
   }
 
   const onAddCollaborator = () => {
@@ -1115,7 +1493,7 @@ export function ProfileCollaborationPage() {
                 placeholder="Search name, email, ORCID, institution..."
                 className="max-w-md"
               />
-              <SelectPrimitive value={sort} onValueChange={setSort}>
+              <SelectPrimitive value={sort} onValueChange={onSortChange}>
                 <SelectTrigger className="h-9 w-auto min-w-sz-200 px-3 text-sm">
                   <SelectValue placeholder="Sort" />
                 </SelectTrigger>
@@ -1146,7 +1524,7 @@ export function ProfileCollaborationPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(listing?.items || []).map((item) => (
+                  {pagedCollaborators.map((item) => (
                     <TableRow
                       key={item.id}
                       className={selectedId === item.id && !isCreating ? 'bg-accent/60' : ''}
@@ -1177,7 +1555,7 @@ export function ProfileCollaborationPage() {
             </div>
 
             <div className="space-y-2 md:hidden">
-              {(listing?.items || []).map((item) => (
+              {pagedCollaborators.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -1201,7 +1579,8 @@ export function ProfileCollaborationPage() {
 
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
-                {listing?.total || 0} total collaborators
+                {filteredCollaborators.length} shown
+                {heatmapSelection ? ` (filtered from ${listing?.total || 0})` : ''}
               </p>
               <div className="flex items-center gap-2">
                 <Button
@@ -1213,12 +1592,14 @@ export function ProfileCollaborationPage() {
                 >
                   Previous
                 </Button>
-                <p className="text-xs text-muted-foreground">Page {page}</p>
+                <p className="text-xs text-muted-foreground">
+                  Page {page} of {totalPages}
+                </p>
                 <Button
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={!listing?.has_more}
+                  disabled={page >= totalPages}
                   onClick={() => setPage((current) => current + 1)}
                 >
                   Next
@@ -1388,7 +1769,7 @@ export function ProfileCollaborationPage() {
           <CardHeader>
             <CardTitle>Collaboration heat map</CardTitle>
             <CardDescription>
-              Toggle by geography, institution, or domain. Hover each cell for exact counts.
+              Aggregated across all matching collaborators. Grid shows top 24 buckets plus Others. Click map markers or grid cells to filter the collaborator list.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -1418,7 +1799,60 @@ export function ProfileCollaborationPage() {
                 Domain
               </Button>
             </div>
-            
+
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs text-muted-foreground">Metric:</p>
+              <SelectPrimitive value={heatmapMetric} onValueChange={(value) => setHeatmapMetric(value as HeatmapMetric)}>
+                <SelectTrigger className="h-9 w-auto min-w-sz-220 px-3 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="collaborators">Collaborator count</SelectItem>
+                  <SelectItem value="works">Coauthored works</SelectItem>
+                  <SelectItem value="strength">Strength score</SelectItem>
+                  <SelectItem value="citations_last_12m">Citations (12m)</SelectItem>
+                  <SelectItem value="recency">Recency score</SelectItem>
+                </SelectContent>
+              </SelectPrimitive>
+            </div>
+
+            {heatmapSelection ? (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Badge variant="secondary">
+                  Filter: {activeHeatmapCell?.label || heatmapSelection.label} ({heatmapSelection.mode})
+                </Badge>
+                <Button type="button" size="sm" variant="secondary" onClick={() => setHeatmapSelection(null)}>
+                  Clear filter
+                </Button>
+              </div>
+            ) : null}
+
+            {heatmapQuantiles ? (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Quantile legend ({heatmapMetricLabel(heatmapMetric)}):</span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-3 w-3 rounded bg-emerald-100" />
+                  <span>{`Q1 <= ${formatHeatmapMetricValue(heatmapQuantiles.q20, heatmapMetric)}`}</span>
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-3 w-3 rounded bg-emerald-200" />
+                  <span>{`Q2 <= ${formatHeatmapMetricValue(heatmapQuantiles.q40, heatmapMetric)}`}</span>
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-3 w-3 rounded bg-emerald-300" />
+                  <span>{`Q3 <= ${formatHeatmapMetricValue(heatmapQuantiles.q60, heatmapMetric)}`}</span>
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-3 w-3 rounded bg-emerald-500" />
+                  <span>{`Q4 <= ${formatHeatmapMetricValue(heatmapQuantiles.q80, heatmapMetric)}`}</span>
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-3 w-3 rounded bg-emerald-700" />
+                  <span>{`Q5 <= ${formatHeatmapMetricValue(heatmapQuantiles.max, heatmapMetric)}`}</span>
+                </span>
+              </div>
+            ) : null}
+
             {heatmapMode === 'country' && (
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -1439,29 +1873,34 @@ export function ProfileCollaborationPage() {
                 </Button>
               </div>
             )}
-            
+
             {heatmapMode === 'country' && geoView === 'map' ? (
-              <UKCollaborationMap 
-                collaborators={(listing?.items || []).map(item => ({
+              <UKCollaborationMap
+                collaborators={(listing?.items || []).map((item) => ({
                   country: item.country || '',
                   primary_institution: item.primary_institution || '',
-                  collaboration_strength_score: item.metrics.collaboration_strength_score || 0,
+                  collaboration_strength_score: heatmapMetricValue(item, heatmapMetric, nowYear),
                 }))}
+                onMarkerClick={onMapMarkerDrilldown}
               />
             ) : (
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {heatmapCells.length > 0 ? (
                 heatmapCells.map((cell) => {
-                  const max = heatmapCells[0]?.count || 0
+                  const active =
+                    heatmapSelection?.mode === heatmapMode && heatmapSelection?.label === cell.key
                   return (
-                    <div
-                      key={cell.label}
-                      className={`rounded border border-border p-2 text-xs ${heatmapTone(cell.count, max)}`}
-                      title={`${cell.label}: ${cell.count}`}
+                    <button
+                      type="button"
+                      key={cell.key}
+                      className={`rounded border border-border p-2 text-left text-xs ${heatmapTone(cell.value, heatmapQuantiles)} ${active ? 'ring-2 ring-emerald-700 ring-offset-1' : ''}`}
+                      onClick={() => onToggleHeatmapSelection(cell.key)}
+                      title={`${cell.label}: ${formatHeatmapMetricValue(cell.value, heatmapMetric)} ${heatmapMetricLabel(heatmapMetric)} (${cell.collaborators} collaborators)`}
                     >
                       <p className="truncate font-medium">{cell.label}</p>
-                      <p>{cell.count}</p>
-                    </div>
+                      <p>{formatHeatmapMetricValue(cell.value, heatmapMetric)}</p>
+                      <p className="text-[11px] opacity-80">{cell.collaborators} collaborators</p>
+                    </button>
                   )
                 })
               ) : (

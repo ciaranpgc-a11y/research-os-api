@@ -3272,7 +3272,7 @@
 
   .house-chart-ring-dasharray-motion {
     transition-property: stroke-dasharray, stroke-dashoffset;
-    transition-duration: var(--motion-duration-chart-refresh);
+    transition-duration: var(--chart-transition-duration, var(--motion-duration-chart-refresh));
     transition-timing-function: var(--motion-ease-chart-series);
   }
 

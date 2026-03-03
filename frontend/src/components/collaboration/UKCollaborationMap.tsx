@@ -13,6 +13,7 @@ type UKCollaborationMapProps = {
     collaboration_strength_score?: number
   }>
   className?: string
+  onMarkerClick?: (institution: string) => void
 }
 
 type SimpleGeography = {
@@ -53,7 +54,7 @@ function heatColor(normalized: number): string {
   return `rgb(${r}, ${g}, ${b})`
 }
 
-export function UKCollaborationMap({ collaborators, className }: UKCollaborationMapProps) {
+export function UKCollaborationMap({ collaborators, className, onMarkerClick }: UKCollaborationMapProps) {
   const rawClipPathId = useId()
   const clipPathId = `uk-clip-${rawClipPathId.replace(/:/g, '')}`
 
@@ -65,6 +66,7 @@ export function UKCollaborationMap({ collaborators, className }: UKCollaboration
         lon: number
         intensity: number
         count: number
+        institutionCounts: Map<string, number>
       }
     >()
 
@@ -78,14 +80,34 @@ export function UKCollaborationMap({ collaborators, className }: UKCollaboration
         lon: inst.lon,
         intensity: 0,
         count: 0,
+        institutionCounts: new Map<string, number>(),
       }
 
+      const institutionLabel = collaborator.primary_institution.trim() || inst.name
       existing.intensity += collaborator.collaboration_strength_score || 1
       existing.count += 1
+      existing.institutionCounts.set(
+        institutionLabel,
+        (existing.institutionCounts.get(institutionLabel) || 0) + 1
+      )
       pointMap.set(key, existing)
     })
 
-    return Array.from(pointMap.values())
+    return Array.from(pointMap.values()).map((item) => {
+      const rankedInstitutions = Array.from(item.institutionCounts.entries()).sort((left, right) => {
+        if (left[1] === right[1]) {
+          return left[0].localeCompare(right[0])
+        }
+        return right[1] - left[1]
+      })
+      return {
+        lat: item.lat,
+        lon: item.lon,
+        intensity: item.intensity,
+        count: item.count,
+        institution: rankedInstitutions[0]?.[0] || 'Unknown',
+      }
+    })
   }, [collaborators])
 
   const intensityCeiling = useMemo(
@@ -152,8 +174,18 @@ export function UKCollaborationMap({ collaborators, className }: UKCollaboration
                         const color = heatColor(normalized)
 
                         return (
-                          <Marker key={`${item.lat}-${item.lon}`} coordinates={[item.lon, item.lat]}>
-                            <g style={{ mixBlendMode: 'multiply' }}>
+                          <Marker
+                            key={`${item.lat}-${item.lon}`}
+                            coordinates={[item.lon, item.lat]}
+                            onClick={() => onMarkerClick?.(item.institution)}
+                          >
+                            <title>{`${item.institution}: ${item.count} collaborators`}</title>
+                            <g
+                              style={{
+                                mixBlendMode: 'multiply',
+                                cursor: onMarkerClick ? 'pointer' : 'default',
+                              }}
+                            >
                               <circle
                                 r={outerRadius}
                                 fill={color}
@@ -199,6 +231,7 @@ export function UKCollaborationMap({ collaborators, className }: UKCollaboration
           <div className="h-4 w-4 rounded border border-red-400 bg-red-500" />
           <span className="text-muted-foreground">High</span>
         </div>
+        {onMarkerClick ? <span className="text-muted-foreground">Click a marker to drill down</span> : null}
       </div>
     </div>
   )
