@@ -1273,6 +1273,13 @@ function getSpanMonths(startMs: number, endMs: number): number {
   return Math.max(0, endIndex - startIndex)
 }
 
+type PublicationLineAxisTick = {
+  key: string
+  label: string
+  subLabel?: string
+  leftPct: number
+}
+
 function buildLineTicksFromRange(startMs: number, endMs: number, mode: PublicationsWindowMode): PublicationLineAxisTick[] {
   const spanMonths = getSpanMonths(startMs, endMs)
   const spanYears = spanMonths / 12
@@ -2350,32 +2357,6 @@ export function PublicationsPerYearChart({
     monthStartMs?: number
   }
 
-  type PublicationLineAxisTick = {
-    key: string
-    label: string
-    subLabel?: string
-    leftPct: number
-  }
-
-  const parseYearRangeFromBarKey = useCallback((key: string): { startYear: number; endYear: number } | null => {
-    const raw = String(key || '').trim()
-    if (!raw) {
-      return null
-    }
-    const segments = raw.split('-')
-    const first = Number(segments[0])
-    const last = Number(segments[segments.length - 1])
-    if (!Number.isFinite(first) || !Number.isFinite(last)) {
-      return null
-    }
-    const startYear = Math.round(Math.min(first, last))
-    const endYear = Math.round(Math.max(first, last))
-    if (startYear < 1900 || endYear < 1900 || endYear < startYear) {
-      return null
-    }
-    return { startYear, endYear }
-  }, [])
-
   type PublicationYearWindowBars = {
     bars: PublicationChartBar[]
     bucketSize: number
@@ -3065,9 +3046,10 @@ export function PublicationsPerYearChart({
         timelineEndMs: null as number | null,
       }
     }
-    if (!lineWindowRange.startMs || !lineWindowRange.endMs) {
+    if (lineWindowRange.startMs == null || lineWindowRange.endMs == null) {
       return {
         points: [],
+        markerPoints: [],
         timelineStartMs: null as number | null,
         timelineEndMs: null as number | null,
       }
@@ -3117,12 +3099,12 @@ export function PublicationsPerYearChart({
     }
     const startMs = lineSeriesModel.timelineStartMs
     const endMs = lineSeriesModel.timelineEndMs
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    if (startMs == null || endMs == null || endMs <= startMs) {
       return buildLineModeTicksForWindow(effectiveWindowMode)
     }
     return buildLineTicksFromRange(
-      startMs as number,
-      endMs as number,
+      startMs,
+      endMs,
       effectiveWindowMode,
     )
   }, [
@@ -3132,7 +3114,6 @@ export function PublicationsPerYearChart({
     lineSeriesModel.timelineEndMs,
     lineSeriesModel.timelineStartMs,
   ])
-  const lineSeriesPoints = lineSeriesModel.points
   const lineSeriesMarkerPoints = lineSeriesModel.markerPoints
   const lineMarkerPoints = useMemo(
     () => (

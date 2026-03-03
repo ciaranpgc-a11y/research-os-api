@@ -367,7 +367,7 @@
     --separator-drilldown-summary-grid-to-content-top: 0rem;
     --separator-drilldown-heading-block-to-content: 0.5rem;
     --separator-drilldown-content-to-heading-block: var(--separator-section-content-to-section-header);
-    --separator-drilldown-controls-row-to-chart: 0.25rem;
+    --separator-drilldown-controls-row-to-chart: 0.375rem;
     --separator-drilldown-heading-to-content: var(--separator-drilldown-heading-block-to-content);
     --separator-drilldown-content-to-heading: var(--separator-drilldown-content-to-heading-block);
     --separator-drilldown-content-to-secondary-heading: var(--separator-drilldown-content-to-heading-block);

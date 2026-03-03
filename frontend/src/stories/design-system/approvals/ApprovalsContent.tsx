@@ -137,6 +137,7 @@ const BASE_SEPARATOR_TOKENS = [
   '--separator-section-content-to-section-header',
   '--separator-drilldown-header-to-content',
   '--separator-drilldown-heading-block-to-content',
+  '--separator-drilldown-controls-row-to-chart',
   '--separator-drilldown-content-to-heading-block',
   '--separator-drilldown-summary-grid-to-content-top',
   '--separator-left-panel-subheading-to-content',
@@ -152,6 +153,7 @@ const SEPARATOR_TOKEN_DEFINITIONS: Record<SeparatorToken, string> = {
   '--separator-section-content-to-section-header': 'Main page: section body content → next SectionHeader (heading block)',
   '--separator-drilldown-header-to-content': 'Drilldown: header navigation block → first content block (including first section heading)',
   '--separator-drilldown-heading-block-to-content': 'Drilldown: section heading block → section content block',
+  '--separator-drilldown-controls-row-to-chart': 'Drilldown: controls row (window + visual toggles) → trend chart block',
   '--separator-drilldown-content-to-heading-block': 'Drilldown: section content block → next section heading block',
   '--separator-drilldown-summary-grid-to-content-top': 'Drilldown: summary grid → top content area',
   '--separator-left-panel-subheading-to-content': 'Left panel: subheading block → content block',
@@ -201,6 +203,12 @@ const CANONICAL_SPACING_ELEMENTS = [
     role: 'Drilldown section heading',
     canonicalUse: 'Subsection heading inside drilldowns (e.g., Headline results, Publication trends).',
     dimensions: '--separator-drilldown-heading-block-to-content + --separator-drilldown-content-to-heading-block',
+  },
+  {
+    element: 'Drilldown controls row',
+    role: 'Toggle controls → chart separation',
+    canonicalUse: 'Controls line above trend chart in drilldown content (e.g., window + visual mode toggles).',
+    dimensions: '--separator-drilldown-controls-row-to-chart',
   },
   {
     element: 'Drilldown tab panel root',
