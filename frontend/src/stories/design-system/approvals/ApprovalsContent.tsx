@@ -275,6 +275,8 @@ const METRIC_TILE_CONTRACT_ITEMS = [
   'Tile shell uses house-metric-tile-shell with tokenized background, border, and selected states.',
   'Tile chart surface uses house-metric-tile-chart-surface and follows shell hover/selected inheritance.',
   'Motion timing must use --motion-duration-* tokens and --motion-ease-* tokens only.',
+  'Window-mode chart transitions (1y/3y/5y/life) are class/token-driven; avoid per-bar inline transition duration/delay overrides.',
+  'Publication trends line mode represents cumulative total publications over the selected period (growing over time).',
   'Reduced-motion mode must disable choreography and preserve immediate state clarity.',
   'Chart tooltips use canonical Tooltip primitives and are keyboard-focusable.',
   'Banners and segmented toggles are approved as reusable controls outside publications.',

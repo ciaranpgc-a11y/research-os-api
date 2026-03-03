@@ -1223,48 +1223,6 @@ function parseIsoMonthStart(value: string): Date | null {
   return new Date(Date.UTC(Math.round(year), Math.round(month) - 1, 1))
 }
 
-function parsePublicationDateToMs(value: unknown): number | null {
-  const token = String(value || '').trim()
-  if (!token) {
-    return null
-  }
-  const normalized = token.replace(/\//g, '-')
-  const dayMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (dayMatch) {
-    const year = Number(dayMatch[1])
-    const month = Number(dayMatch[2])
-    const day = Number(dayMatch[3])
-    if (
-      Number.isFinite(year)
-      && Number.isFinite(month)
-      && Number.isFinite(day)
-      && month >= 1
-      && month <= 12
-      && day >= 1
-      && day <= 31
-    ) {
-      return Date.UTC(Math.round(year), Math.round(month) - 1, Math.round(day))
-    }
-  }
-  const monthMatch = normalized.match(/^(\d{4})-(\d{2})$/)
-  if (monthMatch) {
-    const year = Number(monthMatch[1])
-    const month = Number(monthMatch[2])
-    if (Number.isFinite(year) && Number.isFinite(month) && month >= 1 && month <= 12) {
-      return Date.UTC(Math.round(year), Math.round(month) - 1, 1)
-    }
-  }
-  const yearMatch = normalized.match(/^(\d{4})$/)
-  if (yearMatch) {
-    const year = Number(yearMatch[1])
-    if (Number.isFinite(year)) {
-      return Date.UTC(Math.round(year), 0, 1)
-    }
-  }
-  const parsedIsoMonth = parseIsoMonthStart(normalized)
-  return parsedIsoMonth ? parsedIsoMonth.getTime() : null
-}
-
 function getSpanMonths(startMs: number, endMs: number): number {
   const start = new Date(startMs)
   const end = new Date(endMs)
@@ -2684,65 +2642,14 @@ export function PublicationsPerYearChart({
     })()
     : null
 
-  const lineEventTimes = useMemo(
-    () =>
-      toStringArray(chartData.publication_event_dates)
-        .map((item) => parsePublicationDateToMs(item))
-        .filter((value): value is number => Number.isFinite(value))
-        .sort((left, right) => left - right),
-    [chartData.publication_event_dates],
-  )
-  const buildLineWindowRange = useCallback((mode: PublicationsWindowMode) => {
-    if (!lineEventTimes.length) {
-      return {
-        startMs: null as number | null,
-        endMs: null as number | null,
-        events: [] as number[],
-      }
-    }
-    const now = new Date()
-    const lastCompleteMonthEndExclusiveMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
-    const monthCount = mode === '1y'
-      ? 12
-      : mode === '3y'
-        ? 36
-        : mode === '5y'
-          ? 60
-          : null
-    if (monthCount === null) {
-      const firstEvent = new Date(lineEventTimes[0])
-      const lastEvent = new Date(lineEventTimes[lineEventTimes.length - 1])
-      const startMs = Date.UTC(firstEvent.getUTCFullYear(), firstEvent.getUTCMonth(), 1)
-      const endMs = Date.UTC(lastEvent.getUTCFullYear(), lastEvent.getUTCMonth() + 1, 1)
-      return {
-        startMs,
-        endMs,
-        events: lineEventTimes.slice(),
-      }
-    }
-    const windowStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthCount, 1)
-    const events = lineEventTimes.filter((timeMs) => timeMs >= windowStartMs && timeMs < lastCompleteMonthEndExclusiveMs)
-    return {
-      startMs: windowStartMs,
-      endMs: lastCompleteMonthEndExclusiveMs,
-      events,
-    }
-  }, [lineEventTimes])
-  const lineWindowRange = useMemo(
-    () => buildLineWindowRange(effectiveWindowMode),
-    [buildLineWindowRange, effectiveWindowMode],
-  )
-  const lineEventCountWindow = lineWindowRange.events.length
-
   const animationKey = useMemo(
     () => `${effectiveWindowMode}|${activeBucketSize}|${activeBars.map((bar) => `${bar.key}-${bar.value}-${bar.current ? 1 : 0}`).join('|')}`,
     [activeBars, activeBucketSize, effectiveWindowMode],
   )
   const hasBars = effectiveVisualMode === 'line'
-    ? lineEventCountWindow > 0
+    ? activeBars.length > 0
     : hasValidSeries && historyBars.length > 0 && activeBars.length > 0
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
-  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
   const axisDurationMs = getAxisAnimationDuration(isEntryCycle ? 'entry' : 'toggle')
   const renderBars = activeBars
   const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars, 'entry-only')
@@ -2764,7 +2671,9 @@ export function PublicationsPerYearChart({
     setHoveredIndex(null)
   }, [animationKey])
 
-  const valuesForScale = effectiveVisualMode === 'line' ? [lineEventCountWindow] : renderedValuesTarget
+  const valuesForScale = effectiveVisualMode === 'line'
+    ? [renderedCumulativeValuesTarget[renderedCumulativeValuesTarget.length - 1] ?? 0]
+    : renderedValuesTarget
   const maxValue = Math.max(
     1,
     ...valuesForScale,
@@ -2774,8 +2683,11 @@ export function PublicationsPerYearChart({
   const maxWindowValueBars = Math.max(maxYearlyValue, maxMonthlyValue)
   const maxWindowValueLine = Math.max(
     1,
-    ...PUBLICATIONS_WINDOW_OPTIONS.map((option) => buildLineWindowRange(option.value).events.length),
+    ...PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+      resolveLineBarsForWindowMode(option.value).bars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+    )),
   )
+  const maxWindowValueForAxisWidth = Math.max(maxWindowValueBars, maxWindowValueLine)
   const maxWindowValue = effectiveVisualMode === 'line' ? maxWindowValueLine : maxWindowValueBars
   const maxAnimatedDisplayValue = Math.max(1, Math.max(maxWindowValue, maxValue) * 1.5)
   const stableAxisScale = enableWindowToggle && !autoScaleByWindow ? buildNiceAxis(maxWindowValue) : null
@@ -2789,7 +2701,7 @@ export function PublicationsPerYearChart({
   useEffect(() => {
     setHasAxisAnimationPrimed(true)
   }, [])
-  const axisAnimationEnabled = hasBars && enableWindowToggle && autoScaleByWindow && showAxes && hasAxisAnimationPrimed
+  const axisAnimationEnabled = hasBars && enableWindowToggle && autoScaleByWindow && showAxes && hasAxisAnimationPrimed && isEntryCycle
   const animatedAxisMax = useEasedValue(
     targetAxisMax,
     `${animationKey}|axis-max|${autoScaleByWindow ? 'auto' : 'fixed'}`,
@@ -2899,8 +2811,10 @@ export function PublicationsPerYearChart({
       : (hideYearTickTabs && activePeriodRangeLabel
         ? `${resolveXAxisTitleForWindowMode(effectiveWindowMode)} (${activePeriodRangeLabel})`
         : resolveXAxisTitleForWindowMode(effectiveWindowMode))
-  const stableToggleTickValues = enableWindowToggle ? buildNiceAxis(maxWindowValue).ticks : yAxisTickValues
+  const stableToggleTickValues = enableWindowToggle ? buildNiceAxis(maxWindowValueForAxisWidth).ticks : yAxisTickValues
   const gridTickRatios = effectiveVisualMode === 'line' ? yAxisTickRatios : yAxisTickRatios.slice(1)
+  const gridTickRatiosWithoutTop = gridTickRatios.filter((ratio) => ratio < 0.999)
+  const hasTopYAxisTick = yAxisTickRatios.some((ratio) => ratio >= 0.999)
   const buildXAxisLayoutForWindow = (
     mode: PublicationsWindowMode,
     visualMode: PublicationTrendsVisualMode,
@@ -2947,6 +2861,9 @@ export function PublicationsPerYearChart({
   const yAxisPanelWidthRem = showAxes
     ? buildYAxisPanelWidthRem(stableToggleTickValues, Boolean(yAxisLabel))
     : 0
+  const shouldReserveMeanLabelBand = showMeanValueLabel && Boolean(meanValueDisplay)
+  const meanLabelBandInsetRem = shouldReserveMeanLabelBand ? 0.75 : 0
+  const chartTopInsetRem = PUBLICATIONS_CHART_TOP_INSET_REM + meanLabelBandInsetRem
   const chartLeftInset = showAxes
     ? `${yAxisPanelWidthRem + PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM}rem`
     : `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`
@@ -2954,7 +2871,7 @@ export function PublicationsPerYearChart({
   const plotAreaStyle = {
     left: chartLeftInset,
     right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
-    top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
+    top: `${chartTopInsetRem}rem`,
     bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
   }
   const xAxisTicksStyle = {
@@ -2975,13 +2892,14 @@ export function PublicationsPerYearChart({
     const slotStepPct = slotWidthPct + slotGapPct
     return {
       slotCount,
+      slotGapPct,
       slotWidthPct,
       slotStepPct,
     }
   }, [renderBars.length])
   const yAxisPanelStyle = {
     left: `${PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM}rem`,
-    top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
+    top: `${chartTopInsetRem}rem`,
     bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
     width: `${yAxisPanelWidthRem}rem`,
   }
@@ -3046,7 +2964,7 @@ export function PublicationsPerYearChart({
         timelineEndMs: null as number | null,
       }
     }
-    if (lineWindowRange.startMs == null || lineWindowRange.endMs == null) {
+    if (!renderBars.length) {
       return {
         points: [],
         markerPoints: [],
@@ -3054,32 +2972,29 @@ export function PublicationsPerYearChart({
         timelineEndMs: null as number | null,
       }
     }
-    const timelineStartMs = lineWindowRange.startMs
-    const timelineEndMs = lineWindowRange.endMs
-    const timelineEvents = lineWindowRange.events
-    if (!timelineEvents.length) {
-      return {
-        points: [],
-        markerPoints: [],
-        timelineStartMs,
-        timelineEndMs,
-      }
-    }
-    const spanMs = Math.max(1, timelineEndMs - timelineStartMs)
     let cumulativeValue = 0
-    const eventPoints = timelineEvents.map((timeMs, index) => {
-      cumulativeValue += 1
+    const cumulativePoints = renderBars.map((bar, index) => {
+      cumulativeValue += Math.max(0, bar.value)
+      const monthStartMs = Number.isFinite(bar.monthStartMs ?? Number.NaN)
+        ? Number(bar.monthStartMs)
+        : null
       return {
-        key: `line-event-${timeMs}-${index}`,
-        xPct: clampPct(((timeMs - timelineStartMs) / spanMs) * 100),
+        key: `line-cumulative-${bar.key}-${index}`,
+        xPct: clampPct((index * slotMetrics.slotStepPct) + (slotMetrics.slotWidthPct / 2)),
         yPct: clampPct((cumulativeValue / Math.max(1, barHeightAxisMax)) * 100),
         value: cumulativeValue,
-        timeMs,
+        timeMs: monthStartMs,
       }
     })
+    const timelineMsValues = cumulativePoints
+      .map((point) => point.timeMs)
+      .filter((value): value is number => Number.isFinite(value))
+      .sort((left, right) => left - right)
+    const timelineStartMs = timelineMsValues.length ? timelineMsValues[0] : null
+    const timelineEndMs = timelineMsValues.length ? timelineMsValues[timelineMsValues.length - 1] : null
     return {
-      points: eventPoints,
-      markerPoints: eventPoints,
+      points: cumulativePoints,
+      markerPoints: cumulativePoints,
       timelineStartMs,
       timelineEndMs,
     }
@@ -3089,9 +3004,8 @@ export function PublicationsPerYearChart({
     renderedCumulativeValuesAnimated,
     renderedCumulativeValuesTarget,
     renderBars,
-    lineWindowRange.endMs,
-    lineWindowRange.events,
-    lineWindowRange.startMs,
+    slotMetrics.slotStepPct,
+    slotMetrics.slotWidthPct,
   ])
   const lineModeXAxisTicks = useMemo(() => {
     if (effectiveVisualMode !== 'line') {
@@ -3117,7 +3031,7 @@ export function PublicationsPerYearChart({
   const lineSeriesMarkerPoints = lineSeriesModel.markerPoints
   const lineMarkerPoints = useMemo(
     () => (
-      effectiveVisualMode === 'line' && lineSeriesMarkerPoints.length <= 120
+      effectiveVisualMode === 'line'
         ? lineSeriesMarkerPoints
         : []
     ),
@@ -3239,7 +3153,7 @@ export function PublicationsPerYearChart({
               className={cn(
                 HOUSE_DRILLDOWN_CHART_META_CLASS,
                 HOUSE_HEADING_LABEL_CLASS,
-                'pointer-events-none absolute right-2 -top-0.5 z-[2]',
+                'pointer-events-none absolute right-2 top-0 z-[2]',
               )}
           >
             Mean: {meanValueDisplay}
@@ -3247,7 +3161,13 @@ export function PublicationsPerYearChart({
         ) : null}
         <div className="absolute overflow-visible" style={plotAreaStyle}>
           <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-            {gridTickRatios.map((ratio, index) => (
+            {showAxes ? (
+              <div
+                className={cn('absolute inset-y-0 left-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{ borderLeft: `1px solid hsl(var(--stroke-soft) / ${effectiveVisualMode === 'line' ? 0.7 : 0.55})` }}
+              />
+            ) : null}
+            {gridTickRatiosWithoutTop.map((ratio, index) => (
               <div
                 key={`pub-grid-${index}`}
                 className={cn('absolute inset-x-0', gridLineToneClass, HOUSE_CHART_SCALE_LAYER_CLASS)}
@@ -3259,6 +3179,16 @@ export function PublicationsPerYearChart({
                 }}
               />
             ))}
+            {hasTopYAxisTick ? (
+              <div
+                className={cn('absolute inset-x-0 top-0', gridLineToneClass, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{
+                  borderTop: effectiveVisualMode === 'line'
+                    ? '1px solid hsl(var(--stroke-soft) / 0.76)'
+                    : undefined,
+                }}
+              />
+            ) : null}
             {effectiveVisualMode === 'line' && lineModeVerticalGridPercents.length ? (
               <svg className="absolute inset-0 z-[1]" viewBox="0 0 100 100" preserveAspectRatio="none">
                 {lineModeVerticalGridPercents.map((leftPct, index) => (
@@ -3268,8 +3198,8 @@ export function PublicationsPerYearChart({
                     y1={0}
                     x2={leftPct}
                     y2={100}
-                    stroke="hsl(var(--tone-neutral-500) / 0.62)"
-                    strokeWidth="1.2"
+                    stroke={`hsl(var(--stroke-soft) / 0.76)`}
+                    strokeWidth={1}
                     vectorEffect="non-scaling-stroke"
                   />
                 ))}
@@ -3285,7 +3215,6 @@ export function PublicationsPerYearChart({
               )}
               style={{
                 bottom: `${Math.max(0, Math.min(100, (renderedMeanValue / barHeightAxisMax) * 100))}%`,
-                transitionDuration: barTransitionDuration,
                 transitionDelay: '0ms',
               }}
               aria-hidden="true"
@@ -3320,21 +3249,22 @@ export function PublicationsPerYearChart({
               const lineHeightPct = computeLineHeightPct(lineAnimatedValue)
               const tooltipAnchorHeightPct = effectiveVisualMode === 'line' ? lineHeightPct : heightPct
               const tooltipValue = bar.value
-              const leftPct = index * slotMetrics.slotStepPct
+              const barLeadingInsetPct = effectiveVisualMode === 'line' ? 0 : slotMetrics.slotGapPct
+              const barSlotScale = effectiveVisualMode === 'line' ? 1 : (100 - barLeadingInsetPct) / 100
+              const leftPct = barLeadingInsetPct + (index * slotMetrics.slotStepPct * barSlotScale)
+              const slotWidthPct = slotMetrics.slotWidthPct * barSlotScale
               const isActive = hoveredIndex === index
               const toneClass = resolveBarToneClass(bar.value, bar.current)
               const baseScaleX = isActive ? 1.035 : 1
               const barScaleY = effectiveVisualMode === 'bars' && barsExpanded ? 1 : 0
-              const entryDelay = tileMotionEntryDelay(index, barsExpanded)
               return (
                 <div
                   key={`slot-${index}`}
                   className={cn('absolute inset-y-0 z-[1]', enableWindowToggle && HOUSE_TOGGLE_CHART_MORPH_CLASS)}
                   style={{
                     left: `${leftPct}%`,
-                    width: `${slotMetrics.slotWidthPct}%`,
+                    width: `${slotWidthPct}%`,
                     pointerEvents: effectiveVisualMode === 'line' ? 'none' : undefined,
-                    transitionDuration: barTransitionDuration,
                   }}
                   onMouseEnter={effectiveVisualMode === 'line' ? undefined : () => setHoveredIndex(index)}
                   onMouseLeave={effectiveVisualMode === 'line' ? undefined : () => setHoveredIndex((current) => (current === index ? null : current))}
@@ -3365,8 +3295,6 @@ export function PublicationsPerYearChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${baseScaleX}) scaleY(${barScaleY})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: entryDelay,
-                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
                     }}
                   />
                 </div>
@@ -3492,7 +3420,6 @@ export function PublicationsPerYearChart({
                     'house-chart-axis-period-item text-center leading-none',
                     HOUSE_CHART_SCALE_TICK_CLASS,
                   )}
-                  style={{ transitionDuration: barTransitionDuration }}
                 >
                   <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
                     {bar.axisLabel}
