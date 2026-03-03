@@ -19,6 +19,7 @@ import { houseTypography } from '@/lib/house-style'
  * - ghost: Use 'tertiary' instead
  */
 
+const defaultStyles = `${houseTypography.buttonText} border border-[hsl(var(--tone-neutral-900))] bg-white text-[hsl(var(--tone-neutral-900))] hover:bg-[hsl(var(--section-style-profile-accent,var(--tone-accent-500))/0.12)] hover:border-[hsl(var(--tone-neutral-900))] active:bg-[hsl(var(--section-style-profile-accent,var(--tone-accent-500))/0.22)] active:border-[hsl(var(--section-style-profile-accent,var(--tone-accent-500))/0.8)]`
 const primaryStyles = `${houseTypography.buttonText} bg-primary text-primary-foreground`
 const secondaryStyles = `${houseTypography.buttonText} bg-secondary text-secondary-foreground`
 const tertiaryStyles = `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted`
@@ -37,7 +38,7 @@ export const buttonVariants = cva(
         outline: tertiaryStyles, // Semantic alias for tertiary
         // Deprecated aliases (kept for backward compatibility)
         /** @deprecated Use 'primary' instead */
-        default: primaryStyles,
+        default: defaultStyles,
         /** @deprecated Use 'primary' instead */
         housePrimary: primaryStyles,
         /** @deprecated Use 'secondary' instead */

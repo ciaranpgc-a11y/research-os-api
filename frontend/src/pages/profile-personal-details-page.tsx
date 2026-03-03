@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent 
 import { ChevronRight, GripVertical, Loader2, Plus, ShieldCheck, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
+import { PageHeader, Row, Section, SectionHeader, Stack, Subheading } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { Badge, Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
@@ -94,6 +94,16 @@ type AffiliationMetadataItem = {
   region: string
   postalCode: string
   country: string
+}
+
+type AffiliationEditorSnapshot = {
+  jobRoles: string[]
+  primaryAffiliation: string
+  affiliationAddress: string
+  affiliationCity: string
+  affiliationRegion: string
+  affiliationPostalCode: string
+  affiliationCountry: string
 }
 
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
@@ -284,6 +294,28 @@ function normalizeAffiliations(values: unknown): string[] {
   return output
 }
 
+function normalizeJobRoles(values: unknown): string[] {
+  const source = Array.isArray(values) ? values : []
+  const seen = new Set<string>()
+  const output: string[] = []
+  for (const raw of source) {
+    const clean = normalizeRole(raw)
+    if (!clean) {
+      continue
+    }
+    const key = clean.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    output.push(clean)
+    if (output.length >= MAX_JOB_ROLES) {
+      break
+    }
+  }
+  return output
+}
+
 function isGeneratedOAuthEmail(value: string | null | undefined): boolean {
   const clean = trimValue(value).toLowerCase()
   return clean.endsWith('@orcid.local') || clean.endsWith('@oauth.local')
@@ -354,6 +386,25 @@ function sanitizeDraft(value: Partial<PersonalDetailsDraft> | null | undefined):
     ),
     publicationAffiliations: normalizeAffiliations(value?.publicationAffiliations),
   }
+}
+
+function draftFromSources(
+  user: AuthUser | null | undefined,
+  stored: StoredPersonalDetails | null | undefined,
+  orcidLinked: boolean,
+): PersonalDetailsDraft {
+  const storedDraft: Partial<PersonalDetailsDraft> = stored
+    ? (({ updatedAt: _unused, ...rest }: StoredPersonalDetails) => rest)(stored)
+    : {}
+  const rawName = trimValue(user?.name)
+  const canUseUserName = Boolean(rawName) && !(orcidLinked && looksLikeOrcidPlaceholderName(rawName))
+  const userNameSeeds: Partial<PersonalDetailsDraft> = canUseUserName
+    ? splitName(rawName)
+    : {}
+  return sanitizeDraft({
+    ...storedDraft,
+    ...userNameSeeds,
+  })
 }
 
 function personalDetailsStorageKey(userId: string): string {
@@ -430,234 +481,21 @@ function saveCachedOrcidStatus(value: OrcidStatusPayload): void {
   window.localStorage.setItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY, JSON.stringify(value))
 }
 
-function draftFromSources(
-  user: AuthUser | null,
-  stored: StoredPersonalDetails | null,
-  orcidLinked: boolean,
-): PersonalDetailsDraft {
-  const split = looksLikeOrcidPlaceholderName(user?.name) ? { firstName: '', lastName: '' } : splitName(user?.name)
-  const storedFirstName = looksLikeOrcidPlaceholderName(stored?.firstName) ? '' : trimValue(stored?.firstName)
-  const storedLastName = looksLikeOrcidPlaceholderName(stored?.lastName) ? '' : trimValue(stored?.lastName)
-  const seededFirstName =
-    orcidLinked
-      ? storedFirstName
-      : storedFirstName || split.firstName
-  const seededLastName =
-    orcidLinked
-      ? storedLastName
-      : storedLastName || split.lastName
-  return sanitizeDraft({
-    salutation: stored?.salutation || '',
-    firstName: seededFirstName,
-    lastName: seededLastName,
-    jobRole: stored?.jobRole || '',
-    jobRoles: stored?.jobRoles || [],
-    organisation: stored?.organisation || '',
-    affiliations: stored?.affiliations || [],
-    affiliationAddress: stored?.affiliationAddress || '',
-    affiliationCity: stored?.affiliationCity || '',
-    affiliationRegion: stored?.affiliationRegion || '',
-    affiliationPostalCode: stored?.affiliationPostalCode || '',
-    department: stored?.department || '',
-    country: stored?.country || '',
-    website: stored?.website || '',
-    researchGateUrl: stored?.researchGateUrl || '',
-    xHandle: stored?.xHandle || '',
-    profilePhotoDataUrl: stored?.profilePhotoDataUrl || '',
-    profilePhotoPositionX: stored?.profilePhotoPositionX ?? DEFAULT_PROFILE_PHOTO_POSITION_X,
-    profilePhotoPositionY: stored?.profilePhotoPositionY ?? DEFAULT_PROFILE_PHOTO_POSITION_Y,
-    publicationAffiliations: stored?.publicationAffiliations || [],
-  })
-}
-
-function accountAgeInMonths(createdAt: string | null | undefined): number {
-  if (!createdAt) {
-    return 0
-  }
-  const createdMs = Date.parse(createdAt)
-  if (Number.isNaN(createdMs)) {
-    return 0
-  }
-  const created = new Date(createdMs)
-  const now = new Date()
-  let months = (now.getFullYear() - created.getFullYear()) * 12 + (now.getMonth() - created.getMonth())
-  if (now.getDate() < created.getDate()) {
-    months -= 1
-  }
-  return Math.max(0, months)
-}
-
-function formatAccountAge(createdAt: string | null | undefined): string {
-  if (!createdAt) {
-    return 'Not available'
-  }
-  const clampedMonths = accountAgeInMonths(createdAt)
-  if (clampedMonths <= 0) {
-    const createdMs = Date.parse(createdAt)
-    if (!Number.isNaN(createdMs)) {
-      const diffMs = Date.now() - createdMs
-      const diffDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
-      return `${diffDays}d`
-    }
-    return '0d'
-  }
-  const years = Math.floor(clampedMonths / 12)
-  const remainingMonths = clampedMonths % 12
-  if (years > 0 && remainingMonths > 0) {
-    return `${years}y ${remainingMonths}m`
-  }
-  if (years > 0) {
-    return `${years}y`
-  }
-  return `${remainingMonths}m`
-}
-
-function buildProfileBadges(input: {
-  orcidLinked: boolean
-  isAdmin: boolean
-}): ProfileBadge[] {
-  const badges: ProfileBadge[] = []
-  if (input.isAdmin) {
-    badges.push({
-      id: 'admin',
-      label: 'Administrator',
-      tone: 'gold',
-      detail: 'Owner-level administration access is enabled for this account.',
-      variant: 'admin',
-    })
-  }
-  badges.push(
-    {
-      id: input.orcidLinked ? 'member' : 'guest',
-      label: input.orcidLinked ? 'Member' : 'Guest',
-      tone: input.orcidLinked ? 'accent' : 'neutral',
-      detail: input.orcidLinked ? 'Member account' : 'Guest account',
-    },
-  )
-  return badges
-}
-
-async function fetchAffiliationSuggestions(input: {
-  token: string
-  query: string
-  limit?: number
-}): Promise<AffiliationSuggestionItem[]> {
-  const cleanQuery = sanitizeAffiliation(input.query)
-  if (cleanQuery.length < 2) {
-    return []
-  }
-  const cleanToken = trimValue(input.token)
-  if (!cleanToken) {
-    return []
-  }
-  const cleanLimit = Math.max(1, Math.min(8, Number(input.limit || 8)))
-  const payload = await fetchAffiliationSuggestionsForMe(cleanToken, {
-    query: cleanQuery,
-    limit: cleanLimit,
-  })
-  const seen = new Set<string>()
-  const output: AffiliationSuggestionItem[] = []
-  for (const raw of payload.items || []) {
-    const mapped = mapAffiliationSuggestionItem(raw)
-    if (!mapped) {
-      continue
-    }
-    const key = `${mapped.name.toLowerCase()}|${sanitizeAffiliation(mapped.countryCode || mapped.countryName || '').toLowerCase()}`
-    if (seen.has(key)) {
-      continue
-    }
-    seen.add(key)
-    output.push(mapped)
-    if (output.length >= cleanLimit) {
-      break
-    }
-  }
-  return output
-}
-
-function isAffiliationLookupMiss(error: unknown): boolean {
-  const message = (error instanceof Error ? error.message : String(error || '')).toLowerCase()
-  return message.includes('(404)') || message.includes(' 404') || message.includes('not found')
-}
-
-function normalizeJobRoles(values: unknown): string[] {
-  const source = Array.isArray(values) ? values : []
-  const seen = new Set<string>()
-  const output: string[] = []
-  for (const raw of source) {
-    const clean = normalizeRole(String(raw || ''))
-    if (!clean) {
-      continue
-    }
-    const key = clean.toLowerCase()
-    if (seen.has(key)) {
-      continue
-    }
-    seen.add(key)
-    output.push(clean)
-    if (output.length >= MAX_JOB_ROLES) {
-      break
-    }
-  }
-  return output
-}
-
-type AffiliationEditorSnapshot = {
-  jobRolesKey: string
-  primaryAffiliation: string
-  affiliationAddress: string
-  affiliationCity: string
-  affiliationRegion: string
-  affiliationPostalCode: string
-  country: string
-}
-
-function buildAffiliationEditorSnapshot(input: {
-  draft: PersonalDetailsDraft
-  primaryAffiliationInput: string
-}): AffiliationEditorSnapshot {
-  const normalizedRoles = normalizeJobRoles(input.draft.jobRoles)
-  const primaryAffiliation = sanitizeAffiliation(
-    input.primaryAffiliationInput || input.draft.organisation || input.draft.affiliations[0],
-  )
-  return {
-    jobRolesKey: normalizedRoles.map((item) => item.toLowerCase()).join('|'),
-    primaryAffiliation: primaryAffiliation.toLowerCase(),
-    affiliationAddress: sanitizeAffiliation(input.draft.affiliationAddress).toLowerCase(),
-    affiliationCity: sanitizeAffiliation(input.draft.affiliationCity).toLowerCase(),
-    affiliationRegion: sanitizeAffiliation(input.draft.affiliationRegion).toLowerCase(),
-    affiliationPostalCode: sanitizeAffiliation(input.draft.affiliationPostalCode).toLowerCase(),
-    country: sanitizeAffiliation(input.draft.country).toLowerCase(),
-  }
-}
-
-function areAffiliationEditorSnapshotsEqual(
-  left: AffiliationEditorSnapshot,
-  right: AffiliationEditorSnapshot,
-): boolean {
-  return (
-    left.jobRolesKey === right.jobRolesKey &&
-    left.primaryAffiliation === right.primaryAffiliation &&
-    left.affiliationAddress === right.affiliationAddress &&
-    left.affiliationCity === right.affiliationCity &&
-    left.affiliationRegion === right.affiliationRegion &&
-    left.affiliationPostalCode === right.affiliationPostalCode &&
-    left.country === right.country
-  )
-}
-
 function buildProfileInitials(input: {
-  firstName?: string | null
-  lastName?: string | null
-  fallbackName?: string | null
+  firstName: string | null | undefined
+  lastName: string | null | undefined
+  fallbackName: string | null | undefined
 }): string {
-  const first = trimValue(input.firstName)
-  const last = trimValue(input.lastName)
-  if (first || last) {
-    const initials = `${first ? first[0] : ''}${last ? last[0] : ''}`.trim()
-    return initials ? initials.toUpperCase() : 'U'
+  const firstName = trimValue(input.firstName)
+  const lastName = trimValue(input.lastName)
+  if (firstName || lastName) {
+    return `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase() || 'U'
   }
-  const fallbackParts = trimValue(input.fallbackName).split(/\s+/).filter(Boolean)
+  const fallback = trimValue(input.fallbackName)
+  if (!fallback) {
+    return 'U'
+  }
+  const fallbackParts = fallback.split(/\s+/).filter(Boolean)
   if (fallbackParts.length >= 2) {
     return `${fallbackParts[0][0] || ''}${fallbackParts[1][0] || ''}`.toUpperCase() || 'U'
   }
@@ -665,6 +503,113 @@ function buildProfileInitials(input: {
     return (fallbackParts[0][0] || 'U').toUpperCase()
   }
   return 'U'
+}
+
+function formatAccountAge(value: string | null | undefined): string {
+  if (!value) {
+    return 'Not available'
+  }
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) {
+    return 'Not available'
+  }
+  const createdAt = new Date(parsed)
+  const now = new Date()
+  let months = (now.getFullYear() - createdAt.getFullYear()) * 12 + (now.getMonth() - createdAt.getMonth())
+  if (now.getDate() < createdAt.getDate()) {
+    months -= 1
+  }
+  if (months < 1) {
+    return 'Less than a month'
+  }
+  const years = Math.floor(months / 12)
+  const remainingMonths = months % 12
+  const parts: string[] = []
+  if (years > 0) {
+    parts.push(`${years} year${years === 1 ? '' : 's'}`)
+  }
+  if (remainingMonths > 0) {
+    parts.push(`${remainingMonths} month${remainingMonths === 1 ? '' : 's'}`)
+  }
+  return parts.join(', ')
+}
+
+function buildProfileBadges(input: { orcidLinked: boolean; isAdmin: boolean }): ProfileBadge[] {
+  const badges: ProfileBadge[] = []
+  badges.push(
+    input.orcidLinked
+      ? {
+        id: 'member',
+        label: 'Member',
+        tone: 'positive',
+        detail: 'ORCID connected',
+      }
+      : {
+        id: 'guest',
+        label: 'Guest',
+        tone: 'neutral',
+        detail: 'ORCID not connected',
+      },
+  )
+  if (input.isAdmin) {
+    badges.push({
+      id: 'admin',
+      label: 'Admin',
+      tone: 'gold',
+      detail: 'Administrator access',
+      variant: 'admin',
+    })
+  }
+  return badges
+}
+
+function buildAffiliationEditorSnapshot(input: {
+  draft: PersonalDetailsDraft
+  primaryAffiliationInput: string
+}): AffiliationEditorSnapshot {
+  const primaryAffiliation = sanitizeAffiliation(input.primaryAffiliationInput)
+  return {
+    jobRoles: normalizeJobRoles(input.draft.jobRoles),
+    primaryAffiliation,
+    affiliationAddress: sanitizeAffiliation(input.draft.affiliationAddress),
+    affiliationCity: sanitizeAffiliation(input.draft.affiliationCity),
+    affiliationRegion: sanitizeAffiliation(input.draft.affiliationRegion),
+    affiliationPostalCode: sanitizeAffiliation(input.draft.affiliationPostalCode),
+    affiliationCountry: sanitizeAffiliation(input.draft.country),
+  }
+}
+
+function areAffiliationEditorSnapshotsEqual(
+  left: AffiliationEditorSnapshot,
+  right: AffiliationEditorSnapshot,
+): boolean {
+  if (left.primaryAffiliation !== right.primaryAffiliation) {
+    return false
+  }
+  if (left.affiliationAddress !== right.affiliationAddress) {
+    return false
+  }
+  if (left.affiliationCity !== right.affiliationCity) {
+    return false
+  }
+  if (left.affiliationRegion !== right.affiliationRegion) {
+    return false
+  }
+  if (left.affiliationPostalCode !== right.affiliationPostalCode) {
+    return false
+  }
+  if (left.affiliationCountry !== right.affiliationCountry) {
+    return false
+  }
+  if (left.jobRoles.length !== right.jobRoles.length) {
+    return false
+  }
+  for (let index = 0; index < left.jobRoles.length; index += 1) {
+    if (left.jobRoles[index] !== right.jobRoles[index]) {
+      return false
+    }
+  }
+  return true
 }
 
 function looksLikeOrcidPlaceholderName(value: string | null | undefined): boolean {
@@ -2039,73 +1984,18 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         </div>
         <div className="space-y-3 text-sm">
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className={HOUSE_PROFILE_PHOTO_PANEL_CLASS}>
-              {draft.profilePhotoDataUrl ? (
-                <div
-                  className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[var(--elevation-1)]"
-                >
-                  <img
-                    src={draft.profilePhotoDataUrl}
-                    alt="Profile photo"
-                    decoding="async"
-                    className="h-full w-full object-cover"
-                    style={{
-                      objectPosition: `${draft.profilePhotoPositionX}% ${draft.profilePhotoPositionY}%`,
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="inline-flex h-20 w-20 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[var(--elevation-1)]">
-                  {profileInitials}
-                </div>
-              )}
-              <div className="space-y-2">
-                <p className="house-field-label">Profile photo</p>
-                <input
-                  ref={profilePhotoInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={onProfilePhotoSelected}
-                />
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className={HOUSE_ACTION_BUTTON_CLASS}
-                    onClick={() => profilePhotoInputRef.current?.click()}
-                  >
-                    <Upload className="mr-1.5 h-4 w-4" />
-                    Upload photo
-                  </Button>
-                  {draft.profilePhotoDataUrl ? (
-                    <>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className={HOUSE_ACTION_BUTTON_CLASS}
-                        onClick={() => setProfilePhotoEditorOpen((current) => !current)}
+            <div className="sm:col-span-2 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--primary-foreground))] p-3">
+              <div className="grid items-start gap-4 sm:grid-cols-[1fr_3fr]">
+                <div className="flex items-start gap-3">
+                  <div className="flex flex-col items-center gap-2">
+                    <Subheading>Profile photo</Subheading>
+                    {draft.profilePhotoDataUrl ? (
+                      <div
+                        className="relative h-[7.5rem] w-[7.5rem] shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[var(--elevation-1)]"
                       >
-                        <SlidersHorizontal className="mr-1.5 h-4 w-4" />
-                        {profilePhotoEditorOpen ? 'Close editor' : 'Adjust framing'}
-                      </Button>
-                      <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRemoveProfilePhoto}>
-                        <Trash2 className="mr-1.5 h-4 w-4" />
-                        Remove
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
-                {draft.profilePhotoDataUrl && profilePhotoEditorOpen ? (
-                  <div className={HOUSE_PROFILE_PHOTO_EDITOR_CLASS}>
-                    <p className="house-field-label">Mini photo editor</p>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                      <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] shadow-[var(--elevation-1)] sm:mx-0">
                         <img
                           src={draft.profilePhotoDataUrl}
-                          alt="Profile photo editor preview"
+                          alt="Profile photo"
                           decoding="async"
                           className="h-full w-full object-cover"
                           style={{
@@ -2113,193 +2003,252 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                           }}
                         />
                       </div>
-                      <div className="flex-1 space-y-2">
-                        <label className="space-y-1">
-                          <span className="house-field-label">Horizontal framing</span>
-                          <input
-                            type="range"
-                            min={0}
-                            max={100}
-                            step={0.5}
-                            value={draft.profilePhotoPositionX}
-                            onChange={(event) => onProfilePhotoPositionSliderChange('x', event.target.value)}
-                            className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
-                          />
-                        </label>
-                        <label className="space-y-1">
-                          <span className="house-field-label">Vertical framing</span>
-                          <input
-                            type="range"
-                            min={0}
-                            max={100}
-                            step={0.5}
-                            value={draft.profilePhotoPositionY}
-                            onChange={(event) => onProfilePhotoPositionSliderChange('y', event.target.value)}
-                            className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
-                          />
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
-                            Reset
-                          </Button>
-                          <Button type="button" size="sm" variant="primary" className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS} onClick={() => setProfilePhotoEditorOpen(false)}>
-                            Done
-                          </Button>
+                    ) : (
+                      <div className="inline-flex h-[7.5rem] w-[7.5rem] items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-2xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[var(--elevation-1)]">
+                        {profileInitials}
+                      </div>
+                    )}
+                    <input
+                      ref={profilePhotoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onProfilePhotoSelected}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="default"
+                      onClick={() => profilePhotoInputRef.current?.click()}
+                    >
+                      <Upload className="mr-1.5 h-4 w-4" />
+                      Upload photo
+                    </Button>
+                  </div>
+                  <div className="space-y-2 flex-1">
+                    {draft.profilePhotoDataUrl ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className={HOUSE_ACTION_BUTTON_CLASS}
+                          onClick={() => setProfilePhotoEditorOpen((current) => !current)}
+                        >
+                          <SlidersHorizontal className="mr-1.5 h-4 w-4" />
+                          {profilePhotoEditorOpen ? 'Close editor' : 'Adjust framing'}
+                        </Button>
+                        <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRemoveProfilePhoto}>
+                          <Trash2 className="mr-1.5 h-4 w-4" />
+                          Remove
+                        </Button>
+                      </div>
+                    ) : null}
+                    {draft.profilePhotoDataUrl && profilePhotoEditorOpen ? (
+                      <div className={HOUSE_PROFILE_PHOTO_EDITOR_CLASS}>
+                        <p className="house-field-label">Mini photo editor</p>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                          <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] shadow-[var(--elevation-1)] sm:mx-0">
+                            <img
+                              src={draft.profilePhotoDataUrl}
+                              alt="Profile photo editor preview"
+                              decoding="async"
+                              className="h-full w-full object-cover"
+                              style={{
+                                objectPosition: `${draft.profilePhotoPositionX}% ${draft.profilePhotoPositionY}%`,
+                              }}
+                            />
+                          </div>
+                          <div className="flex-1 space-y-2">
+                            <label className="space-y-1">
+                              <span className="house-field-label">Horizontal framing</span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                step={0.5}
+                                value={draft.profilePhotoPositionX}
+                                onChange={(event) => onProfilePhotoPositionSliderChange('x', event.target.value)}
+                                className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="house-field-label">Vertical framing</span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                step={0.5}
+                                value={draft.profilePhotoPositionY}
+                                onChange={(event) => onProfilePhotoPositionSliderChange('y', event.target.value)}
+                                className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
+                              />
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
+                                Reset
+                              </Button>
+                              <Button type="button" size="sm" variant="primary" className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS} onClick={() => setProfilePhotoEditorOpen(false)}>
+                                Done
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ) : null}
                   </div>
-                ) : null}
+                </div>
+
+                <div className="space-y-3">
+                  <label className="space-y-1 block">
+                    <span className="house-field-label">Account email</span>
+                    <Input
+                      value={accountEmail}
+                      onChange={(event) => onAccountEmailChange(event.target.value)}
+                      placeholder="you@institution.edu"
+                      autoComplete="email"
+                      disabled={saving}
+                    />
+                  </label>
+
+                  <div className="grid gap-3 sm:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)]">
+                    <label className="space-y-1">
+                      <span className="house-field-label">Salutation</span>
+                      <SelectPrimitive
+                        value={draft.salutation || '__none__'}
+                        onValueChange={(value) => onFieldChange('salutation', value === '__none__' ? '' : value)}
+                      >
+                        <SelectTrigger aria-label="Salutation">
+                          <SelectValue placeholder="Select" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Select</SelectItem>
+                          {SALUTATION_OPTIONS.map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </SelectPrimitive>
+                    </label>
+
+                    <label className="space-y-1">
+                      <span className="house-field-label">First name</span>
+                      <Input
+                        value={draft.firstName}
+                        onChange={(event) => onFieldChange('firstName', event.target.value)}
+                        placeholder="First name"
+                        autoComplete="given-name"
+                      />
+                    </label>
+
+                    <label className="space-y-1">
+                      <span className="house-field-label">Last name</span>
+                      <Input
+                        value={draft.lastName}
+                        onChange={(event) => onFieldChange('lastName', event.target.value)}
+                        placeholder="Last name"
+                        autoComplete="family-name"
+                      />
+                    </label>
+                  </div>
+
+                  <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
+                    <label
+                      htmlFor="personal-website"
+                      className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
+                    >
+                      <span
+                        aria-hidden
+                        className={HOUSE_SOCIAL_LINK_ICON_CLASS}
+                      >
+                        W
+                      </span>
+                      Website
+                    </label>
+                    <Input
+                      id="personal-website"
+                      value={draft.website}
+                      onChange={(event) => onFieldChange('website', event.target.value)}
+                      placeholder="https://"
+                      autoComplete="url"
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
+                    <label
+                      htmlFor="personal-researchgate"
+                      className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
+                    >
+                      <span
+                        aria-hidden
+                        className={HOUSE_SOCIAL_LINK_ICON_CLASS}
+                      >
+                        RG
+                      </span>
+                      ResearchGate page
+                    </label>
+                    <Input
+                      id="personal-researchgate"
+                      value={draft.researchGateUrl}
+                      onChange={(event) => onFieldChange('researchGateUrl', event.target.value)}
+                      placeholder="https://www.researchgate.net/profile/..."
+                      autoComplete="url"
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
+                    <label
+                      htmlFor="personal-x-handle"
+                      className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
+                    >
+                      <span
+                        aria-hidden
+                        className={HOUSE_SOCIAL_LINK_ICON_CLASS}
+                      >
+                        X
+                      </span>
+                      Twitter/X handle
+                    </label>
+                    <Input
+                      id="personal-x-handle"
+                      value={draft.xHandle}
+                      onChange={(event) => onFieldChange('xHandle', event.target.value)}
+                      placeholder="@yourhandle"
+                      autoComplete="nickname"
+                      className="w-full"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <aside className="sm:col-span-2 sm:ml-auto sm:w-full lg:max-w-sm">
-              <div className={HOUSE_ACCOUNT_PANEL_CLASS}>
-                <p className="house-field-label">Account</p>
-                <div className="mt-2 space-y-1.5 text-sm">
-                  <p className="text-[hsl(var(--tone-neutral-700))]">
-                    Member since: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatDate(user?.created_at)}</span>
-                  </p>
-                  <p className="text-[hsl(var(--tone-neutral-700))]">
-                    Account age: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatAccountAge(user?.created_at)}</span>
-                  </p>
-                </div>
-                <div className="mt-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className={HOUSE_ACTION_BUTTON_CLASS}
-                    onClick={() => navigate('/profile/manage-account')}
-                  >
-                    Manage account
-                  </Button>
-                </div>
-              </div>
-            </aside>
+          </div>
+        </div>
+      </Section>
 
-            <label className="space-y-1 sm:col-span-2">
-              <span className="house-field-label">Account email</span>
-              <Input
-                value={accountEmail}
-                onChange={(event) => onAccountEmailChange(event.target.value)}
-                placeholder="you@institution.edu"
-                autoComplete="email"
-                disabled={saving}
-              />
-            </label>
-
-            <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)]">
-              <label className="space-y-1">
-                <span className="house-field-label">Salutation</span>
-                <SelectPrimitive
-                  value={draft.salutation || '__none__'}
-                  onValueChange={(value) => onFieldChange('salutation', value === '__none__' ? '' : value)}
-                >
-                  <SelectTrigger aria-label="Salutation">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Select</SelectItem>
-                    {SALUTATION_OPTIONS.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </SelectPrimitive>
-              </label>
-
-              <label className="space-y-1">
-                <span className="house-field-label">First name</span>
-                <Input
-                  value={draft.firstName}
-                  onChange={(event) => onFieldChange('firstName', event.target.value)}
-                  placeholder="First name"
-                  autoComplete="given-name"
-                />
-              </label>
-
-              <label className="space-y-1">
-                <span className="house-field-label">Last name</span>
-                <Input
-                  value={draft.lastName}
-                  onChange={(event) => onFieldChange('lastName', event.target.value)}
-                  placeholder="Last name"
-                  autoComplete="family-name"
-                />
-              </label>
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-3 shadow-[var(--elevation-1)]">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-[hsl(var(--tone-neutral-700))] space-y-1">
+              <p>
+                Member since: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatDate(user?.created_at)}</span>
+              </p>
+              <p>
+                Account age: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatAccountAge(user?.created_at)}</span>
+              </p>
             </div>
-
-            <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
-              <label
-                htmlFor="personal-website"
-                className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
-              >
-                <span
-                  aria-hidden
-                  className={HOUSE_SOCIAL_LINK_ICON_CLASS}
-                >
-                  W
-                </span>
-                Website
-              </label>
-              <Input
-                id="personal-website"
-                value={draft.website}
-                onChange={(event) => onFieldChange('website', event.target.value)}
-                placeholder="https://"
-                autoComplete="url"
-                className="w-full"
-              />
-            </div>
-
-            <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
-              <label
-                htmlFor="personal-researchgate"
-                className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
-              >
-                <span
-                  aria-hidden
-                  className={HOUSE_SOCIAL_LINK_ICON_CLASS}
-                >
-                  RG
-                </span>
-                ResearchGate page
-              </label>
-              <Input
-                id="personal-researchgate"
-                value={draft.researchGateUrl}
-                onChange={(event) => onFieldChange('researchGateUrl', event.target.value)}
-                placeholder="https://www.researchgate.net/profile/..."
-                autoComplete="url"
-                className="w-full"
-              />
-            </div>
-
-            <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
-              <label
-                htmlFor="personal-x-handle"
-                className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
-              >
-                <span
-                  aria-hidden
-                  className={HOUSE_SOCIAL_LINK_ICON_CLASS}
-                >
-                  X
-                </span>
-                Twitter/X handle
-              </label>
-              <Input
-                id="personal-x-handle"
-                value={draft.xHandle}
-                onChange={(event) => onFieldChange('xHandle', event.target.value)}
-                placeholder="@yourhandle"
-                autoComplete="nickname"
-                className="w-full"
-              />
-            </div>
-
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className={HOUSE_ACTION_BUTTON_CLASS}
+              onClick={() => navigate('/profile/manage-account')}
+            >
+              Manage account
+            </Button>
           </div>
         </div>
       </Section>

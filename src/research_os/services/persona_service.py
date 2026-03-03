@@ -111,8 +111,18 @@ WORK_TYPE_PREPRINT_PATTERN = re.compile(
 )
 WORK_TYPE_POSTER_PATTERN = re.compile(r"\bposter\b", re.IGNORECASE)
 WORK_TYPE_ABSTRACT_PATTERN = re.compile(r"\babstract\b", re.IGNORECASE)
+WORK_TYPE_NUMBERED_ABSTRACT_TITLE_PATTERN = re.compile(
+    r"^\s*(?!(?:19|20)\d{2}\b)\d{1,4}\b"
+)
+WORK_TYPE_ABSTRACT_DOI_PATTERN = re.compile(
+    r"\b(?:doi\.org/)?10\.\d{4,9}/\S+\.\d{1,4}\b",
+    re.IGNORECASE,
+)
 WORK_TYPE_THESIS_PATTERN = re.compile(r"\b(thesis|dissertation)\b", re.IGNORECASE)
 WORK_TYPE_DATASET_PATTERN = re.compile(r"\b(dataset|data set|data-set)\b", re.IGNORECASE)
+WORK_TYPE_SUPPLEMENTARY_PATTERN = re.compile(
+    r"\b(additional file|supplementary|supplemental)\b", re.IGNORECASE
+)
 WORK_TYPE_BOOK_CHAPTER_PATTERN = re.compile(r"\bbook chapter\b", re.IGNORECASE)
 WORK_TYPE_BOOK_PATTERN = re.compile(r"\bbook\b", re.IGNORECASE)
 WORK_TYPE_REPORT_PATTERN = re.compile(r"\b(report|white paper|technical report)\b", re.IGNORECASE)
@@ -208,9 +218,18 @@ def _classify_work_type_with_llm(
     try:
         response = create_response(model="gpt-4.1-mini", input=prompt)
         text = (response.output_text or "").strip().lower()
+        if not text:
+            return None
         token = re.split(r"[\\s\\n\\r\\t,.;:]+", text)[0]
         if token in WORK_TYPE_CHOICES:
             return token
+        # Models sometimes answer in a short sentence; recover any valid slug present.
+        for choice in sorted(WORK_TYPE_CHOICES, key=len, reverse=True):
+            if re.search(rf"\b{re.escape(choice)}\b", text):
+                return choice
+        for candidate in re.findall(r"[a-z][a-z\-]+", text):
+            if candidate in WORK_TYPE_CHOICES:
+                return candidate
         return None
     except Exception:
         return None
@@ -248,8 +267,18 @@ def _normalize_work_type(
         return "book", None
     if WORK_TYPE_DATASET_PATTERN.search(combined):
         return "data-set", None
+    if WORK_TYPE_SUPPLEMENTARY_PATTERN.search(title):
+        return "data-set", None
     if WORK_TYPE_REPORT_PATTERN.search(combined):
         return "report", None
+    if WORK_TYPE_NUMBERED_ABSTRACT_TITLE_PATTERN.match(title) and venue_name.strip():
+        return "conference-abstract", None
+    if (
+        WORK_TYPE_ABSTRACT_DOI_PATTERN.search(combined)
+        and venue_name.strip()
+        and not abstract.strip()
+    ):
+        return "conference-abstract", None
 
     if WORK_TYPE_CONFERENCE_TYPE_PATTERN.search(combined):
         if WORK_TYPE_POSTER_PATTERN.search(combined):
@@ -259,9 +288,6 @@ def _normalize_work_type(
         return "conference-paper", None
     if WORK_TYPE_CONFERENCE_PATTERN.search(combined):
         return "conference-paper", None
-
-    if venue_name.strip():
-        return "journal-article", None
 
     if allow_llm:
         llm = _classify_work_type_with_llm(
@@ -273,6 +299,9 @@ def _normalize_work_type(
         )
         if llm:
             return llm, "llm"
+
+    if venue_name.strip():
+        return "journal-article", None
 
     return raw, None
 

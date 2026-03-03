@@ -1188,6 +1188,15 @@
     color: hsl(var(--tone-neutral-600));
   }
 
+  .house-subheading {
+    font-size: 0.8125rem;
+    line-height: 1.2rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: hsl(var(--tone-neutral-600));
+  }
+
   .house-metric-tile-title {
     font-size: 0.8125rem;
     line-height: 1.2rem;

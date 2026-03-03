@@ -1581,18 +1581,27 @@ function ApprovedButtonsSection() {
 
         .approved-profile-hover-action:hover,
         .approved-profile-hover-action:focus-visible {
-          border-color: hsl(0 0% 0%);
+          border-color: hsl(var(--section-style-profile-accent, var(--tone-accent-500)) / 0.6);
         }
 
+        /* Default button: white fill, black border, accent hover/active */
         .approved-button-standard {
-          background-color: transparent;
-          color: hsl(var(--tone-neutral-700));
+          background-color: hsl(var(--tone-neutral-0, 0 0% 100%));
+          border-color: hsl(0 0% 0%);
+          color: hsl(0 0% 0%);
         }
 
         .approved-button-standard:hover,
         .approved-button-standard:focus-visible {
-          background-color: var(--top-nav-hover-bg-profile);
-          color: hsl(var(--tone-neutral-700));
+          background-color: hsl(var(--section-style-profile-accent, var(--tone-accent-500)) / 0.12);
+          border-color: hsl(var(--section-style-profile-accent, var(--tone-accent-500)) / 0.6);
+          color: hsl(0 0% 0%);
+        }
+
+        .approved-button-standard:active {
+          background-color: hsl(var(--section-style-profile-accent, var(--tone-accent-500)) / 0.22);
+          border-color: hsl(var(--section-style-profile-accent, var(--tone-accent-500)) / 0.8);
+          color: hsl(0 0% 0%);
         }
 
         .approved-button-negative {
@@ -1956,7 +1965,7 @@ function ApprovedTypographySection() {
                 </div>
                 <div className="house-main-subheading-block rounded-sm border border-teal-200 bg-teal-50 p-2">
                   <p className="house-field-helper">Subheading block</p>
-                  <p className="house-text">Subheading row</p>
+                  <p className="house-subheading">Subheading row</p>
                 </div>
                 <div className="house-main-content-block rounded-sm border border-neutral-300 bg-white p-2">
                   <p className="house-field-helper">Content block</p>
@@ -1983,6 +1992,7 @@ function ApprovedTypographySection() {
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-title</code></td><td className="px-2 py-1.5">2.05rem / 2.3rem · 500 · -0.02em</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-title-expander</code></td><td className="px-2 py-1.5">0.875rem / 1.25rem · 400</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-section-title</code></td><td className="px-2 py-1.5">1.125rem / 1.4rem · 500 · 0.01em</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-subheading</code></td><td className="px-2 py-1.5">0.8125rem / 1.2rem · 600 · 0.08em · uppercase</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-text</code></td><td className="px-2 py-1.5">0.875rem / 1.5rem · 400</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-field-helper</code></td><td className="px-2 py-1.5">0.8125rem / 1.2rem · 500</td></tr>
                   </tbody>
@@ -2042,6 +2052,10 @@ function ApprovedTypographySection() {
                   <p className="house-nav-section-label">Workspace</p>
                 </div>
                 <div className="rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Subheading</p>
+                  <p className="house-subheading">Profile photo</p>
+                </div>
+                <div className="rounded-sm border border-neutral-200 bg-muted/30 p-2">
                   <p className="house-field-helper">Left content block (nav list)</p>
                   <div className="house-nav-list">
                     <button type="button" className="house-nav-item house-nav-item-workspace">
@@ -2064,6 +2078,7 @@ function ApprovedTypographySection() {
                   </thead>
                   <tbody>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-nav-section-label</code></td><td className="px-2 py-1.5">0.8125rem / 1.2rem · 600 · 0.08em · uppercase</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-subheading</code></td><td className="px-2 py-1.5">0.8125rem / 1.2rem · 600 · 0.08em · uppercase</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-nav-item-label</code></td><td className="px-2 py-1.5">0.875rem / 1.25rem</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-nav-item-meta</code></td><td className="px-2 py-1.5">0.75rem / 1.1rem · 500</td></tr>
                   </tbody>
@@ -2237,6 +2252,25 @@ function ApprovedTypographySection() {
               </div>
             </div>
           </article>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ApprovedSubheadingSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Subheading</p>
+          <p className="text-xs text-neutral-600">Compact label style that matches left-nav section headers.</p>
+        </div>
+        <div className="p-4">
+          <div className="rounded-md border border-neutral-200 bg-background p-3 space-y-2">
+            <p className="house-subheading">Profile photo</p>
+            <p className="text-xs text-neutral-600">Use for inline section labels inside profile surfaces.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -4819,6 +4853,10 @@ function ApprovedPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Design system reference</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight text-neutral-900">Approved Library</h1>
           <p className="mt-2 max-w-3xl text-sm text-neutral-600">Canonical production patterns, tokens, and interaction contracts. Sections are grouped by foundations, interactions, drilldown architecture, tile systems, and animation specifications.</p>
+          <div className="mt-3 inline-flex items-center gap-3 rounded-md border border-neutral-200 bg-white/80 px-3 py-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">New token</span>
+            <span className="house-subheading">Profile photo</span>
+          </div>
         </section>
 
         <ApprovedSourceOfTruthBanner />
@@ -4855,6 +4893,7 @@ function ApprovedPage() {
               <ApprovedTypographySection />
             </div>
           </details>
+          <ApprovedSubheadingSection />
           <AuthPagePanel />
         </section>
 

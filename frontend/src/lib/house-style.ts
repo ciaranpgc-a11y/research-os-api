@@ -3,6 +3,7 @@ export const houseTypography = {
   title: 'house-title',
   subtitle: 'house-subtitle',
   titleExpander: 'house-title-expander',
+  subheading: 'house-subheading',
   
   // Drilldown panel header (title scaled for side-panel context)
   drilldownTitle: 'house-drilldown-title-scaled',
