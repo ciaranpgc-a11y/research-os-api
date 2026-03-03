@@ -3743,11 +3743,13 @@
     background-color: hsl(var(--tone-neutral-50) / 0.45);
   }
 
-  .house-publications-table-density-compact td[data-ui='table-primitive-cell'] {
+  .house-publications-table-density-compact td[data-ui='table-primitive-cell'],
+  .house-publications-table-density-compact td[data-ui='table-cell'] {
     padding-block: var(--space-1) !important;
   }
 
-  .house-publications-table-density-comfortable td[data-ui='table-primitive-cell'] {
+  .house-publications-table-density-comfortable td[data-ui='table-primitive-cell'],
+  .house-publications-table-density-comfortable td[data-ui='table-cell'] {
     padding-block: calc(var(--space-2) + 0.24rem) !important;
   }
 

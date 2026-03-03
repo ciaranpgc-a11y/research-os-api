@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
 import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
-import { SectionMarker, SectionToolDivider, SectionToolIconButton, SectionTools } from '@/components/patterns'
+import { SectionMarker, SectionToolDivider, SectionTools } from '@/components/patterns'
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
 import { drilldownTabFlexGrow } from '@/components/publications/house-drilldown-header-utils'
 import { publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
@@ -4292,29 +4292,201 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           className="house-publications-toolbar-header"
           actions={(
             <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
+            <SectionTools tone="publications" framed={false} className="order-1">
+            {publicationLibraryVisible ? (
+              <div className="relative order-1 shrink-0">
+                <button
+                  ref={publicationLibrarySearchButtonRef}
+                  type="button"
+                  data-state={publicationLibrarySearchVisible ? 'open' : 'closed'}
+                  className={cn(
+                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-search-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
+                    publicationLibrarySearchVisible && 'house-publications-tools-toggle-open',
+                  )}
+                  onClick={() => {
+                    setPublicationLibrarySearchVisible((current) => {
+                      const nextVisible = !current
+                      if (nextVisible) {
+                        setPublicationLibraryFiltersVisible(false)
+                        setPublicationLibraryDownloadVisible(false)
+                        setPublicationLibrarySettingsVisible(false)
+                      }
+                      return nextVisible
+                    })
+                  }}
+                  aria-pressed={publicationLibrarySearchVisible}
+                  aria-expanded={publicationLibrarySearchVisible}
+                  aria-label={publicationLibrarySearchVisible ? 'Hide publication library search' : 'Show publication library search'}
+                >
+                  <Search className="house-publications-tools-toggle-icon house-publications-search-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                </button>
+                {publicationLibrarySearchVisible ? (
+                  <div
+                    ref={publicationLibrarySearchPopoverRef}
+                    className="house-publications-search-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[22.5rem]"
+                  >
+                    <label className="house-publications-search-label" htmlFor="publication-library-search-input">
+                      Search library
+                    </label>
+                    <input
+                      id="publication-library-search-input"
+                      type="text"
+                      autoFocus
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Search by publication name, author, PMID, DOI, journal..."
+                      className="house-publications-search-input"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {publicationLibraryVisible ? (
+              <div className="relative order-2 shrink-0">
+                <button
+                  ref={publicationLibraryFilterButtonRef}
+                  type="button"
+                  data-state={publicationLibraryFiltersVisible ? 'open' : 'closed'}
+                  data-filtered={selectedPublicationTypes.length > 0 || selectedArticleTypes.length > 0 ? 'true' : 'false'}
+                  className={cn(
+                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-filter-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
+                    publicationLibraryFiltersVisible && 'house-publications-tools-toggle-open',
+                  )}
+                  onClick={() => {
+                    setPublicationLibraryFiltersVisible((current) => {
+                      const nextVisible = !current
+                      if (nextVisible) {
+                        setPublicationLibrarySearchVisible(false)
+                        setPublicationLibraryDownloadVisible(false)
+                        setPublicationLibrarySettingsVisible(false)
+                      }
+                      return nextVisible
+                    })
+                  }}
+                  aria-pressed={publicationLibraryFiltersVisible}
+                  aria-expanded={publicationLibraryFiltersVisible}
+                  aria-label={publicationLibraryFiltersVisible ? 'Hide publication library filters' : 'Show publication library filters'}
+                >
+                  <Filter className="house-publications-tools-toggle-icon house-publications-filter-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                </button>
+                {publicationLibraryFiltersVisible ? (
+                  <div
+                    ref={publicationLibraryFilterPopoverRef}
+                    className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[17.5rem]"
+                  >
+                    <div className="house-publications-filter-header">
+                      <p className="house-publications-filter-title">Filter library</p>
+                      <button
+                        type="button"
+                        className="house-publications-filter-clear"
+                        onClick={() => {
+                          setSelectedPublicationTypes([])
+                          setSelectedArticleTypes([])
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <details className="house-publications-filter-group" open>
+                      <summary className="house-publications-filter-summary">
+                        <span>Publication type</span>
+                        <span className="house-publications-filter-count">
+                          {selectedPublicationTypes.length > 0 ? selectedPublicationTypes.length : 'All'}
+                        </span>
+                      </summary>
+                      <div className="house-publications-filter-options">
+                        {publicationTypeFilterOptions.length > 0 ? (
+                          publicationTypeFilterOptions.map((value) => (
+                            <label key={`publication-filter-${value}`} className="house-publications-filter-option">
+                              <input
+                                type="checkbox"
+                                className="house-publications-filter-checkbox"
+                                checked={selectedPublicationTypes.includes(value)}
+                                onChange={() => {
+                                  setSelectedPublicationTypes((current) =>
+                                    current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value],
+                                  )
+                                }}
+                              />
+                              <span className="house-publications-filter-option-label">{value}</span>
+                            </label>
+                          ))
+                        ) : (
+                          <p className="house-publications-filter-empty">No publication types available.</p>
+                        )}
+                      </div>
+                    </details>
+                    <details className="house-publications-filter-group" open>
+                      <summary className="house-publications-filter-summary">
+                        <span>Article type</span>
+                        <span className="house-publications-filter-count">
+                          {selectedArticleTypes.length > 0 ? selectedArticleTypes.length : 'All'}
+                        </span>
+                      </summary>
+                      <div className="house-publications-filter-options">
+                        {articleTypeFilterOptions.length > 0 ? (
+                          articleTypeFilterOptions.map((value) => (
+                            <label key={`article-filter-${value}`} className="house-publications-filter-option">
+                              <input
+                                type="checkbox"
+                                className="house-publications-filter-checkbox"
+                                checked={selectedArticleTypes.includes(value)}
+                                onChange={() => {
+                                  setSelectedArticleTypes((current) =>
+                                    current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value],
+                                  )
+                                }}
+                              />
+                              <span className="house-publications-filter-option-label">{value}</span>
+                            </label>
+                          ))
+                        ) : (
+                          <p className="house-publications-filter-empty">No article types available.</p>
+                        )}
+                      </div>
+                    </details>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            </SectionTools>
             <div
               className={cn(
-                'relative order-3 overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
+                'relative order-2 overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
                 publicationLibraryVisible && publicationLibraryToolsOpen
                   ? 'z-30 max-w-[20rem] translate-x-0 opacity-100'
                   : 'pointer-events-none z-0 max-w-0 translate-x-1 opacity-0',
               )}
               aria-hidden={!publicationLibraryVisible || !publicationLibraryToolsOpen}
             >
-              <SectionTools tone="publications" className="min-w-0 flex-nowrap whitespace-nowrap">
-                <SectionToolIconButton
-                  icon={<FileText className="h-4 w-4" strokeWidth={2.1} />}
-                  aria-label="Generate publication library report"
-                  tooltip="Generate report"
-                />
+              <div className="flex min-w-0 flex-nowrap whitespace-nowrap gap-1">
+                <div className="relative inline-flex">
+                  <Button
+                    type="button"
+                    variant="house"
+                    size="icon"
+                    className="peer h-8 w-8 house-publications-toolbox-item"
+                    aria-label="Generate publication library report"
+                  >
+                    <FileText className="h-4 w-4" strokeWidth={2.1} />
+                  </Button>
+                  <span
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100"
+                    aria-hidden="true"
+                  >
+                    Generate report
+                  </span>
+                </div>
                 <SectionToolDivider />
-                <div className="group relative inline-flex">
-                  <button
+                <div className="relative inline-flex">
+                  <Button
                     ref={publicationLibraryDownloadButtonRef}
                     type="button"
+                    variant="house"
+                    size="icon"
                     data-state={publicationLibraryDownloadVisible ? 'open' : 'closed'}
                     className={cn(
-                      'house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center',
+                      'peer h-8 w-8 house-publications-toolbox-item',
                       publicationLibraryDownloadVisible && 'house-publications-tools-toggle-open',
                     )}
                     onClick={() => {
@@ -4332,7 +4504,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     aria-expanded={publicationLibraryDownloadVisible}
                   >
                     <Download className="h-4 w-4" strokeWidth={2.1} />
-                  </button>
+                  </Button>
                   {publicationLibraryDownloadVisible ? (
                     <div
                       ref={publicationLibraryDownloadPopoverRef}
@@ -4456,179 +4628,33 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     </div>
                   ) : null}
                   <span
-                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100"
                     aria-hidden="true"
                   >
                     Download
                   </span>
                 </div>
                 <SectionToolDivider />
-                <SectionToolIconButton
-                  icon={<Share2 className="h-4 w-4" strokeWidth={2.1} />}
-                  aria-label="Share publication library"
-                  tooltip="Share"
-                />
-              </SectionTools>
+                <div className="relative inline-flex">
+                  <Button
+                    type="button"
+                    variant="house"
+                    size="icon"
+                    className="peer h-8 w-8 house-publications-toolbox-item"
+                    aria-label="Share publication library"
+                  >
+                    <Share2 className="h-4 w-4" strokeWidth={2.1} />
+                  </Button>
+                  <span
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100"
+                    aria-hidden="true"
+                  >
+                    Share
+                  </span>
+                </div>
+              </div>
             </div>
-            <SectionTools tone="publications" framed={false} className="order-1 ml-auto">
-            {publicationLibraryVisible ? (
-              <div className="relative order-1 shrink-0">
-                <button
-                  ref={publicationLibrarySearchButtonRef}
-                  type="button"
-                  data-state={publicationLibrarySearchVisible ? 'open' : 'closed'}
-                  className={cn(
-                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-search-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
-                    publicationLibrarySearchVisible && 'house-publications-tools-toggle-open',
-                  )}
-                  onClick={() => {
-                    setPublicationLibrarySearchVisible((current) => {
-                      const nextVisible = !current
-                      if (nextVisible) {
-                        setPublicationLibraryFiltersVisible(false)
-                        setPublicationLibraryDownloadVisible(false)
-                        setPublicationLibrarySettingsVisible(false)
-                      }
-                      return nextVisible
-                    })
-                  }}
-                  aria-pressed={publicationLibrarySearchVisible}
-                  aria-expanded={publicationLibrarySearchVisible}
-                  aria-label={publicationLibrarySearchVisible ? 'Hide publication library search' : 'Show publication library search'}
-                  title="Search"
-                >
-                  <Search className="house-publications-tools-toggle-icon house-publications-search-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
-                </button>
-                {publicationLibrarySearchVisible ? (
-                  <div
-                    ref={publicationLibrarySearchPopoverRef}
-                    className="house-publications-search-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[22.5rem]"
-                  >
-                    <label className="house-publications-search-label" htmlFor="publication-library-search-input">
-                      Search library
-                    </label>
-                    <input
-                      id="publication-library-search-input"
-                      type="text"
-                      autoFocus
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Search by publication name, author, PMID, DOI, journal..."
-                      className="house-publications-search-input"
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            {publicationLibraryVisible ? (
-              <div className="relative order-2 shrink-0">
-                <button
-                  ref={publicationLibraryFilterButtonRef}
-                  type="button"
-                  data-state={publicationLibraryFiltersVisible ? 'open' : 'closed'}
-                  data-filtered={selectedPublicationTypes.length > 0 || selectedArticleTypes.length > 0 ? 'true' : 'false'}
-                  className={cn(
-                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-filter-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
-                    publicationLibraryFiltersVisible && 'house-publications-tools-toggle-open',
-                  )}
-                  onClick={() => {
-                    setPublicationLibraryFiltersVisible((current) => {
-                      const nextVisible = !current
-                      if (nextVisible) {
-                        setPublicationLibrarySearchVisible(false)
-                        setPublicationLibraryDownloadVisible(false)
-                        setPublicationLibrarySettingsVisible(false)
-                      }
-                      return nextVisible
-                    })
-                  }}
-                  aria-pressed={publicationLibraryFiltersVisible}
-                  aria-expanded={publicationLibraryFiltersVisible}
-                  aria-label={publicationLibraryFiltersVisible ? 'Hide publication library filters' : 'Show publication library filters'}
-                  title="Filters"
-                >
-                  <Filter className="house-publications-tools-toggle-icon house-publications-filter-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
-                </button>
-                {publicationLibraryFiltersVisible ? (
-                  <div
-                    ref={publicationLibraryFilterPopoverRef}
-                    className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[17.5rem]"
-                  >
-                    <div className="house-publications-filter-header">
-                      <p className="house-publications-filter-title">Filter library</p>
-                      <button
-                        type="button"
-                        className="house-publications-filter-clear"
-                        onClick={() => {
-                          setSelectedPublicationTypes([])
-                          setSelectedArticleTypes([])
-                        }}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                    <details className="house-publications-filter-group" open>
-                      <summary className="house-publications-filter-summary">
-                        <span>Publication type</span>
-                        <span className="house-publications-filter-count">
-                          {selectedPublicationTypes.length > 0 ? selectedPublicationTypes.length : 'All'}
-                        </span>
-                      </summary>
-                      <div className="house-publications-filter-options">
-                        {publicationTypeFilterOptions.length > 0 ? (
-                          publicationTypeFilterOptions.map((value) => (
-                            <label key={`publication-filter-${value}`} className="house-publications-filter-option">
-                              <input
-                                type="checkbox"
-                                className="house-publications-filter-checkbox"
-                                checked={selectedPublicationTypes.includes(value)}
-                                onChange={() => {
-                                  setSelectedPublicationTypes((current) =>
-                                    current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value],
-                                  )
-                                }}
-                              />
-                              <span className="house-publications-filter-option-label">{value}</span>
-                            </label>
-                          ))
-                        ) : (
-                          <p className="house-publications-filter-empty">No publication types available.</p>
-                        )}
-                      </div>
-                    </details>
-                    <details className="house-publications-filter-group" open>
-                      <summary className="house-publications-filter-summary">
-                        <span>Article type</span>
-                        <span className="house-publications-filter-count">
-                          {selectedArticleTypes.length > 0 ? selectedArticleTypes.length : 'All'}
-                        </span>
-                      </summary>
-                      <div className="house-publications-filter-options">
-                        {articleTypeFilterOptions.length > 0 ? (
-                          articleTypeFilterOptions.map((value) => (
-                            <label key={`article-filter-${value}`} className="house-publications-filter-option">
-                              <input
-                                type="checkbox"
-                                className="house-publications-filter-checkbox"
-                                checked={selectedArticleTypes.includes(value)}
-                                onChange={() => {
-                                  setSelectedArticleTypes((current) =>
-                                    current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value],
-                                  )
-                                }}
-                              />
-                              <span className="house-publications-filter-option-label">{value}</span>
-                            </label>
-                          ))
-                        ) : (
-                          <p className="house-publications-filter-empty">No article types available.</p>
-                        )}
-                      </div>
-                    </details>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+            <SectionTools tone="publications" framed={false} className="order-3">
             {publicationLibraryVisible ? (
               <button
                 type="button"
@@ -4649,7 +4675,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 aria-pressed={publicationLibraryToolsOpen}
                 aria-expanded={publicationLibraryToolsOpen}
                 aria-label={publicationLibraryToolsOpen ? 'Hide publication library tools' : 'Show publication library tools'}
-                title="Tools"
               >
                 <Hammer className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
               </button>
@@ -4678,7 +4703,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   aria-pressed={publicationLibrarySettingsVisible}
                   aria-expanded={publicationLibrarySettingsVisible}
                   aria-label={publicationLibrarySettingsVisible ? 'Hide publication library settings' : 'Show publication library settings'}
-                  title="Settings"
                 >
                   <Settings className="house-publications-tools-toggle-icon house-publications-settings-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
                 </button>
@@ -4981,7 +5005,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         return (
                           <TableRow
                             key={work.id}
-                            onClick={() => openPublicationInDetailPanel(work.id, activeDetailTab)}
+                            onClick={() => openPublicationInDetailPanel(work.id, 'overview')}
                             className={cn(
                               'cursor-pointer',
                               publicationTableAlternateRowColoring && 'odd:bg-[hsl(var(--tone-neutral-50))] even:bg-[hsl(var(--tone-neutral-100))]',

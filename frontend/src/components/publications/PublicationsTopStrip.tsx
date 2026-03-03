@@ -979,6 +979,8 @@ function useHouseBarSetTransition<T extends { key: string }>({
   }
 }
 
+void useHouseBarSetTransition
+
 function useEasedValue(target: number, animationKey: string, enabled: boolean, durationMs: number = CHART_MOTION.axis.toggle): number {
   const [value, setValue] = useState<number>(() => (enabled ? 0 : target))
   const valueRef = useRef(value)
@@ -1221,6 +1223,32 @@ function parseIsoMonthStart(value: string): Date | null {
     return null
   }
   return new Date(Date.UTC(Math.round(year), Math.round(month) - 1, 1))
+}
+
+function parseIsoPublicationDate(value: string): Date | null {
+  const token = String(value || '').trim()
+  if (!token) {
+    return null
+  }
+  const match = token.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/)
+  if (!match) {
+    return null
+  }
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3] || 1)
+  if (
+    !Number.isFinite(year)
+    || !Number.isFinite(month)
+    || !Number.isFinite(day)
+    || month < 1
+    || month > 12
+    || day < 1
+    || day > 31
+  ) {
+    return null
+  }
+  return new Date(Date.UTC(Math.round(year), Math.round(month) - 1, Math.round(day)))
 }
 
 function getSpanMonths(startMs: number, endMs: number): number {
@@ -2493,6 +2521,13 @@ export function PublicationsPerYearChart({
     }
   }, [chartData.month_labels_lifetime, chartData.monthly_values_lifetime])
 
+  const publicationEventDatesMs = useMemo(() => (
+    toStringArray(chartData.publication_event_dates)
+      .map((value) => parseIsoPublicationDate(value)?.getTime())
+      .filter((value): value is number => Number.isFinite(value))
+      .sort((left, right) => left - right)
+  ), [chartData.publication_event_dates])
+
   const resolveBarsForWindowMode = (mode: PublicationsWindowMode): PublicationYearWindowBars => {
     if (mode === '1y') {
       return {
@@ -2549,70 +2584,43 @@ export function PublicationsPerYearChart({
   }
 
   const resolveLineBarsForWindowMode = useCallback((mode: PublicationsWindowMode): PublicationYearWindowBars => {
-    if (!lifetimeMonthlyBars.bars.length) {
-      if (mode === '1y') {
-        const hasMonthlySignal = groupedMonthBars.bars.some((bar) => Math.max(0, bar.value) > 0)
-        if (hasMonthlySignal) {
-          return {
-            bars: groupedMonthBars.bars,
-            bucketSize: groupedMonthBars.bucketSize,
-            rangeLabel: groupedMonthBars.rangeLabel,
-          }
+    if (mode === '1y') {
+      const hasMonthlySignal = groupedMonthBars.bars.some((bar) => Math.max(0, bar.value) > 0)
+      if (hasMonthlySignal) {
+        return {
+          bars: groupedMonthBars.bars,
+          bucketSize: groupedMonthBars.bucketSize,
+          rangeLabel: groupedMonthBars.rangeLabel,
         }
       }
-      const windowYears = mode === '3y'
-        ? 3
-        : mode === '5y'
-          ? 5
-          : mode === '1y'
-            ? 1
-            : null
-      const sourceBars = windowYears === null ? historyBars : historyBars.slice(-windowYears)
-      const bars: PublicationChartBar[] = sourceBars.map((bar) => ({
-        key: `${bar.year}-${bar.year}`,
-        value: Math.max(0, bar.value),
-        current: Boolean(bar.current),
-        axisLabel: String(bar.year),
-        axisSubLabel: undefined,
-        monthStartMs: Date.UTC(bar.year, 0, 1),
-      }))
-      const rangeLabel = sourceBars.length
-        ? sourceBars[0].year === sourceBars[sourceBars.length - 1].year
-          ? String(sourceBars[0].year)
-          : `${sourceBars[0].year}-${sourceBars[sourceBars.length - 1].year}`
-        : null
-      return {
-        bars,
-        bucketSize: 1,
-        rangeLabel,
-      }
     }
-    const monthCount = mode === '1y'
-      ? 12
-      : mode === '3y'
-        ? 36
-        : mode === '5y'
-          ? 60
+    const windowYears = mode === '3y'
+      ? 3
+      : mode === '5y'
+        ? 5
+        : mode === '1y'
+          ? 1
           : null
-    const bars = monthCount === null
-      ? lifetimeMonthlyBars.bars
-      : lifetimeMonthlyBars.bars.slice(-monthCount)
-    if (!bars.length) {
-      return { bars: [], bucketSize: 1, rangeLabel: null }
-    }
-    const firstMs = bars[0]?.monthStartMs
-    const lastMs = bars[bars.length - 1]?.monthStartMs
-    const firstDate = Number.isFinite(firstMs) ? new Date(firstMs as number) : null
-    const lastDate = Number.isFinite(lastMs) ? new Date(lastMs as number) : null
-    const rangeLabel = firstDate && lastDate
-      ? `${MONTH_SHORT[firstDate.getUTCMonth()]} ${shortYearLabel(firstDate.getUTCFullYear())}-${MONTH_SHORT[lastDate.getUTCMonth()]} ${shortYearLabel(lastDate.getUTCFullYear())}`
+    const sourceBars = windowYears === null ? historyBars : historyBars.slice(-windowYears)
+    const bars: PublicationChartBar[] = sourceBars.map((bar) => ({
+      key: `${bar.year}-${bar.year}`,
+      value: Math.max(0, bar.value),
+      current: Boolean(bar.current),
+      axisLabel: String(bar.year),
+      axisSubLabel: undefined,
+      monthStartMs: Date.UTC(bar.year, 0, 1),
+    }))
+    const rangeLabel = sourceBars.length
+      ? sourceBars[0].year === sourceBars[sourceBars.length - 1].year
+        ? String(sourceBars[0].year)
+        : `${sourceBars[0].year}-${sourceBars[sourceBars.length - 1].year}`
       : null
     return {
       bars,
       bucketSize: 1,
       rangeLabel,
     }
-  }, [groupedMonthBars.bars, groupedMonthBars.bucketSize, groupedMonthBars.rangeLabel, historyBars, lifetimeMonthlyBars.bars])
+  }, [groupedMonthBars.bars, groupedMonthBars.bucketSize, groupedMonthBars.rangeLabel, historyBars])
 
   const activeLineWindowBars = isCompactTileMode
     ? { bars: compactTileBars, bucketSize: 1, rangeLabel: null as string | null }
@@ -2650,9 +2658,9 @@ export function PublicationsPerYearChart({
     ? activeBars.length > 0
     : hasValidSeries && historyBars.length > 0 && activeBars.length > 0
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
-  const axisDurationMs = getAxisAnimationDuration(isEntryCycle ? 'entry' : 'toggle')
+  const axisDurationMs = 0
   const renderBars = activeBars
-  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars, 'entry-only')
+  const barsExpanded = true
   const renderedValuesTarget = useMemo(
     () => renderBars.map((bar) => Math.max(0, bar.value)),
     [renderBars],
@@ -2697,18 +2705,7 @@ export function PublicationsPerYearChart({
   const targetAxisMax = targetAxisScale
     ? targetAxisScale.axisMax
     : Math.max(1, maxValue * (isCompactTileMode ? 1.06 : 1.1), Math.max(0, meanValue) * 1.1)
-  const [hasAxisAnimationPrimed, setHasAxisAnimationPrimed] = useState(false)
-  useEffect(() => {
-    setHasAxisAnimationPrimed(true)
-  }, [])
-  const axisAnimationEnabled = hasBars && enableWindowToggle && autoScaleByWindow && showAxes && hasAxisAnimationPrimed && isEntryCycle
-  const animatedAxisMax = useEasedValue(
-    targetAxisMax,
-    `${animationKey}|axis-max|${autoScaleByWindow ? 'auto' : 'fixed'}`,
-    axisAnimationEnabled,
-    axisDurationMs,
-  )
-  const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
+  const axisMax = targetAxisMax
   const renderedMeanValue = Math.max(0, meanValue)
   const barHeightAxisMax = Math.max(1, axisMax)
   const rawYAxisTickRatios = targetAxisScale
@@ -2859,8 +2856,9 @@ export function PublicationsPerYearChart({
         buildXAxisLayoutForWindow(effectiveWindowMode, 'line'),
       ])
   const yAxisPanelWidthRem = showAxes
-    ? buildYAxisPanelWidthRem(stableToggleTickValues, Boolean(yAxisLabel))
+    ? buildYAxisPanelWidthRem(stableToggleTickValues, Boolean(yAxisLabel), enableWindowToggle ? 1.7 : 1.2)
     : 0
+  const yAxisTitleLeft = '36%'
   const shouldReserveMeanLabelBand = showMeanValueLabel && Boolean(meanValueDisplay)
   const meanLabelBandInsetRem = shouldReserveMeanLabelBand ? 0.75 : 0
   const chartTopInsetRem = PUBLICATIONS_CHART_TOP_INSET_REM + meanLabelBandInsetRem
@@ -2972,6 +2970,57 @@ export function PublicationsPerYearChart({
         timelineEndMs: null as number | null,
       }
     }
+    if (publicationEventDatesMs.length) {
+      const now = new Date()
+      const trailing12MonthStarts = buildTrailingMonthStarts(12, true)
+      const trailingStart = trailing12MonthStarts[0] || null
+      const trailingEnd = trailing12MonthStarts[trailing12MonthStarts.length - 1] || null
+      const oneYearStartMs = trailingStart ? trailingStart.getTime() : null
+      const oneYearEndExclusiveMs = trailingEnd
+        ? Date.UTC(trailingEnd.getUTCFullYear(), trailingEnd.getUTCMonth() + 1, 1)
+        : null
+      const threeYearStartMs = Date.UTC(now.getUTCFullYear() - 2, 0, 1)
+      const fiveYearStartMs = Date.UTC(now.getUTCFullYear() - 4, 0, 1)
+      const filteredEventMs = publicationEventDatesMs.filter((timeMs) => {
+        if (effectiveWindowMode === '1y') {
+          if (oneYearStartMs === null || oneYearEndExclusiveMs === null) {
+            return true
+          }
+          return timeMs >= oneYearStartMs && timeMs < oneYearEndExclusiveMs
+        }
+        if (effectiveWindowMode === '3y') {
+          return timeMs >= threeYearStartMs
+        }
+        if (effectiveWindowMode === '5y') {
+          return timeMs >= fiveYearStartMs
+        }
+        return true
+      })
+      if (filteredEventMs.length) {
+        const timelineStartMs = filteredEventMs[0]
+        const timelineEndMs = filteredEventMs[filteredEventMs.length - 1]
+        const spanMs = timelineEndMs - timelineStartMs
+        const eventPoints = filteredEventMs.map((timeMs, index) => {
+          const position = spanMs > 0
+            ? ((timeMs - timelineStartMs) / spanMs)
+            : (filteredEventMs.length <= 1 ? 0 : index / (filteredEventMs.length - 1))
+          const cumulativeValue = index + 1
+          return {
+            key: `line-event-${timeMs}-${index}`,
+            xPct: clampPct(position * 100),
+            yPct: clampPct((cumulativeValue / Math.max(1, barHeightAxisMax)) * 100),
+            value: cumulativeValue,
+            timeMs,
+          }
+        })
+        return {
+          points: eventPoints,
+          markerPoints: eventPoints,
+          timelineStartMs,
+          timelineEndMs,
+        }
+      }
+    }
     let cumulativeValue = 0
     const cumulativePoints = renderBars.map((bar, index) => {
       cumulativeValue += Math.max(0, bar.value)
@@ -3004,6 +3053,8 @@ export function PublicationsPerYearChart({
     renderedCumulativeValuesAnimated,
     renderedCumulativeValuesTarget,
     renderBars,
+    effectiveWindowMode,
+    publicationEventDatesMs,
     slotMetrics.slotStepPct,
     slotMetrics.slotWidthPct,
   ])
@@ -3360,7 +3411,10 @@ export function PublicationsPerYearChart({
                   </p>
                 )
               })}
-            <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}>
+            <p
+              className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
+              style={{ left: yAxisTitleLeft }}
+            >
               {yAxisLabel}
             </p>
           </div>
@@ -4551,24 +4605,13 @@ export function PublicationCategoryDistributionChart({
     [activeBars, dimension, valueMode, windowMode],
   )
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
-  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
-  const swapTransition = useHouseBarSetTransition({
-    bars: activeBars,
-    animationKey,
-    enabled: hasBars,
-  })
-  const renderBars = swapTransition.renderBars
-  const barsExpanded = swapTransition.barsExpanded
+  const renderBars = activeBars
+  const barsExpanded = true
   const renderedValuesTarget = useMemo(
     () => renderBars.map((bar) => (showPercentageMode ? Math.max(0, bar.percentage) : Math.max(0, bar.count))),
     [renderBars, showPercentageMode],
   )
-  const renderedValuesAnimated = useEasedSeries(
-    renderedValuesTarget,
-    `${animationKey}|category|${renderBars.map((bar) => bar.key).join('|')}`,
-    hasBars && barsExpanded,
-    axisDurationMs,
-  )
+  const renderedValuesAnimated = renderedValuesTarget
 
   useEffect(() => {
     setHoveredIndex(null)
@@ -4592,18 +4635,7 @@ export function PublicationCategoryDistributionChart({
     ? { axisMax: 100, ticks: [0, 25, 50, 75, 100] }
     : buildNiceAxis(maxWindowValue)
   const targetAxisMax = targetAxisScale.axisMax
-  const [hasAxisAnimationPrimed, setHasAxisAnimationPrimed] = useState(false)
-  useEffect(() => {
-    setHasAxisAnimationPrimed(true)
-  }, [])
-  const axisAnimationEnabled = hasBars && hasAxisAnimationPrimed
-  const animatedAxisMax = useEasedValue(
-    targetAxisMax,
-    `${animationKey}|axis-max|${showPercentageMode ? 'percentage' : 'absolute'}`,
-    axisAnimationEnabled,
-    axisDurationMs,
-  )
-  const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
+  const axisMax = targetAxisMax
   const yAxisTickRatios = targetAxisScale.ticks.map((tickValue) => (
     targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax
   ))
@@ -4631,9 +4663,9 @@ export function PublicationCategoryDistributionChart({
   const yAxisPanelWidthRem = buildYAxisPanelWidthRem(
     fixedToggleYAxisTicks,
     true,
-    enableValueModeToggle ? 1 : 0,
+    enableValueModeToggle ? 2 : 0,
   )
-  const yAxisTitleLeft = enableValueModeToggle ? '44%' : '50%'
+  const yAxisTitleLeft = '34%'
   const chartLeftInset = `${yAxisPanelWidthRem + 0.55}rem`
   const plotAreaStyle = {
     left: chartLeftInset,
@@ -4665,117 +4697,127 @@ export function PublicationCategoryDistributionChart({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS}>
+      <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
         <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+          <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
             <div
               className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
-            data-stop-tile-open="true"
-            data-ui="publications-window-toggle"
-            data-house-role="chart-toggle"
-          >
+                data-stop-tile-open="true"
+                data-ui={`${dimension}-window-toggle`}
+                data-house-role="chart-toggle"
+              >
                 <span
                   className={HOUSE_TOGGLE_THUMB_CLASS}
                   style={buildTileToggleThumbStyle(activeWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length, isEntryCycle)}
                   aria-hidden="true"
                 />
-            {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-              <button
-                key={`${dimension}-window-${option.value}`}
-                type="button"
-                data-stop-tile-open="true"
-                className={cn(
-                  HOUSE_TOGGLE_BUTTON_CLASS,
-                  windowMode === option.value
-                    ? 'text-white'
-                    : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                )}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  if (windowMode === option.value) {
-                    return
-                  }
-                  setWindowMode(option.value)
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-                aria-pressed={windowMode === option.value}
-              >
-                {option.label}
-              </button>
-            ))}
+                {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+                  <button
+                    key={`${dimension}-window-${option.value}`}
+                    type="button"
+                    data-stop-tile-open="true"
+                    className={cn(
+                      HOUSE_TOGGLE_BUTTON_CLASS,
+                      windowMode === option.value
+                        ? 'text-white'
+                        : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                    )}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (windowMode === option.value) {
+                        return
+                      }
+                      setWindowMode(option.value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    aria-pressed={windowMode === option.value}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
           </div>
           {enableValueModeToggle ? (
-            <div
-              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
-              data-stop-tile-open="true"
-              data-ui={`${dimension}-value-mode-toggle`}
-              data-house-role="chart-toggle"
-            >
+            <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+              <div
+                className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+                data-stop-tile-open="true"
+                data-ui={`${dimension}-value-mode-toggle`}
+                data-house-role="chart-toggle"
+                style={{ width: '7rem' }}
+              >
                 <span
                   className={HOUSE_TOGGLE_THUMB_CLASS}
                   style={buildTileToggleThumbStyle(activeValueModeIndex, PUBLICATION_VALUE_MODE_OPTIONS.length, isEntryCycle)}
                   aria-hidden="true"
                 />
-              {PUBLICATION_VALUE_MODE_OPTIONS.map((option) => (
-                <button
-                  key={`${dimension}-value-mode-${option.value}`}
-                  type="button"
-                  data-stop-tile-open="true"
-                  className={cn(
-                    HOUSE_TOGGLE_BUTTON_CLASS,
-                    valueMode === option.value
-                      ? 'text-white'
-                      : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                  )}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    if (valueMode === option.value) {
-                      return
-                    }
-                    setValueMode(option.value)
-                  }}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  aria-pressed={valueMode === option.value}
-                >
-                  {option.label}
-                </button>
-              ))}
+                {PUBLICATION_VALUE_MODE_OPTIONS.map((option) => (
+                  <button
+                    key={`${dimension}-value-mode-${option.value}`}
+                    type="button"
+                    data-stop-tile-open="true"
+                    className={cn(
+                      HOUSE_TOGGLE_BUTTON_CLASS,
+                      valueMode === option.value
+                        ? 'text-white'
+                        : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                    )}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (valueMode === option.value) {
+                        return
+                      }
+                      setValueMode(option.value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    aria-pressed={valueMode === option.value}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
             <div
               className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
-            data-stop-tile-open="true"
-            data-ui={`${dimension}-display-mode-toggle`}
-            data-house-role="chart-toggle"
-          >
+              data-stop-tile-open="true"
+              data-ui={`${dimension}-display-mode-toggle`}
+              data-house-role="chart-toggle"
+              style={{ width: '7rem' }}
+            >
                 <span
                   className={HOUSE_TOGGLE_THUMB_CLASS}
                   style={buildTileToggleThumbStyle(activeDisplayModeIndex, PUBLICATION_DISPLAY_MODE_OPTIONS.length, isEntryCycle)}
                   aria-hidden="true"
                 />
-            {PUBLICATION_DISPLAY_MODE_OPTIONS.map((option) => (
-              <button
-                key={`${dimension}-display-mode-${option.value}`}
-                type="button"
-                data-stop-tile-open="true"
-                className={cn(
-                  HOUSE_TOGGLE_BUTTON_CLASS,
-                  displayMode === option.value
-                    ? 'text-white'
-                    : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                )}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  if (displayMode === option.value) {
-                    return
-                  }
-                  setDisplayMode(option.value)
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-                aria-pressed={displayMode === option.value}
-              >
-                {option.label}
-              </button>
-            ))}
+                {PUBLICATION_DISPLAY_MODE_OPTIONS.map((option) => (
+                  <button
+                    key={`${dimension}-display-mode-${option.value}`}
+                    type="button"
+                    data-stop-tile-open="true"
+                    className={cn(
+                      HOUSE_TOGGLE_BUTTON_CLASS,
+                      displayMode === option.value
+                        ? 'text-white'
+                        : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                    )}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (displayMode === option.value) {
+                        return
+                      }
+                      setDisplayMode(option.value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    aria-pressed={displayMode === option.value}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
           </div>
         </div>
       </div>
@@ -4965,6 +5007,41 @@ function TotalPublicationsDrilldownWorkspace({
     setPublicationTrendsWindowMode('5y')
     setPublicationTrendsVisualMode('bars')
   }, [tile.key])
+
+  const publicationDrilldownRecords = useMemo<PublicationDrilldownRecord[]>(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const publications = Array.isArray(drilldown.publications) ? drilldown.publications : []
+    return publications
+      .map((item, index) => {
+        if (!item || typeof item !== 'object') {
+          return null
+        }
+        const record = item as Record<string, unknown>
+        const yearRaw = Number(record.year)
+        const year = Number.isInteger(yearRaw) ? yearRaw : null
+        const workId = String(record.work_id || record.id || `publication-${index}`)
+        const title = String(record.title || '').trim()
+        const role = String(record.role || '').trim()
+        const type = String(record.type || '').trim()
+        const publicationType = String(record.publication_type || record.publicationType || record.type || '').trim()
+        const articleType = String(record.article_type || record.articleType || '').trim()
+        const venue = String(record.venue || record.journal || '').trim()
+        const citationsRaw = Number(record.citations ?? record.cited_by_count ?? 0)
+        const citations = Number.isFinite(citationsRaw) ? Math.max(0, Math.round(citationsRaw)) : 0
+        return {
+          workId,
+          year,
+          title,
+          role,
+          type,
+          publicationType,
+          articleType,
+          venue,
+          citations,
+        }
+      })
+      .filter((item): item is PublicationDrilldownRecord => item !== null)
+  }, [tile.drilldown])
 
   const headlineMetricTiles = useMemo(() => {
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
@@ -5184,6 +5261,21 @@ function TotalPublicationsDrilldownWorkspace({
                   visualMode={publicationTrendsVisualMode}
                   onVisualModeChange={setPublicationTrendsVisualMode}
                   showWindowToggle={false}
+                />
+              </div>
+            </div>
+
+            <div className="house-drilldown-heading-block">
+              <p className="house-drilldown-heading-block-title">Publication type trends</p>
+            </div>
+            <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+              <div className="house-drilldown-content-block house-publications-drilldown-summary-trend-chart-tall w-full">
+                <PublicationCategoryDistributionChart
+                  publications={publicationDrilldownRecords}
+                  dimension="publication"
+                  xAxisLabel="Publication type"
+                  emptyLabel="No publication type data"
+                  enableValueModeToggle
                 />
               </div>
             </div>
@@ -6329,13 +6421,13 @@ export function PublicationsTopStrip({
                     aria-hidden={!insightsVisible || !toolboxOpen}
                   >
                     <div className="flex min-w-0 flex-nowrap items-center gap-1 whitespace-nowrap">
-                      <div className="group relative inline-flex">
+                      <div className="relative inline-flex">
                         <Button
                           type="button"
                           data-stop-tile-open="true"
                           variant="house"
                           size="icon"
-                          className="h-8 w-8 house-publications-toolbox-item"
+                          className="peer h-8 w-8 house-publications-toolbox-item"
                           aria-label={`Generate ${PUBLICATION_INSIGHTS_LABEL} report`}
                         >
                           <FileText className="h-4 w-4" strokeWidth={2.1} />
@@ -6344,7 +6436,7 @@ export function PublicationsTopStrip({
                           className={cn(
                             HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                             'top-auto bottom-full mb-[0.35rem] z-[999]',
-                            'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                            'opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100',
                           )}
                           aria-hidden="true"
                         >
@@ -6352,13 +6444,13 @@ export function PublicationsTopStrip({
                         </span>
                       </div>
                       <div className="house-publications-toolbox-divider" aria-hidden="true" />
-                      <div className="group relative inline-flex">
+                      <div className="relative inline-flex">
                         <Button
                           type="button"
                           data-stop-tile-open="true"
                           variant="house"
                           size="icon"
-                          className="h-8 w-8 house-publications-toolbox-item"
+                          className="peer h-8 w-8 house-publications-toolbox-item"
                           aria-label="Download"
                         >
                           <Download className="h-4 w-4" strokeWidth={2.1} />
@@ -6367,7 +6459,7 @@ export function PublicationsTopStrip({
                           className={cn(
                             HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                             'top-auto bottom-full mb-[0.35rem] z-[999]',
-                            'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                            'opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100',
                           )}
                           aria-hidden="true"
                         >
@@ -6375,13 +6467,13 @@ export function PublicationsTopStrip({
                         </span>
                       </div>
                       <div className="house-publications-toolbox-divider" aria-hidden="true" />
-                      <div className="group relative inline-flex">
+                      <div className="relative inline-flex">
                         <Button
                           type="button"
                           data-stop-tile-open="true"
                           variant="house"
                           size="icon"
-                          className="h-8 w-8 house-publications-toolbox-item"
+                          className="peer h-8 w-8 house-publications-toolbox-item"
                           aria-label="Share"
                         >
                           <Share2 className="h-4 w-4" strokeWidth={2.1} />
@@ -6390,7 +6482,7 @@ export function PublicationsTopStrip({
                           className={cn(
                             HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                             'top-auto bottom-full mb-[0.35rem] z-[999]',
-                            'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                            'opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100',
                           )}
                           aria-hidden="true"
                         >
