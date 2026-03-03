@@ -4583,6 +4583,110 @@ const approvedIcons: IconOption[] = [
   },
 ]
 
+type ApprovedSectionDescriptor = {
+  id: string
+  shortLabel: string
+  title: string
+  summary: string
+  chipClassName: string
+}
+
+const APPROVED_SECTION_DESCRIPTORS: ApprovedSectionDescriptor[] = [
+  {
+    id: 'foundations',
+    shortLabel: '1. Foundations',
+    title: 'Foundations',
+    summary: 'Layout anchor, markers, typography, auth shell, and global structure contracts.',
+    chipClassName: 'border-sky-200 bg-sky-50 text-sky-800',
+  },
+  {
+    id: 'interactions',
+    shortLabel: '2. Interactions',
+    title: 'Interaction patterns',
+    summary: 'Toolbars, controls, tables, banners, and tooltip behavior standards.',
+    chipClassName: 'border-amber-200 bg-amber-50 text-amber-800',
+  },
+  {
+    id: 'drilldown-system',
+    shortLabel: '3. Drilldown',
+    title: 'Drilldown system',
+    summary: 'Right-sheet architecture, tab shell, and publication drilldown contracts.',
+    chipClassName: 'border-teal-200 bg-teal-50 text-teal-800',
+  },
+  {
+    id: 'tiles-toggles',
+    shortLabel: '4. Tiles',
+    title: 'Metric tiles and toggles',
+    summary: 'Tile shell variants, toggle controls, and supporting chart composition.',
+    chipClassName: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  },
+  {
+    id: 'animation-specs',
+    shortLabel: '5. Animation',
+    title: 'Animation specifications',
+    summary: 'Animation labs and formal class/token mappings for production parity.',
+    chipClassName: 'border-rose-200 bg-rose-50 text-rose-800',
+  },
+  {
+    id: 'nav-shells',
+    shortLabel: '6. Nav shells',
+    title: 'Navigation shells',
+    summary: 'Canonical left panel shells across workspace, inbox, and profile surfaces.',
+    chipClassName: 'border-slate-200 bg-slate-50 text-slate-800',
+  },
+  {
+    id: 'buttons-icons',
+    shortLabel: '7. Buttons and icons',
+    title: 'Buttons and icons',
+    summary: 'Approved interaction icons and button composition patterns.',
+    chipClassName: 'border-violet-200 bg-violet-50 text-violet-800',
+  },
+]
+
+function ApprovedSourceOfTruthBanner() {
+  return (
+    <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-emerald-800">
+          Visual source of truth
+        </span>
+        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-slate-700">
+          Approved-only surface
+        </span>
+      </div>
+      <p className="mt-2 text-sm text-neutral-700">
+        This story is the canonical visual contract for implementation. New explorations belong in non-approved stories; this page should only reflect settled decisions.
+      </p>
+      <ul className="mt-3 grid gap-1 text-xs text-neutral-600 sm:grid-cols-3">
+        <li>Design role: define and approve visual behavior here.</li>
+        <li>Engineering role: match production to this approved reference.</li>
+        <li>Review role: verify parity and update this story when contracts change.</li>
+      </ul>
+    </section>
+  )
+}
+
+function ApprovedSectionIndex() {
+  return (
+    <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-neutral-600">Section map</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {APPROVED_SECTION_DESCRIPTORS.map((section) => (
+          <a
+            key={`index-${section.id}`}
+            href={`#${section.id}`}
+            className="rounded-md border border-neutral-200 bg-neutral-50 p-3 transition-colors hover:bg-white"
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">{section.shortLabel}</p>
+            <p className="mt-1 text-sm font-semibold text-neutral-900">{section.title}</p>
+            <p className="mt-1 text-xs text-neutral-600">{section.summary}</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function ProviderIconSection() {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
 
@@ -4684,7 +4788,7 @@ function ApprovedIconsSection() {
 
 function ApprovedPage() {
   return (
-    <div className="min-h-screen bg-white">
+    <div id="top" className="min-h-screen bg-white">
       <div className="mx-auto max-w-6xl space-y-10 p-4">
         <section className="rounded-xl border border-neutral-200 bg-gradient-to-br from-white to-neutral-50 p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Design system reference</p>
@@ -4692,16 +4796,22 @@ function ApprovedPage() {
           <p className="mt-2 max-w-3xl text-sm text-neutral-600">Canonical production patterns, tokens, and interaction contracts. Sections are grouped by foundations, interactions, drilldown architecture, tile systems, and animation specifications.</p>
         </section>
 
+        <ApprovedSourceOfTruthBanner />
+        <ApprovedSectionIndex />
+
         <section className="sticky top-2 z-20 rounded-lg border border-neutral-200 bg-white/95 p-3 shadow-sm backdrop-blur">
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-neutral-600">Quick navigation</p>
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
-            <a href="#foundations" className="rounded border border-sky-200 bg-sky-50 px-2 py-1 font-semibold text-sky-800">1. Foundations</a>
-            <a href="#interactions" className="rounded border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800">2. Interactions</a>
-            <a href="#drilldown-system" className="rounded border border-teal-200 bg-teal-50 px-2 py-1 font-semibold text-teal-800">3. Drilldown</a>
-            <a href="#tiles-toggles" className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">4. Tiles</a>
-            <a href="#animation-specs" className="rounded border border-rose-200 bg-rose-50 px-2 py-1 font-semibold text-rose-800">5. Animation</a>
-            <a href="#nav-shells" className="rounded border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-800">6. Nav shells</a>
-            <a href="#buttons-icons" className="rounded border border-violet-200 bg-violet-50 px-2 py-1 font-semibold text-violet-800">7. Buttons and icons</a>
+            {APPROVED_SECTION_DESCRIPTORS.map((section) => (
+              <a
+                key={`quick-nav-${section.id}`}
+                href={`#${section.id}`}
+                className={`rounded border px-2 py-1 font-semibold ${section.chipClassName}`}
+              >
+                {section.shortLabel}
+              </a>
+            ))}
+            <a href="#top" className="ml-auto rounded border border-neutral-300 bg-neutral-50 px-2 py-1 font-semibold text-neutral-700">Back to top</a>
           </div>
         </section>
 

@@ -503,7 +503,7 @@ const CHART_MOTION = {
     stagger: 25,        // --motion-chart-morph-stagger
   },
   axis: {
-    entry: 380,         // --motion-chart-axis-entry
+    entry: 560,         // --motion-chart-axis-entry
     toggle: 340,        // --motion-chart-axis-toggle
     overlap: 100,       // --motion-chart-axis-overlap
   },
