@@ -16,6 +16,7 @@ import {
   BannerDescription,
   BannerTitle,
   Button,
+  DrilldownSheet,
   IconButton,
   Input,
   Label,
@@ -36,6 +37,7 @@ import {
   TableHeader,
   TableRow,
   Textarea,
+  Toolbar,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -145,6 +147,16 @@ const APPROVAL_CONTRACT_ITEMS = [
   'Each control is reviewed as a state matrix, not an isolated happy-path sample.',
 ]
 
+const APPROVAL_SECTION_LINKS = [
+  { id: 'approvals-control-bar', label: '0. Sticky Controls', note: 'Theme, motion, baseline grid' },
+  { id: 'approvals-foundations', label: '1. Foundations', note: 'Color, type, spacing, motion tokens' },
+  { id: 'approvals-icons', label: '2. Icons', note: 'Sizes, currentColor, icon button states' },
+  { id: 'approvals-recipes', label: '3. Recipes', note: 'Page + drilldown scaffolds' },
+  { id: 'approvals-controls', label: '4. Controls', note: 'State matrices and compounds' },
+  { id: 'approvals-metrics-motion', label: '5. Metric + Motion', note: 'Chart/toggle patterns + audit' },
+  { id: 'approvals-glossary', label: '6. Glossary', note: 'Element definitions + governance' },
+] as const
+
 const METRIC_TILE_CONTRACT_ITEMS = [
   'Tile shell uses house-metric-tile-shell with tokenized background, border, and selected states.',
   'Tile chart surface uses house-metric-tile-chart-surface and follows shell hover/selected inheritance.',
@@ -245,6 +257,20 @@ const GLOSSARY_ROWS = [
     mustNotSet: 'legacy panel composition or non-canonical shells',
     whereUsed: 'Structural recipes and patterns showcase',
   },
+  {
+    element: 'Toolbar',
+    category: 'Compound',
+    maySet: 'density, justify, Toolbar.Group, Toolbar.Actions, Toolbar.Spacer, Toolbar.Divider',
+    mustNotSet: 'manual flex layouts with house-page-toolbar class',
+    whereUsed: 'Page-level action bars, filter toolbars',
+  },
+  {
+    element: 'DrilldownSheet',
+    category: 'Compound',
+    maySet: 'open, onOpenChange, DrilldownSheet.Title, DrilldownSheet.Heading, DrilldownSheet.Content, DrilldownSheet.StatCard, DrilldownSheet.Row, DrilldownSheet.Alert, DrilldownSheet.Placeholder',
+    mustNotSet: 'raw Sheet with manual houseDrilldown classes',
+    whereUsed: 'Side-panel detail views, publication/profile drilldowns',
+  },
 ] as const
 
 function parseRgb(input: string): RGB | null {
@@ -337,6 +363,102 @@ function MatrixCell({
         {children}
       </Stack>
     </Section>
+  )
+}
+
+function BackToTopLink() {
+  return (
+    <div className="pt-[var(--space-2)]">
+      <a
+        href="#approvals-top"
+        className="text-caption text-[hsl(var(--accent-foreground))] underline-offset-2 hover:underline"
+      >
+        Back to top
+      </a>
+    </div>
+  )
+}
+
+function DrilldownSheetDemo() {
+  const [isOpen, setIsOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState('summary')
+  return (
+    <Stack space="md">
+      {/* Open Button */}
+      <Button variant="outline" onClick={() => setIsOpen(true)}>
+        Open Drilldown (Publications)
+      </Button>
+
+      {/* Drilldown Sheet (scaled title with canonical expander) */}
+      <DrilldownSheet open={isOpen} onOpenChange={setIsOpen}>
+        <DrilldownSheet.Header
+          title="Total publication insights"
+          subtitle="A Summary of your publication metrics"
+          variant="publications"
+          alert={activeTab === 'summary' ? <p className="text-sm text-amber-700">Showing 2024 data</p> : undefined}
+        >
+          <DrilldownSheet.Tabs activeTab={activeTab} onTabChange={setActiveTab}>
+            <DrilldownSheet.Tab id="summary">Summary</DrilldownSheet.Tab>
+            <DrilldownSheet.Tab id="breakdown">Breakdown</DrilldownSheet.Tab>
+            <DrilldownSheet.Tab id="trajectory">Trajectory</DrilldownSheet.Tab>
+            <DrilldownSheet.Tab id="context">Context</DrilldownSheet.Tab>
+          </DrilldownSheet.Tabs>
+        </DrilldownSheet.Header>
+
+        <DrilldownSheet.TabPanel id={activeTab} isActive={activeTab === 'summary'}>
+          <DrilldownSheet.Heading>Metric Overview</DrilldownSheet.Heading>
+          <DrilldownSheet.Row>
+            <DrilldownSheet.StatCard title="Citations" value="342" emphasis />
+            <DrilldownSheet.StatCard title="Publications" value="18" />
+          </DrilldownSheet.Row>
+          <DrilldownSheet.Alert variant="info">Data refreshed 2 hours ago</DrilldownSheet.Alert>
+        </DrilldownSheet.TabPanel>
+
+        <DrilldownSheet.TabPanel id={activeTab} isActive={activeTab === 'breakdown'}>
+          <DrilldownSheet.Heading>By Publication Type</DrilldownSheet.Heading>
+          <DrilldownSheet.Row>
+            <DrilldownSheet.StatCard title="Journal Articles" value="12" />
+            <DrilldownSheet.StatCard title="Conferences" value="6" />
+          </DrilldownSheet.Row>
+          <DrilldownSheet.Placeholder>Detailed breakdown visualization goes here</DrilldownSheet.Placeholder>
+        </DrilldownSheet.TabPanel>
+
+        <DrilldownSheet.TabPanel id={activeTab} isActive={activeTab === 'trajectory'}>
+          <DrilldownSheet.Heading>Citation Growth Trend</DrilldownSheet.Heading>
+          <Stack space="sm">
+            <DrilldownSheet.Row active>
+              <div className="flex-1 text-sm">Last 12 months</div>
+              <div className="text-sm font-semibold text-green-700">+28%</div>
+            </DrilldownSheet.Row>
+            <DrilldownSheet.Row>
+              <div className="flex-1 text-sm">Previous year</div>
+              <div className="text-sm">+12%</div>
+            </DrilldownSheet.Row>
+          </Stack>
+          <DrilldownSheet.Placeholder>Chart visualization goes here</DrilldownSheet.Placeholder>
+        </DrilldownSheet.TabPanel>
+
+        <DrilldownSheet.TabPanel id={activeTab} isActive={activeTab === 'context'}>
+          <DrilldownSheet.Heading>Field Percentiles</DrilldownSheet.Heading>
+          <Stack space="sm">
+            <DrilldownSheet.Row>
+              <div className="flex-1 text-sm">Top 25% (75th percentile)</div>
+              <div className="text-sm font-semibold">185 citations</div>
+            </DrilldownSheet.Row>
+            <DrilldownSheet.Row>
+              <div className="flex-1 text-sm">Top 50% (median)</div>
+              <div className="text-sm font-semibold">42 citations</div>
+            </DrilldownSheet.Row>
+          </Stack>
+        </DrilldownSheet.TabPanel>
+      </DrilldownSheet>
+
+      {/* Typography Scale Reference */}
+      <div className="rounded border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <p className="font-semibold text-foreground">Typography Scaling:</p>
+        <p>Drilldown header scales only the title via <code>--drilldown-title-scale</code>; subtitle uses canonical <code>house-title-expander</code></p>
+      </div>
+    </Stack>
   )
 }
 
@@ -623,17 +745,62 @@ export function ApprovalsContent() {
   }, [gridMode])
 
   return (
-    <Container size="wide" gutter="default" className="relative py-[var(--space-6)]">
+    <Container id="approvals-top" size="wide" gutter="default" className="relative py-[var(--space-6)]">
       <div ref={backgroundProbeRef} className="sr-only" style={{ backgroundColor: 'hsl(var(--background))' }} />
       {gridMode !== 'off' ? <div aria-hidden="true" style={gridOverlayStyle} /> : null}
-      <Stack space="lg">
+      <Stack space="xl">
         <PageHeader
           eyebrow="Design System"
           heading="Approvals"
           description="Single canonical approval surface for foundations, primitives, controls, patterns, and definitions."
         />
 
-        <Section surface="card" inset="lg" spaceY="md">
+        <Section id="approvals-navigation" surface="card" inset="lg" spaceY="sm" className="scroll-mt-24">
+          <SectionHeader
+            eyebrow="Guide"
+            heading="Quick Navigation + Coverage"
+            description="Jump to any approval section and verify canonical coverage at a glance."
+          />
+          <Grid cols={2} gap="md">
+            <Section surface="muted" inset="md" spaceY="sm">
+              <SectionHeader heading="Section map" description="Stable anchors for faster review and future updates." />
+              <div className="grid gap-[var(--space-2)] md:grid-cols-2">
+                {APPROVAL_SECTION_LINKS.map((section) => (
+                  <a
+                    key={section.id}
+                    href={`#${section.id}`}
+                    className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-[var(--space-3)] py-[var(--space-2)] transition-colors duration-[var(--motion-duration-fast)] hover:bg-[hsl(var(--muted))]"
+                  >
+                    <div className="text-body text-[hsl(var(--foreground))]">{section.label}</div>
+                    <div className="text-caption text-[hsl(var(--muted-foreground))]">{section.note}</div>
+                  </a>
+                ))}
+              </div>
+            </Section>
+
+            <Section surface="muted" inset="md" spaceY="sm">
+              <SectionHeader heading="Canonical status" description="Visual checks to confirm this remains the active source of truth." />
+              <Stack space="sm">
+                <Row gap="sm" align="start" className="flex-wrap items-center">
+                  <Badge variant="secondary">Canonical story</Badge>
+                  <Badge variant="outline">Sections: {APPROVAL_SECTION_LINKS.length}</Badge>
+                  <Badge variant="outline">Controls contract: {APPROVAL_CONTRACT_ITEMS.length}</Badge>
+                  <Badge variant="outline">Metric contract: {METRIC_TILE_CONTRACT_ITEMS.length}</Badge>
+                </Row>
+                <div className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-[var(--space-3)] py-[var(--space-2)] text-caption text-[hsl(var(--muted-foreground))]">
+                  Source of truth: Design System → Approvals → Canonical. Archived stories are reference-only and non-canonical.
+                </div>
+                <div>
+                  <a href="#approvals-top" className="text-caption text-[hsl(var(--accent-foreground))] underline-offset-2 hover:underline">
+                    Jump to top
+                  </a>
+                </div>
+              </Stack>
+            </Section>
+          </Grid>
+        </Section>
+
+        <Section id="approvals-control-bar" surface="card" inset="lg" spaceY="sm" className="scroll-mt-24">
           <SectionHeader
             eyebrow="0"
             heading="Sticky Control Bar"
@@ -658,9 +825,10 @@ export function ApprovalsContent() {
               </Button>
             </Row>
           </div>
+          <BackToTopLink />
         </Section>
 
-        <Section surface="card" inset="lg" spaceY="md">
+        <Section id="approvals-foundations" surface="card" inset="lg" spaceY="sm" className="scroll-mt-24">
           <SectionHeader
             eyebrow="1"
             heading="Foundations: Visual Spec"
@@ -825,9 +993,10 @@ export function ApprovalsContent() {
               </Grid>
             </Section>
           </Stack>
+          <BackToTopLink />
         </Section>
 
-        <Section surface="card" inset="lg" spaceY="md">
+        <Section id="approvals-icons" surface="card" inset="lg" spaceY="sm" className="scroll-mt-24">
           <SectionHeader
             eyebrow="2"
             heading="Icons"
@@ -859,9 +1028,10 @@ export function ApprovalsContent() {
               </Row>
             </PanelShell>
           </Grid>
+          <BackToTopLink />
         </Section>
 
-        <Section surface="card" inset="lg" spaceY="md">
+        <Section id="approvals-recipes" surface="card" inset="lg" spaceY="sm" className="scroll-mt-24">
           <SectionHeader
             eyebrow="3"
             heading="Structural Recipes"
@@ -890,7 +1060,7 @@ export function ApprovalsContent() {
                   <SectionHeader heading="Card / Compact" description="surface=card, inset=sm" />
                   <div className="text-caption">Compact drilldown content sample.</div>
                 </Section>
-                <Section surface="card" inset="lg" spaceY="md">
+                <Section surface="card" inset="lg" spaceY="sm">
                   <SectionHeader heading="Card / Comfortable" description="surface=card, inset=lg" />
                   <div className="text-caption">Comfortable drilldown content sample.</div>
                 </Section>
@@ -898,7 +1068,7 @@ export function ApprovalsContent() {
                   <SectionHeader heading="Muted / Compact" description="surface=muted, inset=sm" />
                   <div className="text-caption">Compact alternate surface sample.</div>
                 </Section>
-                <Section surface="muted" inset="lg" spaceY="md">
+                <Section surface="muted" inset="lg" spaceY="sm">
                   <SectionHeader heading="Muted / Comfortable" description="surface=muted, inset=lg" />
                   <div className="text-caption">Comfortable alternate surface sample.</div>
                 </Section>
@@ -951,9 +1121,10 @@ export function ApprovalsContent() {
               </PanelShell>
             </Grid>
           </Stack>
+          <BackToTopLink />
         </Section>
 
-        <Section surface="card" inset="lg" spaceY="md">
+        <Section id="approvals-controls" surface="card" inset="lg" spaceY="sm" className="scroll-mt-24">
           <SectionHeader
             eyebrow="4"
             heading="Canonical Controls: State Matrices"
@@ -1038,6 +1209,40 @@ export function ApprovalsContent() {
             </Grid>
 
             <Grid cols={2} gap="md">
+              <MatrixCell title="Toolbar" note="default density / with divider / compact" spec="Compound layout, role=toolbar">
+                <Stack space="sm">
+                  <Toolbar>
+                    <Toolbar.Group>
+                      <Button variant="primary">Primary</Button>
+                      <Button variant="secondary">Secondary</Button>
+                    </Toolbar.Group>
+                    <Toolbar.Spacer />
+                    <Toolbar.Actions>
+                      <Button variant="outline">Action</Button>
+                    </Toolbar.Actions>
+                  </Toolbar>
+                  <Toolbar density="comfortable">
+                    <Toolbar.Group>
+                      <Button variant="secondary">Left</Button>
+                    </Toolbar.Group>
+                    <Toolbar.Divider />
+                    <Toolbar.Group>
+                      <Button variant="secondary">Right</Button>
+                    </Toolbar.Group>
+                  </Toolbar>
+                  <Toolbar density="compact">
+                    <Toolbar.Group>
+                      <Button size="sm" variant="outline">Compact</Button>
+                    </Toolbar.Group>
+                  </Toolbar>
+                </Stack>
+              </MatrixCell>
+              <MatrixCell title="DrilldownSheet" note="controlled + compound slots" spec="Compound sheet with Title, Heading, StatCard, Alert, Placeholder">
+                <DrilldownSheetDemo />
+              </MatrixCell>
+            </Grid>
+
+            <Grid cols={2} gap="md">
               <MatrixCell title="Banner" note="info / success / warning / danger">
                 <Stack space="sm">
                   <Banner variant="info">
@@ -1091,9 +1296,10 @@ export function ApprovalsContent() {
               </MatrixCell>
             </Grid>
           </Stack>
+          <BackToTopLink />
         </Section>
 
-        <Section surface="card" inset="lg" spaceY="md">
+        <Section id="approvals-metrics-motion" surface="card" inset="lg" spaceY="sm" className="scroll-mt-24">
           <SectionHeader
             eyebrow="5"
             heading="Metric Tiles + Motion Governance"
@@ -1414,9 +1620,10 @@ export function ApprovalsContent() {
               </TableBody>
             </Table>
           </Section>
+          <BackToTopLink />
         </Section>
 
-        <Section surface="card" inset="lg" spaceY="md">
+        <Section id="approvals-glossary" surface="card" inset="lg" spaceY="sm" className="scroll-mt-24">
           <SectionHeader
             eyebrow="6"
             heading="Element Definitions Table (Glossary)"
@@ -1465,6 +1672,7 @@ export function ApprovalsContent() {
               </Stack>
             </PanelShell>
           </Grid>
+          <BackToTopLink />
         </Section>
       </Stack>
     </Container>

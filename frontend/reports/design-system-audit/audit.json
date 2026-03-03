@@ -1,0 +1,241 @@
+{
+  "meta": {
+    "generatedAt": "2025-01-XX",
+    "scope": ["Tables", "Icons", "Toolbars", "Buttons", "Drilldowns"],
+    "status": "REPORT_ONLY"
+  },
+  "summary": {
+    "overallCompliance": "MODERATE",
+    "complianceScore": 68,
+    "categories": {
+      "buttons": { "level": "MODERATE", "score": 75, "primaryIssue": "Alias variants should consolidate; pages mix class constants with canonical Button" },
+      "icons": { "level": "LOW", "score": 90, "primaryIssue": "Consistent h-4 w-4 sizing; missing dedicated IconButton component" },
+      "tables": { "level": "MODERATE", "score": 65, "primaryIssue": "Direct house-table-* classes bypass canonical Table component" },
+      "toolbars": { "level": "HIGH", "score": 30, "primaryIssue": "No canonical Toolbar primitive; ad-hoc patterns everywhere" },
+      "drilldowns": { "level": "MODERATE", "score": 70, "primaryIssue": "Well-structured house-drilldown-* classes but no primitive wrapper" }
+    }
+  },
+  "canonicalSources": {
+    "approvalsContent": "frontend/src/stories/design-system/approvals/ApprovalsContent.tsx",
+    "primitivesBarrel": "frontend/src/components/primitives/index.ts",
+    "uiBarrel": "frontend/src/components/ui/index.ts",
+    "patternsBarrel": "frontend/src/components/patterns/index.ts",
+    "tokenCss": "frontend/src/index.css",
+    "houseStyle": "frontend/src/lib/house-style.ts"
+  },
+  "driftScans": {
+    "legacyReexports": {
+      "count": 7,
+      "files": [
+        "frontend/src/components/primitives/BadgePrimitive.tsx",
+        "frontend/src/components/primitives/ButtonPrimitive.tsx",
+        "frontend/src/components/primitives/InputPrimitive.tsx",
+        "frontend/src/components/primitives/SelectPrimitive.tsx",
+        "frontend/src/components/primitives/TablePrimitive.tsx",
+        "frontend/src/components/primitives/TextareaPrimitive.tsx",
+        "frontend/src/components/primitives/TooltipPrimitive.tsx"
+      ]
+    },
+    "houseStyleUsage": {
+      "heavyUsageFiles": [
+        { "file": "frontend/src/pages/workspaces-page.tsx", "matches": 50 },
+        { "file": "frontend/src/pages/profile-publications-page.tsx", "matches": 30 },
+        { "file": "frontend/src/pages/profile-personal-details-page.tsx", "matches": 20 }
+      ]
+    },
+    "adHocSpacing": {
+      "pattern": "space-y-*, mt-*, mb-*, gap-*",
+      "count": 100,
+      "canonicalAlternative": "Stack/Row primitives with token-backed spacing"
+    },
+    "hexColorLiterals": {
+      "count": 10,
+      "location": "frontend/src/pages/auth-page.tsx",
+      "acceptable": true,
+      "reason": "Brand logo colors"
+    }
+  },
+  "categoryAudits": {
+    "buttons": {
+      "canonicalComponent": "frontend/src/components/ui/button.tsx",
+      "variants": ["primary", "secondary", "tertiary", "destructive", "default", "housePrimary", "house", "outline", "ghost"],
+      "aliasVariants": ["housePrimary", "house", "outline", "ghost"],
+      "deprecatedVariants": ["ghost"],
+      "features": ["isLoading", "loadingText", "data-ui attributes"],
+      "issues": [
+        { "type": "alias_duplication", "location": "button.variants.ts", "lines": [17, 20] },
+        { "type": "class_override", "location": "workspaces-page.tsx", "example": "HOUSE_PRIMARY_ACTION_BUTTON_CLASS" },
+        { "type": "alias_only", "component": "IconButton", "location": "ui/index.ts", "line": 3 }
+      ],
+      "pagesImportingCanonical": 11
+    },
+    "icons": {
+      "source": "lucide-react",
+      "approvedSizes": {
+        "14px": "h-3.5 w-3.5",
+        "16px": "h-4 w-4",
+        "20px": "h-5 w-5",
+        "24px": "h-6 w-6"
+      },
+      "defaultSize": "h-4 w-4",
+      "consistency": "HIGH",
+      "pagesImportingLucide": 15,
+      "issues": []
+    },
+    "tables": {
+      "canonicalComponent": "frontend/src/components/ui/table.tsx",
+      "dataAttributes": ["data-ui", "data-house-role"],
+      "houseStyleIntegration": {
+        "houseSurfaces": ["tableShell", "tableHead", "tableRow"],
+        "houseTypography": ["tableHead", "tableCell"]
+      },
+      "issues": [
+        { "type": "direct_class_usage", "location": "stories/__archive__/design-system/approved/Approved.stories.tsx", "line": 2812 },
+        { "type": "filter_bar_not_componentized", "location": "workspaces-page.tsx" },
+        { "type": "empty_state_inconsistency", "locations": ["various"] },
+        { "type": "missing_loading_skeleton", "note": "isLoading only in LegacyTablePrimitive" }
+      ]
+    },
+    "toolbars": {
+      "canonicalComponent": null,
+      "currentPattern": ".house-page-toolbar CSS class",
+      "cssDefinition": { "file": "frontend/src/index.css", "line": 786 },
+      "usageCount": 2,
+      "issues": [
+        { "type": "no_component", "severity": "HIGH" },
+        { "type": "ad_hoc_patterns", "locations": ["workspaces-page.tsx", "profile-publications-page.tsx"] },
+        { "type": "inconsistent_gap_values", "values": [2, 3, 4] }
+      ]
+    },
+    "drilldowns": {
+      "canonicalComponent": null,
+      "houseStyleApi": {
+        "sheet": "house-drilldown-sheet",
+        "sheetBody": "house-drilldown-sheet-body",
+        "titleBlock": "house-drilldown-title-block",
+        "headingBlock": "house-drilldown-heading-block",
+        "subheadingBlock": "house-drilldown-subheading-block",
+        "contentBlock": "house-drilldown-content-block",
+        "title": "house-drilldown-title",
+        "titleExpander": "house-drilldown-title-expander",
+        "overline": "house-drilldown-overline",
+        "sectionLabel": "house-drilldown-section-label",
+        "tabTrigger": "house-drilldown-tab-trigger",
+        "tabList": "house-drilldown-tab-list",
+        "placeholder": "house-drilldown-placeholder",
+        "alert": "house-drilldown-alert",
+        "microValue": "house-drilldown-micro-value",
+        "hint": "house-drilldown-hint",
+        "caption": "house-drilldown-caption",
+        "chip": "house-drilldown-chip",
+        "chipActive": "house-drilldown-chip-active",
+        "action": "house-drilldown-action",
+        "row": "house-drilldown-row",
+        "rowActive": "house-drilldown-row-active",
+        "progressTrack": "house-drilldown-progress-track",
+        "progressFill": "house-drilldown-progress-fill",
+        "statCard": "house-drilldown-stat-card",
+        "statTitle": "house-drilldown-stat-title",
+        "statValue": "house-drilldown-stat-value",
+        "valuePositive": "house-drilldown-value-positive",
+        "valueNegative": "house-drilldown-value-negative",
+        "statValueEmphasis": "house-drilldown-stat-value-emphasis"
+      },
+      "wrapperComponent": "Sheet from @/components/ui",
+      "heavyUsageFile": "frontend/src/pages/profile-publications-page.tsx",
+      "issues": [
+        { "type": "no_drilldown_sheet_component", "severity": "MEDIUM" },
+        { "type": "empty_state_css_only", "location": "index.css" },
+        { "type": "stat_cards_not_reusable", "severity": "LOW" }
+      ]
+    }
+  },
+  "crossCuttingGaps": {
+    "architectureAmbiguity": {
+      "description": "Two parallel systems coexist: canonical UI components and house-style.ts class layer",
+      "patterns": ["Canonical component only", "Canonical + class override", "Direct house-* class"],
+      "recommendation": "Define clear scope for house-* classes"
+    },
+    "missingDocumentation": {
+      "components": [
+        { "name": "Button", "hasStory": true, "hasApiDocs": true },
+        { "name": "Table", "hasStory": true, "hasApiDocs": "partial" },
+        { "name": "Toolbar", "hasStory": false, "hasApiDocs": false },
+        { "name": "DrilldownSheet", "hasStory": "partial", "hasApiDocs": false },
+        { "name": "IconButton", "hasStory": true, "hasApiDocs": false }
+      ]
+    },
+    "accessibilityGaps": [
+      { "pattern": "Icon buttons without aria-label", "severity": "MEDIUM" },
+      { "pattern": "Table loading state", "note": "No aria-busy or live region", "severity": "LOW" },
+      { "pattern": "Drilldown navigation", "note": "Tab roving not implemented", "severity": "LOW" }
+    ],
+    "tokenUsageConsistency": {
+      "spacing": { "canonical": "--space-*", "adHoc": "space-y-*, gap-*, mt-*" },
+      "colors": { "canonical": "hsl(var(--tone-*))", "drift": "minimal (brand colors only)" },
+      "radius": { "canonical": "--radius-*", "adHoc": "rounded-* (acceptable)" },
+      "motion": { "canonical": "duration-ui", "drift": "some raw transition values" }
+    }
+  },
+  "realignmentBlueprint": {
+    "priorityMatrix": [
+      { "priority": "P0", "item": "Consolidate Button variants", "effort": "LOW", "impact": "HIGH" },
+      { "priority": "P0", "item": "Create Toolbar primitive", "effort": "MEDIUM", "impact": "HIGH" },
+      { "priority": "P1", "item": "Create DrilldownSheet component", "effort": "MEDIUM", "impact": "MEDIUM" },
+      { "priority": "P1", "item": "Deprecate Legacy* re-exports", "effort": "HIGH", "impact": "MEDIUM" },
+      { "priority": "P2", "item": "Add loading/empty states to Table", "effort": "LOW", "impact": "MEDIUM" },
+      { "priority": "P2", "item": "Document icon sizing policy", "effort": "LOW", "impact": "LOW" }
+    ],
+    "migrationPhases": [
+      {
+        "phase": 1,
+        "name": "Foundation",
+        "duration": "Week 1",
+        "tasks": [
+          "Consolidate Button variant aliases",
+          "Create Toolbar component",
+          "Update Approvals story with new patterns"
+        ]
+      },
+      {
+        "phase": 2,
+        "name": "Composition",
+        "duration": "Week 2",
+        "tasks": [
+          "Create DrilldownSheet component",
+          "Create DrilldownStatCard component",
+          "Migrate profile-publications-page.tsx"
+        ]
+      },
+      {
+        "phase": 3,
+        "name": "Cleanup",
+        "duration": "Week 3-4",
+        "tasks": [
+          "Audit and remove HOUSE_* class constants from pages",
+          "Create component-level loading/empty states",
+          "Remove Legacy* re-exports"
+        ]
+      }
+    ],
+    "fileChangeImpact": [
+      { "file": "button.variants.ts", "change": "Remove alias variants" },
+      { "file": "ui/index.ts", "change": "Export new Toolbar, DrilldownSheet" },
+      { "file": "primitives/*.tsx", "change": "Remove Legacy* re-exports (7 files)" },
+      { "file": "workspaces-page.tsx", "change": "Replace HOUSE_* with component props" },
+      { "file": "profile-publications-page.tsx", "change": "Use DrilldownSheet component" }
+    ]
+  },
+  "beginnerNextActions": {
+    "quickWins": [
+      { "task": "Document icon sizes", "duration": "<1 hour", "location": "ApprovalsContent.tsx" },
+      { "task": "Create TOOLBAR_STANDARD.md", "duration": "<1 hour" },
+      { "task": "Add ESLint rule for deprecated variants", "duration": "<1 hour" }
+    ],
+    "firstComponentTask": {
+      "name": "Toolbar primitive",
+      "file": "frontend/src/components/primitives/Toolbar.tsx",
+      "subcomponents": ["Toolbar.Group", "Toolbar.Actions"]
+    }
+  }
+}

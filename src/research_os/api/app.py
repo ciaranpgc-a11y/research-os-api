@@ -1344,7 +1344,13 @@ def v1_auth_two_factor_disable(
 )
 def v1_auth_oauth_provider_statuses() -> AuthOAuthProviderStatusesResponse:
     payload = get_oauth_provider_statuses()
-    return AuthOAuthProviderStatusesResponse(**payload)
+    allowed = {"google", "microsoft"}
+    providers = [
+        item
+        for item in list(payload.get("providers") or [])
+        if str(item.get("provider") or "").strip().lower() in allowed
+    ]
+    return AuthOAuthProviderStatusesResponse(providers=providers)
 
 
 @app.get(
@@ -1355,11 +1361,14 @@ def v1_auth_oauth_provider_statuses() -> AuthOAuthProviderStatusesResponse:
 )
 def v1_auth_oauth_connect(
     request: Request,
-    provider: str = Query(default="orcid"),
+    provider: str = Query(default="google"),
 ) -> AuthOAuthConnectResponse | JSONResponse:
+    clean_provider = provider.strip().lower()
+    if clean_provider not in {"google", "microsoft"}:
+        return _build_bad_request_response("Unsupported OAuth provider.")
     try:
         payload = create_oauth_connect_url(
-            provider=provider,
+            provider=clean_provider,
             frontend_origin=_request_origin(request),
         )
         return AuthOAuthConnectResponse(**payload)

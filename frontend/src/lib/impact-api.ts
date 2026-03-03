@@ -699,7 +699,7 @@ export async function disableTwoFactor(input: {
   )
 }
 
-export async function fetchOAuthConnect(provider: 'orcid' | 'google' | 'microsoft'): Promise<AuthOAuthConnectPayload> {
+export async function fetchOAuthConnect(provider: 'google' | 'microsoft'): Promise<AuthOAuthConnectPayload> {
   return requestJson<AuthOAuthConnectPayload>(
     `${API_BASE_URL}/v1/auth/oauth/connect?provider=${encodeURIComponent(provider)}`,
     {
@@ -720,7 +720,7 @@ export async function fetchOAuthProviderStatuses(): Promise<AuthOAuthProviderSta
 }
 
 export async function completeOAuthCallback(input: {
-  provider: 'orcid' | 'google' | 'microsoft'
+  provider: 'google' | 'microsoft'
   state: string
   code: string
 }): Promise<AuthOAuthCallbackPayload> {

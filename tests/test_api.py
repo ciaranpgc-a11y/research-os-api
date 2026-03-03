@@ -5633,23 +5633,23 @@ def test_v1_auth_oauth_connect_and_callback_endpoints(monkeypatch, tmp_path) -> 
     monkeypatch.setattr(
         "research_os.api.app.create_oauth_connect_url",
         lambda provider, frontend_origin=None: {
-            "provider": "orcid",
+            "provider": "google",
             "state": "state-123",
-            "url": "https://orcid.org/oauth/authorize?state=state-123",
+            "url": "https://accounts.google.com/o/oauth2/v2/auth?state=state-123",
         },
     )
     monkeypatch.setattr(
         "research_os.api.app.complete_oauth_callback",
         lambda provider, state, code, frontend_origin=None: {
-            "provider": "orcid",
+            "provider": "google",
             "is_new_user": False,
             "user": {
                 "id": "user-1",
-                "email": "orcid-0000@orcid.local",
-                "name": "ORCID User",
+                "email": "oauth-user@example.com",
+                "name": "OAuth User",
                 "is_active": True,
                 "role": "user",
-                "orcid_id": "0000-0002-1825-0097",
+                "orcid_id": None,
                 "impact_last_computed_at": None,
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
@@ -5661,17 +5661,17 @@ def test_v1_auth_oauth_connect_and_callback_endpoints(monkeypatch, tmp_path) -> 
 
     with TestClient(app) as client:
         connect_response = client.get(
-            "/v1/auth/oauth/connect", params={"provider": "orcid"}
+            "/v1/auth/oauth/connect", params={"provider": "google"}
         )
         callback_response = client.post(
             "/v1/auth/oauth/callback",
-            json={"provider": "orcid", "state": "state-123", "code": "code-123"},
+            json={"provider": "google", "state": "state-123", "code": "code-123"},
         )
 
     assert connect_response.status_code == 200
-    assert connect_response.json()["provider"] == "orcid"
+    assert connect_response.json()["provider"] == "google"
     assert callback_response.status_code == 200
-    assert callback_response.json()["provider"] == "orcid"
+    assert callback_response.json()["provider"] == "google"
     assert callback_response.json()["session_token"] == "session-token-1"
 
 
@@ -5691,7 +5691,7 @@ def test_v1_auth_oauth_connect_unhandled_error_still_returns_cors_origin(
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get(
             "/v1/auth/oauth/connect",
-            params={"provider": "orcid"},
+            params={"provider": "google"},
             headers={"Origin": "https://app.axiomos.studio"},
         )
 
@@ -5700,6 +5700,19 @@ def test_v1_auth_oauth_connect_unhandled_error_still_returns_cors_origin(
         response.headers.get("access-control-allow-origin")
         == "https://app.axiomos.studio"
     )
+
+
+def test_v1_auth_oauth_connect_rejects_orcid_provider(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/v1/auth/oauth/connect",
+            params={"provider": "orcid"},
+        )
+
+    assert response.status_code == 400
+    assert "Unsupported OAuth provider." in response.json()["error"]["detail"]
 
 
 def test_v1_orcid_connect_callback_and_import(monkeypatch, tmp_path) -> None:

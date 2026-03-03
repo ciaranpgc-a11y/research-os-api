@@ -1014,13 +1014,13 @@ export type OrcidStatusPayload = {
 }
 
 export type AuthOAuthConnectPayload = {
-  provider: 'orcid' | 'google' | 'microsoft'
+  provider: 'google' | 'microsoft'
   state: string
   url: string
 }
 
 export type AuthOAuthProviderStatusItem = {
-  provider: 'orcid' | 'google' | 'microsoft'
+  provider: 'google' | 'microsoft'
   configured: boolean
   reason: string
 }
@@ -1030,7 +1030,7 @@ export type AuthOAuthProviderStatusesPayload = {
 }
 
 export type AuthOAuthCallbackPayload = {
-  provider: 'orcid' | 'google' | 'microsoft'
+  provider: 'google' | 'microsoft'
   is_new_user: boolean
   user: AuthUser
   session_token: string

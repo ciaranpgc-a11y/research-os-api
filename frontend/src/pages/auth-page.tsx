@@ -28,7 +28,7 @@ const ORCID_AUTO_SYNC_THROTTLE_STORAGE_KEY = 'aawe_orcid_auto_sync_last_at'
 const ORCID_AUTO_SYNC_THROTTLE_MS = 1000 * 60 * 15
 const TEST_ACCOUNT_EMAIL = String(import.meta.env.VITE_TEST_ACCOUNT_EMAIL || '').trim()
 const TEST_ACCOUNT_PASSWORD = String(import.meta.env.VITE_TEST_ACCOUNT_PASSWORD || '').trim()
-const SOCIAL_PROVIDERS = ['orcid', 'google', 'microsoft'] as const
+const SOCIAL_PROVIDERS = ['google', 'microsoft'] as const
 
 type AuthMode = 'signin' | 'register'
 type SocialProvider = (typeof SOCIAL_PROVIDERS)[number]
@@ -52,9 +52,6 @@ type OAuthErrorMessagePayload = {
 }
 
 function providerLabel(provider: SocialProvider): string {
-  if (provider === 'orcid') {
-    return 'ORCID'
-  }
   if (provider === 'google') {
     return 'Google'
   }
@@ -62,31 +59,6 @@ function providerLabel(provider: SocialProvider): string {
 }
 
 function ProviderIcon({ provider }: { provider: SocialProvider }) {
-  if (provider === 'orcid') {
-    return (
-      <span
-        aria-hidden
-        className="inline-flex h-[1.25rem] w-[1.25rem] items-center justify-center rounded-sm bg-transparent"
-      >
-        <svg viewBox="0 0 24 24" className="h-[1.05rem] w-[1.05rem]" aria-hidden>
-          <circle cx="12" cy="12" r="11" fill="#A6CE39" />
-          <text
-            x="12"
-            y="15.2"
-            textAnchor="middle"
-            fontSize="10.6"
-            fontWeight="700"
-            fontFamily="Arial, Helvetica, sans-serif"
-            letterSpacing="-0.25"
-            fill="#FFFFFF"
-          >
-            iD
-          </text>
-        </svg>
-      </span>
-    )
-  }
-
   if (provider === 'google') {
     return (
       <span
@@ -610,18 +582,13 @@ export function AuthPage() {
     }
     setLoading(true)
     setError('')
-    setStatus('')
-    clearOAuthTransientState()
-    try {
-      const payload = await fetchOAuthConnect(provider)
-      if (provider === 'orcid') {
-        setStatus('Redirecting to ORCID sign-in...')
-        window.location.assign(payload.url)
-        return
-      }
-      const popup = window.open(
-        payload.url,
-        `aawe-oauth-${provider}-${Date.now()}`,
+  setStatus('')
+  clearOAuthTransientState()
+  try {
+    const payload = await fetchOAuthConnect(provider)
+    const popup = window.open(
+      payload.url,
+      `aawe-oauth-${provider}-${Date.now()}`,
         'popup=yes,width=560,height=760,resizable=yes,scrollbars=yes',
       )
       if (!popup) {
@@ -1202,7 +1169,6 @@ export function AuthPage() {
     </div>
   )
 }
-
 
 
 

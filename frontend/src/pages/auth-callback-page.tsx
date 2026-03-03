@@ -7,10 +7,10 @@ import { PanelShell } from '@/components/patterns'
 import { setAuthSessionToken } from '@/lib/auth-session'
 import { completeOAuthCallback } from '@/lib/impact-api'
 
-type OAuthProvider = 'orcid' | 'google' | 'microsoft'
+type OAuthProvider = 'google' | 'microsoft'
 
 function isProvider(value: string): value is OAuthProvider {
-  return value === 'orcid' || value === 'google' || value === 'microsoft'
+  return value === 'google' || value === 'microsoft'
 }
 
 const processedCallbackKeys = new Set<string>()

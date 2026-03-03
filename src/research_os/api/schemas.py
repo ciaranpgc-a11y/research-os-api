@@ -1357,13 +1357,13 @@ class AuthTwoFactorDisableRequest(BaseModel):
 
 
 class AuthOAuthConnectResponse(BaseModel):
-    provider: Literal["orcid", "google", "microsoft"]
+    provider: Literal["google", "microsoft"]
     state: str
     url: str
 
 
 class AuthOAuthProviderStatusItemResponse(BaseModel):
-    provider: Literal["orcid", "google", "microsoft"]
+    provider: Literal["google", "microsoft"]
     configured: bool
     reason: str = ""
 
@@ -1373,13 +1373,13 @@ class AuthOAuthProviderStatusesResponse(BaseModel):
 
 
 class AuthOAuthCallbackRequest(BaseModel):
-    provider: Literal["orcid", "google", "microsoft"]
+    provider: Literal["google", "microsoft"]
     state: str
     code: str
 
 
 class AuthOAuthCallbackResponse(BaseModel):
-    provider: Literal["orcid", "google", "microsoft"]
+    provider: Literal["google", "microsoft"]
     is_new_user: bool = False
     user: AuthUserResponse
     session_token: str

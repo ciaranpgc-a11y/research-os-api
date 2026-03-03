@@ -319,6 +319,8 @@
     --marker-radius: 9999px;
     --marker-opacity: 0.92;
     --page-header-title-gap: var(--space-1);
+    --title-expander-indent: 0.2rem;
+    --drilldown-title-scale: 0.73;
     --left-nav-divider-height: 1.5px;
     --left-nav-divider-color: hsl(var(--tone-neutral-300) / 0.9);
     --left-nav-divider-margin: 0.5rem;
@@ -369,7 +371,7 @@
     --separator-drilldown-content-to-secondary-heading: var(--separator-drilldown-content-to-heading-block);
     --separator-drilldown-subheading-to-content: var(--separator-drilldown-heading-block-to-content);
     --separator-drilldown-content-to-subheading: var(--separator-drilldown-content-to-heading-block);
-    --drilldown-title-inline-align: 0rem;
+    --drilldown-title-inline-align: var(--title-expander-indent);
     --separator-left-panel-subheading-to-content: 0.25rem;
     --separator-left-panel-content-to-subheading: 0.5rem;
     --main-content-separator-title-expander-to-first-heading: var(--separator-main-title-expander-to-first-heading);
@@ -537,6 +539,7 @@
 
   [data-house-role="page-title-expander"] {
     margin: 0;
+    padding-inline-start: var(--title-expander-indent);
   }
 
   .house-title-expander {
@@ -544,6 +547,24 @@
     line-height: 1.5rem;
     font-weight: 400;
     color: hsl(var(--muted-foreground));
+    padding-inline-start: var(--title-expander-indent);
+  }
+
+  .house-drilldown-title-scaled {
+    font-size: calc(2.05rem * var(--drilldown-title-scale));
+    line-height: calc(2.3rem * var(--drilldown-title-scale));
+    letter-spacing: -0.02em;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+    margin: 0;
+  }
+
+  .house-drilldown-title-expander-scaled {
+    font-size: calc(1rem * var(--drilldown-title-scale));
+    line-height: calc(1.5rem * var(--drilldown-title-scale));
+    font-weight: 400;
+    color: hsl(var(--muted-foreground));
+    padding-inline-start: var(--title-expander-indent);
   }
 
   .house-section-title {
@@ -577,6 +598,7 @@
     gap: 0.5rem;
     padding-block: 0.375rem;
     padding-inline: 0;
+    margin-inline-start: calc(var(--marker-width-title) + var(--space-3) - var(--layout-section-anchor-inline));
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
@@ -1018,7 +1040,6 @@
   .house-drilldown-heading-block + .house-drilldown-heading-block-secondary,
   .house-drilldown-heading-block + .house-drilldown-subheading-block,
   .house-publications-drilldown-panel-no-pad > .house-drilldown-heading-block + .house-drilldown-heading-block-secondary,
-  .house-publications-drilldown-panel-no-pad > .house-drilldown-heading-block + .house-drilldown-subheading-block,
   .house-drilldown-content-block > .house-drilldown-heading-block-secondary + .house-drilldown-heading-block-secondary,
   .house-drilldown-content-block > .house-drilldown-subheading-block + .house-drilldown-subheading-block,
   .house-publications-drilldown-panel-no-pad > .house-drilldown-heading-block-secondary + .house-drilldown-heading-block-secondary,

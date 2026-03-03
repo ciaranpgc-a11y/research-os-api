@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
-import { PageHeader, Row } from '@/components/primitives'
+import { PageHeader, Row, Toolbar } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import {
   Button,
@@ -3079,7 +3079,7 @@ export function WorkspacesPage() {
               </Row>
 
               <section className={cn('rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}>
-                <div className="house-page-toolbar">
+                <Toolbar>
                   <Input
                     value={newWorkspaceName}
                     onChange={(event) => setNewWorkspaceName(event.target.value)}
@@ -3088,13 +3088,13 @@ export function WorkspacesPage() {
                   />
                   <Button
                     type="button"
+                    variant="primary"
                     onClick={onCreateWorkspace}
                     disabled={!canCreateWorkspace}
-                    className={cn(HOUSE_PRIMARY_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
                   >
                     Create workspace
                   </Button>
-                </div>
+                </Toolbar>
                 {!canCreateWorkspace ? (
                   <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{WORKSPACE_OWNER_REQUIRED_MESSAGE}</p>
                 ) : null}

@@ -3,7 +3,7 @@ import { Download, Eye, EyeOff, FileText, Hammer, Share2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui'
 import { Button } from '@/components/ui'
-import { Sheet, SheetContent } from '@/components/ui'
+import { DrilldownSheet } from '@/components/ui'
 import { readAccountSettings } from '@/lib/account-preferences'
 import { fetchPublicationMetricDetail } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
@@ -14,8 +14,6 @@ import type {
 } from '@/types/impact'
 
 import { dashboardTileStyles } from './dashboard-tile-styles'
-import { HouseDrilldownHeaderShell } from './HouseDrilldownHeaderShell'
-import { drilldownTabFlexGrow } from './house-drilldown-header-utils'
 import {
   publicationsHouseActions,
   publicationsHouseDividers,
@@ -371,11 +369,8 @@ const HOUSE_SURFACE_BANNER_WARNING_CLASS = publicationsHouseSurfaces.bannerWarni
 const HOUSE_SURFACE_METRIC_PILL_CLASS = publicationsHouseSurfaces.metricPill
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS = publicationsHouseSurfaces.metricPillPublications
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS = publicationsHouseSurfaces.metricPillPublicationsRegular
-const HOUSE_SURFACE_LEFT_BORDER_CLASS = publicationsHouseSurfaces.leftBorder
-const HOUSE_SURFACE_LEFT_BORDER_PUBLICATIONS_CLASS = publicationsHouseSurfaces.leftBorderPublications
 const HOUSE_DIVIDER_BORDER_SOFT_CLASS = publicationsHouseDividers.borderSoft
 const HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS = publicationsHouseActions.sectionToolButton
-const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_DRILLDOWN_PLACEHOLDER_CLASS = publicationsHouseDrilldown.placeholder
 const HOUSE_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
 const HOUSE_DRILLDOWN_HINT_CLASS = publicationsHouseDrilldown.hint
@@ -387,8 +382,6 @@ const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS = publicationsHouseDrill
 const HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = publicationsHouseDrilldown.summaryStatTitle
 const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS = publicationsHouseDrilldown.summaryStatCard
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS = publicationsHouseDrilldown.summaryStatValueWrap
-const HOUSE_DRILLDOWN_TITLE_CLASS = publicationsHouseDrilldown.title
-const HOUSE_DRILLDOWN_TITLE_EXPANDER_CLASS = publicationsHouseDrilldown.titleExpander
 const HOUSE_DRILLDOWN_OVERLINE_CLASS = publicationsHouseDrilldown.overline
 const HOUSE_DRILLDOWN_SECTION_LABEL_CLASS = publicationsHouseDrilldown.sectionLabel
 const HOUSE_DRILLDOWN_NOTE_CLASS = publicationsHouseDrilldown.note
@@ -402,7 +395,6 @@ const HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS = publicationsHouseDrilldown.summ
 const HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS = publicationsHouseDrilldown.chartControlsRow
 const HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS = publicationsHouseDrilldown.chartControlsLeft
 const HOUSE_DRILLDOWN_CHART_META_CLASS = publicationsHouseDrilldown.chartMeta
-const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = publicationsHouseDrilldown.sheetBody
 const HOUSE_CHART_BAR_ACCENT_CLASS = publicationsHouseCharts.barAccent
 const HOUSE_CHART_BAR_POSITIVE_CLASS = publicationsHouseCharts.barPositive
 const HOUSE_CHART_BAR_WARNING_CLASS = publicationsHouseCharts.barWarning
@@ -6973,50 +6965,50 @@ export function PublicationsTopStrip({
         </CardContent>
       </Card>
 
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
-          {activeTile ? (
-            <div className={cn(HOUSE_DRILLDOWN_SHEET_BODY_CLASS, 'house-drilldown-panel-no-pad')}>
-              <div className="house-drilldown-flow-shell">
-                <HouseDrilldownHeaderShell
-                  title={<p className={HOUSE_DRILLDOWN_TITLE_CLASS}>{activeDrilldownTitle}</p>}
-                  subtitle={showActiveTileDefinition ? <p className={HOUSE_DRILLDOWN_TITLE_EXPANDER_CLASS}>{activeDrilldownExpanderText}</p> : undefined}
-                  alert={detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : undefined}
-                  titleBlockClassName={cn(HOUSE_SURFACE_LEFT_BORDER_CLASS, HOUSE_SURFACE_LEFT_BORDER_PUBLICATIONS_CLASS)}
-                  navAriaLabel="Metric drilldown sections"
-                  tabs={DRILLDOWN_TABS.map((tab) => ({ id: tab.value, label: tab.label }))}
+      <DrilldownSheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        {activeTile ? (
+          <>
+            <DrilldownSheet.Header
+              title={activeDrilldownTitle}
+              subtitle={showActiveTileDefinition ? activeDrilldownExpanderText : undefined}
+              variant="publications"
+              alert={detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : undefined}
+            >
+              <DrilldownSheet.Tabs
+                activeTab={activeDrilldownTab}
+                onTabChange={(tabId) => setActiveDrilldownTab(tabId as DrilldownTab)}
+                className="house-publications-drilldown-tabs"
+                aria-label="Metric drilldown sections"
+                tabIdPrefix="drilldown-tab-"
+                panelIdPrefix="drilldown-panel-"
+              >
+                {DRILLDOWN_TABS.map((tab) => (
+                  <DrilldownSheet.Tab key={tab.value} id={tab.value}>
+                    {tab.label}
+                  </DrilldownSheet.Tab>
+                ))}
+              </DrilldownSheet.Tabs>
+            </DrilldownSheet.Header>
+
+            <DrilldownSheet.TabPanel id={activeDrilldownTab} isActive={true}>
+              {activeTile.key === 'this_year_vs_last' ? (
+                <TotalPublicationsDrilldownWorkspace
+                  tile={activeTile}
                   activeTab={activeDrilldownTab}
-                  onTabChange={(tabId) => setActiveDrilldownTab(tabId as DrilldownTab)}
-                  panelIdPrefix="drilldown-panel-"
-                  tabIdPrefix="drilldown-tab-"
-                  tabFlexGrow={drilldownTabFlexGrow}
+                  onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
                 />
-                <div
-                  className="house-drilldown-content-block house-drilldown-tab-panel"
-                  id={`drilldown-panel-${activeDrilldownTab}`}
-                  role="tabpanel"
-                  aria-labelledby={`drilldown-tab-${activeDrilldownTab}`}
-                >
-                  {activeTile.key === 'this_year_vs_last' ? (
-                    <TotalPublicationsDrilldownWorkspace
-                      tile={activeTile}
-                      activeTab={activeDrilldownTab}
-                      onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
-                    />
-                  ) : (
-                    <GenericMetricDrilldownWorkspace
-                      tile={activeTile}
-                      activeTab={activeDrilldownTab}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground">Select a metric tile to inspect its drilldown.</div>
-          )}
-        </SheetContent>
-      </Sheet>
+              ) : (
+                <GenericMetricDrilldownWorkspace
+                  tile={activeTile}
+                  activeTab={activeDrilldownTab}
+                />
+              )}
+            </DrilldownSheet.TabPanel>
+          </>
+        ) : (
+          <div className="text-sm text-muted-foreground">Select a metric tile to inspect its drilldown.</div>
+        )}
+      </DrilldownSheet>
     </>
   )
 }
