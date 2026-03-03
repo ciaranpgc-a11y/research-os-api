@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent 
 import { ChevronRight, GripVertical, Loader2, Plus, ShieldCheck, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { PageHeader, Row, Stack } from '@/components/primitives'
+import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
@@ -125,7 +125,6 @@ const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
 const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-300)/0.92)] bg-[hsl(var(--tone-accent-50))] px-3.5 text-[hsl(var(--tone-accent-800))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-400)/0.94)] hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]`
 const HOUSE_ACTION_BUTTON_PRIMARY_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-700))] bg-[hsl(var(--tone-accent-700))] px-3.5 text-[hsl(var(--tone-neutral-50))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-800))] hover:text-[hsl(var(--tone-neutral-50))]`
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
-const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_PROFILE_PHOTO_PANEL_CLASS = 'sm:col-span-2 flex items-start gap-3'
 const HOUSE_PROFILE_PHOTO_EDITOR_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] p-2.5'
 const HOUSE_ACCOUNT_PANEL_CLASS = 'space-y-2.5'
@@ -2026,28 +2025,29 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         />
       </Row>
 
-      <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3')}>
-        <div className="house-main-heading-block">
-          <h2 className={HOUSE_SECTION_TITLE_CLASS}>
-            Profile
-          </h2>
-          <div className="flex flex-wrap items-center gap-2 self-center">
-            {badges.map((badge) => (
-              <span
-                key={badge.id}
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${badgeToneClass(badge.tone)} ${
-                  badge.variant === 'admin'
-                    ? 'ring-1 ring-[hsl(var(--tone-warning-300)/0.75)]'
-                    : ''
-                }`}
-                title={badge.detail}
-              >
-                {badge.variant === 'admin' ? <ShieldCheck className="h-3.5 w-3.5" /> : null}
-                {badge.label}
-              </span>
-            ))}
-          </div>
-        </div>
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+        <SectionHeader
+          heading="Profile"
+          className="house-section-header-marker-aligned"
+          actions={(
+            <div className="flex flex-wrap items-center gap-2">
+              {badges.map((badge) => (
+                <span
+                  key={badge.id}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${badgeToneClass(badge.tone)} ${
+                    badge.variant === 'admin'
+                      ? 'ring-1 ring-[hsl(var(--tone-warning-300)/0.75)]'
+                      : ''
+                  }`}
+                  title={badge.detail}
+                >
+                  {badge.variant === 'admin' ? <ShieldCheck className="h-3.5 w-3.5" /> : null}
+                  {badge.label}
+                </span>
+              ))}
+            </div>
+          )}
+        />
         <div className="space-y-3 text-sm">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className={HOUSE_PROFILE_PHOTO_PANEL_CLASS}>
@@ -2313,14 +2313,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
           </div>
         </div>
-      </section>
+      </Section>
 
-      <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3')}>
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className={HOUSE_SECTION_TITLE_CLASS}>
-              Affiliation
-            </h2>
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+        <SectionHeader
+          heading="Affiliation"
+          className="house-section-header-marker-aligned"
+          actions={(
             <Button
               type="button"
               size="sm"
@@ -2331,8 +2330,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               <Plus className="mr-1.5 h-4 w-4" />
               Add new
             </Button>
-          </div>
-        </div>
+          )}
+        />
         <div className="space-y-3 text-sm">
 
           <div
@@ -2646,14 +2645,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             </div>
           ) : null}
         </div>
-      </section>
+      </Section>
 
-      <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3')}>
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className={HOUSE_SECTION_TITLE_CLASS}>
-              Publication affiliation
-            </h2>
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+        <SectionHeader
+          heading="Publication affiliation"
+          className="house-section-header-marker-aligned"
+          actions={(
             <Button
               type="button"
               variant="secondary"
@@ -2664,8 +2662,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               <Plus className="mr-1.5 h-4 w-4" />
               {showPublicationAffiliationComposer ? 'Hide add form' : 'Add new'}
             </Button>
-          </div>
-        </div>
+          )}
+        />
         <div className="space-y-3 text-sm">
 
           {showPublicationAffiliationComposer ? (
@@ -2795,9 +2793,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             <p className="text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
           ) : null}
         </div>
-      </section>
+      </Section>
 
-      <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-2')}>
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="sm">
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -2824,7 +2822,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         ) : null}
 
         {loading ? <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Loading personal details...</p> : null}
-      </div>
+      </Section>
     </Stack>
   )
 }

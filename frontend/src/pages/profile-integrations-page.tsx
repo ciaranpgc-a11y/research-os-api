@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Unplug } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import { PageHeader, Row, Stack } from '@/components/primitives'
+import { PageHeader, Row, Section, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { houseLayout } from '@/lib/house-style'
@@ -809,7 +809,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         />
       </Row>
 
-      <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="space-y-3 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex w-full flex-wrap items-start justify-between gap-3">
@@ -995,7 +995,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
           ) : null}
         </CardContent>
       </Card>
-      </div>
+      </Section>
 
       {confirmDisconnectOpen ? (
         <div

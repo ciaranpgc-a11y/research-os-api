@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { PageHeader, Row, Stack } from '@/components/primitives'
+import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { Button, Input } from '@/components/ui'
 import { getSectionMarkerTone } from '@/lib/section-tone'
-import { houseLayout, houseTypography } from '@/lib/house-style'
+import { houseLayout } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import { deleteMe, fetchMe, updateMe } from '@/lib/impact-api'
@@ -14,16 +14,16 @@ import { PageFrame } from '@/pages/page-frame'
 import type { AuthUser } from '@/types/impact'
 
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
-const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
-const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
 
 const ACCOUNT_CACHE_KEYS = [
   'aawe_integrations_user_cache',
   'aawe_integrations_orcid_status_cache',
   'aawe_profile_prefetch_last_at',
+  'aawe_profile_collab_prefetch_last_at',
 ]
 
 const ACCOUNT_CACHE_PREFIXES = [
+  'aawe_collaboration_page_cache_v1:',
   'aawe_profile_personal_details:',
   'aawe_orcid_sync_summary:',
   'aawe_orcid_active_sync_job:',
@@ -186,13 +186,12 @@ export function ProfileManageAccountPage() {
           />
         </Row>
 
-        <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3')}>
-          <div className="house-main-heading-block">
-            <h2 className={HOUSE_SECTION_TITLE_CLASS}>Change password</h2>
-            <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
-              Use a strong password with uppercase, lowercase, and numeric characters.
-            </p>
-          </div>
+        <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+          <SectionHeader
+            heading="Change password"
+            description="Use a strong password with uppercase, lowercase, and numeric characters."
+            className="house-section-header-marker-aligned"
+          />
           <div className="grid gap-3 md:max-w-xl md:grid-cols-2">
             <label data-house-role="field-group" className="space-y-1 md:col-span-2">
               <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">New password</span>
@@ -235,15 +234,19 @@ export function ProfileManageAccountPage() {
               {passwordError}
             </div>
           ) : null}
-        </section>
+        </Section>
 
-        <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3 rounded-lg border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] p-4')}>
-          <div className="house-main-heading-block">
-            <h2 className={cn(HOUSE_SECTION_TITLE_CLASS, 'text-[hsl(var(--tone-danger-800))]')}>Delete account</h2>
-            <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
-              This permanently removes your sign-in and profile records. This action cannot be undone.
-            </p>
-          </div>
+        <Section
+          className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'rounded-lg border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))]')}
+          surface="transparent"
+          inset="md"
+          spaceY="md"
+        >
+          <SectionHeader
+            heading="Delete account"
+            description="This permanently removes your sign-in and profile records. This action cannot be undone."
+            className="house-section-header-marker-aligned"
+          />
           <p data-house-role="body-text" className="m-0 text-body-secondary text-[hsl(var(--muted-foreground))]">
             Account email: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{user?.email || 'Not available'}</span>
           </p>
@@ -274,7 +277,7 @@ export function ProfileManageAccountPage() {
               {deleteError}
             </div>
           ) : null}
-        </section>
+        </Section>
       </Stack>
     </PageFrame>
   )

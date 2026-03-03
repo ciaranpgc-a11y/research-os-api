@@ -4,6 +4,8 @@ import { Download, Eye, EyeOff, FileText, Hammer, Share2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui'
 import { Button } from '@/components/ui'
 import { DrilldownSheet } from '@/components/ui'
+import { SectionTools } from '@/components/patterns'
+import { Section, SectionHeader } from '@/components/primitives'
 import { readAccountSettings } from '@/lib/account-preferences'
 import { fetchPublicationMetricDetail } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
@@ -330,7 +332,6 @@ const PUBLICATION_DISPLAY_MODE_OPTIONS: Array<{ value: PublicationCategoryDispla
 ]
 const PUBLICATION_INSIGHTS_TITLE = 'Publication insights'
 const PUBLICATION_INSIGHTS_LABEL = 'publication insights'
-const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
 const HOUSE_METRIC_SUBTITLE_CLASS = publicationsHouseHeadings.metricSubtitle
 const HOUSE_METRIC_DETAIL_CLASS = publicationsHouseHeadings.metricDetail
@@ -611,50 +612,68 @@ function PublicationTrendsVisualToggle({
   value: PublicationTrendsVisualMode
   onChange: (mode: PublicationTrendsVisualMode) => void
 }) {
+  const activeVisualModeIndex = PUBLICATION_TRENDS_VISUAL_OPTIONS.findIndex((option) => option.value === value)
+
   return (
-    <div className="inline-flex items-center gap-1 rounded-md border border-border bg-background p-1" data-stop-tile-open="true">
-      {PUBLICATION_TRENDS_VISUAL_OPTIONS.map((option) => {
-        const isActive = value === option.value
-        return (
-          <button
-            key={`pub-trends-visual-${option.value}`}
-            type="button"
-            data-stop-tile-open="true"
-            aria-label={option.label}
-            aria-pressed={isActive}
-            className={cn(
-              'inline-flex h-7 w-7 items-center justify-center rounded-md border text-[hsl(var(--tone-neutral-700))] transition-colors',
-              isActive
-                ? 'border-border bg-accent text-foreground'
-                : 'border-transparent text-muted-foreground hover:bg-accent/60',
-            )}
-            onClick={(event) => {
-              event.stopPropagation()
-              if (isActive) {
-                return
-              }
-              onChange(option.value)
-            }}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            {option.value === 'bars' ? (
-              <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5 fill-current">
-                <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
-                <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
-                <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
-                <polyline points="2,11 6,8 9,9 14,4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="2" cy="11" r="1.1" fill="currentColor" />
-                <circle cx="6" cy="8" r="1.1" fill="currentColor" />
-                <circle cx="9" cy="9" r="1.1" fill="currentColor" />
-                <circle cx="14" cy="4" r="1.1" fill="currentColor" />
-              </svg>
-            )}
-          </button>
-        )
-      })}
+    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+      <div
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        data-stop-tile-open="true"
+        data-ui="publications-trends-visual-toggle"
+        data-house-role="chart-toggle"
+        style={{ width: '5.25rem' }}
+      >
+        <span
+          className={HOUSE_TOGGLE_THUMB_CLASS}
+          style={buildTileToggleThumbStyle(activeVisualModeIndex, PUBLICATION_TRENDS_VISUAL_OPTIONS.length, false)}
+          aria-hidden="true"
+        />
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'bars' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'bars'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('bars')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" className={cn(HOUSE_TOGGLE_CHART_BAR_CLASS, 'h-3.5 w-3.5 fill-current')}>
+            <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
+            <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
+            <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'line' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'line'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('line')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
+            <polyline
+              points="2,11 6,8 9,9 14,4"
+              fill="none"
+              className="house-toggle-chart-line"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              data-expanded="true"
+            />
+            <circle cx="2" cy="11" r="1.1" fill="currentColor" />
+            <circle cx="6" cy="8" r="1.1" fill="currentColor" />
+            <circle cx="9" cy="9" r="1.1" fill="currentColor" />
+            <circle cx="14" cy="4" r="1.1" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
     </div>
   )
 }
@@ -1244,6 +1263,40 @@ function parsePublicationDateToMs(value: unknown): number | null {
   }
   const parsedIsoMonth = parseIsoMonthStart(normalized)
   return parsedIsoMonth ? parsedIsoMonth.getTime() : null
+}
+
+function getSpanMonths(startMs: number, endMs: number): number {
+  const start = new Date(startMs)
+  const end = new Date(endMs)
+  const startIndex = (start.getUTCFullYear() * 12) + start.getUTCMonth()
+  const endIndex = (end.getUTCFullYear() * 12) + end.getUTCMonth()
+  return Math.max(0, endIndex - startIndex)
+}
+
+function buildLineTicksFromRange(startMs: number, endMs: number, mode: PublicationsWindowMode): PublicationLineAxisTick[] {
+  const spanMonths = getSpanMonths(startMs, endMs)
+  const spanYears = spanMonths / 12
+  const tickCount = spanYears <= 5
+    ? 5
+    : spanYears <= 12
+      ? 4
+      : spanYears <= 25
+        ? 4
+        : 3
+  const count = Math.max(2, tickCount)
+  const spanMs = Math.max(1, endMs - startMs)
+  const showMonth = spanMonths <= 18 || mode === '1y'
+  return Array.from({ length: count }, (_, index) => {
+    const position = count === 1 ? 0 : index / (count - 1)
+    const timeMs = Math.round(startMs + (spanMs * position))
+    const date = new Date(timeMs)
+    return {
+      key: `line-axis-${mode}-${index}`,
+      label: showMonth ? MONTH_SHORT[date.getUTCMonth()] : String(date.getUTCFullYear()),
+      subLabel: showMonth ? String(date.getUTCFullYear()) : undefined,
+      leftPct: position * 100,
+    }
+  })
 }
 
 function buildRollingWindowLabel(monthLabels: string[], endYear: number): string | null {
@@ -2627,17 +2680,6 @@ export function PublicationsPerYearChart({
     : resolveLineBarsForWindowMode(effectiveWindowMode)
   const lineUsesMonthlyTimeline = activeLineWindowBars.bars.length > 0
     && activeLineWindowBars.bars.every((bar) => Number.isFinite(bar.monthStartMs ?? Number.NaN))
-  const publicationTimelineSource = String(chartData.publication_month_source || '').trim()
-    || (lineUsesMonthlyTimeline ? 'lifetime_monthly' : 'yearly_fallback')
-  const publicationTimelineExactCount = Number.isFinite(Number(chartData.publication_month_exact_count))
-    ? Math.max(0, Math.round(Number(chartData.publication_month_exact_count)))
-    : 0
-  const publicationTimelineFallbackCount = Number.isFinite(Number(chartData.publication_month_fallback_count))
-    ? Math.max(0, Math.round(Number(chartData.publication_month_fallback_count)))
-    : 0
-  const publicationTimelineDebugText = tile.key === 'this_year_vs_last'
-    ? `Source: ${publicationTimelineSource} (exact ${formatInt(publicationTimelineExactCount)} / fallback ${formatInt(publicationTimelineFallbackCount)})`
-    : null
   const usingMonthlyTimelineForMode = effectiveWindowMode === '1y' || (effectiveVisualMode === 'line' && lineUsesMonthlyTimeline)
 
   const activeWindowBars = isCompactTileMode
@@ -2661,11 +2703,63 @@ export function PublicationsPerYearChart({
     })()
     : null
 
+  const lineEventTimes = useMemo(
+    () =>
+      toStringArray(chartData.publication_event_dates)
+        .map((item) => parsePublicationDateToMs(item))
+        .filter((value): value is number => Number.isFinite(value))
+        .sort((left, right) => left - right),
+    [chartData.publication_event_dates],
+  )
+  const buildLineWindowRange = useCallback((mode: PublicationsWindowMode) => {
+    if (!lineEventTimes.length) {
+      return {
+        startMs: null as number | null,
+        endMs: null as number | null,
+        events: [] as number[],
+      }
+    }
+    const now = new Date()
+    const lastCompleteMonthEndExclusiveMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+    const monthCount = mode === '1y'
+      ? 12
+      : mode === '3y'
+        ? 36
+        : mode === '5y'
+          ? 60
+          : null
+    if (monthCount === null) {
+      const firstEvent = new Date(lineEventTimes[0])
+      const lastEvent = new Date(lineEventTimes[lineEventTimes.length - 1])
+      const startMs = Date.UTC(firstEvent.getUTCFullYear(), firstEvent.getUTCMonth(), 1)
+      const endMs = Date.UTC(lastEvent.getUTCFullYear(), lastEvent.getUTCMonth() + 1, 1)
+      return {
+        startMs,
+        endMs,
+        events: lineEventTimes.slice(),
+      }
+    }
+    const windowStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthCount, 1)
+    const events = lineEventTimes.filter((timeMs) => timeMs >= windowStartMs && timeMs < lastCompleteMonthEndExclusiveMs)
+    return {
+      startMs: windowStartMs,
+      endMs: lastCompleteMonthEndExclusiveMs,
+      events,
+    }
+  }, [lineEventTimes])
+  const lineWindowRange = useMemo(
+    () => buildLineWindowRange(effectiveWindowMode),
+    [buildLineWindowRange, effectiveWindowMode],
+  )
+  const lineEventCountWindow = lineWindowRange.events.length
+
   const animationKey = useMemo(
     () => `${effectiveWindowMode}|${activeBucketSize}|${activeBars.map((bar) => `${bar.key}-${bar.value}-${bar.current ? 1 : 0}`).join('|')}`,
     [activeBars, activeBucketSize, effectiveWindowMode],
   )
-  const hasBars = hasValidSeries && historyBars.length > 0 && activeBars.length > 0
+  const hasBars = effectiveVisualMode === 'line'
+    ? lineEventCountWindow > 0
+    : hasValidSeries && historyBars.length > 0 && activeBars.length > 0
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
   const barTransitionDuration = tileChartDurationVar(isEntryCycle)
   const axisDurationMs = getAxisAnimationDuration(isEntryCycle ? 'entry' : 'toggle')
@@ -2689,7 +2783,7 @@ export function PublicationsPerYearChart({
     setHoveredIndex(null)
   }, [animationKey])
 
-  const valuesForScale = effectiveVisualMode === 'line' ? renderedCumulativeValuesTarget : renderedValuesTarget
+  const valuesForScale = effectiveVisualMode === 'line' ? [lineEventCountWindow] : renderedValuesTarget
   const maxValue = Math.max(
     1,
     ...valuesForScale,
@@ -2699,9 +2793,7 @@ export function PublicationsPerYearChart({
   const maxWindowValueBars = Math.max(maxYearlyValue, maxMonthlyValue)
   const maxWindowValueLine = Math.max(
     1,
-    ...PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-      resolveLineBarsForWindowMode(option.value).bars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
-    )),
+    ...PUBLICATIONS_WINDOW_OPTIONS.map((option) => buildLineWindowRange(option.value).events.length),
   )
   const maxWindowValue = effectiveVisualMode === 'line' ? maxWindowValueLine : maxWindowValueBars
   const maxAnimatedDisplayValue = Math.max(1, Math.max(maxWindowValue, maxValue) * 1.5)
@@ -2726,10 +2818,24 @@ export function PublicationsPerYearChart({
   const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
   const renderedMeanValue = Math.max(0, meanValue)
   const barHeightAxisMax = Math.max(1, axisMax)
-  const yAxisTickRatios = targetAxisScale
+  const rawYAxisTickRatios = targetAxisScale
     ? targetAxisScale.ticks.map((tickValue) => (targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax))
     : [0, 0.25, 0.5, 0.75, 1]
-  const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * axisMax)
+  const rawYAxisTickValues = rawYAxisTickRatios.map((ratio) => ratio * axisMax)
+  const yAxisTickValues = useMemo(() => {
+    if (effectiveVisualMode !== 'line') {
+      return rawYAxisTickValues
+    }
+    const hasZero = rawYAxisTickValues.some((value) => Math.abs(value) <= 1e-9)
+    return hasZero ? rawYAxisTickValues : [0, ...rawYAxisTickValues]
+  }, [effectiveVisualMode, rawYAxisTickValues])
+  const yAxisTickRatios = useMemo(() => {
+    if (effectiveVisualMode !== 'line') {
+      return rawYAxisTickRatios
+    }
+    const hasZero = rawYAxisTickRatios.some((ratio) => Math.abs(ratio) <= 1e-9)
+    return hasZero ? rawYAxisTickRatios : [0, ...rawYAxisTickRatios]
+  }, [effectiveVisualMode, rawYAxisTickRatios])
   const hideYearTickTabs = false
   const showXAxisTickTabs = !hideYearTickTabs
   const buildLineModeTicksForWindow = useCallback((mode: PublicationsWindowMode): PublicationLineAxisTick[] => {
@@ -2791,10 +2897,6 @@ export function PublicationsPerYearChart({
       }
     })
   }, [historyBars, resolveLineBarsForWindowMode])
-  const lineModeXAxisTicks = useMemo(
-    () => (effectiveVisualMode === 'line' ? buildLineModeTicksForWindow(effectiveWindowMode) : []),
-    [buildLineModeTicksForWindow, effectiveVisualMode, effectiveWindowMode],
-  )
   const activePeriodRangeLabel = activeWindowBars.rangeLabel
   const resolveXAxisTitleForWindowMode = (
     mode: PublicationsWindowMode,
@@ -2940,10 +3042,10 @@ export function PublicationsPerYearChart({
   const rightMetaText = periodHintText
   const rightMetaOpaque = periodHintVisible
   const controlsRightVisible = rightMetaVisible || showVisualModeToggle
-  const lineSeriesPoints = useMemo(() => {
+  const lineSeriesModel = useMemo(() => {
     const clampPct = (value: number) => Math.max(0, Math.min(100, value))
     if (effectiveVisualMode !== 'line') {
-      return renderBars.map((bar, index) => {
+      const points = renderBars.map((bar, index) => {
         const rawAnimatedValue = renderedCumulativeValuesAnimated[index]
         const fallbackValue = renderedCumulativeValuesTarget[index] ?? 0
         const finiteAnimatedValue = Number.isFinite(rawAnimatedValue) ? rawAnimatedValue : fallbackValue
@@ -2953,224 +3055,110 @@ export function PublicationsPerYearChart({
           xPct: (index * slotMetrics.slotStepPct) + (slotMetrics.slotWidthPct / 2),
           yPct: clampPct((animatedValue / Math.max(1, barHeightAxisMax)) * 100),
           value: animatedValue,
+          timeMs: null as number | null,
         }
       })
-    }
-
-    const now = new Date()
-    const lastCompleteMonthEndExclusiveMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
-    const monthWindowSize = effectiveWindowMode === '1y'
-      ? 12
-      : effectiveWindowMode === '3y'
-        ? 36
-        : effectiveWindowMode === '5y'
-          ? 60
-          : null
-
-    const chartEventTimes = toStringArray(chartData.publication_event_dates)
-      .map((item) => parsePublicationDateToMs(item))
-      .filter((value): value is number => Number.isFinite(value))
-
-    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
-    const drilldownPublications = Array.isArray(drilldown.publications) ? drilldown.publications : []
-    const drilldownEventTimes = drilldownPublications
-      .map((item) => {
-        if (!item || typeof item !== 'object') {
-          return null
-        }
-        const row = item as Record<string, unknown>
-        const publicationDateMs = parsePublicationDateToMs(row.publication_date)
-          ?? parsePublicationDateToMs(row.publication_month_start)
-        if (publicationDateMs !== null) {
-          return publicationDateMs
-        }
-        const year = Number(row.year)
-        if (Number.isFinite(year) && year >= 1900 && year <= 2100) {
-          return Date.UTC(Math.round(year), 0, 1)
-        }
-        return null
-      })
-      .filter((value): value is number => value !== null && Number.isFinite(value))
-
-    const monthlyLifetimeValues = toNumberArray(chartData.monthly_values_lifetime)
-      .map((value) => Math.max(0, Math.round(value)))
-    const monthlyLifetimeLabels = toStringArray(chartData.month_labels_lifetime)
-    const lifetimeMonthStartBase = parseIsoMonthStart(String(chartData.lifetime_month_start || ''))
-    const monthlyExpandedEventTimes: number[] = []
-    if (monthlyLifetimeValues.length > 0) {
-      monthlyLifetimeValues.forEach((count, index) => {
-        const parsedMonthStart = parseIsoMonthStart(monthlyLifetimeLabels[index] || '')
-        const fallbackMonthStart = lifetimeMonthStartBase
-          ? new Date(Date.UTC(lifetimeMonthStartBase.getUTCFullYear(), lifetimeMonthStartBase.getUTCMonth() + index, 1))
-          : null
-        const monthStart = parsedMonthStart || fallbackMonthStart
-        if (!(monthStart instanceof Date) || Number.isNaN(monthStart.getTime())) {
-          return
-        }
-        const monthStartMs = Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1)
-        const monthEndMs = Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1)
-        const safeCount = Math.max(0, Math.round(count))
-        if (safeCount <= 0) {
-          return
-        }
-        const spanMs = Math.max(1, monthEndMs - monthStartMs)
-        for (let itemIndex = 0; itemIndex < safeCount; itemIndex += 1) {
-          const ratio = (itemIndex + 0.5) / safeCount
-          monthlyExpandedEventTimes.push(Math.round(monthStartMs + (spanMs * ratio)))
-        }
-      })
-    }
-
-    const sourceEventTimes = (
-      chartEventTimes.length
-        ? chartEventTimes
-        : monthlyExpandedEventTimes.length
-          ? monthlyExpandedEventTimes
-          : drilldownEventTimes
-    )
-      .slice()
-      .sort((left, right) => left - right)
-    const boundedEventTimes = sourceEventTimes.filter((timeMs) => timeMs < lastCompleteMonthEndExclusiveMs)
-    const effectiveEventTimes = boundedEventTimes.length ? boundedEventTimes : sourceEventTimes
-
-    if (effectiveEventTimes.length > 0) {
-      const firstEventDate = new Date(effectiveEventTimes[0])
-      const allStartMs = Date.UTC(firstEventDate.getUTCFullYear(), firstEventDate.getUTCMonth(), 1)
-      const allEndMs = lastCompleteMonthEndExclusiveMs
-      const windowStartMs = monthWindowSize === null
-        ? allStartMs
-        : Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthWindowSize, 1)
-      const windowEndMs = monthWindowSize === null
-        ? allEndMs
-        : lastCompleteMonthEndExclusiveMs
-      const filteredEventTimes = effectiveEventTimes.filter((timeMs) => (
-        timeMs >= windowStartMs && timeMs < windowEndMs
-      ))
-      const timelineTimes = filteredEventTimes.length ? filteredEventTimes : effectiveEventTimes
-      const timelineStartMs = filteredEventTimes.length ? windowStartMs : allStartMs
-      const timelineEndMs = filteredEventTimes.length ? windowEndMs : allEndMs
-      const spanMs = Math.max(1, timelineEndMs - timelineStartMs)
-      return timelineTimes.map((timeMs, index) => {
-        const cumulativeValue = index + 1
-        return {
-          key: `line-event-${timeMs}-${index}`,
-          xPct: clampPct(((timeMs - timelineStartMs) / spanMs) * 100),
-          yPct: clampPct((cumulativeValue / Math.max(1, barHeightAxisMax)) * 100),
-          value: cumulativeValue,
-        }
-      })
-    }
-
-    type TimelineEvent = { timeMs: number }
-    const sourceBars = activeLineWindowBars.bars
-    const events: TimelineEvent[] = []
-    let timelineStartMs: number | null = null
-    let timelineEndMs: number | null = null
-    const currentYearEndBoundaryMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
-
-    const addEventsAcrossSpan = (startMs: number, endMs: number, count: number) => {
-      const safeCount = Math.max(0, Math.round(count))
-      if (safeCount <= 0) {
-        return
-      }
-      const spanMs = Math.max(1, endMs - startMs)
-      for (let index = 0; index < safeCount; index += 1) {
-        const ratio = (index + 0.5) / safeCount
-        events.push({
-          timeMs: Math.round(startMs + (spanMs * ratio)),
-        })
-      }
-    }
-
-    sourceBars.forEach((bar) => {
-      let startMs: number | null = null
-      let endMs: number | null = null
-
-      const monthStartMs = Number(bar.monthStartMs)
-      if (Number.isFinite(monthStartMs)) {
-        const monthDate = new Date(monthStartMs)
-        startMs = Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth(), 1)
-        endMs = Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 1)
-      } else {
-        const parsedRange = parseYearRangeFromBarKey(bar.key)
-        if (parsedRange) {
-          startMs = Date.UTC(parsedRange.startYear, 0, 1)
-          endMs = Date.UTC(parsedRange.endYear + 1, 0, 1)
-          if (parsedRange.endYear >= now.getUTCFullYear()) {
-            endMs = Math.min(endMs, currentYearEndBoundaryMs)
-          }
-        }
-      }
-
-      if (startMs === null || endMs === null || endMs <= startMs) {
-        return
-      }
-
-      timelineStartMs = timelineStartMs === null ? startMs : Math.min(timelineStartMs, startMs)
-      timelineEndMs = timelineEndMs === null ? endMs : Math.max(timelineEndMs, endMs)
-      addEventsAcrossSpan(startMs, endMs, bar.value)
-    })
-
-    if (!events.length) {
-      const fallbackBars = sourceBars.length ? sourceBars : renderBars
-      let runningTotal = 0
-      return fallbackBars.map((bar, index) => {
-        runningTotal += Math.max(0, Math.round(bar.value))
-        const evenX = fallbackBars.length <= 1 ? 100 : (index / Math.max(1, fallbackBars.length - 1)) * 100
-        return {
-          key: `line-fallback-${index}`,
-          xPct: clampPct(evenX),
-          yPct: clampPct((runningTotal / Math.max(1, barHeightAxisMax)) * 100),
-          value: runningTotal,
-        }
-      })
-    }
-
-    events.sort((left, right) => left.timeMs - right.timeMs)
-    const timelineStart = timelineStartMs !== null
-      ? Math.min(timelineStartMs, events[0].timeMs)
-      : events[0].timeMs
-    const fallbackEnd = events[events.length - 1].timeMs + (24 * 60 * 60 * 1000)
-    const timelineEnd = timelineEndMs !== null
-      ? Math.max(timelineEndMs, fallbackEnd)
-      : fallbackEnd
-    const spanMs = Math.max(1, timelineEnd - timelineStart)
-    let cumulative = 0
-    return events.map((event, index) => {
-      cumulative += 1
-      const xPct = clampPct(((event.timeMs - timelineStart) / spanMs) * 100)
-      const yPct = clampPct((cumulative / Math.max(1, barHeightAxisMax)) * 100)
       return {
-        key: `line-event-fallback-${index}`,
-        xPct,
-        yPct,
-        value: cumulative,
+        points,
+        markerPoints: points,
+        timelineStartMs: null as number | null,
+        timelineEndMs: null as number | null,
+      }
+    }
+    if (!lineWindowRange.startMs || !lineWindowRange.endMs) {
+      return {
+        points: [],
+        timelineStartMs: null as number | null,
+        timelineEndMs: null as number | null,
+      }
+    }
+    const timelineStartMs = lineWindowRange.startMs
+    const timelineEndMs = lineWindowRange.endMs
+    const timelineEvents = lineWindowRange.events
+    if (!timelineEvents.length) {
+      return {
+        points: [],
+        markerPoints: [],
+        timelineStartMs,
+        timelineEndMs,
+      }
+    }
+    const spanMs = Math.max(1, timelineEndMs - timelineStartMs)
+    let cumulativeValue = 0
+    const eventPoints = timelineEvents.map((timeMs, index) => {
+      cumulativeValue += 1
+      return {
+        key: `line-event-${timeMs}-${index}`,
+        xPct: clampPct(((timeMs - timelineStartMs) / spanMs) * 100),
+        yPct: clampPct((cumulativeValue / Math.max(1, barHeightAxisMax)) * 100),
+        value: cumulativeValue,
+        timeMs,
       }
     })
+    return {
+      points: eventPoints,
+      markerPoints: eventPoints,
+      timelineStartMs,
+      timelineEndMs,
+    }
   }, [
-    activeLineWindowBars.bars,
     barHeightAxisMax,
-    chartData.lifetime_month_start,
-    chartData.month_labels_lifetime,
-    chartData.monthly_values_lifetime,
-    chartData.publication_event_dates,
     effectiveVisualMode,
-    effectiveWindowMode,
-    maxAnimatedDisplayValue,
-    parseYearRangeFromBarKey,
-    renderBars,
     renderedCumulativeValuesAnimated,
     renderedCumulativeValuesTarget,
-    slotMetrics.slotStepPct,
-    slotMetrics.slotWidthPct,
-    tile.drilldown,
+    renderBars,
+    lineWindowRange.endMs,
+    lineWindowRange.events,
+    lineWindowRange.startMs,
   ])
+  const lineModeXAxisTicks = useMemo(() => {
+    if (effectiveVisualMode !== 'line') {
+      return []
+    }
+    const startMs = lineSeriesModel.timelineStartMs
+    const endMs = lineSeriesModel.timelineEndMs
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+      return buildLineModeTicksForWindow(effectiveWindowMode)
+    }
+    return buildLineTicksFromRange(
+      startMs as number,
+      endMs as number,
+      effectiveWindowMode,
+    )
+  }, [
+    buildLineModeTicksForWindow,
+    effectiveVisualMode,
+    effectiveWindowMode,
+    lineSeriesModel.timelineEndMs,
+    lineSeriesModel.timelineStartMs,
+  ])
+  const lineSeriesPoints = lineSeriesModel.points
+  const lineSeriesMarkerPoints = lineSeriesModel.markerPoints
+  const lineMarkerPoints = useMemo(
+    () => (
+      effectiveVisualMode === 'line' && lineSeriesMarkerPoints.length <= 120
+        ? lineSeriesMarkerPoints
+        : []
+    ),
+    [effectiveVisualMode, lineSeriesMarkerPoints],
+  )
   const hoveredLinePoint = effectiveVisualMode === 'line' && hoveredIndex !== null
-    ? lineSeriesPoints[hoveredIndex] || null
+    ? lineMarkerPoints[hoveredIndex] || null
     : null
-  const lineModeVerticalGridPercents = effectiveVisualMode === 'line'
-    ? (effectiveWindowMode === '5y' ? [40, 80] : [50])
-    : []
+  const lineModeVerticalGridPercents = useMemo(() => {
+    if (effectiveVisualMode !== 'line') {
+      return []
+    }
+    if (lineModeXAxisTicks.length >= 4) {
+      return lineModeXAxisTicks
+        .slice(1, -1)
+        .map((tick) => tick.leftPct)
+    }
+    if (lineModeXAxisTicks.length === 3) {
+      return [lineModeXAxisTicks[1]?.leftPct ?? 50]
+    }
+    return []
+  }, [effectiveVisualMode, lineModeXAxisTicks])
 
   if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
@@ -3265,18 +3253,6 @@ export function PublicationsPerYearChart({
         data-ui="publications-chart-frame"
         data-house-role="chart-frame"
       >
-        {showAxes && publicationTimelineDebugText ? (
-          <p
-            className={cn(
-              HOUSE_DRILLDOWN_CHART_META_CLASS,
-              HOUSE_HEADING_LABEL_CLASS,
-              'pointer-events-none absolute left-2 -top-0.5 z-[2] opacity-85',
-            )}
-            aria-hidden="true"
-          >
-            {publicationTimelineDebugText}
-          </p>
-        ) : null}
         {showMeanValueLabel && meanValueDisplay && effectiveVisualMode !== 'line' ? (
           <p
               className={cn(
@@ -3288,36 +3264,37 @@ export function PublicationsPerYearChart({
             Mean: {meanValueDisplay}
           </p>
         ) : null}
-        <div className="absolute overflow-hidden" style={plotAreaStyle}>
-          {gridTickRatios.map((ratio, index) => (
-            <div
-              key={`pub-grid-${index}`}
-              className={cn('pointer-events-none absolute inset-x-0', gridLineToneClass, HOUSE_CHART_SCALE_LAYER_CLASS)}
-              style={{
-                bottom: `${Math.max(0, Math.min(100, ratio * 100))}%`,
-                borderTop: effectiveVisualMode === 'line'
-                  ? `1px solid hsl(var(--stroke-soft) / ${ratio <= 0.0001 ? 0.95 : 0.76})`
-                  : undefined,
-              }}
-              aria-hidden="true"
-            />
-          ))}
-          {effectiveVisualMode === 'line' && lineModeVerticalGridPercents.length ? (
-            <svg className="pointer-events-none absolute inset-0 z-[1]" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              {lineModeVerticalGridPercents.map((leftPct, index) => (
-                <line
-                  key={`pub-line-grid-${index}`}
-                  x1={leftPct}
-                  y1={0}
-                  x2={leftPct}
-                  y2={100}
-                  stroke="hsl(var(--tone-neutral-500) / 0.62)"
-                  strokeWidth="1.2"
-                  vectorEffect="non-scaling-stroke"
-                />
-              ))}
-            </svg>
-          ) : null}
+        <div className="absolute overflow-visible" style={plotAreaStyle}>
+          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+            {gridTickRatios.map((ratio, index) => (
+              <div
+                key={`pub-grid-${index}`}
+                className={cn('absolute inset-x-0', gridLineToneClass, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{
+                  bottom: `${Math.max(0, Math.min(100, ratio * 100))}%`,
+                  borderTop: effectiveVisualMode === 'line'
+                    ? `1px solid hsl(var(--stroke-soft) / ${ratio <= 0.0001 ? 0.95 : 0.76})`
+                    : undefined,
+                }}
+              />
+            ))}
+            {effectiveVisualMode === 'line' && lineModeVerticalGridPercents.length ? (
+              <svg className="absolute inset-0 z-[1]" viewBox="0 0 100 100" preserveAspectRatio="none">
+                {lineModeVerticalGridPercents.map((leftPct, index) => (
+                  <line
+                    key={`pub-line-grid-${index}`}
+                    x1={leftPct}
+                    y1={0}
+                    x2={leftPct}
+                    y2={100}
+                    stroke="hsl(var(--tone-neutral-500) / 0.62)"
+                    strokeWidth="1.2"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
+            ) : null}
+          </div>
           {showMeanLine && effectiveVisualMode !== 'line' ? (
             <div
               className={cn(
@@ -3334,18 +3311,20 @@ export function PublicationsPerYearChart({
             />
           ) : null}
           {effectiveVisualMode === 'line' ? (
-            <div className="pointer-events-none absolute inset-0 z-[2]" aria-hidden="true">
-              {lineSeriesPoints.map((point, index) => (
-                <span
-                  key={`pub-cumulative-point-${index}`}
-                  className="absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[hsl(var(--tone-accent-500))] shadow-[var(--elevation-1)]"
-                  style={{
-                    left: `${Math.max(0, Math.min(100, point.xPct))}%`,
-                    bottom: `calc(${Math.max(0, Math.min(100, point.yPct))}% - 0.15rem)`,
-                  }}
-                />
-              ))}
-            </div>
+            <>
+              <div className="pointer-events-none absolute inset-0 z-[3]" aria-hidden="true">
+                {lineMarkerPoints.map((point, index) => (
+                  <span
+                    key={`pub-cumulative-point-${index}`}
+                    className="absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[hsl(var(--tone-accent-500))] shadow-[var(--elevation-1)]"
+                    style={{
+                      left: `${Math.max(0, Math.min(100, point.xPct))}%`,
+                      bottom: `calc(${Math.max(0, Math.min(100, point.yPct))}% - 0.15rem)`,
+                    }}
+                  />
+                ))}
+              </div>
+            </>
           ) : null}
           <div className="absolute inset-0" data-ui="chart-bars" data-house-role="chart-bars">
             {renderBars.map((bar, index) => {
@@ -3415,7 +3394,7 @@ export function PublicationsPerYearChart({
           </div>
           {effectiveVisualMode === 'line' ? (
             <div className="absolute inset-0 z-[3]">
-              {lineSeriesPoints.map((point, index) => (
+              {lineMarkerPoints.map((point, index) => (
                 <span
                   key={`pub-cumulative-point-hit-${point.key}`}
                   className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 cursor-default rounded-full"
@@ -5206,12 +5185,12 @@ function TotalPublicationsDrilldownWorkspace({
   const subsectionTitle = subsectionTitleByTab[activeTab] || null
 
   return (
-    <div className="house-publications-drilldown-stack-3" data-metric-key={tile.key}>
-      <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
+    <div className="house-drilldown-stack-3" data-metric-key={tile.key}>
+      <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-drilldown-panel-no-pad')}>
         <div className="house-drilldown-heading-block">
           <p className="house-drilldown-heading-block-title">Headline results</p>
         </div>
-        <div className="house-drilldown-content-block house-publications-headline-content w-full">
+        <div className="house-drilldown-content-block house-publications-headline-content house-drilldown-heading-content-block w-full">
           {activeTab === 'summary' ? (
             <div
               className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
@@ -5234,8 +5213,8 @@ function TotalPublicationsDrilldownWorkspace({
             <div className="house-drilldown-heading-block">
               <p className="house-drilldown-heading-block-title">Publication trends</p>
             </div>
-            <div className="house-drilldown-content-block w-full">
-              <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'justify-between')}>
+            <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+              <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
                 <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
                   <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
                     <div
@@ -5332,8 +5311,8 @@ function GenericMetricDrilldownWorkspace({
   const subsectionTitle = subsectionTitleByTab[activeTab] || null
 
   return (
-    <div className="house-publications-drilldown-stack-3" data-metric-key={tile.key}>
-      <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
+    <div className="house-drilldown-stack-3" data-metric-key={tile.key}>
+      <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-drilldown-panel-no-pad')}>
         <div className="house-drilldown-heading-block">
           <p className="house-drilldown-heading-block-title">Headline results</p>
         </div>
@@ -6405,7 +6384,10 @@ export function PublicationsTopStrip({
 
   const activeDrilldownExpanderText = useMemo(() => {
     if (activeTile?.key === 'this_year_vs_last' && activeDrilldownTab === 'summary') {
-      return 'A Summary of your publication metrics'
+      return 'A summary of your publication metrics'
+    }
+    if (activeTile?.key === 'this_year_vs_last' && activeDrilldownTab === 'breakdown') {
+      return 'A deeper dive into your total publications'
     }
     return sanitizedActiveTileDefinition
   }, [activeDrilldownTab, activeTile?.key, sanitizedActiveTileDefinition])
@@ -6414,170 +6396,180 @@ export function PublicationsTopStrip({
     <>
       <Card className={HOUSE_SURFACE_PANEL_BARE_CLASS} style={tileMotionStyle}>
         <CardContent className="p-0">
-          <div className="house-main-heading-block">
-            <p className={HOUSE_HEADING_SECTION_TITLE_CLASS}>{PUBLICATION_INSIGHTS_TITLE}</p>
-            {metrics?.status === 'FAILED' ? (
-              <p className={cn('self-center', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
-            ) : null}
-            <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible self-center">
-              <div
-                className={cn(
-                  'overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
-                  insightsVisible && toolboxOpen
-                    ? 'max-w-[20rem] translate-x-0 opacity-100'
-                    : 'pointer-events-none max-w-0 translate-x-1 opacity-0',
-                )}
-                data-stop-tile-open="true"
-                aria-hidden={!insightsVisible || !toolboxOpen}
-              >
-                <div className="flex min-w-0 flex-nowrap items-center gap-1 whitespace-nowrap">
-                  <div className="group relative inline-flex">
-                    <Button
-                      type="button"
-                      data-stop-tile-open="true"
-                      variant="house"
-                      size="icon"
-                      className="h-8 w-8 house-publications-toolbox-item"
-                      aria-label={`Generate ${PUBLICATION_INSIGHTS_LABEL} report`}
-                    >
-                      <FileText className="h-4 w-4" strokeWidth={2.1} />
-                    </Button>
-                    <span
-                      className={cn(
-                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
-                        'top-auto bottom-full mb-[0.35rem] z-[999]',
-                        'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
-                      )}
-                      aria-hidden="true"
-                    >
-                      Generate report
-                    </span>
-                  </div>
-                  <div className="house-publications-toolbox-divider" aria-hidden="true" />
-                  <div className="group relative inline-flex">
-                    <Button
-                      type="button"
-                      data-stop-tile-open="true"
-                      variant="house"
-                      size="icon"
-                      className="h-8 w-8 house-publications-toolbox-item"
-                      aria-label="Download"
-                    >
-                      <Download className="h-4 w-4" strokeWidth={2.1} />
-                    </Button>
-                    <span
-                      className={cn(
-                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
-                        'top-auto bottom-full mb-[0.35rem] z-[999]',
-                        'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
-                      )}
-                      aria-hidden="true"
-                    >
-                      Download
-                    </span>
-                  </div>
-                  <div className="house-publications-toolbox-divider" aria-hidden="true" />
-                  <div className="group relative inline-flex">
-                    <Button
-                      type="button"
-                      data-stop-tile-open="true"
-                      variant="house"
-                      size="icon"
-                      className="h-8 w-8 house-publications-toolbox-item"
-                      aria-label="Share"
-                    >
-                      <Share2 className="h-4 w-4" strokeWidth={2.1} />
-                    </Button>
-                    <span
-                      className={cn(
-                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
-                        'top-auto bottom-full mb-[0.35rem] z-[999]',
-                        'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
-                      )}
-                      aria-hidden="true"
-                    >
-                      Share
-                    </span>
-                  </div>
-                </div>
-              </div>
-              {insightsVisible ? (
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    data-stop-tile-open="true"
-                    data-state={toolboxOpen ? 'open' : 'closed'}
-                    variant="house"
-                    size="icon"
+          <SectionHeader
+            heading={PUBLICATION_INSIGHTS_TITLE}
+            className="house-publications-toolbar-header"
+            actions={(
+              <>
+                {metrics?.status === 'FAILED' ? (
+                  <p className={cn(HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
+                ) : null}
+                <div
+                  className={cn(
+                    'ml-auto flex h-8 w-full items-center justify-end overflow-visible self-center',
+                    insightsVisible && toolboxOpen ? 'gap-1' : 'gap-0',
+                  )}
+                >
+                  <div
                     className={cn(
-                      'h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
-                      HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
-                      toolboxOpen && 'house-publications-tools-toggle-open',
+                      'overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
+                      insightsVisible && toolboxOpen
+                        ? 'max-w-[20rem] translate-x-0 opacity-100'
+                        : 'pointer-events-none max-w-0 translate-x-1 opacity-0',
                     )}
-                    onClick={() => {
-                      setToolboxOpen((current) => !current)
-                    }}
-                    aria-pressed={toolboxOpen}
-                    aria-expanded={toolboxOpen}
-                    aria-label={toolboxOpen ? 'Hide toolbox actions' : 'Show toolbox actions'}
-                    title="Tools"
+                    data-stop-tile-open="true"
+                    aria-hidden={!insightsVisible || !toolboxOpen}
                   >
-                    <Hammer
-                      className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]"
-                      strokeWidth={2.1}
-                    />
-                  </Button>
+                    <div className="flex min-w-0 flex-nowrap items-center gap-1 whitespace-nowrap">
+                      <div className="group relative inline-flex">
+                        <Button
+                          type="button"
+                          data-stop-tile-open="true"
+                          variant="house"
+                          size="icon"
+                          className="h-8 w-8 house-publications-toolbox-item"
+                          aria-label={`Generate ${PUBLICATION_INSIGHTS_LABEL} report`}
+                        >
+                          <FileText className="h-4 w-4" strokeWidth={2.1} />
+                        </Button>
+                        <span
+                          className={cn(
+                            HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                            'top-auto bottom-full mb-[0.35rem] z-[999]',
+                            'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                          )}
+                          aria-hidden="true"
+                        >
+                          Generate report
+                        </span>
+                      </div>
+                      <div className="house-publications-toolbox-divider" aria-hidden="true" />
+                      <div className="group relative inline-flex">
+                        <Button
+                          type="button"
+                          data-stop-tile-open="true"
+                          variant="house"
+                          size="icon"
+                          className="h-8 w-8 house-publications-toolbox-item"
+                          aria-label="Download"
+                        >
+                          <Download className="h-4 w-4" strokeWidth={2.1} />
+                        </Button>
+                        <span
+                          className={cn(
+                            HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                            'top-auto bottom-full mb-[0.35rem] z-[999]',
+                            'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                          )}
+                          aria-hidden="true"
+                        >
+                          Download
+                        </span>
+                      </div>
+                      <div className="house-publications-toolbox-divider" aria-hidden="true" />
+                      <div className="group relative inline-flex">
+                        <Button
+                          type="button"
+                          data-stop-tile-open="true"
+                          variant="house"
+                          size="icon"
+                          className="h-8 w-8 house-publications-toolbox-item"
+                          aria-label="Share"
+                        >
+                          <Share2 className="h-4 w-4" strokeWidth={2.1} />
+                        </Button>
+                        <span
+                          className={cn(
+                            HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                            'top-auto bottom-full mb-[0.35rem] z-[999]',
+                            'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                          )}
+                          aria-hidden="true"
+                        >
+                          Share
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <SectionTools tone="publications" framed={false} className="ml-auto">
+                    {insightsVisible ? (
+                      <Button
+                        type="button"
+                        data-stop-tile-open="true"
+                        data-state={toolboxOpen ? 'open' : 'closed'}
+                        variant="house"
+                        size="icon"
+                        className={cn(
+                          'h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
+                          HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
+                          toolboxOpen && 'house-publications-tools-toggle-open',
+                        )}
+                        onClick={() => {
+                          setToolboxOpen((current) => !current)
+                        }}
+                        aria-pressed={toolboxOpen}
+                        aria-expanded={toolboxOpen}
+                        aria-label={toolboxOpen ? 'Hide toolbox actions' : 'Show toolbox actions'}
+                        title="Tools"
+                      >
+                        <Hammer
+                          className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]"
+                          strokeWidth={2.1}
+                        />
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      data-stop-tile-open="true"
+                      data-state={insightsVisible ? 'open' : 'closed'}
+                      variant="house"
+                      size="icon"
+                      className={cn(
+                        'h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle',
+                        HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
+                      )}
+                      onClick={() => {
+                        setInsightsVisible((current) => {
+                          const nextVisible = !current
+                          if (!nextVisible) {
+                            setToolboxOpen(false)
+                          }
+                          return nextVisible
+                        })
+                      }}
+                      aria-pressed={insightsVisible}
+                      aria-label={insightsVisible ? `Set ${PUBLICATION_INSIGHTS_LABEL} not visible` : `Set ${PUBLICATION_INSIGHTS_LABEL} visible`}
+                    >
+                      {insightsVisible ? (
+                        <Eye className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
+                      ) : (
+                        <EyeOff className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
+                      )}
+                    </Button>
+                  </SectionTools>
                 </div>
-              ) : null}
-              <Button
-                type="button"
-                data-stop-tile-open="true"
-                data-state={insightsVisible ? 'open' : 'closed'}
-                variant="house"
-                size="icon"
-                className={cn(
-                  'h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle',
-                  HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
-                )}
-                onClick={() => {
-                  setInsightsVisible((current) => {
-                    const nextVisible = !current
-                    if (!nextVisible) {
-                      setToolboxOpen(false)
-                    }
-                    return nextVisible
-                  })
-                }}
-                aria-pressed={insightsVisible}
-                aria-label={insightsVisible ? `Set ${PUBLICATION_INSIGHTS_LABEL} not visible` : `Set ${PUBLICATION_INSIGHTS_LABEL} visible`}
-              >
-                {insightsVisible ? (
-                  <Eye className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
-                ) : (
-                  <EyeOff className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
-                )}
-              </Button>
-            </div>
-          </div>
+              </>
+            )}
+          />
 
           {insightsVisible && loading && tiles.length === 0 ? (
-            <div className="house-main-content-block publications-insights-grid">
+            <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap publications-insights-grid">
               {Array.from({ length: 6 }).map((_, index) => (
                 <div key={index} className="w-full min-h-36 px-3 py-2.5">
                   <div className={cn('h-full rounded-sm', HOUSE_DRILLDOWN_SKELETON_BLOCK_CLASS)} />
                 </div>
               ))}
-            </div>
+            </Section>
           ) : insightsVisible && tiles.length === 0 ? (
-            <div className="house-main-content-block pb-3">
+            <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap pb-3">
               <div className={cn('rounded-sm px-3 py-2.5 text-sm', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>
                 <p>No publication insight tiles are available yet.</p>
                 {metrics?.status === 'RUNNING' ? <p className="mt-1">Metrics are currently computing. This panel updates automatically.</p> : null}
                 {metrics?.status === 'FAILED' ? <p className="mt-1">Metrics refresh failed. Use Sync Publications to retry.</p> : null}
               </div>
-            </div>
+            </Section>
           ) : insightsVisible ? (
-            <div className="house-main-content-block publications-insights-grid">
+            <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap publications-insights-grid">
               {tiles.map((tile) => {
                 const subtitle = String(tile.subtext || '').trim()
                 const rawDeltaDisplay = String(tile.delta_display || '').trim()
@@ -6952,15 +6944,15 @@ export function PublicationsTopStrip({
                   />
                 )
               })}
-            </div>
+            </Section>
           ) : (
-            <div className="house-main-content-block pb-3">
+            <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap pb-3">
               <section className="house-notification-section" aria-live="polite">
                 <div className={cn(HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_INFO_CLASS)}>
                   <p>Publication insights hidden by user.</p>
                 </div>
               </section>
-            </div>
+            </Section>
           )}
         </CardContent>
       </Card>
@@ -6977,7 +6969,7 @@ export function PublicationsTopStrip({
               <DrilldownSheet.Tabs
                 activeTab={activeDrilldownTab}
                 onTabChange={(tabId) => setActiveDrilldownTab(tabId as DrilldownTab)}
-                className="house-publications-drilldown-tabs"
+                className="house-drilldown-tabs"
                 aria-label="Metric drilldown sections"
                 tabIdPrefix="drilldown-tab-"
                 panelIdPrefix="drilldown-panel-"

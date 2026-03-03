@@ -4,6 +4,7 @@ import { NavLink } from 'react-router-dom'
 import { ScrollArea } from '@/components/ui'
 import { Separator } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
+import { prefetchCollaborationLandingData } from '@/lib/collaboration-preload'
 import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { fetchOrcidStatus, fetchPersonaState } from '@/lib/impact-api'
 import { writeCachedPersonaState } from '@/lib/persona-cache'
@@ -28,7 +29,9 @@ type AccountNavSection = {
 
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const PROFILE_PREFETCH_LAST_AT_KEY = 'aawe_profile_prefetch_last_at'
+const PROFILE_COLLAB_PREFETCH_LAST_AT_KEY = 'aawe_profile_collab_prefetch_last_at'
 const PROFILE_PREFETCH_MIN_INTERVAL_MS = 45_000
+const COLLABORATION_NAV_PATH = '/account/collaboration'
 
 const ACCOUNT_SECTIONS: AccountNavSection[] = [
   {
@@ -41,7 +44,7 @@ const ACCOUNT_SECTIONS: AccountNavSection[] = [
     tone: 'research',
     items: [
       { label: 'Publications', path: '/profile/publications' },
-      { label: 'Collaboration', path: '/account/collaboration' },
+      { label: 'Collaboration', path: COLLABORATION_NAV_PATH },
       { label: 'Impact', path: '/impact' },
     ],
   },
@@ -60,6 +63,7 @@ const ACCOUNT_SECTIONS: AccountNavSection[] = [
 const PROFILE_PREFETCH_PATHS = new Set([
   '/profile',
   '/profile/publications',
+  COLLABORATION_NAV_PATH,
   '/profile/personal-details',
   '/profile/integrations',
   '/profile/manage-account',
@@ -68,7 +72,7 @@ const PROFILE_PREFETCH_PATHS = new Set([
 export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
   const prefetchInFlight = useRef(false)
 
-  const prefetchProfileData = useCallback(async () => {
+  const prefetchProfileData = useCallback(async (targetPath?: string) => {
     if (prefetchInFlight.current) {
       return
     }
@@ -76,26 +80,49 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
     if (!token) {
       return
     }
-    const lastAtRaw = window.localStorage.getItem(PROFILE_PREFETCH_LAST_AT_KEY) || '0'
-    const lastAt = Number(lastAtRaw)
-    if (!Number.isNaN(lastAt) && Date.now() - lastAt < PROFILE_PREFETCH_MIN_INTERVAL_MS) {
+    const now = Date.now()
+    const profileLastAtRaw = window.localStorage.getItem(PROFILE_PREFETCH_LAST_AT_KEY) || '0'
+    const profileLastAt = Number(profileLastAtRaw)
+    const shouldPrefetchProfile =
+      Number.isNaN(profileLastAt) || now - profileLastAt >= PROFILE_PREFETCH_MIN_INTERVAL_MS
+    const collaborationLastAtRaw = window.localStorage.getItem(PROFILE_COLLAB_PREFETCH_LAST_AT_KEY) || '0'
+    const collaborationLastAt = Number(collaborationLastAtRaw)
+    const shouldPrefetchCollaboration =
+      targetPath === COLLABORATION_NAV_PATH &&
+      (Number.isNaN(collaborationLastAt) || now - collaborationLastAt >= PROFILE_PREFETCH_MIN_INTERVAL_MS)
+    if (!shouldPrefetchProfile && !shouldPrefetchCollaboration) {
       return
     }
 
     prefetchInFlight.current = true
     try {
-      const settled = await Promise.allSettled([fetchPersonaState(token), fetchOrcidStatus(token)])
-      const [personaResult, orcidResult] = settled
-      if (personaResult.status === 'fulfilled') {
-        writeCachedPersonaState(personaResult.value)
+      const profilePrefetchTask = shouldPrefetchProfile
+        ? Promise.allSettled([fetchPersonaState(token), fetchOrcidStatus(token)])
+        : Promise.resolve(null)
+      const collaborationPrefetchTask = shouldPrefetchCollaboration
+        ? prefetchCollaborationLandingData(token).then(() => true).catch(() => false)
+        : Promise.resolve(false)
+      const [profileSettled, collaborationPrefetched] = await Promise.all([
+        profilePrefetchTask,
+        collaborationPrefetchTask,
+      ])
+
+      if (profileSettled) {
+        const [personaResult, orcidResult] = profileSettled
+        if (personaResult.status === 'fulfilled') {
+          writeCachedPersonaState(personaResult.value)
+        }
+        if (orcidResult.status === 'fulfilled') {
+          window.localStorage.setItem(
+            INTEGRATIONS_ORCID_STATUS_CACHE_KEY,
+            JSON.stringify(orcidResult.value),
+          )
+        }
+        window.localStorage.setItem(PROFILE_PREFETCH_LAST_AT_KEY, String(Date.now()))
       }
-      if (orcidResult.status === 'fulfilled') {
-        window.localStorage.setItem(
-          INTEGRATIONS_ORCID_STATUS_CACHE_KEY,
-          JSON.stringify(orcidResult.value),
-        )
+      if (collaborationPrefetched) {
+        window.localStorage.setItem(PROFILE_COLLAB_PREFETCH_LAST_AT_KEY, String(Date.now()))
       }
-      window.localStorage.setItem(PROFILE_PREFETCH_LAST_AT_KEY, String(Date.now()))
     } finally {
       prefetchInFlight.current = false
     }
@@ -124,12 +151,12 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
                     onClick={onNavigate}
                     onMouseEnter={() => {
                       if (PROFILE_PREFETCH_PATHS.has(item.path)) {
-                        void prefetchProfileData()
+                        void prefetchProfileData(item.path)
                       }
                     }}
                     onFocus={() => {
                       if (PROFILE_PREFETCH_PATHS.has(item.path)) {
-                        void prefetchProfileData()
+                        void prefetchProfileData(item.path)
                       }
                     }}
                     className={({ isActive }) =>

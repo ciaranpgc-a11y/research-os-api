@@ -2,17 +2,16 @@ import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { PageHeader, Row, Stack } from '@/components/primitives'
+import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { Button } from '@/components/ui'
 import { getSectionMarkerTone } from '@/lib/section-tone'
-import { houseLayout, houseTypography } from '@/lib/house-style'
+import { houseLayout } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { readAccountSettings, writeAccountSettings } from '@/lib/account-preferences'
 import { PageFrame } from '@/pages/page-frame'
 
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
-const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 
 export function SettingsPage() {
   const navigate = useNavigate()
@@ -41,10 +40,8 @@ export function SettingsPage() {
           />
         </Row>
 
-        <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3')}>
-          <div className="house-main-heading-block">
-            <h2 className={HOUSE_SECTION_TITLE_CLASS}>Publications</h2>
-          </div>
+        <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+          <SectionHeader heading="Publications" className="house-section-header-marker-aligned" />
           <Stack space="sm">
             <p className="m-0 text-caption font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
               Publication insights visibility default
@@ -91,12 +88,10 @@ export function SettingsPage() {
               {status ? <p className="m-0 text-caption text-[hsl(var(--tone-positive-700))]">{status}</p> : null}
             </Row>
           </Stack>
-        </section>
+        </Section>
 
-        <section className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block space-y-3')}>
-          <div className="house-main-heading-block">
-            <h2 className={HOUSE_SECTION_TITLE_CLASS}>Profile controls</h2>
-          </div>
+        <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+          <SectionHeader heading="Profile controls" className="house-section-header-marker-aligned" />
           <Stack space="sm">
             <p className="m-0 text-body text-[hsl(var(--tone-neutral-700))]">
               Personal identity, ORCID linking, and research profile fields now live in dedicated profile pages.
@@ -110,7 +105,7 @@ export function SettingsPage() {
               </Button>
             </Row>
           </Stack>
-        </section>
+        </Section>
       </Stack>
     </PageFrame>
   )

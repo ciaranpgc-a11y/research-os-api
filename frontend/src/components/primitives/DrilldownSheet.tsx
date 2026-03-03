@@ -310,7 +310,7 @@ const DrilldownHeader = React.forwardRef<HTMLDivElement, DrilldownHeaderProps>(
           </div>
         )}
         {children && (
-          <div className="mt-[var(--space-3)]">
+          <div>
             {children}
           </div>
         )}
@@ -418,7 +418,7 @@ const DrilldownTab = React.forwardRef<HTMLButtonElement, DrilldownTabProps>(
         aria-controls={`${panelIdPrefix}${id}`}
         data-ui="drilldown-tab"
         className={cn(
-          'house-nav-item approved-drilldown-nav-item house-publications-drilldown-tab-item',
+          'house-nav-item approved-drilldown-nav-item house-drilldown-tab-item',
           isActive && 'approved-drilldown-nav-item-active',
           className,
         )}

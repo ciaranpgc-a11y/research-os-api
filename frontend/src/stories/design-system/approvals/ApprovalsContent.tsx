@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Eye, Filter, Hammer, Search, Settings } from 'lucide-react'
 
 import {
   Container,
@@ -47,6 +48,8 @@ import {
   ChartFrame,
   PanelShell,
   SectionMarker,
+  SectionToolIconButton,
+  SectionTools,
   useChartMotion,
   useChartTheme,
 } from '@/components/patterns'
@@ -128,6 +131,33 @@ const SPACING_TOKENS = [
   '--space-8',
 ] as const
 
+const BASE_SEPARATOR_TOKENS = [
+  '--separator-page-header-to-section-header',
+  '--separator-section-header-to-section-content',
+  '--separator-section-content-to-section-header',
+  '--separator-drilldown-header-to-content',
+  '--separator-drilldown-heading-block-to-content',
+  '--separator-drilldown-content-to-heading-block',
+  '--separator-drilldown-summary-grid-to-content-top',
+  '--separator-left-panel-subheading-to-content',
+  '--separator-left-panel-content-to-subheading',
+] as const
+
+const SEPARATOR_TOKENS = [...BASE_SEPARATOR_TOKENS] as const
+type SeparatorToken = (typeof SEPARATOR_TOKENS)[number]
+
+const SEPARATOR_TOKEN_DEFINITIONS: Record<SeparatorToken, string> = {
+  '--separator-page-header-to-section-header': 'Main page: PageHeader (title block) → first SectionHeader (heading block)',
+  '--separator-section-header-to-section-content': 'Main page: SectionHeader (heading block) → section body content',
+  '--separator-section-content-to-section-header': 'Main page: section body content → next SectionHeader (heading block)',
+  '--separator-drilldown-header-to-content': 'Drilldown: header navigation block → first content block (including first section heading)',
+  '--separator-drilldown-heading-block-to-content': 'Drilldown: section heading block → section content block',
+  '--separator-drilldown-content-to-heading-block': 'Drilldown: section content block → next section heading block',
+  '--separator-drilldown-summary-grid-to-content-top': 'Drilldown: summary grid → top content area',
+  '--separator-left-panel-subheading-to-content': 'Left panel: subheading block → content block',
+  '--separator-left-panel-content-to-subheading': 'Left panel: content block → subheading block',
+}
+
 const RADIUS_TOKENS = ['--radius-xs', '--radius-sm', '--radius-md', '--radius-lg', '--radius-full'] as const
 const ELEVATION_TOKENS = ['--elevation-none', '--elevation-xs', '--elevation-sm', '--elevation-md', '--elevation-lg'] as const
 const MOTION_DURATION_TOKENS = [
@@ -147,6 +177,51 @@ const APPROVAL_CONTRACT_ITEMS = [
   'Each control is reviewed as a state matrix, not an isolated happy-path sample.',
 ]
 
+const CANONICAL_SPACING_ELEMENTS = [
+  {
+    element: 'PageHeader',
+    role: 'Title block',
+    canonicalUse: 'Primary page title + description block that anchors top rhythm.',
+    dimensions: '--separator-page-header-to-section-header',
+  },
+  {
+    element: 'SectionHeader',
+    role: 'Heading block',
+    canonicalUse: 'Section heading + helper text immediately above section body content.',
+    dimensions: '--separator-section-header-to-section-content + --separator-section-content-to-section-header',
+  },
+  {
+    element: 'Section body (first non-header child)',
+    role: 'Content block',
+    canonicalUse: 'Content area after SectionHeader, typically Stack/Grid/Table/PanelShell.',
+    dimensions: 'Inherits adjacent separator tokens + local content padding',
+  },
+  {
+    element: 'Drilldown heading block',
+    role: 'Drilldown section heading',
+    canonicalUse: 'Subsection heading inside drilldowns (e.g., Headline results, Publication trends).',
+    dimensions: '--separator-drilldown-heading-block-to-content + --separator-drilldown-content-to-heading-block',
+  },
+  {
+    element: 'Drilldown tab panel root',
+    role: 'Drilldown nav-to-content bridge',
+    canonicalUse: 'First content container immediately under drilldown navigation tabs.',
+    dimensions: '--separator-drilldown-header-to-content',
+  },
+  {
+    element: 'Section',
+    role: 'Scaffold',
+    canonicalUse: 'Container for heading + content; manages surface, inset, and internal spacing.',
+    dimensions: 'Section spaceY + separator tokens',
+  },
+  {
+    element: 'Container',
+    role: 'Page scaffold',
+    canonicalUse: 'Outer page width and gutter scaffold; not part of title→heading semantic pair.',
+    dimensions: 'Container size + gutter tokens',
+  },
+] as const
+
 const APPROVAL_SECTION_LINKS = [
   { id: 'approvals-control-bar', label: '0. Sticky Controls', note: 'Theme, motion, baseline grid' },
   { id: 'approvals-foundations', label: '1. Foundations', note: 'Color, type, spacing, motion tokens' },
@@ -155,6 +230,37 @@ const APPROVAL_SECTION_LINKS = [
   { id: 'approvals-controls', label: '4. Controls', note: 'State matrices and compounds' },
   { id: 'approvals-metrics-motion', label: '5. Metric + Motion', note: 'Chart/toggle patterns + audit' },
   { id: 'approvals-glossary', label: '6. Glossary', note: 'Element definitions + governance' },
+] as const
+
+const PUBLICATION_LIBRARY_DEMO_COLUMNS = [
+  { key: 'title', label: 'Title', width: 360 },
+  { key: 'year', label: 'Year', width: 92 },
+  { key: 'journal', label: 'Journal', width: 260 },
+  { key: 'citations', label: 'Citations', width: 136 },
+] as const
+
+const PUBLICATION_LIBRARY_DEMO_ROWS = [
+  {
+    id: 'pub-row-1',
+    title: 'Predictive modeling in translational cardiology',
+    year: '2025',
+    journal: 'Journal of Clinical Modelling',
+    citations: '34',
+  },
+  {
+    id: 'pub-row-2',
+    title: 'Adaptive trial design with multimodal endpoints',
+    year: '2024',
+    journal: 'BMJ Digital Health',
+    citations: '19',
+  },
+  {
+    id: 'pub-row-3',
+    title: 'Open data quality indicators for publication analytics',
+    year: '2023',
+    journal: 'Data Systems Review',
+    citations: '11',
+  },
 ] as const
 
 const METRIC_TILE_CONTRACT_ITEMS = [
@@ -393,7 +499,7 @@ function DrilldownSheetDemo() {
       <DrilldownSheet open={isOpen} onOpenChange={setIsOpen}>
         <DrilldownSheet.Header
           title="Total publication insights"
-          subtitle="A Summary of your publication metrics"
+          subtitle="A summary of your publication metrics"
           variant="publications"
           alert={activeTab === 'summary' ? <p className="text-sm text-amber-700">Showing 2024 data</p> : undefined}
         >
@@ -564,6 +670,161 @@ function IconGlyph({ size }: { size: number }) {
   )
 }
 
+function PublicationLibraryTableDemo() {
+  const [stripedRows, setStripedRows] = useState(true)
+  return (
+    <Stack space="sm">
+      <Row align="center" gap="sm">
+        <Badge>Canonical ui.Table</Badge>
+        <Badge variant="outline">Profile table tone</Badge>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setStripedRows((current) => !current)
+          }}
+        >
+          {stripedRows ? 'Disable striping' : 'Enable striping'}
+        </Button>
+      </Row>
+
+      <div className="relative w-full house-table-context-profile">
+        <Table className="w-full table-fixed house-table-resizable" data-house-no-column-resize="true" data-house-no-column-controls="true">
+          <colgroup>
+            {PUBLICATION_LIBRARY_DEMO_COLUMNS.map((column) => (
+              <col
+                key={column.key}
+                style={{
+                  width: `${column.width}px`,
+                  minWidth: `${column.width}px`,
+                }}
+              />
+            ))}
+          </colgroup>
+          <TableHeader className="house-table-head text-left">
+            <TableRow style={{ backgroundColor: 'transparent' }}>
+              {PUBLICATION_LIBRARY_DEMO_COLUMNS.map((column) => (
+                <TableHead key={column.key} className="house-table-head-text text-left">
+                  {column.label}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {PUBLICATION_LIBRARY_DEMO_ROWS.map((row, index) => (
+              <TableRow
+                key={row.id}
+                className={[
+                  'cursor-pointer hover:bg-accent/30',
+                  index === 0 ? 'bg-emerald-50/70' : '',
+                  stripedRows ? 'odd:bg-[hsl(var(--tone-neutral-50))] even:bg-[hsl(var(--tone-neutral-100))]' : '',
+                ].join(' ')}
+              >
+                <TableCell className="house-table-cell-text align-top font-medium whitespace-normal break-words leading-tight">
+                  {row.title}
+                </TableCell>
+                <TableCell className="house-table-cell-text align-top whitespace-nowrap">{row.year}</TableCell>
+                <TableCell className="house-table-cell-text align-top whitespace-normal break-words leading-tight">{row.journal}</TableCell>
+                <TableCell className="house-table-cell-text align-top text-right whitespace-nowrap">{row.citations}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <p className="text-caption text-[hsl(var(--muted-foreground))]">
+        Matches the canonical publication library setup: ui Table family, house table tokens, and row-level striping control.
+      </p>
+    </Stack>
+  )
+}
+
+function SectionToolsDemo() {
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [visible, setVisible] = useState(true)
+
+  return (
+    <Stack space="sm">
+      <Row align="center" gap="sm">
+        <Badge>Canonical toolbar</Badge>
+        <Badge variant="outline">Tone: publications</Badge>
+      </Row>
+      <SectionTools tone="publications" framed={false}>
+        <SectionToolIconButton
+          icon={<Search className="h-4 w-4" strokeWidth={2.1} />}
+          aria-label={searchOpen ? 'Hide search' : 'Show search'}
+          tooltip="Search"
+          active={searchOpen}
+          onClick={() => setSearchOpen((current) => !current)}
+        />
+        <SectionToolIconButton
+          icon={<Filter className="h-4 w-4" strokeWidth={2.1} />}
+          aria-label={filterOpen ? 'Hide filters' : 'Show filters'}
+          tooltip="Filters"
+          active={filterOpen}
+          onClick={() => setFilterOpen((current) => !current)}
+        />
+        <SectionToolIconButton
+          icon={<Hammer className="h-4 w-4" strokeWidth={2.1} />}
+          aria-label={toolsOpen ? 'Hide tools' : 'Show tools'}
+          tooltip="Tools"
+          active={toolsOpen}
+          onClick={() => setToolsOpen((current) => !current)}
+        />
+        <SectionToolIconButton
+          icon={<Settings className="h-4 w-4" strokeWidth={2.1} />}
+          aria-label={settingsOpen ? 'Hide settings' : 'Show settings'}
+          tooltip="Settings"
+          active={settingsOpen}
+          onClick={() => setSettingsOpen((current) => !current)}
+        />
+        <SectionToolIconButton
+          icon={<Eye className="h-4 w-4" strokeWidth={2.1} />}
+          aria-label={visible ? 'Set not visible' : 'Set visible'}
+          tooltip={visible ? 'Visible' : 'Hidden'}
+          active={visible}
+          onClick={() => setVisible((current) => !current)}
+        />
+      </SectionTools>
+      <p className="text-caption text-[hsl(var(--muted-foreground))]">
+        Reusable `SectionTools` + `SectionToolIconButton` contract for section-level icon toolbars where hover/open state follows section tone.
+      </p>
+    </Stack>
+  )
+}
+
+function DrilldownSectionHeadingDemo() {
+  return (
+    <Stack space="sm">
+      <Row align="center" gap="sm">
+        <Badge>Canonical drilldown heading</Badge>
+        <Badge variant="outline">Spacing contract</Badge>
+      </Row>
+      <div className="house-drilldown-panel-no-pad rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-[var(--space-3)]">
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Headline results</p>
+        </div>
+        <div className="house-drilldown-content-block rounded-[var(--radius-xs)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-2)] text-caption">
+          Heading → content spacing uses <strong>--separator-drilldown-heading-block-to-content</strong>
+        </div>
+        <div className="house-drilldown-heading-block mt-[var(--separator-drilldown-content-to-heading-block)]">
+          <p className="house-drilldown-heading-block-title">Publication trends</p>
+        </div>
+        <div className="house-drilldown-content-block rounded-[var(--radius-xs)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-2)] text-caption">
+          Content → next heading spacing uses <strong>--separator-drilldown-content-to-heading-block</strong>
+        </div>
+      </div>
+      <p className="text-caption text-[hsl(var(--muted-foreground))]">
+        Use `house-drilldown-heading-block` + `house-drilldown-heading-block-title` for subsection labels inside drilldown content flows.
+      </p>
+    </Stack>
+  )
+}
+
 export function ApprovalsContent() {
   const [isDark, setIsDark] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
@@ -653,6 +914,7 @@ export function ApprovalsContent() {
         ...ACCENT_RAMP_TOKENS,
         ...STATUS_RAMP_TOKENS,
         ...SPACING_TOKENS,
+        ...SEPARATOR_TOKENS,
         ...RADIUS_TOKENS,
         ...ELEVATION_TOKENS,
         ...MOTION_DURATION_TOKENS,
@@ -730,6 +992,15 @@ export function ApprovalsContent() {
     [rootFontPx, rootVars],
   )
 
+  const baseSeparatorRows = useMemo(
+    () => BASE_SEPARATOR_TOKENS.map((token) => ({
+      token,
+      value: formatLength(rootVars[token] || '', rootFontPx),
+      definition: SEPARATOR_TOKEN_DEFINITIONS[token],
+    })),
+    [rootFontPx, rootVars],
+  )
+
   const gridOverlayStyle = useMemo<CSSProperties>(() => {
     if (gridMode === 'off') {
       return {}
@@ -755,7 +1026,7 @@ export function ApprovalsContent() {
           description="Single canonical approval surface for foundations, primitives, controls, patterns, and definitions."
         />
 
-        <Section id="approvals-navigation" surface="card" inset="lg" spaceY="sm" className="scroll-mt-24">
+        <Section id="approvals-navigation" surface="card" inset="lg" spaceY="sm" className="scroll-mt-24 mt-[var(--separator-page-header-to-section-header)]">
           <SectionHeader
             eyebrow="Guide"
             heading="Quick Navigation + Coverage"
@@ -927,6 +1198,119 @@ export function ApprovalsContent() {
                   ))}
                 </TableBody>
               </Table>
+
+              <Section surface="card" inset="sm" spaceY="sm">
+                <SectionHeader heading="Separator definitions" description="Canonical-only separators currently approved for new usage." />
+                <Banner>
+                  <BannerContent>
+                    <BannerTitle>Spacing hierarchy</BannerTitle>
+                    <BannerDescription>
+                      Canonical rhythm pair: PageHeader (title block) → SectionHeader (heading block) → Section body (content block). Use --space-* as primitives, then canonical separator tokens for transitions between those blocks. For drilldowns, integrated header-tabs is canonical.
+                    </BannerDescription>
+                  </BannerContent>
+                </Banner>
+
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Base token</TableHead>
+                      <TableHead>Computed value</TableHead>
+                      <TableHead>Definition</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {baseSeparatorRows.map((row) => (
+                      <TableRow key={row.token}>
+                        <TableCell>{row.token}</TableCell>
+                        <TableCell>{row.value}</TableCell>
+                        <TableCell>{row.definition}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+              </Section>
+
+              <Section surface="card" inset="sm" spaceY="sm">
+                <SectionHeader heading="Canonical spacing elements (current)" description="Key canonical elements for spacing and rhythm decisions." />
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Element</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Canonical use</TableHead>
+                      <TableHead>Dimensions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {CANONICAL_SPACING_ELEMENTS.map((row) => (
+                      <TableRow key={row.element}>
+                        <TableCell>{row.element}</TableCell>
+                        <TableCell>{row.role}</TableCell>
+                        <TableCell>{row.canonicalUse}</TableCell>
+                        <TableCell>{row.dimensions}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Section>
+
+              <Section surface="card" inset="sm" spaceY="sm">
+                <SectionHeader
+                  heading="Layout naming: title block → heading block"
+                  description="Canonical names for discussion: Title block (PageHeader), Heading block (first SectionHeader), and Content block (section body)."
+                />
+                <Grid cols={2} gap="md">
+                  <div className="rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-[var(--space-3)]">
+                    <Stack space="sm">
+                      <div className="rounded-[var(--radius-xs)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-2)] text-caption">
+                        1) Title block (PageHeader)
+                      </div>
+                      <div className="rounded-[var(--radius-xs)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--background))] p-[var(--space-2)] text-caption">
+                        Gap token: <strong>--separator-page-header-to-section-header</strong>
+                        <div className="text-[hsl(var(--muted-foreground))]">Current: {formatLength(rootVars['--separator-page-header-to-section-header'] || '', rootFontPx)}</div>
+                      </div>
+                      <div className="rounded-[var(--radius-xs)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-2)] text-caption">
+                        2) Heading block (SectionHeader)
+                      </div>
+                      <div className="rounded-[var(--radius-xs)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-[var(--space-2)] text-caption">
+                        3) Content block (section body)
+                      </div>
+                      <div className="rounded-[var(--radius-xs)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--background))] p-[var(--space-2)] text-caption">
+                        Next-section gap token: <strong>--separator-section-content-to-section-header</strong>
+                        <div className="text-[hsl(var(--muted-foreground))]">Current: {formatLength(rootVars['--separator-section-content-to-section-header'] || '', rootFontPx)}</div>
+                      </div>
+                    </Stack>
+                  </div>
+
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Canonical primitive</TableHead>
+                        <TableHead>Spacing control</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow>
+                        <TableCell>Title block</TableCell>
+                        <TableCell>PageHeader</TableCell>
+                        <TableCell>--separator-page-header-to-section-header</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>Heading block</TableCell>
+                        <TableCell>SectionHeader</TableCell>
+                        <TableCell>--separator-section-header-to-section-content + Section spaceY (sm/md/lg)</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>Content block</TableCell>
+                        <TableCell>Section body</TableCell>
+                        <TableCell>--separator-section-content-to-section-header + Section spaceY (sm/md/lg)</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </Grid>
+              </Section>
             </Section>
 
             <Section surface="muted" inset="md" spaceY="sm">
@@ -1293,6 +1677,30 @@ export function ApprovalsContent() {
                     <ModalClose />
                   </ModalContent>
                 </Modal>
+              </MatrixCell>
+            </Grid>
+
+            <Grid cols={1} gap="md">
+              <MatrixCell
+                title="Publication Library Table"
+                note="Canonical publication table baseline in approvals (ui Table + house table contract)"
+                spec="Header/body/cell roles, profile tone context, striped row option"
+              >
+                <PublicationLibraryTableDemo />
+              </MatrixCell>
+              <MatrixCell
+                title="Section Tools Toolbar"
+                note="Canonical icon toolbar pattern for section actions (search/filter/tools/settings/visibility)"
+                spec="Borderless, no-fill container with neutral resting icons and tone-aware hover/open visuals"
+              >
+                <SectionToolsDemo />
+              </MatrixCell>
+              <MatrixCell
+                title="Drilldown Section Heading"
+                note="Canonical subsection heading pattern inside drilldown content"
+                spec="Use heading/content separator tokens for predictable rhythm"
+              >
+                <DrilldownSectionHeadingDemo />
               </MatrixCell>
             </Grid>
           </Stack>

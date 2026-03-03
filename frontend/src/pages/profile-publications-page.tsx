@@ -3,14 +3,12 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText
 import { useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
-import { PageHeader, Row, Stack } from '@/components/primitives'
-import { SectionMarker } from '@/components/patterns'
+import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
+import { SectionMarker, SectionToolDivider, SectionToolIconButton, SectionTools } from '@/components/patterns'
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
-import { HouseDrilldownHeaderShell } from '@/components/publications/HouseDrilldownHeaderShell'
 import { drilldownTabFlexGrow } from '@/components/publications/house-drilldown-header-utils'
 import { publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
-import { Button, Sheet, SheetContent, Tabs, TabsContent } from '@/components/ui'
-import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives'
+import { Button, DrilldownSheet, Sheet, SheetContent, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui'
 import { houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
@@ -197,8 +195,6 @@ const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
 const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
-const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
-const HOUSE_LEFT_BORDER_PROFILE_CLASS = houseSurfaces.leftBorderProfile
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
 const HOUSE_TABLE_HEAD_TEXT_CLASS = houseTypography.tableHead
 const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
@@ -206,7 +202,6 @@ const HOUSE_BANNER_CLASS = houseSurfaces.banner
 const HOUSE_BANNER_INFO_CLASS = houseSurfaces.bannerInfo
 const HOUSE_BANNER_DANGER_CLASS = houseSurfaces.bannerDanger
 const HOUSE_BANNER_PUBLICATIONS_CLASS = houseSurfaces.bannerPublications
-const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
 const HOUSE_PUBLICATION_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
 const HOUSE_PUBLICATION_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
@@ -214,7 +209,6 @@ const HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.
 const HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS = publicationsHouseDrilldown.caption
 const HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS = publicationsHouseDrilldown.noteSoft
 const HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS = publicationsHouseDrilldown.noteWarning
-const HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS = publicationsHouseDrilldown.dividerTop
 const HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS = publicationsHouseDrilldown.link
 const HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = publicationsHouseDrilldown.summaryStatTitle
 const HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS = publicationsHouseDrilldown.summaryStatValue
@@ -4277,7 +4271,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         />
       </Row>
 
-      <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <PublicationsTopStrip
           metrics={topMetricsResponse}
           loading={
@@ -4290,12 +4284,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             openPublicationInDetailPanel(workId, 'files')
           }}
         />
-      </div>
+      </Section>
 
-      <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
-        <div className="house-main-heading-block">
-          <h2 className={publicationsHouseHeadings.sectionTitle}>Publication library</h2>
-          <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible self-center">
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
+        <SectionHeader
+          heading="Publication library"
+          className="house-publications-toolbar-header"
+          actions={(
+            <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
             <div
               className={cn(
                 'relative order-3 overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
@@ -4305,23 +4301,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               )}
               aria-hidden={!publicationLibraryVisible || !publicationLibraryToolsOpen}
             >
-              <div className="flex min-w-0 flex-nowrap items-center gap-1 whitespace-nowrap">
-                <div className="group relative inline-flex">
-                  <button
-                    type="button"
-                    className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
-                    aria-label="Generate publication library report"
-                  >
-                    <FileText className="h-4 w-4" strokeWidth={2.1} />
-                  </button>
-                  <span
-                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                    aria-hidden="true"
-                  >
-                    Generate report
-                  </span>
-                </div>
-                <div className="house-publications-toolbox-divider" aria-hidden="true" />
+              <SectionTools tone="publications" className="min-w-0 flex-nowrap whitespace-nowrap">
+                <SectionToolIconButton
+                  icon={<FileText className="h-4 w-4" strokeWidth={2.1} />}
+                  aria-label="Generate publication library report"
+                  tooltip="Generate report"
+                />
+                <SectionToolDivider />
                 <div className="group relative inline-flex">
                   <button
                     ref={publicationLibraryDownloadButtonRef}
@@ -4476,24 +4462,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     Download
                   </span>
                 </div>
-                <div className="house-publications-toolbox-divider" aria-hidden="true" />
-                <div className="group relative inline-flex">
-                  <button
-                    type="button"
-                    className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
-                    aria-label="Share publication library"
-                  >
-                    <Share2 className="h-4 w-4" strokeWidth={2.1} />
-                  </button>
-                  <span
-                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                    aria-hidden="true"
-                  >
-                    Share
-                  </span>
-                </div>
-              </div>
+                <SectionToolDivider />
+                <SectionToolIconButton
+                  icon={<Share2 className="h-4 w-4" strokeWidth={2.1} />}
+                  aria-label="Share publication library"
+                  tooltip="Share"
+                />
+              </SectionTools>
             </div>
+            <SectionTools tone="publications" framed={false} className="order-1 ml-auto">
             {publicationLibraryVisible ? (
               <div className="relative order-1 shrink-0">
                 <button
@@ -4874,10 +4851,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 <EyeOff className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
               )}
             </button>
+            </SectionTools>
           </div>
-        </div>
+          )}
+        />
         {publicationLibraryVisible ? (
-          <div className="house-main-content-block space-y-1">
+          <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap space-y-1">
           <div className="grid grid-cols-1 items-start gap-4">
             <div className="space-y-1">
 
@@ -4891,9 +4870,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   </ol>
                 </div>
               ) : (
-                <div ref={publicationTableLayoutRef} className={cn('relative w-full house-table-context-profile', HOUSE_TABLE_SHELL_CLASS)}>
+                <div ref={publicationTableLayoutRef} className="relative w-full house-table-context-profile">
                   <Table
-                    striped={publicationTableAlternateRowColoring}
                     className={cn(
                       'w-full table-fixed house-table-resizable',
                       publicationTableDensity === 'compact' && 'house-publications-table-density-compact',
@@ -5004,7 +4982,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           <TableRow
                             key={work.id}
                             onClick={() => openPublicationInDetailPanel(work.id, activeDetailTab)}
-                            className={`cursor-pointer ${isSelected ? 'bg-emerald-50/70' : 'hover:bg-accent/30'}`}
+                            className={cn(
+                              'cursor-pointer',
+                              publicationTableAlternateRowColoring && 'odd:bg-[hsl(var(--tone-neutral-50))] even:bg-[hsl(var(--tone-neutral-100))]',
+                              isSelected ? 'bg-emerald-50/70' : 'hover:bg-accent/30',
+                            )}
                           >
                             {visiblePublicationTableColumns.map((columnKey) => {
                               const preference = publicationTableColumns[columnKey]
@@ -5141,36 +5123,34 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               <SheetContent side="right" className={HOUSE_PUBLICATION_DRILLDOWN_SHEET_CLASS}>
                 {selectedWork ? (
                   <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS, 'house-drilldown-panel-no-pad')}>
-                    <Tabs value={activeDetailTab} onValueChange={onDetailTabChange} className="w-full">
-                      <div className="house-drilldown-flow-shell">
-                        <HouseDrilldownHeaderShell
-                          title={(
-                            <p className="house-drilldown-title">
-                              {selectedDetail?.title || selectedWork.title}
-                            </p>
-                          )}
-                          subtitle={(
-                            <p className="house-drilldown-title-expander">
-                              {[detailJournal || 'Publication record', detailYear ? String(detailYear) : null].filter(Boolean).join(' | ')}
-                            </p>
-                          )}
-                          titleBlockClassName={cn(HOUSE_LEFT_BORDER_CLASS, HOUSE_LEFT_BORDER_PROFILE_CLASS)}
-                          dividerClassName={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS}
-                          navAriaLabel="Publication drilldown sections"
-                          tabs={PUBLICATION_DETAIL_TABS}
-                          activeTab={activeDetailTab}
-                          onTabChange={(tabId) => onDetailTabChange(tabId as PublicationDetailTab)}
-                          panelIdPrefix="publication-drilldown-panel-"
-                          tabIdPrefix="publication-drilldown-tab-"
-                          tabFlexGrow={drilldownTabFlexGrow}
-                        />
+                    <DrilldownSheet.Header
+                          title={selectedDetail?.title || selectedWork.title}
+                          subtitle={[detailJournal || 'Publication record', detailYear ? String(detailYear) : null].filter(Boolean).join(' | ')}
+                          variant="profile"
+                          alert={activePaneError ? <p className={HOUSE_PUBLICATION_DRILLDOWN_ALERT_CLASS}>{activePaneError}</p> : undefined}
+                        >
+                          <DrilldownSheet.Tabs
+                            activeTab={activeDetailTab}
+                            onTabChange={(tabId) => onDetailTabChange(tabId as PublicationDetailTab)}
+                            panelIdPrefix="publication-drilldown-panel-"
+                            tabIdPrefix="publication-drilldown-tab-"
+                            flexGrow={drilldownTabFlexGrow}
+                            aria-label="Publication drilldown sections"
+                            className="house-drilldown-tabs"
+                          >
+                            {PUBLICATION_DETAIL_TABS.map((tab) => (
+                              <DrilldownSheet.Tab key={tab.id} id={tab.id}>
+                                {tab.label}
+                              </DrilldownSheet.Tab>
+                            ))}
+                          </DrilldownSheet.Tabs>
+                      </DrilldownSheet.Header>
 
-                        <div className="house-drilldown-content-block house-drilldown-tab-panel">
-                        {activePaneError ? (
-                          <p className={HOUSE_PUBLICATION_DRILLDOWN_ALERT_CLASS}>{activePaneError}</p>
-                        ) : null}
-
-                        <TabsContent value="overview" className="mt-0" role="tabpanel" id="publication-drilldown-panel-overview" aria-labelledby="publication-drilldown-tab-overview">
+                      <DrilldownSheet.TabPanel id={activeDetailTab} isActive={true}>
+                          <div className="house-drilldown-stack-3" data-metric-key="publication-library-drilldown">
+                            <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+                        {activeDetailTab === 'overview' ? (
+                          <>
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Publication overview</p>
                           </div>
@@ -5308,9 +5288,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             </div>
                           </div>
 
-                        </TabsContent>
+                        </>
+                        ) : null}
 
-                        <TabsContent value="content" className="mt-0" role="tabpanel" id="publication-drilldown-panel-content" aria-labelledby="publication-drilldown-tab-content">
+                        {activeDetailTab === 'content' ? (
                           <>
                             {selectedDetail?.structured_abstract_status === 'FAILED' ? (
                               <div className="house-drilldown-content-block">
@@ -5413,9 +5394,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </div>
                             )}
                           </>
-                        </TabsContent>
+                        ) : null}
 
-                        <TabsContent value="impact" className="mt-0" role="tabpanel" id="publication-drilldown-panel-impact" aria-labelledby="publication-drilldown-tab-impact">
+                        {activeDetailTab === 'impact' ? (
+                          <>
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Impact</p>
                           </div>
@@ -5452,9 +5434,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               {(selectedImpactResponse?.payload?.key_citing_papers || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Not available from source.</p> : (selectedImpactResponse?.payload?.key_citing_papers || []).slice(0, 5).map((paper, index) => <p key={`${paper.title}-${index}`}>{paper.year ?? 'n/a'} | {paper.title}</p>)}
                             </div>
                           </div>
-                        </TabsContent>
+                        </>
+                        ) : null}
 
-                        <TabsContent value="files" className="mt-0" role="tabpanel" id="publication-drilldown-panel-files" aria-labelledby="publication-drilldown-tab-files">
+                        {activeDetailTab === 'files' ? (
+                          <>
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Files</p>
                           </div>
@@ -5522,9 +5506,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             </div>
                           </div>
                           </div>
-                        </TabsContent>
+                        </>
+                        ) : null}
 
-                        <TabsContent value="ai" className="mt-0" role="tabpanel" id="publication-drilldown-panel-ai" aria-labelledby="publication-drilldown-tab-ai">
+                        {activeDetailTab === 'ai' ? (
+                          <>
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">AI insights</p>
                           </div>
@@ -5577,27 +5563,28 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               {(selectedAiResponse?.payload?.caution_flags || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No caution flags.</p> : (selectedAiResponse?.payload?.caution_flags || []).map((item, index) => <p key={`${item}-${index}`}>- {item}</p>)}
                             </div>
                           </div>
-                        </TabsContent>
-                        </div>
-                      </div>
-                    </Tabs>
+                        </>
+                        ) : null}
+                            </div>
+                          </div>
+                    </DrilldownSheet.TabPanel>
                   </div>
                 ) : null}
               </SheetContent>
             </Sheet>
 
           </div>
-          </div>
+          </Section>
         ) : (
-          <div className="house-main-content-block">
+          <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap">
             <section className="house-notification-section" aria-live="polite">
               <div className={cn(HOUSE_BANNER_CLASS, HOUSE_BANNER_INFO_CLASS)}>
                 <p>Publication library hidden by user.</p>
               </div>
             </section>
-          </div>
+          </Section>
         )}
-      </div>
+      </Section>
 
       {status ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>{status}</p> : null}
       {error ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_DANGER_CLASS}`}>{error}</p> : null}

@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { Download, Loader2, UploadCloud } from 'lucide-react'
 
-import { CardPrimitive as Card, CardContent, CardHeader, CardTitle } from '@/components/primitives'
+import { CardPrimitive as Card, CardContent, CardHeader, CardTitle, Section } from '@/components/primitives'
 import { Badge, Button, ScrollArea, Sheet, SheetContent } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
@@ -532,14 +532,14 @@ export function ResultsPage() {
           data-house-role="data-page-layout"
         >
           <div data-house-role="data-main-column" className="space-y-3 nav:pr-3">
-            <section data-house-role="available-datasets-section" className="house-main-content-block">
+            <Section data-house-role="available-datasets-section" surface="transparent" inset="none" spaceY="none">
               <div className="house-main-heading-block">
                 <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_DATA_CLASS, 'house-main-title-block')}>
                   <h2 className={houseTypography.sectionTitle}>Data</h2>
                   <p className={houseTypography.fieldHelper}>Available datasets</p>
                 </div>
               </div>
-              <div className={cn(houseSurfaces.tableShell, 'house-main-content-block')}>
+              <Section surface="transparent" inset="none" spaceY="none" className={cn(houseSurfaces.tableShell)}>
                 <table className="w-full min-w-sz-760 text-sm">
                   <thead className={cn('text-left', houseSurfaces.tableHead)}>
                     <tr>
@@ -577,8 +577,8 @@ export function ResultsPage() {
                     )}
                   </tbody>
                 </table>
-              </div>
-            </section>
+              </Section>
+            </Section>
           </div>
 
           <aside
@@ -626,7 +626,7 @@ export function ResultsPage() {
                   </div>
                 </div>
 
-                <div className="house-main-content-block grid gap-3 p-3">
+                <Section surface="transparent" inset="none" spaceY="none" className="grid gap-3 p-3">
                   <Card data-house-role="workspace-card">
                     <CardHeader className="space-y-2">
                       <div data-house-role="library-header-row" className="flex items-center gap-2">
@@ -735,7 +735,7 @@ export function ResultsPage() {
                       ) : null}
                     </CardContent>
                   </Card>
-                </div>
+                </Section>
               </div>
             )}
           </aside>

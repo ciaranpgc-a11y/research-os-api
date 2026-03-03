@@ -1137,14 +1137,14 @@ function ApprovedPublicationsDrilldownSection() {
             ref={drilldownScopeRef}
             className="mx-auto w-full rounded-md border border-border bg-background overflow-hidden approved-drilldown-marker-map house-drilldown-sheet"
           >
-            <div className="house-drilldown-sheet-body house-publications-drilldown-panel-no-pad">
+            <div className="house-drilldown-sheet-body house-drilldown-panel-no-pad">
               <div className="house-drilldown-title-block house-left-border house-left-border-publications">
                 <p className="house-drilldown-title">Total publication insights</p>
                 <p className="house-drilldown-title-expander">Your publication records</p>
               </div>
               <div className="house-drilldown-divider-top" />
 
-              <div className="house-drilldown-navigation-block house-publications-drilldown-tabs rounded-sm bg-card" role="tablist" aria-label="Publication tile drilldown sections">
+              <div className="house-drilldown-navigation-block house-drilldown-tabs rounded-sm bg-card" role="tablist" aria-label="Publication tile drilldown sections">
                 {drilldownTabs.map((tab) => (
                   <button
                     key={tab.id}
@@ -1156,7 +1156,7 @@ function ApprovedPublicationsDrilldownSection() {
                       flexGrow: drilldownTabFlexGrow(tab.label),
                       flexBasis: 0,
                     }}
-                    className={`house-nav-item approved-drilldown-nav-item house-publications-drilldown-tab-item ${activeTab === tab.id ? 'approved-drilldown-nav-item-active' : ''}`}
+                    className={`house-nav-item approved-drilldown-nav-item house-drilldown-tab-item ${activeTab === tab.id ? 'approved-drilldown-nav-item-active' : ''}`}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
                   >
@@ -1166,14 +1166,14 @@ function ApprovedPublicationsDrilldownSection() {
               </div>
 
               <div
-                className="house-drilldown-content-block house-publications-drilldown-tab-panel"
+                className="house-drilldown-content-block house-drilldown-tab-panel"
                 id={`publication-drilldown-panel-${activeTab}`}
                 role="tabpanel"
                 aria-labelledby={`publication-drilldown-tab-${activeTab}`}
               >
                 {activeTab === 'summary' ? (
-                  <div className="house-publications-drilldown-stack-3" data-metric-key={APPROVED_DRILLDOWN_TILE_KEY}>
-                    <div className="house-section-panel house-publications-drilldown-panel-no-pad">
+                  <div className="house-drilldown-stack-3" data-metric-key={APPROVED_DRILLDOWN_TILE_KEY}>
+                    <div className="house-section-panel house-drilldown-panel-no-pad">
                       <div className="house-drilldown-heading-block">
                         <p className="house-drilldown-heading-block-title">Headline results</p>
                       </div>
@@ -1217,8 +1217,8 @@ function ApprovedPublicationsDrilldownSection() {
                 ) : null}
 
                 {activeTab !== 'summary' ? (
-                  <div className="house-publications-drilldown-stack-3" data-metric-key={APPROVED_DRILLDOWN_TILE_KEY}>
-                    <div className="house-section-panel house-publications-drilldown-panel-no-pad">
+                  <div className="house-drilldown-stack-3" data-metric-key={APPROVED_DRILLDOWN_TILE_KEY}>
+                    <div className="house-section-panel house-drilldown-panel-no-pad">
                       <div className="house-drilldown-heading-block">
                         <p className="house-drilldown-heading-block-title">Headline results</p>
                       </div>
@@ -1265,13 +1265,13 @@ function ApprovedPublicationLibraryDrilldownSection() {
             ref={libraryDrilldownScopeRef}
             className="mx-auto w-full rounded-md border border-border bg-background overflow-hidden approved-drilldown-marker-map house-drilldown-sheet"
           >
-            <div className="house-drilldown-sheet-body house-publications-drilldown-panel-no-pad">
+            <div className="house-drilldown-sheet-body house-drilldown-panel-no-pad">
               <div className="house-drilldown-title-block house-left-border house-left-border-profile">
                 <p className="house-drilldown-title">Advances in cardiovascular biomarker discovery from longitudinal cohort imaging</p>
                 <p className="house-drilldown-title-expander">Nature Medicine | 2026</p>
               </div>
               <div className="house-drilldown-divider-top" />
-              <div className="house-drilldown-navigation-block house-publications-drilldown-tabs rounded-sm bg-card" role="tablist" aria-label="Publication drilldown sections">
+              <div className="house-drilldown-navigation-block house-drilldown-tabs rounded-sm bg-card" role="tablist" aria-label="Publication drilldown sections">
                 {libraryTabs.map((tab) => (
                   <button
                     key={tab.id}
@@ -1284,7 +1284,7 @@ function ApprovedPublicationLibraryDrilldownSection() {
                       flexGrow: drilldownTabFlexGrow(tab.label),
                       flexBasis: 0,
                     }}
-                    className={`house-nav-item approved-drilldown-nav-item house-publications-drilldown-tab-item ${activeTab === tab.id ? 'approved-drilldown-nav-item-active' : ''}`}
+                    className={`house-nav-item approved-drilldown-nav-item house-drilldown-tab-item ${activeTab === tab.id ? 'approved-drilldown-nav-item-active' : ''}`}
                     onClick={() => setActiveTab(tab.id)}
                   >
                     <span className="house-nav-item-label">{tab.label}</span>
@@ -1293,7 +1293,7 @@ function ApprovedPublicationLibraryDrilldownSection() {
               </div>
 
               <div
-                className="house-drilldown-content-block house-publications-drilldown-tab-panel"
+                className="house-drilldown-content-block house-drilldown-tab-panel"
                 id={`publication-library-drilldown-panel-${activeTab}`}
                 role="tabpanel"
                 aria-labelledby={`publication-library-drilldown-tab-${activeTab}`}

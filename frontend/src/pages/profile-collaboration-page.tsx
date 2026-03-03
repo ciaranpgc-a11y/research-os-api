@@ -5,6 +5,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   PageHeader,
   Row,
+  Section,
+  SectionHeader,
   Stack,
   CardPrimitive as Card,
   CardContent,
@@ -27,6 +29,11 @@ import { UKCollaborationMap } from '@/components/collaboration/UKCollaborationMa
 import { Badge, Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import {
+  fetchAllCollaboratorsForCollaborationPage,
+  readCachedCollaborationLandingData,
+  writeCachedCollaborationLandingData,
+} from '@/lib/collaboration-preload'
+import {
   createCollaborator,
   deleteCollaborator,
   enrichCollaboratorsFromOpenAlex,
@@ -38,7 +45,6 @@ import {
   generateCollaborationAiInsights,
   getCollaborator,
   importCollaboratorsFromOpenAlex,
-  listCollaborators,
   updateCollaborator,
 } from '@/lib/impact-api'
 import type {
@@ -109,8 +115,6 @@ const EMPTY_FORM: CollaboratorFormState = {
 
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const COLLABORATORS_PAGE_SIZE = 50
-const COLLABORATORS_FETCH_PAGE_SIZE = 200
-const MAX_COLLABORATOR_FETCH_PAGES = 250
 const HEATMAP_TOP_CELL_LIMIT = 24
 const HEATMAP_OTHERS_KEY = '__others__'
 
@@ -287,44 +291,6 @@ function quantile(values: number[], percentile: number): number {
   return sorted[index] || 0
 }
 
-async function fetchAllCollaborators(
-  token: string,
-  options: {
-    query: string
-    sort: string
-  },
-): Promise<CollaboratorsListPayload> {
-  const firstPage = await listCollaborators(token, {
-    query: options.query,
-    sort: options.sort,
-    page: 1,
-    pageSize: COLLABORATORS_FETCH_PAGE_SIZE,
-  })
-  const items = [...firstPage.items]
-  let currentPage = 1
-  let hasMore = firstPage.has_more
-
-  while (hasMore && currentPage < MAX_COLLABORATOR_FETCH_PAGES) {
-    currentPage += 1
-    const nextPage = await listCollaborators(token, {
-      query: options.query,
-      sort: options.sort,
-      page: currentPage,
-      pageSize: COLLABORATORS_FETCH_PAGE_SIZE,
-    })
-    items.push(...nextPage.items)
-    hasMore = nextPage.has_more
-  }
-
-  return {
-    items,
-    total: Number(firstPage.total || items.length),
-    page: 1,
-    page_size: COLLABORATORS_FETCH_PAGE_SIZE,
-    has_more: false,
-  }
-}
-
 function hydrateMockMetrics(metrics: MockMetricsSeed): CollaboratorPayload['metrics'] {
   const score = Number(metrics.collaboration_strength_score || 0)
   const classification =
@@ -363,10 +329,20 @@ function downloadTextFile(filename: string, content: string, mimeType: string): 
 export function ProfileCollaborationPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [summary, setSummary] = useState<CollaborationMetricsSummaryPayload | null>(null)
-  const [listing, setListing] = useState<CollaboratorsListPayload | null>(null)
-  const [query, setQuery] = useState(() => String(searchParams.get('query') || '').trim())
-  const [sort, setSort] = useState(() => normalizeSortValue(searchParams.get('sort')))
+  const initialQuery = String(searchParams.get('query') || '').trim()
+  const initialSort = normalizeSortValue(searchParams.get('sort'))
+  const initialCachedLandingData = useMemo(
+    () =>
+      readCachedCollaborationLandingData({
+        query: initialQuery,
+        sort: initialSort,
+      }),
+    [initialQuery, initialSort],
+  )
+  const [summary, setSummary] = useState<CollaborationMetricsSummaryPayload | null>(initialCachedLandingData?.summary || null)
+  const [listing, setListing] = useState<CollaboratorsListPayload | null>(initialCachedLandingData?.listing || null)
+  const [query, setQuery] = useState(() => initialQuery)
+  const [sort, setSort] = useState(() => initialSort)
   const [page, setPage] = useState(() => parsePositiveInteger(searchParams.get('page'), 1))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
@@ -1048,19 +1024,28 @@ export function ProfileCollaborationPage() {
     sort,
   ])
 
-  const load = async (token: string) => {
-    setLoading(true)
-    setError('')
+  const load = async (token: string, options?: { background?: boolean }) => {
+    const background = Boolean(options?.background)
+    if (!background) {
+      setLoading(true)
+      setError('')
+    }
     try {
       const [summaryPayload, listPayload] = await Promise.all([
         fetchCollaborationMetricsSummary(token),
-        fetchAllCollaborators(token, {
+        fetchAllCollaboratorsForCollaborationPage(token, {
           query,
           sort,
         }),
       ])
       setSummary(summaryPayload)
       setListing(listPayload)
+      writeCachedCollaborationLandingData({
+        query,
+        sort,
+        summary: summaryPayload,
+        listing: listPayload,
+      })
       if (!isCreating) {
         const selectedStillPresent = selectedId
           ? listPayload.items.some((item) => item.id === selectedId)
@@ -1077,9 +1062,13 @@ export function ProfileCollaborationPage() {
         }
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Could not load collaboration page.')
+      if (!background) {
+        setError(loadError instanceof Error ? loadError.message : 'Could not load collaboration page.')
+      }
     } finally {
-      setLoading(false)
+      if (!background) {
+        setLoading(false)
+      }
     }
   }
 
@@ -1089,7 +1078,12 @@ export function ProfileCollaborationPage() {
       navigate('/auth', { replace: true })
       return
     }
-    void load(token)
+    const cached = readCachedCollaborationLandingData({ query, sort })
+    if (cached) {
+      setSummary(cached.summary)
+      setListing(cached.listing)
+    }
+    void load(token, { background: Boolean(cached) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, sort])
 
@@ -1133,6 +1127,13 @@ export function ProfileCollaborationPage() {
     }
     setPage(1)
     setHeatmapSelection(null)
+    const cached = readCachedCollaborationLandingData({ query, sort })
+    if (cached) {
+      setSummary(cached.summary)
+      setListing(cached.listing)
+      await load(token, { background: true })
+      return
+    }
     await load(token)
   }
 
@@ -1431,7 +1432,8 @@ export function ProfileCollaborationPage() {
         />
       </Row>
 
-      <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
+        <SectionHeader heading="My collaborators" className="house-section-header-marker-aligned" />
         <Card>
         <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded border border-border px-3 py-2">
@@ -2053,7 +2055,7 @@ export function ProfileCollaborationPage() {
           {aiError ? <p className="text-xs text-destructive">{aiError}</p> : null}
         </CardContent>
       </Card>
-      </div>
+      </Section>
 
       {loading ? <p className="text-xs text-muted-foreground">Loading collaboration data...</p> : null}
     </Stack>

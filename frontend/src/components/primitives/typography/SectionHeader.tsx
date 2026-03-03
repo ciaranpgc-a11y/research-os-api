@@ -58,7 +58,7 @@ const SectionHeader = React.forwardRef<HTMLElement, SectionHeaderProps>(
           <div
             data-ui="section-header-actions"
             data-house-role="section-header-actions"
-            className="flex shrink-0 items-center gap-[var(--space-2)]"
+            className="flex w-full shrink-0 items-center justify-end gap-[var(--space-2)] md:w-auto"
           >
             {actions}
           </div>

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 
 import { ProfileCollaborationPage } from '@/pages/profile-collaboration-page'
 
@@ -107,6 +108,13 @@ vi.mock('@/lib/impact-api', () => ({
 }))
 
 describe('ProfileCollaborationPage', () => {
+  const renderPage = () =>
+    render(
+      <MemoryRouter>
+        <ProfileCollaborationPage />
+      </MemoryRouter>,
+    )
+
   beforeEach(() => {
     mockNavigate.mockReset()
     mockFetchSummary.mockReset()
@@ -199,7 +207,7 @@ describe('ProfileCollaborationPage', () => {
   })
 
   it('renders collaborator list and detail panel', async () => {
-    render(<ProfileCollaborationPage />)
+    renderPage()
 
     await waitFor(() => {
       expect(screen.getAllByText('Alice Collaborator').length).toBeGreaterThan(0)
@@ -214,7 +222,7 @@ describe('ProfileCollaborationPage', () => {
   })
 
   it('switches to add collaborator mode', async () => {
-    render(<ProfileCollaborationPage />)
+    renderPage()
 
     await waitFor(() => {
       expect(screen.getAllByText('Alice Collaborator').length).toBeGreaterThan(0)
