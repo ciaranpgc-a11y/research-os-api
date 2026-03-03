@@ -4449,6 +4449,114 @@ function formatPublicationCategoryLabel(value: string | null | undefined): strin
   return PUBLICATION_TYPE_LABEL_OVERRIDES[normalized] || toSentenceCaseLabel(value || '')
 }
 
+const ARTICLE_TYPE_META_ANALYSIS_PATTERN = /\b(meta[-\s]?analysis|meta[-\s]?review|pooled analysis)\b/i
+const ARTICLE_TYPE_SCOPING_PATTERN = /\b(scoping review|evidence map)\b/i
+const ARTICLE_TYPE_SR_PATTERN = /\b(systematic review|umbrella review|rapid review)\b/i
+const ARTICLE_TYPE_LITERATURE_PATTERN = /\b(literature review|narrative review|review article|review)\b/i
+const ARTICLE_TYPE_EDITORIAL_PATTERN = /\b(editorial|commentary|perspective|viewpoint|opinion)\b/i
+const ARTICLE_TYPE_CASE_PATTERN = /\b(case report|case series)\b/i
+const ARTICLE_TYPE_PROTOCOL_PATTERN = /\b(protocol|study protocol)\b/i
+const ARTICLE_TYPE_LETTER_PATTERN = /\b(letter|correspondence)\b/i
+const ARTICLE_TYPE_PUBLICATION_ONLY_KEYS = new Set([
+  'article',
+  'journal-article',
+  'journal-paper',
+  'conference-abstract',
+  'conference-paper',
+  'conference-poster',
+  'conference-presentation',
+  'proceedings',
+  'proceedings-article',
+  'book',
+  'book-chapter',
+  'dataset',
+  'data-set',
+  'preprint',
+  'pre-print',
+  'posted-content',
+  'dissertation',
+  'other',
+])
+
+function inferArticleTypeFromText(value: string | null | undefined): string {
+  const clean = String(value || '').trim()
+  if (!clean) {
+    return 'Original'
+  }
+  if (ARTICLE_TYPE_META_ANALYSIS_PATTERN.test(clean)) {
+    return 'Systematic review'
+  }
+  if (ARTICLE_TYPE_SCOPING_PATTERN.test(clean)) {
+    return 'Scoping'
+  }
+  if (ARTICLE_TYPE_SR_PATTERN.test(clean)) {
+    return 'Systematic review'
+  }
+  if (ARTICLE_TYPE_LITERATURE_PATTERN.test(clean)) {
+    return 'Literature review'
+  }
+  if (ARTICLE_TYPE_EDITORIAL_PATTERN.test(clean)) {
+    return 'Editorial'
+  }
+  if (ARTICLE_TYPE_CASE_PATTERN.test(clean)) {
+    return 'Case report'
+  }
+  if (ARTICLE_TYPE_PROTOCOL_PATTERN.test(clean)) {
+    return 'Protocol'
+  }
+  if (ARTICLE_TYPE_LETTER_PATTERN.test(clean)) {
+    return 'Letter'
+  }
+  return 'Original'
+}
+
+function formatArticleCategoryLabel(
+  articleTypeValue: string | null | undefined,
+  title: string | null | undefined,
+  publicationTypeValue: string | null | undefined,
+): string {
+  const articleKey = normalizePublicationCategoryKey(articleTypeValue)
+  if (!articleKey) {
+    return inferArticleTypeFromText(title)
+  }
+  if (
+    articleKey === 'sr' ||
+    articleKey === 'systematic-review' ||
+    articleKey === 'meta-analysis' ||
+    articleKey === 'meta-review' ||
+    articleKey === 'umbrella-review' ||
+    articleKey === 'rapid-review'
+  ) {
+    return 'Systematic review'
+  }
+  if (articleKey === 'scoping' || articleKey === 'scoping-review') {
+    return 'Scoping'
+  }
+  if (articleKey === 'literature-review' || articleKey === 'narrative-review') {
+    return 'Literature review'
+  }
+  if (articleKey === 'original' || articleKey === 'original-article' || articleKey === 'research-article') {
+    return 'Original'
+  }
+  if (articleKey === 'editorial' || articleKey === 'commentary' || articleKey === 'perspective' || articleKey === 'opinion') {
+    return 'Editorial'
+  }
+  if (articleKey === 'case-report' || articleKey === 'case-series') {
+    return 'Case report'
+  }
+  if (articleKey === 'protocol' || articleKey === 'study-protocol') {
+    return 'Protocol'
+  }
+  if (articleKey === 'letter' || articleKey === 'correspondence') {
+    return 'Letter'
+  }
+  const publicationKey = normalizePublicationCategoryKey(publicationTypeValue)
+  if (ARTICLE_TYPE_PUBLICATION_ONLY_KEYS.has(articleKey) || ARTICLE_TYPE_PUBLICATION_ONLY_KEYS.has(publicationKey)) {
+    return inferArticleTypeFromText(title)
+  }
+  return toSentenceCaseLabel(articleTypeValue || '')
+}
+
 function normalizeRoleLabel(value: string): string {
   const clean = String(value || '').trim().toLowerCase()
   if (clean === 'first') {
@@ -4483,7 +4591,7 @@ function categoryLabelFromPublication(
   dimension: PublicationCategoryDimension,
 ): string {
   if (dimension === 'article') {
-    return formatPublicationCategoryLabel(record.articleType || '')
+    return formatArticleCategoryLabel(record.articleType, record.title, record.publicationType)
   }
   const label = formatPublicationCategoryLabel(record.publicationType || '')
   const normalized = normalizePublicationCategoryKey(label)
@@ -5206,7 +5314,7 @@ function TotalPublicationsDrilldownWorkspace({
         const title = String(record.title || '').trim()
         const role = String(record.role || '').trim()
         const type = String(record.type || '').trim()
-        const publicationType = String(record.publication_type || record.publicationType || '').trim()
+        const publicationType = String(record.work_type || record.workType || record.publication_type || record.publicationType || '').trim()
         const articleType = String(record.article_type || record.articleType || '').trim()
         const venue = String(record.venue || record.journal || '').trim()
         const citationsRaw = Number(record.citations ?? record.cited_by_count ?? 0)

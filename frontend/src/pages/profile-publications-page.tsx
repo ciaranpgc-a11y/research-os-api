@@ -2160,6 +2160,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationLibraryDownloadPopoverRef = useRef<HTMLDivElement | null>(null)
   const publicationLibrarySettingsButtonRef = useRef<HTMLButtonElement | null>(null)
   const publicationLibrarySettingsPopoverRef = useRef<HTMLDivElement | null>(null)
+  const publicationTableAutoFitAppliedRef = useRef(false)
   const publicationTableResizeRef = useRef<{
     column: PublicationTableColumnKey
     visibleColumns: PublicationTableColumnKey[]
@@ -3629,6 +3630,32 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       })
     })
   }, [filteredWorks, metricsByWorkId, personaState?.works, publicationTableColumnOrder, publicationTableResizingColumn, resolvePublicationTableAvailableWidth])
+
+  useEffect(() => {
+    if (!loading) {
+      return
+    }
+    publicationTableAutoFitAppliedRef.current = false
+  }, [loading])
+
+  useEffect(() => {
+    if (publicationTableAutoFitAppliedRef.current) {
+      return
+    }
+    if (loading || !publicationLibraryVisible) {
+      return
+    }
+    if (!personaState?.works?.length) {
+      return
+    }
+    publicationTableAutoFitAppliedRef.current = true
+    const rafId = window.requestAnimationFrame(() => {
+      onAutoAdjustPublicationTableWidths()
+    })
+    return () => {
+      window.cancelAnimationFrame(rafId)
+    }
+  }, [loading, onAutoAdjustPublicationTableWidths, personaState?.works?.length, publicationLibraryVisible])
 
   const onDownloadPublicationLibrary = useCallback(() => {
     const selectedFieldKeys = PUBLICATION_EXPORT_FIELD_OPTIONS
