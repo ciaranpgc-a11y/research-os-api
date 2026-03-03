@@ -135,37 +135,10 @@ const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
 const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-300)/0.92)] bg-[hsl(var(--tone-accent-50))] px-3.5 text-[hsl(var(--tone-accent-800))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-400)/0.94)] hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]`
 const HOUSE_ACTION_BUTTON_PRIMARY_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-700))] bg-[hsl(var(--tone-accent-700))] px-3.5 text-[hsl(var(--tone-neutral-50))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-800))] hover:text-[hsl(var(--tone-neutral-50))]`
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
-const HOUSE_PROFILE_PHOTO_PANEL_CLASS = 'sm:col-span-2 flex items-start gap-3'
 const HOUSE_PROFILE_PHOTO_EDITOR_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] p-2.5'
-const HOUSE_ACCOUNT_PANEL_CLASS = 'space-y-2.5'
 const HOUSE_SOCIAL_LINK_ROW_CLASS = 'sm:col-span-2 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3.5'
 const HOUSE_SOCIAL_LINK_LABEL_CLASS = 'inline-flex w-full shrink-0 items-center gap-2.5 px-2 py-1.5 house-field-label sm:w-[12rem]'
 const HOUSE_SOCIAL_LINK_ICON_CLASS = 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold leading-none tracking-tight text-[hsl(var(--tone-neutral-700))]'
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) {
-    return 'Not available'
-  }
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 'Not available'
-  }
-  const date = new Date(parsed)
-  const day = date.getDate()
-  const tens = day % 100
-  const suffix = tens >= 11 && tens <= 13
-    ? 'th'
-    : day % 10 === 1
-      ? 'st'
-      : day % 10 === 2
-        ? 'nd'
-        : day % 10 === 3
-          ? 'rd'
-          : 'th'
-  const month = date.toLocaleDateString('en-GB', { month: 'short' })
-  const year = date.getFullYear()
-  return `${day}${suffix} ${month} ${year}`
-}
 
 function trimValue(value: string | null | undefined): string {
   return (value || '').trim()
@@ -270,6 +243,32 @@ function mapAffiliationAddressResolution(
     postalCode,
     country,
   }
+}
+
+function isAffiliationLookupMiss(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false
+  }
+  const message = error.message.toLowerCase()
+  return message.includes('not found') || message.includes('no results') || message.includes('no match')
+}
+
+async function fetchAffiliationSuggestions(input: {
+  token: string | null
+  query: string
+  limit: number
+}): Promise<AffiliationSuggestionItem[]> {
+  const cleanToken = input.token || getAuthSessionToken()
+  if (!cleanToken) {
+    return []
+  }
+  const response = await fetchAffiliationSuggestionsForMe(cleanToken, {
+    query: input.query,
+    limit: input.limit,
+  })
+  return response.items
+    .map(mapAffiliationSuggestionItem)
+    .filter((item): item is AffiliationSuggestionItem => Boolean(item))
 }
 
 function normalizeAffiliations(values: unknown): string[] {
@@ -505,52 +504,29 @@ function buildProfileInitials(input: {
   return 'U'
 }
 
-function formatAccountAge(value: string | null | undefined): string {
-  if (!value) {
-    return 'Not available'
-  }
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 'Not available'
-  }
-  const createdAt = new Date(parsed)
-  const now = new Date()
-  let months = (now.getFullYear() - createdAt.getFullYear()) * 12 + (now.getMonth() - createdAt.getMonth())
-  if (now.getDate() < createdAt.getDate()) {
-    months -= 1
-  }
-  if (months < 1) {
-    return 'Less than a month'
-  }
-  const years = Math.floor(months / 12)
-  const remainingMonths = months % 12
-  const parts: string[] = []
-  if (years > 0) {
-    parts.push(`${years} year${years === 1 ? '' : 's'}`)
-  }
-  if (remainingMonths > 0) {
-    parts.push(`${remainingMonths} month${remainingMonths === 1 ? '' : 's'}`)
-  }
-  return parts.join(', ')
-}
-
 function buildProfileBadges(input: { orcidLinked: boolean; isAdmin: boolean }): ProfileBadge[] {
-  const badges: ProfileBadge[] = []
-  badges.push(
+  const badges: ProfileBadge[] = [
+    {
+      id: 'member',
+      label: 'Member',
+      tone: 'neutral',
+      detail: 'Standard member access',
+    },
     input.orcidLinked
       ? {
-        id: 'member',
-        label: 'Member',
-        tone: 'positive',
-        detail: 'ORCID connected',
-      }
+          id: 'orcid',
+          label: 'ORCID linked',
+          tone: 'positive',
+          detail: 'ORCID connected',
+        }
       : {
-        id: 'guest',
-        label: 'Guest',
-        tone: 'neutral',
-        detail: 'ORCID not connected',
-      },
-  )
+          id: 'orcid',
+          label: 'ORCID missing',
+          tone: 'accent',
+          detail: 'ORCID not connected',
+        },
+  ]
+
   if (input.isAdmin) {
     badges.push({
       id: 'admin',
