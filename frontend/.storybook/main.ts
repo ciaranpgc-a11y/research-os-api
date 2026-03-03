@@ -12,6 +12,7 @@ const config: StorybookConfig = {
   stories: [
     '../src/stories/design-system/approvals/Approvals.stories.@(ts|tsx|mdx)',
     '../src/stories/__archive__/design-system/approved/Approved.stories.@(ts|tsx|mdx)',
+    '../src/stories/__archive__/design-system/primitives/Badges.stories.@(ts|tsx|mdx)',
     '../src/stories/__archive__/design-system/foundations/MotionChoreography.stories.@(ts|tsx|mdx)',
   ],
   addons: ['@storybook/addon-a11y', '@storybook/addon-docs'],

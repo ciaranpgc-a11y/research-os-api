@@ -537,19 +537,6 @@ function buildProfileBadges(input: {
   return badges
 }
 
-function badgeToneClass(tone: ProfileBadge['tone']): string {
-  if (tone === 'positive') {
-    return 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
-  }
-  if (tone === 'accent') {
-    return 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]'
-  }
-  if (tone === 'gold') {
-    return 'border-[hsl(var(--tone-warning-400))] bg-[linear-gradient(135deg,hsl(var(--tone-warning-100)),hsl(var(--tone-warning-200)))] text-[hsl(var(--tone-warning-900))] shadow-[var(--elevation-2)]'
-  }
-  return 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
-}
-
 async function fetchAffiliationSuggestions(input: {
   token: string
   query: string

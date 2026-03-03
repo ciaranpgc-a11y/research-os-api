@@ -1,4 +1,5 @@
 ﻿import type { Meta, StoryObj } from '@storybook/react-vite'
+import { ShieldCheck } from 'lucide-react'
 
 import { Badge } from '@/components/ui'
 
@@ -42,6 +43,26 @@ export const RoleStatusUnread: Story = {
           <span className="text-body text-foreground">New notifications</span>
         </div>
       </section>
+    </div>
+  ),
+}
+
+export const UserBadges: Story = {
+  render: () => (
+    <div className="space-y-3">
+      <h3 className="text-label font-semibold text-foreground">User account badges</h3>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="userAdmin" className="gap-1 leading-none">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Administrator
+        </Badge>
+        <Badge variant="userMember" className="leading-none">
+          Member
+        </Badge>
+        <Badge variant="userGuest" className="leading-none">
+          Guest
+        </Badge>
+      </div>
     </div>
   ),
 }

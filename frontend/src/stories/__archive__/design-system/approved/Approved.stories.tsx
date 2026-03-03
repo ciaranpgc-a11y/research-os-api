@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MemoryRouter } from 'react-router-dom'
-import { Download, Eye, EyeOff, FileText, Filter, Hammer, KeyRound, Mail, Menu, Search, Settings, Share2, User } from 'lucide-react'
+import { Download, Eye, EyeOff, FileText, Filter, Hammer, KeyRound, Mail, Menu, Search, Settings, Share2, ShieldCheck, User } from 'lucide-react'
 
 import { AuthPage } from '@/pages/auth-page'
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
@@ -14,6 +14,7 @@ import { WorkspaceNavigator } from '@/components/layout/workspace-navigator'
 import { ACCOUNT_SETTINGS_STORAGE_KEY } from '@/lib/account-preferences'
 import { StandaloneRouteShell } from '@/stories/pages-review/_helpers/page-review-shells'
 import { pagesReviewProfilePublicationsDefaultFixture } from '@/stories/pages-review/_helpers/profile-publications-fixture'
+import { Badge } from '@/components/ui'
 
 type HeaderScope = 'account' | 'workspace'
 type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
@@ -1616,6 +1617,30 @@ function ApprovedButtonsSection() {
           color: hsl(var(--tone-neutral-50));
         }
       `}</style>
+    </section>
+  )
+}
+
+function ApprovedUserBadgesSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved User Badges</p>
+          <p className="text-xs text-neutral-600">Canonical Administrator, Member, and Guest variants for account surfaces.</p>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="userAdmin" className="gap-1 leading-none">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Administrator
+            </Badge>
+            <Badge variant="userMember" className="leading-none">Member</Badge>
+            <Badge variant="userGuest" className="leading-none">Guest</Badge>
+          </div>
+          <p className="text-xs text-neutral-600">Use beside profile headings and inline account context.</p>
+        </div>
+      </div>
     </section>
   )
 }
@@ -4900,6 +4925,7 @@ function ApprovedPage() {
             <p className="mt-1 text-sm text-neutral-600">Canonical button and icon references used by approved interaction surfaces.</p>
           </div>
           <ApprovedButtonsSection />
+          <ApprovedUserBadgesSection />
           <ApprovedIconsSection />
         </section>
       </div>
