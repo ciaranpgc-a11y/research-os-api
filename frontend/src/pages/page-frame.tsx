@@ -22,7 +22,7 @@ export function PageFrame({ title, description = '', tone, hideScaffoldHeader = 
       {!hideScaffoldHeader ? (
         <Row align="center" gap="sm" wrap={false}>
           <SectionMarker tone={getSectionMarkerTone(resolvedTone)} size="header" />
-          <PageHeader heading={title} description={description.trim().length > 0 ? description : undefined} />
+          <PageHeader heading={title ?? 'Workspace'} description={description.trim().length > 0 ? description : undefined} />
         </Row>
       ) : null}
 

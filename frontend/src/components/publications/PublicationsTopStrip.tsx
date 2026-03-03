@@ -582,10 +582,6 @@ function getChartStaggerDelay(index: number, context: ChartAnimationContext): st
   return `${Math.min(CHART_MOTION.entry.staggerMax, Math.max(0, index) * CHART_MOTION.entry.stagger)}ms`
 }
 
-function getChartInitialDelay(context: ChartAnimationContext): number {
-  return context === 'entry' ? CHART_MOTION.entry.delay : CHART_MOTION.toggle.delay
-}
-
 function tileMotionEntryDelay(index = 0, animateIn = false): string {
   if (!animateIn) {
     return '0ms'
@@ -823,12 +819,6 @@ function ringChartDurationVar(isEntryCycle: boolean): string {
   return `${duration}ms`
 }
 
-function lineChartDurationVar(isEntryCycle: boolean): string {
-  const context: ChartAnimationContext = isEntryCycle ? 'entry' : 'toggle'
-  const duration = getChartAnimationDuration(context, 'line')
-  return `${duration}ms`
-}
-
 function tileAxisDurationMs(isEntryCycle: boolean): number {
   const context: ChartAnimationContext = isEntryCycle ? 'entry' : 'toggle'
   return getAxisAnimationDuration(context)
@@ -978,7 +968,7 @@ function useHouseBarSetTransition<T extends { key: string }>({
   }
 }
 
-function useEasedValue(target: number, animationKey: string, enabled: boolean, durationMs = CHART_MOTION.axis.toggle): number {
+function useEasedValue(target: number, animationKey: string, enabled: boolean, durationMs: number = CHART_MOTION.axis.toggle): number {
   const [value, setValue] = useState<number>(() => (enabled ? 0 : target))
   const valueRef = useRef(value)
 
@@ -1049,7 +1039,7 @@ function useEasedValue(target: number, animationKey: string, enabled: boolean, d
   return value
 }
 
-function useEasedSeries(target: number[], animationKey: string, enabled: boolean, durationMs = CHART_MOTION.axis.toggle): number[] {
+function useEasedSeries(target: number[], animationKey: string, enabled: boolean, durationMs: number = CHART_MOTION.axis.toggle): number[] {
   const [values, setValues] = useState<number[]>(() => (enabled ? target.map(() => 0) : target))
   const valuesRef = useRef(values)
 
@@ -2077,7 +2067,6 @@ function HIndexYearChart({
   const hasBars = bars.length > 0
   const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-year`, hasBars)
   const isEntryCycle = useIsFirstChartEntry(`${animationKey}|hindex-year`, hasBars)
-  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
   const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const rawTargetValues = useMemo(
     () => bars.map((bar) => Math.max(0, bar.value)),
@@ -3675,7 +3664,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                     strokeDasharray: `${ringVisibleDash} ${ringCircumference}`,
                     strokeDashoffset: 0,
                     '--chart-transition-duration': ringTransitionDuration,
-                  }}
+                  } as React.CSSProperties}
                 />
               </svg>
             </div>
@@ -3771,7 +3760,6 @@ function MomentumTilePanel({
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasComparisonBars)
   const entryBarsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|entry`, hasComparisonBars && isEntryCycle)
   const barsExpanded = isEntryCycle ? entryBarsExpanded : true
-  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
   const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   useEffect(() => {
     setHoveredIndex(null)
@@ -4684,7 +4672,6 @@ export function PublicationCategoryDistributionChart({
     [activeBars, dimension, valueMode, windowMode],
   )
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
-  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
   const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const swapTransition = useHouseBarSetTransition({
     bars: activeBars,
@@ -5407,7 +5394,6 @@ function HIndexNeedsChart({
   )
   const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-needed`, bars.length > 0)
   const isEntryCycle = useIsFirstChartEntry(`${animationKey}|hindex-needed`, bars.length > 0)
-  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
   const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const rawTargetCounts = useMemo(
     () => bars.map((bar) => Math.max(0, bar.count)),

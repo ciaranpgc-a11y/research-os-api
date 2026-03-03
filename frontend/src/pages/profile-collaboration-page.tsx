@@ -814,23 +814,6 @@ export function ProfileCollaborationPage() {
     return items.find((item) => item.id === selectedId) || null
   }, [listing?.items, selectedId])
 
-  const aiAuthorDraftSeed = useMemo(() => {
-    const seeds: CollaboratorPayload[] = []
-    if (selectedCollaborator) {
-      seeds.push(selectedCollaborator)
-    }
-    for (const item of filteredCollaborators) {
-      if (seeds.length >= 3) {
-        break
-      }
-      if (seeds.some((seed) => seed.id === item.id)) {
-        continue
-      }
-      seeds.push(item)
-    }
-    return seeds
-  }, [filteredCollaborators, selectedCollaborator])
-
   const strongCollaborations = useMemo(() => {
     const items = [...(listing?.items || [])]
     return items
@@ -978,6 +961,23 @@ export function ProfileCollaborationPage() {
       return domains.some((domain) => normalizeHeatmapBucket(domain, 'General') === heatmapSelection.label)
     })
   }, [heatmapCells, heatmapMode, heatmapSelection, listing?.items])
+
+  const aiAuthorDraftSeed = useMemo(() => {
+    const seeds: CollaboratorPayload[] = []
+    if (selectedCollaborator) {
+      seeds.push(selectedCollaborator)
+    }
+    for (const item of filteredCollaborators) {
+      if (seeds.length >= 3) {
+        break
+      }
+      if (seeds.some((seed) => seed.id === item.id)) {
+        continue
+      }
+      seeds.push(item)
+    }
+    return seeds
+  }, [filteredCollaborators, selectedCollaborator])
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(filteredCollaborators.length / COLLABORATORS_PAGE_SIZE)),
