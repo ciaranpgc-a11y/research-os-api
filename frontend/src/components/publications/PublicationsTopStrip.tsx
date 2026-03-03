@@ -2997,13 +2997,43 @@ export function PublicationsPerYearChart({
         return true
       })
       if (filteredEventMs.length) {
-        const timelineStartMs = filteredEventMs[0]
-        const timelineEndMs = filteredEventMs[filteredEventMs.length - 1]
+        const DAY_MS = 24 * 60 * 60 * 1000
+        const groupedEvents: Array<{ timeMs: number; count: number }> = []
+        for (const timeMs of filteredEventMs) {
+          const lastGroup = groupedEvents[groupedEvents.length - 1]
+          if (lastGroup && lastGroup.timeMs === timeMs) {
+            lastGroup.count += 1
+          } else {
+            groupedEvents.push({ timeMs, count: 1 })
+          }
+        }
+        const expandedEventMs: number[] = []
+        for (let groupIndex = 0; groupIndex < groupedEvents.length; groupIndex += 1) {
+          const group = groupedEvents[groupIndex]
+          const nextGroup = groupedEvents[groupIndex + 1] || null
+          const nextAnchorMs = nextGroup
+            ? nextGroup.timeMs
+            : (effectiveWindowMode === '1y'
+              ? (oneYearEndExclusiveMs ?? (group.timeMs + (31 * DAY_MS)))
+              : (group.timeMs + (365 * DAY_MS)))
+          const intervalMs = Math.max(1, nextAnchorMs - group.timeMs)
+          const distributionWindowMs = Math.max(1, Math.floor(intervalMs * 0.9))
+          if (group.count <= 1) {
+            expandedEventMs.push(group.timeMs)
+            continue
+          }
+          for (let itemIndex = 0; itemIndex < group.count; itemIndex += 1) {
+            const offsetMs = Math.floor(((itemIndex + 1) / (group.count + 1)) * distributionWindowMs)
+            expandedEventMs.push(group.timeMs + offsetMs)
+          }
+        }
+        const timelineStartMs = expandedEventMs[0]
+        const timelineEndMs = expandedEventMs[expandedEventMs.length - 1]
         const spanMs = timelineEndMs - timelineStartMs
-        const eventPoints = filteredEventMs.map((timeMs, index) => {
+        const eventPoints = expandedEventMs.map((timeMs, index) => {
           const position = spanMs > 0
             ? ((timeMs - timelineStartMs) / spanMs)
-            : (filteredEventMs.length <= 1 ? 0 : index / (filteredEventMs.length - 1))
+            : (expandedEventMs.length <= 1 ? 0 : index / (expandedEventMs.length - 1))
           const cumulativeValue = index + 1
           return {
             key: `line-event-${timeMs}-${index}`,
@@ -4398,6 +4428,8 @@ type PublicationCategoryWindowBars = {
   totalCount: number
 }
 
+const MIN_PUBLICATION_TYPE_BAR_VALUE = 1
+
 function categoryLabelFromPublication(
   record: PublicationDrilldownRecord,
   dimension: PublicationCategoryDimension,
@@ -4551,12 +4583,21 @@ export function PublicationCategoryDistributionChart({
         ...bar,
         percentage: totalCount > 0 ? (bar.count / totalCount) * 100 : 0,
       }))
+      const visibleBars = normalizedBars.filter((bar) => Math.max(0, bar.count) >= MIN_PUBLICATION_TYPE_BAR_VALUE)
+      const visibleTotalCount = Math.max(
+        0,
+        visibleBars.reduce((sum, bar) => sum + Math.max(0, bar.count), 0),
+      )
+      const visibleBarsWithPct = visibleBars.map((bar) => ({
+        ...bar,
+        percentage: visibleTotalCount > 0 ? (Math.max(0, bar.count) / visibleTotalCount) * 100 : 0,
+      }))
       const rangeLabel = windowYears.length
         ? windowYears[0] === windowYears[windowYears.length - 1]
           ? String(windowYears[0])
           : `${windowYears[0]}-${windowYears[windowYears.length - 1]}`
         : null
-      return { bars: normalizedBars, rangeLabel, totalCount }
+      return { bars: visibleBarsWithPct, rangeLabel, totalCount: visibleTotalCount }
     }
     return {
       '1y': build('1y'),
@@ -4575,14 +4616,16 @@ export function PublicationCategoryDistributionChart({
       const label = categoryLabelFromPublication(record, dimension)
       counts.set(label, (counts.get(label) || 0) + 1)
     }
-    const totalCount = Array.from(counts.values()).reduce((sum, value) => sum + value, 0)
-    return Array.from(counts.entries())
+    const visibleRows = Array.from(counts.entries())
+      .filter(([, count]) => Math.max(0, count) >= MIN_PUBLICATION_TYPE_BAR_VALUE)
       .sort((left, right) => {
         if (right[1] !== left[1]) {
           return right[1] - left[1]
         }
         return left[0].localeCompare(right[0])
       })
+    const totalCount = visibleRows.reduce((sum, [, count]) => sum + Math.max(0, count), 0)
+    return visibleRows
       .map(([label, count]) => ({
         label,
         count,
@@ -4640,7 +4683,15 @@ export function PublicationCategoryDistributionChart({
     targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax
   ))
   const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * axisMax)
-  const gridTickRatios = yAxisTickRatios.slice(1)
+  const gridTickRatios = Array.from(new Set([
+    ...yAxisTickRatios.slice(1),
+    0.25,
+    0.5,
+    0.75,
+    1,
+  ]))
+    .filter((ratio) => Number.isFinite(ratio) && ratio > 0)
+    .sort((left, right) => left - right)
 
   if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
@@ -4689,9 +4740,47 @@ export function PublicationCategoryDistributionChart({
     paddingBottom: `${xAxisLabelLayout.framePaddingBottomRem}rem`,
   }
   const yAxisTickOffsetRem = 0.4
-  const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === windowMode)
-  const activeValueModeIndex = PUBLICATION_VALUE_MODE_OPTIONS.findIndex((option) => option.value === valueMode)
+  const windowModeThumbStyle: CSSProperties = windowMode === 'all'
+    ? {
+      width: '34%',
+      left: '66%',
+      willChange: 'left,width',
+      transitionDuration: isEntryCycle ? '0ms' : undefined,
+    }
+    : windowMode === '5y'
+      ? {
+        width: '22%',
+        left: '44%',
+        willChange: 'left,width',
+        transitionDuration: isEntryCycle ? '0ms' : undefined,
+      }
+      : windowMode === '3y'
+        ? {
+          width: '22%',
+          left: '22%',
+          willChange: 'left,width',
+          transitionDuration: isEntryCycle ? '0ms' : undefined,
+        }
+        : {
+          width: '22%',
+          left: '0%',
+          willChange: 'left,width',
+          transitionDuration: isEntryCycle ? '0ms' : undefined,
+        }
   const activeDisplayModeIndex = PUBLICATION_DISPLAY_MODE_OPTIONS.findIndex((option) => option.value === displayMode)
+  const valueModeThumbStyle: CSSProperties = valueMode === 'absolute'
+    ? {
+      width: '64%',
+      left: '0%',
+      willChange: 'left,width',
+      transitionDuration: isEntryCycle ? '0ms' : undefined,
+    }
+    : {
+      width: '36%',
+      left: '64%',
+      willChange: 'left,width',
+      transitionDuration: isEntryCycle ? '0ms' : undefined,
+    }
   const tableHeadingLabel = dimension === 'article' ? 'Article type' : 'Publication type'
   const tableTotalCount = tableRows.reduce((sum, row) => sum + row.count, 0)
 
@@ -4701,14 +4790,15 @@ export function PublicationCategoryDistributionChart({
         <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
           <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
             <div
-              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
+              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[22%_22%_22%_34%]')}
                 data-stop-tile-open="true"
                 data-ui={`${dimension}-window-toggle`}
                 data-house-role="chart-toggle"
+                style={{ width: '8.75rem' }}
               >
                 <span
                   className={HOUSE_TOGGLE_THUMB_CLASS}
-                  style={buildTileToggleThumbStyle(activeWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length, isEntryCycle)}
+                  style={windowModeThumbStyle}
                   aria-hidden="true"
                 />
                 {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
@@ -4740,7 +4830,7 @@ export function PublicationCategoryDistributionChart({
           {enableValueModeToggle ? (
             <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
               <div
-                className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+                className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[64%_36%]')}
                 data-stop-tile-open="true"
                 data-ui={`${dimension}-value-mode-toggle`}
                 data-house-role="chart-toggle"
@@ -4748,7 +4838,7 @@ export function PublicationCategoryDistributionChart({
               >
                 <span
                   className={HOUSE_TOGGLE_THUMB_CLASS}
-                  style={buildTileToggleThumbStyle(activeValueModeIndex, PUBLICATION_VALUE_MODE_OPTIONS.length, isEntryCycle)}
+                  style={valueModeThumbStyle}
                   aria-hidden="true"
                 />
                 {PUBLICATION_VALUE_MODE_OPTIONS.map((option) => (
@@ -4832,7 +4922,7 @@ export function PublicationCategoryDistributionChart({
           data-house-role="chart-frame"
         >
           <div className="house-table-shell h-full min-h-0 overflow-auto rounded-md bg-background">
-            <table className="w-full min-w-sz-500 border-collapse">
+            <table className="w-full min-w-sz-500 border-collapse" data-house-no-column-controls="true">
               <thead className="house-table-head">
                 <tr>
                   <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
@@ -4888,7 +4978,7 @@ export function PublicationCategoryDistributionChart({
           {gridTickRatios.map((ratio, index) => (
             <div
               key={`${dimension}-grid-${index}`}
-              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
               style={{ bottom: `${Math.max(0, Math.min(100, ratio * 100))}%` }}
               aria-hidden="true"
             />
@@ -4898,6 +4988,7 @@ export function PublicationCategoryDistributionChart({
               const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? renderValueForBar(bar))
               const heightPct = animatedValue <= 0 ? 3 : Math.min(100, Math.max(6, (animatedValue / axisMax) * 100))
               const isActive = hoveredIndex === index
+              const hoverScaleX = isActive && renderBars.length > 1 ? 1.035 : 1
               return (
                 <div
                   key={`${bar.key}-${index}`}
@@ -4925,7 +5016,7 @@ export function PublicationCategoryDistributionChart({
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${hoverScaleX}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
                       transitionDelay: tileMotionEntryDelay(index, barsExpanded),
                       transitionDuration: tileMotionEntryDuration(index, barsExpanded),
