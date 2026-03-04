@@ -327,6 +327,14 @@ def _resolve_openalex_author_by_name(
     author_id = str(selected.get("id") or "").strip()
     if not author_id:
         return None
+    # Extract just the ID part (e.g., "A5023740689" from "https://openalex.org/A5023740689")
+    if author_id.startswith("https://openalex.org/"):
+        author_id = author_id.removeprefix("https://openalex.org/")
+    elif author_id.startswith("http://openalex.org/"):
+        author_id = author_id.removeprefix("http://openalex.org/")
+    author_id = author_id.strip().strip("/")
+    if not author_id:
+        return None
     author_name = re.sub(r"\s+", " ", str(selected.get("display_name") or "").strip())
     return {
         "openalex_author_id": author_id,
