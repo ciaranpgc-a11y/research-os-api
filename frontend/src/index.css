@@ -625,6 +625,20 @@
     margin-inline-start: calc(var(--marker-width-title) + var(--space-3) - var(--layout-section-anchor-inline));
   }
 
+  @media (min-width: 768px) {
+    .house-collaboration-toolbar-header [data-house-role='section-header-content'] {
+      position: relative;
+    }
+
+    .house-collaboration-toolbar-header [data-house-role='section-header-actions'] {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: auto;
+    }
+  }
+
   .house-main-subheading-block,
   .house-main-heading-block-secondary {
     display: flex;

@@ -398,8 +398,8 @@ export function ProfileCollaborationPage() {
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const [duplicateWarnings, setDuplicateWarnings] = useState<string[]>([])
-  const [importResult, setImportResult] = useState<CollaborationImportOpenAlexPayload | null>(null)
-  const [enrichmentResult, setEnrichmentResult] = useState<CollaborationEnrichOpenAlexPayload | null>(null)
+  const [importResult] = useState<CollaborationImportOpenAlexPayload | null>(null)
+  const [enrichmentResult] = useState<CollaborationEnrichOpenAlexPayload | null>(null)
   const [aiTopicKeywords, setAiTopicKeywords] = useState('')
   const [aiMethods, setAiMethods] = useState('')
   const [aiInsights, setAiInsights] = useState<CollaborationAiInsightsPayload | null>(null)
@@ -1536,7 +1536,7 @@ export function ProfileCollaborationPage() {
 
         <SectionHeader
           heading="Collaborators"
-          className="house-publications-toolbar-header mt-[var(--separator-section-content-to-section-header)]"
+          className="house-publications-toolbar-header house-collaboration-toolbar-header mt-[var(--separator-section-content-to-section-header)]"
           actions={(
           <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
             <SectionTools tone="publications" framed={false} className="order-1">

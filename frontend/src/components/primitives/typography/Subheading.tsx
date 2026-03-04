@@ -3,7 +3,7 @@ import * as React from 'react'
 import { houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 
-export interface SubheadingProps extends React.HTMLAttributes<HTMLParagraphElement> {}
+export type SubheadingProps = React.HTMLAttributes<HTMLParagraphElement>
 
 const Subheading = React.forwardRef<HTMLParagraphElement, SubheadingProps>(
   ({ className, ...props }, ref) => (

@@ -395,7 +395,11 @@ function draftFromSources(
   orcidLinked: boolean,
 ): PersonalDetailsDraft {
   const storedDraft: Partial<PersonalDetailsDraft> = stored
-    ? (({ updatedAt: _unused, ...rest }: StoredPersonalDetails) => rest)(stored)
+    ? (() => {
+      const { updatedAt, ...rest } = stored
+      void updatedAt
+      return rest
+    })()
     : {}
   const rawName = trimValue(user?.name)
   const canUseUserName = Boolean(rawName) && !(orcidLinked && looksLikeOrcidPlaceholderName(rawName))
