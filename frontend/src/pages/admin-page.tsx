@@ -2389,7 +2389,13 @@ export function AdminPage() {
                     <CardDescription>Provider readiness by tenant integration status.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-4">
+                      <div className="rounded-md border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-100))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-accent-800))]">Configured</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-accent-900))]">
+                          {formatInteger(integrationStatusSummary.summary.connected + integrationStatusSummary.summary.degraded)}
+                        </p>
+                      </div>
                       <div className="rounded-md border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] px-3 py-2">
                         <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-positive-700))]">Connected</p>
                         <p className="text-xl font-semibold text-[hsl(var(--tone-positive-700))]">{formatInteger(integrationStatusSummary.summary.connected)}</p>
@@ -2409,6 +2415,7 @@ export function AdminPage() {
                           <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                             <tr>
                               <th className="px-3 py-2">Provider</th>
+                              <th className="px-3 py-2">Configured</th>
                               <th className="px-3 py-2">Connected</th>
                               <th className="px-3 py-2">Degraded</th>
                               <th className="px-3 py-2">Not configured</th>
@@ -2418,6 +2425,7 @@ export function AdminPage() {
                             {integrationStatusSummary.byProvider.map((row) => (
                               <tr key={row.provider} className="border-t border-[hsl(var(--tone-neutral-200))]">
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-900))]">{row.provider}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.connected + row.degraded)}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.connected)}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.degraded)}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.notConfigured)}</td>
@@ -2467,6 +2475,7 @@ export function AdminPage() {
                             <tr>
                               <th className="px-3 py-2">Provider</th>
                               <th className="px-3 py-2">Category</th>
+                              <th className="px-3 py-2">Configured</th>
                               <th className="px-3 py-2">Health</th>
                               <th className="px-3 py-2">Reason</th>
                               <th className="px-3 py-2">Calls</th>
@@ -2481,6 +2490,7 @@ export function AdminPage() {
                               <tr key={row.provider} className="border-t border-[hsl(var(--tone-neutral-200))]">
                                 <td className="px-3 py-2 font-medium text-[hsl(var(--tone-neutral-900))]">{row.provider}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{row.category}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{row.configured ? 'Yes' : 'No'}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">
                                   <span className="inline-flex rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] px-2 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">
                                     {row.health}

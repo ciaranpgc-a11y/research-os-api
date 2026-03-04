@@ -2176,153 +2176,152 @@ export function ProfileCollaborationPage() {
         {!collaboratorDrilldownOpen && status ? <p className="text-xs text-emerald-700">{status}</p> : null}
         {!collaboratorDrilldownOpen && error ? <p className="text-xs text-destructive">{error}</p> : null}
 
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Collaboration heat map</CardTitle>
-            <CardDescription>
-              Aggregated across all matching collaborators. Grid shows top 24 buckets plus Others. Click map markers or grid cells to filter the collaborator list.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={heatmapMode === 'country' ? 'primary' : 'secondary'}
-                onClick={() => setHeatmapMode('country')}
-              >
-                Geographic
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={heatmapMode === 'institution' ? 'primary' : 'secondary'}
-                onClick={() => setHeatmapMode('institution')}
-              >
-                Institutional
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={heatmapMode === 'domain' ? 'primary' : 'secondary'}
-                onClick={() => setHeatmapMode('domain')}
-              >
-                Domain
-              </Button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs text-muted-foreground">Metric:</p>
-              <SelectPrimitive value={heatmapMetric} onValueChange={(value) => setHeatmapMetric(value as HeatmapMetric)}>
-                <SelectTrigger className="h-9 w-auto min-w-sz-220 px-3 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="collaborators">Collaborator count</SelectItem>
-                  <SelectItem value="works">Coauthored works</SelectItem>
-                  <SelectItem value="strength">Strength score</SelectItem>
-                  <SelectItem value="citations_last_12m">Citations (12m)</SelectItem>
-                  <SelectItem value="recency">Recency score</SelectItem>
-                </SelectContent>
-              </SelectPrimitive>
-            </div>
-
-            {heatmapSelection ? (
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <Badge variant="secondary">
-                  Filter: {activeHeatmapCell?.label || heatmapSelection.label} ({heatmapSelection.mode})
-                </Badge>
-                <Button type="button" size="sm" variant="secondary" onClick={() => setHeatmapSelection(null)}>
-                  Clear filter
-                </Button>
-              </div>
-            ) : null}
-
-            {heatmapQuantiles ? (
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-muted-foreground">Quantile legend ({heatmapMetricLabel(heatmapMetric)}):</span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-emerald-100" />
-                  <span>{`Q1 <= ${formatHeatmapMetricValue(heatmapQuantiles.q20, heatmapMetric)}`}</span>
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-emerald-200" />
-                  <span>{`Q2 <= ${formatHeatmapMetricValue(heatmapQuantiles.q40, heatmapMetric)}`}</span>
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-emerald-300" />
-                  <span>{`Q3 <= ${formatHeatmapMetricValue(heatmapQuantiles.q60, heatmapMetric)}`}</span>
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-emerald-500" />
-                  <span>{`Q4 <= ${formatHeatmapMetricValue(heatmapQuantiles.q80, heatmapMetric)}`}</span>
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-emerald-700" />
-                  <span>{`Q5 <= ${formatHeatmapMetricValue(heatmapQuantiles.max, heatmapMetric)}`}</span>
-                </span>
-              </div>
-            ) : null}
-
-            {heatmapMode === 'country' && (
+        <SectionHeader
+          heading="Collaboration heat map"
+          description="Aggregated across all matching collaborators. Grid shows top 24 buckets plus Others. Click map markers or grid cells to filter the collaborator list."
+          className="house-section-header-marker-aligned mt-[var(--separator-section-content-to-section-header)]"
+        />
+        <div className="house-separator-main-heading-to-content space-y-3 text-sm">
+          <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+            <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   size="sm"
-                  variant={geoView === 'map' ? 'primary' : 'secondary'}
-                  onClick={() => setGeoView('map')}
+                  variant={heatmapMode === 'country' ? 'primary' : 'secondary'}
+                  onClick={() => setHeatmapMode('country')}
                 >
-                  Map
+                  Geographic
                 </Button>
                 <Button
                   type="button"
                   size="sm"
-                  variant={geoView === 'grid' ? 'primary' : 'secondary'}
-                  onClick={() => setGeoView('grid')}
+                  variant={heatmapMode === 'institution' ? 'primary' : 'secondary'}
+                  onClick={() => setHeatmapMode('institution')}
                 >
-                  Grid
+                  Institutional
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={heatmapMode === 'domain' ? 'primary' : 'secondary'}
+                  onClick={() => setHeatmapMode('domain')}
+                >
+                  Domain
                 </Button>
               </div>
-            )}
 
-            {heatmapMode === 'country' && geoView === 'map' ? (
-              <UKCollaborationMap
-                collaborators={(listing?.items || []).map((item) => ({
-                  country: item.country || '',
-                  primary_institution: item.primary_institution || '',
-                  collaboration_strength_score: heatmapMetricValue(item, heatmapMetric, nowYear),
-                }))}
-                onMarkerClick={onMapMarkerDrilldown}
-              />
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {heatmapCells.length > 0 ? (
-                heatmapCells.map((cell) => {
-                  const active =
-                    heatmapSelection?.mode === heatmapMode && heatmapSelection?.label === cell.key
-                  return (
-                    <button
-                      type="button"
-                      key={cell.key}
-                      className={`rounded border border-border p-2 text-left text-xs ${heatmapTone(cell.value, heatmapQuantiles)} ${active ? 'ring-2 ring-emerald-700 ring-offset-1' : ''}`}
-                      onClick={() => onToggleHeatmapSelection(cell.key)}
-                      title={`${cell.label}: ${formatHeatmapMetricValue(cell.value, heatmapMetric)} ${heatmapMetricLabel(heatmapMetric)} (${cell.collaborators} collaborators)`}
-                    >
-                      <p className="truncate font-medium">{cell.label}</p>
-                      <p>{formatHeatmapMetricValue(cell.value, heatmapMetric)}</p>
-                      <p className="text-[11px] opacity-80">{cell.collaborators} collaborators</p>
-                    </button>
-                  )
-                })
-              ) : (
-                <p className="text-xs text-muted-foreground">No heat map data yet.</p>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs text-muted-foreground">Metric:</p>
+                <SelectPrimitive value={heatmapMetric} onValueChange={(value) => setHeatmapMetric(value as HeatmapMetric)}>
+                  <SelectTrigger className="h-9 w-auto min-w-sz-220 px-3 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="collaborators">Collaborator count</SelectItem>
+                    <SelectItem value="works">Coauthored works</SelectItem>
+                    <SelectItem value="strength">Strength score</SelectItem>
+                    <SelectItem value="citations_last_12m">Citations (12m)</SelectItem>
+                    <SelectItem value="recency">Recency score</SelectItem>
+                  </SelectContent>
+                </SelectPrimitive>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+
+              {heatmapSelection ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant="secondary">
+                    Filter: {activeHeatmapCell?.label || heatmapSelection.label} ({heatmapSelection.mode})
+                  </Badge>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setHeatmapSelection(null)}>
+                    Clear filter
+                  </Button>
+                </div>
+              ) : null}
+
+              {heatmapQuantiles ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">Quantile legend ({heatmapMetricLabel(heatmapMetric)}):</span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded bg-emerald-100" />
+                    <span>{`Q1 <= ${formatHeatmapMetricValue(heatmapQuantiles.q20, heatmapMetric)}`}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded bg-emerald-200" />
+                    <span>{`Q2 <= ${formatHeatmapMetricValue(heatmapQuantiles.q40, heatmapMetric)}`}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded bg-emerald-300" />
+                    <span>{`Q3 <= ${formatHeatmapMetricValue(heatmapQuantiles.q60, heatmapMetric)}`}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded bg-emerald-500" />
+                    <span>{`Q4 <= ${formatHeatmapMetricValue(heatmapQuantiles.q80, heatmapMetric)}`}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-3 w-3 rounded bg-emerald-700" />
+                    <span>{`Q5 <= ${formatHeatmapMetricValue(heatmapQuantiles.max, heatmapMetric)}`}</span>
+                  </span>
+                </div>
+              ) : null}
+
+              {heatmapMode === 'country' && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={geoView === 'map' ? 'primary' : 'secondary'}
+                    onClick={() => setGeoView('map')}
+                  >
+                    Map
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={geoView === 'grid' ? 'primary' : 'secondary'}
+                    onClick={() => setGeoView('grid')}
+                  >
+                    Grid
+                  </Button>
+                </div>
+              )}
+
+              {heatmapMode === 'country' && geoView === 'map' ? (
+                <UKCollaborationMap
+                  collaborators={(listing?.items || []).map((item) => ({
+                    country: item.country || '',
+                    primary_institution: item.primary_institution || '',
+                    collaboration_strength_score: heatmapMetricValue(item, heatmapMetric, nowYear),
+                  }))}
+                  onMarkerClick={onMapMarkerDrilldown}
+                />
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {heatmapCells.length > 0 ? (
+                    heatmapCells.map((cell) => {
+                      const active =
+                        heatmapSelection?.mode === heatmapMode && heatmapSelection?.label === cell.key
+                      return (
+                        <button
+                          type="button"
+                          key={cell.key}
+                          className={`rounded border border-border p-2 text-left text-xs ${heatmapTone(cell.value, heatmapQuantiles)} ${active ? 'ring-2 ring-emerald-700 ring-offset-1' : ''}`}
+                          onClick={() => onToggleHeatmapSelection(cell.key)}
+                          title={`${cell.label}: ${formatHeatmapMetricValue(cell.value, heatmapMetric)} ${heatmapMetricLabel(heatmapMetric)} (${cell.collaborators} collaborators)`}
+                        >
+                          <p className="truncate font-medium">{cell.label}</p>
+                          <p>{formatHeatmapMetricValue(cell.value, heatmapMetric)}</p>
+                          <p className="text-[11px] opacity-80">{cell.collaborators} collaborators</p>
+                        </button>
+                      )
+                    })
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No heat map data yet.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
       <Card>
         <CardHeader className="space-y-2">
