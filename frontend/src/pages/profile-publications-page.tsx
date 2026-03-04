@@ -2973,7 +2973,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [analyticsResponse?.status, isLocalRuntime, token])
+  }, [analyticsResponse?.status, isLocalRuntime, token, user?.id])
 
   useEffect(() => {
     if (isLocalRuntime) {
@@ -3008,7 +3008,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [isLocalRuntime, topMetricsResponse?.status, topMetricsResponse?.tiles, token])
+  }, [isLocalRuntime, topMetricsResponse?.status, topMetricsResponse?.tiles, token, user?.id])
 
   useEffect(() => {
     if (!isLocalRuntime) {

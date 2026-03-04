@@ -221,15 +221,18 @@ describe('ProfileCollaborationPage', () => {
     })
   })
 
-  it('switches to add collaborator mode', async () => {
+  it('loads selected collaborator into the editable form', async () => {
     renderPage()
 
     await waitFor(() => {
       expect(screen.getAllByText('Alice Collaborator').length).toBeGreaterThan(0)
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /add collaborator/i }))
-    expect(screen.getByRole('heading', { name: 'Add collaborator' })).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Full name')).toHaveValue('')
+    fireEvent.click(screen.getByRole('cell', { name: 'Alice Collaborator' }))
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Alice Collaborator')).toBeInTheDocument()
+    })
+    expect(screen.getByDisplayValue('Institution A')).toBeInTheDocument()
   })
 })

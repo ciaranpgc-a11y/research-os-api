@@ -438,7 +438,7 @@ void HOUSE_DRILLDOWN_NOTE_SOFT_CLASS
 const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
   cn(
     HOUSE_SURFACE_STRONG_PANEL_CLASS,
-    'house-metric-tile-chart-surface flex flex-1 flex-col gap-2.5 px-2 py-2 transition-[opacity,transform,filter] duration-[var(--motion-duration-chart-toggle)] ease-out',
+    'house-metric-tile-chart-surface flex flex-1 flex-col gap-2.5 px-2 py-2 min-w-0 transition-[opacity,transform,filter] duration-[var(--motion-duration-chart-toggle)] ease-out',
   )
 const HOUSE_LINE_CHART_SURFACE_CLASS =
   cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'relative flex-1 px-1.5 pb-1.5 pt-2')
@@ -2145,7 +2145,7 @@ function HIndexYearChart({
   })
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-col">
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
@@ -5422,8 +5422,16 @@ function TotalPublicationsDrilldownWorkspace({
       .sort((left, right) => left.year - right.year)
     const sumNumbers = (items: number[]) => items.reduce((sum, value) => sum + Math.max(0, value), 0)
     const rollingWindowSum = (windowYears: number) => sumNumbers(historyBars.slice(-windowYears).map((entry) => entry.value))
-    const rolling3Year = Math.round(rollingWindowSum(3))
-    const rolling5Year = Math.round(rollingWindowSum(5))
+
+    const lifetimeMonthlySeries = toNumberArray(chartData.monthly_values_lifetime).map((item) => Math.max(0, item))
+    const rollingWindowMonthsSum = (windowMonths: number) => {
+      if (lifetimeMonthlySeries.length > 0) {
+        return sumNumbers(lifetimeMonthlySeries.slice(-windowMonths))
+      }
+      return rollingWindowSum(Math.max(1, Math.round(windowMonths / 12)))
+    }
+    const rolling3Year = Math.round(rollingWindowMonthsSum(36))
+    const rolling5Year = Math.round(rollingWindowMonthsSum(60))
 
     const monthlySeries = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
     const monthlyLabels = toStringArray(chartData.month_labels_12m)
