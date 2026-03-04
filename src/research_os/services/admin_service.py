@@ -1530,6 +1530,20 @@ def _provider_configured(provider: str) -> bool:
     return bool(str(os.getenv(key, "")).strip())
 
 
+def _provider_config_key(provider: str) -> str | None:
+    key_map = {
+        "openai": "OPENAI_API_KEY",
+        "openalex": "OPENALEX_MAILTO",
+        "orcid": "ORCID_CLIENT_ID",
+        "google": "GOOGLE_CLIENT_ID",
+        "microsoft": "MICROSOFT_CLIENT_ID",
+        "pubmed": "PUBMED_FETCH_TIMEOUT_SECONDS",
+        "semantic_scholar": "SEMANTIC_SCHOLAR_API_KEY",
+        "crossref": "CROSSREF_MAILTO",
+    }
+    return key_map.get(provider)
+
+
 def get_admin_api_monitor(*, query: str = "") -> dict[str, object]:
     telemetry = summarize_api_usage_for_admin(query=query)
     provider_rows = (
@@ -1563,17 +1577,31 @@ def get_admin_api_monitor(*, query: str = "") -> dict[str, object]:
         configured = _provider_configured(provider)
         calls = int(usage.get("calls_current_month") or 0)
         errors = int(usage.get("errors_current_month") or 0)
+        error_threshold = max(3, int(calls * 0.25))
         health = "healthy"
+        health_reason = "Operational"
         if not configured:
             health = "not_configured"
-        elif calls > 0 and errors >= max(3, int(calls * 0.25)):
+            config_key = _provider_config_key(provider)
+            if config_key:
+                health_reason = f"Missing environment variable: {config_key}"
+            else:
+                health_reason = "Provider configuration missing"
+        elif calls > 0 and errors >= error_threshold:
             health = "degraded"
+            health_reason = (
+                f"High error rate this month ({errors}/{calls}, "
+                f"threshold {error_threshold})"
+            )
+        elif calls <= 0:
+            health_reason = "No calls observed this month"
         items.append(
             {
                 "provider": provider,
                 "category": str(item["category"]),
                 "configured": configured,
                 "health": health,
+                "health_reason": health_reason,
                 "calls_current_month": calls,
                 "errors_current_month": errors,
                 "error_rate_pct_current_month": float(

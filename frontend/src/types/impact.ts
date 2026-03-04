@@ -333,6 +333,7 @@ export type AdminApiMonitorProviderPayload = {
   category: string
   configured: boolean
   health: string
+  health_reason: string
   calls_current_month: number
   errors_current_month: number
   error_rate_pct_current_month: number

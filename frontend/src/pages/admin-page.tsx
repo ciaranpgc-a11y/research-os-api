@@ -2468,6 +2468,7 @@ export function AdminPage() {
                               <th className="px-3 py-2">Provider</th>
                               <th className="px-3 py-2">Category</th>
                               <th className="px-3 py-2">Health</th>
+                              <th className="px-3 py-2">Reason</th>
                               <th className="px-3 py-2">Calls</th>
                               <th className="px-3 py-2">Errors</th>
                               <th className="px-3 py-2">Latency</th>
@@ -2485,6 +2486,7 @@ export function AdminPage() {
                                     {row.health}
                                   </span>
                                 </td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{row.health_reason || '—'}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.calls_current_month)}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.errors_current_month)}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.avg_latency_ms_current_month)} ms</td>

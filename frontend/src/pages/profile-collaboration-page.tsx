@@ -23,6 +23,7 @@ import { UKCollaborationMap } from '@/components/collaboration/UKCollaborationMa
 import {
   Badge,
   Button,
+  DrilldownSheet,
   Input,
   SelectPrimitive,
   SelectContent,
@@ -43,7 +44,6 @@ import {
   writeCachedCollaborationLandingData,
 } from '@/lib/collaboration-preload'
 import {
-  createCollaborator,
   deleteCollaborator,
   exportCollaboratorsCsv,
   fetchCollaborationMetricsSummary,
@@ -391,7 +391,7 @@ export function ProfileCollaborationPage() {
   ))
   const [page, setPage] = useState(() => parsePositiveInteger(searchParams.get('page'), 1))
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
+  const [collaboratorDrilldownOpen, setCollaboratorDrilldownOpen] = useState(false)
   const [form, setForm] = useState<CollaboratorFormState>(EMPTY_FORM)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -1176,20 +1176,18 @@ export function ProfileCollaborationPage() {
         summary: summaryPayload,
         listing: listPayload,
       })
-      if (!isCreating) {
-        const selectedStillPresent = selectedId
-          ? listPayload.items.some((item) => item.id === selectedId)
-          : false
-        if (!selectedStillPresent && listPayload.items.length > 0) {
-          const first = listPayload.items[0]
-          setSelectedId(first.id)
-          setForm(toFormState(first))
-        }
-        if (listPayload.items.length === 0) {
-          setSelectedId(null)
-          setForm(EMPTY_FORM)
-          setDuplicateWarnings([])
-        }
+      const selectedStillPresent = selectedId
+        ? listPayload.items.some((item) => item.id === selectedId)
+        : false
+      if (!selectedStillPresent && listPayload.items.length > 0) {
+        const first = listPayload.items[0]
+        setSelectedId(first.id)
+        setForm(toFormState(first))
+      }
+      if (listPayload.items.length === 0) {
+        setSelectedId(null)
+        setForm(EMPTY_FORM)
+        setDuplicateWarnings([])
       }
     } catch (loadError) {
       if (!background) {
@@ -1234,7 +1232,7 @@ export function ProfileCollaborationPage() {
   }, [summary])
 
   useEffect(() => {
-    if (!selectedId || isCreating) {
+    if (!selectedId) {
       return
     }
     const token = getAuthSessionToken()
@@ -1247,7 +1245,7 @@ export function ProfileCollaborationPage() {
         setDuplicateWarnings(item.duplicate_warnings || [])
       })
       .catch(() => undefined)
-  }, [selectedId, isCreating])
+  }, [selectedId])
 
   const onSearch = async () => {
     const token = getAuthSessionToken()
@@ -1292,15 +1290,19 @@ export function ProfileCollaborationPage() {
   }
 
   const onSelectCollaborator = (collaborator: CollaboratorPayload) => {
-    setIsCreating(false)
     setSelectedId(collaborator.id)
     setForm(toFormState(collaborator))
     setDuplicateWarnings(collaborator.duplicate_warnings || [])
     setStatus('')
     setError('')
+    setCollaboratorDrilldownOpen(true)
   }
 
   const onSave = async () => {
+    if (!selectedId) {
+      setError('Select a collaborator first.')
+      return
+    }
     const token = getAuthSessionToken()
     if (!token) {
       navigate('/auth', { replace: true })
@@ -1323,14 +1325,11 @@ export function ProfileCollaborationPage() {
         research_domains: parseDomains(form.research_domains),
         notes: form.notes || null,
       }
-      const saved = isCreating
-        ? await createCollaborator(token, payload)
-        : await updateCollaborator(token, selectedId || '', payload)
-      setIsCreating(false)
+      const saved = await updateCollaborator(token, selectedId, payload)
       setSelectedId(saved.id)
       setForm(toFormState(saved))
       setDuplicateWarnings(saved.duplicate_warnings || [])
-      setStatus(isCreating ? 'Collaborator created.' : 'Collaborator updated.')
+      setStatus('Collaborator updated.')
       await load(token)
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Could not save collaborator.')
@@ -1340,7 +1339,7 @@ export function ProfileCollaborationPage() {
   }
 
   const onDelete = async () => {
-    if (!selectedId || isCreating) {
+    if (!selectedId) {
       return
     }
     const token = getAuthSessionToken()
@@ -1354,6 +1353,7 @@ export function ProfileCollaborationPage() {
       await deleteCollaborator(token, selectedId)
       setStatus('Collaborator deleted.')
       setSelectedId(null)
+      setCollaboratorDrilldownOpen(false)
       setForm(EMPTY_FORM)
       setDuplicateWarnings([])
       await load(token)
@@ -2120,7 +2120,7 @@ export function ProfileCollaborationPage() {
                 <button
                   key={item.id}
                   type="button"
-                  className={`w-full rounded border border-border p-3 text-left ${selectedId === item.id && !isCreating ? 'bg-accent/50' : ''}`}
+                  className={`w-full rounded border border-border p-3 text-left ${selectedId === item.id ? 'bg-accent/50' : ''}`}
                   onClick={() => onSelectCollaborator(item)}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -2138,7 +2138,7 @@ export function ProfileCollaborationPage() {
               ))}
             </div>
 
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-end gap-2">
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -2173,128 +2173,8 @@ export function ProfileCollaborationPage() {
           )}
         </div>
 
-        <Card className="hidden" aria-hidden="true">
-          <CardHeader>
-            <CardTitle>
-              {isCreating ? 'Add collaborator' : selectedCollaborator ? 'Collaborator details' : 'Select collaborator'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input
-                value={form.full_name}
-                onChange={(event) => setForm((current) => ({ ...current, full_name: event.target.value }))}
-                placeholder="Full name"
-              />
-              <Input
-                value={form.preferred_name}
-                onChange={(event) => setForm((current) => ({ ...current, preferred_name: event.target.value }))}
-                placeholder="Preferred name"
-              />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input
-                value={form.email}
-                onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                placeholder="Email"
-              />
-              <Input
-                value={form.orcid_id}
-                onChange={(event) => setForm((current) => ({ ...current, orcid_id: event.target.value }))}
-                placeholder="ORCID (0000-0000-0000-0000)"
-              />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input
-                value={form.openalex_author_id}
-                onChange={(event) => setForm((current) => ({ ...current, openalex_author_id: event.target.value }))}
-                placeholder="OpenAlex author id"
-              />
-              <Input
-                value={form.primary_institution}
-                onChange={(event) => setForm((current) => ({ ...current, primary_institution: event.target.value }))}
-                placeholder="Primary institution"
-              />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input
-                value={form.department}
-                onChange={(event) => setForm((current) => ({ ...current, department: event.target.value }))}
-                placeholder="Department"
-              />
-              <Input
-                value={form.current_position}
-                onChange={(event) => setForm((current) => ({ ...current, current_position: event.target.value }))}
-                placeholder="Current position"
-              />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input
-                value={form.country}
-                onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))}
-                placeholder="Country"
-              />
-              <Input
-                value={form.research_domains}
-                onChange={(event) => setForm((current) => ({ ...current, research_domains: event.target.value }))}
-                placeholder="Domains (comma-separated)"
-              />
-            </div>
-            <Textarea
-              value={form.notes}
-              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-              placeholder="Notes"
-              className="min-h-24 px-3 py-2 text-sm"
-            />
-            {duplicateWarnings.length > 0 ? (
-              <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                {duplicateWarnings.map((warning) => (
-                  <p key={warning}>{warning}</p>
-                ))}
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" size="sm" onClick={onSave} disabled={saving}>
-                {isCreating ? 'Create collaborator' : 'Save changes'}
-              </Button>
-              {!isCreating && selectedId ? (
-                <Button type="button" size="sm" variant="secondary" onClick={onDelete} disabled={saving}>
-                  Delete
-                </Button>
-              ) : null}
-              {!isCreating && selectedId ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setIsCreating(false)
-                    if (selectedCollaborator) {
-                      setForm(toFormState(selectedCollaborator))
-                    }
-                  }}
-                >
-                  Reset
-                </Button>
-              ) : null}
-            </div>
-            {status ? <p className="text-xs text-emerald-700">{status}</p> : null}
-            {error ? <p className="text-xs text-destructive">{error}</p> : null}
-            {importResult ? (
-              <p className="text-xs text-muted-foreground">
-                OpenAlex author: {importResult.openalex_author_id || 'n/a'} | Imported:{' '}
-                {importResult.imported_candidates}
-              </p>
-            ) : null}
-            {enrichmentResult ? (
-              <p className="text-xs text-muted-foreground">
-                Enriched: {enrichmentResult.updated_count} updated | Resolved authors:{' '}
-                {enrichmentResult.resolved_author_count} | Missing IDs:{' '}
-                {enrichmentResult.skipped_without_identifier}
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
+        {!collaboratorDrilldownOpen && status ? <p className="text-xs text-emerald-700">{status}</p> : null}
+        {!collaboratorDrilldownOpen && error ? <p className="text-xs text-destructive">{error}</p> : null}
 
       <div className="space-y-4">
         <Card>
@@ -2586,6 +2466,145 @@ export function ProfileCollaborationPage() {
         </CardContent>
       </Card>
       </Section>
+
+      <DrilldownSheet open={collaboratorDrilldownOpen} onOpenChange={setCollaboratorDrilldownOpen}>
+        {selectedCollaborator ? (
+          <>
+            <DrilldownSheet.Header
+              title={selectedCollaborator.full_name || 'Collaborator details'}
+              subtitle={selectedCollaborator.primary_institution
+                ? `${selectedCollaborator.primary_institution}${selectedCollaborator.country ? `, ${selectedCollaborator.country}` : ''}`
+                : 'Review and update collaborator details.'}
+              variant="profile"
+            />
+            <DrilldownSheet.Content className="house-drilldown-stack-3">
+              <div className="house-drilldown-heading-block">
+                <p className="house-drilldown-heading-block-title">Collaborator details</p>
+              </div>
+              <div className="house-drilldown-content-block">
+                <div className="space-y-3 rounded border border-border bg-card p-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      value={form.full_name}
+                      onChange={(event) => setForm((current) => ({ ...current, full_name: event.target.value }))}
+                      placeholder="Full name"
+                    />
+                    <Input
+                      value={form.preferred_name}
+                      onChange={(event) => setForm((current) => ({ ...current, preferred_name: event.target.value }))}
+                      placeholder="Preferred name"
+                    />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      value={form.email}
+                      onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                      placeholder="Email"
+                    />
+                    <Input
+                      value={form.orcid_id}
+                      onChange={(event) => setForm((current) => ({ ...current, orcid_id: event.target.value }))}
+                      placeholder="ORCID (0000-0000-0000-0000)"
+                    />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      value={form.openalex_author_id}
+                      onChange={(event) => setForm((current) => ({ ...current, openalex_author_id: event.target.value }))}
+                      placeholder="OpenAlex author id"
+                    />
+                    <Input
+                      value={form.primary_institution}
+                      onChange={(event) => setForm((current) => ({ ...current, primary_institution: event.target.value }))}
+                      placeholder="Primary institution"
+                    />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      value={form.department}
+                      onChange={(event) => setForm((current) => ({ ...current, department: event.target.value }))}
+                      placeholder="Department"
+                    />
+                    <Input
+                      value={form.current_position}
+                      onChange={(event) => setForm((current) => ({ ...current, current_position: event.target.value }))}
+                      placeholder="Current position"
+                    />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      value={form.country}
+                      onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))}
+                      placeholder="Country"
+                    />
+                    <Input
+                      value={form.research_domains}
+                      onChange={(event) => setForm((current) => ({ ...current, research_domains: event.target.value }))}
+                      placeholder="Domains (comma-separated)"
+                    />
+                  </div>
+                  <Textarea
+                    value={form.notes}
+                    onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+                    placeholder="Notes"
+                    className="min-h-24 px-3 py-2 text-sm"
+                  />
+                  {duplicateWarnings.length > 0 ? (
+                    <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                      {duplicateWarnings.map((warning) => (
+                        <p key={warning}>{warning}</p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" size="sm" onClick={onSave} disabled={saving}>
+                      Save changes
+                    </Button>
+                    {selectedId ? (
+                      <Button type="button" size="sm" variant="secondary" onClick={onDelete} disabled={saving}>
+                        Delete
+                      </Button>
+                    ) : null}
+                    {selectedId ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          if (selectedCollaborator) {
+                            setForm(toFormState(selectedCollaborator))
+                          }
+                        }}
+                      >
+                        Reset
+                      </Button>
+                    ) : null}
+                  </div>
+                  {status ? <p className="text-xs text-emerald-700">{status}</p> : null}
+                  {error ? <p className="text-xs text-destructive">{error}</p> : null}
+                  {importResult ? (
+                    <p className="text-xs text-muted-foreground">
+                      OpenAlex author: {importResult.openalex_author_id || 'n/a'} | Imported:{' '}
+                      {importResult.imported_candidates}
+                    </p>
+                  ) : null}
+                  {enrichmentResult ? (
+                    <p className="text-xs text-muted-foreground">
+                      Enriched: {enrichmentResult.updated_count} updated | Resolved authors:{' '}
+                      {enrichmentResult.resolved_author_count} | Missing IDs:{' '}
+                      {enrichmentResult.skipped_without_identifier}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </DrilldownSheet.Content>
+          </>
+        ) : (
+          <DrilldownSheet.Placeholder className="text-sm text-muted-foreground">
+            Select a collaborator to inspect details.
+          </DrilldownSheet.Placeholder>
+        )}
+      </DrilldownSheet>
 
       {loading ? <p className="text-xs text-muted-foreground">Loading collaboration data...</p> : null}
     </Stack>

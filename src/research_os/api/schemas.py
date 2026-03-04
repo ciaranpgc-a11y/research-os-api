@@ -1082,6 +1082,7 @@ class AdminApiMonitorProviderResponse(BaseModel):
     category: str
     configured: bool = False
     health: str = "healthy"
+    health_reason: str = ""
     calls_current_month: int = 0
     errors_current_month: int = 0
     error_rate_pct_current_month: float = 0.0

@@ -626,11 +626,15 @@
   }
 
   @media (min-width: 768px) {
-    .house-collaboration-toolbar-header [data-house-role='section-header-content'] {
+    .house-collaboration-toolbar-header [data-house-role='section-header-content'],
+    .house-publications-library-toolbar-header [data-house-role='section-header-content'],
+    .house-publications-insights-toolbar-header [data-house-role='section-header-content'] {
       position: relative;
     }
 
-    .house-collaboration-toolbar-header [data-house-role='section-header-actions'] {
+    .house-collaboration-toolbar-header [data-house-role='section-header-actions'],
+    .house-publications-library-toolbar-header [data-house-role='section-header-actions'],
+    .house-publications-insights-toolbar-header [data-house-role='section-header-actions'] {
       position: absolute;
       right: 0;
       top: 50%;

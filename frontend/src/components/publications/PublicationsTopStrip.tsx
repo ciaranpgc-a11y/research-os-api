@@ -2718,10 +2718,18 @@ export function PublicationsPerYearChart({
   const axisMax = targetAxisMax
   const renderedMeanValue = Math.max(0, meanValue)
   const barHeightAxisMax = Math.max(1, axisMax)
-  const rawYAxisTickRatios = targetAxisScale
-    ? targetAxisScale.ticks.map((tickValue) => (targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax))
-    : [0, 0.25, 0.5, 0.75, 1]
-  const rawYAxisTickValues = rawYAxisTickRatios.map((ratio) => ratio * axisMax)
+  const rawYAxisTickRatios = useMemo(
+    () => (
+      targetAxisScale
+        ? targetAxisScale.ticks.map((tickValue) => (targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax))
+        : [0, 0.25, 0.5, 0.75, 1]
+    ),
+    [targetAxisScale],
+  )
+  const rawYAxisTickValues = useMemo(
+    () => rawYAxisTickRatios.map((ratio) => ratio * axisMax),
+    [axisMax, rawYAxisTickRatios],
+  )
   const yAxisTickValues = useMemo(() => {
     if (effectiveVisualMode !== 'line') {
       return rawYAxisTickValues
@@ -3090,6 +3098,7 @@ export function PublicationsPerYearChart({
   }, [
     barHeightAxisMax,
     effectiveVisualMode,
+    maxAnimatedDisplayValue,
     renderedCumulativeValuesAnimated,
     renderedCumulativeValuesTarget,
     renderBars,
@@ -5440,6 +5449,35 @@ function TotalPublicationsDrilldownWorkspace({
   }, [tile])
 
   const venueBreakdownData = useMemo(() => {
+    const fallbackRows = (() => {
+      const total = publicationDrilldownRecords.length
+      if (!total) {
+        return []
+      }
+      const counts = new Map<string, { count: number; citations: number }>()
+      publicationDrilldownRecords.forEach((record) => {
+        const label = String(record.venue || '').trim() || 'Unknown journal'
+        const current = counts.get(label) || { count: 0, citations: 0 }
+        current.count += 1
+        current.citations += Math.max(0, Number(record.citations || 0))
+        counts.set(label, current)
+      })
+      return Array.from(counts.entries())
+        .sort((left, right) => {
+          if (left[1].count === right[1].count) {
+            return left[0].localeCompare(right[0])
+          }
+          return right[1].count - left[1].count
+        })
+        .map(([label, stats]) => ({
+          key: label,
+          label,
+          value: stats.count,
+          share_pct: Number(((stats.count / total) * 100).toFixed(1)),
+          avg_citations: Number((stats.citations / Math.max(1, stats.count)).toFixed(1)),
+        }))
+    })()
+
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
     const breakdowns = Array.isArray(drilldown.breakdowns) ? drilldown.breakdowns : []
     const venueBreakdown = breakdowns.find((b) => {
@@ -5447,10 +5485,10 @@ function TotalPublicationsDrilldownWorkspace({
       const breakdown = b as Record<string, unknown>
       return breakdown.breakdown_id === 'by_venue_full'
     })
-    if (!venueBreakdown || typeof venueBreakdown !== 'object') return []
+    if (!venueBreakdown || typeof venueBreakdown !== 'object') return fallbackRows
     const breakdown = venueBreakdown as Record<string, unknown>
     const items = Array.isArray(breakdown.items) ? breakdown.items : []
-    return items.map((item) => {
+    const parsedRows = items.map((item) => {
       if (!item || typeof item !== 'object') return null
       const row = item as Record<string, unknown>
       return {
@@ -5461,11 +5499,41 @@ function TotalPublicationsDrilldownWorkspace({
         avg_citations: Number(row.avg_citations || 0),
       }
     }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
-  }, [tile.drilldown])
+    return parsedRows.length > 0 ? parsedRows : fallbackRows
+  }, [publicationDrilldownRecords, tile.drilldown])
 
   const venueTop10Data = useMemo(() => venueBreakdownData.slice(0, 10), [venueBreakdownData])
 
   const articleClassBreakdownData = useMemo(() => {
+    const fallbackRows = (() => {
+      const total = publicationDrilldownRecords.length
+      if (!total) {
+        return []
+      }
+      const counts = new Map<string, { count: number; citations: number }>()
+      publicationDrilldownRecords.forEach((record) => {
+        const label = String(record.articleType || '').trim() || 'Original'
+        const current = counts.get(label) || { count: 0, citations: 0 }
+        current.count += 1
+        current.citations += Math.max(0, Number(record.citations || 0))
+        counts.set(label, current)
+      })
+      return Array.from(counts.entries())
+        .sort((left, right) => {
+          if (left[1].count === right[1].count) {
+            return left[0].localeCompare(right[0])
+          }
+          return right[1].count - left[1].count
+        })
+        .map(([label, stats]) => ({
+          key: label,
+          label,
+          value: stats.count,
+          share_pct: Number(((stats.count / total) * 100).toFixed(1)),
+          avg_citations: Number((stats.citations / Math.max(1, stats.count)).toFixed(1)),
+        }))
+    })()
+
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
     const breakdowns = Array.isArray(drilldown.breakdowns) ? drilldown.breakdowns : []
     const articleBreakdown = breakdowns.find((b) => {
@@ -5473,10 +5541,10 @@ function TotalPublicationsDrilldownWorkspace({
       const breakdown = b as Record<string, unknown>
       return breakdown.breakdown_id === 'by_article_type'
     })
-    if (!articleBreakdown || typeof articleBreakdown !== 'object') return []
+    if (!articleBreakdown || typeof articleBreakdown !== 'object') return fallbackRows
     const breakdown = articleBreakdown as Record<string, unknown>
     const items = Array.isArray(breakdown.items) ? breakdown.items : []
-    return items.map((item) => {
+    const parsedRows = items.map((item) => {
       if (!item || typeof item !== 'object') return null
       const row = item as Record<string, unknown>
       return {
@@ -5487,7 +5555,8 @@ function TotalPublicationsDrilldownWorkspace({
         avg_citations: Number(row.avg_citations || 0),
       }
     }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
-  }, [tile.drilldown])
+    return parsedRows.length > 0 ? parsedRows : fallbackRows
+  }, [publicationDrilldownRecords, tile.drilldown])
 
   const topicBreakdownData = useMemo(() => {
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
@@ -5724,7 +5793,7 @@ function TotalPublicationsDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section">
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">By Venue</p>
+                  <p className="house-drilldown-heading-block-title">By Journals</p>
                   <DrilldownSheet.HeadingToggle
                     expanded={venueBreakdownExpanded}
                     onClick={(event) => {
@@ -5739,7 +5808,7 @@ function TotalPublicationsDrilldownWorkspace({
                 <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full space-y-4">
                   <div>
                     <div className="mb-3 flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Top 10 Venues</p>
+                      <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Top 10 Journals</p>
                       <DrilldownSheet.HeadingToggle
                         expanded={venueTopChartExpanded}
                         onClick={(event) => {
@@ -5771,21 +5840,21 @@ function TotalPublicationsDrilldownWorkspace({
                         ))}
                       </div>
                     ) : venueTopChartExpanded ? (
-                      <p className="text-sm text-muted-foreground">No venue data available</p>
+                      <p className="text-sm text-muted-foreground">No journal data available</p>
                     ) : null}
                   </div>
 
                   <div>
-                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">All Venues</p>
+                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">All Journals</p>
                     {venueBreakdownData.length > 0 ? (
                       <PublicationBreakdownTable
                         rows={venueBreakdownData}
                         showAvgCitations
-                        searchPlaceholder="Search venues..."
-                        emptyMessage="No venues found"
+                        searchPlaceholder="Search journals..."
+                        emptyMessage="No journals found"
                       />
                     ) : (
-                      <p className="text-sm text-muted-foreground">No venue data available</p>
+                      <p className="text-sm text-muted-foreground">No journal data available</p>
                     )}
                   </div>
                 </div>
@@ -6877,7 +6946,7 @@ export function PublicationsTopStrip({
   useEffect(() => {
     const id = window.setTimeout(() => setTileToggleMotionReady(true), CHART_MOTION.entry.duration)
     return () => window.clearTimeout(id)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const tileMotionStyle = useMemo(() => ({
     '--motion-duration-chart-refresh': `${CHART_MOTION.entry.duration}ms`,
@@ -7035,7 +7104,7 @@ export function PublicationsTopStrip({
         <CardContent className="p-0">
           <SectionHeader
             heading={PUBLICATION_INSIGHTS_TITLE}
-            className="house-publications-toolbar-header"
+            className="house-publications-toolbar-header house-publications-insights-toolbar-header"
             actions={(
               <>
                 {metrics?.status === 'FAILED' ? (

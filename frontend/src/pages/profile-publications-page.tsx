@@ -4523,7 +4523,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader
           heading="Publication library"
-          className="house-publications-toolbar-header"
+          className="house-publications-toolbar-header house-publications-library-toolbar-header"
           actions={(
             <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
             <SectionTools tone="publications" framed={false} className="order-1">

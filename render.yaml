@@ -12,6 +12,10 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: OPENALEX_MAILTO
+        sync: false
+      - key: CROSSREF_MAILTO
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: DATA_LIBRARY_ROOT
