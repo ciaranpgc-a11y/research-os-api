@@ -358,7 +358,7 @@ def _fetch_openalex_works_for_author(
         params: dict[str, Any] = {
             "filter": f"author.id:{openalex_author_id}",
             "select": (
-                "id,display_name,publication_year,type,doi,ids,primary_location,host_venue,"
+                "id,display_name,publication_year,type,doi,ids,primary_location,"
                 "authorships,abstract_inverted_index"
             ),
             "per-page": 200,
