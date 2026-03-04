@@ -2260,8 +2260,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       <Button
                         type="button"
                         size="sm"
-                        variant="secondary"
-                        className={HOUSE_ACTION_BUTTON_CLASS}
+                        variant="default"
                         onClick={onToggleProfilePhotoEditor}
                       >
                         <SlidersHorizontal className="mr-1.5 h-4 w-4" />
@@ -2270,8 +2269,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       <Button
                         type="button"
                         size="sm"
-                        variant="secondary"
-                        className={HOUSE_ACTION_BUTTON_CLASS}
+                        variant="destructive"
                         onClick={onRemoveProfilePhoto}
                       >
                         <Trash2 className="mr-1.5 h-4 w-4" />

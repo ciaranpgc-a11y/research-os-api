@@ -355,14 +355,6 @@
     --separator-page-header-to-section-header: 1rem;
     --separator-section-header-to-section-content: 0.1rem;
     --separator-section-content-to-section-header: 1.5rem;
-    --separator-main-title-expander-to-first-heading: var(--separator-page-header-to-section-header);
-    --separator-main-heading-block-to-content: var(--separator-section-header-to-section-content);
-    --separator-main-content-to-heading-block: var(--separator-section-content-to-section-header);
-    --separator-main-content-to-heading: var(--separator-main-content-to-heading-block);
-    --separator-main-content-to-secondary-heading: var(--separator-main-content-to-heading-block);
-    --separator-main-subheading-to-content: var(--separator-main-heading-block-to-content);
-    --separator-main-content-to-subheading: var(--separator-main-content-to-heading-block);
-    --separator-main-content-to-content: var(--separator-main-content-to-heading-block);
     --separator-drilldown-header-to-content: 0.75rem;
     --separator-drilldown-summary-grid-to-content-top: 0rem;
     --separator-drilldown-heading-block-to-content: 0.5rem;
@@ -376,9 +368,6 @@
     --drilldown-title-inline-align: var(--title-expander-indent);
     --separator-left-panel-subheading-to-content: 0.25rem;
     --separator-left-panel-content-to-subheading: 0.5rem;
-    --main-content-separator-title-expander-to-first-heading: var(--separator-page-header-to-section-header);
-    --main-content-separator-subheading-to-content: var(--separator-section-header-to-section-content);
-    --main-content-separator-content-to-subheading: var(--separator-section-content-to-section-header);
     --left-nav-divider-margin: var(--separator-left-panel-content-to-subheading);
     --top-nav-hover-bg: var(--tone-neutral-100);
     --top-nav-hover-bg-workspace: hsl(var(--tone-accent-200) / 0.34);
@@ -5164,9 +5153,8 @@
     box-sizing: border-box;
   }
 
-  .house-separator-main-heading-to-content,
-  .house-publications-toolbar-content-gap {
-    margin-top: var(--separator-main-heading-block-to-content);
+  .house-separator-main-heading-to-content {
+    margin-top: var(--separator-section-header-to-section-content);
   }
 
   @media (min-width: 640px) {

@@ -361,6 +361,7 @@ const HOUSE_TOGGLE_CHART_BAR_CLASS = publicationsHouseMotion.toggleChartBar
 const HOUSE_TOGGLE_CHART_MORPH_CLASS = publicationsHouseMotion.toggleChartMorph
 const HOUSE_TOGGLE_CHART_SWAP_CLASS = publicationsHouseMotion.toggleChartSwap
 const HOUSE_TOGGLE_CHART_LABEL_CLASS = publicationsHouseMotion.toggleChartLabel
+const HOUSE_TOGGLE_CHART_LINE_CLASS = publicationsHouseMotion.toggleChartLine
 const HOUSE_SURFACE_SECTION_PANEL_CLASS = publicationsHouseSurfaces.sectionPanel
 const HOUSE_SURFACE_STRONG_PANEL_CLASS = publicationsHouseSurfaces.strongPanel
 const HOUSE_SURFACE_PANEL_BARE_CLASS = publicationsHouseSurfaces.panelBare
@@ -3357,12 +3358,16 @@ export function PublicationsPerYearChart({
                   <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
                     <path
                       d={linePathD}
+                      className={HOUSE_TOGGLE_CHART_LINE_CLASS}
                       fill="none"
                       stroke="hsl(var(--tone-accent-600) / 0.96)"
                       strokeWidth="1.9"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       vectorEffect="non-scaling-stroke"
+                      style={{
+                        transitionDuration: `${getAxisAnimationDuration(isEntryCycle ? 'entry' : 'toggle')}ms`,
+                      }}
                     />
                   </svg>
                 </div>
@@ -3430,8 +3435,6 @@ export function PublicationsPerYearChart({
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${baseScaleX}) scaleY(${barScaleY})`,
                       transformOrigin: 'bottom',
                       transitionProperty: 'height,transform,filter,box-shadow,opacity',
-                      transitionDelay: barTransitionDelay,
-                      transitionDuration: barTransitionDuration,
                     }}
                   />
                 </div>
@@ -4846,15 +4849,7 @@ export function PublicationCategoryDistributionChart({
     targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax
   ))
   const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * axisMax)
-  const gridTickRatios = Array.from(new Set([
-    ...yAxisTickRatios.slice(1),
-    0.25,
-    0.5,
-    0.75,
-    1,
-  ]))
-    .filter((ratio) => Number.isFinite(ratio) && ratio > 0)
-    .sort((left, right) => left - right)
+  const gridTickRatios = yAxisTickRatios.slice(1).filter((ratio) => Number.isFinite(ratio) && ratio > 0 && ratio < 1)
 
   if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
@@ -5187,8 +5182,6 @@ export function PublicationCategoryDistributionChart({
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${hoverScaleX}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
                       transitionProperty: 'height,transform,filter,box-shadow',
-                      transitionDelay: barTransitionDelay,
-                      transitionDuration: barTransitionDuration,
                     }}
                   />
                 </div>
@@ -6905,7 +6898,7 @@ export function PublicationsTopStrip({
           />
 
           {insightsVisible && loading && tiles.length === 0 ? (
-            <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap publications-insights-grid">
+            <Section surface="transparent" inset="none" spaceY="none" className="publications-insights-grid">
               {Array.from({ length: 6 }).map((_, index) => (
                 <div key={index} className="w-full min-h-36 px-3 py-2.5">
                   <div className={cn('h-full rounded-sm', HOUSE_DRILLDOWN_SKELETON_BLOCK_CLASS)} />
@@ -6913,7 +6906,7 @@ export function PublicationsTopStrip({
               ))}
             </Section>
           ) : insightsVisible && tiles.length === 0 ? (
-            <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap pb-3">
+            <Section surface="transparent" inset="none" spaceY="none" className="pb-3">
               <div className={cn('rounded-sm px-3 py-2.5 text-sm', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>
                 <p>No publication insight tiles are available yet.</p>
                 {metrics?.status === 'RUNNING' ? <p className="mt-1">Metrics are currently computing. This panel updates automatically.</p> : null}
@@ -6921,7 +6914,7 @@ export function PublicationsTopStrip({
               </div>
             </Section>
           ) : insightsVisible ? (
-            <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap publications-insights-grid">
+            <Section surface="transparent" inset="none" spaceY="none" className="publications-insights-grid">
               {tiles.map((tile) => {
                 const subtitle = String(tile.subtext || '').trim()
                 const rawDeltaDisplay = String(tile.delta_display || '').trim()
@@ -7298,7 +7291,7 @@ export function PublicationsTopStrip({
               })}
             </Section>
           ) : (
-            <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap pb-3">
+            <Section surface="transparent" inset="none" spaceY="none" className="pb-3">
               <section className="house-notification-section" aria-live="polite">
                 <div className={cn(HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_INFO_CLASS)}>
                   <p>Publication insights hidden by user.</p>

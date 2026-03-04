@@ -5114,7 +5114,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           )}
         />
         {publicationLibraryVisible ? (
-          <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap space-y-1">
+          <Section surface="transparent" inset="none" spaceY="none" className="space-y-1">
           <div className="grid grid-cols-1 items-start gap-4">
             <div className="space-y-1">
 
@@ -5902,7 +5902,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           </div>
           </Section>
         ) : (
-          <Section surface="transparent" inset="none" spaceY="none" className="house-publications-toolbar-content-gap">
+          <Section surface="transparent" inset="none" spaceY="none">
             <section className="house-notification-section" aria-live="polite">
               <div className={cn(HOUSE_BANNER_CLASS, HOUSE_BANNER_INFO_CLASS)}>
                 <p>Publication library hidden by user.</p>
