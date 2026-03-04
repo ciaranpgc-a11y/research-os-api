@@ -1568,9 +1568,10 @@ export function ApprovalsContent() {
           </Stack>
           <Stack space="md">
             <Grid cols={3} gap="md">
-              <MatrixCell title="Button" note="default / focus target / disabled / loading" spec={`Height ${controlHeights.button || '—'}`}>
+              <MatrixCell title="Button" note="default / cta / focus target / disabled / loading" spec={`Height ${controlHeights.button || '—'}`}>
                 <Row gap="sm" align="start">
                   <Button ref={buttonRef}>Default</Button>
+                  <Button variant="cta">CTA</Button>
                   <Button variant="secondary" autoFocus>Focus target</Button>
                   <Button disabled>Disabled</Button>
                   <Button isLoading loadingText="Loading">Submit</Button>
@@ -1629,12 +1630,15 @@ export function ApprovalsContent() {
                   </Row>
                 </TooltipProvider>
               </MatrixCell>
-              <MatrixCell title="Badge" note="default / secondary / outline / destructive">
+              <MatrixCell title="Badge" note="default / secondary / outline / destructive / positive / intermediate / negative">
                 <Row gap="sm" align="start">
                   <Badge>Default</Badge>
                   <Badge variant="secondary">Secondary</Badge>
                   <Badge variant="outline">Outline</Badge>
                   <Badge variant="destructive">Destructive</Badge>
+                  <Badge variant="positive">Positive</Badge>
+                  <Badge variant="intermediate">Intermediate</Badge>
+                  <Badge variant="negative">Negative</Badge>
                 </Row>
               </MatrixCell>
             </Grid>

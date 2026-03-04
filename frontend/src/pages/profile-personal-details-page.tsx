@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent } from 'react'
 import { ChevronRight, GripVertical, Loader2, Plus, ShieldCheck, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -7,7 +7,7 @@ import { SectionMarker } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { Badge, Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import { clearAuthSessionToken, getAuthSessionToken, getCachedAuthRole } from '@/lib/auth-session'
-import { houseLayout, houseTypography } from '@/lib/house-style'
+import { houseForms, houseLayout, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import {
   fetchAffiliationAddressForMe,
@@ -133,8 +133,10 @@ const DEFAULT_PROFILE_PHOTO_POSITION_X = 50
 const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
 const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
 const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-300)/0.92)] bg-[hsl(var(--tone-accent-50))] px-3.5 text-[hsl(var(--tone-accent-800))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-400)/0.94)] hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]`
-const HOUSE_ACTION_BUTTON_PRIMARY_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-700))] bg-[hsl(var(--tone-accent-700))] px-3.5 text-[hsl(var(--tone-neutral-50))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-800))] hover:text-[hsl(var(--tone-neutral-50))]`
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
+const HOUSE_FORM_EXPANDER_SHELL_CLASS = houseForms.expanderShell
+const HOUSE_FORM_EXPANDER_TRIGGER_CLASS = houseForms.expanderTrigger
+const HOUSE_FORM_EXPANDER_PANEL_CLASS = houseForms.expanderPanel
 const HOUSE_PROFILE_PHOTO_EDITOR_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] p-2.5'
 const HOUSE_SOCIAL_LINK_ROW_CLASS = 'sm:col-span-2 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3.5'
 const HOUSE_SOCIAL_LINK_LABEL_CLASS = 'inline-flex w-full shrink-0 items-center gap-2.5 px-2 py-1.5 house-field-label sm:w-[12rem]'
@@ -651,9 +653,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [publicationAffiliationSuggestionsError, setPublicationAffiliationSuggestionsError] = useState('')
   const [profilePhotoEditorOpen, setProfilePhotoEditorOpen] = useState(false)
   const [affiliationMetadataByName, setAffiliationMetadataByName] = useState<Record<string, AffiliationMetadataItem>>({})
-  const [affiliationEditorOpen, setAffiliationEditorOpen] = useState(
-    () => !(initialDraft.jobRoles[0] || initialDraft.affiliations[0] || initialDraft.country),
-  )
+  const [affiliationEditorOpen, setAffiliationEditorOpen] = useState(false)
   const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
   const [affiliationEditorBaseline, setAffiliationEditorBaseline] = useState<AffiliationEditorSnapshot>(
     () => buildAffiliationEditorSnapshot({
@@ -1104,6 +1104,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     [affiliationEditorBaseline, affiliationEditorSnapshot],
   )
   const affiliationEditorActionLabel = affiliationEditorBaseline.primaryAffiliation ? 'Update' : 'Save'
+  const publicationAffiliationSummaryLabel = draft.publicationAffiliations.length > 0
+    ? `${draft.publicationAffiliations.length} publication affiliation${draft.publicationAffiliations.length === 1 ? '' : 's'} recorded.`
+    : 'No publication affiliations recorded.'
 
   const badges = useMemo(
     () =>
@@ -1207,6 +1210,20 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     }))
     setProfilePhotoEditorOpen(false)
     setStatus('')
+  }
+
+  const onToggleProfilePhotoEditor = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!draft.profilePhotoDataUrl) {
+      return
+    }
+    setProfilePhotoEditorOpen((current) => !current)
+  }
+
+  const onProfilePhotoPreviewClick = (event: MouseEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
   }
 
   const onAddJobRole = () => {
@@ -1959,19 +1976,81 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           </div>
         </div>
         <div className="space-y-3 text-sm">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2 house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
-              <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,0.7fr)_auto_minmax(0,4.3fr)]">
-                <div className="flex items-start gap-3 sm:justify-center sm:pr-3">
-                  <div className="flex w-full flex-col items-center gap-2">
-                    <Subheading className="w-full text-left">Profile photo</Subheading>
-                    {draft.profilePhotoDataUrl ? (
-                      <div
-                        className="relative mt-2 h-[9.75rem] w-[9.75rem] shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[var(--elevation-1)]"
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+            <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+              <div className="flex flex-col gap-3">
+                <Subheading>Profile photo</Subheading>
+                <div className="flex flex-col items-center gap-2">
+                  {draft.profilePhotoDataUrl ? (
+                    <div
+                      className="relative mt-2 h-[9.75rem] w-[9.75rem] shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[var(--elevation-1)]"
+                      onClick={onProfilePhotoPreviewClick}
+                    >
+                      <img
+                        src={draft.profilePhotoDataUrl}
+                        alt="Profile photo"
+                        decoding="async"
+                        className="pointer-events-none select-none h-full w-full object-cover"
+                        draggable={false}
+                        style={{
+                          objectPosition: `${draft.profilePhotoPositionX}% ${draft.profilePhotoPositionY}%`,
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="mt-2 inline-flex h-[9.75rem] w-[9.75rem] items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-2xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[var(--elevation-1)]">
+                      {profileInitials}
+                    </div>
+                  )}
+                  <input
+                    ref={profilePhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={onProfilePhotoSelected}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    onClick={() => profilePhotoInputRef.current?.click()}
+                  >
+                    <Upload className="mr-1.5 h-4 w-4" />
+                    {draft.profilePhotoDataUrl ? 'Replace photo' : 'Upload photo'}
+                  </Button>
+                  {draft.profilePhotoDataUrl ? (
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className={HOUSE_ACTION_BUTTON_CLASS}
+                        onClick={onToggleProfilePhotoEditor}
                       >
+                        <SlidersHorizontal className="mr-1.5 h-4 w-4" />
+                        {profilePhotoEditorOpen ? 'Close editor' : 'Adjust framing'}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className={HOUSE_ACTION_BUTTON_CLASS}
+                        onClick={onRemoveProfilePhoto}
+                      >
+                        <Trash2 className="mr-1.5 h-4 w-4" />
+                        Remove
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+                {draft.profilePhotoDataUrl && profilePhotoEditorOpen ? (
+                  <div className={HOUSE_PROFILE_PHOTO_EDITOR_CLASS}>
+                    <p className="house-field-label">Mini photo editor</p>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                      <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] shadow-[var(--elevation-1)] sm:mx-0">
                         <img
                           src={draft.profilePhotoDataUrl}
-                          alt="Profile photo"
+                          alt="Profile photo editor preview"
                           decoding="async"
                           className="h-full w-full object-cover"
                           style={{
@@ -1979,109 +2058,47 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                           }}
                         />
                       </div>
-                    ) : (
-                      <div className="mt-2 inline-flex h-[9.75rem] w-[9.75rem] items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-2xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[var(--elevation-1)]">
-                        {profileInitials}
-                      </div>
-                    )}
-                    <input
-                      ref={profilePhotoInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={onProfilePhotoSelected}
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="default"
-                      onClick={() => profilePhotoInputRef.current?.click()}
-                    >
-                      <Upload className="mr-1.5 h-4 w-4" />
-                      {draft.profilePhotoDataUrl ? 'Replace photo' : 'Upload photo'}
-                    </Button>
-                    {draft.profilePhotoDataUrl ? (
-                      <div className="flex flex-wrap items-center justify-center gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          className={HOUSE_ACTION_BUTTON_CLASS}
-                          onClick={() => setProfilePhotoEditorOpen((current) => !current)}
-                        >
-                          <SlidersHorizontal className="mr-1.5 h-4 w-4" />
-                          {profilePhotoEditorOpen ? 'Close editor' : 'Adjust framing'}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          className={HOUSE_ACTION_BUTTON_CLASS}
-                          onClick={onRemoveProfilePhoto}
-                        >
-                          <Trash2 className="mr-1.5 h-4 w-4" />
-                          Remove
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                  {draft.profilePhotoDataUrl && profilePhotoEditorOpen ? (
-                    <div className="space-y-2 flex-1">
-                      <div className={HOUSE_PROFILE_PHOTO_EDITOR_CLASS}>
-                        <p className="house-field-label">Mini photo editor</p>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                          <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] shadow-[var(--elevation-1)] sm:mx-0">
-                            <img
-                              src={draft.profilePhotoDataUrl}
-                              alt="Profile photo editor preview"
-                              decoding="async"
-                              className="h-full w-full object-cover"
-                              style={{
-                                objectPosition: `${draft.profilePhotoPositionX}% ${draft.profilePhotoPositionY}%`,
-                              }}
-                            />
-                          </div>
-                          <div className="flex-1 space-y-2">
-                            <label className="space-y-1">
-                              <span className="house-field-label">Horizontal framing</span>
-                              <input
-                                type="range"
-                                min={0}
-                                max={100}
-                                step={0.5}
-                                value={draft.profilePhotoPositionX}
-                                onChange={(event) => onProfilePhotoPositionSliderChange('x', event.target.value)}
-                                className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
-                              />
-                            </label>
-                            <label className="space-y-1">
-                              <span className="house-field-label">Vertical framing</span>
-                              <input
-                                type="range"
-                                min={0}
-                                max={100}
-                                step={0.5}
-                                value={draft.profilePhotoPositionY}
-                                onChange={(event) => onProfilePhotoPositionSliderChange('y', event.target.value)}
-                                className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
-                              />
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                              <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
-                                Reset
-                              </Button>
-                              <Button type="button" size="sm" variant="primary" className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS} onClick={() => setProfilePhotoEditorOpen(false)}>
-                                Done
-                              </Button>
-                            </div>
-                          </div>
+                      <div className="flex-1 space-y-2">
+                        <label className="space-y-1">
+                          <span className="house-field-label">Horizontal framing</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={0.5}
+                            value={draft.profilePhotoPositionX}
+                            onChange={(event) => onProfilePhotoPositionSliderChange('x', event.target.value)}
+                            className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="house-field-label">Vertical framing</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={0.5}
+                            value={draft.profilePhotoPositionY}
+                            onChange={(event) => onProfilePhotoPositionSliderChange('y', event.target.value)}
+                            className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
+                            Reset
+                          </Button>
+                          <Button type="button" size="sm" variant="cta" onClick={() => setProfilePhotoEditorOpen(false)}>
+                            Done
+                          </Button>
                         </div>
                       </div>
                     </div>
-                  ) : null}
-                </div>
-
-                <div className="house-divider-fill-soft h-px w-full sm:h-auto sm:w-px sm:self-stretch" />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+              <div className="grid items-start gap-4">
                 <div className="space-y-3 sm:pr-3">
                   <Subheading>Personal details</Subheading>
                   <label className="space-y-1 block">
@@ -2217,83 +2234,78 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         <SectionHeader
           heading="Affiliation"
           className="house-section-header-marker-aligned"
-          actions={(
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              className={HOUSE_ACTION_BUTTON_CLASS}
-              onClick={onOpenAffiliationEditor}
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              Add new
-            </Button>
-          )}
         />
         <div className="space-y-3 text-sm">
-
-          <div
-            className={cn(
-              'rounded-md border border-[hsl(var(--tone-neutral-200))] transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-long)] ease-[var(--motion-ease-default)]',
-              affiliationSaveFlashActive
-                ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] shadow-[var(--elevation-1)]'
-                : 'bg-[hsl(var(--tone-neutral-50))]',
-            )}
-          >
-            <button
-              ref={affiliationSummaryToggleRef}
-              type="button"
-              className={cn(
-                'w-full px-3 py-2.5 text-left transition-colors',
-                affiliationEditorOpen
-                  ? 'bg-[hsl(var(--tone-neutral-100))]'
-                  : 'hover:bg-[hsl(var(--tone-neutral-100))]',
-              )}
-              onClick={onToggleAffiliationEditor}
-              aria-expanded={affiliationEditorOpen}
-              aria-controls="affiliation-editor-panel"
-            >
-              <span className="flex items-center justify-between gap-3">
-                <span className="flex min-w-0 items-center gap-2">
-                  <ChevronRight
-                    className={cn(
-                      'h-4 w-4 text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-ui)]',
-                      affiliationEditorOpen
-                        ? 'translate-x-0.5 rotate-90 text-[hsl(var(--tone-neutral-700))]'
-                        : '',
-                    )}
-                    aria-hidden
-                  />
-                  <p
-                    className={cn(
-                      'truncate text-sm font-medium text-[hsl(var(--tone-neutral-900))] transition-transform duration-[var(--motion-duration-ui)]',
-                      affiliationEditorOpen ? 'translate-x-0.5' : '',
-                    )}
-                  >
-                    {journalByline || 'No affiliations recorded.'}
-                  </p>
-                </span>
-              </span>
-            </button>
-          </div>
-
-          {affiliationEditorOpen ? (
-            <div
-              id="affiliation-editor-panel"
-              ref={affiliationEditorPanelRef}
-              onBlurCapture={onAffiliationEditorPanelBlurCapture}
-              className="ml-1 space-y-3 border-l border-[hsl(var(--tone-neutral-200))] pl-3"
-            >
-                <div className="space-y-1.5 p-1">
+          <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+            <div className="grid gap-x-2 gap-y-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+              <div
+                className={cn(
+                  HOUSE_FORM_EXPANDER_SHELL_CLASS,
+                  'transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-long)] ease-[var(--motion-ease-default)]',
+                  'bg-[hsl(var(--tone-neutral-50))]',
+                  affiliationSaveFlashActive ? 'shadow-[var(--elevation-1)]' : '',
+                )}
+                data-state={affiliationEditorOpen ? 'open' : 'closed'}
+              >
+                <button
+                  ref={affiliationSummaryToggleRef}
+                  type="button"
+                  className={cn(HOUSE_FORM_EXPANDER_TRIGGER_CLASS, 'w-full rounded-md px-3 py-2.5 text-left')}
+                  data-state={affiliationEditorOpen ? 'open' : 'closed'}
+                  onClick={onToggleAffiliationEditor}
+                  aria-expanded={affiliationEditorOpen}
+                  aria-controls="affiliation-editor-panel"
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <ChevronRight
+                        className={cn(
+                          'h-4 w-4 text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-ui)]',
+                          affiliationEditorOpen
+                            ? 'translate-x-0.5 rotate-90 text-[hsl(var(--tone-neutral-700))]'
+                            : '',
+                        )}
+                        aria-hidden
+                      />
+                      <p
+                        className={cn(
+                          'truncate text-sm font-medium text-[hsl(var(--tone-neutral-900))] transition-transform duration-[var(--motion-duration-ui)]',
+                          affiliationEditorOpen ? 'translate-x-0.5' : '',
+                        )}
+                      >
+                        {journalByline || 'No affiliations recorded.'}
+                      </p>
+                    </span>
+                  </span>
+                </button>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                className="shrink-0 self-start"
+                onClick={onOpenAffiliationEditor}
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                Add new
+              </Button>
+              {affiliationEditorOpen ? (
+              <div
+                id="affiliation-editor-panel"
+                ref={affiliationEditorPanelRef}
+                onBlurCapture={onAffiliationEditorPanelBlurCapture}
+                className={cn(HOUSE_FORM_EXPANDER_PANEL_CLASS, 'space-y-3 md:col-start-1 md:col-end-2')}
+              >
+                <div className="space-y-1.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="house-field-label">Roles</p>
+                    <p className="house-field-label text-[hsl(var(--tone-neutral-700))]">Roles</p>
                   </div>
 
                   <div
                     className={cn(
                       'grid gap-2',
                       normalizeRole(draft.jobRoles[0] || '').length > 0
-                        ? 'md:grid-cols-[minmax(0,75%)_auto] md:items-start md:gap-3'
+                        ? 'md:grid-cols-[minmax(0,1fr)_auto] md:items-start md:gap-3'
                         : 'md:max-w-[75%]',
                     )}
                   >
@@ -2361,24 +2373,23 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                               onBlur={() => onJobRoleEntryBlur(index)}
                               placeholder="Role"
                               autoComplete="organization-title"
-                              className={cn(
-                                'h-8 min-w-[12rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]',
-                                index === 0 && normalizeRole(role) ? 'font-semibold text-[hsl(var(--tone-neutral-900))]' : '',
-                              )}
+                              className="flex-1"
                             />
                             {hasRoleRows && index === 0 ? (
-                              <span className="inline-flex w-[6.75rem] justify-center rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-positive-700))]">
+                              <Badge variant="positive" className="w-[6.75rem] justify-center">
                                 Primary
-                              </span>
+                              </Badge>
                             ) : null}
                             {hasRoleRows && index > 0 ? (
-                              <button
+                              <Button
                                 type="button"
                                 onClick={() => onSetPrimaryJobRole(role)}
-                                className="inline-flex w-[6.75rem] justify-center rounded-full border border-[hsl(var(--tone-neutral-300))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-700))]"
+                                variant="default"
+                                size="sm"
+                                className="w-[6.75rem] min-h-0 h-auto justify-center px-2 py-1 text-micro font-medium leading-tight hover:border-[hsl(var(--tone-neutral-900))] hover:bg-white hover:text-[hsl(var(--tone-neutral-900))] active:border-[hsl(var(--tone-neutral-900))] active:bg-white active:text-[hsl(var(--tone-neutral-900))]"
                               >
                                 Set primary
-                              </button>
+                              </Button>
                             ) : null}
                             {hasRoleRows ? (
                               <button
@@ -2396,12 +2407,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     </div>
 
                     {normalizeRole(draft.jobRoles[0] || '').length > 0 ? (
-                      <div className="flex justify-start md:justify-center md:self-start">
+                      <div className="flex justify-end self-start md:rounded-md md:border md:border-transparent md:px-2 md:py-1.5">
                         <Button
                           type="button"
-                          variant="secondary"
+                          variant="default"
                           size="sm"
-                          className={HOUSE_ACTION_BUTTON_CLASS}
                           onClick={onAddJobRole}
                         >
                           <Plus className="mr-1.5 h-4 w-4" />
@@ -2412,8 +2422,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </div>
                 </div>
 
-              <div className="space-y-2 p-1">
-                <p className="house-field-label">Affiliation</p>
+              <div className="house-divider-fill-soft h-px w-full" />
+
+              <div className="space-y-2">
+                <p className="house-field-label text-[hsl(var(--tone-neutral-700))]">Affiliation</p>
 
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
@@ -2421,12 +2433,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     onChange={(event) => onPrimaryAffiliationEntryChange(event.target.value)}
                     onFocus={() => setPrimaryAffiliationInputFocused(true)}
                     onBlur={onPrimaryAffiliationInputBlur}
-                    placeholder="Affiliation"
+                    placeholder="Start typing to see suggestions"
                     autoComplete="organization"
-                    className={cn(
-                      'h-8 min-w-[14rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]',
-                      sanitizeAffiliation(primaryAffiliationInput) ? 'font-semibold text-[hsl(var(--tone-neutral-900))]' : '',
-                    )}
+                    className="min-w-[14rem] flex-1"
                   />
                   {primaryAffiliationLabel ? (
                     <button
@@ -2473,7 +2482,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationAddressError}</p>
                 ) : null}
 
-                <div className="ml-3 grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1 sm:col-span-2">
                     <span className="house-field-label">Address line 1</span>
                     <Input
@@ -2531,8 +2540,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     <Button
                       type="button"
                       size="sm"
-                      variant="primary"
-                      className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS}
+                      variant="cta"
                       onClick={onApplyAffiliationEditorChanges}
                     >
                       {affiliationEditorActionLabel}
@@ -2540,8 +2548,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </div>
                 ) : null}
               </div>
+              </div>
+            ) : null}
             </div>
-          ) : null}
+          </div>
         </div>
       </Section>
 
@@ -2549,147 +2559,188 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         <SectionHeader
           heading="Publication affiliation"
           className="house-section-header-marker-aligned"
-          actions={(
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className={HOUSE_ACTION_BUTTON_CLASS}
-              onClick={onTogglePublicationAffiliationComposer}
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              {showPublicationAffiliationComposer ? 'Hide add form' : 'Add new'}
-            </Button>
-          )}
         />
-        <div className="space-y-3 text-sm">
-
-          {showPublicationAffiliationComposer ? (
-            <div className="space-y-1 sm:col-span-2">
-              <span className="house-field-label">Add publication affiliation</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  value={publicationAffiliationInput}
-                  onChange={(event) => setPublicationAffiliationInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      onAddPublicationAffiliation(publicationAffiliationInput)
-                    }
-                  }}
-                  placeholder="Start typing an institution"
-                  autoComplete="organization"
-                />
-                <Button
+        <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+          <div className="space-y-3 text-sm">
+            <div className="grid gap-x-2 gap-y-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+              <div
+                className={cn(HOUSE_FORM_EXPANDER_SHELL_CLASS, 'bg-[hsl(var(--tone-neutral-50))]')}
+                data-state={showPublicationAffiliationComposer ? 'open' : 'closed'}
+              >
+                <button
                   type="button"
-                  variant="secondary"
-                  size="sm"
-                  className={HOUSE_ACTION_BUTTON_CLASS}
-                  onClick={() => onAddPublicationAffiliation(publicationAffiliationInput)}
-                  disabled={
-                    !sanitizeAffiliation(publicationAffiliationInput) ||
-                    draft.publicationAffiliations.length >= MAX_PUBLICATION_AFFILIATIONS
-                  }
+                  className={cn(HOUSE_FORM_EXPANDER_TRIGGER_CLASS, 'w-full rounded-md px-3 py-2.5 text-left')}
+                  data-state={showPublicationAffiliationComposer ? 'open' : 'closed'}
+                  onClick={onTogglePublicationAffiliationComposer}
+                  aria-expanded={showPublicationAffiliationComposer}
+                  aria-controls="publication-affiliation-composer"
                 >
-                  Add new
-                </Button>
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <ChevronRight
+                        className={cn(
+                          'h-4 w-4 text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-ui)]',
+                          showPublicationAffiliationComposer
+                            ? 'translate-x-0.5 rotate-90 text-[hsl(var(--tone-neutral-700))]'
+                            : '',
+                        )}
+                        aria-hidden
+                      />
+                      <p
+                        className={cn(
+                          'truncate text-sm font-medium text-[hsl(var(--tone-neutral-900))] transition-transform duration-[var(--motion-duration-ui)]',
+                          showPublicationAffiliationComposer ? 'translate-x-0.5' : '',
+                        )}
+                      >
+                        {publicationAffiliationSummaryLabel}
+                      </p>
+                    </span>
+                  </span>
+                </button>
               </div>
-              {publicationAffiliationSuggestionsLoading ? (
-                <p className="house-field-helper">Looking up affiliations...</p>
-              ) : null}
-              {publicationAffiliationSuggestions.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
-                  {publicationAffiliationSuggestions.map((suggestion) => (
-                    <button
-                      key={`publication:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                className="shrink-0 self-start"
+                onClick={onTogglePublicationAffiliationComposer}
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                {showPublicationAffiliationComposer ? 'Hide add form' : 'Add new'}
+              </Button>
+
+              {showPublicationAffiliationComposer ? (
+                <div id="publication-affiliation-composer" className={cn(HOUSE_FORM_EXPANDER_PANEL_CLASS, 'space-y-1 md:col-start-1 md:col-end-2')}>
+                  <span className="house-field-label text-[hsl(var(--tone-neutral-700))]">Add publication affiliation</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      value={publicationAffiliationInput}
+                      onChange={(event) => setPublicationAffiliationInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          onAddPublicationAffiliation(publicationAffiliationInput)
+                        }
+                      }}
+                      placeholder="Start typing to see suggestions"
+                      autoComplete="organization"
+                    />
+                    <Button
                       type="button"
-                      onClick={() => onAddPublicationAffiliation(suggestion.name, {
-                        address: suggestion.address || '',
-                        city: suggestion.city || '',
-                        region: suggestion.region || '',
-                        postalCode: suggestion.postalCode || '',
-                        country: suggestion.countryName || '',
-                      })}
-                      className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
-                      title={suggestion.label}
+                      variant="default"
+                      size="sm"
+                      onClick={() => onAddPublicationAffiliation(publicationAffiliationInput)}
+                      disabled={
+                        !sanitizeAffiliation(publicationAffiliationInput) ||
+                        draft.publicationAffiliations.length >= MAX_PUBLICATION_AFFILIATIONS
+                      }
                     >
-                      {suggestion.label}
-                    </button>
-                  ))}
+                      Add new
+                    </Button>
+                  </div>
+                  {publicationAffiliationSuggestionsLoading ? (
+                    <p className="house-field-helper">Looking up affiliations...</p>
+                  ) : null}
+                  {publicationAffiliationSuggestions.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
+                      {publicationAffiliationSuggestions.map((suggestion) => (
+                        <button
+                          key={`publication:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
+                          type="button"
+                          onClick={() => onAddPublicationAffiliation(suggestion.name, {
+                            address: suggestion.address || '',
+                            city: suggestion.city || '',
+                            region: suggestion.region || '',
+                            postalCode: suggestion.postalCode || '',
+                            country: suggestion.countryName || '',
+                          })}
+                          className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
+                          title={suggestion.label}
+                        >
+                          {suggestion.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {publicationAffiliationSuggestionsError ? (
+                    <p className="text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
+                  ) : null}
                 </div>
               ) : null}
             </div>
-          ) : null}
 
-          {draft.publicationAffiliations.length > 0 ? (
-            <div className="space-y-2">
-              {draft.publicationAffiliations.map((item, index) => {
-                const isPrimary = item.toLowerCase() === primaryAffiliationKey
-                return (
-                  <div
-                    key={item}
-                    draggable
-                    onDragStart={(event) => onDragStartPublicationAffiliation(event, index)}
-                    onDragOver={(event) => onDragOverPublicationAffiliation(event, index)}
-                    onDrop={() => onDropPublicationAffiliation(index)}
-                    onDragEnd={() => {
-                      setDraggingPublicationAffiliationIndex(null)
-                      setPublicationAffiliationDropTargetIndex(null)
-                    }}
-                    className={cn(
-                      'group flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 transition-[transform,background-color,border-color,box-shadow,opacity] duration-[var(--motion-duration-ui)] ease-[var(--motion-ease-default)] will-change-transform',
-                      draggingPublicationAffiliationIndex === index
-                        ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50))] shadow-[var(--elevation-3)] scale-[1.015] -translate-y-0.5 opacity-95'
-                        : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] hover:bg-[hsl(var(--tone-neutral-100)/0.55)]',
-                      publicationAffiliationDropTargetIndex === index && draggingPublicationAffiliationIndex !== index
-                        ? 'border-dashed border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.8)] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-300)/0.45)] translate-x-0.5'
-                        : '',
-                      publicationAffiliationDropFlashIndex === index
-                        ? 'ring-2 ring-[hsl(var(--tone-positive-300)/0.75)] ring-offset-1 ring-offset-transparent'
-                        : '',
-                    )}
-                  >
-                    <span
+            {draft.publicationAffiliations.length > 0 ? (
+              <div className="house-divider-fill-soft h-px w-full" />
+            ) : null}
+
+            {draft.publicationAffiliations.length > 0 ? (
+              <div className="space-y-2">
+                {draft.publicationAffiliations.map((item, index) => {
+                  const isPrimary = item.toLowerCase() === primaryAffiliationKey
+                  return (
+                    <div
+                      key={item}
+                      draggable
+                      onDragStart={(event) => onDragStartPublicationAffiliation(event, index)}
+                      onDragOver={(event) => onDragOverPublicationAffiliation(event, index)}
+                      onDrop={() => onDropPublicationAffiliation(index)}
+                      onDragEnd={() => {
+                        setDraggingPublicationAffiliationIndex(null)
+                        setPublicationAffiliationDropTargetIndex(null)
+                      }}
                       className={cn(
-                        'inline-flex cursor-grab items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-fast)] active:cursor-grabbing',
-                        draggingPublicationAffiliationIndex === index ? 'scale-110 text-[hsl(var(--tone-accent-700))]' : 'group-hover:scale-105',
+                        'group flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 transition-[transform,background-color,border-color,box-shadow,opacity] duration-[var(--motion-duration-ui)] ease-[var(--motion-ease-default)] will-change-transform',
+                        draggingPublicationAffiliationIndex === index
+                          ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50))] shadow-[var(--elevation-3)] scale-[1.015] -translate-y-0.5 opacity-95'
+                          : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] hover:bg-[hsl(var(--tone-neutral-100)/0.55)]',
+                        publicationAffiliationDropTargetIndex === index && draggingPublicationAffiliationIndex !== index
+                          ? 'border-dashed border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.8)] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-300)/0.45)] translate-x-0.5'
+                          : '',
+                        publicationAffiliationDropFlashIndex === index
+                          ? 'ring-2 ring-[hsl(var(--tone-positive-300)/0.75)] ring-offset-1 ring-offset-transparent'
+                          : '',
                       )}
-                      title="Drag to reorder"
                     >
-                      <GripVertical className="h-4 w-4" />
-                    </span>
-                    <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>
-                    <span className="text-xs text-[hsl(var(--tone-neutral-800))]">{item}</span>
-                    {isPrimary ? (
-                      <span className="rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-positive-700))]">
-                        Primary
+                      <span
+                        className={cn(
+                          'inline-flex cursor-grab items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-fast)] active:cursor-grabbing',
+                          draggingPublicationAffiliationIndex === index ? 'scale-110 text-[hsl(var(--tone-accent-700))]' : 'group-hover:scale-105',
+                        )}
+                        title="Drag to reorder"
+                      >
+                        <GripVertical className="h-4 w-4" />
                       </span>
-                    ) : (
+                      <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>
+                      <span className="min-w-[10rem] flex-1 text-xs text-[hsl(var(--tone-neutral-800))]">{item}</span>
+                      {isPrimary ? (
+                        <Badge variant="positive" className="w-[6.75rem] justify-center">
+                          Primary
+                        </Badge>
+                      ) : (
+                        <Button
+                          type="button"
+                          onClick={() => onSetPrimaryAffiliation(item)}
+                          variant="default"
+                          size="sm"
+                          className="w-[6.75rem] min-h-0 h-auto justify-center px-2 py-1 text-micro font-medium leading-tight hover:border-[hsl(var(--tone-neutral-900))] hover:bg-white hover:text-[hsl(var(--tone-neutral-900))] active:border-[hsl(var(--tone-neutral-900))] active:bg-white active:text-[hsl(var(--tone-neutral-900))]"
+                        >
+                          Set primary
+                        </Button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => onSetPrimaryAffiliation(item)}
-                        className="rounded-full border border-[hsl(var(--tone-neutral-300))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-700))]"
+                        onClick={() => onRemovePublicationAffiliation(item)}
+                        className="ml-auto text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
+                        aria-label={`Remove ${item}`}
                       >
-                        Set primary
+                        Remove
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onRemovePublicationAffiliation(item)}
-                      className="ml-auto text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
-                      aria-label={`Remove ${item}`}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          ) : null}
-
-          {publicationAffiliationSuggestionsError ? (
-            <p className="text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
-          ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
       </Section>
 
@@ -2697,8 +2748,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
-            variant="primary"
-            className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS}
+            variant="cta"
             onClick={() => void onSave()}
             disabled={!user || saving || loading}
           >

@@ -14,7 +14,7 @@ import { WorkspaceNavigator } from '@/components/layout/workspace-navigator'
 import { ACCOUNT_SETTINGS_STORAGE_KEY } from '@/lib/account-preferences'
 import { StandaloneRouteShell } from '@/stories/pages-review/_helpers/page-review-shells'
 import { pagesReviewProfilePublicationsDefaultFixture } from '@/stories/pages-review/_helpers/profile-publications-fixture'
-import { Badge } from '@/components/ui'
+import { Badge, Button } from '@/components/ui'
 
 type HeaderScope = 'account' | 'workspace'
 type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
@@ -1555,10 +1555,10 @@ function ApprovedButtonsSection() {
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-2 border-b border-neutral-200">
           <p className="text-sm font-semibold text-neutral-900">Approved Buttons</p>
-          <p className="text-xs text-neutral-600">Canonical publication button variants: Standard, Negative, and Major.</p>
+          <p className="text-xs text-neutral-600">Canonical publication button variants: Standard, Negative, Major, and CTA.</p>
         </div>
         <div className="p-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div className="space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-[0.06em] text-neutral-600">Standard button</p>
               <button type="button" className="house-drilldown-action approved-profile-hover-action approved-button-standard">Open</button>
@@ -1570,6 +1570,10 @@ function ApprovedButtonsSection() {
             <div className="space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-[0.06em] text-neutral-600">Major button</p>
               <button type="button" className="house-drilldown-action approved-profile-hover-action approved-button-major">Upload file</button>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.06em] text-neutral-600">CTA button</p>
+              <Button type="button" size="sm" variant="cta">Save</Button>
             </div>
           </div>
         </div>
