@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent } from 'react'
-import { ChevronRight, GripVertical, Loader2, Plus, ShieldCheck, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
+import { ChevronRight, GripVertical, Loader2, Plus, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { PageHeader, Row, Section, SectionHeader, Stack, Subheading } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { Badge, Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
-import { clearAuthSessionToken, getAuthSessionToken, getCachedAuthRole } from '@/lib/auth-session'
+import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import { houseForms, houseLayout, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import {
@@ -48,14 +48,6 @@ type PersonalDetailsDraft = {
 
 type StoredPersonalDetails = PersonalDetailsDraft & {
   updatedAt: string | null
-}
-
-type ProfileBadge = {
-  id: string
-  label: string
-  tone: 'neutral' | 'accent' | 'positive' | 'gold'
-  detail: string
-  variant?: 'standard' | 'admin'
 }
 
 type AffiliationSuggestionItem = {
@@ -514,41 +506,6 @@ function buildProfileInitials(input: {
   return 'U'
 }
 
-function buildProfileBadges(input: { orcidLinked: boolean; isAdmin: boolean }): ProfileBadge[] {
-  const badges: ProfileBadge[] = [
-    {
-      id: 'member',
-      label: 'Member',
-      tone: 'neutral',
-      detail: 'Standard member access',
-    },
-    input.orcidLinked
-      ? {
-          id: 'orcid',
-          label: 'ORCID linked',
-          tone: 'positive',
-          detail: 'ORCID connected',
-        }
-      : {
-          id: 'orcid',
-          label: 'ORCID missing',
-          tone: 'accent',
-          detail: 'ORCID not connected',
-        },
-  ]
-
-  if (input.isAdmin) {
-    badges.push({
-      id: 'admin',
-      label: 'Admin',
-      tone: 'gold',
-      detail: 'Administrator access',
-      variant: 'admin',
-    })
-  }
-  return badges
-}
-
 function buildAffiliationEditorSnapshot(input: {
   draft: PersonalDetailsDraft
   primaryAffiliationInput: string
@@ -663,6 +620,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [affiliationMetadataByName, setAffiliationMetadataByName] = useState<Record<string, AffiliationMetadataItem>>({})
   const [affiliationEditorOpen, setAffiliationEditorOpen] = useState(false)
   const [activeAffiliationIndex, setActiveAffiliationIndex] = useState(() => (initialDraft.affiliations.length > 0 ? 0 : -1))
+  const [pendingNewAffiliationIndex, setPendingNewAffiliationIndex] = useState<number | null>(null)
   const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
   const [affiliationEditorBaseline, setAffiliationEditorBaseline] = useState<AffiliationEditorSnapshot>(
     () => buildAffiliationEditorSnapshot({
@@ -801,6 +759,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPrimaryAffiliationInputFocused(false)
     setAffiliationEditorOpen(false)
     setActiveAffiliationIndex(fixtureDraft.affiliations.length > 0 ? 0 : -1)
+    setPendingNewAffiliationIndex(null)
     setAccountEmail(resolveEditableAccountEmail({
       email: fixtureUser?.email,
       orcidLinked: fixtureOrcidLinked,
@@ -937,6 +896,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           setPrimaryAffiliationInputFocused(false)
           setAffiliationEditorOpen(false)
           setActiveAffiliationIndex(resolvedDraft.affiliations.length > 0 ? 0 : -1)
+          setPendingNewAffiliationIndex(null)
           setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
             draft: resolvedDraft,
             primaryAffiliationInput: sanitizeAffiliation(resolvedDraft.organisation),
@@ -1091,7 +1051,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setCommittedJournalByline(buildJournalBylineFromDraft(draft))
   }, [affiliationEditorOpen, draft])
 
-  const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
   const primaryAffiliationKey = sanitizeAffiliation(draft.organisation || draft.affiliations[0] || '').toLowerCase()
   const activeAffiliationLabel = activeAffiliationIndex >= 0
     ? sanitizeAffiliation(draft.affiliations[activeAffiliationIndex] || '')
@@ -1121,20 +1080,16 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const hasIncompleteRoleEntries = draft.jobRoles.some((role) => normalizeRole(role).length === 0)
   const hasActiveAffiliationEntry = sanitizeAffiliation(primaryAffiliationInput).length > 0
   const affiliationSectionComplete = hasPrimaryRoleEntry && hasActiveAffiliationEntry && !hasIncompleteRoleEntries
-  const canCreateAdditionalAffiliation = !affiliationEditorOpen || (affiliationSectionComplete && !affiliationEditorDirty)
+  const hasPendingNewAffiliation = pendingNewAffiliationIndex !== null
+  const canCreateAdditionalAffiliation =
+    !hasPendingNewAffiliation && (!affiliationEditorOpen || (affiliationSectionComplete && !affiliationEditorDirty))
   const canSaveAffiliationSection = affiliationEditorDirty && affiliationSectionComplete
+  const isPendingNewAffiliationActive =
+    pendingNewAffiliationIndex !== null && activeAffiliationIndex === pendingNewAffiliationIndex
+  const activeAffiliationActionLabel = isPendingNewAffiliationActive ? 'Cancel' : 'Delete'
   const publicationAffiliationSummaryLabel = draft.publicationAffiliations.length > 0
     ? `${draft.publicationAffiliations.length} publication affiliation${draft.publicationAffiliations.length === 1 ? '' : 's'} recorded.`
     : 'No publication affiliations recorded.'
-
-  const badges = useMemo(
-    () =>
-      buildProfileBadges({
-        orcidLinked,
-        isAdmin: (user?.role || getCachedAuthRole()) === 'admin',
-      }),
-    [orcidLinked, user?.role],
-  )
 
   const onFieldChange = (field: PersonalDetailsStringField, value: string) => {
     draftEditedRef.current = true
@@ -1433,6 +1388,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       return
     }
     runAffiliationActionPreservingPagePosition(() => {
+      if (pendingNewAffiliationIndex !== null) {
+        if (index !== pendingNewAffiliationIndex) {
+          return
+        }
+        if (affiliationEditorOpen && activeAffiliationIndex === pendingNewAffiliationIndex) {
+          return
+        }
+      }
       const isSameRow = activeAffiliationIndex === index
       if (isSameRow && affiliationEditorOpen) {
         commitJournalBylineFromDraft()
@@ -1464,6 +1427,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   }
 
   const onOpenAffiliationEditor = () => {
+    if (pendingNewAffiliationIndex !== null) {
+      runAffiliationActionPreservingPagePosition(() => {
+        setActiveAffiliationIndex(pendingNewAffiliationIndex)
+        setAffiliationEditorOpen(true)
+      })
+      return
+    }
     if (!canCreateAdditionalAffiliation) {
       runAffiliationActionPreservingPagePosition(() => {
         setAffiliationEditorOpen(true)
@@ -1514,6 +1484,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       setPrimaryAffiliationAddressResolving(false)
       setPrimaryAffiliationAddressError('')
       setActiveAffiliationIndex(nextAffiliationIndex)
+      setPendingNewAffiliationIndex(nextAffiliationIndex)
       lastAutoPopulateAffiliationKeyRef.current = ''
       lastResolvedPrimaryAffiliationKeyRef.current = ''
       setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
@@ -1602,6 +1573,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       draft: nextDraft,
       primaryAffiliationInput: cleanAffiliation,
     }))
+    setPendingNewAffiliationIndex(null)
     commitJournalBylineFromDraft(nextDraft)
     setPrimaryAffiliationInputFocused(false)
     setPrimaryAffiliationSuggestions([])
@@ -1620,10 +1592,18 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       draftEditedRef.current = true
       let nextActiveIndex = activeAffiliationIndex
       let nextActiveLabel = ''
+      let nextPendingNewIndex = pendingNewAffiliationIndex
       setDraft((current) => {
         const removedIndex = current.affiliations.findIndex((item) => item.toLowerCase() === clean.toLowerCase())
         const nextAffiliations = normalizeAffiliations(current.affiliations.filter((item) => item.toLowerCase() !== clean.toLowerCase()))
         const nextPrimary = nextAffiliations[0] || ''
+        if (nextPendingNewIndex !== null) {
+          if (removedIndex === nextPendingNewIndex) {
+            nextPendingNewIndex = null
+          } else if (removedIndex >= 0 && removedIndex < nextPendingNewIndex) {
+            nextPendingNewIndex -= 1
+          }
+        }
         if (nextAffiliations.length === 0) {
           nextActiveIndex = -1
           nextActiveLabel = ''
@@ -1646,6 +1626,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         }
       })
       setActiveAffiliationIndex(nextActiveIndex)
+      setPendingNewAffiliationIndex(nextPendingNewIndex)
       setPrimaryAffiliationInput(nextActiveLabel)
       setAffiliationMetadataByName((current) => {
         const next = { ...current }
@@ -1656,6 +1637,75 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         setPrimaryAffiliationInput('')
       }
       lastAutoPopulateAffiliationKeyRef.current = ''
+    })
+  }
+
+  const onDeleteActiveAffiliation = () => {
+    runAffiliationActionPreservingPagePosition(() => {
+      if (activeAffiliationIndex < 0) {
+        return
+      }
+      const sourceDraft = draftRef.current
+      if (activeAffiliationIndex >= sourceDraft.affiliations.length) {
+        return
+      }
+
+      const removedLabel = sanitizeAffiliation(sourceDraft.affiliations[activeAffiliationIndex] || '')
+      const removedIndex = activeAffiliationIndex
+      const nextAffiliations = normalizeAffiliations(
+        sourceDraft.affiliations
+          .filter((_, index) => index !== removedIndex)
+          .map((value) => sanitizeAffiliation(value))
+          .filter((value) => value && value.toLowerCase() !== NEW_AFFILIATION_LABEL.toLowerCase()),
+      )
+      const nextActiveIndex = nextAffiliations.length > 0
+        ? Math.max(0, Math.min(activeAffiliationIndex, nextAffiliations.length - 1))
+        : -1
+      const nextActiveLabel = nextActiveIndex >= 0 ? nextAffiliations[nextActiveIndex] || '' : ''
+      const nextActiveMetadata = nextActiveLabel ? affiliationMetadataByName[nextActiveLabel.toLowerCase()] : undefined
+      const nextDraft: PersonalDetailsDraft = {
+        ...sourceDraft,
+        affiliations: nextAffiliations,
+        organisation: nextAffiliations[0] || '',
+        affiliationAddress: nextActiveMetadata ? sanitizeAffiliation(nextActiveMetadata.address) : '',
+        affiliationCity: nextActiveMetadata ? sanitizeAffiliation(nextActiveMetadata.city) : '',
+        affiliationRegion: nextActiveMetadata ? sanitizeAffiliation(nextActiveMetadata.region) : '',
+        affiliationPostalCode: nextActiveMetadata ? sanitizeAffiliation(nextActiveMetadata.postalCode) : '',
+        country: nextActiveMetadata ? sanitizeAffiliation(nextActiveMetadata.country) : '',
+      }
+
+      draftEditedRef.current = true
+      setDraft(nextDraft)
+      setActiveAffiliationIndex(nextActiveIndex)
+      setPrimaryAffiliationInput(nextActiveLabel)
+      setPrimaryAffiliationInputFocused(false)
+      setPrimaryAffiliationSuggestions([])
+      setPrimaryAffiliationSuggestionsLoading(false)
+      setPrimaryAffiliationSuggestionsError('')
+      setPrimaryAffiliationAddressResolving(false)
+      setPrimaryAffiliationAddressError('')
+      setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
+        draft: nextDraft,
+        primaryAffiliationInput: nextActiveLabel,
+      }))
+      setAffiliationEditorOpen(nextActiveIndex >= 0)
+      if (pendingNewAffiliationIndex !== null) {
+        if (removedIndex === pendingNewAffiliationIndex) {
+          setPendingNewAffiliationIndex(null)
+        } else if (removedIndex < pendingNewAffiliationIndex) {
+          setPendingNewAffiliationIndex(pendingNewAffiliationIndex - 1)
+        }
+      }
+      commitJournalBylineFromDraft(nextDraft)
+
+      if (removedLabel && removedLabel.toLowerCase() !== NEW_AFFILIATION_LABEL.toLowerCase()) {
+        setAffiliationMetadataByName((current) => {
+          const next = { ...current }
+          delete next[removedLabel.toLowerCase()]
+          return next
+        })
+      }
+      lastAutoPopulateAffiliationKeyRef.current = nextActiveLabel.toLowerCase()
     })
   }
 
@@ -2160,28 +2210,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
         <div className="house-section-header-marker-aligned flex w-full flex-col gap-2">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-            <h2 className="m-0 text-h3 font-semibold text-[hsl(var(--foreground))]">Profile</h2>
-            <div className="flex flex-wrap items-center gap-2">
-              {badges.map((badge) => (
-                <Badge
-                  key={badge.id}
-                  className="gap-1 leading-none shadow-none"
-                  title={badge.detail}
-                  variant={
-                    badge.variant === 'admin'
-                      ? 'userAdmin'
-                      : badge.id === 'member'
-                        ? 'userMember'
-                        : 'userGuest'
-                  }
-                >
-                  {badge.variant === 'admin' ? <ShieldCheck className="h-3.5 w-3.5" /> : null}
-                  {badge.label}
-                </Badge>
-              ))}
-            </div>
-          </div>
+          <h2 className="m-0 text-h3 font-semibold text-[hsl(var(--foreground))]">Profile</h2>
         </div>
         <div className="space-y-3 text-sm">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
@@ -2451,7 +2480,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   const clean = sanitizeAffiliation(affiliation)
                   const isPlaceholder = clean.toLowerCase() === NEW_AFFILIATION_LABEL.toLowerCase()
                   const isOpen = affiliationEditorOpen && activeAffiliationIndex === index
-                  const rowLabel = clean && !isPlaceholder ? clean : `${NEW_AFFILIATION_LABEL} ${index + 1}`
+                  const rowLabel = clean && !isPlaceholder ? clean : NEW_AFFILIATION_LABEL
                   return (
                     <div
                       key={`affiliation-row-${index}-${clean || 'new'}`}
@@ -2521,7 +2550,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </div>
                 )}
               </div>
-              <div className="flex shrink-0 flex-col items-stretch gap-2 self-start">
+              <div className="flex shrink-0 flex-col items-stretch gap-2 self-start md:pt-1">
                 <Button
                   type="button"
                   size="sm"
@@ -2784,9 +2813,19 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     <Button
                       type="button"
                       size="sm"
+                      variant={isPendingNewAffiliationActive ? 'default' : 'destructive'}
+                      onClick={onDeleteActiveAffiliation}
+                      disabled={activeAffiliationIndex < 0}
+                    >
+                      {activeAffiliationActionLabel}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
                       variant="cta"
                       onClick={onApplyAffiliationEditorChanges}
                       disabled={!canSaveAffiliationSection}
+                      className="ml-2"
                     >
                       {affiliationEditorActionLabel}
                     </Button>
@@ -2848,7 +2887,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 type="button"
                 variant="default"
                 size="sm"
-                className="shrink-0 self-start"
+                className="shrink-0 self-start md:mt-1"
                 onClick={onTogglePublicationAffiliationComposer}
               >
                 <Plus className="mr-1.5 h-4 w-4" />
