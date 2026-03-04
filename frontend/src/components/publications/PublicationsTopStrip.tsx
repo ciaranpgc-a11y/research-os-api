@@ -6653,6 +6653,17 @@ export function PublicationsTopStrip({
     }
   }, [forceInsightsVisible])
 
+  // Refresh settings when page becomes visible (user navigates back from settings)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && !forceInsightsVisible) {
+        setInsightsVisible(readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden')
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [forceInsightsVisible])
+
   const onSelectTile = async (tile: PublicationMetricTilePayload) => {
     setActiveTileKey(tile.key)
     setActiveTileDetail(tile)

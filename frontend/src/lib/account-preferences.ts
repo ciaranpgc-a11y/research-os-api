@@ -33,7 +33,7 @@ const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
   affiliation: '',
   defaultLanguage: 'en-GB',
   notificationsEmail: '',
-  publicationInsightsDefaultVisibility: 'hidden',
+  publicationInsightsDefaultVisibility: 'visible',
   researchKeywords: [],
   defaultStudyTypes: [],
   preferredJournals: [],

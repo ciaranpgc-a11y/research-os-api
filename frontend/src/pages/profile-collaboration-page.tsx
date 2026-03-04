@@ -13,12 +13,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  TablePrimitive as Table,
-  TableBody,
-  TableCell,
-  TableHead as TableHeader,
-  TableHeaderCell as TableHead,
-  TableRow,
   TextareaPrimitive as Textarea,
 } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
@@ -1434,50 +1428,37 @@ export function ProfileCollaborationPage() {
 
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader heading="My collaborators" className="house-section-header-marker-aligned" />
-        <Card>
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded border border-border px-3 py-2">
-            <p className="text-xs text-muted-foreground">Total collaborators</p>
-            <p className="text-xl font-semibold">{summary?.total_collaborators ?? 0}</p>
+        <div className="house-separator-main-heading-to-content grid gap-3 md:grid-cols-4">
+          <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
+            <p className="house-h2">Total collaborators</p>
+            <div className="flex w-full items-center justify-center">
+              <p className="house-metric-tile-value !mt-0 text-center">{summary?.total_collaborators ?? 0}</p>
+            </div>
           </div>
-          <div className="rounded border border-border px-3 py-2">
-            <p className="text-xs text-muted-foreground">Core collaborators</p>
-            <p className="text-xl font-semibold">{summary?.core_collaborators ?? 0}</p>
+          <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
+            <p className="house-h2">Core collaborators</p>
+            <div className="flex w-full items-center justify-center">
+              <p className="house-metric-tile-value !mt-0 text-center">{summary?.core_collaborators ?? 0}</p>
+            </div>
           </div>
-          <div className="rounded border border-border px-3 py-2">
-            <p className="text-xs text-muted-foreground">Active collaborations (12m)</p>
-            <p className="text-xl font-semibold">{summary?.active_collaborations_12m ?? 0}</p>
+          <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
+            <p className="house-h2">Active collaborations (12m)</p>
+            <div className="flex w-full items-center justify-center">
+              <p className="house-metric-tile-value !mt-0 text-center">{summary?.active_collaborations_12m ?? 0}</p>
+            </div>
           </div>
-          <div className="rounded border border-border px-3 py-2">
-            <p className="text-xs text-muted-foreground">New collaborators (12m)</p>
-            <p className="text-xl font-semibold">{summary?.new_collaborators_12m ?? 0}</p>
+          <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
+            <p className="house-h2">New collaborators (12m)</p>
+            <div className="flex w-full items-center justify-center">
+              <p className="house-metric-tile-value !mt-0 text-center">{summary?.new_collaborators_12m ?? 0}</p>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <Card className="min-h-sz-580">
-          <CardHeader className="space-y-3">
+      <div className="space-y-3">
+        <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>Collaborators</CardTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" size="sm" variant="secondary" onClick={onAddCollaborator}>
-                  <Plus className="mr-1 h-3.5 w-3.5" />
-                  Add collaborator
-                </Button>
-                <Button type="button" size="sm" variant="secondary" onClick={onImport} disabled={saving}>
-                  <Upload className="mr-1 h-3.5 w-3.5" />
-                  Import from publications
-                </Button>
-                <Button type="button" size="sm" variant="secondary" onClick={onEnrichCoverage} disabled={saving}>
-                  <RefreshCcw className="mr-1 h-3.5 w-3.5" />
-                  Enrich missing fields
-                </Button>
-                <Button type="button" size="sm" variant="secondary" onClick={onExport}>
-                  <Download className="mr-1 h-3.5 w-3.5" />
-                  Export
-                </Button>
-              </div>
             </div>
             <CardDescription className="flex flex-wrap items-center gap-2">
               <span>Analytics computed: {formatDateTime(summary?.last_computed_at)}</span>
@@ -1511,49 +1492,50 @@ export function ProfileCollaborationPage() {
                 Search
               </Button>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
+          <div className="space-y-3">
             <div className="hidden md:block">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Institution</TableHead>
-                    <TableHead>Domains</TableHead>
-                    <TableHead>Classification</TableHead>
-                    <TableHead>Last year</TableHead>
-                    <TableHead>Coauthored works</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pagedCollaborators.map((item) => (
-                    <TableRow
-                      key={item.id}
-                      className={selectedId === item.id && !isCreating ? 'bg-accent/60' : ''}
-                      onClick={() => onSelectCollaborator(item)}
-                    >
-                      <TableCell className="font-medium">{item.full_name}</TableCell>
-                      <TableCell>{item.primary_institution || '-'}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {(item.research_domains || []).slice(0, 3).map((domain) => (
-                            <Badge key={domain} variant="outline">
-                              {domain}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={classificationTone(item.metrics.classification)}>
-                          {item.metrics.classification}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{item.metrics.last_collaboration_year ?? '-'}</TableCell>
-                      <TableCell>{item.metrics.coauthored_works_count}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="house-table-shell house-table-context-profile overflow-auto">
+                <table className="min-w-full table-fixed">
+                  <thead className="house-table-head">
+                    <tr className="house-table-row">
+                      <th className="house-table-head-text px-2 py-1.5 text-left">Name</th>
+                      <th className="house-table-head-text px-2 py-1.5 text-left">Institution</th>
+                      <th className="house-table-head-text px-2 py-1.5 text-left">Domains</th>
+                      <th className="house-table-head-text px-2 py-1.5 text-left">Classification</th>
+                      <th className="house-table-head-text px-2 py-1.5 text-left">Last year</th>
+                      <th className="house-table-head-text px-2 py-1.5 text-left">Coauthored works</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedCollaborators.map((item) => (
+                      <tr
+                        key={item.id}
+                        className={cn('house-table-row', selectedId === item.id && !isCreating ? 'bg-accent/60' : '')}
+                        onClick={() => onSelectCollaborator(item)}
+                      >
+                        <td className="house-table-cell-text px-2 py-1.5 align-top font-medium">{item.full_name}</td>
+                        <td className="house-table-cell-text px-2 py-1.5 align-top">{item.primary_institution || '-'}</td>
+                        <td className="house-table-cell-text px-2 py-1.5 align-top">
+                          <div className="flex flex-wrap gap-1">
+                            {(item.research_domains || []).slice(0, 3).map((domain) => (
+                              <Badge key={domain} variant="outline">
+                                {domain}
+                              </Badge>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="house-table-cell-text px-2 py-1.5 align-top">
+                          <Badge variant={classificationTone(item.metrics.classification)}>
+                            {item.metrics.classification}
+                          </Badge>
+                        </td>
+                        <td className="house-table-cell-text px-2 py-1.5 align-top">{item.metrics.last_collaboration_year ?? '-'}</td>
+                        <td className="house-table-cell-text px-2 py-1.5 align-top">{item.metrics.coauthored_works_count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div className="space-y-2 md:hidden">
@@ -1608,10 +1590,10 @@ export function ProfileCollaborationPage() {
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card>
+        <Card className="hidden" aria-hidden="true">
           <CardHeader>
             <CardTitle>
               {isCreating ? 'Add collaborator' : selectedCollaborator ? 'Collaborator details' : 'Select collaborator'}
