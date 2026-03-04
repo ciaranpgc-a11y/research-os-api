@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, Hammer, Lightbulb, Plus, RefreshCcw, Search, Settings, Share2, Sparkles, Upload } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, Hammer, Lightbulb, Search, Settings, Share2, Sparkles } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
@@ -45,7 +45,6 @@ import {
 import {
   createCollaborator,
   deleteCollaborator,
-  enrichCollaboratorsFromOpenAlex,
   exportCollaboratorsCsv,
   fetchCollaborationMetricsSummary,
   generateCollaborationAiAffiliationsNormaliser,
@@ -53,7 +52,6 @@ import {
   generateCollaborationAiContributionStatement,
   generateCollaborationAiInsights,
   getCollaborator,
-  importCollaboratorsFromOpenAlex,
   updateCollaborator,
 } from '@/lib/impact-api'
 import type {
@@ -1293,15 +1291,6 @@ export function ProfileCollaborationPage() {
     setHeatmapSelection({ mode: 'institution', label })
   }
 
-  const onAddCollaborator = () => {
-    setIsCreating(true)
-    setSelectedId(null)
-    setForm(EMPTY_FORM)
-    setDuplicateWarnings([])
-    setStatus('')
-    setError('')
-  }
-
   const onSelectCollaborator = (collaborator: CollaboratorPayload) => {
     setIsCreating(false)
     setSelectedId(collaborator.id)
@@ -1370,55 +1359,6 @@ export function ProfileCollaborationPage() {
       await load(token)
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Could not delete collaborator.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const onImport = async () => {
-    const token = getAuthSessionToken()
-    if (!token) {
-      navigate('/auth', { replace: true })
-      return
-    }
-    setSaving(true)
-    setError('')
-    setStatus('')
-    try {
-      const payload = await importCollaboratorsFromOpenAlex(token)
-      setImportResult(payload)
-      setStatus(
-        `Import complete: ${payload.created_count} created, ${payload.updated_count} updated, ${payload.skipped_count} skipped.`,
-      )
-      await load(token)
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : 'Could not import collaborators.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const onEnrichCoverage = async () => {
-    const token = getAuthSessionToken()
-    if (!token) {
-      navigate('/auth', { replace: true })
-      return
-    }
-    setSaving(true)
-    setError('')
-    setStatus('')
-    try {
-      const payload = await enrichCollaboratorsFromOpenAlex(token, {
-        onlyMissing: true,
-        limit: 200,
-      })
-      setEnrichmentResult(payload)
-      setStatus(
-        `Coverage enrichment complete: ${payload.updated_count} updated, ${payload.unchanged_count} unchanged, ${payload.failed_count} failed.`,
-      )
-      await load(token)
-    } catch (enrichError) {
-      setError(enrichError instanceof Error ? enrichError.message : 'Could not enrich collaborator coverage.')
     } finally {
       setSaving(false)
     }
@@ -1594,14 +1534,9 @@ export function ProfileCollaborationPage() {
           </div>
         </div>
 
-        <div
-          aria-hidden="true"
-          className="house-divider-fill-soft mt-[var(--separator-section-content-to-section-header)] h-px w-full"
-        />
-
         <SectionHeader
           heading="Collaborators"
-          className="house-publications-toolbar-header"
+          className="house-publications-toolbar-header mt-[var(--separator-section-content-to-section-header)]"
           actions={(
           <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
             <SectionTools tone="publications" framed={false} className="order-1">

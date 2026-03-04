@@ -593,9 +593,6 @@ function tileMotionEntryDuration(index = 0, animateIn = false): string {
   return `${durationMs}ms`
 }
 
-const SUBTLE_BAR_TOGGLE_DURATION_MS = 220
-
-
 function buildTileToggleThumbStyle(activeIndex: number, optionCount: number, isEntryCycle = false): CSSProperties {
   const safeCount = Math.max(1, optionCount)
   const safeIndex = Math.max(0, Math.min(activeIndex, safeCount - 1))
@@ -5754,7 +5751,7 @@ function TotalPublicationsDrilldownWorkspace({
                     </div>
                     {venueTopChartExpanded && venueTop10Data.length > 0 ? (
                       <div className="space-y-2">
-                        {venueTop10Data.map((row, index) => (
+                        {venueTop10Data.map((row) => (
                           <div key={row.key} className="flex items-center gap-3">
                             <div className="flex-1">
                               <p className="text-sm font-medium truncate">{row.label}</p>
