@@ -63,6 +63,20 @@ PUBMED_FETCH_RETRY_COUNT = max(0, int(os.getenv("PUBMED_FETCH_RETRY_COUNT", "1")
 PUBMED_FETCH_MAX_WORKERS = max(1, int(os.getenv("PUBMED_FETCH_MAX_WORKERS", "6")))
 PUBMED_ARTICLE_TYPE_PRIORITY = 100
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+MISSING_VENUE_VALUES = {
+    "",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "unknown",
+    "unknown journal",
+    "not available",
+    "not available from source",
+    "not set",
+    "-",
+    "—",
+}
 PMID_PATTERNS = [
     re.compile(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", re.IGNORECASE),
     re.compile(r"/pubmed/(\d+)", re.IGNORECASE),
@@ -476,6 +490,76 @@ def _fetch_pubmed_publication_types_batch(pmids: list[str]) -> dict[str, list[st
     return results
 
 
+def _fetch_pubmed_publication_metadata(
+    pmid: str,
+) -> tuple[list[str], str | None]:
+    xml_text = _pubmed_request_xml(str(pmid).strip())
+    if not xml_text.strip():
+        return [], None
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception:
+        return [], None
+
+    values: list[str] = []
+    seen: set[str] = set()
+    for node in root.findall(".//PublicationTypeList/PublicationType"):
+        text = re.sub(r"\s+", " ", str(node.text or "").strip())
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        values.append(text)
+
+    journal_name = None
+    for path in (
+        ".//Journal/Title",
+        ".//MedlineJournalInfo/MedlineTA",
+        ".//Journal/ISOAbbreviation",
+    ):
+        node = root.find(path)
+        if node is None:
+            continue
+        candidate = _normalize_venue_candidate(node.text)
+        if candidate:
+            journal_name = candidate
+            break
+
+    return values, journal_name
+
+
+def _fetch_pubmed_publication_metadata_batch(
+    pmids: list[str],
+) -> dict[str, dict[str, Any]]:
+    normalized = [str(item).strip() for item in pmids if str(item).strip().isdigit()]
+    unique_pmids: list[str] = list(dict.fromkeys(normalized))
+    if not unique_pmids:
+        return {}
+    results: dict[str, dict[str, Any]] = {}
+    max_workers = max(1, min(PUBMED_FETCH_MAX_WORKERS, len(unique_pmids)))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_index = {
+            executor.submit(_fetch_pubmed_publication_metadata, pmid): pmid
+            for pmid in unique_pmids
+        }
+        for future in as_completed(future_index):
+            pmid = future_index[future]
+            try:
+                publication_types, journal_name = future.result()
+                results[pmid] = {
+                    "publication_types": publication_types,
+                    "journal_name": journal_name,
+                }
+            except Exception:
+                results[pmid] = {
+                    "publication_types": [],
+                    "journal_name": None,
+                }
+    return results
+
+
 def _classify_pubmed_publication_types(
     *, publication_types: list[str], title: str
 ) -> str | None:
@@ -599,9 +683,18 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
+def _normalize_venue_candidate(value: Any) -> str | None:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    if not text:
+        return None
+    if text.lower() in MISSING_VENUE_VALUES:
+        return None
+    return text
+
+
 def _extract_pmid_and_journal_metric(
     metric_payload: dict[str, Any],
-) -> tuple[str | None, float | None]:
+) -> tuple[str | None, float | None, str | None]:
     pmid = _extract_pmid(metric_payload.get("pmid"))
     if not pmid:
         pmid = _extract_pmid(metric_payload.get("pubmed_id"))
@@ -615,7 +708,22 @@ def _extract_pmid_and_journal_metric(
         impact_factor = _safe_float(metric_payload.get("impact_factor"))
     if impact_factor is None:
         impact_factor = _safe_float(metric_payload.get("journal_2yr_mean_citedness"))
-    return pmid, impact_factor
+    journal_name = _normalize_venue_candidate(metric_payload.get("journal_name"))
+    if journal_name is None:
+        journal_name = _normalize_venue_candidate(metric_payload.get("journal"))
+    if journal_name is None:
+        journal_name = _normalize_venue_candidate(metric_payload.get("venue_name"))
+    if journal_name is None:
+        source = metric_payload.get("source")
+        if isinstance(source, dict):
+            journal_name = _normalize_venue_candidate(source.get("display_name"))
+    if journal_name is None:
+        primary_location = metric_payload.get("primary_location")
+        if isinstance(primary_location, dict):
+            source = primary_location.get("source")
+            if isinstance(source, dict):
+                journal_name = _normalize_venue_candidate(source.get("display_name"))
+    return pmid, impact_factor, journal_name
 
 
 def _resolve_user_or_raise(session, user_id: str) -> User:
@@ -748,7 +856,11 @@ def upsert_work(
             else None
         )
 
-        venue_name = re.sub(r"\s+", " ", str(work.get("venue_name", "")).strip())
+        venue_name = _normalize_venue_candidate(work.get("venue_name")) or ""
+        if not venue_name:
+            venue_name = _normalize_venue_candidate(work.get("journal")) or ""
+        if not venue_name:
+            venue_name = _normalize_venue_candidate(work.get("journal_name")) or ""
         publisher = re.sub(r"\s+", " ", str(work.get("publisher", "")).strip())
         raw_work_type = re.sub(r"\s+", " ", str(work.get("work_type", "")).strip())
         allow_llm = bool(
@@ -965,7 +1077,7 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
             metric_payload = dict(snapshot.metric_payload or {}) if snapshot else {}
             pmid = _extract_pmid(work.pmid) or _extract_pmid(work.url)
             journal_metric = None
-            derived_pmid, derived_metric = _extract_pmid_and_journal_metric(
+            derived_pmid, derived_metric, _derived_journal = _extract_pmid_and_journal_metric(
                 metric_payload
             )
             if not pmid:
@@ -1400,6 +1512,7 @@ def sync_metrics(
     best_abstract_by_work: dict[str, tuple[int, str]] = {}
     best_pmid_by_work: dict[str, tuple[int, str]] = {}
     best_article_type_by_work: dict[str, tuple[int, str]] = {}
+    best_journal_by_work: dict[str, tuple[int, str]] = {}
     for row in metric_rows:
         work_id = str(row.get("work_id", "")).strip()
         if not work_id:
@@ -1408,11 +1521,15 @@ def sync_metrics(
         work_payload = work_payload_by_id.get(work_id) or {}
         provider_name = str(row.get("provider", "")).strip().lower()
         priority = METRICS_PROVIDER_PRIORITY.get(provider_name, 0)
-        payload_pmid, _ = _extract_pmid_and_journal_metric(payload)
+        payload_pmid, _, payload_journal = _extract_pmid_and_journal_metric(payload)
         if payload_pmid:
             existing_pmid = best_pmid_by_work.get(work_id)
             if existing_pmid is None or priority > existing_pmid[0]:
                 best_pmid_by_work[work_id] = (priority, payload_pmid)
+        if payload_journal:
+            existing_journal = best_journal_by_work.get(work_id)
+            if existing_journal is None or priority > existing_journal[0]:
+                best_journal_by_work[work_id] = (priority, payload_journal)
         article_type = _infer_article_type_for_work(
             work_payload=work_payload,
             metric_payload=payload,
@@ -1440,11 +1557,18 @@ def sync_metrics(
         resolved_pmid_by_work[work_id] = pmid_value
 
     if resolved_pmid_by_work:
-        publication_types_by_pmid = _fetch_pubmed_publication_types_batch(
+        publication_metadata_by_pmid = _fetch_pubmed_publication_metadata_batch(
             list(set(resolved_pmid_by_work.values()))
         )
         for work_id, pmid_value in resolved_pmid_by_work.items():
-            publication_types = publication_types_by_pmid.get(pmid_value, [])
+            metadata = publication_metadata_by_pmid.get(pmid_value, {})
+            publication_types = metadata.get("publication_types", [])
+            journal_name = _normalize_venue_candidate(metadata.get("journal_name"))
+            if journal_name:
+                best_journal_by_work[work_id] = (
+                    PUBMED_ARTICLE_TYPE_PRIORITY,
+                    journal_name,
+                )
             if not publication_types:
                 continue
             work_payload = work_payload_by_id.get(work_id) or {}
@@ -1468,6 +1592,7 @@ def sync_metrics(
         hydrated_work_ids = list(
             set(best_abstract_by_work.keys())
             | set(best_article_type_by_work.keys())
+            | set(best_journal_by_work.keys())
             | set(resolved_pmid_by_work.keys())
         )
         if hydrated_work_ids:
@@ -1510,6 +1635,16 @@ def sync_metrics(
             if str(work.publication_type or "").strip() == article_type:
                 continue
             work.publication_type = article_type
+        for work_id, (_, journal_name) in best_journal_by_work.items():
+            work = works_by_id.get(work_id)
+            if work is None:
+                continue
+            current_venue = _normalize_venue_candidate(work.venue_name)
+            if current_venue:
+                continue
+            if work.user_edited and str(work.venue_name or "").strip():
+                continue
+            work.venue_name = journal_name
         for work_id, pmid_value in resolved_pmid_by_work.items():
             work = works_by_id.get(work_id)
             if work is None:
