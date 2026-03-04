@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Loader2, Paperclip, Search, Settings, Share2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
 import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
 import { SectionMarker, SectionToolDivider, SectionTools } from '@/components/patterns'
-import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
+import { PublicationsPerYearChart, PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
 import { drilldownTabFlexGrow } from '@/components/publications/house-drilldown-header-utils'
 import { publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
 import { Button, DrilldownSheet, Sheet, SheetContent, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui'
@@ -40,6 +40,7 @@ import type {
   PublicationFilePayload,
   PublicationFilesListPayload,
   PublicationImpactResponsePayload,
+  PublicationMetricTilePayload,
   PersonaWork,
   PersonaStatePayload,
   PersonaSyncJobPayload,
@@ -52,6 +53,8 @@ import type {
 type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
 type SortDirection = 'asc' | 'desc'
 type PublicationDetailTab = 'overview' | 'content' | 'impact' | 'files' | 'ai'
+type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
+type PublicationTrendsVisualMode = 'bars' | 'line'
 type PublicationTableColumnKey = 'title' | 'year' | 'venue' | 'work_type' | 'article_type' | 'citations'
 type PublicationTableColumnAlign = 'left' | 'center' | 'right'
 type PublicationTablePageSize = 25 | 50 | 100 | 'all'
@@ -90,6 +93,16 @@ const PUBLICATION_DETAIL_TABS: Array<{ id: PublicationDetailTab; label: string }
   { id: 'impact', label: 'Impact' },
   { id: 'files', label: 'Files' },
   { id: 'ai', label: 'AI insights' },
+]
+const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label: string }> = [
+  { value: '1y', label: '1y' },
+  { value: '3y', label: '3y' },
+  { value: '5y', label: '5y' },
+  { value: 'all', label: 'Life' },
+]
+const PUBLICATION_TRENDS_VISUAL_OPTIONS: Array<{ value: PublicationTrendsVisualMode; label: string }> = [
+  { value: 'bars', label: 'Bar view' },
+  { value: 'line', label: 'Line view' },
 ]
 const PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT = 8
 
@@ -218,6 +231,14 @@ const HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_ACTIVE_CLASS = publicationsHouseDril
 const HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS = publicationsHouseMotion.labelTransition
 const HOUSE_PUBLICATION_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS = publicationsHouseDrilldown.sheetBody
+const HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS = publicationsHouseDrilldown.toggleButtonMuted
+const HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS = publicationsHouseDrilldown.chartControlsRow
+const HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS = publicationsHouseDrilldown.chartControlsLeft
+const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
+const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
+const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
+const HOUSE_TOGGLE_CHART_BAR_CLASS = publicationsHouseMotion.toggleChartBar
+const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
 const HOUSE_PUBLICATION_DRILLDOWN_VALUE_POSITIVE_CLASS = publicationsHouseDrilldown.valuePositive
 const HOUSE_PUBLICATION_DRILLDOWN_VALUE_NEGATIVE_CLASS = publicationsHouseDrilldown.valueNegative
 const HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS = 'house-publication-file-button-standard'
@@ -2008,6 +2029,93 @@ function formatSignedPercent(value: number | null): string {
   return `${rounded}%`
 }
 
+function buildTileToggleThumbStyle(activeIndex: number, optionCount: number, isEntryCycle = false): CSSProperties {
+  const safeCount = Math.max(1, optionCount)
+  const safeIndex = Math.max(0, Math.min(activeIndex, safeCount - 1))
+  const widthPercent = 100 / safeCount
+  const leftPercent = safeIndex * widthPercent
+  const finalWidth = `${safeIndex === safeCount - 1 ? 100 - leftPercent : widthPercent}%`
+  return {
+    width: finalWidth,
+    left: `${leftPercent}%`,
+    willChange: 'left,width',
+    transitionDuration: isEntryCycle ? '0ms' : undefined,
+  }
+}
+
+function PublicationTrendsVisualToggle({
+  value,
+  onChange,
+}: {
+  value: PublicationTrendsVisualMode
+  onChange: (mode: PublicationTrendsVisualMode) => void
+}) {
+  const activeVisualModeIndex = PUBLICATION_TRENDS_VISUAL_OPTIONS.findIndex((option) => option.value === value)
+
+  return (
+    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+      <div
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        data-stop-tile-open="true"
+        data-ui="publications-trends-visual-toggle"
+        data-house-role="chart-toggle"
+        style={{ width: '5.25rem' }}
+      >
+        <span
+          className={HOUSE_TOGGLE_THUMB_CLASS}
+          style={buildTileToggleThumbStyle(activeVisualModeIndex, PUBLICATION_TRENDS_VISUAL_OPTIONS.length, false)}
+          aria-hidden="true"
+        />
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'bars' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'bars'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('bars')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" className={cn(HOUSE_TOGGLE_CHART_BAR_CLASS, 'h-3.5 w-3.5 fill-current')}>
+            <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
+            <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
+            <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'line' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'line'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('line')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
+            <polyline
+              points="2,11 6,8 9,9 14,4"
+              fill="none"
+              className="house-toggle-chart-line"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              data-expanded="true"
+            />
+            <circle cx="2" cy="11" r="1.1" fill="currentColor" />
+            <circle cx="6" cy="8" r="1.1" fill="currentColor" />
+            <circle cx="9" cy="9" r="1.1" fill="currentColor" />
+            <circle cx="14" cy="4" r="1.1" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function SortHeader({
   label,
   column,
@@ -2107,6 +2215,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [activeDetailTab, setActiveDetailTab] = useState<PublicationDetailTab>(
     () => fixture?.initialActiveDetailTab ?? loadActivePublicationDetailTab(),
   )
+  const [publicationTrajectoryWindowMode, setPublicationTrajectoryWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [publicationTrajectoryVisualMode, setPublicationTrajectoryVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const [detailCacheByWorkId, setDetailCacheByWorkId] = useState<Record<string, PublicationDetailPayload>>({})
   const [authorsCacheByWorkId, setAuthorsCacheByWorkId] = useState<Record<string, PublicationAuthorsPayload>>({})
   const [impactCacheByWorkId, setImpactCacheByWorkId] = useState<Record<string, PublicationImpactResponsePayload>>({})
@@ -2659,6 +2769,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     await loadPublicationAiData(workId)
+    await loadPublicationImpactData(workId)
   }, [contentModeByWorkId, loadPublicationAiData, loadPublicationAuthorsData, loadPublicationDetailData, loadPublicationFilesData, loadPublicationImpactData])
 
   useEffect(() => {
@@ -3290,6 +3401,87 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     })
     return files
   }, [selectedFilesPayload?.items])
+  const publicationTrajectoryChartTile = useMemo<PublicationMetricTilePayload | null>(() => {
+    const perYear = selectedImpactResponse?.payload?.per_year || []
+    const cleaned = perYear
+      .map((entry) => ({
+        year: Number(entry?.year),
+        value: Math.max(0, Number(entry?.citations)),
+      }))
+      .filter((entry) => Number.isFinite(entry.year) && Number.isFinite(entry.value))
+      .sort((left, right) => left.year - right.year)
+    if (cleaned.length === 0) {
+      return null
+    }
+    const years = cleaned.map((entry) => entry.year)
+    const values = cleaned.map((entry) => entry.value)
+    const meanValue = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0
+    const latestYear = years[years.length - 1]
+    const latestValue = values[values.length - 1]
+    return {
+      id: selectedWorkId ? `publication-trajectory-${selectedWorkId}` : 'publication-trajectory',
+      key: 'publication-trajectory',
+      label: 'Publication trajectory',
+      main_value: null,
+      value: null,
+      main_value_display: 'n/a',
+      value_display: 'n/a',
+      delta_value: null,
+      delta_display: null,
+      delta_direction: 'na',
+      delta_tone: 'neutral',
+      delta_color_code: 'neutral',
+      unit: null,
+      subtext: '',
+      badge: {},
+      chart_type: 'bar',
+      chart_data: {
+        years,
+        values,
+        mean_value: meanValue,
+        projected_year: latestYear,
+        current_year_ytd: latestValue,
+      },
+      sparkline: [],
+      sparkline_overlay: [],
+      tooltip: '',
+      tooltip_details: {},
+      data_source: [],
+      confidence_score: 0,
+      stability: 'stable',
+      drilldown: {
+        title: '',
+        definition: '',
+        formula: '',
+        confidence_note: '',
+        publications: [],
+        metadata: {},
+      },
+    }
+  }, [selectedImpactResponse?.payload?.per_year, selectedWorkId])
+  const publicationTrajectoryWindowThumbStyle: CSSProperties = publicationTrajectoryWindowMode === 'all'
+    ? {
+      width: '28%',
+      left: '72%',
+      willChange: 'left,width',
+    }
+    : publicationTrajectoryWindowMode === '5y'
+      ? {
+        width: '24%',
+        left: '48%',
+        willChange: 'left,width',
+      }
+      : publicationTrajectoryWindowMode === '3y'
+        ? {
+          width: '24%',
+          left: '24%',
+          willChange: 'left,width',
+        }
+        : {
+          width: '24%',
+          left: '0%',
+          willChange: 'left,width',
+        }
 
   const selectedAuthorNames = useMemo(() => {
     if (selectedAuthorsPayload?.authors_json?.length) {
@@ -3443,6 +3635,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [overviewOwnerContribution])
   useEffect(() => {
     setOverviewAuthorsExpanded(false)
+  }, [selectedWorkId])
+
+  useEffect(() => {
+    setPublicationTrajectoryWindowMode('5y')
+    setPublicationTrajectoryVisualMode('bars')
   }, [selectedWorkId])
 
   useEffect(() => {
@@ -5593,19 +5790,87 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             </div>
                           ) : null}
                           <div className="house-drilldown-heading-block">
-                            <p className="house-drilldown-heading-block-title">Performance summary</p>
-                          </div>
-                          <div className="house-drilldown-content-block">
-                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
-                              <p className="leading-relaxed">{selectedAiResponse?.payload?.performance_summary || 'Not available'}</p>
-                            </div>
-                          </div>
-                          <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Trajectory</p>
                           </div>
                           <div className="house-drilldown-content-block">
-                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
-                              <p className="font-medium">{(selectedAiResponse?.payload?.trajectory_classification || 'UNKNOWN').replace(/_/g, ' ')}</p>
+                            <div className="space-y-3">
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                <p className="leading-relaxed">{selectedAiResponse?.payload?.performance_summary || 'Not available'}</p>
+                              </div>
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
+                                  <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+                                    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                                      <div
+                                        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
+                                        data-stop-tile-open="true"
+                                        data-ui="publication-trajectory-window-toggle"
+                                        data-house-role="chart-toggle"
+                                        style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
+                                      >
+                                        <span
+                                          className={HOUSE_TOGGLE_THUMB_CLASS}
+                                          style={publicationTrajectoryWindowThumbStyle}
+                                          aria-hidden="true"
+                                        />
+                                        {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+                                          <button
+                                            key={`pub-trajectory-window-${option.value}`}
+                                            type="button"
+                                            data-stop-tile-open="true"
+                                            className={cn(
+                                              HOUSE_TOGGLE_BUTTON_CLASS,
+                                              publicationTrajectoryWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                                            )}
+                                            onClick={(event) => {
+                                              event.stopPropagation()
+                                              if (publicationTrajectoryWindowMode === option.value) {
+                                                return
+                                              }
+                                              setPublicationTrajectoryWindowMode(option.value)
+                                            }}
+                                            onMouseDown={(event) => event.stopPropagation()}
+                                            aria-pressed={publicationTrajectoryWindowMode === option.value}
+                                          >
+                                            {option.label}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <PublicationTrendsVisualToggle
+                                    value={publicationTrajectoryVisualMode}
+                                    onChange={setPublicationTrajectoryVisualMode}
+                                  />
+                                </div>
+                                {publicationTrajectoryChartTile ? (
+                                  <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
+                                    <PublicationsPerYearChart
+                                      tile={publicationTrajectoryChartTile}
+                                      animate
+                                      showAxes
+                                      enableWindowToggle
+                                      showPeriodHint
+                                      showCurrentPeriodSemantic
+                                      useCompletedMonthWindowLabels
+                                      autoScaleByWindow
+                                      showMeanLine
+                                      showMeanValueLabel
+                                      subtleGrid
+                                      activeWindowMode={publicationTrajectoryWindowMode}
+                                      onWindowModeChange={setPublicationTrajectoryWindowMode}
+                                      visualMode={publicationTrajectoryVisualMode}
+                                      onVisualModeChange={setPublicationTrajectoryVisualMode}
+                                      showWindowToggle={false}
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] px-3 py-4 text-sm text-muted-foreground">No trajectory data available.</div>
+                                )}
+                              </div>
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                <p className="font-medium">{(selectedAiResponse?.payload?.trajectory_classification || 'UNKNOWN').replace(/_/g, ' ')}</p>
+                              </div>
                             </div>
                           </div>
                           <div className="house-drilldown-heading-block">
