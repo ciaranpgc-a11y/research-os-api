@@ -56,6 +56,18 @@ export const UK_INSTITUTIONS: Record<string, InstitutionData> = {
     lon: 0.1218,
     aliases: ["cambridge", "cambridge university"],
   },
+  "east-anglia": {
+    name: "University of East Anglia",
+    lat: 52.6221,
+    lon: 1.2416,
+    aliases: ["east anglia", "university of east anglia", "uea", "norwich"],
+  },
+  "john-innes": {
+    name: "John Innes Centre",
+    lat: 52.6218,
+    lon: 1.2206,
+    aliases: ["john innes", "john innes centre", "norwich research park"],
+  },
 
   // Scotland
   edinburgh: {
@@ -248,15 +260,50 @@ export const UK_INSTITUTIONS: Record<string, InstitutionData> = {
  * Find institution data by matching against name or aliases
  */
 export function findInstitution(institutionName: string): InstitutionData | null {
-  const searchTerm = institutionName.toLowerCase().trim();
-  
+  const normalize = (value: string): string => value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const searchTerm = normalize(institutionName);
+  if (!searchTerm) {
+    return null;
+  }
+
+  let bestMatch: InstitutionData | null = null;
+  let bestScore = 0;
+
   for (const inst of Object.values(UK_INSTITUTIONS)) {
-    if (inst.aliases.some(alias => searchTerm.includes(alias))) {
-      return inst;
+    const candidates = [inst.name, ...inst.aliases].map(normalize).filter(Boolean);
+
+    for (const candidate of candidates) {
+      if (!candidate) {
+        continue;
+      }
+
+      let score = 0;
+      if (searchTerm === candidate) {
+        score = 100;
+      } else if (searchTerm.includes(candidate) || candidate.includes(searchTerm)) {
+        score = Math.min(candidate.length, searchTerm.length) + 40;
+      } else {
+        const searchTokens = new Set(searchTerm.split(" "));
+        const candidateTokens = candidate.split(" ");
+        const overlap = candidateTokens.filter((token) => searchTokens.has(token)).length;
+        if (overlap > 0) {
+          score = overlap * 10;
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = inst;
+      }
     }
   }
-  
-  return null;
+
+  return bestScore >= 10 ? bestMatch : null;
 }
 
 /**

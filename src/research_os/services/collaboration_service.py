@@ -21,6 +21,7 @@ from research_os.db import (
     AppRuntimeLock,
     Author,
     Collaborator,
+    CollaboratorAffiliation,
     CollaborationMetric,
     Manuscript,
     ManuscriptAffiliation,
@@ -340,6 +341,228 @@ def _metric_by_collaborator(
     return {str(row.collaborator_id): row for row in rows}
 
 
+def _collaborator_identity_key(collaborator: Collaborator) -> str:
+    openalex_id = re.sub(r"\s+", "", str(collaborator.openalex_author_id or "").strip().lower())
+    if openalex_id:
+        return f"oa:{openalex_id}"
+    orcid_id = _normalize_orcid_id(collaborator.orcid_id)
+    if orcid_id:
+        return f"orcid:{orcid_id.lower()}"
+    email = str(collaborator.email or "").strip().lower()
+    if email:
+        return f"email:{email}"
+    name = _normalize_name_lower(collaborator.full_name or "")
+    country = _normalize_name_lower(collaborator.country or "")
+    return f"name:{name}|country:{country}"
+
+
+def _collaborator_groups(
+    collaborators: list[Collaborator],
+) -> tuple[dict[str, list[Collaborator]], dict[str, str]]:
+    groups: dict[str, list[Collaborator]] = defaultdict(list)
+    collaborator_to_key: dict[str, str] = {}
+    for collaborator in collaborators:
+        key = _collaborator_identity_key(collaborator)
+        groups[key].append(collaborator)
+        collaborator_to_key[str(collaborator.id)] = key
+    return dict(groups), collaborator_to_key
+
+
+def _affiliation_labels_by_collaborator(
+    session,
+    *,
+    collaborator_ids: list[str],
+) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = defaultdict(list)
+    if not collaborator_ids:
+        return result
+    rows = session.scalars(
+        select(CollaboratorAffiliation).where(
+            CollaboratorAffiliation.collaborator_id.in_(collaborator_ids)
+        )
+    ).all()
+    seen: dict[str, set[str]] = defaultdict(set)
+    for row in rows:
+        collab_id = str(row.collaborator_id)
+        label = re.sub(r"\s+", " ", str(row.institution_name or "").strip())
+        if not label:
+            continue
+        key = label.lower()
+        if key in seen[collab_id]:
+            continue
+        seen[collab_id].add(key)
+        result[collab_id].append(label)
+    return result
+
+
+def _merge_metric_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    if not payloads:
+        return _serialize_metric(None)
+    first_years = [
+        _safe_int(payload.get("first_collaboration_year"))
+        for payload in payloads
+        if _safe_int(payload.get("first_collaboration_year")) is not None
+    ]
+    last_years = [
+        _safe_int(payload.get("last_collaboration_year"))
+        for payload in payloads
+        if _safe_int(payload.get("last_collaboration_year")) is not None
+    ]
+    computed_values = [
+        _coerce_utc_or_none(payload.get("computed_at"))
+        for payload in payloads
+        if _coerce_utc_or_none(payload.get("computed_at")) is not None
+    ]
+    classification_order = {
+        CLASSIFICATION_CORE: 5,
+        CLASSIFICATION_ACTIVE: 4,
+        CLASSIFICATION_OCCASIONAL: 3,
+        CLASSIFICATION_HISTORIC: 2,
+        CLASSIFICATION_UNCLASSIFIED: 1,
+    }
+    relationship_order = {
+        RELATIONSHIP_TIER_CORE: 4,
+        RELATIONSHIP_TIER_REGULAR: 3,
+        RELATIONSHIP_TIER_OCCASIONAL: 2,
+        RELATIONSHIP_TIER_UNCLASSIFIED: 1,
+    }
+    activity_order = {
+        ACTIVITY_STATUS_ACTIVE: 5,
+        ACTIVITY_STATUS_RECENT: 4,
+        ACTIVITY_STATUS_DORMANT: 3,
+        ACTIVITY_STATUS_HISTORIC: 2,
+        ACTIVITY_STATUS_UNCLASSIFIED: 1,
+    }
+
+    def _pick_best_status(values: list[str | None], order: dict[str, int], fallback: str) -> str:
+        best = fallback
+        best_rank = order.get(fallback, 0)
+        for value in values:
+            normalized = str(value or "").strip().upper()
+            rank = order.get(normalized, 0)
+            if rank > best_rank:
+                best = normalized
+                best_rank = rank
+        return best
+
+    status = READY_STATUS
+    statuses = [str(payload.get("status") or READY_STATUS).strip().upper() for payload in payloads]
+    if any(item == RUNNING_STATUS for item in statuses):
+        status = RUNNING_STATUS
+    elif any(item == FAILED_STATUS for item in statuses):
+        status = FAILED_STATUS
+
+    return {
+        "coauthored_works_count": max(
+            [int(_safe_int(payload.get("coauthored_works_count")) or 0) for payload in payloads]
+            or [0]
+        ),
+        "shared_citations_total": max(
+            [int(_safe_int(payload.get("shared_citations_total")) or 0) for payload in payloads]
+            or [0]
+        ),
+        "first_collaboration_year": min(first_years) if first_years else None,
+        "last_collaboration_year": max(last_years) if last_years else None,
+        "citations_last_12m": max(
+            [int(_safe_int(payload.get("citations_last_12m")) or 0) for payload in payloads]
+            or [0]
+        ),
+        "collaboration_strength_score": max(
+            [float(_safe_float(payload.get("collaboration_strength_score")) or 0.0) for payload in payloads]
+            or [0.0]
+        ),
+        "classification": _pick_best_status(
+            [str(payload.get("classification") or CLASSIFICATION_UNCLASSIFIED) for payload in payloads],
+            classification_order,
+            CLASSIFICATION_UNCLASSIFIED,
+        ),
+        "relationship_tier": _pick_best_status(
+            [str(payload.get("relationship_tier") or RELATIONSHIP_TIER_UNCLASSIFIED) for payload in payloads],
+            relationship_order,
+            RELATIONSHIP_TIER_UNCLASSIFIED,
+        ),
+        "activity_status": _pick_best_status(
+            [str(payload.get("activity_status") or ACTIVITY_STATUS_UNCLASSIFIED) for payload in payloads],
+            activity_order,
+            ACTIVITY_STATUS_UNCLASSIFIED,
+        ),
+        "computed_at": max(computed_values) if computed_values else None,
+        "status": status,
+    }
+
+
+def _canonicalize_collaborator_payloads(
+    session,
+    *,
+    collaborators: list[Collaborator],
+    metrics_by_collaborator: dict[str, CollaborationMetric],
+) -> list[dict[str, Any]]:
+    groups, _ = _collaborator_groups(collaborators)
+    collaborator_ids = [str(item.id) for item in collaborators]
+    affiliation_labels = _affiliation_labels_by_collaborator(
+        session,
+        collaborator_ids=collaborator_ids,
+    )
+    rows: list[dict[str, Any]] = []
+    for members in groups.values():
+        representative = sorted(
+            members,
+            key=lambda item: (
+                -int((_safe_int(_serialize_metric(metrics_by_collaborator.get(str(item.id))).get("coauthored_works_count")) or 0)),
+                -_coerce_utc(item.updated_at).timestamp(),
+                str(item.id),
+            ),
+        )[0]
+        member_metrics = [
+            _serialize_metric(metrics_by_collaborator.get(str(member.id)))
+            for member in members
+        ]
+        merged_metrics = _merge_metric_payloads(member_metrics)
+        institution_labels: list[str] = []
+        institution_seen: set[str] = set()
+        for member in members:
+            candidate_labels = list(affiliation_labels.get(str(member.id), []))
+            primary = re.sub(r"\s+", " ", str(member.primary_institution or "").strip())
+            if primary:
+                candidate_labels.insert(0, primary)
+            for label in candidate_labels:
+                key = label.lower()
+                if key in institution_seen:
+                    continue
+                institution_seen.add(key)
+                institution_labels.append(label)
+        domain_seen: set[str] = set()
+        merged_domains: list[str] = []
+        for member in members:
+            for domain in list(member.research_domains or []):
+                text = re.sub(r"\s+", " ", str(domain or "").strip())
+                if not text:
+                    continue
+                key = text.lower()
+                if key in domain_seen:
+                    continue
+                domain_seen.add(key)
+                merged_domains.append(text)
+        duplicate_warnings: list[str] = []
+        if len(members) > 1:
+            duplicate_warnings.append(
+                f"Merged {len(members)} collaborator records with the same identity."
+            )
+        payload = _serialize_collaborator(
+            representative,
+            metric=metrics_by_collaborator.get(str(representative.id)),
+            duplicate_warnings=duplicate_warnings,
+        )
+        payload["metrics"] = merged_metrics
+        payload["research_domains"] = merged_domains
+        payload["institution_labels"] = institution_labels
+        payload["duplicate_count"] = len(members)
+        if institution_labels:
+            payload["primary_institution"] = institution_labels[0]
+        rows.append(payload)
+    return rows
+
+
 def _serialize_metric(row: CollaborationMetric | None) -> dict[str, Any]:
     if row is None:
         return {
@@ -525,13 +748,11 @@ def list_collaborators_for_user(
             user_id=user_id,
             collaborator_ids=[str(item.id) for item in collaborators],
         )
-        rows = [
-            _serialize_collaborator(
-                item,
-                metric=metrics_by_collaborator.get(str(item.id)),
-            )
-            for item in collaborators
-        ]
+        rows = _canonicalize_collaborator_payloads(
+            session,
+            collaborators=collaborators,
+            metrics_by_collaborator=metrics_by_collaborator,
+        )
         rows.sort(key=lambda item: _collab_sort_key(item, sort))
         total = len(rows)
         start = (page - 1) * page_size
@@ -1286,6 +1507,7 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
             authorships=authorships,
             authors_by_id=authors_by_id,
         )
+        collaborator_groups, collaborator_to_key = _collaborator_groups(collaborators)
 
         latest_snapshots = _latest_metrics_by_work(session, work_ids=work_ids)
         snapshots_12m = _latest_metrics_by_work_at_or_before(
@@ -1297,9 +1519,12 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
         raw_stats: dict[str, dict[str, Any]] = {}
         max_works = 0
         max_shared_citations = 0
-        for collaborator in collaborators:
-            collab_id = str(collaborator.id)
-            shared_work_ids = sorted(shared_by_collaborator.get(collab_id, set()))
+        for group_key, members in collaborator_groups.items():
+            shared_work_set: set[str] = set()
+            for collaborator in members:
+                collab_id = str(collaborator.id)
+                shared_work_set.update(shared_by_collaborator.get(collab_id, set()))
+            shared_work_ids = sorted(shared_work_set)
             coauthored_count = len(shared_work_ids)
             max_works = max(max_works, coauthored_count)
             shared_citations = 0
@@ -1320,7 +1545,7 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
             max_shared_citations = max(max_shared_citations, shared_citations)
             first_year = min(years) if years else None
             last_year = max(years) if years else None
-            raw_stats[collab_id] = {
+            raw_stats[group_key] = {
                 "coauthored_works_count": coauthored_count,
                 "shared_citations_total": shared_citations,
                 "first_collaboration_year": first_year,
@@ -1363,7 +1588,8 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
 
         for collaborator in collaborators:
             collab_id = str(collaborator.id)
-            values = raw_stats.get(collab_id, {})
+            group_key = collaborator_to_key.get(collab_id, collab_id)
+            values = raw_stats.get(group_key, {})
             row = existing_rows.get(collab_id)
             if row is None:
                 row = CollaborationMetric(
@@ -1444,31 +1670,41 @@ def _build_summary_response(
     now: datetime,
     force_running: bool = False,
 ) -> dict[str, Any]:
-    total_collaborators = len(collaborators)
-    rows: list[CollaborationMetric] = []
+    groups, collaborator_to_key = _collaborator_groups(collaborators)
+    total_collaborators = len(groups)
+    metric_payloads_by_group: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for collaborator in collaborators:
-        metric = metrics_rows.get(str(collaborator.id))
-        if metric is not None:
-            rows.append(metric)
+        key = collaborator_to_key.get(str(collaborator.id))
+        if not key:
+            continue
+        metric_payloads_by_group[key].append(
+            _serialize_metric(metrics_rows.get(str(collaborator.id)))
+        )
+    rows = [
+        _merge_metric_payloads(payloads)
+        for payloads in metric_payloads_by_group.values()
+    ]
     computed_values = [
-        _coerce_utc_or_none(row.computed_at)
+        _coerce_utc_or_none(row.get("computed_at"))
         for row in rows
-        if _coerce_utc_or_none(row.computed_at) is not None
+        if _coerce_utc_or_none(row.get("computed_at")) is not None
     ]
     last_computed_at = max(computed_values) if computed_values else None
     core_collaborators = sum(
         1
         for row in rows
-        if _normalize_classification(row.classification) == CLASSIFICATION_CORE
+        if _normalize_classification(str(row.get("classification") or ""))
+        == CLASSIFICATION_CORE
     )
     active_collaborations_12m = sum(
         1
         for row in rows
         if (
-            int(row.citations_last_12m or 0) > 0
+            int(_safe_int(row.get("citations_last_12m")) or 0) > 0
             or (
-                isinstance(row.last_collaboration_year, int)
-                and row.last_collaboration_year >= now.year - 1
+                isinstance(_safe_int(row.get("last_collaboration_year")), int)
+                and int(_safe_int(row.get("last_collaboration_year")) or 0)
+                >= now.year - 1
             )
         )
     )
@@ -1478,8 +1714,9 @@ def _build_summary_response(
         1
         for row in rows
         if (
-            isinstance(row.first_collaboration_year, int)
-            and row.first_collaboration_year >= now.year - 1
+            isinstance(_safe_int(row.get("first_collaboration_year")), int)
+            and int(_safe_int(row.get("first_collaboration_year")) or 0)
+            >= now.year - 1
         )
     )
     stale = _is_stale(collaborators=collaborators, metric_rows=metrics_rows, now=now)
@@ -1487,7 +1724,10 @@ def _build_summary_response(
         status = RUNNING_STATUS
     elif _is_running(metrics_rows):
         status = RUNNING_STATUS
-    elif any(_normalize_status(row.status) == FAILED_STATUS for row in rows):
+    elif any(
+        _normalize_status(str(row.get("status") or READY_STATUS)) == FAILED_STATUS
+        for row in rows
+    ):
         status = FAILED_STATUS
     else:
         status = READY_STATUS

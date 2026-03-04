@@ -2076,6 +2076,8 @@ class CollaboratorResponse(BaseModel):
     updated_at: datetime
     metrics: CollaboratorMetricsResponse
     duplicate_warnings: list[str] = Field(default_factory=list)
+    institution_labels: list[str] = Field(default_factory=list)
+    duplicate_count: int = 1
 
 
 class CollaboratorCreateRequest(BaseModel):

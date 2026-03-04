@@ -7,12 +7,6 @@ import { SectionMarker } from '@/components/patterns'
 import {
   Button,
   Input,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from '@/components/ui'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import { houseLayout } from '@/lib/house-style'
@@ -197,96 +191,106 @@ export function ProfileGrantsPage() {
   )
 
   const renderGrantTable = useCallback((rows: PersonaGrantsPayload['items']) => (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Grant</TableHead>
-            <TableHead>Funder</TableHead>
-            <TableHead>Award ID</TableHead>
-            <TableHead>Period</TableHead>
-            <TableHead>Grant owner</TableHead>
-            <TableHead className="text-right">Amount</TableHead>
-            <TableHead className="text-right">Works</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length ? rows.map((item) => (
-            <TableRow key={`${item.funder.id || ''}:${item.funder_award_id || ''}:${item.openalex_award_id || ''}`}>
-              <TableCell className="align-top">
-                <div className="font-medium">{item.display_name || 'Untitled grant'}</div>
-                {item.description ? (
-                  <p className="mt-1 max-w-[42rem] text-xs text-[hsl(var(--muted-foreground))]">
-                    {item.description}
-                  </p>
-                ) : null}
-              </TableCell>
-              <TableCell className="align-top">
-                <div>{item.funder.display_name || '-'}</div>
-                {item.funder.id ? (
-                  <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{item.funder.id}</div>
-                ) : null}
-              </TableCell>
-              <TableCell className="align-top">{item.funder_award_id || '-'}</TableCell>
-              <TableCell className="align-top">{formatAwardPeriod(item)}</TableCell>
-              <TableCell className="align-top">
-                <div className="font-medium text-[hsl(var(--foreground))]">
-                  {item.grant_owner_name || 'Unknown in OpenAlex'}
-                </div>
-                <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
-                  {item.grant_owner_role
-                    ? item.grant_owner_role.replace(/_/g, ' ')
-                    : 'owner role not provided'}
-                </div>
-                {item.award_holders.length > 1 ? (
-                  <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
-                    Additional holders: {item.award_holders.slice(0, 3).map((holder) => holder.name).join(', ')}
+    <div className="w-full overflow-visible">
+      <div
+        className="house-table-shell house-publications-trend-table-shell-plain h-auto w-full overflow-hidden rounded-md bg-background"
+        style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
+      >
+        <table className="w-full border-collapse" data-house-no-column-resize="true" data-house-no-column-controls="true">
+          <thead className="house-table-head">
+            <tr>
+              <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Grant</th>
+              <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Funder</th>
+              <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Award ID</th>
+              <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Period</th>
+              <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Grant owner</th>
+              <th className="house-table-head-text h-10 px-2 text-right align-middle font-semibold whitespace-nowrap">Amount</th>
+              <th className="house-table-head-text h-10 px-2 text-right align-middle font-semibold whitespace-nowrap">Works</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length ? rows.map((item) => (
+              <tr key={`${item.funder.id || ''}:${item.funder_award_id || ''}:${item.openalex_award_id || ''}`} className="house-table-row">
+                <td className="house-table-cell-text px-2 py-2 align-top">
+                  <div className="font-medium">{item.display_name || 'Untitled grant'}</div>
+                  {item.description ? (
+                    <p className="mt-1 max-w-[42rem] text-xs text-[hsl(var(--muted-foreground))]">
+                      {item.description}
+                    </p>
+                  ) : null}
+                </td>
+                <td className="house-table-cell-text px-2 py-2 align-top">
+                  <div>{item.funder.display_name || '-'}</div>
+                  {item.funder.id ? (
+                    <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{item.funder.id}</div>
+                  ) : null}
+                </td>
+                <td className="house-table-cell-text px-2 py-2 align-top whitespace-nowrap">{item.funder_award_id || '-'}</td>
+                <td className="house-table-cell-text px-2 py-2 align-top whitespace-nowrap">{formatAwardPeriod(item)}</td>
+                <td className="house-table-cell-text px-2 py-2 align-top">
+                  <div className="font-medium text-[hsl(var(--foreground))]">
+                    {item.grant_owner_name || 'Unknown in OpenAlex'}
                   </div>
-                ) : null}
-              </TableCell>
-              <TableCell className="text-right align-top">{formatMoney(item.amount, item.currency)}</TableCell>
-              <TableCell className="text-right align-top">{item.supporting_works_count || 0}</TableCell>
-            </TableRow>
-          )) : (
-            <TableRow>
-              <TableCell colSpan={7} className="py-5 text-sm text-[hsl(var(--muted-foreground))]">
-                No rows.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+                  <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                    {item.grant_owner_role
+                      ? item.grant_owner_role.replace(/_/g, ' ')
+                      : 'owner role not provided'}
+                  </div>
+                  {item.award_holders.length > 1 ? (
+                    <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                      Additional holders: {item.award_holders.slice(0, 3).map((holder) => holder.name).join(', ')}
+                    </div>
+                  ) : null}
+                </td>
+                <td className="house-table-cell-text px-2 py-2 text-right align-top whitespace-nowrap">{formatMoney(item.amount, item.currency)}</td>
+                <td className="house-table-cell-text px-2 py-2 text-right align-top whitespace-nowrap">{item.supporting_works_count || 0}</td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={7} className="house-table-cell-text px-3 py-4 text-center text-[hsl(var(--muted-foreground))]">
+                  No rows.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   ), [])
 
   const renderPublicationsUnderGrantsTable = useCallback((rows: PersonaGrantsPayload['items']) => (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Award ID</TableHead>
-            <TableHead>Funder</TableHead>
-            <TableHead>Period</TableHead>
-            <TableHead className="text-right">Works</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length ? rows.map((item) => (
-            <TableRow key={`${item.funder.id || ''}:${item.funder_award_id || ''}:${item.openalex_award_id || ''}`}>
-              <TableCell className="align-top">{item.funder_award_id || '-'}</TableCell>
-              <TableCell className="align-top">{item.funder.display_name || '-'}</TableCell>
-              <TableCell className="align-top">{formatAwardPeriod(item)}</TableCell>
-              <TableCell className="text-right align-top">{item.supporting_works_count || 0}</TableCell>
-            </TableRow>
-          )) : (
-            <TableRow>
-              <TableCell colSpan={4} className="py-5 text-sm text-[hsl(var(--muted-foreground))]">
-                No rows.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+    <div className="w-full overflow-visible">
+      <div
+        className="house-table-shell house-publications-trend-table-shell-plain h-auto w-full overflow-hidden rounded-md bg-background"
+        style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
+      >
+        <table className="w-full border-collapse" data-house-no-column-resize="true" data-house-no-column-controls="true">
+          <thead className="house-table-head">
+            <tr>
+              <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Award ID</th>
+              <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Funder</th>
+              <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Period</th>
+              <th className="house-table-head-text h-10 px-2 text-right align-middle font-semibold whitespace-nowrap">Works</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length ? rows.map((item) => (
+              <tr key={`${item.funder.id || ''}:${item.funder_award_id || ''}:${item.openalex_award_id || ''}`} className="house-table-row">
+                <td className="house-table-cell-text px-2 py-2 align-top whitespace-nowrap">{item.funder_award_id || '-'}</td>
+                <td className="house-table-cell-text px-2 py-2 align-top">{item.funder.display_name || '-'}</td>
+                <td className="house-table-cell-text px-2 py-2 align-top whitespace-nowrap">{formatAwardPeriod(item)}</td>
+                <td className="house-table-cell-text px-2 py-2 text-right align-top whitespace-nowrap">{item.supporting_works_count || 0}</td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={4} className="house-table-cell-text px-3 py-4 text-center text-[hsl(var(--muted-foreground))]">
+                  No rows.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   ), [])
 

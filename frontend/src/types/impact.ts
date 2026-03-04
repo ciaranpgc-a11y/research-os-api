@@ -878,6 +878,8 @@ export type CollaboratorPayload = {
   updated_at: string
   metrics: CollaboratorMetricsPayload
   duplicate_warnings: string[]
+  institution_labels?: string[]
+  duplicate_count?: number
 }
 
 export type CollaboratorsListPayload = {

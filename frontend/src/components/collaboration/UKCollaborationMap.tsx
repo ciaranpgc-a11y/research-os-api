@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useMemo } from 'react'
+import { useMemo } from 'react'
 import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps'
 
 import { findInstitution } from '@/data/uk-institutions'
@@ -55,10 +55,7 @@ function heatColor(normalized: number): string {
 }
 
 export function UKCollaborationMap({ collaborators, className, onMarkerClick }: UKCollaborationMapProps) {
-  const rawClipPathId = useId()
-  const clipPathId = `uk-clip-${rawClipPathId.replace(/:/g, '')}`
-
-  const aggregatedData = useMemo(() => {
+  const mapData = useMemo(() => {
     const pointMap = new Map<
       string,
       {
@@ -69,10 +66,15 @@ export function UKCollaborationMap({ collaborators, className, onMarkerClick }: 
         institutionCounts: Map<string, number>
       }
     >()
+    const unmatchedInstitutionCounts = new Map<string, number>()
 
     collaborators.forEach((collaborator) => {
       const inst = findInstitution(collaborator.primary_institution)
-      if (!inst) return
+      if (!inst) {
+        const key = collaborator.primary_institution.trim() || 'Unknown'
+        unmatchedInstitutionCounts.set(key, (unmatchedInstitutionCounts.get(key) || 0) + 1)
+        return
+      }
 
       const key = `${inst.lat},${inst.lon}`
       const existing = pointMap.get(key) || {
@@ -93,7 +95,7 @@ export function UKCollaborationMap({ collaborators, className, onMarkerClick }: 
       pointMap.set(key, existing)
     })
 
-    return Array.from(pointMap.values()).map((item) => {
+    const points = Array.from(pointMap.values()).map((item) => {
       const rankedInstitutions = Array.from(item.institutionCounts.entries()).sort((left, right) => {
         if (left[1] === right[1]) {
           return left[0].localeCompare(right[0])
@@ -108,34 +110,45 @@ export function UKCollaborationMap({ collaborators, className, onMarkerClick }: 
         institution: rankedInstitutions[0]?.[0] || 'Unknown',
       }
     })
+
+    const unmatchedTop = Array.from(unmatchedInstitutionCounts.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4)
+      .map(([name, count]) => ({ name, count }))
+
+    return {
+      points,
+      unmatchedCount: Array.from(unmatchedInstitutionCounts.values()).reduce((sum, count) => sum + count, 0),
+      unmatchedTop,
+    }
   }, [collaborators])
 
   const intensityCeiling = useMemo(
-    () => Math.max(percentile(aggregatedData.map((item) => item.intensity), 0.9), 1),
-    [aggregatedData]
+    () => Math.max(percentile(mapData.points.map((item) => item.intensity), 0.92), 1),
+    [mapData.points]
   )
 
-  const totalUkCollaborators = aggregatedData.reduce((sum, item) => sum + item.count, 0)
+  const totalUkCollaborators = mapData.points.reduce((sum, item) => sum + item.count, 0)
 
   return (
     <div className={cn('space-y-3', className)}>
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>{totalUkCollaborators} UK collaborators</span>
-        <span>Geographic intensity</span>
+        <span>Geographic intensity (smoothed points)</span>
       </div>
 
       <div className="w-full rounded-md border bg-muted/20 p-2">
-        <div className="h-[560px] w-full overflow-hidden rounded md:h-[700px]">
+        <div className="h-[420px] w-full overflow-visible rounded md:h-[560px]">
           <ComposableMap
             projection="geoMercator"
-            projectionConfig={{ center: [-3.5, 55.2], scale: 3200 }}
-            width={760}
-            height={980}
+            projectionConfig={{ center: [-2.2, 54.9], scale: 2860 }}
+            width={960}
+            height={760}
             style={{ width: '100%', height: '100%' }}
           >
             <defs>
-              <filter id="heat-blur" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="4.2" />
+              <filter id="heat-blur" x="-120%" y="-120%" width="340%" height="340%">
+                <feGaussianBlur stdDeviation="5.2" />
               </filter>
             </defs>
 
@@ -145,32 +158,25 @@ export function UKCollaborationMap({ collaborators, className, onMarkerClick }: 
 
                 return (
                   <>
-                    <defs>
-                      <clipPath id={clipPathId}>
-                        {ukGeographies.map((geo) => (
-                          <Geography key={`clip-${geo.rsmKey}`} geography={geo} fill="black" stroke="none" />
-                        ))}
-                      </clipPath>
-                    </defs>
-
                     {ukGeographies.map((geo) => (
                       <Geography
                         key={geo.rsmKey}
                         geography={geo}
                         fill="hsl(var(--muted))"
-                        fillOpacity={0.82}
+                        fillOpacity={0.74}
                         stroke="hsl(var(--foreground))"
-                        strokeOpacity={0.45}
-                        strokeWidth={1.25}
+                        strokeOpacity={0.38}
+                        strokeWidth={1.15}
                       />
                     ))}
 
-                    <g clipPath={`url(#${clipPathId})`}>
-                      {aggregatedData.map((item) => {
-                        const normalized = Math.min(item.intensity, intensityCeiling) / intensityCeiling
-                        const outerRadius = 22 + Math.sqrt(normalized) * 34
-                        const middleRadius = outerRadius * 0.66
-                        const innerRadius = outerRadius * 0.44
+                    <g>
+                      {mapData.points.map((item) => {
+                        const normalizedRaw = Math.min(item.intensity, intensityCeiling) / intensityCeiling
+                        const normalized = Math.pow(Math.max(0, Math.min(1, normalizedRaw)), 0.85)
+                        const outerRadius = 13 + (normalized * 30)
+                        const middleRadius = outerRadius * 0.62
+                        const innerRadius = outerRadius * 0.37
                         const color = heatColor(normalized)
 
                         return (
@@ -189,26 +195,43 @@ export function UKCollaborationMap({ collaborators, className, onMarkerClick }: 
                               <circle
                                 r={outerRadius}
                                 fill={color}
-                                fillOpacity={0.06 + normalized * 0.12}
+                                fillOpacity={0.08 + normalized * 0.16}
                                 filter="url(#heat-blur)"
                               />
                               <circle
                                 r={middleRadius}
                                 fill={color}
-                                fillOpacity={0.1 + normalized * 0.14}
+                                fillOpacity={0.13 + normalized * 0.16}
                                 filter="url(#heat-blur)"
                               />
                               <circle
                                 r={innerRadius}
                                 fill={color}
-                                fillOpacity={0.14 + normalized * 0.18}
-                                filter="url(#heat-blur)"
+                                fillOpacity={0.18 + normalized * 0.2}
+                              />
+                              <circle
+                                r={Math.max(2.4, innerRadius * 0.2)}
+                                fill="white"
+                                fillOpacity={0.9}
+                                stroke={color}
+                                strokeWidth={1.1}
                               />
                             </g>
                           </Marker>
                         )
                       })}
                     </g>
+
+                    {ukGeographies.map((geo) => (
+                      <Geography
+                        key={`outline-${geo.rsmKey}`}
+                        geography={geo}
+                        fill="none"
+                        stroke="hsl(var(--foreground))"
+                        strokeOpacity={0.55}
+                        strokeWidth={1.15}
+                      />
+                    ))}
                   </>
                 )
               }}
@@ -216,6 +239,15 @@ export function UKCollaborationMap({ collaborators, className, onMarkerClick }: 
           </ComposableMap>
         </div>
       </div>
+
+      {mapData.unmatchedCount > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {mapData.unmatchedCount} collaborators could not be mapped to UK institution coordinates.
+          {mapData.unmatchedTop.length > 0
+            ? ` Top unmapped: ${mapData.unmatchedTop.map((item) => `${item.name} (${item.count})`).join(', ')}.`
+            : ''}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-muted-foreground">Intensity:</span>
@@ -231,6 +263,7 @@ export function UKCollaborationMap({ collaborators, className, onMarkerClick }: 
           <div className="h-4 w-4 rounded border border-red-400 bg-red-500" />
           <span className="text-muted-foreground">High</span>
         </div>
+        <span className="text-muted-foreground">(click hotspot for drilldown)</span>
         {onMarkerClick ? <span className="text-muted-foreground">Click a marker to drill down</span> : null}
       </div>
     </div>

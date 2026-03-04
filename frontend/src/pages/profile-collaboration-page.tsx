@@ -80,6 +80,11 @@ type CollaboratorFormState = {
   notes: string
 }
 
+type CollaboratorCanonical = CollaboratorPayload & {
+  institution_labels: string[]
+  duplicate_count: number
+}
+
 type HeatmapMode = 'country' | 'institution' | 'domain'
 type HeatmapMetric = 'collaborators' | 'works' | 'strength' | 'citations_last_12m' | 'recency'
 type HeatmapSelection = {
@@ -211,6 +216,24 @@ function parseCommaSeparatedTokens(value: string): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 20)
+}
+
+function collaboratorIdentityKey(item: CollaboratorPayload): string {
+  const openAlexId = String(item.openalex_author_id || '').trim().toLowerCase()
+  if (openAlexId) {
+    return `oa:${openAlexId}`
+  }
+  const orcidId = String(item.orcid_id || '').trim().toLowerCase()
+  if (orcidId) {
+    return `orcid:${orcidId}`
+  }
+  const email = String(item.email || '').trim().toLowerCase()
+  if (email) {
+    return `email:${email}`
+  }
+  const name = String(item.full_name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  const country = String(item.country || '').trim().toLowerCase()
+  return `name:${name}|country:${country}`
 }
 
 function relationshipTone(value: string): 'default' | 'secondary' | 'outline' {
@@ -950,10 +973,139 @@ export function ProfileCollaborationPage() {
     }
   }, [listing])
 
+  const canonicalCollaborators = useMemo<CollaboratorCanonical[]>(() => {
+    const groups = new Map<string, CollaboratorPayload[]>()
+    for (const item of listing?.items || []) {
+      const key = collaboratorIdentityKey(item)
+      const group = groups.get(key) || []
+      group.push(item)
+      groups.set(key, group)
+    }
+
+    const classificationRank: Record<CollaboratorPayload['metrics']['classification'], number> = {
+      CORE: 5,
+      ACTIVE: 4,
+      OCCASIONAL: 3,
+      HISTORIC: 2,
+      UNCLASSIFIED: 1,
+    }
+    const relationshipRank: Record<'CORE' | 'REGULAR' | 'OCCASIONAL' | 'UNCLASSIFIED', number> = {
+      CORE: 4,
+      REGULAR: 3,
+      OCCASIONAL: 2,
+      UNCLASSIFIED: 1,
+    }
+    const activityRank: Record<'ACTIVE' | 'RECENT' | 'DORMANT' | 'HISTORIC' | 'UNCLASSIFIED', number> = {
+      ACTIVE: 5,
+      RECENT: 4,
+      DORMANT: 3,
+      HISTORIC: 2,
+      UNCLASSIFIED: 1,
+    }
+
+    return Array.from(groups.values()).map((group) => {
+      const primary = [...group].sort((left, right) => {
+        const worksDelta = Number(right.metrics.coauthored_works_count || 0) - Number(left.metrics.coauthored_works_count || 0)
+        if (worksDelta !== 0) {
+          return worksDelta
+        }
+        const strengthDelta = Number(right.metrics.collaboration_strength_score || 0) - Number(left.metrics.collaboration_strength_score || 0)
+        if (strengthDelta !== 0) {
+          return strengthDelta
+        }
+        return String(left.id).localeCompare(String(right.id))
+      })[0]
+
+      const institutionLabels = Array.from(
+        new Set(
+          group
+            .map((item) => String(item.primary_institution || '').trim())
+            .filter(Boolean),
+        ),
+      )
+
+      const domainLabels = Array.from(
+        new Set(group.flatMap((item) => item.research_domains || []).map((item) => item.trim()).filter(Boolean)),
+      )
+
+      const countryLabels = Array.from(
+        new Set(group.map((item) => String(item.country || '').trim()).filter(Boolean)),
+      )
+
+      const duplicateWarnings = Array.from(new Set(group.flatMap((item) => item.duplicate_warnings || [])))
+      if (group.length > 1) {
+        duplicateWarnings.unshift(`Merged ${group.length} records for the same collaborator identity.`)
+      }
+
+      const coauthoredWorks = Math.max(...group.map((item) => Number(item.metrics.coauthored_works_count || 0)), 0)
+      const sharedCitations = Math.max(...group.map((item) => Number(item.metrics.shared_citations_total || 0)), 0)
+      const citations12m = Math.max(...group.map((item) => Number(item.metrics.citations_last_12m || 0)), 0)
+      const strength = Math.max(...group.map((item) => Number(item.metrics.collaboration_strength_score || 0)), 0)
+      const firstYearCandidates = group
+        .map((item) => item.metrics.first_collaboration_year)
+        .filter((year): year is number => typeof year === 'number' && Number.isFinite(year))
+      const lastYearCandidates = group
+        .map((item) => item.metrics.last_collaboration_year)
+        .filter((year): year is number => typeof year === 'number' && Number.isFinite(year))
+      const classification = group.reduce((best, item) => (
+        classificationRank[item.metrics.classification] > classificationRank[best]
+          ? item.metrics.classification
+          : best
+      ), primary.metrics.classification)
+      const relationshipTier = group.reduce<'CORE' | 'REGULAR' | 'OCCASIONAL' | 'UNCLASSIFIED'>((best, item) => {
+        const next = item.metrics.relationship_tier
+        if (next === 'CORE' || next === 'REGULAR' || next === 'OCCASIONAL' || next === 'UNCLASSIFIED') {
+          return relationshipRank[next] > relationshipRank[best] ? next : best
+        }
+        return best
+      }, primary.metrics.relationship_tier || 'UNCLASSIFIED')
+      const activityStatus = group.reduce<'ACTIVE' | 'RECENT' | 'DORMANT' | 'HISTORIC' | 'UNCLASSIFIED'>((best, item) => {
+        const next = item.metrics.activity_status
+        if (next === 'ACTIVE' || next === 'RECENT' || next === 'DORMANT' || next === 'HISTORIC' || next === 'UNCLASSIFIED') {
+          return activityRank[next] > activityRank[best] ? next : best
+        }
+        return best
+      }, primary.metrics.activity_status || 'UNCLASSIFIED')
+      const computedAtCandidates = group.map((item) => item.metrics.computed_at).filter((value): value is string => Boolean(value))
+      const computedAt = computedAtCandidates.sort((left, right) => right.localeCompare(left))[0] || null
+      const status = group.some((item) => item.metrics.status === 'READY')
+        ? 'READY'
+        : group.some((item) => item.metrics.status === 'RUNNING')
+          ? 'RUNNING'
+          : 'FAILED'
+
+      return {
+        ...primary,
+        country: countryLabels[0] || primary.country,
+        research_domains: domainLabels,
+        duplicate_warnings: duplicateWarnings,
+        metrics: {
+          ...primary.metrics,
+          coauthored_works_count: coauthoredWorks,
+          shared_citations_total: sharedCitations,
+          citations_last_12m: citations12m,
+          collaboration_strength_score: strength,
+          first_collaboration_year: firstYearCandidates.length ? Math.min(...firstYearCandidates) : null,
+          last_collaboration_year: lastYearCandidates.length ? Math.max(...lastYearCandidates) : null,
+          classification,
+          relationship_tier: relationshipTier,
+          activity_status: activityStatus,
+          computed_at: computedAt,
+          status,
+        },
+        institution_labels: institutionLabels.length
+          ? institutionLabels
+          : [String(primary.primary_institution || 'Unknown').trim() || 'Unknown'],
+        duplicate_count: group.length,
+      }
+    })
+  }, [listing?.items])
+
+  const duplicateRecordDelta = Math.max(0, (listing?.items?.length || 0) - canonicalCollaborators.length)
+
   const selectedCollaborator = useMemo(() => {
-    const items = listing?.items || []
-    return items.find((item) => item.id === selectedId) || null
-  }, [listing?.items, selectedId])
+    return canonicalCollaborators.find((item) => item.id === selectedId) || null
+  }, [canonicalCollaborators, selectedId])
 
   const nowYear = new Date().getUTCFullYear()
   const heatmapCells = useMemo<HeatmapCell[]>(() => {
@@ -965,7 +1117,7 @@ export function ProfileCollaborationPage() {
         collaborator_ids: Set<string>
       }
     >()
-    for (const item of listing?.items || []) {
+    for (const item of canonicalCollaborators) {
       const weight = heatmapMetricValue(item, heatmapMetric, nowYear)
       if (heatmapMode === 'country') {
         const key = normalizeHeatmapBucket(item.country, 'Unknown')
@@ -976,11 +1128,14 @@ export function ProfileCollaborationPage() {
         continue
       }
       if (heatmapMode === 'institution') {
-        const key = normalizeHeatmapBucket(item.primary_institution, 'Unknown')
-        const existing = buckets.get(key) || { label: key, value: 0, collaborator_ids: new Set<string>() }
-        existing.value += weight
-        existing.collaborator_ids.add(item.id)
-        buckets.set(key, existing)
+        const institutions = item.institution_labels.length > 0 ? item.institution_labels : [item.primary_institution || 'Unknown']
+        for (const institution of institutions) {
+          const key = normalizeHeatmapBucket(institution, 'Unknown')
+          const existing = buckets.get(key) || { label: key, value: 0, collaborator_ids: new Set<string>() }
+          existing.value += weight
+          existing.collaborator_ids.add(item.id)
+          buckets.set(key, existing)
+        }
         continue
       }
       const domains = item.research_domains.length > 0 ? item.research_domains : ['General']
@@ -1029,7 +1184,7 @@ export function ProfileCollaborationPage() {
     }
 
     return cells
-  }, [heatmapMetric, heatmapMode, listing?.items, nowYear])
+  }, [canonicalCollaborators, heatmapMetric, heatmapMode, nowYear])
 
   const heatmapQuantiles = useMemo<HeatmapQuantiles | null>(() => {
     const values = heatmapCells.map((cell) => cell.value).filter((value) => value > 0)
@@ -1053,7 +1208,7 @@ export function ProfileCollaborationPage() {
   }, [heatmapCells, heatmapMode, heatmapSelection])
 
   const filteredCollaborators = useMemo(() => {
-    const items = listing?.items || []
+    const items = canonicalCollaborators
     if (!heatmapSelection) {
       return items
     }
@@ -1079,7 +1234,8 @@ export function ProfileCollaborationPage() {
         return matchesSingle(item.country, 'Unknown')
       }
       if (heatmapSelection.mode === 'institution') {
-        return matchesSingle(item.primary_institution, 'Unknown')
+        const institutions = item.institution_labels.length > 0 ? item.institution_labels : [item.primary_institution || 'Unknown']
+        return institutions.some((institution) => matchesSingle(institution, 'Unknown'))
       }
       const domains = item.research_domains.length > 0 ? item.research_domains : ['General']
       if (selectedBucketLabels) {
@@ -1087,7 +1243,7 @@ export function ProfileCollaborationPage() {
       }
       return domains.some((domain) => normalizeHeatmapBucket(domain, 'General') === heatmapSelection.label)
     })
-  }, [heatmapCells, heatmapMode, heatmapSelection, listing?.items])
+  }, [canonicalCollaborators, heatmapCells, heatmapMode, heatmapSelection])
 
   const aiAuthorDraftSeed = useMemo(() => {
     const seeds: CollaboratorPayload[] = []
@@ -1614,7 +1770,7 @@ export function ProfileCollaborationPage() {
           <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
             <p className="house-h2">Total collaborators</p>
             <div className="flex w-full items-center justify-center">
-              <p className="house-metric-tile-value !mt-0 text-center">{summary?.total_collaborators ?? 0}</p>
+              <p className="house-metric-tile-value !mt-0 text-center">{canonicalCollaborators.length}</p>
             </div>
           </div>
           <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
@@ -1636,6 +1792,11 @@ export function ProfileCollaborationPage() {
             </div>
           </div>
         </div>
+        {duplicateRecordDelta > 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Deduped {duplicateRecordDelta.toLocaleString('en-GB')} duplicate collaborator records across institutions for analytics and table accuracy.
+          </p>
+        ) : null}
 
         <SectionHeader
           heading="Collaborators"
@@ -2159,7 +2320,7 @@ export function ProfileCollaborationPage() {
                           if (columnKey === 'institution') {
                             return (
                               <TableCell key={`${item.id}-institution`} className="house-table-cell-text align-top whitespace-normal break-words leading-tight">
-                                {item.primary_institution || '-'}
+                                {item.institution_labels.join(' • ') || item.primary_institution || '-'}
                               </TableCell>
                             )
                           }
@@ -2247,6 +2408,9 @@ export function ProfileCollaborationPage() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">{item.primary_institution || 'No institution'}</p>
+                  {item.institution_labels.length > 1 ? (
+                    <p className="text-xs text-muted-foreground">Institutions: {item.institution_labels.join(' • ')}</p>
+                  ) : null}
                   <p className="text-xs text-muted-foreground">
                     Works: {item.metrics.coauthored_works_count} | Last year:{' '}
                     {item.metrics.last_collaboration_year ?? '-'}
@@ -2404,11 +2568,16 @@ export function ProfileCollaborationPage() {
 
               {heatmapMode === 'country' && geoView === 'map' ? (
                 <UKCollaborationMap
-                  collaborators={(listing?.items || []).map((item) => ({
-                    country: item.country || '',
-                    primary_institution: item.primary_institution || '',
-                    collaboration_strength_score: heatmapMetricValue(item, heatmapMetric, nowYear),
-                  }))}
+                  collaborators={canonicalCollaborators.flatMap((item) => {
+                    const institutions = item.institution_labels.length > 0
+                      ? item.institution_labels
+                      : [item.primary_institution || '']
+                    return institutions.map((institution) => ({
+                      country: item.country || '',
+                      primary_institution: institution || '',
+                      collaboration_strength_score: heatmapMetricValue(item, heatmapMetric, nowYear),
+                    }))
+                  })}
                   onMarkerClick={onMapMarkerDrilldown}
                 />
               ) : (

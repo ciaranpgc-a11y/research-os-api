@@ -381,7 +381,10 @@ const HOUSE_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
 const HOUSE_DRILLDOWN_HINT_CLASS = publicationsHouseDrilldown.hint
 const HOUSE_DRILLDOWN_ROW_CLASS = publicationsHouseDrilldown.row
 const HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS = publicationsHouseDrilldown.progressTrack
+const HOUSE_DRILLDOWN_RANGE_CLASS = publicationsHouseDrilldown.range
+const HOUSE_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
 const HOUSE_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
+const HOUSE_DRILLDOWN_STAT_VALUE_CLASS = publicationsHouseDrilldown.statValue
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS = publicationsHouseDrilldown.summaryStatValue
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS = publicationsHouseDrilldown.summaryStatValueEmphasis
 const HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = publicationsHouseDrilldown.summaryStatTitle
@@ -391,6 +394,8 @@ const HOUSE_DRILLDOWN_OVERLINE_CLASS = publicationsHouseDrilldown.overline
 const HOUSE_DRILLDOWN_SECTION_LABEL_CLASS = publicationsHouseDrilldown.sectionLabel
 const HOUSE_DRILLDOWN_NOTE_CLASS = publicationsHouseDrilldown.note
 const HOUSE_DRILLDOWN_NOTE_SOFT_CLASS = publicationsHouseDrilldown.noteSoft
+const HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS = publicationsHouseDrilldown.chartAreaSvg
+const HOUSE_DRILLDOWN_CHART_MOVING_SVG_CLASS = publicationsHouseDrilldown.chartMovingSvg
 const HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS = publicationsHouseDrilldown.chartMainSvg
 const HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS = publicationsHouseDrilldown.chartTooltip
 const HOUSE_DRILLDOWN_SKELETON_BLOCK_CLASS = publicationsHouseDrilldown.skeletonBlock
@@ -1569,6 +1574,39 @@ function buildLinePoints(
   }))
 }
 
+function buildLinePointsFromBounds(
+  values: number[],
+  width: number,
+  height: number,
+  labels: string[],
+  minValue: number,
+  maxValue: number,
+  paddingX = 6,
+  paddingY = 6,
+): LinePoint[] {
+  if (!values.length) {
+    return []
+  }
+  const safeMin = Number.isFinite(minValue) ? minValue : 0
+  const safeMax = Number.isFinite(maxValue) ? maxValue : safeMin + 1
+  const range = Math.max(1e-6, safeMax - safeMin)
+  const xStep = values.length > 1 ? (width - paddingX * 2) / (values.length - 1) : 0
+  const yMin = paddingY
+  const yMax = height - paddingY
+  const yRange = Math.max(1e-6, yMax - yMin)
+  return values.map((value, index) => {
+    const boundedValue = Math.max(safeMin, Math.min(safeMax, Number.isFinite(value) ? value : safeMin))
+    const normalized = Math.max(0, Math.min(1, (boundedValue - safeMin) / range))
+    const y = yMax - (normalized * yRange)
+    return {
+      x: paddingX + index * xStep,
+      y,
+      value: boundedValue,
+      label: labels[index] || `${index + 1}`,
+    }
+  })
+}
+
 function monotonePathFromPoints(points: Array<{ x: number; y: number }>): string {
   if (points.length === 0) {
     return ''
@@ -2646,7 +2684,7 @@ export function PublicationsPerYearChart({
 
   const activeBars = activeWindowBars.bars
   const activeBucketSize = activeWindowBars.bucketSize
-  const meanValue = isCompactTileMode && Number.isFinite(meanValueRaw) && meanValueRaw >= 0
+  const meanValue = isCompactTileMode && showMeanLine && Number.isFinite(meanValueRaw) && meanValueRaw >= 0
     ? meanValueRaw
     : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
   const meanValueDisplay = Number.isFinite(meanValue)
@@ -3324,6 +3362,21 @@ export function PublicationsPerYearChart({
                 aria-hidden="true"
               />
             ) : null}
+            {enableWindowToggle ? (
+              <>
+                <div
+                  className={cn('absolute inset-y-0 right-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+                  style={{ borderRight: `1px solid hsl(var(--stroke-soft) / ${effectiveVisualMode === 'line' ? 0.76 : 0.55})` }}
+                  aria-hidden="true"
+                />
+                {hasTopYAxisTick || effectiveVisualMode === 'line' ? (
+                  <div
+                    className={cn('pointer-events-none absolute inset-x-0 top-0', gridLineToneClass, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                    aria-hidden="true"
+                  />
+                ) : null}
+              </>
+            ) : null}
             {effectiveVisualMode === 'line' && lineModeVerticalGridPercents.length ? (
               <svg className="absolute inset-0 z-[1]" viewBox="0 0 100 100" preserveAspectRatio="none">
                 {lineModeVerticalGridPercents.map((leftPct, index) => (
@@ -3338,6 +3391,18 @@ export function PublicationsPerYearChart({
                     vectorEffect="non-scaling-stroke"
                   />
                 ))}
+                {enableWindowToggle ? (
+                  <line
+                    key="pub-line-grid-right"
+                    x1={100}
+                    y1={0}
+                    x2={100}
+                    y2={100}
+                    stroke={`hsl(var(--stroke-soft) / 0.76)`}
+                    strokeWidth={1}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : null}
               </svg>
             ) : null}
           </div>
@@ -5155,6 +5220,15 @@ export function PublicationCategoryDistributionChart({
               aria-hidden="true"
             />
           ))}
+          <div
+            className={cn('pointer-events-none absolute inset-y-0 right-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+            style={{ borderRight: `1px solid hsl(var(--stroke-soft) / 0.55)` }}
+            aria-hidden="true"
+          />
+          <div
+            className={cn('pointer-events-none absolute inset-x-0 top-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+            aria-hidden="true"
+          />
           <div className="absolute inset-0 flex items-end gap-1">
             {renderBars.map((bar, index) => {
               const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? renderValueForBar(bar))
@@ -5263,6 +5337,8 @@ function TotalPublicationsDrilldownWorkspace({
   const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
   const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
   const [articleTypeTrendsExpanded, setArticleTypeTrendsExpanded] = useState(true)
+  const [trajectoryMode, setTrajectoryMode] = useState<PublicationTrajectoryMode>('raw')
+  const [trajectoryWindow, setTrajectoryWindow] = useState(12)
   const [venueBreakdownExpanded, setVenueBreakdownExpanded] = useState(true)
   const [journalBreakdownViewMode, setJournalBreakdownViewMode] = useState<JournalBreakdownViewMode>('top-ten')
   const [topicBreakdownViewMode, setTopicBreakdownViewMode] = useState<TopicBreakdownViewMode>('top-ten')
@@ -5326,6 +5402,8 @@ function TotalPublicationsDrilldownWorkspace({
     setPublicationTrendsExpanded(true)
     setPublicationTypeTrendsExpanded(true)
     setArticleTypeTrendsExpanded(true)
+    setTrajectoryMode('raw')
+    setTrajectoryWindow(12)
     setVenueBreakdownExpanded(true)
     setJournalBreakdownViewMode('top-ten')
     setTopicBreakdownViewMode('top-ten')
@@ -5367,6 +5445,327 @@ function TotalPublicationsDrilldownWorkspace({
       })
       .filter((item): item is PublicationDrilldownRecord => item !== null)
   }, [tile.drilldown])
+
+  const trajectoryFallbackYears = useMemo(
+    () => toNumberArray((tile.chart_data || {}).years).map((value) => Math.round(value)),
+    [tile.chart_data],
+  )
+  const trajectoryFallbackValues = useMemo(
+    () => toNumberArray((tile.chart_data || {}).values).map((value) => Math.max(0, Math.round(value))),
+    [tile.chart_data],
+  )
+  const trajectoryFallbackYearToCount = useMemo(() => {
+    const output = new Map<number, number>()
+    for (let index = 0; index < Math.min(trajectoryFallbackYears.length, trajectoryFallbackValues.length); index += 1) {
+      output.set(trajectoryFallbackYears[index], trajectoryFallbackValues[index])
+    }
+    return output
+  }, [trajectoryFallbackValues, trajectoryFallbackYears])
+
+  const recordYearsWithData = useMemo(() => (
+    publicationDrilldownRecords
+      .map((record) => record.year)
+      .filter((value): value is number => Number.isInteger(value))
+  ), [publicationDrilldownRecords])
+
+  const trajectoryMinYear = useMemo(() => {
+    if (recordYearsWithData.length) {
+      return Math.min(...recordYearsWithData)
+    }
+    if (trajectoryFallbackYears.length) {
+      return Math.min(...trajectoryFallbackYears)
+    }
+    return new Date().getUTCFullYear()
+  }, [recordYearsWithData, trajectoryFallbackYears])
+
+  const trajectoryMaxYear = useMemo(() => {
+    if (recordYearsWithData.length) {
+      return Math.max(...recordYearsWithData)
+    }
+    if (trajectoryFallbackYears.length) {
+      return Math.max(...trajectoryFallbackYears)
+    }
+    return trajectoryMinYear
+  }, [recordYearsWithData, trajectoryFallbackYears, trajectoryMinYear])
+
+  const trajectoryFullYears = useMemo(() => {
+    const output: number[] = []
+    for (let year = trajectoryMinYear; year <= trajectoryMaxYear; year += 1) {
+      output.push(year)
+    }
+    return output
+  }, [trajectoryMaxYear, trajectoryMinYear])
+
+  const trajectoryCountsByYear = useMemo(() => {
+    const output = new Map<number, number>()
+    publicationDrilldownRecords.forEach((record) => {
+      if (record.year === null) {
+        return
+      }
+      output.set(record.year, (output.get(record.year) || 0) + 1)
+    })
+    trajectoryFullYears.forEach((year) => {
+      if (!output.has(year) && trajectoryFallbackYearToCount.has(year)) {
+        output.set(year, Number(trajectoryFallbackYearToCount.get(year) || 0))
+      }
+      if (!output.has(year)) {
+        output.set(year, 0)
+      }
+    })
+    return output
+  }, [publicationDrilldownRecords, trajectoryFallbackYearToCount, trajectoryFullYears])
+
+  const trajectoryYearSeriesRaw = useMemo(
+    () => trajectoryFullYears.map((year) => Number(trajectoryCountsByYear.get(year) || 0)),
+    [trajectoryCountsByYear, trajectoryFullYears],
+  )
+
+  const trajectoryYearSeriesMovingAvg = useMemo(
+    () => trajectoryYearSeriesRaw.map((_, index) => {
+      const start = Math.max(0, index - 2)
+      const window = trajectoryYearSeriesRaw.slice(start, index + 1)
+      return window.length ? (window.reduce((sum, value) => sum + value, 0) / window.length) : 0
+    }),
+    [trajectoryYearSeriesRaw],
+  )
+
+  const trajectoryYearSeriesCumulative = useMemo(() => {
+    let running = 0
+    return trajectoryYearSeriesRaw.map((value) => {
+      running += value
+      return running
+    })
+  }, [trajectoryYearSeriesRaw])
+
+  const trajectoryMaxWindow = Math.max(1, trajectoryFullYears.length)
+  const trajectoryMinWindow = Math.min(6, trajectoryMaxWindow)
+
+  useEffect(() => {
+    const initialWindow = Math.max(trajectoryMinWindow, Math.min(12, trajectoryMaxWindow))
+    setTrajectoryWindow(initialWindow)
+  }, [trajectoryMaxWindow, trajectoryMinWindow])
+
+  const trajectoryVisibleCount = Math.max(trajectoryMinWindow, Math.min(trajectoryWindow, trajectoryMaxWindow))
+  const trajectoryVisibleYears = useMemo(
+    () => trajectoryFullYears.slice(-trajectoryVisibleCount),
+    [trajectoryFullYears, trajectoryVisibleCount],
+  )
+  const trajectoryVisibleRaw = useMemo(
+    () => trajectoryYearSeriesRaw.slice(-trajectoryVisibleCount),
+    [trajectoryYearSeriesRaw, trajectoryVisibleCount],
+  )
+  const trajectoryVisibleMoving = useMemo(
+    () => trajectoryYearSeriesMovingAvg.slice(-trajectoryVisibleCount),
+    [trajectoryYearSeriesMovingAvg, trajectoryVisibleCount],
+  )
+  const trajectoryVisibleCumulative = useMemo(
+    () => trajectoryYearSeriesCumulative.slice(-trajectoryVisibleCount),
+    [trajectoryYearSeriesCumulative, trajectoryVisibleCount],
+  )
+
+  const trajectoryValues = trajectoryMode === 'cumulative'
+    ? trajectoryVisibleCumulative
+    : trajectoryMode === 'moving_avg'
+      ? trajectoryVisibleMoving
+      : trajectoryVisibleRaw
+  const trajectoryAxisObservedMax = useMemo(() => {
+    if (trajectoryMode === 'cumulative') {
+      return Math.max(0, ...trajectoryVisibleCumulative)
+    }
+    if (trajectoryMode === 'moving_avg') {
+      return Math.max(0, ...trajectoryVisibleMoving)
+    }
+    return Math.max(0, ...trajectoryVisibleRaw, ...trajectoryVisibleMoving)
+  }, [trajectoryMode, trajectoryVisibleCumulative, trajectoryVisibleMoving, trajectoryVisibleRaw])
+  const trajectoryAxisScale = useMemo(
+    () => buildNiceAxis(trajectoryAxisObservedMax),
+    [trajectoryAxisObservedMax],
+  )
+  const trajectoryAxisMax = Math.max(1, trajectoryAxisScale.axisMax)
+  const trajectoryTickRatios = useMemo(() => [0, 0.25, 0.5, 0.75, 1], [])
+  const trajectoryHorizontalGridRatios = useMemo(
+    () => trajectoryTickRatios.filter((ratio) => ratio > 0 && ratio < 1),
+    [trajectoryTickRatios],
+  )
+  const trajectoryAxisTickValues = useMemo(
+    () => trajectoryTickRatios.map((ratio) => ratio * trajectoryAxisMax),
+    [trajectoryAxisMax, trajectoryTickRatios],
+  )
+  const trajectoryLabels = useMemo(
+    () => trajectoryVisibleYears.map((year) => String(year)),
+    [trajectoryVisibleYears],
+  )
+  const trajectorySvgWidth = 320
+  const trajectorySvgHeight = 138
+  const trajectoryPlotPaddingX = 8
+  const trajectoryPlotPaddingY = 8
+  const trajectoryPlotMinX = trajectoryPlotPaddingX
+  const trajectoryPlotMaxX = trajectorySvgWidth - trajectoryPlotPaddingX
+  const trajectoryPlotMinY = trajectoryPlotPaddingY
+  const trajectoryPlotMaxY = trajectorySvgHeight - trajectoryPlotPaddingY
+  const trajectoryPlotHeight = trajectoryPlotMaxY - trajectoryPlotMinY
+  const trajectoryPoints = useMemo(
+    () => (
+      trajectoryValues.length
+        ? buildLinePointsFromBounds(
+          trajectoryValues,
+          trajectorySvgWidth,
+          trajectorySvgHeight,
+          trajectoryLabels,
+          0,
+          trajectoryAxisMax,
+          trajectoryPlotPaddingX,
+          trajectoryPlotPaddingY,
+        )
+        : []
+    ),
+    [
+      trajectoryAxisMax,
+      trajectoryLabels,
+      trajectoryPlotPaddingX,
+      trajectoryPlotPaddingY,
+      trajectorySvgHeight,
+      trajectorySvgWidth,
+      trajectoryValues,
+    ],
+  )
+  const trajectoryMovingPoints = useMemo(
+    () => (
+      trajectoryVisibleMoving.length
+        ? buildLinePointsFromBounds(
+          trajectoryVisibleMoving,
+          trajectorySvgWidth,
+          trajectorySvgHeight,
+          trajectoryLabels,
+          0,
+          trajectoryAxisMax,
+          trajectoryPlotPaddingX,
+          trajectoryPlotPaddingY,
+        )
+        : []
+    ),
+    [
+      trajectoryAxisMax,
+      trajectoryLabels,
+      trajectoryPlotPaddingX,
+      trajectoryPlotPaddingY,
+      trajectorySvgHeight,
+      trajectorySvgWidth,
+      trajectoryVisibleMoving,
+    ],
+  )
+  const trajectoryRawPoints = useMemo(
+    () => (
+      trajectoryVisibleRaw.length
+        ? buildLinePointsFromBounds(
+          trajectoryVisibleRaw,
+          trajectorySvgWidth,
+          trajectorySvgHeight,
+          trajectoryLabels,
+          0,
+          trajectoryAxisMax,
+          trajectoryPlotPaddingX,
+          trajectoryPlotPaddingY,
+        )
+        : []
+    ),
+    [
+      trajectoryAxisMax,
+      trajectoryLabels,
+      trajectoryPlotPaddingX,
+      trajectoryPlotPaddingY,
+      trajectorySvgHeight,
+      trajectorySvgWidth,
+      trajectoryVisibleRaw,
+    ],
+  )
+  const trajectoryPath = useMemo(
+    () => monotonePathFromPoints(trajectoryPoints),
+    [trajectoryPoints],
+  )
+  const trajectoryMovingPath = useMemo(
+    () => monotonePathFromPoints(trajectoryMovingPoints),
+    [trajectoryMovingPoints],
+  )
+  const trajectoryVolatilityAreaPath = useMemo(() => {
+    if (!trajectoryRawPoints.length || !trajectoryMovingPoints.length) {
+      return ''
+    }
+    return `M ${trajectoryRawPoints.map((point) => `${point.x} ${point.y}`).join(' L ')} L ${[...trajectoryMovingPoints].reverse().map((point) => `${point.x} ${point.y}`).join(' L ')} Z`
+  }, [trajectoryMovingPoints, trajectoryRawPoints])
+
+  const trajectoryVolatilityIndex = useMemo(() => {
+    if (!trajectoryYearSeriesRaw.length) {
+      return 0
+    }
+    const mean = trajectoryYearSeriesRaw.reduce((sum, value) => sum + value, 0) / trajectoryYearSeriesRaw.length
+    if (mean <= 1e-9) {
+      return 0
+    }
+    const variance = trajectoryYearSeriesRaw.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / trajectoryYearSeriesRaw.length
+    return Math.sqrt(variance) / mean
+  }, [trajectoryYearSeriesRaw])
+
+  const trajectoryGrowthSlope = useMemo(() => {
+    if (trajectoryYearSeriesRaw.length <= 1) {
+      return 0
+    }
+    const n = trajectoryYearSeriesRaw.length
+    const xs = Array.from({ length: n }, (_, index) => index + 1)
+    const sumX = xs.reduce((sum, value) => sum + value, 0)
+    const sumY = trajectoryYearSeriesRaw.reduce((sum, value) => sum + value, 0)
+    const sumXY = trajectoryYearSeriesRaw.reduce((sum, value, index) => sum + (value * xs[index]), 0)
+    const sumXX = xs.reduce((sum, value) => sum + (value * value), 0)
+    const numerator = (n * sumXY) - (sumX * sumY)
+    const denominator = (n * sumXX) - (sumX * sumX)
+    if (Math.abs(denominator) <= 1e-9) {
+      return 0
+    }
+    return numerator / denominator
+  }, [trajectoryYearSeriesRaw])
+
+  const trajectoryPhase = trajectoryGrowthSlope > 0.2
+    ? 'Expanding'
+    : trajectoryGrowthSlope < -0.2
+      ? 'Contracting'
+      : 'Stable'
+  const trajectoryStartYearLabel = trajectoryVisibleYears.length ? String(trajectoryVisibleYears[0]) : ''
+  const trajectoryEndYearLabel = trajectoryVisibleYears.length ? String(trajectoryVisibleYears[trajectoryVisibleYears.length - 1]) : ''
+  const trajectoryXAxisLayout = useMemo(
+    () => buildChartAxisLayout({
+      axisLabels: [trajectoryStartYearLabel, trajectoryEndYearLabel],
+      showXAxisName: true,
+      xAxisName: 'Publication year',
+      dense: false,
+      maxLabelLines: 1,
+      maxSubLabelLines: 1,
+      maxAxisNameLines: 1,
+    }),
+    [trajectoryEndYearLabel, trajectoryStartYearLabel],
+  )
+  const trajectoryYAxisPanelWidthRem = buildYAxisPanelWidthRem(trajectoryAxisTickValues, true, 0.5)
+  const trajectoryChartLeftInset = `${trajectoryYAxisPanelWidthRem + PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM}rem`
+  const trajectoryPlotAreaStyle = {
+    left: trajectoryChartLeftInset,
+    right: '0.5rem',
+    top: '1rem',
+    bottom: `${trajectoryXAxisLayout.plotBottomRem}rem`,
+  }
+  const trajectoryXAxisTicksStyle = {
+    left: trajectoryChartLeftInset,
+    right: '0.5rem',
+    bottom: `${trajectoryXAxisLayout.axisBottomRem}rem`,
+    minHeight: `${trajectoryXAxisLayout.axisMinHeightRem}rem`,
+  }
+  const trajectoryYAxisPanelStyle = {
+    left: '0.25rem',
+    top: '1rem',
+    bottom: `${trajectoryXAxisLayout.plotBottomRem}rem`,
+    width: `${trajectoryYAxisPanelWidthRem}rem`,
+  }
+  const trajectoryChartFrameStyle = {
+    paddingBottom: `${trajectoryXAxisLayout.framePaddingBottomRem}rem`,
+  }
 
   const headlineMetricTiles = useMemo(() => {
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
@@ -5474,9 +5873,8 @@ function TotalPublicationsDrilldownWorkspace({
     const totalPublicationsValue = totalPublicationsFromChart > 0
       ? formatInt(totalPublicationsFromChart)
       : formatDrilldownValue(tile.value_display || tile.main_value_display || tile.value)
-    const meanDenominator = Math.max(1, Math.min(5, historyBars.length))
-    const meanYearlyPublications = historyBars.length > 0
-      ? rolling5Year / meanDenominator
+    const meanYearlyPublications = activeYears > 0
+      ? totalPublicationsFromChart / activeYears
       : Number(chartData.mean_value)
     const meanYearlyValue = Number.isFinite(meanYearlyPublications)
       ? formatDrilldownValue(Math.round(meanYearlyPublications * 10) / 10)
@@ -5599,8 +5997,13 @@ function TotalPublicationsDrilldownWorkspace({
       }
     }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
   }, [tile.drilldown])
+  const trajectoryOptions = [
+    { key: 'raw' as const, label: 'Raw' },
+    { key: 'moving_avg' as const, label: 'Moving avg' },
+    { key: 'cumulative' as const, label: 'Cumulative' },
+  ]
+  const activeTrajectoryIndex = Math.max(0, trajectoryOptions.findIndex((option) => option.key === trajectoryMode))
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
-    trajectory: 'Year-over-year trajectory',
     context: 'Top publication venues',
     methods: 'Method details',
   }
@@ -5609,7 +6012,7 @@ function TotalPublicationsDrilldownWorkspace({
   return (
     <div className="house-drilldown-stack-3" data-metric-key={tile.key}>
       <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-drilldown-panel-no-pad')}>
-        {activeTab !== 'breakdown' ? (
+        {activeTab !== 'breakdown' && activeTab !== 'trajectory' ? (
           <div className="house-drilldown-heading-block">
             <p className="house-drilldown-heading-block-title">Headline results</p>
           </div>
@@ -6001,6 +6404,224 @@ function TotalPublicationsDrilldownWorkspace({
               </div>
             ) : null}
           </>
+        ) : null}
+
+        {activeTab === 'trajectory' ? (
+          <div className="house-publications-drilldown-bounded-section">
+            <div className="house-drilldown-heading-block">
+              <p className="house-drilldown-heading-block-title">Year-over-year trajectory</p>
+            </div>
+            <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+              <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'justify-start')}>
+                <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                  <div
+                    className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-3')}
+                    data-stop-tile-open="true"
+                    data-ui="publications-trajectory-mode-toggle"
+                    data-house-role="chart-toggle"
+                    style={{ width: '15rem', minWidth: '15rem', maxWidth: '15rem' }}
+                  >
+                    <span
+                      className={HOUSE_TOGGLE_THUMB_CLASS}
+                      style={buildTileToggleThumbStyle(activeTrajectoryIndex, trajectoryOptions.length)}
+                      aria-hidden="true"
+                    />
+                    {trajectoryOptions.map((option) => (
+                      <button
+                        key={`trajectory-mode-${option.key}`}
+                        type="button"
+                        data-stop-tile-open="true"
+                        className={cn(
+                          HOUSE_TOGGLE_BUTTON_CLASS,
+                          'whitespace-nowrap',
+                          trajectoryMode === option.key ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                        )}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          if (trajectoryMode === option.key) {
+                            return
+                          }
+                          setTrajectoryMode(option.key)
+                        }}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        aria-pressed={trajectoryMode === option.key}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {trajectoryVisibleYears.length ? (
+                <>
+                  <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
+                    <div
+                      className={cn(
+                        HOUSE_CHART_TRANSITION_CLASS,
+                        HOUSE_CHART_ENTERED_CLASS,
+                        'house-publications-trend-chart-frame-borderless',
+                      )}
+                      style={trajectoryChartFrameStyle}
+                      data-house-role="chart-frame"
+                    >
+                      <div className="absolute overflow-visible" style={trajectoryPlotAreaStyle}>
+                        <svg viewBox={`0 0 ${trajectorySvgWidth} ${trajectorySvgHeight}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
+                          {trajectoryHorizontalGridRatios.map((ratio, index) => {
+                            const clampedRatio = Math.max(0, Math.min(1, ratio))
+                            const y = trajectoryPlotMaxY - (trajectoryPlotHeight * clampedRatio)
+                            return (
+                              <line
+                                key={`trajectory-grid-${index}`}
+                                x1={trajectoryPlotMinX}
+                                x2={trajectoryPlotMaxX}
+                                y1={y}
+                                y2={y}
+                                stroke="hsl(var(--stroke-soft) / 0.56)"
+                                strokeWidth={1}
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            )
+                          })}
+                          <line
+                            x1={trajectoryPlotMinX}
+                            x2={trajectoryPlotMaxX}
+                            y1={trajectoryPlotMinY}
+                            y2={trajectoryPlotMinY}
+                            stroke="hsl(var(--stroke-soft) / 0.56)"
+                            strokeWidth={1}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <line
+                            x1={trajectoryPlotMinX}
+                            x2={trajectoryPlotMinX}
+                            y1={trajectoryPlotMinY}
+                            y2={trajectoryPlotMaxY}
+                            stroke="hsl(var(--stroke-soft) / 0.56)"
+                            strokeWidth={1}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <line
+                            x1={trajectoryPlotMaxX}
+                            x2={trajectoryPlotMaxX}
+                            y1={trajectoryPlotMinY}
+                            y2={trajectoryPlotMaxY}
+                            stroke="hsl(var(--stroke-soft) / 0.56)"
+                            strokeWidth={1}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <line
+                            x1={trajectoryPlotMinX}
+                            x2={trajectoryPlotMaxX}
+                            y1={trajectoryPlotMaxY}
+                            y2={trajectoryPlotMaxY}
+                            stroke="hsl(var(--stroke-soft) / 0.56)"
+                            strokeWidth={1}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          {trajectoryMode === 'raw' && trajectoryVolatilityAreaPath ? (
+                            <path d={trajectoryVolatilityAreaPath} className={HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS} />
+                          ) : null}
+                          {trajectoryMode === 'raw' && trajectoryMovingPath ? (
+                            <path d={trajectoryMovingPath} className={HOUSE_DRILLDOWN_CHART_MOVING_SVG_CLASS} />
+                          ) : null}
+                          {trajectoryPath ? (
+                            <path d={trajectoryPath} className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS} />
+                          ) : null}
+                        </svg>
+                      </div>
+
+                      <div className="pointer-events-none absolute" style={trajectoryYAxisPanelStyle} aria-hidden="true">
+                        {trajectoryAxisTickValues.map((tickValue, index) => {
+                          const ratio = Math.max(0, Math.min(1, trajectoryTickRatios[index] || 0))
+                          const tickY = trajectoryPlotMaxY - (trajectoryPlotHeight * ratio)
+                          const bottomPct = Math.max(0, Math.min(100, ((trajectorySvgHeight - tickY) / trajectorySvgHeight) * 100))
+                          return (
+                            <p
+                              key={`trajectory-y-axis-${tickValue}-${index}`}
+                              className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
+                              style={{ bottom: `${bottomPct}%`, transform: 'translateY(50%)' }}
+                            >
+                              {formatInt(Math.round(Number(tickValue || 0)))}
+                            </p>
+                          )
+                        })}
+                        <p
+                          className={cn(
+                            HOUSE_CHART_AXIS_TITLE_CLASS,
+                            HOUSE_CHART_SCALE_AXIS_TITLE_CLASS,
+                            'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap',
+                          )}
+                          style={{ left: '34%' }}
+                        >
+                          Publications
+                        </p>
+                      </div>
+
+                      <div
+                        className={cn(
+                          'pointer-events-none absolute flex items-start justify-between',
+                          HOUSE_TOGGLE_CHART_LABEL_CLASS,
+                        )}
+                        style={trajectoryXAxisTicksStyle}
+                      >
+                        <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+                          {trajectoryStartYearLabel}
+                        </p>
+                        <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+                          {trajectoryEndYearLabel}
+                        </p>
+                      </div>
+
+                      <div
+                        className="pointer-events-none absolute"
+                        style={{
+                          left: trajectoryChartLeftInset,
+                          right: '0.5rem',
+                          bottom: `${trajectoryXAxisLayout.xAxisNameBottomRem}rem`,
+                          minHeight: `${trajectoryXAxisLayout.xAxisNameMinHeightRem}rem`,
+                        }}
+                      >
+                        <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
+                          Publication year
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-2">
+                    <input
+                      type="range"
+                      min={trajectoryMinWindow}
+                      max={trajectoryMaxWindow}
+                      value={Math.min(trajectoryWindow, trajectoryMaxWindow)}
+                      onChange={(event) => setTrajectoryWindow(Math.max(trajectoryMinWindow, Number(event.target.value) || trajectoryMinWindow))}
+                      className={HOUSE_DRILLDOWN_RANGE_CLASS}
+                    />
+                  </div>
+
+                  <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
+                    <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
+                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Volatility index</p>
+                      <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{trajectoryVolatilityIndex.toFixed(2)}</p>
+                    </div>
+                    <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
+                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Growth slope</p>
+                      <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{trajectoryGrowthSlope >= 0 ? '+' : ''}{trajectoryGrowthSlope.toFixed(2)}/year</p>
+                    </div>
+                    <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
+                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Phase marker</p>
+                      <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{trajectoryPhase}</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>
+                  No trajectory data available.
+                </div>
+              )}
+            </div>
+          </div>
         ) : null}
 
         {subsectionTitle ? (

@@ -22,6 +22,7 @@ from research_os.services.collaboration_service import (
     get_collaboration_metrics_summary,
     get_collaborator_for_user,
     import_collaborators_from_openalex,
+    list_collaborators_for_user,
     run_collaboration_metrics_scheduler_tick,
     validate_orcid_id,
 )
@@ -462,6 +463,140 @@ def test_summary_new_collaborators_uses_first_collaboration_year(
     payload = get_collaboration_metrics_summary(user_id=user_id)
 
     assert payload["total_collaborators"] == 2
+    assert payload["new_collaborators_12m"] == 1
+
+
+def test_list_collaborators_dedupes_same_identity_and_merges_institutions(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="dedupe-list-user@example.com")
+    with session_scope() as session:
+        first = Collaborator(
+            owner_user_id=user_id,
+            full_name="Alex Researcher",
+            full_name_lower="alex researcher",
+            openalex_author_id="https://openalex.org/A123",
+            primary_institution="University A",
+            research_domains=["AI"],
+        )
+        second = Collaborator(
+            owner_user_id=user_id,
+            full_name="Alex Researcher",
+            full_name_lower="alex researcher",
+            openalex_author_id="https://openalex.org/A123",
+            primary_institution="University B",
+            research_domains=["Networks"],
+        )
+        session.add_all([first, second])
+        session.flush()
+        session.add_all(
+            [
+                CollaborationMetric(
+                    owner_user_id=user_id,
+                    collaborator_id=first.id,
+                    coauthored_works_count=7,
+                    shared_citations_total=90,
+                    first_collaboration_year=2019,
+                    last_collaboration_year=2025,
+                    citations_last_12m=14,
+                    collaboration_strength_score=0.88,
+                    classification="CORE",
+                    computed_at=datetime.now(timezone.utc),
+                    status="READY",
+                    source_json={"formula_version": "test", "failures_in_row": 0},
+                ),
+                CollaborationMetric(
+                    owner_user_id=user_id,
+                    collaborator_id=second.id,
+                    coauthored_works_count=5,
+                    shared_citations_total=60,
+                    first_collaboration_year=2021,
+                    last_collaboration_year=2024,
+                    citations_last_12m=8,
+                    collaboration_strength_score=0.71,
+                    classification="ACTIVE",
+                    computed_at=datetime.now(timezone.utc),
+                    status="READY",
+                    source_json={"formula_version": "test", "failures_in_row": 0},
+                ),
+            ]
+        )
+        session.flush()
+
+    payload = list_collaborators_for_user(user_id=user_id, page=1, page_size=50)
+
+    assert payload["total"] == 1
+    item = payload["items"][0]
+    assert item["duplicate_count"] == 2
+    assert "University A" in (item.get("institution_labels") or [])
+    assert "University B" in (item.get("institution_labels") or [])
+    assert item["metrics"]["coauthored_works_count"] == 7
+
+
+def test_summary_dedupes_same_identity(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="dedupe-summary-user@example.com")
+    now = datetime.now(timezone.utc)
+    with session_scope() as session:
+        first = Collaborator(
+            owner_user_id=user_id,
+            full_name="Jordan Scientist",
+            full_name_lower="jordan scientist",
+            openalex_author_id="https://openalex.org/A456",
+            research_domains=[],
+            created_at=now,
+            updated_at=now,
+        )
+        second = Collaborator(
+            owner_user_id=user_id,
+            full_name="Jordan Scientist",
+            full_name_lower="jordan scientist",
+            openalex_author_id="https://openalex.org/A456",
+            research_domains=[],
+            created_at=now,
+            updated_at=now,
+        )
+        session.add_all([first, second])
+        session.flush()
+        session.add_all(
+            [
+                CollaborationMetric(
+                    owner_user_id=user_id,
+                    collaborator_id=first.id,
+                    coauthored_works_count=4,
+                    shared_citations_total=50,
+                    first_collaboration_year=now.year,
+                    last_collaboration_year=now.year,
+                    citations_last_12m=6,
+                    classification="ACTIVE",
+                    computed_at=now,
+                    status="READY",
+                    source_json={"formula_version": "test", "failures_in_row": 0},
+                ),
+                CollaborationMetric(
+                    owner_user_id=user_id,
+                    collaborator_id=second.id,
+                    coauthored_works_count=3,
+                    shared_citations_total=40,
+                    first_collaboration_year=now.year,
+                    last_collaboration_year=now.year,
+                    citations_last_12m=4,
+                    classification="ACTIVE",
+                    computed_at=now,
+                    status="READY",
+                    source_json={"formula_version": "test", "failures_in_row": 0},
+                ),
+            ]
+        )
+        session.flush()
+
+    payload = get_collaboration_metrics_summary(user_id=user_id)
+
+    assert payload["total_collaborators"] == 1
+    assert payload["active_collaborations_12m"] == 1
     assert payload["new_collaborators_12m"] == 1
 
 
