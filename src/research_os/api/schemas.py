@@ -1518,6 +1518,109 @@ class PersonaSyncJobOrcidImportRequest(BaseModel):
     refresh_metrics: bool = True
 
 
+class OpenAlexAuthorSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=200)
+    limit: int = Field(default=10, ge=1, le=25)
+
+
+class OpenAlexAuthorResult(BaseModel):
+    id: str
+    display_name: str
+    works_count: int
+    cited_by_count: int = 0
+    orcid: str | None = None
+
+
+class OpenAlexAuthorSearchResponse(BaseModel):
+    results: list[OpenAlexAuthorResult] = Field(default_factory=list)
+
+
+class OpenAlexImportRequest(BaseModel):
+    openalex_author_id: str = Field(..., min_length=1)
+    overwrite_user_metadata: bool = False
+    run_metrics_sync: bool = True
+    providers: list[Literal["openalex", "semantic_scholar", "manual"]] = Field(
+        default_factory=lambda: ["openalex", "semantic_scholar"]
+    )
+    refresh_analytics: bool = True
+    refresh_metrics: bool = True
+
+
+class OpenAlexImportResponse(BaseModel):
+    job_id: str
+    openalex_author_id: str
+    openalex_author_name: str
+
+
+class PersonaGrantsAuthorResponse(BaseModel):
+    openalex_author_id: str | None = None
+    display_name: str | None = None
+    orcid: str | None = None
+    works_count: int = 0
+    cited_by_count: int = 0
+
+
+class PersonaGrantFunderResponse(BaseModel):
+    id: str | None = None
+    display_name: str | None = None
+    doi: str | None = None
+    ror: str | None = None
+
+
+class PersonaGrantSupportingWorkResponse(BaseModel):
+    id: str
+    title: str
+    publication_year: int | None = None
+    user_author_position: str | None = None
+
+
+class PersonaGrantAwardHolderResponse(BaseModel):
+    name: str
+    role: str
+    orcid: str | None = None
+
+
+class PersonaGrantResponse(BaseModel):
+    openalex_award_id: str | None = None
+    display_name: str | None = None
+    description: str | None = None
+    funder_award_id: str | None = None
+    funder: PersonaGrantFunderResponse = Field(default_factory=PersonaGrantFunderResponse)
+    amount: float | None = None
+    currency: str | None = None
+    funding_type: str | None = None
+    funder_scheme: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    start_year: int | None = None
+    end_year: int | None = None
+    landing_page_url: str | None = None
+    doi: str | None = None
+    updated_date: str | None = None
+    supporting_works_count: int = 0
+    supporting_works: list[PersonaGrantSupportingWorkResponse] = Field(
+        default_factory=list
+    )
+    relationship_to_person: str = "published_under_unknown_grant"
+    grant_owner_name: str | None = None
+    grant_owner_role: str | None = None
+    grant_owner_orcid: str | None = None
+    grant_owner_is_target_person: bool = False
+    award_holders: list[PersonaGrantAwardHolderResponse] = Field(default_factory=list)
+
+
+class PersonaGrantsResponse(BaseModel):
+    first_name: str
+    last_name: str
+    full_name: str
+    author: PersonaGrantsAuthorResponse = Field(default_factory=PersonaGrantsAuthorResponse)
+    items: list[PersonaGrantResponse] = Field(default_factory=list)
+    total: int = 0
+    relationship_filter: Literal["all", "won", "published_under"] = "all"
+    source: str = "openalex"
+    generated_at: str
+
+
 class PersonaSyncJobMetricsRequest(BaseModel):
     providers: list[Literal["openalex", "semantic_scholar", "manual"]] = Field(
         default_factory=lambda: ["openalex"]

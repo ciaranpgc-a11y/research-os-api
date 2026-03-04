@@ -997,6 +997,60 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
       </div>
       </Section>
 
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
+        <SectionHeader heading="OpenAlex" className="house-section-header-marker-aligned" />
+        <div className="house-separator-main-heading-to-content house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+          <div className="space-y-3 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+            <div className="flex w-full flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[hsl(var(--tone-accent-600))] text-xs font-semibold text-white">
+                  OA
+                </span>
+                <div className="space-y-0.5">
+                  <p className="text-caption uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                    Direct publication import via Open Alex
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3 pt-3 text-sm">
+            <p className="text-sm text-[hsl(var(--tone-neutral-700))]">
+              Search for your OpenAlex profile by name and import your publications directly—no ORCID required.
+            </p>
+            
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-3">
+              <p className="text-label font-medium text-[hsl(var(--tone-neutral-900))]">Search for your profile</p>
+              <p className="mt-1 text-xs text-[hsl(var(--tone-neutral-600))]">Enter your full name to find your OpenAlex author profile</p>
+              
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="text"
+                  placeholder="e.g., Jane Smith"
+                  className="flex-1 rounded-md border border-[hsl(var(--tone-neutral-300))] px-3 py-2 text-sm focus:border-[hsl(var(--tone-accent-500))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-accent-200))]"
+                  disabled={true}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={true}
+                >
+                  Search
+                </Button>
+              </div>
+              
+              <p className="mt-2 text-xs text-[hsl(var(--tone-neutral-500))]">
+                <strong>Coming soon:</strong> Search and import directly from OpenAlex
+              </p>
+            </div>
+
+            <div className="rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] px-3 py-2 text-xs text-[hsl(var(--tone-accent-800))]">
+              <strong>Alternative:</strong> You can still import publications via ORCID above. The system will find your OpenAlex profile automatically.
+            </div>
+          </div>
+        </div>
+      </Section>
+
       {confirmDisconnectOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"

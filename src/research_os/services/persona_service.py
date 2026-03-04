@@ -839,6 +839,9 @@ def upsert_work(
     authors = work.get("authors", [])
     if not isinstance(authors, list):
         authors = []
+    user_author_position_hint = _safe_int(work.get("user_author_position"))
+    if user_author_position_hint is not None and user_author_position_hint <= 0:
+        user_author_position_hint = None
 
     def _upsert(db_session: Session) -> dict[str, Any]:
         user = _resolve_user_or_raise(db_session, user_id)
@@ -944,6 +947,8 @@ def upsert_work(
             by_author_id = {item.author_id: item for item in existing_authorships}
             seen_author_ids: set[str] = set()
             author_order_position = 0
+            user_marked_from_identity = False
+            user_marked_from_hint = False
 
             for author_item in authors:
                 if not isinstance(author_item, dict):
@@ -960,20 +965,26 @@ def upsert_work(
                     canonical_name=author_name,
                     orcid_id=author_orcid,
                 )
-                is_user = bool(user.orcid_id and author.orcid_id == user.orcid_id) or (
+                is_user_identity = bool(user.orcid_id and author.orcid_id == user.orcid_id) or (
                     _author_name_key(author_name) == _author_name_key(user.name)
                 )
+                explicit_user_flag = bool(author_item.get("is_user"))
 
                 # ORCID/OpenAlex payloads can include the same person multiple times;
                 # keep the first occurrence and avoid duplicate (work_id, author_id) inserts.
                 if author.id in seen_author_ids:
                     link = by_author_id.get(author.id)
                     if link is not None:
-                        link.is_user = bool(link.is_user or is_user)
+                        link.is_user = bool(link.is_user or is_user_identity or explicit_user_flag)
                     continue
 
                 seen_author_ids.add(author.id)
                 author_order_position += 1
+                is_user_from_hint = bool(
+                    user_author_position_hint is not None
+                    and author_order_position == user_author_position_hint
+                )
+                is_user = bool(is_user_identity or explicit_user_flag or is_user_from_hint)
                 link = by_author_id.get(author.id)
                 if link is None:
                     link = WorkAuthorship(
@@ -987,6 +998,19 @@ def upsert_work(
                 else:
                     link.author_order = author_order_position
                     link.is_user = is_user
+
+                if is_user_identity or explicit_user_flag:
+                    user_marked_from_identity = True
+                if is_user_from_hint:
+                    user_marked_from_hint = True
+
+            if user_author_position_hint is not None and not user_marked_from_identity:
+                for link in existing_authorships:
+                    if link.author_order == user_author_position_hint:
+                        link.is_user = True
+                        user_marked_from_hint = True
+                    elif user_marked_from_hint:
+                        link.is_user = False
 
             for link in existing_authorships:
                 if link.author_id not in seen_author_ids:

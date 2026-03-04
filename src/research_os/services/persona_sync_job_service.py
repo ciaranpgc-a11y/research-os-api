@@ -33,7 +33,7 @@ class PersonaSyncJobValidationError(RuntimeError):
 
 
 _ACTIVE_STATUSES = ("queued", "running")
-_ALLOWED_JOB_TYPES = {"orcid_import", "metrics_sync", "analytics_refresh"}
+_ALLOWED_JOB_TYPES = {"orcid_import", "openalex_import", "metrics_sync", "analytics_refresh"}
 _ALLOWED_PROVIDERS = {"openalex", "semantic_scholar", "manual"}
 
 
@@ -187,6 +187,39 @@ def _run_persona_sync_job(job_id: str) -> None:
                 )
                 result_payload["metrics_sync"] = _json_safe(metrics_payload)
 
+        elif job.job_type == "openalex_import":
+            _set_stage(job, stage="importing_openalex", progress=25)
+            session.commit()
+            
+            # Import here to avoid circular dependency
+            from research_os.services.publication_insights_bootstrap_service import (
+                import_openalex_works_direct,
+            )
+            
+            # Get the author ID from result_json (set during enqueue)
+            openalex_author_id = (job.result_json or {}).get("openalex_author_id")
+            if not openalex_author_id:
+                raise ValueError("OpenAlex author ID is required for openalex_import job")
+            
+            import_payload = import_openalex_works_direct(
+                user_id=user_id,
+                openalex_author_id=str(openalex_author_id),
+                overwrite_user_metadata=bool(job.overwrite_user_metadata),
+            )
+            result_payload["openalex_import"] = _json_safe(import_payload)
+
+            should_sync_metrics = (
+                bool(job.run_metrics_sync) or _orcid_import_always_sync_metrics()
+            )
+            effective_providers = providers or _orcid_import_default_providers()
+            if should_sync_metrics and effective_providers:
+                _set_stage(job, stage="syncing_metrics", progress=70)
+                session.commit()
+                metrics_payload = sync_metrics(
+                    user_id=user_id, providers=effective_providers
+                )
+                result_payload["metrics_sync"] = _json_safe(metrics_payload)
+
         elif job.job_type == "metrics_sync":
             if not providers:
                 providers = ["openalex"]
@@ -254,6 +287,7 @@ def enqueue_persona_sync_job(
     providers: list[str] | None = None,
     refresh_analytics: bool = True,
     refresh_metrics: bool = False,
+    openalex_author_id: str | None = None,
 ) -> PersonaSyncJob:
     create_all_tables()
     normalized_job_type = str(job_type or "").strip().lower()
@@ -264,6 +298,8 @@ def enqueue_persona_sync_job(
         )
     normalized_providers = _normalize_providers(providers)
     if normalized_job_type == "orcid_import" and not normalized_providers:
+        normalized_providers = _orcid_import_default_providers()
+    if normalized_job_type == "openalex_import" and not normalized_providers:
         normalized_providers = _orcid_import_default_providers()
     if normalized_job_type == "metrics_sync" and not normalized_providers:
         normalized_providers = ["openalex"]
@@ -286,6 +322,10 @@ def enqueue_persona_sync_job(
                 )
             )
 
+        initial_result_json = {}
+        if openalex_author_id:
+            initial_result_json["openalex_author_id"] = str(openalex_author_id).strip()
+        
         job = PersonaSyncJob(
             user_id=user_id,
             job_type=normalized_job_type,
@@ -297,7 +337,7 @@ def enqueue_persona_sync_job(
             providers=normalized_providers,
             progress_percent=0,
             current_stage="queued",
-            result_json={},
+            result_json=initial_result_json,
         )
         session.add(job)
         session.commit()

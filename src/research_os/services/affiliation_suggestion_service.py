@@ -1029,6 +1029,82 @@ def _source_priority(value: Any) -> int:
     return SUGGESTION_SOURCE_PRIORITY.get(_sanitize_text(value).lower(), 0)
 
 
+def _normalize_suggestion_item(raw: dict[str, Any]) -> dict[str, Any] | None:
+    name = _sanitize_text(raw.get("name"))
+    if len(name) < 2:
+        return None
+    country_code = _sanitize_text(raw.get("country_code")).upper() or None
+    country_name = _nullable_part(raw.get("country_name"))
+    city = _nullable_part(raw.get("city"))
+    region = _nullable_part(raw.get("region"))
+    address = _nullable_part(raw.get("address"))
+    postal_code = _nullable_part(raw.get("postal_code"))
+    source = _sanitize_text(raw.get("source")).lower()
+    if source not in SUGGESTION_SOURCE_PRIORITY:
+        source = "openalex"
+    label = _sanitize_text(raw.get("label")) or _build_label(
+        name=name,
+        city=city,
+        country_name=country_name,
+        country_code=country_code,
+    )
+    return {
+        "name": name,
+        "label": label,
+        "country_code": country_code,
+        "country_name": country_name,
+        "city": city,
+        "region": region,
+        "address": address,
+        "postal_code": postal_code,
+        "source": source,
+    }
+
+
+def _merge_provider_suggestions(
+    *, rows: list[dict[str, Any]], query: str, limit: int
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    for raw in rows:
+        normalized = _normalize_suggestion_item(raw)
+        if not normalized:
+            continue
+        target_index = -1
+        for index, existing in enumerate(merged):
+            same_key = _dedupe_key(existing) == _dedupe_key(normalized)
+            same_name = _can_merge_name_collision(existing, normalized)
+            if same_key or same_name:
+                target_index = index
+                break
+        if target_index < 0:
+            merged.append(normalized)
+            continue
+        existing = merged[target_index]
+        choose_incoming = False
+        existing_metadata = _metadata_score(existing)
+        incoming_metadata = _metadata_score(normalized)
+        if incoming_metadata > existing_metadata:
+            choose_incoming = True
+        elif incoming_metadata == existing_metadata and _source_priority(
+            normalized.get("source")
+        ) > _source_priority(existing.get("source")):
+            choose_incoming = True
+        primary = normalized if choose_incoming else existing
+        secondary = existing if choose_incoming else normalized
+        merged[target_index] = _merge_items(primary=primary, secondary=secondary)
+    query_tokens = _tokenize(query)
+    ranked = sorted(
+        merged,
+        key=lambda item: (
+            -_jaccard_similarity(query_tokens, _tokenize(str(item.get("name") or ""))),
+            -_source_priority(item.get("source")),
+            -_metadata_score(item),
+            str(item.get("name") or "").lower(),
+        ),
+    )
+    return [dict(item) for item in ranked[:limit]]
+
+
 def fetch_affiliation_suggestions(
     *, query: str, limit: int = 8
 ) -> list[dict[str, Any]]:
@@ -1043,14 +1119,28 @@ def fetch_affiliation_suggestions(
     if cached is not None:
         return cached[:clean_limit]
 
-    payload = _ask_openai_json(
-        _build_openai_suggestions_prompt(query=clean_query, limit=clean_limit)
-    )
-    final_items = _coerce_openai_suggestions(
-        payload=payload,
+    provider_rows = _fetch_provider_suggestions_parallel(
         query=clean_query,
         limit=clean_limit,
     )
+    final_items = _merge_provider_suggestions(
+        rows=provider_rows,
+        query=clean_query,
+        limit=clean_limit,
+    )
+    if not final_items:
+        # Keep OpenAI as optional fallback so suggestions still work without provider hits.
+        try:
+            payload = _ask_openai_json(
+                _build_openai_suggestions_prompt(query=clean_query, limit=clean_limit)
+            )
+            final_items = _coerce_openai_suggestions(
+                payload=payload,
+                query=clean_query,
+                limit=clean_limit,
+            )
+        except AffiliationSuggestionValidationError:
+            final_items = []
     _write_suggestion_cache(cache_key, final_items)
     return [dict(item) for item in final_items]
 

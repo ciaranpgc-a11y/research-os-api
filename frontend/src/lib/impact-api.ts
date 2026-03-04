@@ -56,6 +56,7 @@ import type {
   PublicationImpactResponsePayload,
   PersonaStatePayload,
   PersonaContextPayload,
+  PersonaGrantsPayload,
   PersonaEmbeddingsGeneratePayload,
   PersonaMetricsSyncPayload,
   PublicationsAnalyticsResponsePayload,
@@ -917,6 +918,70 @@ export async function enqueueOrcidImportSyncJob(
   )
 }
 
+export async function searchOpenAlexAuthors(
+  token: string,
+  query: string,
+  options?: { limit?: number },
+): Promise<{
+  results: Array<{
+    id: string
+    display_name: string
+    works_count: number
+    cited_by_count: number
+    orcid: string | null
+  }>
+}> {
+  return requestJson<{
+    results: Array<{
+      id: string
+      display_name: string
+      works_count: number
+      cited_by_count: number
+      orcid: string | null
+    }>
+  }>(
+    `${API_BASE_URL}/v1/openalex/search-authors`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: query.trim(),
+        limit: options?.limit || 10,
+      }),
+    },
+    'OpenAlex author search failed',
+  )
+}
+
+export async function enqueueOpenAlexImportJob(
+  token: string,
+  openalexAuthorId: string,
+  options?: {
+    overwriteUserMetadata?: boolean
+    runMetricsSync?: boolean
+    providers?: Array<'openalex' | 'semantic_scholar' | 'manual'>
+    refreshAnalytics?: boolean
+    refreshMetrics?: boolean
+  },
+): Promise<{ job_id: string; openalex_author_id: string; openalex_author_name: string }> {
+  return requestJson<{ job_id: string; openalex_author_id: string; openalex_author_name: string }>(
+    `${API_BASE_URL}/v1/openalex/import`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        openalex_author_id: openalexAuthorId.trim(),
+        overwrite_user_metadata: Boolean(options?.overwriteUserMetadata),
+        run_metrics_sync: options?.runMetricsSync ?? true,
+        providers: options?.providers || ['openalex', 'semantic_scholar'],
+        refresh_analytics: options?.refreshAnalytics ?? true,
+        refresh_metrics: options?.refreshMetrics ?? true,
+      }),
+    },
+    'Could not start OpenAlex import job',
+  )
+}
+
 export async function enqueueMetricsSyncJob(
   token: string,
   options?: {
@@ -971,6 +1036,36 @@ export async function listPersonaWorks(token: string): Promise<PersonaWork[]> {
       headers: authHeaders(token),
     },
     'Works lookup failed',
+  )
+}
+
+export async function fetchPersonaGrants(
+  token: string,
+  input: {
+    firstName: string
+    lastName: string
+    limit?: number
+    relationship?: 'all' | 'won' | 'published_under'
+  },
+): Promise<PersonaGrantsPayload> {
+  const firstName = String(input.firstName || '').trim()
+  const lastName = String(input.lastName || '').trim()
+  const limit = Math.max(1, Math.min(100, Number(input.limit || 30)))
+  const relationship = input.relationship || 'all'
+  const params = new URLSearchParams({
+    first_name: firstName,
+    last_name: lastName,
+    limit: String(limit),
+    relationship,
+  })
+  return requestJson<PersonaGrantsPayload>(
+    `${API_BASE_URL}/v1/persona/grants?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Grants lookup failed',
+    { timeoutMs: 90_000, retryCount: 1 },
   )
 }
 

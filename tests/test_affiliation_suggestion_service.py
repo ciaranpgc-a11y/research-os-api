@@ -108,3 +108,25 @@ def test_fetch_affiliation_suggestions_requires_min_query() -> None:
     _clear_cache()
     with pytest.raises(AffiliationSuggestionValidationError):
         fetch_affiliation_suggestions(query="a", limit=8)
+
+
+def test_fetch_affiliation_suggestions_returns_empty_when_fallbacks_unavailable(
+    monkeypatch,
+) -> None:
+    _clear_cache()
+
+    monkeypatch.setattr(
+        "research_os.services.affiliation_suggestion_service._fetch_provider_suggestions_parallel",
+        lambda **_: [],
+    )
+
+    def _fail_openai(_: str) -> dict:
+        raise AffiliationSuggestionValidationError("OpenAI affiliation lookup failed.")
+
+    monkeypatch.setattr(
+        "research_os.services.affiliation_suggestion_service._ask_openai_json",
+        _fail_openai,
+    )
+
+    items = fetch_affiliation_suggestions(query="University of East Anglia", limit=8)
+    assert items == []

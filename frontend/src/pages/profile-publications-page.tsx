@@ -542,11 +542,34 @@ function loadCachedAnalyticsResponse(): PublicationsAnalyticsResponsePayload | n
   }
 }
 
-function saveCachedAnalyticsResponse(value: PublicationsAnalyticsResponsePayload): void {
+function loadCachedAnalyticsResponseForUser(userId: string | null | undefined): PublicationsAnalyticsResponsePayload | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const cleanUserId = String(userId || '').trim()
+  const scopedKey = cleanUserId
+    ? `${PUBLICATIONS_ANALYTICS_CACHE_KEY}:${cleanUserId}`
+    : PUBLICATIONS_ANALYTICS_CACHE_KEY
+  const scopedRaw = window.localStorage.getItem(scopedKey)
+  if (scopedRaw) {
+    try {
+      return JSON.parse(scopedRaw) as PublicationsAnalyticsResponsePayload
+    } catch {
+      // Fall back to legacy key below.
+    }
+  }
+  return loadCachedAnalyticsResponse()
+}
+
+function saveCachedAnalyticsResponse(value: PublicationsAnalyticsResponsePayload, userId?: string | null): void {
   if (typeof window === 'undefined') {
     return
   }
-  window.localStorage.setItem(PUBLICATIONS_ANALYTICS_CACHE_KEY, JSON.stringify(value))
+  const cleanUserId = String(userId || '').trim()
+  const targetKey = cleanUserId
+    ? `${PUBLICATIONS_ANALYTICS_CACHE_KEY}:${cleanUserId}`
+    : PUBLICATIONS_ANALYTICS_CACHE_KEY
+  window.localStorage.setItem(targetKey, JSON.stringify(value))
 }
 
 function loadCachedTopMetricsResponse(): PublicationsTopMetricsPayload | null {
@@ -564,11 +587,34 @@ function loadCachedTopMetricsResponse(): PublicationsTopMetricsPayload | null {
   }
 }
 
-function saveCachedTopMetricsResponse(value: PublicationsTopMetricsPayload): void {
+function loadCachedTopMetricsResponseForUser(userId: string | null | undefined): PublicationsTopMetricsPayload | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const cleanUserId = String(userId || '').trim()
+  const scopedKey = cleanUserId
+    ? `${PUBLICATIONS_TOP_METRICS_CACHE_KEY}:${cleanUserId}`
+    : PUBLICATIONS_TOP_METRICS_CACHE_KEY
+  const scopedRaw = window.localStorage.getItem(scopedKey)
+  if (scopedRaw) {
+    try {
+      return JSON.parse(scopedRaw) as PublicationsTopMetricsPayload
+    } catch {
+      // Fall back to legacy key below.
+    }
+  }
+  return loadCachedTopMetricsResponse()
+}
+
+function saveCachedTopMetricsResponse(value: PublicationsTopMetricsPayload, userId?: string | null): void {
   if (typeof window === 'undefined') {
     return
   }
-  window.localStorage.setItem(PUBLICATIONS_TOP_METRICS_CACHE_KEY, JSON.stringify(value))
+  const cleanUserId = String(userId || '').trim()
+  const targetKey = cleanUserId
+    ? `${PUBLICATIONS_TOP_METRICS_CACHE_KEY}:${cleanUserId}`
+    : PUBLICATIONS_TOP_METRICS_CACHE_KEY
+  window.localStorage.setItem(targetKey, JSON.stringify(value))
 }
 
 function analyticsSummaryFromResponse(
@@ -2185,10 +2231,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const isFixtureMode = Boolean(fixture)
   const initialCachedPersonaState = fixture?.personaState ?? readCachedPersonaState()
   const initialCachedUser = fixture?.user ?? loadCachedUser()
-  const initialCachedAnalyticsResponse = fixture?.analyticsResponse ?? loadCachedAnalyticsResponse()
+  const initialCachedAnalyticsResponse = fixture?.analyticsResponse ?? loadCachedAnalyticsResponseForUser(initialCachedUser?.id)
   const initialCachedAnalyticsSummary = analyticsSummaryFromResponse(initialCachedAnalyticsResponse)
   const initialCachedAnalyticsTopDrivers = analyticsTopDriversFromResponse(initialCachedAnalyticsResponse)
-  const initialCachedTopMetricsResponse = fixture?.topMetricsResponse ?? loadCachedTopMetricsResponse()
+  const initialCachedTopMetricsResponse = fixture?.topMetricsResponse ?? loadCachedTopMetricsResponseForUser(initialCachedUser?.id)
   const [token, setToken] = useState<string>(() => fixture?.token ?? getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
@@ -2313,7 +2359,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       void topMetricsPromise
         .then((value) => {
           setTopMetricsResponse(value)
-          saveCachedTopMetricsResponse(value)
+          saveCachedTopMetricsResponse(value, user?.id)
         })
         .catch((topMetricsError) => {
           const message = topMetricsError instanceof Error ? topMetricsError.message : 'Publications top metrics lookup failed.'
@@ -2395,13 +2441,19 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
       if (analyticsResult.status === 'fulfilled') {
         setAnalyticsResponse(analyticsResult.value)
-        saveCachedAnalyticsResponse(analyticsResult.value)
+        saveCachedAnalyticsResponse(
+          analyticsResult.value,
+          userResult.status === 'fulfilled' ? userResult.value.id : user?.id,
+        )
         setAnalyticsSummary(analyticsSummaryFromResponse(analyticsResult.value))
         setAnalyticsTopDrivers(analyticsTopDriversFromResponse(analyticsResult.value))
       }
       if (topMetricsResult.status === 'fulfilled') {
         setTopMetricsResponse(topMetricsResult.value)
-        saveCachedTopMetricsResponse(topMetricsResult.value)
+        saveCachedTopMetricsResponse(
+          topMetricsResult.value,
+          userResult.status === 'fulfilled' ? userResult.value.id : user?.id,
+        )
       }
       const failedCount = settled.filter((item) => item.status === 'rejected').length
       if (failedCount > 0) {
@@ -2416,7 +2468,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         setLoading(false)
       }
     }
-  }, [navigate])
+  }, [navigate, user?.id])
 
   useEffect(() => {
     saveActivePublicationDetailTab(activeDetailTab)
@@ -2903,7 +2955,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           return
         }
         setAnalyticsResponse(next)
-        saveCachedAnalyticsResponse(next)
+        saveCachedAnalyticsResponse(next, user?.id)
         setAnalyticsSummary(analyticsSummaryFromResponse(next))
         setAnalyticsTopDrivers(analyticsTopDriversFromResponse(next))
       } catch {
@@ -2940,7 +2992,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           return
         }
         setTopMetricsResponse(next)
-        saveCachedTopMetricsResponse(next)
+        saveCachedTopMetricsResponse(next, user?.id)
       } catch {
         if (cancelled) {
           return
@@ -2990,7 +3042,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           return
         }
         setTopMetricsResponse(next)
-        saveCachedTopMetricsResponse(next)
+        saveCachedTopMetricsResponse(next, user?.id)
       } catch (error) {
         if (cancelled) {
           return

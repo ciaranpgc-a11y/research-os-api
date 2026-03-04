@@ -741,7 +741,7 @@ def import_orcid_works(
             continue
         if work_id:
             seen_ids.add(work_id)
-        work_payload = _work_from_openalex(work_raw)
+        work_payload = _work_from_openalex(work_raw, user_openalex_author_id=openalex_author_id)
         if not work_payload.get("title"):
             continue
         # Add OpenAlex work ID as reference

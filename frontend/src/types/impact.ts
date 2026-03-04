@@ -1054,6 +1054,73 @@ export type PersonaContextPayload = {
   }>
 }
 
+export type PersonaGrantsAuthorPayload = {
+  openalex_author_id: string | null
+  display_name: string | null
+  orcid: string | null
+  works_count: number
+  cited_by_count: number
+}
+
+export type PersonaGrantFunderPayload = {
+  id: string | null
+  display_name: string | null
+  doi: string | null
+  ror: string | null
+}
+
+export type PersonaGrantSupportingWorkPayload = {
+  id: string
+  title: string
+  publication_year: number | null
+  user_author_position: string | null
+}
+
+export type PersonaGrantAwardHolderPayload = {
+  name: string
+  role: string
+  orcid: string | null
+}
+
+export type PersonaGrantPayload = {
+  openalex_award_id: string | null
+  display_name: string | null
+  description: string | null
+  funder_award_id: string | null
+  funder: PersonaGrantFunderPayload
+  amount: number | null
+  currency: string | null
+  funding_type: string | null
+  funder_scheme: string | null
+  start_date: string | null
+  end_date: string | null
+  start_year: number | null
+  end_year: number | null
+  landing_page_url: string | null
+  doi: string | null
+  updated_date: string | null
+  supporting_works_count: number
+  supporting_works: PersonaGrantSupportingWorkPayload[]
+  relationship_to_person: 'won_by_person' | 'published_under_other_grant' | 'published_under_unknown_grant'
+  grant_owner_name: string | null
+  grant_owner_role: string | null
+  grant_owner_orcid: string | null
+  grant_owner_is_target_person: boolean
+  award_holders: PersonaGrantAwardHolderPayload[]
+}
+
+export type PersonaGrantsPayload = {
+  first_name: string
+  last_name: string
+  full_name: string
+  author: PersonaGrantsAuthorPayload
+  items: PersonaGrantPayload[]
+  total: number
+  relationship_filter: 'all' | 'won' | 'published_under'
+  source: string
+  generated_at: string
+}
+
 export type OrcidConnectPayload = {
   url: string
   state: string

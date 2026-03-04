@@ -190,6 +190,7 @@ from research_os.api.schemas import (
     PersonaSyncJobMetricsRequest,
     PersonaSyncJobOrcidImportRequest,
     PersonaSyncJobResponse,
+    PersonaGrantsResponse,
     PersonaOpenAccessDiscoverRequest,
     PersonaOpenAccessDiscoverResponse,
     PublicationAiInsightsResponse,
@@ -228,6 +229,10 @@ from research_os.api.schemas import (
     OrcidCallbackResponse,
     OrcidConnectResponse,
     OrcidStatusResponse,
+    OpenAlexAuthorSearchRequest,
+    OpenAlexAuthorSearchResponse,
+    OpenAlexImportRequest,
+    OpenAlexImportResponse,
     WizardBootstrapRequest,
     WizardBootstrapResponse,
     WizardInferRequest,
@@ -365,6 +370,11 @@ from research_os.services.orcid_service import (
     get_orcid_status,
     import_orcid_works,
 )
+from research_os.services.publication_insights_bootstrap_service import (
+    _resolve_openalex_author_by_name,
+    _openalex_mailto,
+    PublicationInsightsBootstrapValidationError,
+)
 from research_os.services.social_auth_service import (
     complete_oauth_callback,
     create_oauth_connect_url,
@@ -380,6 +390,10 @@ from research_os.services.persona_service import (
     list_collaborators,
     list_works,
     sync_metrics,
+)
+from research_os.services.grants_service import (
+    GrantsValidationError,
+    list_openalex_grants_for_person,
 )
 from research_os.services.persona_sync_job_service import (
     PersonaSyncJobConflictError,
@@ -2207,6 +2221,127 @@ def v1_persona_enqueue_orcid_import_job(
 
 
 @app.post(
+    "/v1/openalex/search-authors",
+    response_model=OpenAlexAuthorSearchResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_openalex_search_authors(
+    request: Request,
+    payload: OpenAlexAuthorSearchRequest,
+) -> OpenAlexAuthorSearchResponse | JSONResponse:
+    """Search for OpenAlex authors by name."""
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        get_user_by_session_token(token)  # Verify authentication
+        
+        # Use the OpenAlex API to search for authors
+        import httpx
+        mailto = _openalex_mailto()
+        params: dict[str, Any] = {
+            "search": payload.query.strip(),
+            "per-page": min(payload.limit, 25),
+            "select": "id,display_name,orcid,works_count,cited_by_count",
+        }
+        if mailto:
+            params["mailto"] = mailto
+        
+        response = httpx.get(
+            "https://api.openalex.org/authors",
+            params=params,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        results = []
+        for item in data.get("results", []):
+            if not isinstance(item, dict):
+                continue
+            author_id = str(item.get("id", "")).strip()
+            if author_id.startswith("https://openalex.org/"):
+                author_id = author_id.removeprefix("https://openalex.org/")
+            if not author_id:
+                continue
+            
+            results.append({
+                "id": author_id,
+                "display_name": str(item.get("display_name", "")).strip() or "Unknown",
+                "works_count": int(item.get("works_count", 0)),
+                "cited_by_count": int(item.get("cited_by_count", 0)),
+                "orcid": str(item.get("orcid", "")).strip() or None,
+            })
+        
+        return OpenAlexAuthorSearchResponse(results=results)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except Exception as exc:
+        return _build_bad_request_response(f"OpenAlex search failed: {exc}")
+
+
+@app.post(
+    "/v1/openalex/import",
+    response_model=OpenAlexImportResponse,
+    responses=(
+        BAD_REQUEST_RESPONSES
+        | NOT_FOUND_RESPONSES
+        | CONFLICT_RESPONSES
+        | UNAUTHORIZED_RESPONSES
+    ),
+    tags=["v1"],
+)
+def v1_openalex_import(
+    request: Request,
+    payload: OpenAlexImportRequest,
+) -> OpenAlexImportResponse | JSONResponse:
+    """Import publications from OpenAlex using an author ID."""
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        
+        # Normalize the author ID
+        author_id = payload.openalex_author_id.strip()
+        if author_id.startswith("https://openalex.org/"):
+            author_id = author_id.removeprefix("https://openalex.org/")
+        elif author_id.startswith("http://openalex.org/"):
+            author_id = author_id.removeprefix("http://openalex.org/")
+        author_id = author_id.strip().strip("/")
+        
+        if not author_id:
+            return _build_bad_request_response("Invalid OpenAlex author ID")
+        
+        # Create a sync job for the import
+        job = enqueue_persona_sync_job(
+            user_id=str(user["id"]),
+            job_type="openalex_import",
+            overwrite_user_metadata=payload.overwrite_user_metadata,
+            run_metrics_sync=payload.run_metrics_sync,
+            providers=payload.providers,
+            refresh_analytics=payload.refresh_analytics,
+            refresh_metrics=payload.refresh_metrics,
+            openalex_author_id=author_id,
+        )
+        
+        return OpenAlexImportResponse(
+            job_id=str(job["id"]),
+            openalex_author_id=author_id,
+            openalex_author_name="",  # Will be populated during job execution
+        )
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PersonaSyncJobNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PersonaSyncJobConflictError as exc:
+        return _build_conflict_response(str(exc))
+    except (PersonaSyncJobValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
     "/v1/persona/jobs/metrics-sync",
     response_model=PersonaSyncJobResponse,
     responses=(
@@ -2308,6 +2443,40 @@ def v1_persona_list_works(request: Request) -> list[PersonaWorkResponse] | JSONR
         return _build_unauthorized_response(str(exc))
     except PersonaNotFoundError as exc:
         return _build_not_found_response(str(exc))
+
+
+@app.get(
+    "/v1/persona/grants",
+    response_model=PersonaGrantsResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_persona_grants(
+    request: Request,
+    first_name: str = Query(min_length=1, max_length=80),
+    last_name: str = Query(min_length=1, max_length=120),
+    limit: int = Query(default=30, ge=1, le=100),
+    relationship: Literal["all", "won", "published_under"] = Query(default="all"),
+) -> PersonaGrantsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_openalex_grants_for_person(
+            first_name=first_name,
+            last_name=last_name,
+            user_email=str(user.get("email") or "").strip() or None,
+            limit=limit,
+            relationship=relationship,
+        )
+        return PersonaGrantsResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except GrantsValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except ValueError as exc:
+        return _build_bad_request_response(str(exc))
 
 
 @app.post(

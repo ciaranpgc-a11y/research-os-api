@@ -44,6 +44,7 @@ const ACCOUNT_SECTIONS: AccountNavSection[] = [
     tone: 'research',
     items: [
       { label: 'Publications', path: '/profile/publications' },
+      { label: 'Grants', path: '/profile/grants' },
       { label: 'Collaboration', path: COLLABORATION_NAV_PATH },
       { label: 'Impact', path: '/impact' },
     ],
@@ -63,6 +64,7 @@ const ACCOUNT_SECTIONS: AccountNavSection[] = [
 const PROFILE_PREFETCH_PATHS = new Set([
   '/profile',
   '/profile/publications',
+  '/profile/grants',
   COLLABORATION_NAV_PATH,
   '/profile/personal-details',
   '/profile/integrations',
