@@ -87,6 +87,7 @@ export const houseLayout = {
   mainSubheadingBlock: 'house-main-subheading-block',
   mainSectionHeadingRow: 'house-main-section-heading-row',
   sectionAnchor: 'house-section-anchor',
+  separatorMainHeadingToContent: 'house-separator-main-heading-to-content',
   separatorLeftPanelSubheadingToContent: 'house-separator-left-panel-subheading-to-content',
   separatorLeftPanelContentToSubheading: 'house-separator-left-panel-content-to-subheading',
   sidebarFrame: 'house-sidebar-frame',

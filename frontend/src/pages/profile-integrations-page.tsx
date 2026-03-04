@@ -809,9 +809,9 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         />
       </Row>
 
-      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader heading="ORCID" className="house-section-header-marker-aligned" />
-        <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+        <div className="house-separator-main-heading-to-content house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
         <div className="space-y-3 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex w-full flex-wrap items-start justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5">

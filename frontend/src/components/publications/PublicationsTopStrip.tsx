@@ -1173,7 +1173,7 @@ function buildTrailingMonthStarts(count: number, endAtLastCompleteMonth = false)
 
 function fallbackMonthLabels(count: number, endAtLastCompleteMonth = false): string[] {
   return buildTrailingMonthStarts(count, endAtLastCompleteMonth)
-    .map((monthDate) => monthDate.toLocaleString('en-GB', { month: 'short' }))
+    .map((monthDate) => MONTH_SHORT[monthDate.getUTCMonth()] || '—')
 }
 
 function fallbackMonthYearShortLabels(count: number, endAtLastCompleteMonth = false): string[] {
@@ -2676,7 +2676,7 @@ export function PublicationsPerYearChart({
     ? activeBars.length > 0
     : hasValidSeries && historyBars.length > 0 && activeBars.length > 0
   const isEntryCycle = useIsFirstChartEntry(animationKey, animate && hasBars)
-  const axisDurationMs = 0
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const renderBars = activeBars
   const barsExpanded = useUnifiedToggleBarAnimation(
     `${animationKey}|publications-bars`,

@@ -2208,11 +2208,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         />
       </Row>
 
-      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <div className="house-section-header-marker-aligned flex w-full flex-col gap-2">
           <h2 className="m-0 text-h3 font-semibold text-[hsl(var(--foreground))]">Profile</h2>
         </div>
-        <div className="space-y-3 text-sm">
+        <div className="house-separator-main-heading-to-content space-y-3 text-sm">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
             <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
               <div className="flex flex-col gap-3">
@@ -2467,12 +2467,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         </div>
       </Section>
 
-      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader
           heading="Affiliation"
           className="house-section-header-marker-aligned"
         />
-        <div className="space-y-3 text-sm">
+        <div className="house-separator-main-heading-to-content space-y-3 text-sm">
           <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
             <div className="grid gap-x-2 gap-y-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
               <div className="space-y-1.5 md:col-start-1 md:col-end-2">
@@ -2840,12 +2840,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         </div>
       </Section>
 
-      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader
           heading="Publication affiliation"
           className="house-section-header-marker-aligned"
         />
-        <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+        <div className="house-separator-main-heading-to-content house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
           <div className="space-y-3 text-sm">
             <div className="grid gap-x-2 gap-y-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
               <div

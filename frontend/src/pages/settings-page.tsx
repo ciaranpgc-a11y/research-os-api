@@ -41,9 +41,9 @@ export function SettingsPage() {
           />
         </Row>
 
-        <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+        <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
           <SectionHeader heading="Publications" className="house-section-header-marker-aligned" />
-          <div className="space-y-3 text-sm">
+          <div className="house-separator-main-heading-to-content space-y-3 text-sm">
             <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
               <Stack space="sm">
                 <Subheading>Publication insights visibility default</Subheading>

@@ -5164,8 +5164,9 @@
     box-sizing: border-box;
   }
 
+  .house-separator-main-heading-to-content,
   .house-publications-toolbar-content-gap {
-    margin-top: var(--separator-section-header-to-section-content);
+    margin-top: var(--separator-main-heading-block-to-content);
   }
 
   @media (min-width: 640px) {

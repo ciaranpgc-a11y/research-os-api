@@ -186,12 +186,12 @@ export function ProfileManageAccountPage() {
           />
         </Row>
 
-        <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+        <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
           <SectionHeader
             heading="Change password"
             className="house-section-header-marker-aligned"
           />
-          <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+          <div className="house-separator-main-heading-to-content house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
             <div className="space-y-3 text-sm">
               <div className="grid gap-3 md:max-w-xl md:grid-cols-2">
                 <label data-house-role="field-group" className="space-y-1 md:col-span-2">
@@ -243,14 +243,14 @@ export function ProfileManageAccountPage() {
           className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'rounded-lg border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))]')}
           surface="transparent"
           inset="md"
-          spaceY="md"
+          spaceY="none"
         >
           <SectionHeader
             heading="Delete account"
             description="This permanently removes your sign-in and profile records. This action cannot be undone."
             className="house-section-header-marker-aligned"
           />
-          <p data-house-role="body-text" className="m-0 text-body-secondary text-[hsl(var(--muted-foreground))]">
+          <p data-house-role="body-text" className="house-separator-main-heading-to-content m-0 text-body-secondary text-[hsl(var(--muted-foreground))]">
             Account email: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{user?.email || 'Not available'}</span>
           </p>
           <label data-house-role="field-group" className="space-y-1 md:max-w-sm">
