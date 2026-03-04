@@ -843,6 +843,8 @@ export type CollaboratorMetricsPayload = {
   citations_last_12m: number
   collaboration_strength_score: number
   classification: 'CORE' | 'ACTIVE' | 'OCCASIONAL' | 'HISTORIC' | 'UNCLASSIFIED'
+  relationship_tier?: 'CORE' | 'REGULAR' | 'OCCASIONAL' | 'UNCLASSIFIED'
+  activity_status?: 'ACTIVE' | 'RECENT' | 'DORMANT' | 'HISTORIC' | 'UNCLASSIFIED'
   computed_at: string | null
   status: 'READY' | 'RUNNING' | 'FAILED'
 }

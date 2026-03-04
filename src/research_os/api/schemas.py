@@ -1930,6 +1930,12 @@ class CollaboratorMetricsResponse(BaseModel):
     classification: Literal[
         "CORE", "ACTIVE", "OCCASIONAL", "HISTORIC", "UNCLASSIFIED"
     ] = "UNCLASSIFIED"
+    relationship_tier: Literal["CORE", "REGULAR", "OCCASIONAL", "UNCLASSIFIED"] = (
+        "UNCLASSIFIED"
+    )
+    activity_status: Literal[
+        "ACTIVE", "RECENT", "DORMANT", "HISTORIC", "UNCLASSIFIED"
+    ] = "UNCLASSIFIED"
     computed_at: datetime | None = None
     status: Literal["READY", "RUNNING", "FAILED"] = "READY"
 

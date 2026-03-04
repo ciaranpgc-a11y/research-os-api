@@ -60,6 +60,30 @@ CLASSIFICATIONS = {
     CLASSIFICATION_UNCLASSIFIED,
 }
 
+RELATIONSHIP_TIER_CORE = "CORE"
+RELATIONSHIP_TIER_REGULAR = "REGULAR"
+RELATIONSHIP_TIER_OCCASIONAL = "OCCASIONAL"
+RELATIONSHIP_TIER_UNCLASSIFIED = "UNCLASSIFIED"
+RELATIONSHIP_TIERS = {
+    RELATIONSHIP_TIER_CORE,
+    RELATIONSHIP_TIER_REGULAR,
+    RELATIONSHIP_TIER_OCCASIONAL,
+    RELATIONSHIP_TIER_UNCLASSIFIED,
+}
+
+ACTIVITY_STATUS_ACTIVE = "ACTIVE"
+ACTIVITY_STATUS_RECENT = "RECENT"
+ACTIVITY_STATUS_DORMANT = "DORMANT"
+ACTIVITY_STATUS_HISTORIC = "HISTORIC"
+ACTIVITY_STATUS_UNCLASSIFIED = "UNCLASSIFIED"
+ACTIVITY_STATUSES = {
+    ACTIVITY_STATUS_ACTIVE,
+    ACTIVITY_STATUS_RECENT,
+    ACTIVITY_STATUS_DORMANT,
+    ACTIVITY_STATUS_HISTORIC,
+    ACTIVITY_STATUS_UNCLASSIFIED,
+}
+
 FORMULA_VERSION = "collab_strength_v1"
 SCHEDULER_LOCK_NAME = "collaboration_metrics_scheduler"
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
@@ -138,6 +162,20 @@ def _normalize_classification(value: str | None) -> str:
     if clean in CLASSIFICATIONS:
         return clean
     return CLASSIFICATION_UNCLASSIFIED
+
+
+def _normalize_relationship_tier(value: str | None) -> str:
+    clean = str(value or "").strip().upper()
+    if clean in RELATIONSHIP_TIERS:
+        return clean
+    return RELATIONSHIP_TIER_UNCLASSIFIED
+
+
+def _normalize_activity_status(value: str | None) -> str:
+    clean = str(value or "").strip().upper()
+    if clean in ACTIVITY_STATUSES:
+        return clean
+    return ACTIVITY_STATUS_UNCLASSIFIED
 
 
 def _ttl_seconds() -> int:
@@ -312,9 +350,29 @@ def _serialize_metric(row: CollaborationMetric | None) -> dict[str, Any]:
             "citations_last_12m": 0,
             "collaboration_strength_score": 0.0,
             "classification": CLASSIFICATION_UNCLASSIFIED,
+            "relationship_tier": RELATIONSHIP_TIER_UNCLASSIFIED,
+            "activity_status": ACTIVITY_STATUS_UNCLASSIFIED,
             "computed_at": None,
             "status": READY_STATUS,
         }
+    now_year = _utcnow().year
+    source_json = row.source_json if isinstance(row.source_json, dict) else {}
+    classification = _normalize_classification(row.classification)
+    relationship_tier = _normalize_relationship_tier(source_json.get("relationship_tier"))
+    if relationship_tier == RELATIONSHIP_TIER_UNCLASSIFIED:
+        relationship_tier = _derive_relationship_tier(
+            classification=classification,
+            coauthored_works_count=int(row.coauthored_works_count or 0),
+            score=float(row.collaboration_strength_score or 0.0),
+        )
+    activity_status = _normalize_activity_status(source_json.get("activity_status"))
+    if activity_status == ACTIVITY_STATUS_UNCLASSIFIED:
+        activity_status = _derive_activity_status(
+            classification=classification,
+            coauthored_works_count=int(row.coauthored_works_count or 0),
+            last_collaboration_year=row.last_collaboration_year,
+            now_year=now_year,
+        )
     return {
         "coauthored_works_count": int(row.coauthored_works_count or 0),
         "shared_citations_total": int(row.shared_citations_total or 0),
@@ -322,7 +380,9 @@ def _serialize_metric(row: CollaborationMetric | None) -> dict[str, Any]:
         "last_collaboration_year": row.last_collaboration_year,
         "citations_last_12m": int(row.citations_last_12m or 0),
         "collaboration_strength_score": float(row.collaboration_strength_score or 0.0),
-        "classification": _normalize_classification(row.classification),
+        "classification": classification,
+        "relationship_tier": relationship_tier,
+        "activity_status": activity_status,
         "computed_at": _coerce_utc_or_none(row.computed_at),
         "status": _normalize_status(row.status),
     }
@@ -815,6 +875,88 @@ def _recency_weight(last_year: int | None, *, now_year: int) -> float:
     return 0.0
 
 
+def _determine_relationship_tier(
+    *,
+    score: float,
+    coauthored_works_count: int,
+    last_collaboration_year: int | None,
+    now_year: int,
+    threshold_core: float,
+) -> str:
+    if coauthored_works_count <= 0:
+        return RELATIONSHIP_TIER_UNCLASSIFIED
+    recency = _recency_weight(last_collaboration_year, now_year=now_year)
+    if score >= threshold_core or (coauthored_works_count >= 5 and recency >= 0.75):
+        return RELATIONSHIP_TIER_CORE
+    if coauthored_works_count >= 3 or score >= 0.35:
+        return RELATIONSHIP_TIER_REGULAR
+    return RELATIONSHIP_TIER_OCCASIONAL
+
+
+def _determine_activity_status(
+    *,
+    coauthored_works_count: int,
+    last_collaboration_year: int | None,
+    now_year: int,
+) -> str:
+    if coauthored_works_count <= 0:
+        return ACTIVITY_STATUS_UNCLASSIFIED
+    if last_collaboration_year is None:
+        return ACTIVITY_STATUS_UNCLASSIFIED
+    recency = _recency_weight(last_collaboration_year, now_year=now_year)
+    if recency >= 0.75:
+        return ACTIVITY_STATUS_ACTIVE
+    if recency >= 0.5:
+        return ACTIVITY_STATUS_RECENT
+    if recency > 0:
+        return ACTIVITY_STATUS_DORMANT
+    return ACTIVITY_STATUS_HISTORIC
+
+
+def _derive_relationship_tier(
+    *,
+    classification: str,
+    coauthored_works_count: int,
+    score: float,
+) -> str:
+    if coauthored_works_count <= 0:
+        return RELATIONSHIP_TIER_UNCLASSIFIED
+    normalized = _normalize_classification(classification)
+    if normalized == CLASSIFICATION_CORE:
+        return RELATIONSHIP_TIER_CORE
+    if normalized == CLASSIFICATION_ACTIVE:
+        return RELATIONSHIP_TIER_REGULAR
+    if normalized in {CLASSIFICATION_OCCASIONAL, CLASSIFICATION_HISTORIC}:
+        return RELATIONSHIP_TIER_OCCASIONAL
+    if coauthored_works_count >= 3 or score >= 0.35:
+        return RELATIONSHIP_TIER_REGULAR
+    return RELATIONSHIP_TIER_OCCASIONAL
+
+
+def _derive_activity_status(
+    *,
+    classification: str,
+    coauthored_works_count: int,
+    last_collaboration_year: int | None,
+    now_year: int,
+) -> str:
+    status = _determine_activity_status(
+        coauthored_works_count=coauthored_works_count,
+        last_collaboration_year=last_collaboration_year,
+        now_year=now_year,
+    )
+    if status != ACTIVITY_STATUS_UNCLASSIFIED:
+        return status
+    normalized = _normalize_classification(classification)
+    if normalized == CLASSIFICATION_HISTORIC:
+        return ACTIVITY_STATUS_HISTORIC
+    if normalized == CLASSIFICATION_ACTIVE:
+        return ACTIVITY_STATUS_ACTIVE
+    if normalized in {CLASSIFICATION_CORE, CLASSIFICATION_OCCASIONAL}:
+        return ACTIVITY_STATUS_RECENT
+    return ACTIVITY_STATUS_UNCLASSIFIED
+
+
 def _classify_collaboration(
     *,
     score: float,
@@ -1235,17 +1377,31 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
                 session.add(row)
                 existing_rows[collab_id] = row
             score = float(values.get("score", 0.0) or 0.0)
+            coauthored_works_count = int(values.get("coauthored_works_count") or 0)
+            last_collaboration_year = values.get("last_collaboration_year")
             classification = _classify_collaboration(
                 score=score,
-                coauthored_works_count=int(values.get("coauthored_works_count") or 0),
-                last_collaboration_year=values.get("last_collaboration_year"),
+                coauthored_works_count=coauthored_works_count,
+                last_collaboration_year=last_collaboration_year,
                 now_year=now_year,
                 threshold_core=score_threshold_core,
             )
-            row.coauthored_works_count = int(values.get("coauthored_works_count") or 0)
+            relationship_tier = _determine_relationship_tier(
+                score=score,
+                coauthored_works_count=coauthored_works_count,
+                last_collaboration_year=last_collaboration_year,
+                now_year=now_year,
+                threshold_core=score_threshold_core,
+            )
+            activity_status = _determine_activity_status(
+                coauthored_works_count=coauthored_works_count,
+                last_collaboration_year=last_collaboration_year,
+                now_year=now_year,
+            )
+            row.coauthored_works_count = coauthored_works_count
             row.shared_citations_total = int(values.get("shared_citations_total") or 0)
             row.first_collaboration_year = values.get("first_collaboration_year")
-            row.last_collaboration_year = values.get("last_collaboration_year")
+            row.last_collaboration_year = last_collaboration_year
             row.citations_last_12m = int(values.get("citations_last_12m") or 0)
             row.collaboration_strength_score = score
             row.classification = classification
@@ -1259,6 +1415,8 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
                 "normalised_shared_citations_weight": 0.25,
                 "recency_weight_weight": 0.20,
                 "top_shared_work_ids": list(values.get("top_work_ids") or []),
+                "relationship_tier": relationship_tier,
+                "activity_status": activity_status,
                 "failures_in_row": 0,
             }
 

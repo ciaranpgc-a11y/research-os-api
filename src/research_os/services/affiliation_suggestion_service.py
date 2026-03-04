@@ -356,6 +356,62 @@ def _request_json_list(
     return []
 
 
+def _fetch_openalex_autocomplete(
+    *,
+    client: httpx.Client,
+    query: str,
+    limit: int,
+    retry_count: int | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch from the faster OpenAlex autocomplete endpoint (~200ms vs slow general search)."""
+    params: dict[str, Any] = {
+        "q": query,
+    }
+    mailto = _openalex_mailto()
+    if mailto:
+        params["mailto"] = mailto
+    payload = _request_json(
+        client=client,
+        url="https://api.openalex.org/autocomplete/institutions",
+        params=params,
+        retry_count=retry_count,
+    )
+    results = payload.get("results") if isinstance(payload.get("results"), list) else []
+    output: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in results:
+        if not isinstance(raw, dict):
+            continue
+        name = _sanitize_text(raw.get("display_name"))
+        if not name:
+            continue
+        country_code = _sanitize_text(raw.get("country_code")).upper() or None
+        item = {
+            "name": name,
+            "country_code": country_code,
+            "country_name": None,
+            "city": None,
+            "region": None,
+            "address": None,
+            "postal_code": None,
+            "source": "openalex",
+        }
+        dedupe_key = _dedupe_key(item)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        item["label"] = _build_label(
+            name=name,
+            city=None,
+            country_name=None,
+            country_code=country_code,
+        )
+        output.append(item)
+        if len(output) >= limit:
+            break
+    return output
+
+
 def _fetch_openalex(
     *,
     client: httpx.Client,
@@ -363,17 +419,27 @@ def _fetch_openalex(
     limit: int,
     retry_count: int | None = None,
 ) -> list[dict[str, Any]]:
-    params: dict[str, Any] = {
+    """Try fast autocomplete first; fall back to general search for richer metadata."""
+    fast_retries = max(0, int(retry_count) - 1) if retry_count else 0
+    autocomplete_results = _fetch_openalex_autocomplete(
+        client=client,
+        query=query,
+        limit=limit,
+        retry_count=fast_retries,
+    )
+    if autocomplete_results and len(autocomplete_results) >= limit:
+        return autocomplete_results
+    general_params: dict[str, Any] = {
         "search": query,
         "per-page": max(1, min(limit, 8)),
     }
     mailto = _openalex_mailto()
     if mailto:
-        params["mailto"] = mailto
+        general_params["mailto"] = mailto
     payload = _request_json(
         client=client,
         url="https://api.openalex.org/institutions",
-        params=params,
+        params=general_params,
         retry_count=retry_count,
     )
     results = payload.get("results") if isinstance(payload.get("results"), list) else []

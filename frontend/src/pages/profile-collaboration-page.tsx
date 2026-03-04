@@ -104,7 +104,8 @@ type CollaborationTableColumnKey =
   | 'name'
   | 'institution'
   | 'domains'
-  | 'classification'
+  | 'relationship'
+  | 'activity'
   | 'last_year'
   | 'coauthored_works'
   | 'collaboration_score'
@@ -142,7 +143,8 @@ const COLLABORATION_TABLE_COLUMN_ORDER: CollaborationTableColumnKey[] = [
   'name',
   'institution',
   'domains',
-  'classification',
+  'relationship',
+  'activity',
   'last_year',
   'coauthored_works',
   'collaboration_score',
@@ -154,7 +156,8 @@ const COLLABORATION_TABLE_COLUMN_DEFINITIONS: Record<
   name: { label: 'Name', headerClassName: 'text-left', cellClassName: 'align-top font-medium whitespace-normal break-words leading-tight' },
   institution: { label: 'Institution', headerClassName: 'text-left', cellClassName: 'align-top whitespace-normal break-words leading-tight' },
   domains: { label: 'Domains', headerClassName: 'text-left', cellClassName: 'align-top whitespace-normal break-words leading-tight' },
-  classification: { label: 'Classification', headerClassName: 'text-left', cellClassName: 'align-top whitespace-nowrap' },
+  relationship: { label: 'Relationship', headerClassName: 'text-left', cellClassName: 'align-top whitespace-nowrap' },
+  activity: { label: 'Activity', headerClassName: 'text-left', cellClassName: 'align-top whitespace-nowrap' },
   last_year: { label: 'Last year', headerClassName: 'text-left', cellClassName: 'align-top whitespace-nowrap' },
   coauthored_works: { label: 'Coauthored works', headerClassName: 'text-right', cellClassName: 'align-top text-right whitespace-nowrap' },
   collaboration_score: { label: 'Collaboration score', headerClassName: 'text-right', cellClassName: 'align-top text-right whitespace-nowrap tabular-nums' },
@@ -172,7 +175,8 @@ const COLLABORATION_TABLE_COLUMN_DEFAULTS: Record<
   name: { visible: true },
   institution: { visible: true },
   domains: { visible: true },
-  classification: { visible: true },
+  relationship: { visible: true },
+  activity: { visible: true },
   last_year: { visible: true },
   coauthored_works: { visible: true },
   collaboration_score: { visible: true },
@@ -209,14 +213,108 @@ function parseCommaSeparatedTokens(value: string): string[] {
     .slice(0, 20)
 }
 
-function classificationTone(value: string): 'default' | 'secondary' | 'outline' {
+function relationshipTone(value: string): 'default' | 'secondary' | 'outline' {
   if (value === 'CORE') {
     return 'default'
   }
-  if (value === 'ACTIVE') {
+  if (value === 'REGULAR') {
     return 'secondary'
   }
   return 'outline'
+}
+
+function activityTone(value: string): 'default' | 'secondary' | 'outline' {
+  if (value === 'ACTIVE') {
+    return 'default'
+  }
+  if (value === 'RECENT') {
+    return 'secondary'
+  }
+  return 'outline'
+}
+
+function relationshipFromClassification(
+  classification: CollaboratorPayload['metrics']['classification'],
+): 'CORE' | 'REGULAR' | 'OCCASIONAL' | 'UNCLASSIFIED' {
+  if (classification === 'CORE') {
+    return 'CORE'
+  }
+  if (classification === 'ACTIVE') {
+    return 'REGULAR'
+  }
+  if (classification === 'OCCASIONAL' || classification === 'HISTORIC') {
+    return 'OCCASIONAL'
+  }
+  return 'UNCLASSIFIED'
+}
+
+function activityFromYear(
+  lastCollaborationYear: number | null,
+  nowYear: number,
+): 'ACTIVE' | 'RECENT' | 'DORMANT' | 'HISTORIC' | 'UNCLASSIFIED' {
+  if (typeof lastCollaborationYear !== 'number') {
+    return 'UNCLASSIFIED'
+  }
+  const delta = nowYear - lastCollaborationYear
+  if (delta <= 2) {
+    return 'ACTIVE'
+  }
+  if (delta === 3) {
+    return 'RECENT'
+  }
+  if (delta === 4) {
+    return 'DORMANT'
+  }
+  return 'HISTORIC'
+}
+
+function resolveRelationshipTier(
+  metrics: CollaboratorPayload['metrics'],
+): 'CORE' | 'REGULAR' | 'OCCASIONAL' | 'UNCLASSIFIED' {
+  if (
+    metrics.relationship_tier === 'CORE' ||
+    metrics.relationship_tier === 'REGULAR' ||
+    metrics.relationship_tier === 'OCCASIONAL' ||
+    metrics.relationship_tier === 'UNCLASSIFIED'
+  ) {
+    return metrics.relationship_tier
+  }
+  if (Number(metrics.coauthored_works_count || 0) <= 0) {
+    return 'UNCLASSIFIED'
+  }
+  return relationshipFromClassification(metrics.classification)
+}
+
+function resolveActivityStatus(
+  metrics: CollaboratorPayload['metrics'],
+): 'ACTIVE' | 'RECENT' | 'DORMANT' | 'HISTORIC' | 'UNCLASSIFIED' {
+  if (
+    metrics.activity_status === 'ACTIVE' ||
+    metrics.activity_status === 'RECENT' ||
+    metrics.activity_status === 'DORMANT' ||
+    metrics.activity_status === 'HISTORIC' ||
+    metrics.activity_status === 'UNCLASSIFIED'
+  ) {
+    return metrics.activity_status
+  }
+  if (Number(metrics.coauthored_works_count || 0) <= 0) {
+    return 'UNCLASSIFIED'
+  }
+  const nowYear = new Date().getFullYear()
+  const byYear = activityFromYear(metrics.last_collaboration_year, nowYear)
+  if (byYear !== 'UNCLASSIFIED') {
+    return byYear
+  }
+  if (metrics.classification === 'ACTIVE') {
+    return 'ACTIVE'
+  }
+  if (metrics.classification === 'HISTORIC') {
+    return 'HISTORIC'
+  }
+  if (metrics.classification === 'CORE' || metrics.classification === 'OCCASIONAL') {
+    return 'RECENT'
+  }
+  return 'UNCLASSIFIED'
 }
 
 function heatmapTone(value: number, quantiles: HeatmapQuantiles | null): string {
@@ -344,6 +442,9 @@ function hydrateMockMetrics(metrics: MockMetricsSeed): CollaboratorPayload['metr
         : score >= 50
           ? 'OCCASIONAL'
           : 'HISTORIC'
+  const nowYear = new Date().getFullYear()
+  const relationship_tier = relationshipFromClassification(classification)
+  const activity_status = activityFromYear(metrics.last_collaboration_year ?? null, nowYear)
   return {
     coauthored_works_count: Number(metrics.coauthored_works_count || 0),
     shared_citations_total: Math.max(0, Math.round(Number(metrics.coauthored_works_count || 0) * 14)),
@@ -352,6 +453,8 @@ function hydrateMockMetrics(metrics: MockMetricsSeed): CollaboratorPayload['metr
     citations_last_12m: Math.max(0, Math.round(Number(metrics.coauthored_works_count || 0) * 1.6)),
     collaboration_strength_score: score,
     classification,
+    relationship_tier,
+    activity_status,
     computed_at: new Date().toISOString(),
     status: 'READY',
   }
@@ -2073,11 +2176,20 @@ export function ProfileCollaborationPage() {
                               </TableCell>
                             )
                           }
-                          if (columnKey === 'classification') {
+                          if (columnKey === 'relationship') {
                             return (
-                              <TableCell key={`${item.id}-classification`} className="house-table-cell-text align-top whitespace-nowrap">
-                                <Badge variant={classificationTone(item.metrics.classification)}>
-                                  {item.metrics.classification}
+                              <TableCell key={`${item.id}-relationship`} className="house-table-cell-text align-top whitespace-nowrap">
+                                <Badge variant={relationshipTone(resolveRelationshipTier(item.metrics))}>
+                                  {resolveRelationshipTier(item.metrics)}
+                                </Badge>
+                              </TableCell>
+                            )
+                          }
+                          if (columnKey === 'activity') {
+                            return (
+                              <TableCell key={`${item.id}-activity`} className="house-table-cell-text align-top whitespace-nowrap">
+                                <Badge variant={activityTone(resolveActivityStatus(item.metrics))}>
+                                  {resolveActivityStatus(item.metrics)}
                                 </Badge>
                               </TableCell>
                             )
@@ -2125,9 +2237,14 @@ export function ProfileCollaborationPage() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-medium">{item.full_name}</p>
-                    <Badge variant={classificationTone(item.metrics.classification)}>
-                      {item.metrics.classification}
-                    </Badge>
+                    <div className="flex items-center gap-1">
+                      <Badge variant={relationshipTone(resolveRelationshipTier(item.metrics))}>
+                        {resolveRelationshipTier(item.metrics)}
+                      </Badge>
+                      <Badge variant={activityTone(resolveActivityStatus(item.metrics))}>
+                        {resolveActivityStatus(item.metrics)}
+                      </Badge>
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground">{item.primary_institution || 'No institution'}</p>
                   <p className="text-xs text-muted-foreground">
