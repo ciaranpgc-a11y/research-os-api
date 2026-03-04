@@ -110,10 +110,17 @@ const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const PERSONAL_DETAILS_STORAGE_PREFIX = 'aawe_profile_personal_details:'
 
-const SALUTATION_OPTIONS = [
-  'Dr',
-  'Associate Professor',
+const TITLE_OPTIONS = [
   'Professor',
+  'Professor Emeritus',
+  'Associate Professor',
+  'Assistant Professor',
+  'Reader',
+  'Senior Lecturer',
+  'Lecturer',
+  'Dr',
+  'Research Fellow',
+  'Postdoctoral Researcher',
   'Mr',
   'Ms',
   'Mrs',
@@ -132,6 +139,7 @@ const MAX_PROFILE_PHOTO_BYTES = 5 * 1024 * 1024
 const DEFAULT_PROFILE_PHOTO_POSITION_X = 50
 const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
 const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
+const NEW_AFFILIATION_LABEL = 'New affiliation'
 const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-300)/0.92)] bg-[hsl(var(--tone-accent-50))] px-3.5 text-[hsl(var(--tone-accent-800))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-400)/0.94)] hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]`
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_FORM_EXPANDER_SHELL_CLASS = houseForms.expanderShell
@@ -654,6 +662,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [profilePhotoEditorOpen, setProfilePhotoEditorOpen] = useState(false)
   const [affiliationMetadataByName, setAffiliationMetadataByName] = useState<Record<string, AffiliationMetadataItem>>({})
   const [affiliationEditorOpen, setAffiliationEditorOpen] = useState(false)
+  const [activeAffiliationIndex, setActiveAffiliationIndex] = useState(() => (initialDraft.affiliations.length > 0 ? 0 : -1))
   const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
   const [affiliationEditorBaseline, setAffiliationEditorBaseline] = useState<AffiliationEditorSnapshot>(
     () => buildAffiliationEditorSnapshot({
@@ -790,7 +799,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setCommittedJournalByline(buildJournalBylineFromDraft(fixtureDraft))
     setPrimaryAffiliationInput(sanitizeAffiliation(fixtureDraft.organisation))
     setPrimaryAffiliationInputFocused(false)
-    setAffiliationEditorOpen(!(fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country))
+    setAffiliationEditorOpen(false)
+    setActiveAffiliationIndex(fixtureDraft.affiliations.length > 0 ? 0 : -1)
     setAccountEmail(resolveEditableAccountEmail({
       email: fixtureUser?.email,
       orcidLinked: fixtureOrcidLinked,
@@ -826,9 +836,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     primaryAddressLookupSequenceRef.current = 0
     lastResolvedPrimaryAffiliationKeyRef.current = ''
     lastAutoPopulateAffiliationKeyRef.current = ''
-    wasAffiliationEditorOpenRef.current = !(
-      fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country
-    )
+    wasAffiliationEditorOpenRef.current = false
     if (affiliationSaveFlashTimerRef.current !== null) {
       window.clearTimeout(affiliationSaveFlashTimerRef.current)
       affiliationSaveFlashTimerRef.current = null
@@ -927,7 +935,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           setCommittedJournalByline(buildJournalBylineFromDraft(resolvedDraft))
           setPrimaryAffiliationInput(sanitizeAffiliation(resolvedDraft.organisation))
           setPrimaryAffiliationInputFocused(false)
-          setAffiliationEditorOpen(!(resolvedDraft.jobRoles[0] || resolvedDraft.affiliations[0] || resolvedDraft.country))
+          setAffiliationEditorOpen(false)
+          setActiveAffiliationIndex(resolvedDraft.affiliations.length > 0 ? 0 : -1)
           setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
             draft: resolvedDraft,
             primaryAffiliationInput: sanitizeAffiliation(resolvedDraft.organisation),
@@ -1083,14 +1092,18 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   }, [affiliationEditorOpen, draft])
 
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
-  const primaryAffiliationLabel = sanitizeAffiliation(draft.affiliations[0] || draft.organisation)
   const primaryAffiliationKey = sanitizeAffiliation(draft.organisation || draft.affiliations[0] || '').toLowerCase()
+  const activeAffiliationLabel = activeAffiliationIndex >= 0
+    ? sanitizeAffiliation(draft.affiliations[activeAffiliationIndex] || '')
+    : ''
+  const activeAffiliationDisplayLabel = activeAffiliationLabel.toLowerCase() === NEW_AFFILIATION_LABEL.toLowerCase()
+    ? ''
+    : activeAffiliationLabel
   const profileInitials = buildProfileInitials({
     firstName: draft.firstName,
     lastName: draft.lastName,
     fallbackName: user?.name,
   })
-  const journalByline = committedJournalByline
   const affiliationEditorSnapshot = useMemo(
     () =>
       buildAffiliationEditorSnapshot({
@@ -1104,6 +1117,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     [affiliationEditorBaseline, affiliationEditorSnapshot],
   )
   const affiliationEditorActionLabel = affiliationEditorBaseline.primaryAffiliation ? 'Update' : 'Save'
+  const hasPrimaryRoleEntry = normalizeRole(draft.jobRoles[0] || '').length > 0
+  const hasIncompleteRoleEntries = draft.jobRoles.some((role) => normalizeRole(role).length === 0)
+  const hasActiveAffiliationEntry = sanitizeAffiliation(primaryAffiliationInput).length > 0
+  const affiliationSectionComplete = hasPrimaryRoleEntry && hasActiveAffiliationEntry && !hasIncompleteRoleEntries
+  const canCreateAdditionalAffiliation = !affiliationEditorOpen || (affiliationSectionComplete && !affiliationEditorDirty)
+  const canSaveAffiliationSection = affiliationEditorDirty && affiliationSectionComplete
   const publicationAffiliationSummaryLabel = draft.publicationAffiliations.length > 0
     ? `${draft.publicationAffiliations.length} publication affiliation${draft.publicationAffiliations.length === 1 ? '' : 's'} recorded.`
     : 'No publication affiliations recorded.'
@@ -1346,22 +1365,38 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     const clean = sanitizeAffiliation(value)
     draftEditedRef.current = true
     setPrimaryAffiliationInput(value)
-    setDraft((current) => ({
-      ...current,
-      organisation: value,
-      affiliations: clean ? [clean] : [],
-    }))
+    setDraft((current) => {
+      const targetIndex = activeAffiliationIndex >= 0 ? activeAffiliationIndex : current.affiliations.length
+      const nextAffiliations = [...current.affiliations]
+      while (nextAffiliations.length <= targetIndex) {
+        nextAffiliations.push(NEW_AFFILIATION_LABEL)
+      }
+      nextAffiliations[targetIndex] = clean || NEW_AFFILIATION_LABEL
+      return {
+        ...current,
+        organisation: targetIndex === 0 ? clean : current.organisation,
+        affiliations: nextAffiliations,
+      }
+    })
   }
 
   const onPrimaryAffiliationEntryBlur = () => {
     const clean = sanitizeAffiliation(primaryAffiliationInput)
     const normalized = clean.toLowerCase()
     draftEditedRef.current = true
-    setDraft((current) => ({
-      ...current,
-      organisation: clean,
-      affiliations: clean ? [clean] : [],
-    }))
+    setDraft((current) => {
+      const targetIndex = activeAffiliationIndex >= 0 ? activeAffiliationIndex : current.affiliations.length
+      const nextAffiliations = [...current.affiliations]
+      while (nextAffiliations.length <= targetIndex) {
+        nextAffiliations.push(NEW_AFFILIATION_LABEL)
+      }
+      nextAffiliations[targetIndex] = clean || NEW_AFFILIATION_LABEL
+      return {
+        ...current,
+        organisation: targetIndex === 0 ? clean : current.organisation,
+        affiliations: nextAffiliations,
+      }
+    })
     if (clean.length >= 2) {
       lastAutoPopulateAffiliationKeyRef.current = normalized
       void onResolvePrimaryAffiliationFromCurrent(clean)
@@ -1393,16 +1428,98 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     })
   }
 
-  const onToggleAffiliationEditor = () => {
-    const nextOpen = !affiliationEditorOpen
-    if (!nextOpen) {
-      commitJournalBylineFromDraft()
+  const onToggleAffiliationRow = (index: number) => {
+    if (index < 0) {
+      return
     }
-    setAffiliationEditorOpenPreservingPosition(nextOpen)
+    runAffiliationActionPreservingPagePosition(() => {
+      const isSameRow = activeAffiliationIndex === index
+      if (isSameRow && affiliationEditorOpen) {
+        commitJournalBylineFromDraft()
+        setAffiliationEditorOpen(false)
+        return
+      }
+      const selected = sanitizeAffiliation(draftRef.current.affiliations[index] || '')
+      const selectedForInput = selected.toLowerCase() === NEW_AFFILIATION_LABEL.toLowerCase() ? '' : selected
+      const metadata = selected ? affiliationMetadataByName[selected.toLowerCase()] : undefined
+      setActiveAffiliationIndex(index)
+      setPrimaryAffiliationInput(selectedForInput)
+      setPrimaryAffiliationInputFocused(false)
+      setPrimaryAffiliationSuggestions([])
+      setPrimaryAffiliationSuggestionsLoading(false)
+      setPrimaryAffiliationSuggestionsError('')
+      setPrimaryAffiliationAddressResolving(false)
+      setPrimaryAffiliationAddressError('')
+      setDraft((current) => ({
+        ...current,
+        organisation: selectedForInput || current.organisation,
+        affiliationAddress: metadata ? sanitizeAffiliation(metadata.address) : current.affiliationAddress,
+        affiliationCity: metadata ? sanitizeAffiliation(metadata.city) : current.affiliationCity,
+        affiliationRegion: metadata ? sanitizeAffiliation(metadata.region) : current.affiliationRegion,
+        affiliationPostalCode: metadata ? sanitizeAffiliation(metadata.postalCode) : current.affiliationPostalCode,
+        country: metadata ? sanitizeAffiliation(metadata.country) : current.country,
+      }))
+      setAffiliationEditorOpen(true)
+    })
   }
 
   const onOpenAffiliationEditor = () => {
+    if (!canCreateAdditionalAffiliation) {
+      runAffiliationActionPreservingPagePosition(() => {
+        setAffiliationEditorOpen(true)
+      })
+      return
+    }
     runAffiliationActionPreservingPagePosition(() => {
+      const currentActiveLabel = activeAffiliationLabel
+      if (currentActiveLabel) {
+        const cacheKey = currentActiveLabel.toLowerCase()
+        setAffiliationMetadataByName((current) => ({
+          ...current,
+          [cacheKey]: {
+            address: sanitizeAffiliation(draftRef.current.affiliationAddress),
+            city: sanitizeAffiliation(draftRef.current.affiliationCity),
+            region: sanitizeAffiliation(draftRef.current.affiliationRegion),
+            postalCode: sanitizeAffiliation(draftRef.current.affiliationPostalCode),
+            country: sanitizeAffiliation(draftRef.current.country),
+          },
+        }))
+      }
+
+      let nextAffiliationIndex = 0
+      const nextDraft: PersonalDetailsDraft = {
+        ...draftRef.current,
+        jobRoles: [''],
+        jobRole: '',
+        organisation: '',
+        affiliations: (() => {
+          const next = [...draftRef.current.affiliations]
+          nextAffiliationIndex = next.length
+          next.push(NEW_AFFILIATION_LABEL)
+          return next
+        })(),
+        affiliationAddress: '',
+        affiliationCity: '',
+        affiliationRegion: '',
+        affiliationPostalCode: '',
+        country: '',
+      }
+      draftEditedRef.current = true
+      setDraft(nextDraft)
+      setPrimaryAffiliationInput('')
+      setPrimaryAffiliationInputFocused(false)
+      setPrimaryAffiliationSuggestions([])
+      setPrimaryAffiliationSuggestionsLoading(false)
+      setPrimaryAffiliationSuggestionsError('')
+      setPrimaryAffiliationAddressResolving(false)
+      setPrimaryAffiliationAddressError('')
+      setActiveAffiliationIndex(nextAffiliationIndex)
+      lastAutoPopulateAffiliationKeyRef.current = ''
+      lastResolvedPrimaryAffiliationKeyRef.current = ''
+      setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
+        draft: nextDraft,
+        primaryAffiliationInput: '',
+      }))
       setAffiliationEditorOpen(true)
     })
   }
@@ -1421,12 +1538,31 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     const normalizedRegion = sanitizeAffiliation(draft.affiliationRegion)
     const normalizedPostalCode = sanitizeAffiliation(draft.affiliationPostalCode)
     const normalizedCountry = sanitizeAffiliation(draft.country)
+    const targetIndex = activeAffiliationIndex >= 0 ? activeAffiliationIndex : draft.affiliations.length
+    const rawAffiliations = [...draft.affiliations]
+    while (rawAffiliations.length <= targetIndex) {
+      rawAffiliations.push(NEW_AFFILIATION_LABEL)
+    }
+    const previousLabel = sanitizeAffiliation(rawAffiliations[targetIndex])
+    if (cleanAffiliation) {
+      rawAffiliations[targetIndex] = cleanAffiliation
+    } else {
+      rawAffiliations.splice(targetIndex, 1)
+    }
+    const committedAffiliations = normalizeAffiliations(
+      rawAffiliations
+        .map((value) => sanitizeAffiliation(value))
+        .filter((value) => value && value.toLowerCase() !== NEW_AFFILIATION_LABEL.toLowerCase()),
+    )
+    const nextActiveIndex = cleanAffiliation
+      ? Math.max(0, committedAffiliations.findIndex((value) => value.toLowerCase() === cleanAffiliation.toLowerCase()))
+      : (committedAffiliations.length > 0 ? Math.max(0, Math.min(targetIndex, committedAffiliations.length - 1)) : -1)
     const nextDraft: PersonalDetailsDraft = {
       ...draft,
       jobRoles: normalizedRoles,
       jobRole: normalizedRoles[0] || '',
-      organisation: cleanAffiliation,
-      affiliations: cleanAffiliation ? [cleanAffiliation] : [],
+      organisation: committedAffiliations[0] || '',
+      affiliations: committedAffiliations,
       affiliationAddress: normalizedAddress,
       affiliationCity: normalizedCity,
       affiliationRegion: normalizedRegion,
@@ -1435,7 +1571,27 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     }
     draftEditedRef.current = true
     setDraft(nextDraft)
-    setPrimaryAffiliationInput(cleanAffiliation)
+    setPrimaryAffiliationInput(nextActiveIndex >= 0 ? (committedAffiliations[nextActiveIndex] || '') : '')
+    setActiveAffiliationIndex(nextActiveIndex)
+    if (previousLabel && previousLabel.toLowerCase() !== cleanAffiliation.toLowerCase()) {
+      setAffiliationMetadataByName((current) => {
+        const next = { ...current }
+        delete next[previousLabel.toLowerCase()]
+        return next
+      })
+    }
+    if (cleanAffiliation) {
+      setAffiliationMetadataByName((current) => ({
+        ...current,
+        [cleanAffiliation.toLowerCase()]: {
+          address: normalizedAddress,
+          city: normalizedCity,
+          region: normalizedRegion,
+          postalCode: normalizedPostalCode,
+          country: normalizedCountry,
+        },
+      }))
+    }
     if (cleanAffiliation.length >= 2) {
       lastAutoPopulateAffiliationKeyRef.current = cleanAffiliation.toLowerCase()
       void onResolvePrimaryAffiliationFromCurrent(cleanAffiliation)
@@ -1462,21 +1618,41 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         return
       }
       draftEditedRef.current = true
+      let nextActiveIndex = activeAffiliationIndex
+      let nextActiveLabel = ''
       setDraft((current) => {
+        const removedIndex = current.affiliations.findIndex((item) => item.toLowerCase() === clean.toLowerCase())
         const nextAffiliations = normalizeAffiliations(current.affiliations.filter((item) => item.toLowerCase() !== clean.toLowerCase()))
         const nextPrimary = nextAffiliations[0] || ''
+        if (nextAffiliations.length === 0) {
+          nextActiveIndex = -1
+          nextActiveLabel = ''
+        } else if (removedIndex >= 0) {
+          if (activeAffiliationIndex > removedIndex) {
+            nextActiveIndex = activeAffiliationIndex - 1
+          } else if (activeAffiliationIndex === removedIndex) {
+            nextActiveIndex = Math.min(removedIndex, nextAffiliations.length - 1)
+          }
+          nextActiveIndex = Math.max(0, Math.min(nextActiveIndex, nextAffiliations.length - 1))
+          nextActiveLabel = nextAffiliations[nextActiveIndex] || ''
+        } else {
+          nextActiveIndex = Math.max(0, Math.min(activeAffiliationIndex, nextAffiliations.length - 1))
+          nextActiveLabel = nextAffiliations[nextActiveIndex] || ''
+        }
         return {
           ...current,
           affiliations: nextAffiliations,
           organisation: nextPrimary,
         }
       })
+      setActiveAffiliationIndex(nextActiveIndex)
+      setPrimaryAffiliationInput(nextActiveLabel)
       setAffiliationMetadataByName((current) => {
         const next = { ...current }
         delete next[clean.toLowerCase()]
         return next
       })
-      if (sanitizeAffiliation(primaryAffiliationInput).toLowerCase() === clean.toLowerCase()) {
+      if (sanitizeAffiliation(primaryAffiliationInput).toLowerCase() === clean.toLowerCase() || nextActiveIndex < 0) {
         setPrimaryAffiliationInput('')
       }
       lastAutoPopulateAffiliationKeyRef.current = ''
@@ -1635,11 +1811,35 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         country: sanitizeAffiliation(suggestion.countryName),
       }
       const normalizedKey = clean.toLowerCase()
+      const targetIndex = activeAffiliationIndex >= 0 ? activeAffiliationIndex : draftRef.current.affiliations.length
       draftEditedRef.current = true
       setDraft((current) => ({
         ...current,
-        organisation: clean,
-        affiliations: [clean],
+        affiliations: (() => {
+          const nextAffiliations = [...current.affiliations]
+          while (nextAffiliations.length <= targetIndex) {
+            nextAffiliations.push(NEW_AFFILIATION_LABEL)
+          }
+          nextAffiliations[targetIndex] = clean
+          return normalizeAffiliations(
+            nextAffiliations
+              .map((value) => sanitizeAffiliation(value))
+              .filter((value) => value && value.toLowerCase() !== NEW_AFFILIATION_LABEL.toLowerCase()),
+          )
+        })(),
+        organisation: (() => {
+          const nextAffiliations = [...current.affiliations]
+          while (nextAffiliations.length <= targetIndex) {
+            nextAffiliations.push(NEW_AFFILIATION_LABEL)
+          }
+          nextAffiliations[targetIndex] = clean
+          const committed = normalizeAffiliations(
+            nextAffiliations
+              .map((value) => sanitizeAffiliation(value))
+              .filter((value) => value && value.toLowerCase() !== NEW_AFFILIATION_LABEL.toLowerCase()),
+          )
+          return committed[0] || clean
+        })(),
         affiliationAddress: metadata.address,
         affiliationCity: metadata.city,
         affiliationRegion: metadata.region,
@@ -1655,6 +1855,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       setPrimaryAffiliationSuggestionsError('')
       setPrimaryAffiliationAddressError('')
       setPrimaryAffiliationInputFocused(false)
+      setActiveAffiliationIndex(targetIndex)
       lastAutoPopulateAffiliationKeyRef.current = normalizedKey
       await resolvePrimaryAffiliationAddress({
         organisation: clean,
@@ -1674,8 +1875,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       draftEditedRef.current = true
       setDraft((current) => ({
         ...current,
+        affiliations: (() => {
+          const nextAffiliations = normalizeAffiliations([
+            clean,
+            ...current.affiliations.filter((item) => item.toLowerCase() !== clean.toLowerCase()),
+          ])
+          return nextAffiliations
+        })(),
         organisation: clean,
-        affiliations: [clean],
         affiliationAddress: metadata ? sanitizeAffiliation(metadata.address) : current.affiliationAddress,
         affiliationCity: metadata ? sanitizeAffiliation(metadata.city) : current.affiliationCity,
         affiliationRegion: metadata ? sanitizeAffiliation(metadata.region) : current.affiliationRegion,
@@ -1683,6 +1890,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         country: metadata ? sanitizeAffiliation(metadata.country) : current.country,
       }))
       setPrimaryAffiliationInput(clean)
+      setActiveAffiliationIndex(0)
       lastAutoPopulateAffiliationKeyRef.current = clean.toLowerCase()
     })
   }
@@ -2114,17 +2322,17 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
                   <div className="grid gap-3 sm:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)]">
                     <label className="space-y-1">
-                      <span className="house-field-label">Salutation</span>
+                      <span className="house-field-label">Title</span>
                       <SelectPrimitive
                         value={draft.salutation || '__none__'}
                         onValueChange={(value) => onFieldChange('salutation', value === '__none__' ? '' : value)}
                       >
-                        <SelectTrigger aria-label="Salutation">
-                          <SelectValue placeholder="Select" />
+                        <SelectTrigger aria-label="Title">
+                          <SelectValue placeholder="Select title" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">Select</SelectItem>
-                          {SALUTATION_OPTIONS.map((option) => (
+                          <SelectItem value="__none__">Select title</SelectItem>
+                          {TITLE_OPTIONS.map((option) => (
                             <SelectItem key={option} value={option}>
                               {option}
                             </SelectItem>
@@ -2238,57 +2446,93 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         <div className="space-y-3 text-sm">
           <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
             <div className="grid gap-x-2 gap-y-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
-              <div
-                className={cn(
-                  HOUSE_FORM_EXPANDER_SHELL_CLASS,
-                  'transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-long)] ease-[var(--motion-ease-default)]',
-                  'bg-[hsl(var(--tone-neutral-50))]',
-                  affiliationSaveFlashActive ? 'shadow-[var(--elevation-1)]' : '',
-                )}
-                data-state={affiliationEditorOpen ? 'open' : 'closed'}
-              >
-                <button
-                  ref={affiliationSummaryToggleRef}
-                  type="button"
-                  className={cn(HOUSE_FORM_EXPANDER_TRIGGER_CLASS, 'w-full rounded-md px-3 py-2.5 text-left')}
-                  data-state={affiliationEditorOpen ? 'open' : 'closed'}
-                  onClick={onToggleAffiliationEditor}
-                  aria-expanded={affiliationEditorOpen}
-                  aria-controls="affiliation-editor-panel"
-                >
-                  <span className="flex items-center justify-between gap-3">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <ChevronRight
-                        className={cn(
-                          'h-4 w-4 text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-ui)]',
-                          affiliationEditorOpen
-                            ? 'translate-x-0.5 rotate-90 text-[hsl(var(--tone-neutral-700))]'
-                            : '',
-                        )}
-                        aria-hidden
-                      />
-                      <p
-                        className={cn(
-                          'truncate text-sm font-medium text-[hsl(var(--tone-neutral-900))] transition-transform duration-[var(--motion-duration-ui)]',
-                          affiliationEditorOpen ? 'translate-x-0.5' : '',
-                        )}
+              <div className="space-y-1.5 md:col-start-1 md:col-end-2">
+                {draft.affiliations.length > 0 ? draft.affiliations.map((affiliation, index) => {
+                  const clean = sanitizeAffiliation(affiliation)
+                  const isPlaceholder = clean.toLowerCase() === NEW_AFFILIATION_LABEL.toLowerCase()
+                  const isOpen = affiliationEditorOpen && activeAffiliationIndex === index
+                  const rowLabel = clean && !isPlaceholder ? clean : `${NEW_AFFILIATION_LABEL} ${index + 1}`
+                  return (
+                    <div
+                      key={`affiliation-row-${index}-${clean || 'new'}`}
+                      className={cn(
+                        HOUSE_FORM_EXPANDER_SHELL_CLASS,
+                        'transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-long)] ease-[var(--motion-ease-default)]',
+                        'bg-[hsl(var(--tone-neutral-50))]',
+                        isOpen && affiliationSaveFlashActive ? 'shadow-[var(--elevation-1)]' : '',
+                      )}
+                      data-state={isOpen ? 'open' : 'closed'}
+                    >
+                      <button
+                        ref={index === 0 ? affiliationSummaryToggleRef : undefined}
+                        type="button"
+                        className={cn(HOUSE_FORM_EXPANDER_TRIGGER_CLASS, 'w-full rounded-md px-3 py-2.5 text-left')}
+                        data-state={isOpen ? 'open' : 'closed'}
+                        onClick={() => onToggleAffiliationRow(index)}
+                        aria-expanded={isOpen}
+                        aria-controls="affiliation-editor-panel"
                       >
-                        {journalByline || 'No affiliations recorded.'}
-                      </p>
-                    </span>
-                  </span>
-                </button>
+                        <span className="flex items-center justify-between gap-3">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <ChevronRight
+                              className={cn(
+                                'h-4 w-4 text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-ui)]',
+                                isOpen
+                                  ? 'translate-x-0.5 rotate-90 text-[hsl(var(--tone-neutral-700))]'
+                                  : '',
+                              )}
+                              aria-hidden
+                            />
+                            <p
+                              className={cn(
+                                'truncate text-sm font-medium text-[hsl(var(--tone-neutral-900))] transition-transform duration-[var(--motion-duration-ui)]',
+                                isOpen ? 'translate-x-0.5' : '',
+                              )}
+                            >
+                              {rowLabel}
+                            </p>
+                          </span>
+                        </span>
+                      </button>
+                    </div>
+                  )
+                }) : (
+                  <div
+                    className={cn(
+                      HOUSE_FORM_EXPANDER_SHELL_CLASS,
+                      'bg-[hsl(var(--tone-neutral-50))]',
+                    )}
+                    data-state="closed"
+                  >
+                    <button
+                      ref={affiliationSummaryToggleRef}
+                      type="button"
+                      className={cn(HOUSE_FORM_EXPANDER_TRIGGER_CLASS, 'w-full rounded-md px-3 py-2.5 text-left')}
+                      data-state="closed"
+                      onClick={onOpenAffiliationEditor}
+                      aria-expanded={false}
+                      aria-controls="affiliation-editor-panel"
+                    >
+                      <span className="flex items-center gap-2">
+                        <ChevronRight className="h-4 w-4 text-[hsl(var(--tone-neutral-500))]" aria-hidden />
+                        <p className="truncate text-sm font-medium text-[hsl(var(--tone-neutral-900))]">{committedJournalByline || 'No affiliations recorded.'}</p>
+                      </span>
+                    </button>
+                  </div>
+                )}
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                className="shrink-0 self-start"
-                onClick={onOpenAffiliationEditor}
-              >
-                <Plus className="mr-1.5 h-4 w-4" />
-                Add new
-              </Button>
+              <div className="flex shrink-0 flex-col items-stretch gap-2 self-start">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  onClick={onOpenAffiliationEditor}
+                  disabled={!canCreateAdditionalAffiliation}
+                >
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Add new
+                </Button>
+              </div>
               {affiliationEditorOpen ? (
               <div
                 id="affiliation-editor-panel"
@@ -2437,12 +2681,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     autoComplete="organization"
                     className="min-w-[14rem] flex-1"
                   />
-                  {primaryAffiliationLabel ? (
+                  {activeAffiliationDisplayLabel ? (
                     <button
                       type="button"
-                      onClick={() => onRemoveAffiliationEntry(primaryAffiliationLabel)}
+                      onClick={() => onRemoveAffiliationEntry(activeAffiliationDisplayLabel)}
                       className="text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
-                      aria-label={`Remove affiliation ${primaryAffiliationLabel}`}
+                      aria-label={`Remove affiliation ${activeAffiliationDisplayLabel}`}
                     >
                       Remove
                     </button>
@@ -2535,18 +2779,20 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
                 </div>
 
-                {affiliationEditorDirty ? (
+                {affiliationEditorOpen ? (
                   <div className="flex justify-end">
                     <Button
                       type="button"
                       size="sm"
                       variant="cta"
                       onClick={onApplyAffiliationEditorChanges}
+                      disabled={!canSaveAffiliationSection}
                     >
                       {affiliationEditorActionLabel}
                     </Button>
                   </div>
                 ) : null}
+
               </div>
               </div>
             ) : null}
