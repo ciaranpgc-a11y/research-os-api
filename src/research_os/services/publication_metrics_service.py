@@ -188,8 +188,10 @@ def _provider_priority(name: str) -> int:
 
 
 def _ttl_seconds() -> int:
-    value = _safe_int(os.getenv("PUB_ANALYTICS_TTL_SECONDS", "86400"))
-    return max(300, value if value is not None else 86400)
+    # Extended to 7 days (604800s) to reduce unnecessary recalculations
+    # Metrics are auto-recomputed when new publications are imported
+    value = _safe_int(os.getenv("PUB_ANALYTICS_TTL_SECONDS", "604800"))
+    return max(300, value if value is not None else 604800)
 
 
 def _max_workers() -> int:

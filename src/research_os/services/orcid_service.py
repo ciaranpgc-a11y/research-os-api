@@ -833,6 +833,21 @@ def import_orcid_works(
         )
     except Exception:
         pass
+    
+    # Proactively trigger metrics computation after import to ensure data is ready
+    # This prevents lazy computation on first page view and ensures instant navigation
+    try:
+        from research_os.services.publication_metrics_service import (
+            enqueue_publication_top_metrics_refresh,
+        )
+        enqueue_publication_top_metrics_refresh(
+            user_id=user_id,
+            force=True,
+            reason="post_import_precompute",
+        )
+    except Exception:
+        pass
+    
     return {
         "imported_count": new_works_count,
         "work_ids": upserted_ids,

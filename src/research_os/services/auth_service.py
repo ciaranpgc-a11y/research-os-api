@@ -237,21 +237,10 @@ def _serialize_session_payload(
 
 
 def _enqueue_post_sign_in_refresh(*, user_id: str, reason: str) -> None:
-    clean_user_id = str(user_id or "").strip()
-    if not clean_user_id:
-        return
-    try:
-        from research_os.services.publication_metrics_service import (
-            enqueue_publication_top_metrics_refresh,
-        )
-
-        enqueue_publication_top_metrics_refresh(
-            user_id=clean_user_id,
-            force=False,
-            reason=reason or "auth_sign_in",
-        )
-    except Exception:
-        return
+    # DEPRECATED: Metrics refresh on sign-in removed to reduce expenditure
+    # Metrics auto-compute when publications are imported and have 7-day TTL
+    # On-demand refresh via stale-while-revalidate ensures data is available
+    return
 
 
 def _reconcile_data_library_after_sign_in(

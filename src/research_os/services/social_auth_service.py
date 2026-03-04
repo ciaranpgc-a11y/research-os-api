@@ -640,18 +640,8 @@ def complete_oauth_callback(
                 user_id=signed_in_user_id,
                 account_key_hint=signed_in_account_key or None,
             )
-            try:
-                from research_os.services.publication_metrics_service import (
-                    enqueue_publication_top_metrics_refresh,
-                )
-
-                enqueue_publication_top_metrics_refresh(
-                    user_id=signed_in_user_id,
-                    force=False,
-                    reason="auth_oauth_sign_in",
-                )
-            except Exception:
-                pass
+            # Metrics refresh removed from sign-in - wasteful when no data changed
+            # Metrics auto-compute after publication import and have 7-day TTL
         return response_payload
 
     token_payload = _exchange_oauth_code(
@@ -721,17 +711,7 @@ def complete_oauth_callback(
             user_id=signed_in_user_id,
             account_key_hint=signed_in_account_key or None,
         )
-        try:
-            from research_os.services.publication_metrics_service import (
-                enqueue_publication_top_metrics_refresh,
-            )
-
-            enqueue_publication_top_metrics_refresh(
-                user_id=signed_in_user_id,
-                force=False,
-                reason="auth_oauth_sign_in",
-            )
-        except Exception:
-            pass
+        # Metrics refresh removed from sign-in - wasteful when no data changed
+        # Metrics auto-compute after publication import and have 7-day TTL
 
     return response_payload
