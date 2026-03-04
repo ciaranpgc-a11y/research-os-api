@@ -17,12 +17,6 @@ from research_os.db import OrcidOAuthState, User, Work, create_all_tables, sessi
 from research_os.services.publication_console_service import (
     enqueue_publication_drilldown_warmup,
 )
-from research_os.services.publication_insights_bootstrap_service import (
-    _fetch_openalex_works_for_author,
-    _resolve_openalex_author,
-    _work_from_openalex,
-    _openalex_mailto,
-)
 from research_os.services.persona_service import (
     recompute_collaborator_edges,
     sync_metrics,
@@ -673,6 +667,14 @@ def import_orcid_works(
     """Import publications using OpenAlex as primary source (ORCID → OpenAlex author ID → OpenAlex works).
     This approach yields ~35% more publications than direct ORCID API (~103 vs ~76 works).
     """
+    # Lazy import to avoid circular dependency: orcid_service -> publication_insights_bootstrap_service -> persona_sync_job_service -> orcid_service
+    from research_os.services.publication_insights_bootstrap_service import (
+        _fetch_openalex_works_for_author,
+        _resolve_openalex_author,
+        _work_from_openalex,
+        _openalex_mailto,
+    )
+    
     create_all_tables()
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
