@@ -1,20 +1,21 @@
 import { useState } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 
-import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
+import { PageHeader, Row, Section, SectionHeader, Stack, Subheading } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { Button } from '@/components/ui'
 import { getSectionMarkerTone } from '@/lib/section-tone'
-import { houseLayout } from '@/lib/house-style'
+import { houseDrilldown, houseLayout, houseMotion } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { readAccountSettings, writeAccountSettings } from '@/lib/account-preferences'
 import { PageFrame } from '@/pages/page-frame'
 
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
+const HOUSE_TOGGLE_TRACK_CLASS = houseMotion.toggleTrack
+const HOUSE_TOGGLE_THUMB_CLASS = houseMotion.toggleThumb
+const HOUSE_TOGGLE_BUTTON_CLASS = houseMotion.toggleButton
+const HOUSE_TOGGLE_BUTTON_MUTED_CLASS = houseDrilldown.toggleButtonMuted
 
 export function SettingsPage() {
-  const navigate = useNavigate()
   const [settings, setSettings] = useState(() => readAccountSettings())
   const [status, setStatus] = useState('')
 
@@ -25,7 +26,7 @@ export function SettingsPage() {
 
   return (
     <PageFrame tone="account" hideScaffoldHeader>
-      <Stack space="sm">
+      <Stack data-house-role="page" space="sm">
         <Row
           align="center"
           gap="md"
@@ -42,69 +43,72 @@ export function SettingsPage() {
 
         <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
           <SectionHeader heading="Publications" className="house-section-header-marker-aligned" />
-          <Stack space="sm">
-            <p className="m-0 text-caption font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-              Publication insights visibility default
-            </p>
-            <p className="m-0 text-body text-[hsl(var(--tone-neutral-700))]">
-              Sets whether the publication insights tile section is shown or hidden by default.
-            </p>
-            <Row align="start" gap="sm">
-              <Button
-                type="button"
-                variant={settings.publicationInsightsDefaultVisibility === 'visible' ? 'secondary' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setSettings((current) => ({
-                    ...current,
-                    publicationInsightsDefaultVisibility: 'visible',
-                  }))
-                  setStatus('')
-                }}
-              >
-                <Eye className="h-4 w-4" />
-                Visible by default
-              </Button>
-              <Button
-                type="button"
-                variant={settings.publicationInsightsDefaultVisibility === 'hidden' ? 'secondary' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setSettings((current) => ({
-                    ...current,
-                    publicationInsightsDefaultVisibility: 'hidden',
-                  }))
-                  setStatus('')
-                }}
-              >
-                <EyeOff className="h-4 w-4" />
-                Hidden by default
-              </Button>
-            </Row>
-            <Row align="start" gap="sm">
-              <Button type="button" size="sm" onClick={onSave}>
+          <div className="space-y-3 text-sm">
+            <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+              <Stack space="sm">
+                <Subheading>Publication insights visibility default</Subheading>
+                <p className="m-0 text-body text-[hsl(var(--tone-neutral-700))]">
+                  Sets whether the publication insights tile section is shown or hidden by default.
+                </p>
+                <div className="house-approved-toggle-context inline-flex w-full items-center">
+                  <div
+                    className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid w-full max-w-md grid-cols-2')}
+                    data-ui="publication-insights-default-visibility-toggle"
+                    data-house-role="horizontal-toggle"
+                  >
+                    <span
+                      className={HOUSE_TOGGLE_THUMB_CLASS}
+                      style={{
+                        left: settings.publicationInsightsDefaultVisibility === 'visible' ? '0%' : '50%',
+                        width: '50%',
+                      }}
+                      aria-hidden="true"
+                    />
+                    <button
+                      type="button"
+                      className={cn(
+                        HOUSE_TOGGLE_BUTTON_CLASS,
+                        settings.publicationInsightsDefaultVisibility === 'visible' ? 'text-white' : HOUSE_TOGGLE_BUTTON_MUTED_CLASS,
+                      )}
+                      aria-pressed={settings.publicationInsightsDefaultVisibility === 'visible'}
+                      onClick={() => {
+                        setSettings((current) => ({
+                          ...current,
+                          publicationInsightsDefaultVisibility: 'visible',
+                        }))
+                        setStatus('')
+                      }}
+                    >
+                      Visible by default
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        HOUSE_TOGGLE_BUTTON_CLASS,
+                        settings.publicationInsightsDefaultVisibility === 'hidden' ? 'text-white' : HOUSE_TOGGLE_BUTTON_MUTED_CLASS,
+                      )}
+                      aria-pressed={settings.publicationInsightsDefaultVisibility === 'hidden'}
+                      onClick={() => {
+                        setSettings((current) => ({
+                          ...current,
+                          publicationInsightsDefaultVisibility: 'hidden',
+                        }))
+                        setStatus('')
+                      }}
+                    >
+                      Hidden by default
+                    </button>
+                  </div>
+                </div>
+              </Stack>
+            </div>
+            <Row align="end" gap="sm" wrap={false}>
+              <Button type="button" size="sm" variant="cta" onClick={onSave}>
                 Save preferences
               </Button>
-              {status ? <p className="m-0 text-caption text-[hsl(var(--tone-positive-700))]">{status}</p> : null}
             </Row>
-          </Stack>
-        </Section>
-
-        <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
-          <SectionHeader heading="Profile controls" className="house-section-header-marker-aligned" />
-          <Stack space="sm">
-            <p className="m-0 text-body text-[hsl(var(--tone-neutral-700))]">
-              Personal identity, ORCID linking, and research profile fields now live in dedicated profile pages.
-            </p>
-            <Row align="start" gap="sm">
-              <Button type="button" variant="outline" size="sm" onClick={() => navigate('/profile/personal-details')}>
-                Open personal details
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => navigate('/profile/integrations')}>
-                Open integrations
-              </Button>
-            </Row>
-          </Stack>
+            {status ? <p className="m-0 text-caption text-[hsl(var(--tone-positive-700))]">{status}</p> : null}
+          </div>
         </Section>
       </Stack>
     </PageFrame>

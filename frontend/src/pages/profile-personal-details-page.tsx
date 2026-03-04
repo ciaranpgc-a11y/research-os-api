@@ -640,7 +640,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [primaryAffiliationAddressError, setPrimaryAffiliationAddressError] = useState('')
   const [loading, setLoading] = useState(Boolean(fixture?.loading ?? !fixture))
   const [saving, setSaving] = useState(false)
-  const [status, setStatus] = useState(fixture?.status ?? '')
+  const [, setStatus] = useState(fixture?.status ?? '')
   const [error, setError] = useState(fixture?.error ?? '')
   const [, setLastSavedAt] = useState<string | null>(initialStoredDetails?.updatedAt ?? null)
   const draftRef = useRef<PersonalDetailsDraft>(initialDraft)
@@ -3041,12 +3041,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             {saving ? 'Saving...' : 'Save details'}
           </Button>
         </div>
-
-        {status ? (
-          <div className="rounded-md border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-3 py-2 text-sm text-[hsl(var(--tone-positive-700))]">
-            {status}
-          </div>
-        ) : null}
 
         {error ? (
           <div className="rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm text-[hsl(var(--tone-danger-700))]">

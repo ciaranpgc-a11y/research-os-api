@@ -171,7 +171,7 @@ export function ProfileManageAccountPage() {
 
   return (
     <PageFrame tone="profile" hideScaffoldHeader>
-      <Stack space="sm">
+      <Stack data-house-role="page" space="sm">
         <Row
           align="center"
           gap="md"
@@ -189,51 +189,54 @@ export function ProfileManageAccountPage() {
         <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
           <SectionHeader
             heading="Change password"
-            description="Use a strong password with uppercase, lowercase, and numeric characters."
             className="house-section-header-marker-aligned"
           />
-          <div className="grid gap-3 md:max-w-xl md:grid-cols-2">
-            <label data-house-role="field-group" className="space-y-1 md:col-span-2">
-              <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">New password</span>
-              <Input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="new-password"
-                placeholder="New password"
-                disabled={passwordBusy}
-              />
-            </label>
-            <label data-house-role="field-group" className="space-y-1 md:col-span-2">
-              <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">Confirm password</span>
-              <Input
-                type="password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                autoComplete="new-password"
-                placeholder="Confirm password"
-                disabled={passwordBusy}
-              />
-            </label>
-          </div>
+          <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+            <div className="space-y-3 text-sm">
+              <div className="grid gap-3 md:max-w-xl md:grid-cols-2">
+                <label data-house-role="field-group" className="space-y-1 md:col-span-2">
+                  <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">New password</span>
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="new-password"
+                    placeholder="New password"
+                    disabled={passwordBusy}
+                  />
+                </label>
+                <label data-house-role="field-group" className="space-y-1 md:col-span-2">
+                  <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">Confirm password</span>
+                  <Input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    autoComplete="new-password"
+                    placeholder="Confirm password"
+                    disabled={passwordBusy}
+                  />
+                </label>
+              </div>
 
-          <div data-house-role="action-row" className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="housePrimary" onClick={() => void onChangePassword()} disabled={passwordBusy || loading}>
-              {passwordBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {passwordBusy ? 'Changing...' : 'Change password'}
-            </Button>
-          </div>
+              <div data-house-role="action-row" className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="housePrimary" onClick={() => void onChangePassword()} disabled={passwordBusy || loading}>
+                  {passwordBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {passwordBusy ? 'Changing...' : 'Change password'}
+                </Button>
+              </div>
 
-          {passwordStatus ? (
-            <div data-house-role="status-success" className="rounded-md border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-3 py-2 text-sm text-[hsl(var(--tone-positive-700))]">
-              {passwordStatus}
+              {passwordStatus ? (
+                <div data-house-role="status-success" className="rounded-md border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-3 py-2 text-sm text-[hsl(var(--tone-positive-700))]">
+                  {passwordStatus}
+                </div>
+              ) : null}
+              {passwordError ? (
+                <div data-house-role="status-error" className="rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm text-[hsl(var(--tone-danger-700))]">
+                  {passwordError}
+                </div>
+              ) : null}
             </div>
-          ) : null}
-          {passwordError ? (
-            <div data-house-role="status-error" className="rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm text-[hsl(var(--tone-danger-700))]">
-              {passwordError}
-            </div>
-          ) : null}
+          </div>
         </Section>
 
         <Section

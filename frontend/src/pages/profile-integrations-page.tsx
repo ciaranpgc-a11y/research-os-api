@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Unplug } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import { PageHeader, Row, Section, Stack } from '@/components/primitives'
+import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { houseLayout } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
-import { Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui'
+import { Button } from '@/components/ui'
 import {
   disconnectOrcid,
   enqueueOrcidImportSyncJob,
@@ -809,16 +809,16 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         />
       </Row>
 
-      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
-        <Card className="border-[hsl(var(--tone-neutral-200))]">
-        <CardHeader className="space-y-3 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="md">
+        <SectionHeader heading="ORCID" className="house-section-header-marker-aligned" />
+        <div className="house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
+        <div className="space-y-3 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex w-full flex-wrap items-start justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5">
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-orcid text-xs font-semibold text-white">
                 iD
               </span>
               <div className="space-y-0.5">
-                <CardTitle>ORCID</CardTitle>
                 <p className="text-caption uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
                   Research identity and publication sync
                 </p>
@@ -849,8 +849,8 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
               </Button>
             ) : null}
           </div>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-3 text-sm">
+        </div>
+        <div className="space-y-3 pt-3 text-sm">
 
           <div className="grid gap-3 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
             <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
@@ -993,8 +993,8 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
               ) : null}
             </div>
           ) : null}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
       </Section>
 
       {confirmDisconnectOpen ? (
