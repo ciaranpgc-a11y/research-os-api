@@ -99,6 +99,17 @@ export type AdminUserLibraryStorageRecoverPayload = {
   audit_event: AdminAuditEventPayload
 }
 
+export type AdminUserPublicationsRefreshPayload = {
+  message: string
+  user_id: string
+  user_email: string
+  user_name: string
+  top_metrics_enqueued: boolean
+  analytics_enqueued: boolean
+  generated_at: string
+  audit_event: AdminAuditEventPayload
+}
+
 export type AdminUserDeletePayload = {
   success: boolean
   message: string

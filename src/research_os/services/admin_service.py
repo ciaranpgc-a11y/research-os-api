@@ -29,6 +29,12 @@ from research_os.services.generation_job_service import (
     GenerationJobStateError,
     enqueue_generation_job,
 )
+from research_os.services.publication_metrics_service import (
+    enqueue_publication_top_metrics_refresh,
+)
+from research_os.services.publications_analytics_service import (
+    enqueue_publications_analytics_recompute,
+)
 from research_os.services.api_telemetry_service import summarize_api_usage_for_admin
 
 PERSONAL_EMAIL_DOMAINS = {
@@ -2180,6 +2186,109 @@ def admin_recover_user_library_storage(
             "before": diagnostics_before,
             "after": diagnostics_after,
         },
+        "generated_at": _utcnow(),
+        "audit_event": audit_event,
+    }
+
+
+def admin_refresh_user_publications(
+    *,
+    actor_user_id: str,
+    user_id: str,
+    reason: str = "",
+) -> dict[str, object]:
+    create_all_tables()
+    clean_actor_user_id = str(actor_user_id or "").strip()
+    clean_user_id = str(user_id or "").strip()
+    clean_reason = str(reason or "").strip()
+    if not clean_user_id:
+        raise AdminValidationError("user_id is required.")
+
+    user_email = ""
+    user_name = ""
+    top_metrics_enqueued = False
+    analytics_enqueued = False
+
+    try:
+        with session_scope() as session:
+            user = session.get(User, clean_user_id)
+            if user is None:
+                raise AdminNotFoundError(f"User '{clean_user_id}' was not found.")
+            user_email = str(user.email or "").strip()
+            user_name = str(user.name or "").strip() or user_email or clean_user_id
+
+        top_metrics_enqueued = bool(
+            enqueue_publication_top_metrics_refresh(
+                user_id=clean_user_id,
+                reason="admin_user_refresh",
+                force=True,
+            )
+        )
+        analytics_enqueued = bool(
+            enqueue_publications_analytics_recompute(
+                user_id=clean_user_id,
+                force=True,
+                reason="admin_user_refresh",
+            )
+        )
+    except (AdminValidationError, AdminNotFoundError):
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id or None,
+            action="user_publications_refresh",
+            target_type="user",
+            target_id=clean_user_id,
+            status="failure",
+            metadata={
+                "target_email": user_email,
+                "reason": clean_reason,
+                "error_type": "validation_or_not_found",
+            },
+        )
+        raise
+    except Exception as exc:
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id or None,
+            action="user_publications_refresh",
+            target_type="user",
+            target_id=clean_user_id,
+            status="failure",
+            metadata={
+                "target_email": user_email,
+                "reason": clean_reason,
+                "error_type": exc.__class__.__name__,
+                "error_detail": str(exc),
+                "traceback_tail": traceback.format_exc(limit=10),
+            },
+        )
+        raise AdminValidationError(
+            "Could not trigger publication refresh. Review admin audit log for details."
+        )
+
+    message = (
+        f"Triggered publication refresh for {user_name}. "
+        f"Top metrics: {'queued' if top_metrics_enqueued else 'already running'}. "
+        f"Analytics: {'queued' if analytics_enqueued else 'already running'}."
+    )
+    audit_event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id or None,
+        action="user_publications_refresh",
+        target_type="user",
+        target_id=clean_user_id,
+        status="success",
+        metadata={
+            "target_email": user_email,
+            "reason": clean_reason,
+            "top_metrics_enqueued": top_metrics_enqueued,
+            "analytics_enqueued": analytics_enqueued,
+        },
+    )
+    return {
+        "message": message,
+        "user_id": clean_user_id,
+        "user_email": user_email,
+        "user_name": user_name,
+        "top_metrics_enqueued": top_metrics_enqueued,
+        "analytics_enqueued": analytics_enqueued,
         "generated_at": _utcnow(),
         "audit_event": audit_event,
     }

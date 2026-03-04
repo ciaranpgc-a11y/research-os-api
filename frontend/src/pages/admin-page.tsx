@@ -41,6 +41,7 @@ import {
   impersonateAdminOrganisation,
   recoverAdminUserLibraryStorage,
   reconcileAdminUserLibrary,
+  refreshAdminUserPublications,
   retryAdminJob,
 } from '@/lib/impact-api'
 import { getHouseLeftBorderToneClass } from '@/lib/section-tone'
@@ -472,6 +473,7 @@ export function AdminPage() {
   const [actingJobId, setActingJobId] = useState('')
   const [reconcilingUserId, setReconcilingUserId] = useState('')
   const [recoveringStorageUserId, setRecoveringStorageUserId] = useState('')
+  const [refreshingPublicationsUserId, setRefreshingPublicationsUserId] = useState('')
   const [deletingUserId, setDeletingUserId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
@@ -759,6 +761,28 @@ export function AdminPage() {
       setError(actionError instanceof Error ? actionError.message : 'Could not recover user storage paths.')
     } finally {
       setRecoveringStorageUserId('')
+    }
+  }
+
+  const onRefreshUserPublications = async (userId: string) => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setRefreshingPublicationsUserId(userId)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await refreshAdminUserPublications(token, userId, {
+        reason: 'Admin console publication refresh action.',
+      })
+      setStatus(payload.message)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not refresh user publications.')
+    } finally {
+      setRefreshingPublicationsUserId('')
     }
   }
 
@@ -1725,9 +1749,24 @@ export function AdminPage() {
                                       type="button"
                                       size="sm"
                                       variant="secondary"
+                                      onClick={() => void onRefreshUserPublications(item.id)}
+                                      disabled={
+                                        refreshingPublicationsUserId === item.id ||
+                                        reconcilingUserId === item.id ||
+                                        recoveringStorageUserId === item.id ||
+                                        deletingUserId === item.id
+                                      }
+                                    >
+                                      {refreshingPublicationsUserId === item.id ? 'Refreshing...' : 'Refresh publications'}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="secondary"
                                       onClick={() => void onReconcileUserLibrary(item.id)}
                                       disabled={
                                         reconcilingUserId === item.id ||
+                                        refreshingPublicationsUserId === item.id ||
                                         recoveringStorageUserId === item.id ||
                                         deletingUserId === item.id
                                       }
@@ -1741,6 +1780,7 @@ export function AdminPage() {
                                       onClick={() => void onRecoverUserLibraryStorage(item.id)}
                                       disabled={
                                         recoveringStorageUserId === item.id ||
+                                        refreshingPublicationsUserId === item.id ||
                                         reconcilingUserId === item.id ||
                                         deletingUserId === item.id
                                       }
@@ -1754,6 +1794,7 @@ export function AdminPage() {
                                       onClick={() => void onDeleteUserAccount(item.id, item.name || item.email || item.id)}
                                       disabled={
                                         deletingUserId === item.id ||
+                                        refreshingPublicationsUserId === item.id ||
                                         reconcilingUserId === item.id ||
                                         recoveringStorageUserId === item.id
                                       }

@@ -7,11 +7,6 @@ import { SectionMarker } from '@/components/patterns'
 import {
   Button,
   Input,
-  SelectContent,
-  SelectItem,
-  SelectPrimitive,
-  SelectTrigger,
-  SelectValue,
   Table,
   TableBody,
   TableCell,
@@ -28,16 +23,6 @@ import { PageFrame } from '@/pages/page-frame'
 import type { PersonaGrantsPayload } from '@/types/impact'
 
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
-type GrantRelationshipFilter = 'all' | 'won' | 'published_under'
-
-const GRANT_RELATIONSHIP_FILTER_OPTIONS: Array<{
-  value: GrantRelationshipFilter
-  label: string
-}> = [
-  { value: 'all', label: 'All linked grants' },
-  { value: 'won', label: 'Grants won by this person' },
-  { value: 'published_under', label: 'Published under other grants' },
-]
 
 function normalizeNamePart(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
@@ -101,7 +86,6 @@ export function ProfileGrantsPage() {
   const [token, setToken] = useState<string | null>(() => getAuthSessionToken())
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
-  const [relationshipFilter, setRelationshipFilter] = useState<GrantRelationshipFilter>('all')
   const [initialising, setInitialising] = useState(true)
   const [lookupBusy, setLookupBusy] = useState(false)
   const [error, setError] = useState('')
@@ -149,7 +133,6 @@ export function ProfileGrantsPage() {
   const runLookup = useCallback(async (input?: {
     firstName?: string
     lastName?: string
-    relationship?: GrantRelationshipFilter
   }) => {
     const sessionToken = token || getAuthSessionToken()
     if (!sessionToken) {
@@ -158,7 +141,6 @@ export function ProfileGrantsPage() {
     }
     const cleanFirstName = normalizeNamePart(input?.firstName ?? firstName)
     const cleanLastName = normalizeNamePart(input?.lastName ?? lastName)
-    const cleanRelationship = input?.relationship ?? relationshipFilter
     if (!cleanFirstName || !cleanLastName) {
       setLookupError('First name and last name are required to look up grants.')
       return
@@ -170,7 +152,7 @@ export function ProfileGrantsPage() {
         firstName: cleanFirstName,
         lastName: cleanLastName,
         limit: 40,
-        relationship: cleanRelationship,
+        relationship: 'all',
       })
       setPayload(response)
     } catch (lookupErr) {
@@ -185,7 +167,7 @@ export function ProfileGrantsPage() {
     } finally {
       setLookupBusy(false)
     }
-  }, [firstName, lastName, navigate, relationshipFilter, token])
+  }, [firstName, lastName, navigate, token])
 
   useEffect(() => {
     if (initialising || autoLookupTriggeredRef.current) {
@@ -200,12 +182,82 @@ export function ProfileGrantsPage() {
     void runLookup({
       firstName: cleanFirstName,
       lastName: cleanLastName,
-      relationship: relationshipFilter,
     })
-  }, [firstName, initialising, lastName, relationshipFilter, runLookup])
+  }, [firstName, initialising, lastName, runLookup])
 
   const matchedAuthorLabel = payload?.author?.display_name || null
   const matchedAuthorId = payload?.author?.openalex_author_id || null
+  const myGrants = useMemo(
+    () => (payload?.items || []).filter((item) => item.relationship_to_person === 'won_by_person'),
+    [payload?.items],
+  )
+  const publicationsUnderGrants = useMemo(
+    () => (payload?.items || []).filter((item) => item.relationship_to_person !== 'won_by_person'),
+    [payload?.items],
+  )
+
+  const renderGrantTable = useCallback((rows: PersonaGrantsPayload['items']) => (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Grant</TableHead>
+            <TableHead>Funder</TableHead>
+            <TableHead>Award ID</TableHead>
+            <TableHead>Period</TableHead>
+            <TableHead>Grant owner</TableHead>
+            <TableHead className="text-right">Amount</TableHead>
+            <TableHead className="text-right">Works</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length ? rows.map((item) => (
+            <TableRow key={`${item.funder.id || ''}:${item.funder_award_id || ''}:${item.openalex_award_id || ''}`}>
+              <TableCell className="align-top">
+                <div className="font-medium">{item.display_name || 'Untitled grant'}</div>
+                {item.description ? (
+                  <p className="mt-1 max-w-[42rem] text-xs text-[hsl(var(--muted-foreground))]">
+                    {item.description}
+                  </p>
+                ) : null}
+              </TableCell>
+              <TableCell className="align-top">
+                <div>{item.funder.display_name || '-'}</div>
+                {item.funder.id ? (
+                  <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{item.funder.id}</div>
+                ) : null}
+              </TableCell>
+              <TableCell className="align-top">{item.funder_award_id || '-'}</TableCell>
+              <TableCell className="align-top">{formatAwardPeriod(item)}</TableCell>
+              <TableCell className="align-top">
+                <div className="font-medium text-[hsl(var(--foreground))]">
+                  {item.grant_owner_name || 'Unknown in OpenAlex'}
+                </div>
+                <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                  {item.grant_owner_role
+                    ? item.grant_owner_role.replace(/_/g, ' ')
+                    : 'owner role not provided'}
+                </div>
+                {item.award_holders.length > 1 ? (
+                  <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                    Additional holders: {item.award_holders.slice(0, 3).map((holder) => holder.name).join(', ')}
+                  </div>
+                ) : null}
+              </TableCell>
+              <TableCell className="text-right align-top">{formatMoney(item.amount, item.currency)}</TableCell>
+              <TableCell className="text-right align-top">{item.supporting_works_count || 0}</TableCell>
+            </TableRow>
+          )) : (
+            <TableRow>
+              <TableCell colSpan={7} className="py-5 text-sm text-[hsl(var(--muted-foreground))]">
+                No rows.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  ), [])
 
   return (
     <PageFrame tone="profile" hideScaffoldHeader>
@@ -222,7 +274,7 @@ export function ProfileGrantsPage() {
         <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
           <SectionHeader heading="Lookup" className="house-section-header-marker-aligned" />
           <div className="house-separator-main-heading-to-content rounded-md border p-3">
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
               <label data-house-role="field-group" className="space-y-1">
                 <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">First name</span>
                 <Input
@@ -241,44 +293,11 @@ export function ProfileGrantsPage() {
                   disabled={lookupBusy || initialising}
                 />
               </label>
-              <label data-house-role="field-group" className="space-y-1">
-                <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">Relationship filter</span>
-                <SelectPrimitive
-                  value={relationshipFilter}
-                  onValueChange={(nextValue) => {
-                    const value = (
-                      nextValue === 'won' || nextValue === 'published_under'
-                        ? nextValue
-                        : 'all'
-                    ) as GrantRelationshipFilter
-                    setRelationshipFilter(value)
-                    if (!lookupBusy && !initialising && canLookup) {
-                      void runLookup({
-                        firstName,
-                        lastName,
-                        relationship: value,
-                      })
-                    }
-                  }}
-                  disabled={lookupBusy || initialising}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filter grants" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GRANT_RELATIONSHIP_FILTER_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </SelectPrimitive>
-              </label>
               <Button
                 type="button"
                 variant="housePrimary"
                 disabled={!canLookup || lookupBusy || initialising}
-                onClick={() => void runLookup({ relationship: relationshipFilter })}
+                onClick={() => void runLookup()}
               >
                 {lookupBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
                 {lookupBusy ? 'Looking up...' : 'Lookup grants'}
@@ -304,79 +323,34 @@ export function ProfileGrantsPage() {
         </Section>
 
         <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
-          <SectionHeader heading="Results" className="house-section-header-marker-aligned" />
-          <div className="house-separator-main-heading-to-content rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Grant</TableHead>
-                  <TableHead>Funder</TableHead>
-                  <TableHead>Award ID</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Relationship / Owner</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Works</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payload?.items?.length ? payload.items.map((item) => (
-                  <TableRow key={`${item.funder.id || ''}:${item.funder_award_id || ''}:${item.openalex_award_id || ''}`}>
-                    <TableCell className="align-top">
-                      <div className="font-medium">{item.display_name || 'Untitled grant'}</div>
-                      {item.description ? (
-                        <p className="mt-1 max-w-[42rem] text-xs text-[hsl(var(--muted-foreground))]">
-                          {item.description}
-                        </p>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div>{item.funder.display_name || '-'}</div>
-                      {item.funder.id ? (
-                        <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{item.funder.id}</div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="align-top">{item.funder_award_id || '-'}</TableCell>
-                    <TableCell className="align-top">{formatAwardPeriod(item)}</TableCell>
-                    <TableCell className="align-top">
-                      {item.relationship_to_person === 'won_by_person' ? (
-                        <div className="font-medium text-[hsl(var(--tone-positive-700))]">
-                          Won by matched person
-                        </div>
-                      ) : null}
-                      {item.relationship_to_person !== 'won_by_person' ? (
-                        <div className="font-medium text-[hsl(var(--tone-warning-800))]">
-                          Published under another grant
-                        </div>
-                      ) : null}
-                      <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
-                        Owner:{' '}
-                        <span className="font-medium text-[hsl(var(--foreground))]">
-                          {item.grant_owner_name || 'Unknown in OpenAlex'}
-                        </span>
-                        {item.grant_owner_role ? ` (${item.grant_owner_role.replace(/_/g, ' ')})` : ''}
-                      </div>
-                      {item.award_holders.length > 1 ? (
-                        <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
-                          Additional holders: {item.award_holders.slice(0, 3).map((holder) => holder.name).join(', ')}
-                        </div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-right align-top">{formatMoney(item.amount, item.currency)}</TableCell>
-                    <TableCell className="text-right align-top">{item.supporting_works_count || 0}</TableCell>
-                  </TableRow>
-                )) : (
-                  <TableRow>
-                    <TableCell colSpan={7} className="py-5 text-sm text-[hsl(var(--muted-foreground))]">
-                      {initialising
-                        ? 'Loading profile details...'
-                        : lookupBusy
-                          ? 'Looking up grants...'
-                          : 'No grants found for this name yet.'}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+          <SectionHeader heading="My grants" className="house-section-header-marker-aligned" />
+          <div className="house-separator-main-heading-to-content space-y-3">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Grants identified as awarded to the matched person (using investigator metadata when available).
+            </p>
+            {initialising || lookupBusy ? (
+              <div className="rounded-md border px-3 py-5 text-sm text-[hsl(var(--muted-foreground))]">
+                {initialising ? 'Loading profile details...' : 'Looking up grants...'}
+              </div>
+            ) : (
+              renderGrantTable(myGrants)
+            )}
+          </div>
+        </Section>
+
+        <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
+          <SectionHeader heading="Publications under grants" className="house-section-header-marker-aligned" />
+          <div className="house-separator-main-heading-to-content space-y-3">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Grants linked to this person’s publications but not confidently owned by them. Owner is shown explicitly where OpenAlex provides it.
+            </p>
+            {initialising || lookupBusy ? (
+              <div className="rounded-md border px-3 py-5 text-sm text-[hsl(var(--muted-foreground))]">
+                {initialising ? 'Loading profile details...' : 'Looking up grants...'}
+              </div>
+            ) : (
+              renderGrantTable(publicationsUnderGrants)
+            )}
           </div>
         </Section>
       </Stack>

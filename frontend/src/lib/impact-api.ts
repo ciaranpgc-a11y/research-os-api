@@ -8,6 +8,7 @@ import type {
   AdminUserDeletePayload,
   AdminUserLibraryStorageRecoverPayload,
   AdminUserLibraryReconcilePayload,
+  AdminUserPublicationsRefreshPayload,
   AffiliationAddressResolutionPayload,
   AffiliationSuggestionsPayload,
   AdminOrganisationsListPayload,
@@ -325,6 +326,25 @@ export async function recoverAdminUserLibraryStorage(
       }),
     },
     'Admin user library storage recovery failed',
+    { timeoutMs: 120_000, retryCount: 0 },
+  )
+}
+
+export async function refreshAdminUserPublications(
+  token: string,
+  userId: string,
+  input?: { reason?: string },
+): Promise<AdminUserPublicationsRefreshPayload> {
+  return requestJson<AdminUserPublicationsRefreshPayload>(
+    `${API_BASE_URL}/v1/admin/users/${encodeURIComponent(userId)}/publications/refresh`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: String(input?.reason || ''),
+      }),
+    },
+    'Admin user publication refresh failed',
     { timeoutMs: 120_000, retryCount: 0 },
   )
 }

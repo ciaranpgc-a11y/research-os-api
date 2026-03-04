@@ -1234,6 +1234,21 @@ class AdminUserLibraryStorageRecoverResponse(BaseModel):
     audit_event: AdminAuditEventResponse
 
 
+class AdminUserPublicationsRefreshRequest(BaseModel):
+    reason: str = ""
+
+
+class AdminUserPublicationsRefreshResponse(BaseModel):
+    message: str
+    user_id: str
+    user_email: str
+    user_name: str
+    top_metrics_enqueued: bool = False
+    analytics_enqueued: bool = False
+    generated_at: datetime
+    audit_event: AdminAuditEventResponse
+
+
 class AdminJobActionResponse(BaseModel):
     action: Literal["cancel", "retry"]
     message: str

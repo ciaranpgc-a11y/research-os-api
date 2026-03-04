@@ -30,6 +30,8 @@ from research_os.api.schemas import (
     AdminUserLibraryStorageRecoverRequest,
     AdminUserLibraryStorageRecoverResponse,
     AdminUserLibraryReconcileResponse,
+    AdminUserPublicationsRefreshRequest,
+    AdminUserPublicationsRefreshResponse,
     AdminAuditEventsListResponse,
     AdminJobActionResponse,
     AdminJobCancelRequest,
@@ -246,6 +248,7 @@ from research_os.services.admin_service import (
     admin_delete_user_account,
     admin_recover_user_library_storage,
     admin_reconcile_user_library,
+    admin_refresh_user_publications,
     admin_retry_job,
     create_admin_org_impersonation,
     get_admin_api_monitor,
@@ -1540,6 +1543,36 @@ def v1_admin_recover_user_library_storage(
             reason=payload.reason,
         )
         return AdminUserLibraryStorageRecoverResponse(**result)
+    except AdminNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/admin/users/{user_id}/publications/refresh",
+    response_model=AdminUserPublicationsRefreshResponse,
+    responses=UNAUTHORIZED_RESPONSES
+    | FORBIDDEN_RESPONSES
+    | BAD_REQUEST_RESPONSES
+    | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_refresh_user_publications(
+    request: Request,
+    user_id: str,
+    payload: AdminUserPublicationsRefreshRequest,
+) -> AdminUserPublicationsRefreshResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        result = admin_refresh_user_publications(
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            user_id=user_id,
+            reason=payload.reason,
+        )
+        return AdminUserPublicationsRefreshResponse(**result)
     except AdminNotFoundError as exc:
         return _build_not_found_response(str(exc))
     except AdminValidationError as exc:
