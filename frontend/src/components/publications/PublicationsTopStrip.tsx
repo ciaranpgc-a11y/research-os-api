@@ -594,19 +594,6 @@ function tileMotionEntryDuration(index = 0, animateIn = false): string {
 
 const SUBTLE_BAR_TOGGLE_DURATION_MS = 220
 
-function tileMotionBarDelay(index: number, useEntryStagger: boolean): string {
-  return useEntryStagger ? tileMotionEntryDelay(index, true) : '0ms'
-}
-
-function tileMotionBarDuration(index: number, useEntryStagger: boolean, subtleToggle = false): string {
-  if (useEntryStagger) {
-    return tileMotionEntryDuration(index, true)
-  }
-  if (subtleToggle) {
-    return `${SUBTLE_BAR_TOGGLE_DURATION_MS}ms`
-  }
-  return `${CHART_MOTION.toggle.duration}ms`
-}
 
 function buildTileToggleThumbStyle(activeIndex: number, optionCount: number, isEntryCycle = false): CSSProperties {
   const safeCount = Math.max(1, optionCount)
@@ -2684,7 +2671,6 @@ export function PublicationsPerYearChart({
     animate && hasBars && effectiveVisualMode === 'bars',
     'entry-only',
   )
-  const useEntryStagger = isEntryCycle && barsExpanded
   const renderedValuesTarget = useMemo(
     () => renderBars.map((bar) => Math.max(0, bar.value)),
     [renderBars],
@@ -4813,7 +4799,6 @@ export function PublicationCategoryDistributionChart({
     animate && hasBars && renderDisplayMode === 'chart',
     'entry-only',
   )
-  const useEntryStagger = isEntryCycle && barsExpanded
   const renderedValuesTarget = useMemo(
     () => renderBars.map((bar) => (showPercentageMode ? Math.max(0, bar.percentage) : Math.max(0, bar.count))),
     [renderBars, showPercentageMode],
