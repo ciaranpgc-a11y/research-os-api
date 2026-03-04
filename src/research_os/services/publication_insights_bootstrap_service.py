@@ -262,6 +262,78 @@ def _resolve_openalex_author(
     }
 
 
+def _resolve_openalex_author_by_name(
+    *,
+    full_name: str,
+    mailto: str | None,
+) -> dict[str, str] | None:
+    """Resolve OpenAlex author by name (no ORCID required).
+    Useful for users who haven't linked ORCID.
+    """
+    clean_name = _normalize_name(full_name)
+    params: dict[str, Any] = {
+        "search": clean_name,
+        "per-page": 10,
+        "select": "id,display_name,orcid,works_count",
+    }
+    if mailto:
+        params["mailto"] = mailto
+    payload = _openalex_request_with_retry(
+        url="https://api.openalex.org/authors",
+        params=params,
+    )
+    results = payload.get("results") if isinstance(payload.get("results"), list) else []
+    if not results:
+        return None
+
+    # Try to find exact or close match by name
+    clean_target = re.sub(r"\s+", " ", clean_name.strip()).lower()
+    selected: dict[str, Any] | None = None
+    
+    # Pass 1: Exact match or strong containment
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        candidate_name = re.sub(
+            r"\s+", " ", str(item.get("display_name") or "").strip()
+        ).lower()
+        if clean_target == candidate_name:
+            # Exact match - take it immediately
+            selected = item
+            break
+        if (
+            clean_target
+            and candidate_name
+            and (clean_target in candidate_name or candidate_name in clean_target)
+        ):
+            # Strong match - prefer this over first result
+            if selected is None:
+                selected = item
+    
+    # Fall back to first result with works if no match found
+    if selected is None:
+        for item in results:
+            if isinstance(item, dict) and item.get("works_count", 0) > 0:
+                selected = item
+                break
+    
+    # Fall back to first result
+    if selected is None:
+        selected = results[0] if isinstance(results[0], dict) else None
+    
+    if not selected:
+        return None
+
+    author_id = str(selected.get("id") or "").strip()
+    if not author_id:
+        return None
+    author_name = re.sub(r"\s+", " ", str(selected.get("display_name") or "").strip())
+    return {
+        "openalex_author_id": author_id,
+        "openalex_author_name": author_name or full_name,
+    }
+
+
 def _fetch_openalex_works_for_author(
     *,
     openalex_author_id: str,

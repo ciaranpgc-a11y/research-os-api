@@ -476,7 +476,7 @@ export type AffiliationSuggestionItemPayload = {
   region: string | null
   address: string | null
   postal_code: string | null
-  source: 'openalex' | 'ror' | 'openstreetmap' | 'clearbit'
+  source: 'openai' | 'openalex' | 'ror' | 'openstreetmap' | 'clearbit'
 }
 
 export type AffiliationSuggestionsPayload = {
@@ -495,7 +495,7 @@ export type AffiliationAddressResolutionPayload = {
   country_name: string | null
   country_code: string | null
   formatted: string | null
-  source: 'openstreetmap' | null
+  source: 'openai' | 'openstreetmap' | null
 }
 
 export type AuthLoginChallengePayload = {

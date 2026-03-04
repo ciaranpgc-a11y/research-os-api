@@ -664,13 +664,15 @@ def _upsert_imported_orcid_work(
 def import_orcid_works(
     *, user_id: str, overwrite_user_metadata: bool = False
 ) -> dict[str, Any]:
-    """Import publications using OpenAlex as primary source (ORCID → OpenAlex author ID → OpenAlex works).
+    """Import publications using OpenAlex as primary source.
+    Works with or without ORCID: tries ORCID first, falls back to name-based lookup.
     This approach yields ~35% more publications than direct ORCID API (~103 vs ~76 works).
     """
     # Lazy import to avoid circular dependency: orcid_service -> publication_insights_bootstrap_service -> persona_sync_job_service -> orcid_service
     from research_os.services.publication_insights_bootstrap_service import (
         _fetch_openalex_works_for_author,
         _resolve_openalex_author,
+        _resolve_openalex_author_by_name,
         _work_from_openalex,
         _openalex_mailto,
     )
@@ -678,23 +680,34 @@ def import_orcid_works(
     create_all_tables()
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
-        if not user.orcid_id:
-            raise OrcidValidationError("ORCID is not linked for this account.")
         orcid_id = user.orcid_id
         user_name = user.name
         user_email = user.email
 
-    # Resolve OpenAlex author ID using ORCID
     mailto = _openalex_mailto(fallback_email=user_email)
-    author_identity = _resolve_openalex_author(
-        orcid_id=orcid_id,
-        mailto=mailto,
-        full_name=user_name,
-    )
+    
+    # Try to resolve OpenAlex author ID
+    author_identity = None
+    
+    # Option 1: Use ORCID if available
+    if orcid_id:
+        author_identity = _resolve_openalex_author(
+            orcid_id=orcid_id,
+            mailto=mailto,
+            full_name=user_name,
+        )
+    
+    # Option 2: Fall back to name-based resolution
+    if not author_identity and user_name:
+        author_identity = _resolve_openalex_author_by_name(
+            full_name=user_name,
+            mailto=mailto,
+        )
+    
     if not author_identity:
         raise OrcidValidationError(
-            "Could not resolve OpenAlex author profile from ORCID. "
-            "Please ensure your ORCID profile is complete and linked to OpenAlex."
+            "Could not resolve OpenAlex author profile. "
+            "Please ensure your profile name is complete."
         )
 
     openalex_author_id = str(author_identity.get("openalex_author_id") or "").strip()

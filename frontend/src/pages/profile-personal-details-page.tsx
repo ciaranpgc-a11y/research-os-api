@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent } from 'react'
-import { ChevronRight, GripVertical, Loader2, Plus, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
+import { Building2, ChevronRight, GripVertical, Loader2, Plus, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { PageHeader, Row, Section, SectionHeader, Stack, Subheading } from '@/components/primitives'
@@ -59,7 +59,7 @@ type AffiliationSuggestionItem = {
   region: string | null
   address: string | null
   postalCode: string | null
-  source: 'openalex' | 'ror' | 'openstreetmap' | 'clearbit'
+  source: 'openai' | 'openalex' | 'ror' | 'openstreetmap' | 'clearbit'
 }
 
 export type ProfilePersonalDetailsPageFixture = {
@@ -215,6 +215,7 @@ function mapAffiliationSuggestionItem(
     address,
     postalCode,
     source:
+      raw.source === 'openai' ||
       raw.source === 'ror' ||
       raw.source === 'openstreetmap' ||
       raw.source === 'clearbit'
@@ -617,6 +618,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [primaryAffiliationSuggestionsLoading, setPrimaryAffiliationSuggestionsLoading] = useState(false)
   const [primaryAffiliationSuggestionsError, setPrimaryAffiliationSuggestionsError] = useState('')
   const [publicationAffiliationInput, setPublicationAffiliationInput] = useState('')
+  const [publicationAffiliationInputFocused, setPublicationAffiliationInputFocused] = useState(false)
   const [publicationAffiliationSuggestions, setPublicationAffiliationSuggestions] = useState<AffiliationSuggestionItem[]>([])
   const [publicationAffiliationSuggestionsLoading, setPublicationAffiliationSuggestionsLoading] = useState(false)
   const [publicationAffiliationSuggestionsError, setPublicationAffiliationSuggestionsError] = useState('')
@@ -772,6 +774,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPrimaryAffiliationSuggestionsLoading(false)
     setPrimaryAffiliationSuggestionsError('')
     setPublicationAffiliationInput('')
+    setPublicationAffiliationInputFocused(false)
     setPublicationAffiliationSuggestions([])
     setPublicationAffiliationSuggestionsLoading(false)
     setPublicationAffiliationSuggestionsError('')
@@ -1003,6 +1006,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     if (isFixtureMode) {
       return
     }
+    if (!showPublicationAffiliationComposer || !publicationAffiliationInputFocused) {
+      setPublicationAffiliationSuggestions([])
+      setPublicationAffiliationSuggestionsLoading(false)
+      setPublicationAffiliationSuggestionsError('')
+      return
+    }
     const query = sanitizeAffiliation(publicationAffiliationInput)
     if (query.length < 2) {
       setPublicationAffiliationSuggestions([])
@@ -1046,7 +1055,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [draft.publicationAffiliations, isFixtureMode, publicationAffiliationInput, token])
+  }, [
+    draft.publicationAffiliations,
+    isFixtureMode,
+    publicationAffiliationInput,
+    publicationAffiliationInputFocused,
+    showPublicationAffiliationComposer,
+    token,
+  ])
 
   useEffect(() => {
     if (affiliationEditorOpen) {
@@ -1501,7 +1517,17 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
   const onTogglePublicationAffiliationComposer = () => {
     runAffiliationActionPreservingPagePosition(() => {
-      setShowPublicationAffiliationComposer((current) => !current)
+      setShowPublicationAffiliationComposer((current) => {
+        const next = !current
+        if (!next) {
+          setPublicationAffiliationInputFocused(false)
+          setPublicationAffiliationInput('')
+          setPublicationAffiliationSuggestions([])
+          setPublicationAffiliationSuggestionsLoading(false)
+          setPublicationAffiliationSuggestionsError('')
+        }
+        return next
+      })
     })
   }
 
@@ -1761,6 +1787,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         }))
       }
       setPublicationAffiliationInput('')
+      setPublicationAffiliationInputFocused(false)
       setPublicationAffiliationSuggestions([])
       setPublicationAffiliationSuggestionsError('')
       setShowPublicationAffiliationComposer(false)
@@ -2702,16 +2729,76 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               <div className="space-y-2">
                 <p className="house-field-label text-[hsl(var(--tone-neutral-700))]">Affiliation</p>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    value={primaryAffiliationInput}
-                    onChange={(event) => onPrimaryAffiliationEntryChange(event.target.value)}
-                    onFocus={() => setPrimaryAffiliationInputFocused(true)}
-                    onBlur={onPrimaryAffiliationInputBlur}
-                    placeholder="Start typing to see suggestions"
-                    autoComplete="organization"
-                    className="min-w-[14rem] flex-1"
-                  />
+                <div className="flex flex-wrap items-start gap-2">
+                  <div className="relative min-w-[14rem] flex-1">
+                    <Input
+                      value={primaryAffiliationInput}
+                      onChange={(event) => onPrimaryAffiliationEntryChange(event.target.value)}
+                      onFocus={() => setPrimaryAffiliationInputFocused(true)}
+                      onBlur={onPrimaryAffiliationInputBlur}
+                      placeholder="Start typing to see suggestions"
+                      autoComplete="organization"
+                      aria-expanded={
+                        primaryAffiliationInputFocused &&
+                        (primaryAffiliationSuggestionsLoading || primaryAffiliationSuggestions.length > 0 || Boolean(primaryAffiliationSuggestionsError))
+                      }
+                      aria-controls="primary-affiliation-suggestion-panel"
+                      className="min-w-[14rem] flex-1"
+                    />
+                    {primaryAffiliationInputFocused && (
+                      primaryAffiliationSuggestionsLoading ||
+                      primaryAffiliationSuggestions.length > 0 ||
+                      Boolean(primaryAffiliationSuggestionsError)
+                    ) ? (
+                      <div
+                        id="primary-affiliation-suggestion-panel"
+                        role="listbox"
+                        className="absolute left-0 top-[calc(100%+0.35rem)] z-20 w-full overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card shadow-[var(--elevation-2)]"
+                      >
+                        {primaryAffiliationSuggestionsLoading ? (
+                          <div className="flex items-center gap-2 px-3 py-2 text-xs text-[hsl(var(--tone-neutral-700))]">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                            <span>Looking up affiliations...</span>
+                          </div>
+                        ) : null}
+                        {!primaryAffiliationSuggestionsLoading && primaryAffiliationSuggestions.length > 0 ? (
+                          <div className="max-h-56 divide-y divide-[hsl(var(--tone-neutral-200))] overflow-auto">
+                            {primaryAffiliationSuggestions.map((suggestion) => (
+                              <button
+                                key={`primary:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
+                                type="button"
+                                onMouseDown={(event) => {
+                                  event.preventDefault()
+                                }}
+                                onClick={() => {
+                                  void onApplyPrimaryAffiliationSuggestion(suggestion)
+                                }}
+                                className="w-full px-3 py-2 text-left transition-colors hover:bg-[hsl(var(--tone-neutral-100))] focus-visible:bg-[hsl(var(--tone-neutral-100))]"
+                                title={suggestion.label}
+                              >
+                                <span className="flex items-start gap-2">
+                                  <Building2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--tone-neutral-500))]" aria-hidden />
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-sm text-[hsl(var(--tone-neutral-900))]">{suggestion.name}</span>
+                                    <span className="block truncate text-xs text-[hsl(var(--tone-neutral-600))]">{suggestion.label}</span>
+                                  </span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {!primaryAffiliationSuggestionsLoading &&
+                        primaryAffiliationSuggestions.length === 0 &&
+                        !primaryAffiliationSuggestionsError &&
+                        sanitizeAffiliation(primaryAffiliationInput).length >= 2 ? (
+                          <p className="px-3 py-2 text-xs text-[hsl(var(--tone-neutral-600))]">No institution matches found.</p>
+                        ) : null}
+                        {!primaryAffiliationSuggestionsLoading && primaryAffiliationSuggestionsError ? (
+                          <p className="px-3 py-2 text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationSuggestionsError}</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                   {activeAffiliationDisplayLabel ? (
                     <button
                       type="button"
@@ -2723,33 +2810,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     </button>
                     ) : null}
                 </div>
-
-                {primaryAffiliationInputFocused && primaryAffiliationSuggestionsLoading ? (
-                  <p className="house-field-helper">Looking up affiliations...</p>
-                ) : null}
-                {primaryAffiliationInputFocused && primaryAffiliationSuggestions.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
-                    {primaryAffiliationSuggestions.map((suggestion) => (
-                      <button
-                        key={`primary:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
-                        type="button"
-                        onMouseDown={(event) => {
-                          event.preventDefault()
-                        }}
-                        onClick={() => {
-                          void onApplyPrimaryAffiliationSuggestion(suggestion)
-                        }}
-                        className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
-                        title={suggestion.label}
-                      >
-                        {suggestion.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {primaryAffiliationSuggestionsError ? (
-                  <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationSuggestionsError}</p>
-                ) : null}
                 {primaryAffiliationAddressResolving ? (
                   <p className="house-field-helper">Resolving full address details...</p>
                 ) : null}
@@ -2899,19 +2959,85 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               {showPublicationAffiliationComposer ? (
                 <div id="publication-affiliation-composer" className={cn(HOUSE_FORM_EXPANDER_PANEL_CLASS, 'space-y-1 md:col-start-1 md:col-end-2')}>
                   <span className="house-field-label text-[hsl(var(--tone-neutral-700))]">Add publication affiliation</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      value={publicationAffiliationInput}
-                      onChange={(event) => setPublicationAffiliationInput(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault()
-                          onAddPublicationAffiliation(publicationAffiliationInput)
+                  <div className="flex flex-wrap items-start gap-2">
+                    <div className="relative min-w-[16rem] flex-1">
+                      <Input
+                        value={publicationAffiliationInput}
+                        onChange={(event) => setPublicationAffiliationInput(event.target.value)}
+                        onFocus={() => setPublicationAffiliationInputFocused(true)}
+                        onBlur={() => setPublicationAffiliationInputFocused(false)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            onAddPublicationAffiliation(publicationAffiliationInput)
+                          }
+                        }}
+                        placeholder="Start typing to see suggestions"
+                        autoComplete="organization"
+                        aria-expanded={
+                          publicationAffiliationInputFocused &&
+                          (publicationAffiliationSuggestionsLoading || publicationAffiliationSuggestions.length > 0 || Boolean(publicationAffiliationSuggestionsError))
                         }
-                      }}
-                      placeholder="Start typing to see suggestions"
-                      autoComplete="organization"
-                    />
+                        aria-controls="publication-affiliation-suggestion-panel"
+                      />
+                      {showPublicationAffiliationComposer &&
+                      publicationAffiliationInputFocused &&
+                      (publicationAffiliationSuggestionsLoading ||
+                        publicationAffiliationSuggestions.length > 0 ||
+                        Boolean(publicationAffiliationSuggestionsError)) ? (
+                        <div
+                          id="publication-affiliation-suggestion-panel"
+                          role="listbox"
+                          className="absolute left-0 top-[calc(100%+0.35rem)] z-20 w-full overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card shadow-[var(--elevation-2)]"
+                        >
+                          {publicationAffiliationSuggestionsLoading ? (
+                            <div className="flex items-center gap-2 px-3 py-2 text-xs text-[hsl(var(--tone-neutral-700))]">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                              <span>Looking up affiliations...</span>
+                            </div>
+                          ) : null}
+                          {!publicationAffiliationSuggestionsLoading && publicationAffiliationSuggestions.length > 0 ? (
+                            <div className="max-h-56 divide-y divide-[hsl(var(--tone-neutral-200))] overflow-auto">
+                              {publicationAffiliationSuggestions.map((suggestion) => (
+                                <button
+                                  key={`publication:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
+                                  type="button"
+                                  onMouseDown={(event) => {
+                                    event.preventDefault()
+                                  }}
+                                  onClick={() => onAddPublicationAffiliation(suggestion.name, {
+                                    address: suggestion.address || '',
+                                    city: suggestion.city || '',
+                                    region: suggestion.region || '',
+                                    postalCode: suggestion.postalCode || '',
+                                    country: suggestion.countryName || '',
+                                  })}
+                                  className="w-full px-3 py-2 text-left transition-colors hover:bg-[hsl(var(--tone-neutral-100))] focus-visible:bg-[hsl(var(--tone-neutral-100))]"
+                                  title={suggestion.label}
+                                >
+                                  <span className="flex items-start gap-2">
+                                    <Building2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--tone-neutral-500))]" aria-hidden />
+                                    <span className="min-w-0">
+                                      <span className="block truncate text-sm text-[hsl(var(--tone-neutral-900))]">{suggestion.name}</span>
+                                      <span className="block truncate text-xs text-[hsl(var(--tone-neutral-600))]">{suggestion.label}</span>
+                                    </span>
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                          {!publicationAffiliationSuggestionsLoading &&
+                          publicationAffiliationSuggestions.length === 0 &&
+                          !publicationAffiliationSuggestionsError &&
+                          sanitizeAffiliation(publicationAffiliationInput).length >= 2 ? (
+                            <p className="px-3 py-2 text-xs text-[hsl(var(--tone-neutral-600))]">No institution matches found.</p>
+                          ) : null}
+                          {!publicationAffiliationSuggestionsLoading && publicationAffiliationSuggestionsError ? (
+                            <p className="px-3 py-2 text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                     <Button
                       type="button"
                       variant="default"
@@ -2925,33 +3051,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       Add new
                     </Button>
                   </div>
-                  {publicationAffiliationSuggestionsLoading ? (
-                    <p className="house-field-helper">Looking up affiliations...</p>
-                  ) : null}
-                  {publicationAffiliationSuggestions.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
-                      {publicationAffiliationSuggestions.map((suggestion) => (
-                        <button
-                          key={`publication:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
-                          type="button"
-                          onClick={() => onAddPublicationAffiliation(suggestion.name, {
-                            address: suggestion.address || '',
-                            city: suggestion.city || '',
-                            region: suggestion.region || '',
-                            postalCode: suggestion.postalCode || '',
-                            country: suggestion.countryName || '',
-                          })}
-                          className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
-                          title={suggestion.label}
-                        >
-                          {suggestion.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {publicationAffiliationSuggestionsError ? (
-                    <p className="text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
-                  ) : null}
                 </div>
               ) : null}
             </div>

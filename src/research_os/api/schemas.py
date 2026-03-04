@@ -1316,7 +1316,7 @@ class AffiliationSuggestionItemResponse(BaseModel):
     region: str | None = None
     address: str | None = None
     postal_code: str | None = None
-    source: Literal["openalex", "ror", "openstreetmap", "clearbit"]
+    source: Literal["openai", "openalex", "ror", "openstreetmap", "clearbit"]
 
 
 class AffiliationSuggestionsResponse(BaseModel):
@@ -1335,7 +1335,7 @@ class AffiliationAddressResolutionResponse(BaseModel):
     country_name: str | None = None
     country_code: str | None = None
     formatted: str | None = None
-    source: Literal["openstreetmap"] | None = None
+    source: Literal["openai", "openstreetmap"] | None = None
 
 
 class AuthRegisterRequest(BaseModel):

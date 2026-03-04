@@ -5,6 +5,7 @@ from concurrent.futures import (
     TimeoutError as FuturesTimeoutError,
     as_completed,
 )
+import json
 import os
 import re
 from threading import Lock
@@ -13,10 +14,12 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+from research_os.clients.openai_client import create_response
 from research_os.services.api_telemetry_service import record_api_usage_event
 
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 SUGGESTION_SOURCE_PRIORITY = {
+    "openai": 5,
     "ror": 4,
     "openalex": 3,
     "openstreetmap": 2,
@@ -114,6 +117,192 @@ def _write_suggestion_cache(cache_key: str, payload: list[dict[str, Any]]) -> No
             now,
             [dict(item) for item in payload],
         )
+
+
+def _openai_model() -> str:
+    value = str(os.getenv("AFFILIATION_SUGGEST_OPENAI_MODEL", "gpt-4.1-mini")).strip()
+    return value or "gpt-4.1-mini"
+
+
+def _openai_fallback_model() -> str:
+    value = str(os.getenv("AFFILIATION_SUGGEST_OPENAI_FALLBACK_MODEL", "gpt-4.1")).strip()
+    return value or "gpt-4.1"
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    clean = str(text or "").strip()
+    if clean.startswith("```"):
+        clean = re.sub(r"^```(?:json)?\s*", "", clean)
+        clean = re.sub(r"\s*```$", "", clean)
+    match = re.search(r"\{.*\}", clean, flags=re.DOTALL)
+    if not match:
+        raise ValueError("No JSON object found in model output.")
+    payload = json.loads(match.group(0))
+    if not isinstance(payload, dict):
+        raise ValueError("Model output is not a JSON object.")
+    return payload
+
+
+def _ask_openai_json(prompt: str) -> dict[str, Any]:
+    preferred = _openai_model()
+    fallback = _openai_fallback_model()
+    models = [preferred]
+    if fallback and fallback != preferred:
+        models.append(fallback)
+    for model_name in models:
+        try:
+            response = create_response(model=model_name, input=prompt)
+            return _extract_json_object(str(getattr(response, "output_text", "")))
+        except Exception:
+            continue
+    raise AffiliationSuggestionValidationError(
+        "OpenAI affiliation lookup failed. Please try again."
+    )
+
+
+def _to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    return text in {"1", "true", "yes", "y"}
+
+
+def _build_openai_suggestions_prompt(*, query: str, limit: int) -> str:
+    return (
+        "You are an institution lookup engine for academic affiliations.\n"
+        "Return ONLY valid JSON and no markdown.\n"
+        f'Input query: "{query}".\n'
+        f"Return up to {limit} high-confidence institution matches.\n"
+        "Prefer universities, hospitals, research institutes, and public labs.\n"
+        "If metadata is unknown, return null for that field.\n"
+        "Schema:\n"
+        '{\n'
+        '  "items": [\n'
+        "    {\n"
+        '      "name": "string",\n'
+        '      "country_code": "string|null",\n'
+        '      "country_name": "string|null",\n'
+        '      "city": "string|null",\n'
+        '      "region": "string|null",\n'
+        '      "address": "string|null",\n'
+        '      "postal_code": "string|null"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+    )
+
+
+def _coerce_openai_suggestions(
+    *, payload: dict[str, Any], query: str, limit: int
+) -> list[dict[str, Any]]:
+    rows = payload.get("items") if isinstance(payload.get("items"), list) else []
+    query_tokens = _tokenize(query)
+    output: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in rows:
+        if not isinstance(raw, dict):
+            continue
+        name = _sanitize_text(raw.get("name"))
+        if len(name) < 2:
+            continue
+        country_code = _sanitize_text(raw.get("country_code")).upper() or None
+        country_name = _nullable_part(raw.get("country_name"))
+        city = _nullable_part(raw.get("city"))
+        region = _nullable_part(raw.get("region"))
+        address = _nullable_part(raw.get("address"))
+        postal_code = _nullable_part(raw.get("postal_code"))
+        item = {
+            "name": name,
+            "country_code": country_code,
+            "country_name": country_name,
+            "city": city,
+            "region": region,
+            "address": address,
+            "postal_code": postal_code,
+            "source": "openai",
+        }
+        dedupe_key = _dedupe_key(item)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        item["label"] = _build_label(
+            name=name,
+            city=city,
+            country_name=country_name,
+            country_code=country_code,
+        )
+        output.append(item)
+    ranked = sorted(
+        output,
+        key=lambda item: (
+            -_jaccard_similarity(query_tokens, _tokenize(str(item.get("name") or ""))),
+            -_metadata_score(item),
+            str(item.get("name") or "").lower(),
+        ),
+    )
+    return ranked[:limit]
+
+
+def _build_openai_address_prompt(
+    *,
+    name: str,
+    city: str | None = None,
+    region: str | None = None,
+    country: str | None = None,
+) -> str:
+    location_hint = ", ".join(part for part in [city, region, country] if part) or "none"
+    return (
+        "You are resolving an institution's postal address.\n"
+        "Return ONLY valid JSON and no markdown.\n"
+        f'Institution name: "{name}".\n'
+        f'Location hints: "{location_hint}".\n'
+        "If not confident enough to resolve, return resolved=false.\n"
+        "Schema:\n"
+        "{\n"
+        '  "resolved": true | false,\n'
+        '  "line_1": "string|null",\n'
+        '  "city": "string|null",\n'
+        '  "region": "string|null",\n'
+        '  "postal_code": "string|null",\n'
+        '  "country_name": "string|null",\n'
+        '  "country_code": "string|null",\n'
+        '  "formatted": "string|null"\n'
+        "}\n"
+    )
+
+
+def _coerce_openai_address_resolution(
+    *, payload: dict[str, Any], name: str
+) -> dict[str, Any] | None:
+    if not _to_bool(payload.get("resolved")):
+        return None
+    line_1 = _nullable_part(payload.get("line_1"))
+    city = _nullable_part(payload.get("city"))
+    region = _nullable_part(payload.get("region"))
+    postal_code = _nullable_part(payload.get("postal_code"))
+    country_name = _nullable_part(payload.get("country_name"))
+    country_code = _nullable_part(payload.get("country_code"))
+    if country_code:
+        country_code = country_code.upper()
+    formatted = _nullable_part(payload.get("formatted"))
+    if not formatted:
+        formatted = ", ".join(
+            part for part in [line_1, city, region, postal_code, country_name] if part
+        ) or None
+    if not any([line_1, city, region, postal_code, country_name, country_code, formatted]):
+        return None
+    return {
+        "resolved": True,
+        "name": name,
+        "line_1": line_1,
+        "city": city,
+        "region": region,
+        "postal_code": postal_code,
+        "country_name": country_name,
+        "country_code": country_code,
+        "formatted": formatted,
+        "source": "openai",
+    }
 
 
 def _openalex_mailto() -> str | None:
@@ -856,44 +1045,14 @@ def fetch_affiliation_suggestions(
     if cached is not None:
         return cached[:clean_limit]
 
-    combined = _fetch_provider_suggestions_parallel(
-        query=clean_query, limit=clean_limit
+    payload = _ask_openai_json(
+        _build_openai_suggestions_prompt(query=clean_query, limit=clean_limit)
     )
-    if not combined:
-        _write_suggestion_cache(cache_key, [])
-        return []
-    merged_by_key: dict[str, dict[str, Any]] = {}
-    for item in combined:
-        key = _dedupe_key(item)
-        existing = merged_by_key.get(key)
-        if existing is None:
-            merged_by_key[key] = item
-            continue
-        merged_by_key[key] = _merge_items(existing, item)
-    merged_items = list(merged_by_key.values())
-    if len(merged_items) > 1:
-        collapsed: list[dict[str, Any]] = []
-        for candidate in merged_items:
-            merged = False
-            for index, existing in enumerate(collapsed):
-                if _can_merge_name_collision(existing, candidate):
-                    collapsed[index] = _merge_items(existing, candidate)
-                    merged = True
-                    break
-            if not merged:
-                collapsed.append(candidate)
-        merged_items = collapsed
-    query_tokens = _tokenize(clean_query)
-    ranked = sorted(
-        merged_items,
-        key=lambda item: (
-            -_jaccard_similarity(query_tokens, _tokenize(str(item.get("name") or ""))),
-            -_source_priority(item.get("source")),
-            -_metadata_score(item),
-            str(item.get("name") or "").lower(),
-        ),
+    final_items = _coerce_openai_suggestions(
+        payload=payload,
+        query=clean_query,
+        limit=clean_limit,
     )
-    final_items = ranked[:clean_limit]
     _write_suggestion_cache(cache_key, final_items)
     return [dict(item) for item in final_items]
 
@@ -1099,70 +1258,12 @@ def resolve_affiliation_address(
     clean_city = _nullable_part(city)
     clean_region = _nullable_part(region)
     clean_country = _nullable_part(country)
-    timeout = httpx.Timeout(_timeout_seconds())
-    query_variants = [clean_name]
-    location_hint = ", ".join(
-        part for part in [clean_city, clean_region, clean_country] if part
-    )
-    if location_hint:
-        query_variants.append(f"{clean_name}, {location_hint}")
-    email = _nominatim_email()
-    headers = {
-        "User-Agent": _nominatim_user_agent(),
-    }
-    all_items: list[dict[str, Any]] = []
-    with httpx.Client(timeout=timeout) as client:
-        for variant in query_variants:
-            params: dict[str, Any] = {
-                "q": variant,
-                "format": "jsonv2",
-                "addressdetails": 1,
-                "limit": 8,
-            }
-            if email:
-                params["email"] = email
-            items = _request_json_list(
-                client=client,
-                url="https://nominatim.openstreetmap.org/search",
-                params=params,
-                headers=headers,
-            )
-            if items:
-                all_items.extend(items)
-    if not all_items:
-        return None
-    unique_items: list[dict[str, Any]] = []
-    seen_place_ids: set[str] = set()
-    for item in all_items:
-        place_id = _sanitize_text(item.get("place_id"))
-        if place_id and place_id in seen_place_ids:
-            continue
-        if place_id:
-            seen_place_ids.add(place_id)
-        unique_items.append(item)
-    resolved_candidates = [
-        _resolve_location_from_nominatim_item(
-            item=item,
-            query_name=clean_name,
-            expected_city=clean_city,
-            expected_region=clean_region,
-            expected_country=clean_country,
+    payload = _ask_openai_json(
+        _build_openai_address_prompt(
+            name=clean_name,
+            city=clean_city,
+            region=clean_region,
+            country=clean_country,
         )
-        for item in unique_items
-    ]
-    resolved_candidates.sort(key=lambda value: value[0], reverse=True)
-    best = resolved_candidates[0][1] if resolved_candidates else None
-    if not best:
-        return None
-    return {
-        "resolved": True,
-        "name": clean_name,
-        "line_1": best.get("line_1"),
-        "city": best.get("city"),
-        "region": best.get("region"),
-        "postal_code": best.get("postal_code"),
-        "country_name": best.get("country_name"),
-        "country_code": best.get("country_code"),
-        "formatted": best.get("formatted"),
-        "source": best.get("source"),
-    }
+    )
+    return _coerce_openai_address_resolution(payload=payload, name=clean_name)
