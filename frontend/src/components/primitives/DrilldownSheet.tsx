@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { Minus, Plus } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { houseDrilldown, houseTypography } from '@/lib/house-style'
@@ -152,7 +152,7 @@ const DrilldownHeadingToggle = React.forwardRef<HTMLButtonElement, DrilldownHead
         title={label}
         {...props}
       >
-        {expanded ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
+        {expanded ? <Minus className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
       </button>
     )
   },

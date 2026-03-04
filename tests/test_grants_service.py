@@ -40,6 +40,8 @@ class _FakeClient:
                 key,
                 _FakeResponse(200, {"results": [], "meta": {"next_cursor": None}}),
             )
+        if "/awards/" in url:
+            return self._responses.get(url, _FakeResponse(404, {}))
         if url.endswith("/awards"):
             key = f"{url}|filter:{params.get('filter')}"
             return self._responses.get(key, _FakeResponse(200, {"results": []}))
@@ -268,6 +270,90 @@ def test_list_openalex_grants_for_person_filters_published_under_with_owner(
     assert payload["items"][0]["relationship_to_person"] == "published_under_other_grant"
     assert payload["items"][0]["grant_owner_name"] == "John von Neumann"
     assert payload["items"][0]["grant_owner_is_target_person"] is False
+
+
+def test_list_openalex_grants_for_person_uses_award_id_fallback_for_details(
+    monkeypatch,
+) -> None:
+    author_url = "https://api.openalex.org/authors"
+    works_url = "https://api.openalex.org/works"
+    awards_url = "https://api.openalex.org/awards"
+
+    responses = {
+        f"{author_url}|search:Marie Curie": _FakeResponse(
+            200,
+            {
+                "results": [
+                    {
+                        "id": "https://openalex.org/A777",
+                        "display_name": "Marie Curie",
+                        "works_count": 4,
+                    }
+                ]
+            },
+        ),
+        f"{works_url}|filter:authorships.author.id:A777,awards.id:!null|cursor:*": _FakeResponse(
+            200,
+            {
+                "results": [
+                    {
+                        "id": "https://openalex.org/W777",
+                        "display_name": "Radiation paper",
+                        "publication_year": 1903,
+                        "authorships": [
+                            {
+                                "author_position": "first",
+                                "author": {"id": "https://openalex.org/A777"},
+                            }
+                        ],
+                        "awards": [
+                            {
+                                "id": "https://openalex.org/G777",
+                                "funder_award_id": "A-777",
+                                "funder_id": "https://openalex.org/F777",
+                                "funder_display_name": "Legacy Funder",
+                            }
+                        ],
+                    }
+                ],
+                "meta": {"next_cursor": None},
+            },
+        ),
+        # No hit on funder+award lookup
+        f"{awards_url}|filter:funder.id:https://openalex.org/F777,funder_award_id:A-777": _FakeResponse(
+            200,
+            {"results": []},
+        ),
+        # Fallback direct award lookup returns amount
+        f"{awards_url}/G777": _FakeResponse(
+            200,
+            {
+                "id": "https://openalex.org/G777",
+                "display_name": "Curie fellowship",
+                "funder_award_id": "A-777",
+                "funder": {
+                    "id": "https://openalex.org/F777",
+                    "display_name": "Legacy Funder",
+                },
+                "amount": 250000,
+                "currency": "EUR",
+            },
+        ),
+    }
+
+    monkeypatch.setattr(
+        "research_os.services.grants_service.httpx.Client",
+        lambda timeout: _FakeClient(responses),
+    )
+
+    payload = list_openalex_grants_for_person(
+        first_name="Marie",
+        last_name="Curie",
+        limit=10,
+    )
+    assert payload["total"] == 1
+    assert payload["items"][0]["display_name"] == "Curie fellowship"
+    assert payload["items"][0]["amount"] == 250000.0
 
 
 def test_list_openalex_grants_for_person_returns_empty_when_author_not_found(

@@ -220,7 +220,7 @@
      *
      * Timing hierarchy (slowest → fastest):
      * Entry > Morph > Refresh > Toggle
-     * 560ms > 440ms > 420ms > 360ms
+    * 560ms > 540ms > 440ms > 420ms
      *
      * Usage:
      * - BAR CHARTS: Use getChartAnimationDuration(context, 'bar')
@@ -236,7 +236,7 @@
     --motion-chart-entry-stagger-max: 390ms;
     
     /* Toggle: User interaction (responsive, snappy) */
-    --motion-chart-toggle-duration: 360ms;
+    --motion-chart-toggle-duration: 540ms;
     --motion-chart-toggle-delay: 0ms;
     --motion-chart-toggle-stagger: 0ms;
     
@@ -3401,10 +3401,10 @@
   }
 
   .house-toggle-chart-bar {
-    transition-property: transform, filter, box-shadow;
-    transition-duration: var(--motion-duration-slower);
+    transition-property: height, width, transform, filter, box-shadow, opacity;
+    transition-duration: var(--motion-duration-chart-toggle);
     transition-timing-function: cubic-bezier(0.2, 0.68, 0.16, 1);
-    will-change: transform;
+    will-change: height, width, transform, opacity;
   }
 
   .house-toggle-chart-line {
@@ -3441,7 +3441,7 @@
 
   .house-toggle-chart-swap {
     transition-property: opacity;
-    transition-duration: var(--motion-duration-base);
+    transition-duration: var(--motion-duration-chart-toggle);
     transition-timing-function: cubic-bezier(0.2, 0.68, 0.16, 1);
     will-change: opacity;
   }
@@ -3452,7 +3452,7 @@
 
   .house-chart-series-by-slot .house-toggle-chart-swap {
     transition-property: opacity, filter;
-    transition-duration: var(--motion-duration-fast);
+    transition-duration: var(--motion-duration-chart-toggle);
     will-change: opacity, filter;
   }
 
@@ -5089,6 +5089,10 @@
     box-sizing: border-box;
   }
 
+  .house-publications-drilldown-first-section {
+    margin-top: var(--separator-drilldown-heading-block-to-content);
+  }
+
   .house-drilldown-content-block + .house-publications-drilldown-bounded-section,
   .house-publications-drilldown-bounded-section + .house-publications-drilldown-bounded-section {
     margin-top: var(--separator-section-content-to-section-header);
@@ -5108,6 +5112,33 @@
     border-radius: 0;
     background-color: transparent;
     box-shadow: none;
+  }
+
+  .house-publications-trend-table-shell-plain tbody > tr.house-table-row:nth-child(1) {
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--tone-positive-300) / 0.56) 0%,
+      hsl(var(--tone-positive-200) / 0.24) 66%,
+      transparent 100%
+    );
+  }
+
+  .house-publications-trend-table-shell-plain tbody > tr.house-table-row:nth-child(2) {
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--tone-positive-300) / 0.42) 0%,
+      hsl(var(--tone-positive-200) / 0.18) 66%,
+      transparent 100%
+    );
+  }
+
+  .house-publications-trend-table-shell-plain tbody > tr.house-table-row:nth-child(3) {
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--tone-positive-300) / 0.3) 0%,
+      hsl(var(--tone-positive-200) / 0.13) 66%,
+      transparent 100%
+    );
   }
 
   .house-publications-drilldown-summary-trend-chart-tall .house-chart-frame {

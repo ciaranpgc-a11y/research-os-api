@@ -30,9 +30,11 @@ from research_os.services.generation_job_service import (
     enqueue_generation_job,
 )
 from research_os.services.publication_metrics_service import (
+    compute_publication_top_metrics,
     enqueue_publication_top_metrics_refresh,
 )
 from research_os.services.publications_analytics_service import (
+    compute_publications_analytics,
     enqueue_publications_analytics_recompute,
 )
 from research_os.services.api_telemetry_service import summarize_api_usage_for_admin
@@ -2206,8 +2208,8 @@ def admin_refresh_user_publications(
 
     user_email = ""
     user_name = ""
-    top_metrics_enqueued = False
-    analytics_enqueued = False
+    top_metrics_completed = False
+    analytics_completed = False
 
     try:
         with session_scope() as session:
@@ -2217,20 +2219,11 @@ def admin_refresh_user_publications(
             user_email = str(user.email or "").strip()
             user_name = str(user.name or "").strip() or user_email or clean_user_id
 
-        top_metrics_enqueued = bool(
-            enqueue_publication_top_metrics_refresh(
-                user_id=clean_user_id,
-                reason="admin_user_refresh",
-                force=True,
-            )
-        )
-        analytics_enqueued = bool(
-            enqueue_publications_analytics_recompute(
-                user_id=clean_user_id,
-                force=True,
-                reason="admin_user_refresh",
-            )
-        )
+        compute_publication_top_metrics(user_id=clean_user_id)
+        top_metrics_completed = True
+        
+        compute_publications_analytics(user_id=clean_user_id)
+        analytics_completed = True
     except (AdminValidationError, AdminNotFoundError):
         _record_admin_audit_event(
             actor_user_id=clean_actor_user_id or None,
@@ -2265,9 +2258,9 @@ def admin_refresh_user_publications(
         )
 
     message = (
-        f"Triggered publication refresh for {user_name}. "
-        f"Top metrics: {'queued' if top_metrics_enqueued else 'already running'}. "
-        f"Analytics: {'queued' if analytics_enqueued else 'already running'}."
+        f"Publication refresh completed for {user_name}. "
+        f"Top metrics: {'refreshed' if top_metrics_completed else 'failed'}. "
+        f"Analytics: {'refreshed' if analytics_completed else 'failed'}."
     )
     audit_event = _record_admin_audit_event(
         actor_user_id=clean_actor_user_id or None,
@@ -2278,8 +2271,8 @@ def admin_refresh_user_publications(
         metadata={
             "target_email": user_email,
             "reason": clean_reason,
-            "top_metrics_enqueued": top_metrics_enqueued,
-            "analytics_enqueued": analytics_enqueued,
+            "top_metrics_completed": top_metrics_completed,
+            "analytics_completed": analytics_completed,
         },
     )
     return {
@@ -2287,8 +2280,8 @@ def admin_refresh_user_publications(
         "user_id": clean_user_id,
         "user_email": user_email,
         "user_name": user_name,
-        "top_metrics_enqueued": top_metrics_enqueued,
-        "analytics_enqueued": analytics_enqueued,
+        "top_metrics_enqueued": top_metrics_completed,
+        "analytics_enqueued": analytics_completed,
         "generated_at": _utcnow(),
         "audit_event": audit_event,
     }

@@ -279,6 +279,13 @@ const PUBLICATION_LIBRARY_DEMO_ROWS = [
   },
 ] as const
 
+const PUBLICATION_DRILLDOWN_SUMMARY_TABLE_ROWS = [
+  { id: 'summary-table-row-1', journal: 'Wellcome Open Research', count: 7, share: '14.6%', avgCites: '8.3' },
+  { id: 'summary-table-row-2', journal: 'Open Heart', count: 6, share: '12.5%', avgCites: '6.1' },
+  { id: 'summary-table-row-3', journal: 'European Heart Journal', count: 5, share: '10.4%', avgCites: '12.2' },
+  { id: 'summary-table-row-4', journal: 'BMJ Open', count: 4, share: '8.3%', avgCites: '5.8' },
+] as const
+
 type PublicationLibraryDemoColumnKey = (typeof PUBLICATION_LIBRARY_DEMO_COLUMNS)[number]['key']
 type PublicationLibraryDemoSortDirection = 'asc' | 'desc'
 
@@ -983,6 +990,51 @@ function PublicationLibraryTableDemo() {
   )
 }
 
+function PublicationDrilldownSummaryTableDemo() {
+  return (
+    <Stack space="sm">
+      <Row align="center" gap="sm">
+        <Badge>Canonical drilldown table</Badge>
+        <Badge variant="outline">Publication insights summary-table pattern</Badge>
+      </Row>
+
+      <div className="w-full overflow-visible">
+        <div
+          className="house-table-shell house-publications-trend-table-shell-plain h-auto w-full overflow-hidden rounded-md bg-background"
+          style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
+        >
+          <table className="w-full border-collapse" data-house-no-column-resize="true" data-house-no-column-controls="true">
+            <thead className="house-table-head">
+              <tr>
+                <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Journal</th>
+                <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>Count</th>
+                <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>Share</th>
+                <th className="house-table-head-text h-10 px-1.5 text-right align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>Avg Cites</th>
+              </tr>
+            </thead>
+            <tbody>
+              {PUBLICATION_DRILLDOWN_SUMMARY_TABLE_ROWS.map((row) => (
+                <tr key={row.id} className="house-table-row">
+                  <td className="house-table-cell-text px-2 py-2">
+                    <span className="block max-w-full break-words leading-snug">{row.journal}</span>
+                  </td>
+                  <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">{row.count}</td>
+                  <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">{row.share}</td>
+                  <td className="house-table-cell-text px-1.5 py-2 text-right whitespace-nowrap tabular-nums">{row.avgCites}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p className="text-caption text-[hsl(var(--muted-foreground))]">
+        Mirrors the plain drilldown table style used by publication insights summary tables.
+      </p>
+    </Stack>
+  )
+}
+
 function SectionToolsDemo() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
@@ -1041,28 +1093,47 @@ function SectionToolsDemo() {
 }
 
 function DrilldownSectionHeadingDemo() {
+  const [headlineExpanded, setHeadlineExpanded] = useState(true)
+  const [trendsExpanded, setTrendsExpanded] = useState(false)
+
   return (
     <Stack space="sm">
       <Row align="center" gap="sm">
         <Badge>Canonical drilldown heading</Badge>
-        <Badge variant="outline">Spacing contract</Badge>
+        <Badge variant="outline">Spacing + collapse toggle contract</Badge>
       </Row>
       <div className="house-drilldown-panel-no-pad rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-[var(--space-3)]">
-        <div className="house-drilldown-heading-block">
+        <div className="house-drilldown-heading-block flex items-center justify-between gap-[var(--space-2)]">
           <p className="house-drilldown-heading-block-title">Headline results</p>
+          <DrilldownSheet.HeadingToggle
+            expanded={headlineExpanded}
+            expandedLabel="Collapse headline results"
+            collapsedLabel="Expand headline results"
+            onClick={() => setHeadlineExpanded((current) => !current)}
+          />
         </div>
-        <div className="house-drilldown-content-block rounded-[var(--radius-xs)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-2)] text-caption">
-          Heading → content spacing uses <strong>--separator-drilldown-heading-block-to-content</strong>
-        </div>
-        <div className="house-drilldown-heading-block mt-[var(--separator-drilldown-content-to-heading-block)]">
+        {headlineExpanded ? (
+          <div className="house-drilldown-content-block rounded-[var(--radius-xs)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-2)] text-caption">
+            Heading to content spacing uses <strong>--separator-drilldown-heading-block-to-content</strong>
+          </div>
+        ) : null}
+        <div className="house-drilldown-heading-block mt-[var(--separator-drilldown-content-to-heading-block)] flex items-center justify-between gap-[var(--space-2)]">
           <p className="house-drilldown-heading-block-title">Publication trends</p>
+          <DrilldownSheet.HeadingToggle
+            expanded={trendsExpanded}
+            expandedLabel="Collapse publication trends"
+            collapsedLabel="Expand publication trends"
+            onClick={() => setTrendsExpanded((current) => !current)}
+          />
         </div>
-        <div className="house-drilldown-content-block rounded-[var(--radius-xs)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-2)] text-caption">
-          Content → next heading spacing uses <strong>--separator-drilldown-content-to-heading-block</strong>
-        </div>
+        {trendsExpanded ? (
+          <div className="house-drilldown-content-block rounded-[var(--radius-xs)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-2)] text-caption">
+            Content to next heading spacing uses <strong>--separator-drilldown-content-to-heading-block</strong>
+          </div>
+        ) : null}
       </div>
       <p className="text-caption text-[hsl(var(--muted-foreground))]">
-        Use `house-drilldown-heading-block` + `house-drilldown-heading-block-title` for subsection labels inside drilldown content flows.
+        Collapse and expand toggles for drilldown subsection headings are approved as plus and minus via `DrilldownSheet.HeadingToggle`.
       </p>
     </Stack>
   )
@@ -1970,6 +2041,13 @@ export function ApprovalsContent() {
                 spec="Publication-style heading controls, sortable headers, and auto-fit/reset table settings"
               >
                 <PublicationLibraryTableDemo />
+              </MatrixCell>
+              <MatrixCell
+                title="Publication Drilldown Summary Table"
+                note="Second canonical table variant for publication insights drilldown usage"
+                spec="Plain table shell style: house-publications-trend-table-shell-plain with auto-fit columns, centered Count/Share, and no inline resize controls"
+              >
+                <PublicationDrilldownSummaryTableDemo />
               </MatrixCell>
               <MatrixCell
                 title="Section Tools Toolbar"

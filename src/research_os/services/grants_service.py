@@ -290,28 +290,55 @@ def _lookup_award_detail(
     *,
     client: httpx.Client,
     mailto: str | None,
+    award_id: str | None,
     funder_id: str | None,
     funder_award_id: str | None,
 ) -> dict[str, Any] | None:
+    clean_award_id = _sanitize_text(award_id)
+    award_token = _author_id_token(clean_award_id) if clean_award_id else None
     clean_funder_id = _sanitize_text(funder_id)
     clean_funder_award_id = _sanitize_text(funder_award_id)
-    if not clean_funder_id or not clean_funder_award_id:
-        return None
 
-    params: dict[str, Any] = {
-        "filter": f"funder.id:{clean_funder_id},funder_award_id:{clean_funder_award_id}",
-        "per-page": 1,
-    }
-    if mailto:
-        params["mailto"] = mailto
-    payload = _request_openalex_json(
-        client=client,
-        url=f"{OPENALEX_BASE_URL}/awards",
-        params=params,
-    )
-    rows = payload.get("results") if isinstance(payload.get("results"), list) else []
-    if rows and isinstance(rows[0], dict):
-        return rows[0]
+    if clean_funder_id and clean_funder_award_id:
+        params: dict[str, Any] = {
+            "filter": f"funder.id:{clean_funder_id},funder_award_id:{clean_funder_award_id}",
+            "per-page": 1,
+        }
+        if mailto:
+            params["mailto"] = mailto
+        payload = _request_openalex_json(
+            client=client,
+            url=f"{OPENALEX_BASE_URL}/awards",
+            params=params,
+        )
+        rows = payload.get("results") if isinstance(payload.get("results"), list) else []
+        if rows and isinstance(rows[0], dict):
+            return rows[0]
+
+    if award_token:
+        # Some works carry award IDs that are directly retrievable but not found by funder+award key.
+        payload = _request_openalex_json(
+            client=client,
+            url=f"{OPENALEX_BASE_URL}/awards/{award_token}",
+            params={"mailto": mailto} if mailto else {},
+        )
+        if isinstance(payload, dict) and _sanitize_text(payload.get("id")):
+            return payload
+
+        params: dict[str, Any] = {
+            "filter": f"id:https://openalex.org/{award_token}",
+            "per-page": 1,
+        }
+        if mailto:
+            params["mailto"] = mailto
+        payload = _request_openalex_json(
+            client=client,
+            url=f"{OPENALEX_BASE_URL}/awards",
+            params=params,
+        )
+        rows = payload.get("results") if isinstance(payload.get("results"), list) else []
+        if rows and isinstance(rows[0], dict):
+            return rows[0]
     return None
 
 
@@ -672,6 +699,7 @@ def list_openalex_grants_for_person(
                 _lookup_award_detail(
                     client=client,
                     mailto=mailto,
+                    award_id=item.get("openalex_award_id"),
                     funder_id=(item.get("funder") or {}).get("id"),
                     funder_award_id=item.get("funder_award_id"),
                 ),

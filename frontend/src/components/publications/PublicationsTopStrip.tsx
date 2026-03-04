@@ -301,6 +301,8 @@ type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
 type PublicationTrendsVisualMode = 'bars' | 'line'
 type PublicationCategoryValueMode = 'absolute' | 'percentage'
 type PublicationCategoryDisplayMode = 'chart' | 'table'
+type JournalBreakdownViewMode = 'top-ten' | 'all-journals'
+type TopicBreakdownViewMode = 'top-ten' | 'all-topics'
 type HIndexViewMode = 'trajectory' | 'needed'
 type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
 type DrilldownTab = 'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'
@@ -467,10 +469,10 @@ const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
  * const stagger = getChartStaggerDelay(index, 'entry')        // 0-390ms
  * 
  * // Ring charts
- * const ringDuration = ringChartDurationVar(isEntryCycle)     // '520ms' or '380ms'
+ * const ringDuration = ringChartDurationVar(isEntryCycle)     // '560ms' or '540ms'
  * 
  * // Axis updates
- * const axisDuration = getAxisAnimationDuration('toggle')     // 340ms
+ * const axisDuration = getAxisAnimationDuration('toggle')     // 540ms
  * ```
  * 
  * Animation Flow:
@@ -489,7 +491,7 @@ const CHART_MOTION = {
     staggerMax: 390,    // --motion-chart-entry-stagger-max
   },
   toggle: {
-    duration: 360,      // --motion-chart-toggle-duration
+    duration: 540,      // --motion-chart-toggle-duration
     delay: 0,           // --motion-chart-toggle-delay
     stagger: 0,         // --motion-chart-toggle-stagger
   },
@@ -499,7 +501,7 @@ const CHART_MOTION = {
   },
   axis: {
     entry: 560,         // --motion-chart-axis-entry
-    toggle: 340,        // --motion-chart-axis-toggle
+    toggle: 540,        // --motion-chart-axis-toggle
     overlap: 100,       // --motion-chart-axis-overlap
   },
   refresh: {
@@ -507,11 +509,11 @@ const CHART_MOTION = {
   },
   ring: {
     entry: 560,         // --motion-chart-ring-entry
-    toggle: 380,        // --motion-chart-ring-toggle
+    toggle: 540,        // --motion-chart-ring-toggle
   },
   line: {
     entry: 560,         // --motion-chart-line-entry
-    toggle: 400,        // --motion-chart-line-toggle
+    toggle: 540,        // --motion-chart-line-toggle
   },
 } as const
 
@@ -1837,8 +1839,8 @@ function TotalCitationsModeChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
-                      transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
+                      transitionDelay: '0ms',
+                      transitionDuration: 'var(--motion-duration-chart-toggle)',
                     }}
                   />
                 </div>
@@ -2608,11 +2610,12 @@ export function PublicationsPerYearChart({
           ? 1
           : null
     const sourceBars = windowYears === null ? historyBars : historyBars.slice(-windowYears)
+    const shouldUseShortYearAxisLabels = mode === 'all' && sourceBars.length >= 10
     const bars: PublicationChartBar[] = sourceBars.map((bar) => ({
       key: `${bar.year}-${bar.year}`,
       value: Math.max(0, bar.value),
       current: Boolean(bar.current),
-      axisLabel: String(bar.year),
+      axisLabel: shouldUseShortYearAxisLabels ? shortYearLabel(bar.year) : String(bar.year),
       axisSubLabel: undefined,
       monthStartMs: Date.UTC(bar.year, 0, 1),
     }))
@@ -3315,6 +3318,12 @@ export function PublicationsPerYearChart({
                 }}
               />
             ) : null}
+            {effectiveVisualMode !== 'line' ? (
+              <div
+                className={cn('absolute inset-x-0 bottom-0', gridLineToneClass, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                aria-hidden="true"
+              />
+            ) : null}
             {effectiveVisualMode === 'line' && lineModeVerticalGridPercents.length ? (
               <svg className="absolute inset-0 z-[1]" viewBox="0 0 100 100" preserveAspectRatio="none">
                 {lineModeVerticalGridPercents.map((leftPct, index) => (
@@ -3497,7 +3506,7 @@ export function PublicationsPerYearChart({
         ) : null}
 
         {showXAxisTickTabs ? (
-          effectiveVisualMode === 'line' ? (
+          effectiveVisualMode === 'line' && !usingMonthlyTimelineForMode ? (
             <div
               className={cn('pointer-events-none absolute', HOUSE_TOGGLE_CHART_LABEL_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
               style={xAxisTicksStyle}
@@ -3518,7 +3527,7 @@ export function PublicationsPerYearChart({
                       left: `${tick.leftPct}%`,
                       transform: isFirst ? 'translateX(0)' : isLast ? 'translateX(-100%)' : 'translateX(-50%)',
                       transitionDuration: `${axisDurationMs}ms`,
-                      transitionProperty: 'left, opacity',
+                      transitionProperty: 'opacity',
                     }}
                     aria-label={`${tickRoleLabel}: ${tick.label}${tick.subLabel ? ` ${tick.subLabel}` : ''}`}
                   >
@@ -3526,7 +3535,7 @@ export function PublicationsPerYearChart({
                       {tick.label}
                     </p>
                     {tick.subLabel ? (
-                      <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, HOUSE_CHART_AXIS_PERIOD_TAG_CLASS, 'break-words px-0.5')}>
+                      <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, HOUSE_CHART_AXIS_PERIOD_TAG_CLASS, 'relative -top-px break-words px-0.5')}>
                         {tick.subLabel}
                       </p>
                     ) : null}
@@ -4718,14 +4727,14 @@ export function PublicationCategoryDistributionChart({
         }
       }
       const bars = categoryConfig.primaryLabels.map((label) => ({
-        key: `${mode}-${label}`,
+        key: label,
         label,
         count: Math.max(0, counts.get(label) || 0),
         percentage: 0,
       }))
       if (categoryConfig.hasOtherBucket) {
         bars.push({
-          key: `${mode}-other`,
+          key: 'Other',
           label: 'Other',
           count: Math.max(0, otherCount),
           percentage: 0,
@@ -5075,16 +5084,20 @@ export function PublicationCategoryDistributionChart({
             className="house-table-shell house-publications-trend-table-shell-plain h-auto w-full overflow-hidden rounded-md bg-background"
             style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
           >
-            <table className="w-full table-fixed border-collapse" data-house-no-column-controls="true">
+            <table
+              className="w-full border-collapse"
+              data-house-no-column-resize="true"
+              data-house-no-column-controls="true"
+            >
               <thead className="house-table-head">
                 <tr>
-                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
+                  <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">
                     {tableHeadingLabel}
                   </th>
-                  <th className="house-table-head-text h-10 px-3 text-right align-middle font-semibold">
+                  <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>
                     Count
                   </th>
-                  <th className="house-table-head-text h-10 px-3 text-right align-middle font-semibold">
+                  <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>
                     Share
                   </th>
                 </tr>
@@ -5092,18 +5105,18 @@ export function PublicationCategoryDistributionChart({
               <tbody>
                 {tableRows.map((row) => (
                   <tr key={`${dimension}-table-row-${row.label}`} className="house-table-row">
-                    <td className="house-table-cell-text px-3 py-2">
+                    <td className="house-table-cell-text px-2 py-2">
                       <span className="block max-w-full break-words leading-snug">{row.label}</span>
                     </td>
-                    <td className="house-table-cell-text px-3 py-2 text-right tabular-nums">{formatInt(row.count)}</td>
-                    <td className="house-table-cell-text px-3 py-2 text-right tabular-nums">{`${row.percentage.toFixed(1)}%`}</td>
+                    <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">{formatInt(row.count)}</td>
+                    <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">{`${row.percentage.toFixed(1)}%`}</td>
                   </tr>
                 ))}
                 {tableRows.length ? (
                   <tr className="house-table-row">
-                    <td className="house-table-cell-text px-3 py-2 font-semibold">Total</td>
-                    <td className="house-table-cell-text px-3 py-2 text-right font-semibold tabular-nums">{formatInt(tableTotalCount)}</td>
-                    <td className="house-table-cell-text px-3 py-2 text-right font-semibold tabular-nums">100.0%</td>
+                    <td className="house-table-cell-text px-2 py-2 font-semibold">Total</td>
+                    <td className="house-table-cell-text px-1.5 py-2 text-center font-semibold whitespace-nowrap tabular-nums">{formatInt(tableTotalCount)}</td>
+                    <td className="house-table-cell-text px-1.5 py-2 text-center font-semibold whitespace-nowrap tabular-nums">100.0%</td>
                   </tr>
                 ) : null}
                 {!tableRows.length ? (
@@ -5130,6 +5143,10 @@ export function PublicationCategoryDistributionChart({
           data-house-role="chart-frame"
         >
         <div className="absolute" style={plotAreaStyle}>
+          <div
+            className={cn('pointer-events-none absolute inset-x-0 bottom-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+            aria-hidden="true"
+          />
           {gridTickRatios.map((ratio, index) => (
             <div
               key={`${dimension}-grid-${index}`}
@@ -5165,7 +5182,6 @@ export function PublicationCategoryDistributionChart({
                     className={cn(
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
-                      HOUSE_TOGGLE_CHART_MORPH_CLASS,
                       HOUSE_CHART_BAR_ACCENT_CLASS,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
@@ -5173,7 +5189,8 @@ export function PublicationCategoryDistributionChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${hoverScaleX}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionProperty: 'height,transform,filter,box-shadow',
+                      transitionDelay: '0ms',
+                      transitionDuration: 'var(--motion-duration-chart-toggle)',
                     }}
                   />
                 </div>
@@ -5247,8 +5264,8 @@ function TotalPublicationsDrilldownWorkspace({
   const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
   const [articleTypeTrendsExpanded, setArticleTypeTrendsExpanded] = useState(true)
   const [venueBreakdownExpanded, setVenueBreakdownExpanded] = useState(true)
-  const [venueTopChartExpanded, setVenueTopChartExpanded] = useState(true)
-  const [articleClassBreakdownExpanded, setArticleClassBreakdownExpanded] = useState(true)
+  const [journalBreakdownViewMode, setJournalBreakdownViewMode] = useState<JournalBreakdownViewMode>('top-ten')
+  const [topicBreakdownViewMode, setTopicBreakdownViewMode] = useState<TopicBreakdownViewMode>('top-ten')
   const [topicBreakdownExpanded, setTopicBreakdownExpanded] = useState(true)
   const [oaStatusBreakdownExpanded, setOaStatusBreakdownExpanded] = useState(true)
   const publicationTrendsAnimationKey = `pub-trends|${publicationTrendsWindowMode}|${publicationTrendsVisualMode}`
@@ -5280,6 +5297,28 @@ function TotalPublicationsDrilldownWorkspace({
           willChange: 'left,width',
           transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
         }
+  const journalBreakdownThumbStyle: CSSProperties = journalBreakdownViewMode === 'all-journals'
+    ? {
+      width: '58%',
+      left: '42%',
+      willChange: 'left,width',
+    }
+    : {
+      width: '42%',
+      left: '0%',
+      willChange: 'left,width',
+    }
+  const topicBreakdownThumbStyle: CSSProperties = topicBreakdownViewMode === 'all-topics'
+    ? {
+      width: '58%',
+      left: '42%',
+      willChange: 'left,width',
+    }
+    : {
+      width: '42%',
+      left: '0%',
+      willChange: 'left,width',
+    }
 
   useEffect(() => {
     setPublicationTrendsWindowMode('5y')
@@ -5288,8 +5327,8 @@ function TotalPublicationsDrilldownWorkspace({
     setPublicationTypeTrendsExpanded(true)
     setArticleTypeTrendsExpanded(true)
     setVenueBreakdownExpanded(true)
-    setVenueTopChartExpanded(true)
-    setArticleClassBreakdownExpanded(true)
+    setJournalBreakdownViewMode('top-ten')
+    setTopicBreakdownViewMode('top-ten')
     setTopicBreakdownExpanded(true)
     setOaStatusBreakdownExpanded(true)
   }, [tile.key])
@@ -5504,60 +5543,6 @@ function TotalPublicationsDrilldownWorkspace({
 
   const venueTop10Data = useMemo(() => venueBreakdownData.slice(0, 10), [venueBreakdownData])
 
-  const articleClassBreakdownData = useMemo(() => {
-    const fallbackRows = (() => {
-      const total = publicationDrilldownRecords.length
-      if (!total) {
-        return []
-      }
-      const counts = new Map<string, { count: number; citations: number }>()
-      publicationDrilldownRecords.forEach((record) => {
-        const label = String(record.articleType || '').trim() || 'Original'
-        const current = counts.get(label) || { count: 0, citations: 0 }
-        current.count += 1
-        current.citations += Math.max(0, Number(record.citations || 0))
-        counts.set(label, current)
-      })
-      return Array.from(counts.entries())
-        .sort((left, right) => {
-          if (left[1].count === right[1].count) {
-            return left[0].localeCompare(right[0])
-          }
-          return right[1].count - left[1].count
-        })
-        .map(([label, stats]) => ({
-          key: label,
-          label,
-          value: stats.count,
-          share_pct: Number(((stats.count / total) * 100).toFixed(1)),
-          avg_citations: Number((stats.citations / Math.max(1, stats.count)).toFixed(1)),
-        }))
-    })()
-
-    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
-    const breakdowns = Array.isArray(drilldown.breakdowns) ? drilldown.breakdowns : []
-    const articleBreakdown = breakdowns.find((b) => {
-      if (!b || typeof b !== 'object') return false
-      const breakdown = b as Record<string, unknown>
-      return breakdown.breakdown_id === 'by_article_type'
-    })
-    if (!articleBreakdown || typeof articleBreakdown !== 'object') return fallbackRows
-    const breakdown = articleBreakdown as Record<string, unknown>
-    const items = Array.isArray(breakdown.items) ? breakdown.items : []
-    const parsedRows = items.map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const row = item as Record<string, unknown>
-      return {
-        key: String(row.key || ''),
-        label: String(row.label || ''),
-        value: Number(row.value || 0),
-        share_pct: Number(row.share_pct || 0),
-        avg_citations: Number(row.avg_citations || 0),
-      }
-    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
-    return parsedRows.length > 0 ? parsedRows : fallbackRows
-  }, [publicationDrilldownRecords, tile.drilldown])
-
   const topicBreakdownData = useMemo(() => {
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
     const breakdowns = Array.isArray(drilldown.breakdowns) ? drilldown.breakdowns : []
@@ -5581,6 +5566,7 @@ function TotalPublicationsDrilldownWorkspace({
       }
     }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
   }, [tile.drilldown])
+  const topicTop10Data = useMemo(() => topicBreakdownData.slice(0, 10), [topicBreakdownData])
 
   const oaStatusBreakdownData = useMemo(() => {
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
@@ -5605,9 +5591,7 @@ function TotalPublicationsDrilldownWorkspace({
       }
     }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
   }, [tile.drilldown])
-
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
-    breakdown: 'Publication count by year',
     trajectory: 'Year-over-year trajectory',
     context: 'Top publication venues',
     methods: 'Method details',
@@ -5617,11 +5601,13 @@ function TotalPublicationsDrilldownWorkspace({
   return (
     <div className="house-drilldown-stack-3" data-metric-key={tile.key}>
       <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-drilldown-panel-no-pad')}>
-        <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Headline results</p>
-        </div>
-        <div className="house-drilldown-content-block house-publications-headline-content house-drilldown-heading-content-block w-full">
-          {activeTab === 'summary' ? (
+        {activeTab !== 'breakdown' ? (
+          <div className="house-drilldown-heading-block">
+            <p className="house-drilldown-heading-block-title">Headline results</p>
+          </div>
+        ) : null}
+        {activeTab === 'summary' ? (
+          <div className="house-drilldown-content-block house-publications-headline-content house-drilldown-heading-content-block w-full">
             <div
               className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
               style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
@@ -5635,8 +5621,8 @@ function TotalPublicationsDrilldownWorkspace({
                 </div>
               ))}
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         {activeTab === 'summary' ? (
           <>
@@ -5790,67 +5776,87 @@ function TotalPublicationsDrilldownWorkspace({
 
         {activeTab === 'breakdown' ? (
           <>
-            <div className="house-publications-drilldown-bounded-section">
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">By Journals</p>
-                  <DrilldownSheet.HeadingToggle
-                    expanded={venueBreakdownExpanded}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setVenueBreakdownExpanded((value) => !value)
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  />
-                </div>
+            <div className="house-drilldown-heading-block">
+              <div className="flex items-center justify-between gap-2">
+                <p className="house-drilldown-heading-block-title">Which journals have I published in?</p>
+                <DrilldownSheet.HeadingToggle
+                  expanded={venueBreakdownExpanded}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setVenueBreakdownExpanded((value) => !value)
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                />
               </div>
-              {venueBreakdownExpanded ? (
-                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full space-y-4">
+            </div>
+            {venueBreakdownExpanded ? (
+              <div className="house-publications-drilldown-bounded-section house-publications-drilldown-first-section house-drilldown-content-block">
+                <div className="house-drilldown-content-block w-full space-y-4">
                   <div>
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Top 10 Journals</p>
-                      <DrilldownSheet.HeadingToggle
-                        expanded={venueTopChartExpanded}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          setVenueTopChartExpanded((value) => !value)
-                        }}
-                        onMouseDown={(event) => event.stopPropagation()}
-                      />
-                    </div>
-                    {venueTopChartExpanded && venueTop10Data.length > 0 ? (
-                      <div className="space-y-2">
-                        {venueTop10Data.map((row) => (
-                          <div key={row.key} className="flex items-center gap-3">
-                            <div className="flex-1">
-                              <p className="text-sm font-medium truncate">{row.label}</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="h-6 rounded-sm bg-[hsl(var(--tone-publications-500))]"
-                                style={{
-                                  width: `${Math.max(8, (row.value / venueTop10Data[0].value) * 120)}px`,
-                                  transition: 'width 340ms cubic-bezier(0.4, 0, 0.2, 1)',
-                                }}
-                              />
-                              <span className="min-w-[3rem] text-right text-sm font-semibold tabular-nums">{row.value}</span>
-                              <span className="min-w-[3.5rem] text-right text-sm text-muted-foreground tabular-nums">{row.share_pct}%</span>
-                            </div>
-                          </div>
-                        ))}
+                    <div className="mb-3 flex items-center gap-2">
+                      <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                        <div
+                          className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[42%_58%]')}
+                          data-stop-tile-open="true"
+                          data-ui="publications-journals-view-toggle"
+                          data-house-role="chart-toggle"
+                          style={{ width: '10rem', minWidth: '10rem', maxWidth: '10rem' }}
+                        >
+                          <span
+                            className={HOUSE_TOGGLE_THUMB_CLASS}
+                            style={journalBreakdownThumbStyle}
+                            aria-hidden="true"
+                          />
+                          <button
+                            type="button"
+                            data-stop-tile-open="true"
+                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, journalBreakdownViewMode === 'top-ten' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setJournalBreakdownViewMode('top-ten')
+                            }}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            aria-pressed={journalBreakdownViewMode === 'top-ten'}
+                          >
+                            Top ten
+                          </button>
+                          <button
+                            type="button"
+                            data-stop-tile-open="true"
+                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, journalBreakdownViewMode === 'all-journals' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setJournalBreakdownViewMode('all-journals')
+                            }}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            aria-pressed={journalBreakdownViewMode === 'all-journals'}
+                          >
+                            All journals
+                          </button>
+                        </div>
                       </div>
-                    ) : venueTopChartExpanded ? (
-                      <p className="text-sm text-muted-foreground">No journal data available</p>
-                    ) : null}
-                  </div>
-
-                  <div>
-                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">All Journals</p>
-                    {venueBreakdownData.length > 0 ? (
+                    </div>
+                    {journalBreakdownViewMode === 'top-ten' ? (
+                      venueTop10Data.length > 0 ? (
+                      <PublicationBreakdownTable
+                        rows={venueTop10Data}
+                        variant="summary-drilldown"
+                        showSearch={false}
+                        showRowCount={false}
+                        nameColumnLabel="Journal"
+                        emptyMessage="No journal data available"
+                      />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No journal data available</p>
+                      )
+                    ) : venueBreakdownData.length > 0 ? (
                       <PublicationBreakdownTable
                         rows={venueBreakdownData}
+                        variant="summary-drilldown"
                         showAvgCitations
-                        searchPlaceholder="Search journals..."
+                        showSearch={false}
+                        showRowCount={false}
+                        nameColumnLabel="Journal"
                         emptyMessage="No journals found"
                       />
                     ) : (
@@ -5858,81 +5864,90 @@ function TotalPublicationsDrilldownWorkspace({
                     )}
                   </div>
                 </div>
-              ) : null}
-            </div>
-
-            <div className="house-publications-drilldown-bounded-section">
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">By Article Classification</p>
-                  <DrilldownSheet.HeadingToggle
-                    expanded={articleClassBreakdownExpanded}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setArticleClassBreakdownExpanded((value) => !value)
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  />
-                </div>
               </div>
-              {articleClassBreakdownExpanded ? (
-                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full space-y-4">
-                  <div>
-                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Distribution</p>
-                    {publicationDrilldownRecords.length > 0 ? (
-                      <PublicationCategoryDistributionChart
-                        publications={publicationDrilldownRecords}
-                        dimension="article"
-                        xAxisLabel="Article type"
-                        emptyLabel="No article type data"
-                        animate={animateCharts}
-                        enableValueModeToggle
-                      />
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No article classification data available</p>
-                    )}
-                  </div>
+            ) : null}
 
-                  <div>
-                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Details</p>
-                    {articleClassBreakdownData.length > 0 ? (
-                      <PublicationBreakdownTable
-                        rows={articleClassBreakdownData}
-                        showAvgCitations
-                        searchPlaceholder="Search article types..."
-                        emptyMessage="No article types found"
-                      />
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No article classification data available</p>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="house-publications-drilldown-bounded-section">
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">By Research Topic</p>
-                  <DrilldownSheet.HeadingToggle
-                    expanded={topicBreakdownExpanded}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setTopicBreakdownExpanded((value) => !value)
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  />
-                </div>
+            <div className="house-drilldown-heading-block">
+              <div className="flex items-center justify-between gap-2">
+                <p className="house-drilldown-heading-block-title">What topics have I published on?</p>
+                <DrilldownSheet.HeadingToggle
+                  expanded={topicBreakdownExpanded}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setTopicBreakdownExpanded((value) => !value)
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                />
               </div>
-              {topicBreakdownExpanded ? (
-                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full space-y-4">
+            </div>
+            {topicBreakdownExpanded ? (
+              <div className="house-publications-drilldown-bounded-section house-drilldown-content-block">
+                <div className="house-drilldown-content-block w-full space-y-4">
                   <div>
-                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Topic Distribution</p>
-                    {topicBreakdownData.length > 0 ? (
+                    <div className="mb-3 flex items-center gap-2">
+                      <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                        <div
+                          className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[42%_58%]')}
+                          data-stop-tile-open="true"
+                          data-ui="publications-topics-view-toggle"
+                          data-house-role="chart-toggle"
+                          style={{ width: '10rem', minWidth: '10rem', maxWidth: '10rem' }}
+                        >
+                          <span
+                            className={HOUSE_TOGGLE_THUMB_CLASS}
+                            style={topicBreakdownThumbStyle}
+                            aria-hidden="true"
+                          />
+                          <button
+                            type="button"
+                            data-stop-tile-open="true"
+                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, topicBreakdownViewMode === 'top-ten' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setTopicBreakdownViewMode('top-ten')
+                            }}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            aria-pressed={topicBreakdownViewMode === 'top-ten'}
+                          >
+                            Top ten
+                          </button>
+                          <button
+                            type="button"
+                            data-stop-tile-open="true"
+                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, topicBreakdownViewMode === 'all-topics' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setTopicBreakdownViewMode('all-topics')
+                            }}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            aria-pressed={topicBreakdownViewMode === 'all-topics'}
+                          >
+                            All topics
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    {topicBreakdownViewMode === 'top-ten' ? (
+                      topicTop10Data.length > 0 ? (
+                        <PublicationBreakdownTable
+                          rows={topicTop10Data}
+                          variant="summary-drilldown"
+                          showSearch={false}
+                          showRowCount={false}
+                          nameColumnLabel="Topic"
+                          emptyMessage="No topic data available"
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No research topic data available. Topics are extracted from OpenAlex enrichment.</p>
+                      )
+                    ) : topicBreakdownData.length > 0 ? (
                       <PublicationBreakdownTable
                         rows={topicBreakdownData}
+                        variant="summary-drilldown"
                         showAvgCitations
-                        searchPlaceholder="Search topics..."
+                        showSearch={false}
+                        showRowCount={false}
+                        nameColumnLabel="Topic"
                         emptyMessage="No topic data available"
                       />
                     ) : (
@@ -5940,32 +5955,34 @@ function TotalPublicationsDrilldownWorkspace({
                     )}
                   </div>
                 </div>
-              ) : null}
-            </div>
-
-            <div className="house-publications-drilldown-bounded-section">
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">By Open Access Status</p>
-                  <DrilldownSheet.HeadingToggle
-                    expanded={oaStatusBreakdownExpanded}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setOaStatusBreakdownExpanded((value) => !value)
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  />
-                </div>
               </div>
-              {oaStatusBreakdownExpanded ? (
-                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full space-y-4">
+            ) : null}
+
+            <div className="house-drilldown-heading-block">
+              <div className="flex items-center justify-between gap-2">
+                <p className="house-drilldown-heading-block-title">What open access statuses have I published in?</p>
+                <DrilldownSheet.HeadingToggle
+                  expanded={oaStatusBreakdownExpanded}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setOaStatusBreakdownExpanded((value) => !value)
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                />
+              </div>
+            </div>
+            {oaStatusBreakdownExpanded ? (
+              <div className="house-publications-drilldown-bounded-section house-drilldown-content-block">
+                <div className="house-drilldown-content-block w-full space-y-4">
                   <div>
-                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">OA Status Distribution</p>
                     {oaStatusBreakdownData.length > 0 ? (
                       <PublicationBreakdownTable
                         rows={oaStatusBreakdownData}
+                        variant="summary-drilldown"
                         showAvgCitations
-                        searchPlaceholder="Search OA status..."
+                        showSearch={false}
+                        showRowCount={false}
+                        nameColumnLabel="OA status"
                         emptyMessage="No OA status data available"
                       />
                     ) : (
@@ -5973,8 +5990,8 @@ function TotalPublicationsDrilldownWorkspace({
                     )}
                   </div>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </>
         ) : null}
 
@@ -7036,6 +7053,7 @@ export function PublicationsTopStrip({
   const onSelectTile = async (tile: PublicationMetricTilePayload) => {
     setActiveTileKey(tile.key)
     setActiveTileDetail(tile)
+    setActiveDrilldownTab('summary')
     setDetailError('')
     setDrawerOpen(true)
     if (!token) {

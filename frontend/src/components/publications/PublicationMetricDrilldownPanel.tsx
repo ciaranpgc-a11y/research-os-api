@@ -364,12 +364,12 @@ export function PublicationMetricDrilldownPanel({
           <div className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
             <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">{activeSeries.label}</p>
             <div className="mt-2 flex h-40 items-end gap-1">
-              {activeSeries.points.map((point) => {
+              {activeSeries.points.map((point, index) => {
                 const height = point.value <= 0 ? 4 : Math.max(8, (point.value / maxPointValue) * 100)
                 return (
-                  <div key={`${activeSeries.seriesId}-${point.label}`} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                  <div key={`${point.label}-${index}`} className="flex min-w-0 flex-1 flex-col items-center gap-1">
                     <div
-                      className="w-full rounded bg-[hsl(var(--tone-accent-500))]"
+                      className="w-full rounded bg-[hsl(var(--tone-accent-500))] transition-[height,opacity] duration-[var(--motion-duration-chart-toggle)] ease-[var(--motion-ease-chart-series)]"
                       style={{ height: `${height}%` }}
                       title={`${point.label}: ${point.value.toLocaleString('en-GB')} (${point.periodStart || 'n/a'} to ${point.periodEnd || 'n/a'})`}
                     />

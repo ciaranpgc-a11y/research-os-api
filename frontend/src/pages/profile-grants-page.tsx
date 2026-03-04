@@ -259,6 +259,37 @@ export function ProfileGrantsPage() {
     </div>
   ), [])
 
+  const renderPublicationsUnderGrantsTable = useCallback((rows: PersonaGrantsPayload['items']) => (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Award ID</TableHead>
+            <TableHead>Funder</TableHead>
+            <TableHead>Period</TableHead>
+            <TableHead className="text-right">Works</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length ? rows.map((item) => (
+            <TableRow key={`${item.funder.id || ''}:${item.funder_award_id || ''}:${item.openalex_award_id || ''}`}>
+              <TableCell className="align-top">{item.funder_award_id || '-'}</TableCell>
+              <TableCell className="align-top">{item.funder.display_name || '-'}</TableCell>
+              <TableCell className="align-top">{formatAwardPeriod(item)}</TableCell>
+              <TableCell className="text-right align-top">{item.supporting_works_count || 0}</TableCell>
+            </TableRow>
+          )) : (
+            <TableRow>
+              <TableCell colSpan={4} className="py-5 text-sm text-[hsl(var(--muted-foreground))]">
+                No rows.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  ), [])
+
   return (
     <PageFrame tone="profile" hideScaffoldHeader>
       <Stack data-house-role="page" space="sm">
@@ -342,14 +373,14 @@ export function ProfileGrantsPage() {
           <SectionHeader heading="Publications under grants" className="house-section-header-marker-aligned" />
           <div className="house-separator-main-heading-to-content space-y-3">
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Grants linked to this person’s publications but not confidently owned by them. Owner is shown explicitly where OpenAlex provides it.
+              Publications linked to grants where ownership is unclear or attributed to someone else.
             </p>
             {initialising || lookupBusy ? (
               <div className="rounded-md border px-3 py-5 text-sm text-[hsl(var(--muted-foreground))]">
                 {initialising ? 'Loading profile details...' : 'Looking up grants...'}
               </div>
             ) : (
-              renderGrantTable(publicationsUnderGrants)
+              renderPublicationsUnderGrantsTable(publicationsUnderGrants)
             )}
           </div>
         </Section>
@@ -357,3 +388,4 @@ export function ProfileGrantsPage() {
     </PageFrame>
   )
 }
+

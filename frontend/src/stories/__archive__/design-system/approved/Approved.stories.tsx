@@ -975,7 +975,7 @@ function ApprovedDrilldownApprovedChartSection() {
             <p className="text-xs font-semibold text-neutral-900">Source-of-truth template: Publication trends</p>
             <p className="mt-1 text-xs text-neutral-600">Use this chart block as the canonical approved reference for drilldown trends.</p>
             <p className="mt-1 text-xs text-neutral-600">Definitions: <strong>Active years</strong> = years since first publication; <strong>Last 1/3/5 years</strong> are rolling windows from the current as-of year.</p>
-            <p className="mt-1 text-xs text-neutral-600">Controls: right-side chart-view icons switch between <strong>bar</strong> and <strong>line</strong> presentations.</p>
+            <p className="mt-1 text-xs text-neutral-600">Controls: chart-type toggles support <strong>bar</strong>/<strong>line</strong> views, and distribution table mode uses auto-fit columns with centered numeric columns.</p>
             <div className="mt-2">
               <ApprovedPublicationTrendsChartTemplate />
             </div>
