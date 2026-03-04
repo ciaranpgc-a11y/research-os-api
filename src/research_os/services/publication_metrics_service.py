@@ -1698,14 +1698,51 @@ def _contract_breakdowns(
         return []
     type_counts: dict[str, int] = defaultdict(int)
     venue_counts: dict[str, int] = defaultdict(int)
+    venue_citations: dict[str, list[int]] = defaultdict(list)
+    article_type_counts: dict[str, int] = defaultdict(int)
+    article_type_citations: dict[str, list[int]] = defaultdict(list)
+    topic_counts: dict[str, int] = defaultdict(int)
+    topic_citations: dict[str, list[int]] = defaultdict(list)
+    oa_status_counts: dict[str, int] = defaultdict(int)
+    oa_status_citations: dict[str, list[int]] = defaultdict(list)
+    
     for publication in publications:
         publication_type = (
             str(publication.get("publication_type") or publication.get("work_type") or "Unspecified").strip()
             or "Unspecified"
         )
         venue = str(publication.get("journal") or publication.get("venue") or "Unknown venue").strip() or "Unknown venue"
+        article_type = str(publication.get("article_type") or "Original").strip() or "Original"
+        citations = max(0, int(_safe_int(publication.get("citations_lifetime")) or 0))
+        
         type_counts[publication_type] += 1
         venue_counts[venue] += 1
+        venue_citations[venue].append(citations)
+        article_type_counts[article_type] += 1
+        article_type_citations[article_type].append(citations)
+        
+        # Aggregate by topics
+        topics = publication.get("topics") or []
+        if isinstance(topics, list):
+            for topic in topics[:3]:  # Count each publication for its top 3 topics
+                if topic:
+                    topic_counts[topic] += 1
+                    topic_citations[topic].append(citations)
+        
+        # Aggregate by OA status
+        oa_status = str(publication.get("oa_status") or "").strip()
+        if oa_status:
+            oa_status_counts[oa_status] += 1
+            oa_status_citations[oa_status].append(citations)
+        else:
+            is_oa = publication.get("is_oa")
+            if is_oa:
+                oa_status_counts["open_access"] += 1
+                oa_status_citations["open_access"].append(citations)
+            else:
+                oa_status_counts["closed"] += 1
+                oa_status_citations["closed"].append(citations)
+        
     total = max(1, len(publications))
 
     def _rows_from_counts(counts: dict[str, int], limit: int = 10) -> list[dict[str, Any]]:
@@ -1716,6 +1753,19 @@ def _contract_breakdowns(
                 "label": key,
                 "value": int(value),
                 "share_pct": round((int(value) / float(total)) * 100.0, 1),
+            }
+            for key, value in ranked[:limit]
+        ]
+
+    def _venue_rows_with_citations(counts: dict[str, int], citations_map: dict[str, list[int]], limit: int = 10) -> list[dict[str, Any]]:
+        ranked = sorted(counts.items(), key=lambda item: (-int(item[1]), item[0]))
+        return [
+            {
+                "key": key,
+                "label": key,
+                "value": int(value),
+                "share_pct": round((int(value) / float(total)) * 100.0, 1),
+                "avg_citations": round(sum(citations_map.get(key, [0])) / max(1, len(citations_map.get(key, [0]))), 1) if citations_map.get(key) else 0.0,
             }
             for key, value in ranked[:limit]
         ]
@@ -1735,7 +1785,39 @@ def _contract_breakdowns(
                 "breakdown_id": "by_venue",
                 "label": "By venue (top 10)",
                 "dimension": "venue",
-                "items": _rows_from_counts(venue_counts, limit=10),
+                "items": _venue_rows_with_citations(venue_counts, venue_citations, limit=10),
+            }
+        )
+        output.append(
+            {
+                "breakdown_id": "by_venue_full",
+                "label": "By venue (all)",
+                "dimension": "venue",
+                "items": _venue_rows_with_citations(venue_counts, venue_citations, limit=9999),
+            }
+        )
+        output.append(
+            {
+                "breakdown_id": "by_article_type",
+                "label": "By article classification",
+                "dimension": "article_type",
+                "items": _venue_rows_with_citations(article_type_counts, article_type_citations, limit=20),
+            }
+        )
+        output.append(
+            {
+                "breakdown_id": "by_topic",
+                "label": "By research topic",
+                "dimension": "topic",
+                "items": _venue_rows_with_citations(topic_counts, topic_citations, limit=50),
+            }
+        )
+        output.append(
+            {
+                "breakdown_id": "by_oa_status",
+                "label": "By open access status",
+                "dimension": "oa_status",
+                "items": _venue_rows_with_citations(oa_status_counts, oa_status_citations, limit=20),
             }
         )
     top_publications = sorted(
@@ -2377,6 +2459,30 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         confidence_label = _confidence_label(confidence_score)
         match_method = _extract_match_method(latest)
 
+        # Extract topics from OpenAlex payload
+        primary_topic_name = None
+        topics_list = []
+        if latest_openalex_payload:
+            primary_topic = latest_openalex_payload.get("primary_topic") or {}
+            if isinstance(primary_topic, dict):
+                primary_topic_name = str(primary_topic.get("display_name") or "").strip() or None
+            topics = latest_openalex_payload.get("topics") or []
+            if isinstance(topics, list):
+                for topic in topics[:5]:  # Top 5 topics
+                    if isinstance(topic, dict):
+                        topic_name = str(topic.get("display_name") or "").strip()
+                        if topic_name:
+                            topics_list.append(topic_name)
+        
+        # Extract OA status from OpenAlex payload
+        oa_status = None
+        is_oa = False
+        if latest_openalex_payload:
+            open_access = latest_openalex_payload.get("open_access") or {}
+            if isinstance(open_access, dict):
+                oa_status = str(open_access.get("oa_status") or "").strip() or None
+                is_oa = bool(open_access.get("is_oa"))
+
         per_work_rows.append(
             {
                 "work_id": work_id,
@@ -2395,6 +2501,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "doi": str(work.doi or "").strip() or None,
                 "pmid": str(work.pmid or "").strip() or None,
                 "openalex_work_id": openalex_work_id,
+                "primary_topic": primary_topic_name,
+                "topics": topics_list,
+                "oa_status": oa_status,
+                "is_oa": is_oa,
                 "citations_lifetime": latest_citations,
                 "citations_last_12m": last_12,
                 "citations_prev_12m": prev_12,
@@ -2615,6 +2725,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "user_author_position": row.get("user_author_position"),
                     "author_count": row.get("author_count"),
                     "user_author_role": row.get("user_author_role"),
+                    "primary_topic": row.get("primary_topic"),
+                    "topics": row.get("topics") or [],
+                    "oa_status": row.get("oa_status"),
+                    "is_oa": bool(row.get("is_oa")),
                     "confidence_score": row["confidence_score"],
                     "confidence_label": row["confidence_label"],
                     "match_source": row["match_source"],

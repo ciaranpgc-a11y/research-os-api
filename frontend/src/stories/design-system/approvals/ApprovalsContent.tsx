@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Eye, Filter, Hammer, Search, Settings } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, Hammer, Search, Settings, Share2 } from 'lucide-react'
 
 import {
   Container,
@@ -49,6 +49,7 @@ import {
   ChartFrame,
   PanelShell,
   SectionMarker,
+  SectionToolDivider,
   SectionToolIconButton,
   SectionTools,
   useChartMotion,
@@ -255,6 +256,8 @@ const PUBLICATION_LIBRARY_DEMO_ROWS = [
     year: '2025',
     journal: 'Journal of Clinical Modelling',
     citations: '34',
+    publicationType: 'Journal article',
+    articleType: 'Original research',
   },
   {
     id: 'pub-row-2',
@@ -262,6 +265,8 @@ const PUBLICATION_LIBRARY_DEMO_ROWS = [
     year: '2024',
     journal: 'BMJ Digital Health',
     citations: '19',
+    publicationType: 'Journal article',
+    articleType: 'Clinical trial',
   },
   {
     id: 'pub-row-3',
@@ -269,8 +274,27 @@ const PUBLICATION_LIBRARY_DEMO_ROWS = [
     year: '2023',
     journal: 'Data Systems Review',
     citations: '11',
+    publicationType: 'Review',
+    articleType: 'Systematic review',
   },
 ] as const
+
+type PublicationLibraryDemoColumnKey = (typeof PUBLICATION_LIBRARY_DEMO_COLUMNS)[number]['key']
+type PublicationLibraryDemoSortDirection = 'asc' | 'desc'
+
+const PUBLICATION_LIBRARY_DEMO_COLUMN_MIN_WIDTH: Record<PublicationLibraryDemoColumnKey, number> = {
+  title: 240,
+  year: 88,
+  journal: 220,
+  citations: 128,
+}
+
+const PUBLICATION_LIBRARY_DEMO_COLUMN_DEFAULTS: Record<PublicationLibraryDemoColumnKey, { visible: boolean; width: number }> = {
+  title: { visible: true, width: 360 },
+  year: { visible: true, width: 92 },
+  journal: { visible: true, width: 260 },
+  citations: { visible: true, width: 136 },
+}
 
 const METRIC_TILE_CONTRACT_ITEMS = [
   'Tile shell uses house-metric-tile-shell with tokenized background, border, and selected states.',
@@ -682,33 +706,220 @@ function IconGlyph({ size }: { size: number }) {
 }
 
 function PublicationLibraryTableDemo() {
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [visible, setVisible] = useState(true)
   const [stripedRows, setStripedRows] = useState(true)
+  const [metricHighlights, setMetricHighlights] = useState(true)
+  const [sortField, setSortField] = useState<PublicationLibraryDemoColumnKey>('year')
+  const [sortDirection, setSortDirection] = useState<PublicationLibraryDemoSortDirection>('desc')
+  const [columnWidths, setColumnWidths] = useState<Record<PublicationLibraryDemoColumnKey, number>>({
+    title: PUBLICATION_LIBRARY_DEMO_COLUMN_DEFAULTS.title.width,
+    year: PUBLICATION_LIBRARY_DEMO_COLUMN_DEFAULTS.year.width,
+    journal: PUBLICATION_LIBRARY_DEMO_COLUMN_DEFAULTS.journal.width,
+    citations: PUBLICATION_LIBRARY_DEMO_COLUMN_DEFAULTS.citations.width,
+  })
+  const [tableRefreshTick, setTableRefreshTick] = useState(0)
+
+  const sortedRows = useMemo(() => {
+    const rows = [...PUBLICATION_LIBRARY_DEMO_ROWS]
+    rows.sort((left, right) => {
+      const direction = sortDirection === 'asc' ? 1 : -1
+      if (sortField === 'year' || sortField === 'citations') {
+        const leftValue = Number.parseInt(left[sortField], 10)
+        const rightValue = Number.parseInt(right[sortField], 10)
+        if (leftValue === rightValue) {
+          return left.title.localeCompare(right.title)
+        }
+        return (leftValue - rightValue) * direction
+      }
+      const leftValue = String(left[sortField]).toLowerCase()
+      const rightValue = String(right[sortField]).toLowerCase()
+      if (leftValue === rightValue) {
+        return left.title.localeCompare(right.title)
+      }
+      return leftValue > rightValue ? direction : -direction
+    })
+    return rows
+  }, [sortDirection, sortField])
+
+  const onSortColumn = (column: PublicationLibraryDemoColumnKey) => {
+    if (sortField === column) {
+      setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))
+      return
+    }
+    setSortField(column)
+    setSortDirection(column === 'year' || column === 'citations' ? 'desc' : 'asc')
+  }
+
+  const onAutoFit = () => {
+    setColumnWidths({
+      title: PUBLICATION_LIBRARY_DEMO_COLUMN_DEFAULTS.title.width,
+      year: PUBLICATION_LIBRARY_DEMO_COLUMN_DEFAULTS.year.width,
+      journal: PUBLICATION_LIBRARY_DEMO_COLUMN_DEFAULTS.journal.width,
+      citations: PUBLICATION_LIBRARY_DEMO_COLUMN_DEFAULTS.citations.width,
+    })
+    setTableRefreshTick((current) => current + 1)
+  }
+
+  const onResetTableSettings = () => {
+    setStripedRows(true)
+    setMetricHighlights(true)
+    setSortField('year')
+    setSortDirection('desc')
+    onAutoFit()
+  }
+
   return (
     <Stack space="sm">
       <Row align="center" gap="sm">
         <Badge>Canonical ui.Table</Badge>
-        <Badge variant="outline">Profile table tone</Badge>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setStripedRows((current) => !current)
-          }}
-        >
-          {stripedRows ? 'Disable striping' : 'Enable striping'}
-        </Button>
+        <Badge variant="outline">Publication library heading + table contract</Badge>
       </Row>
 
-      <div className="relative w-full house-table-context-profile">
-        <Table className="w-full table-fixed house-table-resizable" data-house-no-column-resize="true" data-house-no-column-controls="true">
+      <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
+        <SectionTools tone="publications" framed={false} className="order-1">
+          <SectionToolIconButton
+            icon={<Search className="h-4 w-4" strokeWidth={2.1} />}
+            aria-label={searchOpen ? 'Hide search' : 'Show search'}
+            tooltip="Search"
+            active={searchOpen}
+            onClick={() => setSearchOpen((current) => !current)}
+          />
+          <SectionToolIconButton
+            icon={<Filter className="h-4 w-4" strokeWidth={2.1} />}
+            aria-label={filterOpen ? 'Hide filters' : 'Show filters'}
+            tooltip="Filters"
+            active={filterOpen}
+            onClick={() => setFilterOpen((current) => !current)}
+          />
+        </SectionTools>
+
+        <div
+          className={[
+            'relative order-2 overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
+            visible && toolsOpen
+              ? 'z-30 max-w-[20rem] translate-x-0 opacity-100'
+              : 'pointer-events-none z-0 max-w-0 translate-x-1 opacity-0',
+          ].join(' ')}
+          aria-hidden={!visible || !toolsOpen}
+        >
+          <div className="flex min-w-0 flex-nowrap gap-1 whitespace-nowrap">
+            <div className="relative inline-flex">
+              <Button type="button" variant="house" size="icon" className="peer h-8 w-8 house-publications-toolbox-item" aria-label="Generate publication library report">
+                <FileText className="h-4 w-4" strokeWidth={2.1} />
+              </Button>
+            </div>
+            <SectionToolDivider />
+            <div className="relative inline-flex">
+              <Button type="button" variant="house" size="icon" className="peer h-8 w-8 house-publications-toolbox-item" aria-label="Download publication library">
+                <Download className="h-4 w-4" strokeWidth={2.1} />
+              </Button>
+            </div>
+            <SectionToolDivider />
+            <div className="relative inline-flex">
+              <Button type="button" variant="house" size="icon" className="peer h-8 w-8 house-publications-toolbox-item" aria-label="Share publication library">
+                <Share2 className="h-4 w-4" strokeWidth={2.1} />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <SectionTools tone="publications" framed={false} className="order-3">
+          {visible ? (
+            <button
+              type="button"
+              data-state={toolsOpen ? 'open' : 'closed'}
+              className={[
+                'order-4 h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
+                toolsOpen ? 'house-publications-tools-toggle-open' : '',
+              ].join(' ')}
+              onClick={() => setToolsOpen((current) => !current)}
+              aria-pressed={toolsOpen}
+              aria-expanded={toolsOpen}
+              aria-label={toolsOpen ? 'Hide publication library tools' : 'Show publication library tools'}
+            >
+              <Hammer className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+            </button>
+          ) : null}
+          {visible ? (
+            <div className="relative order-5 shrink-0">
+              <button
+                type="button"
+                data-state={settingsOpen ? 'open' : 'closed'}
+                className={[
+                  'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-settings-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
+                  settingsOpen ? 'house-publications-tools-toggle-open' : '',
+                ].join(' ')}
+                onClick={() => setSettingsOpen((current) => !current)}
+                aria-pressed={settingsOpen}
+                aria-expanded={settingsOpen}
+                aria-label={settingsOpen ? 'Hide publication library settings' : 'Show publication library settings'}
+              >
+                <Settings className="house-publications-tools-toggle-icon house-publications-settings-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+              </button>
+              {settingsOpen ? (
+                <div className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[18.75rem]">
+                  <div className="house-publications-filter-header">
+                    <p className="house-publications-filter-title">Table settings</p>
+                    <div className="inline-flex items-center gap-2">
+                      <button type="button" className="house-publications-filter-clear" onClick={onAutoFit}>
+                        Auto fit
+                      </button>
+                      <button type="button" className="house-publications-filter-clear" onClick={onResetTableSettings}>
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+                  <details className="house-publications-filter-group" open>
+                    <summary className="house-publications-filter-summary">
+                      <span>Visuals</span>
+                      <span className="house-publications-filter-count">{(stripedRows ? 1 : 0) + (metricHighlights ? 1 : 0)}/2</span>
+                    </summary>
+                    <div className="house-publications-filter-options">
+                      <label className="house-publications-filter-option">
+                        <input type="checkbox" className="house-publications-filter-checkbox" checked={stripedRows} onChange={() => setStripedRows((current) => !current)} />
+                        <span className="house-publications-filter-option-label">Alternate row shading</span>
+                      </label>
+                      <label className="house-publications-filter-option">
+                        <input type="checkbox" className="house-publications-filter-checkbox" checked={metricHighlights} onChange={() => setMetricHighlights((current) => !current)} />
+                        <span className="house-publications-filter-option-label">Metric highlights (citations)</span>
+                      </label>
+                    </div>
+                  </details>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            data-state={visible ? 'open' : 'closed'}
+            className="order-6 h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle house-section-tool-button inline-flex items-center justify-center"
+            onClick={() => setVisible((current) => !current)}
+            aria-pressed={visible}
+            aria-label={visible ? 'Set publication library not visible' : 'Set publication library visible'}
+          >
+            {visible ? (
+              <Eye className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
+            ) : (
+              <EyeOff className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
+            )}
+          </button>
+        </SectionTools>
+      </div>
+
+      {visible ? (
+        <div className="relative w-full house-table-context-profile">
+          <Table key={`publication-library-demo-table-${tableRefreshTick}`} className="w-full table-fixed house-table-resizable" data-house-no-column-resize="true" data-house-no-column-controls="true">
           <colgroup>
             {PUBLICATION_LIBRARY_DEMO_COLUMNS.map((column) => (
               <col
                 key={column.key}
                 style={{
-                  width: `${column.width}px`,
-                  minWidth: `${column.width}px`,
+                  width: `${Math.max(columnWidths[column.key], PUBLICATION_LIBRARY_DEMO_COLUMN_MIN_WIDTH[column.key])}px`,
+                  minWidth: `${Math.max(columnWidths[column.key], PUBLICATION_LIBRARY_DEMO_COLUMN_MIN_WIDTH[column.key])}px`,
                 }}
               />
             ))}
@@ -716,19 +927,33 @@ function PublicationLibraryTableDemo() {
           <TableHeader className="house-table-head text-left">
             <TableRow style={{ backgroundColor: 'transparent' }}>
               {PUBLICATION_LIBRARY_DEMO_COLUMNS.map((column) => (
-                <TableHead key={column.key} className="house-table-head-text text-left">
-                  {column.label}
+                <TableHead key={column.key} className={`house-table-head-text ${column.key === 'citations' ? 'text-right' : 'text-left'}`}>
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-1 text-inherit ${column.key === 'citations' ? 'ml-auto' : ''}`}
+                    onClick={() => onSortColumn(column.key)}
+                  >
+                    <span>{column.label}</span>
+                    {sortField === column.key ? (
+                      sortDirection === 'desc' ? (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      )
+                    ) : (
+                      <ChevronsUpDown className="h-3.5 w-3.5 opacity-60" />
+                    )}
+                  </button>
                 </TableHead>
               ))}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {PUBLICATION_LIBRARY_DEMO_ROWS.map((row, index) => (
+            {sortedRows.map((row) => (
               <TableRow
                 key={row.id}
                 className={[
                   'cursor-pointer hover:bg-accent/30',
-                  index === 0 ? 'bg-emerald-50/70' : '',
                   stripedRows ? 'odd:bg-[hsl(var(--tone-neutral-50))] even:bg-[hsl(var(--tone-neutral-100))]' : '',
                 ].join(' ')}
               >
@@ -737,15 +962,22 @@ function PublicationLibraryTableDemo() {
                 </TableCell>
                 <TableCell className="house-table-cell-text align-top whitespace-nowrap">{row.year}</TableCell>
                 <TableCell className="house-table-cell-text align-top whitespace-normal break-words leading-tight">{row.journal}</TableCell>
-                <TableCell className="house-table-cell-text align-top text-right whitespace-nowrap">{row.citations}</TableCell>
+                <TableCell className={`house-table-cell-text align-top text-right whitespace-nowrap tabular-nums ${metricHighlights ? 'font-semibold text-[hsl(var(--tone-accent-800))]' : ''}`}>
+                  {row.citations}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
-      </div>
+        </div>
+      ) : (
+        <div className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-3)] text-body text-[hsl(var(--muted-foreground))]">
+          Publication library hidden by user.
+        </div>
+      )}
 
       <p className="text-caption text-[hsl(var(--muted-foreground))]">
-        Matches the canonical publication library setup: ui Table family, house table tokens, and row-level striping control.
+        Matches the canonical publication library setup: heading controls, sortable headers, and auto-fit table settings.
       </p>
     </Stack>
   )
@@ -1735,7 +1967,7 @@ export function ApprovalsContent() {
               <MatrixCell
                 title="Publication Library Table"
                 note="Canonical publication table baseline in approvals (ui Table + house table contract)"
-                spec="Header/body/cell roles, profile tone context, striped row option"
+                spec="Publication-style heading controls, sortable headers, and auto-fit/reset table settings"
               >
                 <PublicationLibraryTableDemo />
               </MatrixCell>

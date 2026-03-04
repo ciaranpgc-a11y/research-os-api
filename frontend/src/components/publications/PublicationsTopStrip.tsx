@@ -25,6 +25,7 @@ import {
   publicationsHouseMotion,
   publicationsHouseSurfaces,
 } from './publications-house-style'
+import { PublicationBreakdownTable } from './PublicationBreakdownTable'
 
 type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
@@ -728,7 +729,7 @@ function useUnifiedToggleBarAnimation(
   const [barsExpanded, setBarsExpanded] = useState(false)
   const hasAnimatedEntryRef = useRef(false)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     logChartDebug('useUnifiedToggleBarAnimation:start', {
       animationKey,
       enabled,
@@ -757,9 +758,11 @@ function useUnifiedToggleBarAnimation(
       })
       return
     }
+    // Set to false first to reset animation
     setBarsExpanded(false)
-    let raf = 0
-    raf = window.requestAnimationFrame(() => {
+    // Use requestAnimationFrame to flip to true on the next frame
+    // Using useLayoutEffect ensures all components schedule their RAF at the same time
+    const raf = window.requestAnimationFrame(() => {
       setBarsExpanded(true)
       hasAnimatedEntryRef.current = true
       logChartDebug('useUnifiedToggleBarAnimation:expanded', {
@@ -1837,8 +1840,8 @@ function TotalCitationsModeChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
+                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
+                      transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
                     }}
                   />
                 </div>
@@ -2200,8 +2203,8 @@ function HIndexYearChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
+                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
+                      transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
                     }}
                   />
                 </div>
@@ -3419,6 +3422,8 @@ export function PublicationsPerYearChart({
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${baseScaleX}) scaleY(${barScaleY})`,
                       transformOrigin: 'bottom',
                       transitionProperty: 'height,transform,filter,box-shadow,opacity',
+                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barScaleY > 0),
+                      transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barScaleY > 0),
                     }}
                   />
                 </div>
@@ -3756,8 +3761,7 @@ function MomentumTilePanel({
   )
   const hasComparisonBars = comparisonBars.length > 0
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasComparisonBars)
-  const entryBarsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|entry`, hasComparisonBars && isEntryCycle)
-  const barsExpanded = isEntryCycle ? entryBarsExpanded : true
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasComparisonBars)
   const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   useEffect(() => {
     setHoveredIndex(null)
@@ -3878,8 +3882,8 @@ function MomentumTilePanel({
                       transform: `translateY(${yOffset}px) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       opacity: 1,
                       transformOrigin: 'bottom',
-                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
+                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
+                      transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
                     }}
                   />
                 </div>
@@ -4058,6 +4062,7 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
     [firstAuthorshipPct, leadershipIndexPct, secondAuthorshipPct, seniorAuthorshipPct, totalPapers],
   )
   const barsExpanded = useUnifiedToggleBarAnimation(animationKey, totalPapers > 0)
+  const isEntryCycle = useIsFirstChartEntry(animationKey, totalPapers > 0)
 
   if (totalPapers <= 0) {
     return <div className={dashboardTileStyles.emptyChart}>No authorship data</div>
@@ -4091,8 +4096,8 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
                 )}
                 style={{
                   width: `${barsExpanded ? row.value : 0}%`,
-                  transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                  '--chart-transition-duration': tileMotionEntryDuration(index, barsExpanded),
+                  transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
+                  '--chart-transition-duration': tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
                 } as React.CSSProperties}
                 aria-hidden="true"
               />
@@ -5235,6 +5240,11 @@ function TotalPublicationsDrilldownWorkspace({
   const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
   const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
   const [articleTypeTrendsExpanded, setArticleTypeTrendsExpanded] = useState(true)
+  const [venueBreakdownExpanded, setVenueBreakdownExpanded] = useState(true)
+  const [venueTopChartExpanded, setVenueTopChartExpanded] = useState(true)
+  const [articleClassBreakdownExpanded, setArticleClassBreakdownExpanded] = useState(true)
+  const [topicBreakdownExpanded, setTopicBreakdownExpanded] = useState(true)
+  const [oaStatusBreakdownExpanded, setOaStatusBreakdownExpanded] = useState(true)
   const publicationTrendsAnimationKey = `pub-trends|${publicationTrendsWindowMode}|${publicationTrendsVisualMode}`
   const publicationTrendsIsEntryCycle = useIsFirstChartEntry(publicationTrendsAnimationKey, true)
   const publicationTrendsWindowThumbStyle: CSSProperties = publicationTrendsWindowMode === 'all'
@@ -5271,6 +5281,11 @@ function TotalPublicationsDrilldownWorkspace({
     setPublicationTrendsExpanded(true)
     setPublicationTypeTrendsExpanded(true)
     setArticleTypeTrendsExpanded(true)
+    setVenueBreakdownExpanded(true)
+    setVenueTopChartExpanded(true)
+    setArticleClassBreakdownExpanded(true)
+    setTopicBreakdownExpanded(true)
+    setOaStatusBreakdownExpanded(true)
   }, [tile.key])
 
   const publicationDrilldownRecords = useMemo<PublicationDrilldownRecord[]>(() => {
@@ -5426,6 +5441,105 @@ function TotalPublicationsDrilldownWorkspace({
       { label: 'Year-to-date', value: yearToDateValue },
     ]
   }, [tile])
+
+  const venueBreakdownData = useMemo(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const breakdowns = Array.isArray(drilldown.breakdowns) ? drilldown.breakdowns : []
+    const venueBreakdown = breakdowns.find((b) => {
+      if (!b || typeof b !== 'object') return false
+      const breakdown = b as Record<string, unknown>
+      return breakdown.breakdown_id === 'by_venue_full'
+    })
+    if (!venueBreakdown || typeof venueBreakdown !== 'object') return []
+    const breakdown = venueBreakdown as Record<string, unknown>
+    const items = Array.isArray(breakdown.items) ? breakdown.items : []
+    return items.map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const row = item as Record<string, unknown>
+      return {
+        key: String(row.key || ''),
+        label: String(row.label || ''),
+        value: Number(row.value || 0),
+        share_pct: Number(row.share_pct || 0),
+        avg_citations: Number(row.avg_citations || 0),
+      }
+    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
+  }, [tile.drilldown])
+
+  const venueTop10Data = useMemo(() => venueBreakdownData.slice(0, 10), [venueBreakdownData])
+
+  const articleClassBreakdownData = useMemo(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const breakdowns = Array.isArray(drilldown.breakdowns) ? drilldown.breakdowns : []
+    const articleBreakdown = breakdowns.find((b) => {
+      if (!b || typeof b !== 'object') return false
+      const breakdown = b as Record<string, unknown>
+      return breakdown.breakdown_id === 'by_article_type'
+    })
+    if (!articleBreakdown || typeof articleBreakdown !== 'object') return []
+    const breakdown = articleBreakdown as Record<string, unknown>
+    const items = Array.isArray(breakdown.items) ? breakdown.items : []
+    return items.map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const row = item as Record<string, unknown>
+      return {
+        key: String(row.key || ''),
+        label: String(row.label || ''),
+        value: Number(row.value || 0),
+        share_pct: Number(row.share_pct || 0),
+        avg_citations: Number(row.avg_citations || 0),
+      }
+    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
+  }, [tile.drilldown])
+
+  const topicBreakdownData = useMemo(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const breakdowns = Array.isArray(drilldown.breakdowns) ? drilldown.breakdowns : []
+    const topicBreakdown = breakdowns.find((b) => {
+      if (!b || typeof b !== 'object') return false
+      const breakdown = b as Record<string, unknown>
+      return breakdown.breakdown_id === 'by_topic'
+    })
+    if (!topicBreakdown || typeof topicBreakdown !== 'object') return []
+    const breakdown = topicBreakdown as Record<string, unknown>
+    const items = Array.isArray(breakdown.items) ? breakdown.items : []
+    return items.map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const row = item as Record<string, unknown>
+      return {
+        key: String(row.key || ''),
+        label: String(row.label || ''),
+        value: Number(row.value || 0),
+        share_pct: Number(row.share_pct || 0),
+        avg_citations: Number(row.avg_citations || 0),
+      }
+    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
+  }, [tile.drilldown])
+
+  const oaStatusBreakdownData = useMemo(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const breakdowns = Array.isArray(drilldown.breakdowns) ? drilldown.breakdowns : []
+    const oaBreakdown = breakdowns.find((b) => {
+      if (!b || typeof b !== 'object') return false
+      const breakdown = b as Record<string, unknown>
+      return breakdown.breakdown_id === 'by_oa_status'
+    })
+    if (!oaBreakdown || typeof oaBreakdown !== 'object') return []
+    const breakdown = oaBreakdown as Record<string, unknown>
+    const items = Array.isArray(breakdown.items) ? breakdown.items : []
+    return items.map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const row = item as Record<string, unknown>
+      return {
+        key: String(row.key || ''),
+        label: String(row.label || ''),
+        value: Number(row.value || 0),
+        share_pct: Number(row.share_pct || 0),
+        avg_citations: Number(row.avg_citations || 0),
+      }
+    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
+  }, [tile.drilldown])
+
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
     breakdown: 'Publication count by year',
     trajectory: 'Year-over-year trajectory',
@@ -5601,6 +5715,196 @@ function TotalPublicationsDrilldownWorkspace({
                       animate={animateCharts}
                       enableValueModeToggle
                     />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+
+        {activeTab === 'breakdown' ? (
+          <>
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">By Venue</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={venueBreakdownExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setVenueBreakdownExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {venueBreakdownExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full space-y-4">
+                  <div>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Top 10 Venues</p>
+                      <DrilldownSheet.HeadingToggle
+                        expanded={venueTopChartExpanded}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setVenueTopChartExpanded((value) => !value)
+                        }}
+                        onMouseDown={(event) => event.stopPropagation()}
+                      />
+                    </div>
+                    {venueTopChartExpanded && venueTop10Data.length > 0 ? (
+                      <div className="space-y-2">
+                        {venueTop10Data.map((row, index) => (
+                          <div key={row.key} className="flex items-center gap-3">
+                            <div className="flex-1">
+                              <p className="text-sm font-medium truncate">{row.label}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="h-6 rounded-sm bg-[hsl(var(--tone-publications-500))]"
+                                style={{
+                                  width: `${Math.max(8, (row.value / venueTop10Data[0].value) * 120)}px`,
+                                  transition: 'width 340ms cubic-bezier(0.4, 0, 0.2, 1)',
+                                }}
+                              />
+                              <span className="min-w-[3rem] text-right text-sm font-semibold tabular-nums">{row.value}</span>
+                              <span className="min-w-[3.5rem] text-right text-sm text-muted-foreground tabular-nums">{row.share_pct}%</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : venueTopChartExpanded ? (
+                      <p className="text-sm text-muted-foreground">No venue data available</p>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">All Venues</p>
+                    {venueBreakdownData.length > 0 ? (
+                      <PublicationBreakdownTable
+                        rows={venueBreakdownData}
+                        showAvgCitations
+                        searchPlaceholder="Search venues..."
+                        emptyMessage="No venues found"
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No venue data available</p>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">By Article Classification</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={articleClassBreakdownExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setArticleClassBreakdownExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {articleClassBreakdownExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full space-y-4">
+                  <div>
+                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Distribution</p>
+                    {publicationDrilldownRecords.length > 0 ? (
+                      <PublicationCategoryDistributionChart
+                        publications={publicationDrilldownRecords}
+                        dimension="article"
+                        xAxisLabel="Article type"
+                        emptyLabel="No article type data"
+                        animate={animateCharts}
+                        enableValueModeToggle
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No article classification data available</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Details</p>
+                    {articleClassBreakdownData.length > 0 ? (
+                      <PublicationBreakdownTable
+                        rows={articleClassBreakdownData}
+                        showAvgCitations
+                        searchPlaceholder="Search article types..."
+                        emptyMessage="No article types found"
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No article classification data available</p>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">By Research Topic</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={topicBreakdownExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setTopicBreakdownExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {topicBreakdownExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full space-y-4">
+                  <div>
+                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Topic Distribution</p>
+                    {topicBreakdownData.length > 0 ? (
+                      <PublicationBreakdownTable
+                        rows={topicBreakdownData}
+                        showAvgCitations
+                        searchPlaceholder="Search topics..."
+                        emptyMessage="No topic data available"
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No research topic data available. Topics are extracted from OpenAlex enrichment.</p>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">By Open Access Status</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={oaStatusBreakdownExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setOaStatusBreakdownExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {oaStatusBreakdownExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full space-y-4">
+                  <div>
+                    <p className="mb-3 text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">OA Status Distribution</p>
+                    {oaStatusBreakdownData.length > 0 ? (
+                      <PublicationBreakdownTable
+                        rows={oaStatusBreakdownData}
+                        showAvgCitations
+                        searchPlaceholder="Search OA status..."
+                        emptyMessage="No OA status data available"
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No open access data available. OA status is extracted from OpenAlex enrichment.</p>
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -5786,8 +6090,8 @@ function HIndexNeedsChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
+                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
+                      transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
                     }}
                   />
                 </div>
@@ -5875,8 +6179,7 @@ function HIndexToggleBarsChart({
     [activeBars, mode],
   )
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
-  const entryBarsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|entry`, hasBars && isEntryCycle)
-  const barsExpanded = isEntryCycle ? entryBarsExpanded : true
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
   const barTransitionDuration = tileChartDurationVar(isEntryCycle)
   const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const targetValues = useMemo(
@@ -5887,7 +6190,7 @@ function HIndexToggleBarsChart({
     targetValues,
     `${animationKey}|values`,
     hasBars,
-    axisDurationMs,
+    isEntryCycle ? 0 : axisDurationMs,
   )
   const targetAxisMax = useMemo(
     () => Math.max(1, ...targetValues) * 1.18,
@@ -5897,7 +6200,7 @@ function HIndexToggleBarsChart({
     targetAxisMax,
     `${animationKey}|axis-max`,
     hasBars,
-    axisDurationMs,
+    isEntryCycle ? 0 : axisDurationMs,
   )
   const scaledMax = Math.max(1, animatedAxisMax)
   const axisLayout = useMemo(
@@ -6011,8 +6314,8 @@ function HIndexToggleBarsChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                      transitionDuration: tileMotionEntryDuration(index, barsExpanded),
+                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
+                      transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
                     }}
                   />
                 </div>

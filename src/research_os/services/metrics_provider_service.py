@@ -270,6 +270,23 @@ class OpenAlexMetricsProvider(MetricsProvider):
             candidate.get("abstract_inverted_index")
         )
         counts_by_year = _openalex_counts_by_year(candidate.get("counts_by_year"))
+        
+        # Extract topics/concepts
+        primary_topic = candidate.get("primary_topic") or {}
+        topics = candidate.get("topics") or []
+        keywords = candidate.get("keywords") or []
+        
+        # Extract open access information
+        open_access = candidate.get("open_access") or {}
+        oa_status = str(open_access.get("oa_status") or "").strip() or None
+        is_oa = bool(open_access.get("is_oa"))
+        oa_url = str(open_access.get("oa_url") or "").strip() or None
+        any_repository_has_fulltext = bool(open_access.get("any_repository_has_fulltext"))
+        
+        # Extract APC information
+        apc_list = candidate.get("apc_list") or {}
+        apc_paid = candidate.get("apc_paid") or {}
+        
         return {
             "provider": self.provider_name,
             "citations_count": cited_by,
@@ -289,6 +306,17 @@ class OpenAlexMetricsProvider(MetricsProvider):
                 "publication_year": candidate.get("publication_year"),
                 "abstract": abstract,
                 "counts_by_year": counts_by_year,
+                "primary_topic": primary_topic,
+                "topics": topics,
+                "keywords": keywords,
+                "open_access": {
+                    "oa_status": oa_status,
+                    "is_oa": is_oa,
+                    "oa_url": oa_url,
+                    "any_repository_has_fulltext": any_repository_has_fulltext,
+                },
+                "apc_list": apc_list,
+                "apc_paid": apc_paid,
             },
         }
 

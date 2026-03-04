@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, Lightbulb, Plus, RefreshCcw, Sparkles, Upload } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, Hammer, Lightbulb, Plus, RefreshCcw, Search, Settings, Share2, Sparkles, Upload } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
@@ -15,12 +15,27 @@ import {
   CardTitle,
   TextareaPrimitive as Textarea,
 } from '@/components/primitives'
-import { SectionMarker } from '@/components/patterns'
+import { SectionMarker, SectionToolDivider, SectionTools } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { houseLayout } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { UKCollaborationMap } from '@/components/collaboration/UKCollaborationMap'
-import { Badge, Button, Input, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
+import {
+  Badge,
+  Button,
+  Input,
+  SelectPrimitive,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import {
   fetchAllCollaboratorsForCollaborationPage,
@@ -87,6 +102,20 @@ type HeatmapQuantiles = {
   q80: number
   max: number
 }
+type CollaborationTableColumnKey =
+  | 'name'
+  | 'institution'
+  | 'domains'
+  | 'classification'
+  | 'last_year'
+  | 'coauthored_works'
+  | 'collaboration_score'
+type CollaborationTableDensity = 'compact' | 'default' | 'comfortable'
+type CollaborationTablePageSize = 25 | 50 | 100 | 'all'
+type SortDirection = 'asc' | 'desc'
+type CollaborationTableColumnPreference = {
+  visible: boolean
+}
 
 type MockMetricsSeed = Pick<
   CollaboratorPayload['metrics'],
@@ -108,25 +137,47 @@ const EMPTY_FORM: CollaboratorFormState = {
 }
 
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
-const COLLABORATORS_PAGE_SIZE = 50
+const COLLABORATORS_PAGE_SIZE_DEFAULT: CollaborationTablePageSize = 50
 const HEATMAP_TOP_CELL_LIMIT = 24
 const HEATMAP_OTHERS_KEY = '__others__'
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) {
-    return 'Not computed yet'
-  }
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 'Not computed yet'
-  }
-  return new Date(parsed).toLocaleString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+const COLLABORATION_TABLE_COLUMN_ORDER: CollaborationTableColumnKey[] = [
+  'name',
+  'institution',
+  'domains',
+  'classification',
+  'last_year',
+  'coauthored_works',
+  'collaboration_score',
+]
+const COLLABORATION_TABLE_COLUMN_DEFINITIONS: Record<
+  CollaborationTableColumnKey,
+  { label: string; headerClassName?: string; cellClassName?: string }
+> = {
+  name: { label: 'Name', headerClassName: 'text-left', cellClassName: 'align-top font-medium whitespace-normal break-words leading-tight' },
+  institution: { label: 'Institution', headerClassName: 'text-left', cellClassName: 'align-top whitespace-normal break-words leading-tight' },
+  domains: { label: 'Domains', headerClassName: 'text-left', cellClassName: 'align-top whitespace-normal break-words leading-tight' },
+  classification: { label: 'Classification', headerClassName: 'text-left', cellClassName: 'align-top whitespace-nowrap' },
+  last_year: { label: 'Last year', headerClassName: 'text-left', cellClassName: 'align-top whitespace-nowrap' },
+  coauthored_works: { label: 'Coauthored works', headerClassName: 'text-right', cellClassName: 'align-top text-right whitespace-nowrap' },
+  collaboration_score: { label: 'Collaboration score', headerClassName: 'text-right', cellClassName: 'align-top text-right whitespace-nowrap tabular-nums' },
+}
+const COLLABORATION_TABLE_COLUMN_SORT_FIELD: Partial<Record<CollaborationTableColumnKey, 'name' | 'works' | 'last_collaboration_year' | 'strength'>> = {
+  name: 'name',
+  last_year: 'last_collaboration_year',
+  coauthored_works: 'works',
+  collaboration_score: 'strength',
+}
+const COLLABORATION_TABLE_COLUMN_DEFAULTS: Record<
+  CollaborationTableColumnKey,
+  CollaborationTableColumnPreference
+> = {
+  name: { visible: true },
+  institution: { visible: true },
+  domains: { visible: true },
+  classification: { visible: true },
+  last_year: { visible: true },
+  coauthored_works: { visible: true },
+  collaboration_score: { visible: true },
 }
 
 function toFormState(value: CollaboratorPayload): CollaboratorFormState {
@@ -337,6 +388,9 @@ export function ProfileCollaborationPage() {
   const [listing, setListing] = useState<CollaboratorsListPayload | null>(initialCachedLandingData?.listing || null)
   const [query, setQuery] = useState(() => initialQuery)
   const [sort, setSort] = useState(() => initialSort)
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => (
+    initialSort === 'name' ? 'asc' : 'desc'
+  ))
   const [page, setPage] = useState(() => parsePositiveInteger(searchParams.get('page'), 1))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
@@ -371,6 +425,22 @@ export function ProfileCollaborationPage() {
     }
   })
   const [geoView, setGeoView] = useState<'map' | 'grid'>(() => normalizeGeoView(searchParams.get('geo_view')))
+  const [collaborationLibraryVisible, setCollaborationLibraryVisible] = useState(true)
+  const [collaborationSearchVisible, setCollaborationSearchVisible] = useState(false)
+  const [collaborationFilterVisible, setCollaborationFilterVisible] = useState(false)
+  const [collaborationDownloadVisible, setCollaborationDownloadVisible] = useState(false)
+  const [collaborationToolsOpen, setCollaborationToolsOpen] = useState(false)
+  const [collaborationSettingsVisible, setCollaborationSettingsVisible] = useState(false)
+  const [collaborationTableColumns, setCollaborationTableColumns] = useState<
+    Record<CollaborationTableColumnKey, CollaborationTableColumnPreference>
+  >({ ...COLLABORATION_TABLE_COLUMN_DEFAULTS })
+  const [collaborationTableDensity, setCollaborationTableDensity] = useState<CollaborationTableDensity>('default')
+  const [collaborationTableAlternateRowColoring, setCollaborationTableAlternateRowColoring] = useState(true)
+  const [collaborationTableMetricHighlights, setCollaborationTableMetricHighlights] = useState(true)
+  const [collaborationTableAutoFitTick, setCollaborationTableAutoFitTick] = useState(0)
+  const [collaborationLibraryPageSize, setCollaborationLibraryPageSize] = useState<CollaborationTablePageSize>(
+    COLLABORATORS_PAGE_SIZE_DEFAULT,
+  )
 
   // Mock data for dev visualization
   useEffect(() => {
@@ -784,20 +854,6 @@ export function ProfileCollaborationPage() {
     return items.find((item) => item.id === selectedId) || null
   }, [listing?.items, selectedId])
 
-  const strongCollaborations = useMemo(() => {
-    const items = [...(listing?.items || [])]
-    return items
-      .sort((left, right) => {
-        const leftScore = Number(left.metrics.collaboration_strength_score || 0)
-        const rightScore = Number(right.metrics.collaboration_strength_score || 0)
-        if (leftScore === rightScore) {
-          return left.full_name.localeCompare(right.full_name)
-        }
-        return rightScore - leftScore
-      })
-      .slice(0, 10)
-  }, [listing?.items])
-
   const nowYear = new Date().getUTCFullYear()
   const heatmapCells = useMemo<HeatmapCell[]>(() => {
     const buckets = new Map<
@@ -949,15 +1005,97 @@ export function ProfileCollaborationPage() {
     return seeds
   }, [filteredCollaborators, selectedCollaborator])
 
+  const visibleCollaborationTableColumns = useMemo(() => (
+    COLLABORATION_TABLE_COLUMN_ORDER.filter((column) => collaborationTableColumns[column].visible)
+  ), [collaborationTableColumns])
+
+  const onToggleCollaborationColumnVisibility = (column: CollaborationTableColumnKey) => {
+    setCollaborationTableColumns((current) => {
+      const visibleCount = COLLABORATION_TABLE_COLUMN_ORDER.reduce(
+        (count, key) => count + (current[key].visible ? 1 : 0),
+        0,
+      )
+      if (current[column].visible && visibleCount <= 1) {
+        return current
+      }
+      return {
+        ...current,
+        [column]: {
+          ...current[column],
+          visible: !current[column].visible,
+        },
+      }
+    })
+  }
+
+  const onResetCollaborationTableSettings = () => {
+    setCollaborationTableColumns({ ...COLLABORATION_TABLE_COLUMN_DEFAULTS })
+    setCollaborationTableDensity('default')
+    setCollaborationTableAlternateRowColoring(true)
+    setCollaborationTableMetricHighlights(true)
+    setCollaborationLibraryPageSize(COLLABORATORS_PAGE_SIZE_DEFAULT)
+    setPage(1)
+  }
+
+  const onAutoAdjustCollaborationTableWidths = () => {
+    setCollaborationTableAutoFitTick((current) => current + 1)
+  }
+
+  const onSortColumn = (column: 'name' | 'works' | 'last_collaboration_year' | 'strength') => {
+    if (sort === column) {
+      setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))
+      setPage(1)
+      return
+    }
+    setSort(column)
+    setSortDirection(column === 'name' ? 'asc' : 'desc')
+    setPage(1)
+  }
+
+  const sortedCollaborators = useMemo(() => {
+    const items = [...filteredCollaborators]
+    const direction = sortDirection === 'asc' ? 1 : -1
+    items.sort((left, right) => {
+      if (sort === 'works') {
+        return (
+          (Number(left.metrics.coauthored_works_count || 0) - Number(right.metrics.coauthored_works_count || 0))
+          * direction
+        )
+      }
+      if (sort === 'strength') {
+        return (
+          (Number(left.metrics.collaboration_strength_score || 0) - Number(right.metrics.collaboration_strength_score || 0))
+          * direction
+        )
+      }
+      if (sort === 'last_collaboration_year') {
+        return (
+          (Number(left.metrics.last_collaboration_year || 0) - Number(right.metrics.last_collaboration_year || 0))
+          * direction
+        )
+      }
+      return left.full_name.localeCompare(right.full_name, 'en-GB', { sensitivity: 'base' }) * direction
+    })
+    return items
+  }, [filteredCollaborators, sort, sortDirection])
+
   const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filteredCollaborators.length / COLLABORATORS_PAGE_SIZE)),
-    [filteredCollaborators.length],
+    () => {
+      if (collaborationLibraryPageSize === 'all') {
+        return 1
+      }
+      return Math.max(1, Math.ceil(sortedCollaborators.length / collaborationLibraryPageSize))
+    },
+    [collaborationLibraryPageSize, sortedCollaborators.length],
   )
 
   const pagedCollaborators = useMemo(() => {
-    const start = (page - 1) * COLLABORATORS_PAGE_SIZE
-    return filteredCollaborators.slice(start, start + COLLABORATORS_PAGE_SIZE)
-  }, [filteredCollaborators, page])
+    if (collaborationLibraryPageSize === 'all') {
+      return sortedCollaborators
+    }
+    const start = (page - 1) * collaborationLibraryPageSize
+    return sortedCollaborators.slice(start, start + collaborationLibraryPageSize)
+  }, [collaborationLibraryPageSize, page, sortedCollaborators])
 
   useEffect(() => {
     if (!listing) {
@@ -1134,6 +1272,7 @@ export function ProfileCollaborationPage() {
   const onSortChange = (value: string) => {
     setPage(1)
     setSort(value)
+    setSortDirection(value === 'name' ? 'asc' : 'desc')
   }
 
   const onToggleHeatmapSelection = (cellKey: string) => {
@@ -1428,7 +1567,7 @@ export function ProfileCollaborationPage() {
 
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader heading="My collaborators" className="house-section-header-marker-aligned" />
-        <div className="house-separator-main-heading-to-content grid gap-3 md:grid-cols-4">
+        <div data-house-role="layout-section" className="grid gap-3 md:grid-cols-4">
           <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
             <p className="house-h2">Total collaborators</p>
             <div className="flex w-full items-center justify-center">
@@ -1455,86 +1594,589 @@ export function ProfileCollaborationPage() {
           </div>
         </div>
 
-      <div className="space-y-3">
-        <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>Collaborators</CardTitle>
-            </div>
-            <CardDescription className="flex flex-wrap items-center gap-2">
-              <span>Analytics computed: {formatDateTime(summary?.last_computed_at)}</span>
-              {summary?.status === 'RUNNING' ? (
-                <span className="text-xs text-muted-foreground">Updating...</span>
+        <div
+          aria-hidden="true"
+          className="house-divider-fill-soft mt-[var(--separator-section-content-to-section-header)] h-px w-full"
+        />
+
+        <SectionHeader
+          heading="Collaborators"
+          className="house-publications-toolbar-header"
+          actions={(
+          <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
+            <SectionTools tone="publications" framed={false} className="order-1">
+              {collaborationLibraryVisible ? (
+                <div className="relative order-1 shrink-0">
+                  <button
+                    type="button"
+                    data-state={collaborationSearchVisible ? 'open' : 'closed'}
+                    className={cn(
+                      'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-search-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
+                      collaborationSearchVisible && 'house-publications-tools-toggle-open',
+                    )}
+                    onClick={() => {
+                      setCollaborationSearchVisible((current) => {
+                        const nextVisible = !current
+                        if (nextVisible) {
+                          setCollaborationFilterVisible(false)
+                          setCollaborationDownloadVisible(false)
+                          setCollaborationSettingsVisible(false)
+                        }
+                        return nextVisible
+                      })
+                    }}
+                    aria-pressed={collaborationSearchVisible}
+                    aria-expanded={collaborationSearchVisible}
+                    aria-label={collaborationSearchVisible ? 'Hide collaborators search' : 'Show collaborators search'}
+                  >
+                    <Search className="house-publications-tools-toggle-icon house-publications-search-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                  </button>
+                  {collaborationSearchVisible ? (
+                    <div className="house-publications-search-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[22.5rem]">
+                      <label className="house-publications-search-label" htmlFor="collaboration-library-search-input">
+                        Search collaborators
+                      </label>
+                      <input
+                        id="collaboration-library-search-input"
+                        type="text"
+                        autoFocus
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            void onSearch()
+                          }
+                        }}
+                        placeholder="Search by collaborator name, email, ORCID, institution..."
+                        className="house-publications-search-input"
+                      />
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
-              {summary?.status === 'FAILED' ? (
-                <span className="text-xs text-amber-700">Last update failed</span>
+              {collaborationLibraryVisible ? (
+                <div className="relative order-2 shrink-0">
+                  <button
+                    type="button"
+                    data-state={collaborationFilterVisible ? 'open' : 'closed'}
+                    className={cn(
+                      'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-filter-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
+                      collaborationFilterVisible && 'house-publications-tools-toggle-open',
+                    )}
+                    onClick={() => {
+                      setCollaborationFilterVisible((current) => {
+                        const nextVisible = !current
+                        if (nextVisible) {
+                          setCollaborationSearchVisible(false)
+                          setCollaborationDownloadVisible(false)
+                          setCollaborationSettingsVisible(false)
+                        }
+                        return nextVisible
+                      })
+                    }}
+                    aria-pressed={collaborationFilterVisible}
+                    aria-expanded={collaborationFilterVisible}
+                    aria-label={collaborationFilterVisible ? 'Hide collaborator filters' : 'Show collaborator filters'}
+                  >
+                    <Filter className="house-publications-tools-toggle-icon house-publications-filter-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                  </button>
+                  {collaborationFilterVisible ? (
+                    <div className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[17.5rem]">
+                      <div className="house-publications-filter-header">
+                        <p className="house-publications-filter-title">Filter library</p>
+                        <button
+                          type="button"
+                          className="house-publications-filter-clear"
+                          onClick={() => {
+                            setHeatmapSelection(null)
+                            setCollaborationFilterVisible(false)
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <p className="house-publications-filter-empty">
+                        {heatmapSelection ? 'Heat map filter currently applied.' : 'No active collaborator filters.'}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
-            </CardDescription>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search name, email, ORCID, institution..."
-                className="max-w-md"
-              />
-              <SelectPrimitive value={sort} onValueChange={onSortChange}>
-                <SelectTrigger className="h-9 w-auto min-w-sz-200 px-3 text-sm">
-                  <SelectValue placeholder="Sort" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name">Sort: Name</SelectItem>
-                  <SelectItem value="works">Sort: Coauthored works</SelectItem>
-                  <SelectItem value="last_collaboration_year">Sort: Last collaboration</SelectItem>
-                  <SelectItem value="strength">Sort: Strength score</SelectItem>
-                </SelectContent>
-              </SelectPrimitive>
-              <Button type="button" size="sm" variant="secondary" onClick={onSearch}>
-                <RefreshCcw className="mr-1 h-3.5 w-3.5" />
-                Search
-              </Button>
+            </SectionTools>
+            <div
+              className={cn(
+                'relative order-2 overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
+                collaborationLibraryVisible && collaborationToolsOpen
+                  ? 'z-30 max-w-[20rem] translate-x-0 opacity-100'
+                  : 'pointer-events-none z-0 max-w-0 translate-x-1 opacity-0',
+              )}
+              aria-hidden={!collaborationLibraryVisible || !collaborationToolsOpen}
+            >
+              <div className="flex min-w-0 flex-nowrap whitespace-nowrap gap-1">
+                <div className="relative inline-flex">
+                  <Button
+                    type="button"
+                    variant="house"
+                    size="icon"
+                    className="peer h-8 w-8 house-publications-toolbox-item"
+                    aria-label="Generate collaborator report"
+                  >
+                    <FileText className="h-4 w-4" strokeWidth={2.1} />
+                  </Button>
+                  <span
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100"
+                    aria-hidden="true"
+                  >
+                    Generate report
+                  </span>
+                </div>
+                <SectionToolDivider />
+                <div className="relative inline-flex">
+                  <Button
+                    type="button"
+                    variant="house"
+                    size="icon"
+                    data-state={collaborationDownloadVisible ? 'open' : 'closed'}
+                    className={cn(
+                      'peer h-8 w-8 house-publications-toolbox-item',
+                      collaborationDownloadVisible && 'house-publications-tools-toggle-open',
+                    )}
+                    onClick={() => {
+                      setCollaborationDownloadVisible((current) => {
+                        const nextVisible = !current
+                        if (nextVisible) {
+                          setCollaborationSearchVisible(false)
+                          setCollaborationFilterVisible(false)
+                          setCollaborationSettingsVisible(false)
+                        }
+                        return nextVisible
+                      })
+                    }}
+                    aria-label={collaborationDownloadVisible ? 'Hide collaborator download options' : 'Show collaborator download options'}
+                    aria-expanded={collaborationDownloadVisible}
+                  >
+                    <Download className="h-4 w-4" strokeWidth={2.1} />
+                  </Button>
+                  {collaborationDownloadVisible ? (
+                    <div className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-40 w-[14rem]">
+                      <div className="house-publications-filter-header">
+                        <p className="house-publications-filter-title">Download</p>
+                      </div>
+                      <div className="mt-2 flex items-center justify-end">
+                        <button
+                          type="button"
+                          className="house-section-tool-button inline-flex h-8 items-center justify-center px-2.5 text-[0.69rem] font-semibold uppercase tracking-[0.07em]"
+                          onClick={onExport}
+                        >
+                          Download CSV
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <span
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100"
+                    aria-hidden="true"
+                  >
+                    Download
+                  </span>
+                </div>
+                <SectionToolDivider />
+                <div className="relative inline-flex">
+                  <Button
+                    type="button"
+                    variant="house"
+                    size="icon"
+                    className="peer h-8 w-8 house-publications-toolbox-item"
+                    aria-label="Share collaborator library"
+                  >
+                    <Share2 className="h-4 w-4" strokeWidth={2.1} />
+                  </Button>
+                  <span
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100"
+                    aria-hidden="true"
+                  >
+                    Share
+                  </span>
+                </div>
+              </div>
             </div>
-          <div className="space-y-3">
+            <SectionTools tone="publications" framed={false} className="order-3">
+              {collaborationLibraryVisible ? (
+                <button
+                  type="button"
+                  data-state={collaborationToolsOpen ? 'open' : 'closed'}
+                  className={cn(
+                    'order-4 h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
+                    collaborationToolsOpen && 'house-publications-tools-toggle-open',
+                  )}
+                  onClick={() => {
+                    setCollaborationToolsOpen((current) => {
+                      const nextOpen = !current
+                      if (!nextOpen) {
+                        setCollaborationDownloadVisible(false)
+                      }
+                      return nextOpen
+                    })
+                  }}
+                  aria-pressed={collaborationToolsOpen}
+                  aria-expanded={collaborationToolsOpen}
+                  aria-label={collaborationToolsOpen ? 'Hide collaborator tools' : 'Show collaborator tools'}
+                >
+                  <Hammer className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                </button>
+              ) : null}
+              {collaborationLibraryVisible ? (
+                <div className="relative order-5 shrink-0">
+                  <button
+                    type="button"
+                    data-state={collaborationSettingsVisible ? 'open' : 'closed'}
+                    className={cn(
+                      'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-settings-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
+                      collaborationSettingsVisible && 'house-publications-tools-toggle-open',
+                    )}
+                    onClick={() => {
+                      setCollaborationSettingsVisible((current) => {
+                        const nextVisible = !current
+                        if (nextVisible) {
+                          setCollaborationFilterVisible(false)
+                          setCollaborationSearchVisible(false)
+                          setCollaborationDownloadVisible(false)
+                        }
+                        return nextVisible
+                      })
+                    }}
+                    aria-pressed={collaborationSettingsVisible}
+                    aria-expanded={collaborationSettingsVisible}
+                    aria-label={collaborationSettingsVisible ? 'Hide collaborator settings' : 'Show collaborator settings'}
+                  >
+                    <Settings className="house-publications-tools-toggle-icon house-publications-settings-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                  </button>
+                  {collaborationSettingsVisible ? (
+                    <div className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[18.75rem]">
+                      <div className="house-publications-filter-header">
+                        <p className="house-publications-filter-title">Table settings</p>
+                        <div className="inline-flex items-center gap-2">
+                          <button type="button" className="house-publications-filter-clear" onClick={onAutoAdjustCollaborationTableWidths}>
+                            Auto fit
+                          </button>
+                          <button type="button" className="house-publications-filter-clear" onClick={onResetCollaborationTableSettings}>
+                            Reset
+                          </button>
+                        </div>
+                      </div>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Sort</span>
+                          <span className="house-publications-filter-count">
+                            {sort === 'name'
+                              ? 'Name'
+                              : sort === 'works'
+                                ? 'Works'
+                                : sort === 'last_collaboration_year'
+                                  ? 'Last year'
+                                  : 'Strength'}
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          {(['name', 'works', 'last_collaboration_year', 'strength'] as const).map((sortOption) => (
+                            <label key={`collaboration-sort-${sortOption}`} className="house-publications-filter-option">
+                              <input
+                                type="radio"
+                                name="collaboration-sort"
+                                className="house-publications-filter-checkbox"
+                                checked={sort === sortOption}
+                                onChange={() => onSortChange(sortOption)}
+                              />
+                              <span className="house-publications-filter-option-label">
+                                {sortOption === 'name'
+                                  ? 'Name'
+                                  : sortOption === 'works'
+                                    ? 'Coauthored works'
+                                    : sortOption === 'last_collaboration_year'
+                                      ? 'Last collaboration year'
+                                      : 'Strength score'}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Columns</span>
+                          <span className="house-publications-filter-count">
+                            {visibleCollaborationTableColumns.length}/{COLLABORATION_TABLE_COLUMN_ORDER.length}
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          {COLLABORATION_TABLE_COLUMN_ORDER.map((columnKey) => {
+                            const checked = collaborationTableColumns[columnKey].visible
+                            const visibleCount = visibleCollaborationTableColumns.length
+                            const disableToggle = checked && visibleCount <= 1
+                            const label = COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label
+                            return (
+                              <label
+                                key={`collaboration-column-visibility-${columnKey}`}
+                                className={cn('house-publications-filter-option', disableToggle && 'opacity-60')}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="house-publications-filter-checkbox"
+                                  checked={checked}
+                                  disabled={disableToggle}
+                                  onChange={() => onToggleCollaborationColumnVisibility(columnKey)}
+                                />
+                                <span className="house-publications-filter-option-label">{label}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Visuals</span>
+                          <span className="house-publications-filter-count">
+                            {(collaborationTableAlternateRowColoring ? 1 : 0) + (collaborationTableMetricHighlights ? 1 : 0)}/2
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          <label className="house-publications-filter-option">
+                            <input
+                              type="checkbox"
+                              className="house-publications-filter-checkbox"
+                              checked={collaborationTableAlternateRowColoring}
+                              onChange={() => setCollaborationTableAlternateRowColoring((current) => !current)}
+                            />
+                            <span className="house-publications-filter-option-label">Alternate row shading</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input
+                              type="checkbox"
+                              className="house-publications-filter-checkbox"
+                              checked={collaborationTableMetricHighlights}
+                              onChange={() => setCollaborationTableMetricHighlights((current) => !current)}
+                            />
+                            <span className="house-publications-filter-option-label">Metric highlights (score)</span>
+                          </label>
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Density</span>
+                          <span className="house-publications-filter-count">
+                            {collaborationTableDensity === 'default'
+                              ? 'Default'
+                              : collaborationTableDensity === 'compact'
+                                ? 'Compact'
+                                : 'Comfortable'}
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          {(['compact', 'default', 'comfortable'] as CollaborationTableDensity[]).map((densityOption) => (
+                            <label key={`collaboration-density-${densityOption}`} className="house-publications-filter-option">
+                              <input
+                                type="radio"
+                                name="collaboration-table-density"
+                                className="house-publications-filter-checkbox"
+                                checked={collaborationTableDensity === densityOption}
+                                onChange={() => setCollaborationTableDensity(densityOption)}
+                              />
+                              <span className="house-publications-filter-option-label">
+                                {densityOption === 'default'
+                                  ? 'Default'
+                                  : densityOption === 'compact'
+                                    ? 'Compact'
+                                    : 'Comfortable'}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Rows per page</span>
+                          <span className="house-publications-filter-count">
+                            {collaborationLibraryPageSize === 'all' ? 'All' : collaborationLibraryPageSize}
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          {([25, 50, 100, 'all'] as CollaborationTablePageSize[]).map((pageSizeOption) => (
+                            <label key={`collaboration-page-size-${pageSizeOption}`} className="house-publications-filter-option">
+                              <input
+                                type="radio"
+                                name="collaboration-table-page-size"
+                                className="house-publications-filter-checkbox"
+                                checked={collaborationLibraryPageSize === pageSizeOption}
+                                onChange={() => {
+                                  setCollaborationLibraryPageSize(pageSizeOption)
+                                  setPage(1)
+                                }}
+                              />
+                              <span className="house-publications-filter-option-label">
+                                {pageSizeOption === 'all' ? 'All collaborators' : `${pageSizeOption} collaborators`}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                data-state={collaborationLibraryVisible ? 'open' : 'closed'}
+                className="order-6 h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle house-section-tool-button inline-flex items-center justify-center"
+                onClick={() => {
+                  setCollaborationLibraryVisible((current) => {
+                    const nextVisible = !current
+                    if (!nextVisible) {
+                      setCollaborationToolsOpen(false)
+                      setCollaborationFilterVisible(false)
+                      setCollaborationSearchVisible(false)
+                      setCollaborationDownloadVisible(false)
+                      setCollaborationSettingsVisible(false)
+                    }
+                    return nextVisible
+                  })
+                }}
+                aria-pressed={collaborationLibraryVisible}
+                aria-label={collaborationLibraryVisible ? 'Set collaborator library not visible' : 'Set collaborator library visible'}
+              >
+                {collaborationLibraryVisible ? (
+                  <Eye className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
+                ) : (
+                  <EyeOff className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
+                )}
+              </button>
+            </SectionTools>
+          </div>
+          )}
+        />
+
+        <div data-house-role="layout-section" className="space-y-3">
+          {collaborationLibraryVisible ? (
+            <div className="space-y-3">
             <div className="hidden md:block">
-              <div className="house-table-shell house-table-context-profile overflow-auto">
-                <table className="min-w-full table-fixed">
-                  <thead className="house-table-head">
-                    <tr className="house-table-row">
-                      <th className="house-table-head-text px-2 py-1.5 text-left">Name</th>
-                      <th className="house-table-head-text px-2 py-1.5 text-left">Institution</th>
-                      <th className="house-table-head-text px-2 py-1.5 text-left">Domains</th>
-                      <th className="house-table-head-text px-2 py-1.5 text-left">Classification</th>
-                      <th className="house-table-head-text px-2 py-1.5 text-left">Last year</th>
-                      <th className="house-table-head-text px-2 py-1.5 text-left">Coauthored works</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <div className="relative w-full house-table-context-profile">
+                <Table
+                  key={`collaboration-table-autofit-${collaborationTableAutoFitTick}`}
+                  className={cn(
+                    'w-full',
+                    collaborationTableDensity === 'compact' && 'house-publications-table-density-compact',
+                    collaborationTableDensity === 'comfortable' && 'house-publications-table-density-comfortable',
+                  )}
+                  data-house-no-column-resize="true"
+                  data-house-no-column-controls="true"
+                >
+                  <TableHeader className="house-table-head text-left">
+                    <TableRow style={{ backgroundColor: 'transparent' }}>
+                      {visibleCollaborationTableColumns.map((columnKey) => (
+                        <TableHead
+                          key={`collaboration-head-${columnKey}`}
+                          className={cn('house-table-head-text', COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].headerClassName)}
+                        >
+                          {COLLABORATION_TABLE_COLUMN_SORT_FIELD[columnKey] ? (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-inherit"
+                              onClick={() => onSortColumn(COLLABORATION_TABLE_COLUMN_SORT_FIELD[columnKey] as 'name' | 'works' | 'last_collaboration_year' | 'strength')}
+                            >
+                              <span>{COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label}</span>
+                              {sort === COLLABORATION_TABLE_COLUMN_SORT_FIELD[columnKey] ? (
+                                sortDirection === 'desc' ? (
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                ) : (
+                                  <ChevronUp className="h-3.5 w-3.5" />
+                                )
+                              ) : (
+                                <ChevronsUpDown className="h-3.5 w-3.5 opacity-60" />
+                              )}
+                            </button>
+                          ) : (
+                            COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label
+                          )}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {pagedCollaborators.map((item) => (
-                      <tr
+                      <TableRow
                         key={item.id}
-                        className={cn('house-table-row', selectedId === item.id && !isCreating ? 'bg-accent/60' : '')}
+                        className={cn(
+                          'cursor-pointer hover:bg-accent/30',
+                          collaborationTableAlternateRowColoring && 'odd:bg-[hsl(var(--tone-neutral-50))] even:bg-[hsl(var(--tone-neutral-100))]',
+                        )}
                         onClick={() => onSelectCollaborator(item)}
                       >
-                        <td className="house-table-cell-text px-2 py-1.5 align-top font-medium">{item.full_name}</td>
-                        <td className="house-table-cell-text px-2 py-1.5 align-top">{item.primary_institution || '-'}</td>
-                        <td className="house-table-cell-text px-2 py-1.5 align-top">
-                          <div className="flex flex-wrap gap-1">
-                            {(item.research_domains || []).slice(0, 3).map((domain) => (
-                              <Badge key={domain} variant="outline">
-                                {domain}
-                              </Badge>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="house-table-cell-text px-2 py-1.5 align-top">
-                          <Badge variant={classificationTone(item.metrics.classification)}>
-                            {item.metrics.classification}
-                          </Badge>
-                        </td>
-                        <td className="house-table-cell-text px-2 py-1.5 align-top">{item.metrics.last_collaboration_year ?? '-'}</td>
-                        <td className="house-table-cell-text px-2 py-1.5 align-top">{item.metrics.coauthored_works_count}</td>
-                      </tr>
+                        {visibleCollaborationTableColumns.map((columnKey) => {
+                          if (columnKey === 'name') {
+                            return (
+                              <TableCell key={`${item.id}-name`} className="house-table-cell-text align-top font-medium whitespace-normal break-words leading-tight">
+                                {item.full_name}
+                              </TableCell>
+                            )
+                          }
+                          if (columnKey === 'institution') {
+                            return (
+                              <TableCell key={`${item.id}-institution`} className="house-table-cell-text align-top whitespace-normal break-words leading-tight">
+                                {item.primary_institution || '-'}
+                              </TableCell>
+                            )
+                          }
+                          if (columnKey === 'domains') {
+                            return (
+                              <TableCell key={`${item.id}-domains`} className="house-table-cell-text align-top whitespace-normal break-words leading-tight">
+                                <div className="flex flex-wrap gap-1">
+                                  {(item.research_domains || []).slice(0, 3).map((domain) => (
+                                    <Badge key={domain} variant="outline">
+                                      {domain}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </TableCell>
+                            )
+                          }
+                          if (columnKey === 'classification') {
+                            return (
+                              <TableCell key={`${item.id}-classification`} className="house-table-cell-text align-top whitespace-nowrap">
+                                <Badge variant={classificationTone(item.metrics.classification)}>
+                                  {item.metrics.classification}
+                                </Badge>
+                              </TableCell>
+                            )
+                          }
+                          if (columnKey === 'last_year') {
+                            return (
+                              <TableCell key={`${item.id}-last-year`} className="house-table-cell-text align-top whitespace-nowrap">
+                                {item.metrics.last_collaboration_year ?? '-'}
+                              </TableCell>
+                            )
+                          }
+                          if (columnKey === 'coauthored_works') {
+                            return (
+                              <TableCell key={`${item.id}-works`} className="house-table-cell-text align-top text-right whitespace-nowrap">
+                                {item.metrics.coauthored_works_count}
+                              </TableCell>
+                            )
+                          }
+                          return (
+                            <TableCell
+                              key={`${item.id}-collaboration-score`}
+                              className={cn(
+                                'house-table-cell-text align-top text-right whitespace-nowrap tabular-nums',
+                                collaborationTableMetricHighlights && 'font-semibold text-[hsl(var(--tone-accent-800))]',
+                              )}
+                            >
+                              {Number(item.metrics.collaboration_strength_score || 0).toFixed(2)}
+                            </TableCell>
+                          )
+                        })}
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             </div>
 
@@ -1561,17 +2203,13 @@ export function ProfileCollaborationPage() {
               ))}
             </div>
 
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
-                {filteredCollaborators.length} shown
-                {heatmapSelection ? ` (filtered from ${listing?.total || 0})` : ''}
-              </p>
+            <div className="flex items-center justify-end">
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={page <= 1}
+                  disabled={collaborationLibraryPageSize === 'all' || page <= 1}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                 >
                   Previous
@@ -1583,15 +2221,22 @@ export function ProfileCollaborationPage() {
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={page >= totalPages}
+                  disabled={collaborationLibraryPageSize === 'all' || page >= totalPages}
                   onClick={() => setPage((current) => current + 1)}
                 >
                   Next
                 </Button>
               </div>
             </div>
-          </div>
-        </section>
+            </div>
+          ) : (
+            <section className="house-notification-section">
+              <div className="house-banner house-banner-info">
+                <p>Collaborators hidden by user.</p>
+              </div>
+            </section>
+          )}
+        </div>
 
         <Card className="hidden" aria-hidden="true">
           <CardHeader>
@@ -1715,40 +2360,8 @@ export function ProfileCollaborationPage() {
             ) : null}
           </CardContent>
         </Card>
-      </div>
 
       <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Strong collaborations</CardTitle>
-            <CardDescription>Top 10 collaborators ranked by collaboration strength score.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {strongCollaborations.length > 0 ? (
-              strongCollaborations.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-start justify-between gap-2 rounded border border-border p-2 text-sm"
-                >
-                  <div>
-                    <p className="font-medium">{item.full_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(item.primary_institution || 'No institution')} | Last:{' '}
-                      {item.metrics.last_collaboration_year ?? '-'}
-                    </p>
-                  </div>
-                  <div className="text-right text-xs">
-                    <p className="font-medium">{item.metrics.collaboration_strength_score.toFixed(2)}</p>
-                    <p className="text-muted-foreground">{item.metrics.coauthored_works_count} works</p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-muted-foreground">No collaborators yet.</p>
-            )}
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <CardTitle>Collaboration heat map</CardTitle>
