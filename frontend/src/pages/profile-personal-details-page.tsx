@@ -643,7 +643,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [draggingPublicationAffiliationIndex, setDraggingPublicationAffiliationIndex] = useState<number | null>(null)
   const [publicationAffiliationDropTargetIndex, setPublicationAffiliationDropTargetIndex] = useState<number | null>(null)
   const [publicationAffiliationDropFlashIndex, setPublicationAffiliationDropFlashIndex] = useState<number | null>(null)
-  const [primaryAffiliationAddressResolving, setPrimaryAffiliationAddressResolving] = useState(false)
+  const [, setPrimaryAffiliationAddressResolving] = useState(false)
   const [primaryAffiliationAddressError, setPrimaryAffiliationAddressError] = useState('')
   const [loading, setLoading] = useState(Boolean(fixture?.loading ?? !fixture))
   const [saving, setSaving] = useState(false)
@@ -2811,9 +2811,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     </button>
                     ) : null}
                 </div>
-                {primaryAffiliationAddressResolving ? (
-                  <p className="house-field-helper">Resolving full address details...</p>
-                ) : null}
                 {primaryAffiliationAddressError ? (
                   <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationAddressError}</p>
                 ) : null}
