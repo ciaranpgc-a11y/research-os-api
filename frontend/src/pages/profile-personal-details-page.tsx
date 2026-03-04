@@ -128,6 +128,7 @@ const TITLE_OPTIONS = [
 const MAX_JOB_ROLES = 8
 const MAX_PUBLICATION_AFFILIATIONS = 12
 const MAX_PROFILE_PHOTO_BYTES = 5 * 1024 * 1024
+const AFFILIATION_LOOKUP_DEBOUNCE_MS = 120
 const DEFAULT_PROFILE_PHOTO_POSITION_X = 50
 const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
 const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
@@ -975,7 +976,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             setPrimaryAffiliationSuggestionsLoading(false)
           }
         })
-    }, 260)
+    }, AFFILIATION_LOOKUP_DEBOUNCE_MS)
 
     return () => {
       cancelled = true
@@ -1049,7 +1050,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             setPublicationAffiliationSuggestionsLoading(false)
           }
         })
-    }, 260)
+    }, AFFILIATION_LOOKUP_DEBOUNCE_MS)
 
     return () => {
       cancelled = true

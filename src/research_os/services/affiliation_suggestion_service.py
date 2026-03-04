@@ -125,8 +125,8 @@ def _openai_model() -> str:
 
 
 def _openai_fallback_model() -> str:
-    value = str(os.getenv("AFFILIATION_SUGGEST_OPENAI_FALLBACK_MODEL", "gpt-4.1")).strip()
-    return value or "gpt-4.1"
+    # Keep fallback opt-in to avoid hidden second requests increasing latency.
+    return str(os.getenv("AFFILIATION_SUGGEST_OPENAI_FALLBACK_MODEL", "")).strip()
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
@@ -151,7 +151,11 @@ def _ask_openai_json(prompt: str) -> dict[str, Any]:
         models.append(fallback)
     for model_name in models:
         try:
-            response = create_response(model=model_name, input=prompt)
+            response = create_response(
+                model=model_name,
+                input=prompt,
+                max_output_tokens=600,
+            )
             return _extract_json_object(str(getattr(response, "output_text", "")))
         except Exception:
             continue

@@ -28,14 +28,14 @@ def _usage_int(usage: Any, key: str) -> int:
         return 0
 
 
-def create_response(*, model: str, input: Any) -> Any:
+def create_response(*, model: str, input: Any, **kwargs: Any) -> Any:
     client = get_client()
     started = time.perf_counter()
     response = None
     success = False
     error_code: str | None = None
     try:
-        response = client.responses.create(model=model, input=input)
+        response = client.responses.create(model=model, input=input, **kwargs)
         success = True
         return response
     except Exception as exc:
