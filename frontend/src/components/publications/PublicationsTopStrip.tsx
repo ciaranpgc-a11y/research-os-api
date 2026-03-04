@@ -3395,8 +3395,6 @@ export function PublicationsPerYearChart({
               const toneClass = resolveBarToneClass(bar.value, bar.current)
               const baseScaleX = isActive ? 1.035 : 1
               const barScaleY = effectiveVisualMode === 'bars' && barsExpanded ? 1 : 0
-              const barTransitionDelay = tileMotionBarDelay(index, useEntryStagger)
-              const barTransitionDuration = tileMotionBarDuration(index, useEntryStagger, true)
               return (
                 <div
                   key={`slot-${index}`}
@@ -5150,8 +5148,6 @@ export function PublicationCategoryDistributionChart({
               const heightPct = animatedValue <= 0 ? 3 : Math.min(100, Math.max(6, (animatedValue / axisMax) * 100))
               const isActive = hoveredIndex === index
               const hoverScaleX = isActive && renderBars.length > 1 ? 1.035 : 1
-              const barTransitionDelay = tileMotionBarDelay(index, useEntryStagger)
-              const barTransitionDuration = tileMotionBarDuration(index, useEntryStagger, true)
               return (
                 <div
                   key={`${bar.key}-${index}`}
