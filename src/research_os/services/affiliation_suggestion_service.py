@@ -120,8 +120,8 @@ def _write_suggestion_cache(cache_key: str, payload: list[dict[str, Any]]) -> No
 
 
 def _openai_model() -> str:
-    value = str(os.getenv("AFFILIATION_SUGGEST_OPENAI_MODEL", "gpt-4.1-mini")).strip()
-    return value or "gpt-4.1-mini"
+    value = str(os.getenv("AFFILIATION_SUGGEST_OPENAI_MODEL", "gpt-4.1-nano")).strip()
+    return value or "gpt-4.1-nano"
 
 
 def _openai_fallback_model() -> str:
@@ -154,7 +154,7 @@ def _ask_openai_json(prompt: str) -> dict[str, Any]:
             response = create_response(
                 model=model_name,
                 input=prompt,
-                max_output_tokens=600,
+                max_output_tokens=280,
             )
             return _extract_json_object(str(getattr(response, "output_text", "")))
         except Exception:
@@ -173,13 +173,10 @@ def _to_bool(value: Any) -> bool:
 
 def _build_openai_suggestions_prompt(*, query: str, limit: int) -> str:
     return (
-        "You are an institution lookup engine for academic affiliations.\n"
-        "Return ONLY valid JSON and no markdown.\n"
-        f'Input query: "{query}".\n'
-        f"Return up to {limit} high-confidence institution matches.\n"
-        "Prefer universities, hospitals, research institutes, and public labs.\n"
-        "If metadata is unknown, return null for that field.\n"
-        "Schema:\n"
+        "Institution lookup. Return JSON only.\n"
+        f'Query: "{query}". Return up to {limit} matches.\n'
+        "Prefer universities, hospitals, research institutes.\n"
+        "Unknown fields must be null.\n"
         '{\n'
         '  "items": [\n'
         "    {\n"
@@ -256,12 +253,9 @@ def _build_openai_address_prompt(
 ) -> str:
     location_hint = ", ".join(part for part in [city, region, country] if part) or "none"
     return (
-        "You are resolving an institution's postal address.\n"
-        "Return ONLY valid JSON and no markdown.\n"
-        f'Institution name: "{name}".\n'
-        f'Location hints: "{location_hint}".\n'
-        "If not confident enough to resolve, return resolved=false.\n"
-        "Schema:\n"
+        "Resolve institution postal address. Return JSON only.\n"
+        f'Institution: "{name}". Hints: "{location_hint}".\n'
+        "If not confident, return resolved=false.\n"
         "{\n"
         '  "resolved": true | false,\n'
         '  "line_1": "string|null",\n'

@@ -128,7 +128,7 @@ const TITLE_OPTIONS = [
 const MAX_JOB_ROLES = 8
 const MAX_PUBLICATION_AFFILIATIONS = 12
 const MAX_PROFILE_PHOTO_BYTES = 5 * 1024 * 1024
-const AFFILIATION_LOOKUP_DEBOUNCE_MS = 120
+const AFFILIATION_LOOKUP_DEBOUNCE_MS = 60
 const DEFAULT_PROFILE_PHOTO_POSITION_X = 50
 const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
 const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
@@ -1375,7 +1375,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     })
     if (clean.length >= 2) {
       lastAutoPopulateAffiliationKeyRef.current = normalized
-      void onResolvePrimaryAffiliationFromCurrent(clean)
     } else {
       lastAutoPopulateAffiliationKeyRef.current = ''
     }
@@ -1939,11 +1938,20 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       setPrimaryAffiliationInputFocused(false)
       setActiveAffiliationIndex(targetIndex)
       lastAutoPopulateAffiliationKeyRef.current = normalizedKey
-      await resolvePrimaryAffiliationAddress({
-        organisation: clean,
-        seedMetadata: metadata,
-        replaceExisting: true,
-      })
+      const hasCompleteMetadata = Boolean(
+        metadata.address &&
+        metadata.city &&
+        metadata.region &&
+        metadata.postalCode &&
+        metadata.country,
+      )
+      if (!hasCompleteMetadata) {
+        void resolvePrimaryAffiliationAddress({
+          organisation: clean,
+          seedMetadata: metadata,
+          replaceExisting: true,
+        })
+      }
     })
   }
 
