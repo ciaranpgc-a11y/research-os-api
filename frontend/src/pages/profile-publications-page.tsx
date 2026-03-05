@@ -344,7 +344,7 @@ function inferArticleTypeFromTitle(title: string | null | undefined): string {
     return 'Systematic review'
   }
   if (ARTICLE_TYPE_SCOPING_PATTERN.test(clean)) {
-    return 'Scoping'
+    return 'Systematic review'
   }
   if (ARTICLE_TYPE_SR_PATTERN.test(clean)) {
     return 'Systematic review'
@@ -391,8 +391,8 @@ function deriveArticleTypeLabel(work: {
     if (normalizedClassification === 'meta-analysis') {
       return 'Systematic review'
     }
-    if (normalizedClassification === 'scoping review') {
-      return 'Scoping'
+    if (normalizedClassification === 'scoping' || normalizedClassification === 'scoping review' || normalizedClassification === 'evidence map') {
+      return 'Systematic review'
     }
     if (normalizedClassification === 'systematic review') {
       return 'Systematic review'

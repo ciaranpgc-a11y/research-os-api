@@ -174,6 +174,21 @@ def _normalize_status(value: str | None) -> str:
     return READY_STATUS
 
 
+def _normalize_article_type_label(value: Any, *, default: str = "Original") -> str:
+    clean = str(value or "").strip()
+    if not clean:
+        return default
+    normalized = (
+        clean.lower()
+        .replace("_", " ")
+        .replace("-", " ")
+    )
+    normalized = " ".join(normalized.split())
+    if normalized in {"scoping", "scoping review", "evidence map"}:
+        return "Systematic review"
+    return clean
+
+
 def _provider_priority(name: str) -> int:
     normalized = str(name or "").strip().lower()
     if normalized == "openalex":
@@ -1714,7 +1729,7 @@ def _contract_breakdowns(
             or "Unspecified"
         )
         venue = str(publication.get("journal") or publication.get("venue") or "Unknown venue").strip() or "Unknown venue"
-        article_type = str(publication.get("article_type") or "Original").strip() or "Original"
+        article_type = _normalize_article_type_label(publication.get("article_type"))
         citations = max(0, int(_safe_int(publication.get("citations_lifetime")) or 0))
         
         type_counts[publication_type] += 1
@@ -2499,7 +2514,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 or None,
                 "work_type": str(work.work_type or "").strip() or None,
                 # Article type tracks study/editorial style (e.g., original, review, protocol).
-                "article_type": str(work.publication_type or "").strip() or None,
+                "article_type": _normalize_article_type_label(
+                    work.publication_type, default=""
+                ) or None,
                 "doi": str(work.doi or "").strip() or None,
                 "pmid": str(work.pmid or "").strip() or None,
                 "openalex_work_id": openalex_work_id,

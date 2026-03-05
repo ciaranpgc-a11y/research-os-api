@@ -4561,7 +4561,7 @@ function inferArticleTypeFromText(value: string | null | undefined): string {
     return 'Systematic review'
   }
   if (ARTICLE_TYPE_SCOPING_PATTERN.test(clean)) {
-    return 'Scoping'
+    return 'Systematic review'
   }
   if (ARTICLE_TYPE_SR_PATTERN.test(clean)) {
     return 'Systematic review'
@@ -4603,8 +4603,8 @@ function formatArticleCategoryLabel(
   ) {
     return 'Systematic review'
   }
-  if (articleKey === 'scoping' || articleKey === 'scoping-review') {
-    return 'Scoping'
+  if (articleKey === 'scoping' || articleKey === 'scoping-review' || articleKey === 'evidence-map') {
+    return 'Systematic review'
   }
   if (articleKey === 'literature-review' || articleKey === 'narrative-review') {
     return 'Literature review'
