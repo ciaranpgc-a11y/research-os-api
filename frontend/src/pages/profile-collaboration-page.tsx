@@ -781,7 +781,7 @@ function clampCollaborationTableColumnsToAvailableWidth(input: {
       'coauthored_works',
       'collaboration_score',
       'last_year',
-    ].filter((column) => visibleColumns.includes(column))
+    ].filter((column): column is CollaborationTableColumnKey => visibleColumns.includes(column))
 
     for (const column of shrinkOrder) {
       if (overflow <= 0) {
@@ -824,7 +824,7 @@ function clampCollaborationTableColumnsToAvailableWidth(input: {
       'coauthored_works',
       'collaboration_score',
       'last_year',
-    ].filter((column) => visibleColumns.includes(column))
+    ].filter((column): column is CollaborationTableColumnKey => visibleColumns.includes(column))
 
     while (remaining > 0) {
       const growColumns = growOrder.filter(
