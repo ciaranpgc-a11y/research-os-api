@@ -2686,7 +2686,9 @@ export function PublicationsPerYearChart({
   const activeBucketSize = activeWindowBars.bucketSize
   const meanValue = isCompactTileMode && showMeanLine && Number.isFinite(meanValueRaw) && meanValueRaw >= 0
     ? meanValueRaw
-    : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
+    : effectiveWindowMode === '1y'
+      ? activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+      : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
   const meanValueDisplay = Number.isFinite(meanValue)
     ? (() => {
       const rounded = Math.round(meanValue * 10) / 10
@@ -5595,37 +5597,28 @@ function TotalPublicationsDrilldownWorkspace({
     () => trajectoryVisibleYears.map((year) => String(year)),
     [trajectoryVisibleYears],
   )
-  const trajectorySvgWidth = 320
-  const trajectorySvgHeight = 138
-  const trajectoryPlotPaddingX = 8
-  const trajectoryPlotPaddingY = 8
-  const trajectoryPlotMinX = trajectoryPlotPaddingX
-  const trajectoryPlotMaxX = trajectorySvgWidth - trajectoryPlotPaddingX
-  const trajectoryPlotMinY = trajectoryPlotPaddingY
-  const trajectoryPlotMaxY = trajectorySvgHeight - trajectoryPlotPaddingY
-  const trajectoryPlotHeight = trajectoryPlotMaxY - trajectoryPlotMinY
+  const trajectoryPlotWidth = 100
+  const trajectoryPlotHeight = 100
   const trajectoryPoints = useMemo(
     () => (
       trajectoryValues.length
         ? buildLinePointsFromBounds(
           trajectoryValues,
-          trajectorySvgWidth,
-          trajectorySvgHeight,
+          trajectoryPlotWidth,
+          trajectoryPlotHeight,
           trajectoryLabels,
           0,
           trajectoryAxisMax,
-          trajectoryPlotPaddingX,
-          trajectoryPlotPaddingY,
+          0,
+          0,
         )
         : []
     ),
     [
       trajectoryAxisMax,
       trajectoryLabels,
-      trajectoryPlotPaddingX,
-      trajectoryPlotPaddingY,
-      trajectorySvgHeight,
-      trajectorySvgWidth,
+      trajectoryPlotHeight,
+      trajectoryPlotWidth,
       trajectoryValues,
     ],
   )
@@ -5634,23 +5627,21 @@ function TotalPublicationsDrilldownWorkspace({
       trajectoryVisibleMoving.length
         ? buildLinePointsFromBounds(
           trajectoryVisibleMoving,
-          trajectorySvgWidth,
-          trajectorySvgHeight,
+          trajectoryPlotWidth,
+          trajectoryPlotHeight,
           trajectoryLabels,
           0,
           trajectoryAxisMax,
-          trajectoryPlotPaddingX,
-          trajectoryPlotPaddingY,
+          0,
+          0,
         )
         : []
     ),
     [
       trajectoryAxisMax,
       trajectoryLabels,
-      trajectoryPlotPaddingX,
-      trajectoryPlotPaddingY,
-      trajectorySvgHeight,
-      trajectorySvgWidth,
+      trajectoryPlotHeight,
+      trajectoryPlotWidth,
       trajectoryVisibleMoving,
     ],
   )
@@ -5659,23 +5650,21 @@ function TotalPublicationsDrilldownWorkspace({
       trajectoryVisibleRaw.length
         ? buildLinePointsFromBounds(
           trajectoryVisibleRaw,
-          trajectorySvgWidth,
-          trajectorySvgHeight,
+          trajectoryPlotWidth,
+          trajectoryPlotHeight,
           trajectoryLabels,
           0,
           trajectoryAxisMax,
-          trajectoryPlotPaddingX,
-          trajectoryPlotPaddingY,
+          0,
+          0,
         )
         : []
     ),
     [
       trajectoryAxisMax,
       trajectoryLabels,
-      trajectoryPlotPaddingX,
-      trajectoryPlotPaddingY,
-      trajectorySvgHeight,
-      trajectorySvgWidth,
+      trajectoryPlotHeight,
+      trajectoryPlotWidth,
       trajectoryVisibleRaw,
     ],
   )
@@ -5877,7 +5866,7 @@ function TotalPublicationsDrilldownWorkspace({
       ? totalPublicationsFromChart / activeYears
       : Number(chartData.mean_value)
     const meanYearlyValue = Number.isFinite(meanYearlyPublications)
-      ? formatDrilldownValue(Math.round(meanYearlyPublications * 10) / 10)
+      ? (Math.round(meanYearlyPublications * 10) / 10).toFixed(1)
       : '\u2014'
     const yearToDateValue = formatInt(Math.round(resolvedCurrentYearYtd))
 
@@ -6466,15 +6455,15 @@ function TotalPublicationsDrilldownWorkspace({
                       data-house-role="chart-frame"
                     >
                       <div className="absolute overflow-visible" style={trajectoryPlotAreaStyle}>
-                        <svg viewBox={`0 0 ${trajectorySvgWidth} ${trajectorySvgHeight}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
+                        <svg viewBox={`0 0 ${trajectoryPlotWidth} ${trajectoryPlotHeight}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
                           {trajectoryHorizontalGridRatios.map((ratio, index) => {
                             const clampedRatio = Math.max(0, Math.min(1, ratio))
-                            const y = trajectoryPlotMaxY - (trajectoryPlotHeight * clampedRatio)
+                            const y = trajectoryPlotHeight - (trajectoryPlotHeight * clampedRatio)
                             return (
                               <line
                                 key={`trajectory-grid-${index}`}
-                                x1={trajectoryPlotMinX}
-                                x2={trajectoryPlotMaxX}
+                                x1={0}
+                                x2={trajectoryPlotWidth}
                                 y1={y}
                                 y2={y}
                                 stroke="hsl(var(--stroke-soft) / 0.56)"
@@ -6484,37 +6473,37 @@ function TotalPublicationsDrilldownWorkspace({
                             )
                           })}
                           <line
-                            x1={trajectoryPlotMinX}
-                            x2={trajectoryPlotMaxX}
-                            y1={trajectoryPlotMinY}
-                            y2={trajectoryPlotMinY}
+                            x1={0}
+                            x2={trajectoryPlotWidth}
+                            y1={0}
+                            y2={0}
                             stroke="hsl(var(--stroke-soft) / 0.56)"
                             strokeWidth={1}
                             vectorEffect="non-scaling-stroke"
                           />
                           <line
-                            x1={trajectoryPlotMinX}
-                            x2={trajectoryPlotMinX}
-                            y1={trajectoryPlotMinY}
-                            y2={trajectoryPlotMaxY}
+                            x1={0}
+                            x2={0}
+                            y1={0}
+                            y2={trajectoryPlotHeight}
                             stroke="hsl(var(--stroke-soft) / 0.56)"
                             strokeWidth={1}
                             vectorEffect="non-scaling-stroke"
                           />
                           <line
-                            x1={trajectoryPlotMaxX}
-                            x2={trajectoryPlotMaxX}
-                            y1={trajectoryPlotMinY}
-                            y2={trajectoryPlotMaxY}
+                            x1={trajectoryPlotWidth}
+                            x2={trajectoryPlotWidth}
+                            y1={0}
+                            y2={trajectoryPlotHeight}
                             stroke="hsl(var(--stroke-soft) / 0.56)"
                             strokeWidth={1}
                             vectorEffect="non-scaling-stroke"
                           />
                           <line
-                            x1={trajectoryPlotMinX}
-                            x2={trajectoryPlotMaxX}
-                            y1={trajectoryPlotMaxY}
-                            y2={trajectoryPlotMaxY}
+                            x1={0}
+                            x2={trajectoryPlotWidth}
+                            y1={trajectoryPlotHeight}
+                            y2={trajectoryPlotHeight}
                             stroke="hsl(var(--stroke-soft) / 0.56)"
                             strokeWidth={1}
                             vectorEffect="non-scaling-stroke"
@@ -6533,14 +6522,12 @@ function TotalPublicationsDrilldownWorkspace({
 
                       <div className="pointer-events-none absolute" style={trajectoryYAxisPanelStyle} aria-hidden="true">
                         {trajectoryAxisTickValues.map((tickValue, index) => {
-                          const ratio = Math.max(0, Math.min(1, trajectoryTickRatios[index] || 0))
-                          const tickY = trajectoryPlotMaxY - (trajectoryPlotHeight * ratio)
-                          const bottomPct = Math.max(0, Math.min(100, ((trajectorySvgHeight - tickY) / trajectorySvgHeight) * 100))
+                          const pct = Math.max(0, Math.min(100, (trajectoryTickRatios[index] || 0) * 100))
                           return (
                             <p
                               key={`trajectory-y-axis-${tickValue}-${index}`}
                               className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
-                              style={{ bottom: `${bottomPct}%`, transform: 'translateY(50%)' }}
+                              style={{ bottom: `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM}rem)` }}
                             >
                               {formatInt(Math.round(Number(tickValue || 0)))}
                             </p>

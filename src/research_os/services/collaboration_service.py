@@ -2314,8 +2314,6 @@ def _match_existing_for_import(
     for row in rows:
         if _name_similarity(candidate_name, row.full_name) < 0.92:
             continue
-        if _affiliation_similarity(candidate_inst, row.primary_institution) < 0.8:
-            continue
         return row
     return None
 
@@ -2429,6 +2427,29 @@ def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:
                     or None
                 )
                 changed = True
+
+            # Add candidate institution to affiliations if different from primary
+            candidate_institution = re.sub(
+                r"\s+",
+                " ",
+                str(candidate.get("primary_institution") or "").strip(),
+            )
+            if candidate_institution and candidate_institution != existing.primary_institution:
+                existing_affiliation = session.scalars(
+                    select(CollaboratorAffiliation).where(
+                        CollaboratorAffiliation.collaborator_id == existing.id,
+                        func.lower(CollaboratorAffiliation.institution_name) == candidate_institution.lower(),
+                    )
+                ).first()
+                if not existing_affiliation:
+                    session.add(
+                        CollaboratorAffiliation(
+                            collaborator_id=existing.id,
+                            institution_name=candidate_institution,
+                        )
+                    )
+                    changed = True
+
             if changed:
                 updated_count += 1
             else:
