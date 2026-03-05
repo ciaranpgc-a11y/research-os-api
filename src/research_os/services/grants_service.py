@@ -1549,8 +1549,17 @@ def _load_persisted_persona_grants(
     if not clean_user_id:
         return None
     create_all_tables()
+    user_name_value = ""
+    user_openalex_author_id: str | None = None
+    user_orcid_id: str | None = None
+    persisted_rows: list[dict[str, Any]] = []
     with session_scope() as session:
         user = session.scalar(select(User).where(User.id == clean_user_id))
+        if user:
+            user_name_value = _sanitize_text(user.name)
+            user_openalex_author_id = _sanitize_text(user.openalex_author_id) or None
+            user_orcid_id = _sanitize_text(user.orcid_id) or None
+
         rows = session.scalars(
             select(PersonaGrantRecord)
             .where(
@@ -1561,24 +1570,39 @@ def _load_persisted_persona_grants(
                 PersonaGrantRecord.updated_at.desc(),
             )
         ).all()
+        for row in rows:
+            persisted_rows.append(
+                {
+                    "raw_payload": dict(row.raw_payload or {}),
+                    "source_provider": _sanitize_text(row.source_provider)
+                    or OPENALEX_SOURCE_PROVIDER,
+                    "source_timestamp": (
+                        row.source_timestamp.astimezone(timezone.utc).isoformat()
+                        if row.source_timestamp
+                        else _utcnow_iso()
+                    ),
+                }
+            )
 
-    if not rows:
+    if not persisted_rows:
         return None
 
     items: list[dict[str, Any]] = []
-    for row in rows:
-        payload = dict(row.raw_payload or {})
+    for persisted in persisted_rows:
+        payload = dict(persisted.get("raw_payload") or {})
         relation = _sanitize_text(payload.get("relationship_to_person"))
         if relationship_filter == "won" and relation != "won_by_person":
             continue
         if relationship_filter == "published_under" and relation == "won_by_person":
             continue
-        payload["source"] = _sanitize_text(payload.get("source")) or row.source_provider
-        payload["source_timestamp"] = (
-            row.source_timestamp.astimezone(timezone.utc).isoformat()
-            if row.source_timestamp
-            else _utcnow_iso()
+        payload["source"] = (
+            _sanitize_text(payload.get("source"))
+            or _sanitize_text(persisted.get("source_provider"))
+            or OPENALEX_SOURCE_PROVIDER
         )
+        payload["source_timestamp"] = _sanitize_text(
+            persisted.get("source_timestamp")
+        ) or _utcnow_iso()
         items.append(payload)
         if len(items) >= limit:
             break
@@ -1593,15 +1617,15 @@ def _load_persisted_persona_grants(
         for item in items
         if _sanitize_text(item.get("source"))
     }
-    user_name = _sanitize_text(user.name) if user and user.name else _sanitize_text(f"{first_name} {last_name}")
+    user_name = user_name_value or _sanitize_text(f"{first_name} {last_name}")
     return {
         "first_name": first_name,
         "last_name": last_name,
         "full_name": _sanitize_text(f"{first_name} {last_name}"),
         "author": {
-            "openalex_author_id": _sanitize_text(user.openalex_author_id) if user else None,
+            "openalex_author_id": user_openalex_author_id,
             "display_name": user_name or None,
-            "orcid": _sanitize_text(user.orcid_id) if user else None,
+            "orcid": user_orcid_id,
             "works_count": 0,
             "cited_by_count": 0,
         },

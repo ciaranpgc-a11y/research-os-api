@@ -1933,16 +1933,26 @@ export function ApprovalsContent() {
                   </Row>
                 </TooltipProvider>
               </MatrixCell>
-              <MatrixCell title="Badge" note="default / secondary / outline / destructive / positive / intermediate / negative">
-                <Row gap="sm" align="start">
-                  <Badge>Default</Badge>
-                  <Badge variant="secondary">Secondary</Badge>
-                  <Badge variant="outline">Outline</Badge>
-                  <Badge variant="destructive">Destructive</Badge>
-                  <Badge variant="positive">Positive</Badge>
-                  <Badge variant="intermediate">Intermediate</Badge>
-                  <Badge variant="negative">Negative</Badge>
-                </Row>
+              <MatrixCell title="Badge" note="default + small status badges (positive / intermediate / negative)">
+                <Stack space="sm">
+                  <Row gap="sm" align="start">
+                    <Badge>Default</Badge>
+                    <Badge variant="secondary">Secondary</Badge>
+                    <Badge variant="outline">Outline</Badge>
+                    <Badge variant="destructive">Destructive</Badge>
+                    <Badge variant="positive">Positive</Badge>
+                    <Badge variant="intermediate">Intermediate</Badge>
+                    <Badge variant="negative">Negative</Badge>
+                  </Row>
+                  <Row gap="sm" align="start">
+                    <Badge size="sm" variant="positive">CORE</Badge>
+                    <Badge size="sm" variant="intermediate">REGULAR</Badge>
+                    <Badge size="sm" variant="negative">OCCASIONAL</Badge>
+                    <Badge size="sm" variant="positive">ACTIVE</Badge>
+                    <Badge size="sm" variant="intermediate">RECENT</Badge>
+                    <Badge size="sm" variant="negative">HISTORIC</Badge>
+                  </Row>
+                </Stack>
               </MatrixCell>
             </Grid>
 

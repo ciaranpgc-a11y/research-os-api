@@ -326,24 +326,24 @@ function nameInitialCompatible(a: string, b: string): boolean {
   return true
 }
 
-function relationshipTone(value: string): 'default' | 'secondary' | 'outline' {
+function relationshipTone(value: string): 'positive' | 'intermediate' | 'negative' {
   if (value === 'CORE') {
-    return 'default'
+    return 'positive'
   }
   if (value === 'REGULAR') {
-    return 'secondary'
+    return 'intermediate'
   }
-  return 'outline'
+  return 'negative'
 }
 
-function activityTone(value: string): 'default' | 'secondary' | 'outline' {
+function activityTone(value: string): 'positive' | 'intermediate' | 'negative' {
   if (value === 'ACTIVE') {
-    return 'default'
+    return 'positive'
   }
   if (value === 'RECENT') {
-    return 'secondary'
+    return 'intermediate'
   }
-  return 'outline'
+  return 'negative'
 }
 
 function relationshipFromClassification(
@@ -2513,7 +2513,7 @@ export function ProfileCollaborationPage() {
                           if (columnKey === 'relationship') {
                             return (
                               <TableCell key={`${item.id}-relationship`} className="house-table-cell-text align-top whitespace-nowrap">
-                                <Badge variant={relationshipTone(resolveRelationshipTier(item.metrics))}>
+                                <Badge size="sm" variant={relationshipTone(resolveRelationshipTier(item.metrics))}>
                                   {resolveRelationshipTier(item.metrics)}
                                 </Badge>
                               </TableCell>
@@ -2522,7 +2522,7 @@ export function ProfileCollaborationPage() {
                           if (columnKey === 'activity') {
                             return (
                               <TableCell key={`${item.id}-activity`} className="house-table-cell-text align-top whitespace-nowrap">
-                                <Badge variant={activityTone(resolveActivityStatus(item.metrics))}>
+                                <Badge size="sm" variant={activityTone(resolveActivityStatus(item.metrics))}>
                                   {resolveActivityStatus(item.metrics)}
                                 </Badge>
                               </TableCell>
@@ -2572,10 +2572,10 @@ export function ProfileCollaborationPage() {
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-medium">{item.full_name}</p>
                     <div className="flex items-center gap-1">
-                      <Badge variant={relationshipTone(resolveRelationshipTier(item.metrics))}>
+                      <Badge size="sm" variant={relationshipTone(resolveRelationshipTier(item.metrics))}>
                         {resolveRelationshipTier(item.metrics)}
                       </Badge>
-                      <Badge variant={activityTone(resolveActivityStatus(item.metrics))}>
+                      <Badge size="sm" variant={activityTone(resolveActivityStatus(item.metrics))}>
                         {resolveActivityStatus(item.metrics)}
                       </Badge>
                     </div>

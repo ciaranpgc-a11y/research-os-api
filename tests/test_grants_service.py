@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
 
+from research_os.db import (
+    PersonaGrantRecord,
+    User,
+    create_all_tables,
+    reset_database_state,
+    session_scope,
+)
 from research_os.services.grants_service import (
     GrantsValidationError,
     list_openalex_grants_for_person,
@@ -77,6 +85,12 @@ class _FakeClient:
         any_name = first_pi.get("any_name") if isinstance(first_pi, dict) else ""
         key = f"{url}|pi:{any_name}"
         return self._responses.get(key, _FakeResponse(200, {"results": []}))
+
+
+def _set_test_environment(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "research_os_test_grants_service.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path}")
+    reset_database_state()
 
 
 def test_list_openalex_grants_for_person_aggregates_and_enriches(monkeypatch) -> None:
@@ -716,3 +730,66 @@ def test_list_openalex_grants_for_person_rejects_invalid_relationship_filter() -
             last_name="Lovelace",
             relationship="bad-filter",
         )
+
+
+def test_list_openalex_grants_for_person_uses_persisted_cache_without_session_binding_errors(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    with session_scope() as session:
+        user = User(
+            email="ciaran@example.com",
+            password_hash="hash",
+            name="Ciaran Grafton-Clarke",
+            openalex_author_id="A5029772193",
+            orcid_id=None,
+        )
+        session.add(user)
+        session.flush()
+        session.add(
+            PersonaGrantRecord(
+                user_id=str(user.id),
+                grant_key="openalex|f1|g1",
+                source_provider="openalex",
+                funder_name="Test Funder",
+                funder_identifier="https://openalex.org/F1",
+                award_identifier="AWD-1",
+                award_title="Test Award",
+                person_role="PI",
+                source_timestamp=datetime.now(timezone.utc),
+                raw_payload={
+                    "display_name": "Test Award",
+                    "funder_award_id": "AWD-1",
+                    "funder": {
+                        "id": "https://openalex.org/F1",
+                        "display_name": "Test Funder",
+                    },
+                    "supporting_works_count": 1,
+                    "supporting_works": [
+                        {
+                            "id": "https://openalex.org/W1",
+                            "title": "Work One",
+                            "publication_year": 2025,
+                        }
+                    ],
+                    "relationship_to_person": "won_by_person",
+                    "source": "openalex",
+                },
+            )
+        )
+        user_id = str(user.id)
+
+    payload = list_openalex_grants_for_person(
+        first_name="Ciaran",
+        last_name="Grafton-Clarke",
+        user_id=user_id,
+        refresh=False,
+        limit=30,
+    )
+
+    assert payload["total"] == 1
+    assert payload["author"]["openalex_author_id"] == "A5029772193"
+    assert payload["author"]["display_name"] == "Ciaran Grafton-Clarke"
+    assert payload["items"][0]["display_name"] == "Test Award"
