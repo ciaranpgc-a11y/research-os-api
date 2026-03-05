@@ -206,6 +206,44 @@ def test_import_mapping_logic_matches_orcid_openalex_and_name(
         assert int(total or 0) == 4
 
 
+def test_list_collaborators_dedupes_openalex_id_format_variants(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="openalex-dedupe@example.com")
+    with session_scope() as session:
+        session.add_all(
+            [
+                Collaborator(
+                    owner_user_id=user_id,
+                    full_name="Case Variant",
+                    full_name_lower="case variant",
+                    openalex_author_id="A12345",
+                    primary_institution="Institute One",
+                ),
+                Collaborator(
+                    owner_user_id=user_id,
+                    full_name="Case Variant",
+                    full_name_lower="case variant",
+                    openalex_author_id="https://openalex.org/a12345/",
+                    primary_institution="Institute Two",
+                ),
+            ]
+        )
+        session.flush()
+
+    listing = list_collaborators_for_user(user_id=user_id, page=1, page_size=50)
+    assert listing["total"] == 1
+    assert len(listing["items"]) == 1
+    first = listing["items"][0]
+    assert first["duplicate_count"] == 2
+    assert sorted(first["institution_labels"]) == ["Institute One", "Institute Two"]
+
+    summary = get_collaboration_metrics_summary(user_id=user_id)
+    assert summary["total_collaborators"] == 1
+
+
 def test_enrich_openalex_fills_missing_collaborator_fields(
     monkeypatch, tmp_path
 ) -> None:

@@ -87,6 +87,18 @@ function formatSourceTimestamp(value: string | null): string {
   return date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
+function isSessionExpiredError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '')
+  const lowered = message.toLowerCase()
+  return (
+    lowered.includes('session is invalid or expired')
+    || lowered.includes('session was not found')
+    || lowered.includes('session token is required')
+    || lowered.includes('unauthorized')
+    || lowered.includes('(401)')
+  )
+}
+
 export function ProfileGrantsPage() {
   const navigate = useNavigate()
   const [token, setToken] = useState<string | null>(() => getAuthSessionToken())
@@ -118,7 +130,7 @@ export function ProfileGrantsPage() {
         setLastName(parsed.lastName)
       } catch (loadError) {
         const message = loadError instanceof Error ? loadError.message : 'Could not load profile name.'
-        if (message.toLowerCase().includes('session')) {
+        if (isSessionExpiredError(loadError)) {
           clearAuthSessionToken()
           navigate('/auth?next=/profile/grants&reason=session_expired', { replace: true })
           return
@@ -166,7 +178,7 @@ export function ProfileGrantsPage() {
       setPayload(response)
     } catch (lookupErr) {
       const message = lookupErr instanceof Error ? lookupErr.message : 'Could not load grants.'
-      if (message.toLowerCase().includes('session')) {
+      if (isSessionExpiredError(lookupErr)) {
         clearAuthSessionToken()
         navigate('/auth?next=/profile/grants&reason=session_expired', { replace: true })
         return
@@ -446,4 +458,3 @@ export function ProfileGrantsPage() {
     </PageFrame>
   )
 }
-

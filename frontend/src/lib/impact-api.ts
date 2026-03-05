@@ -184,6 +184,7 @@ export async function registerAuth(input: {
       body: JSON.stringify(input),
     },
     'Registration failed',
+    { timeoutMs: 30_000, retryCount: 0 },
   )
   cacheAuthIdentity(payload.user)
   return payload
@@ -201,6 +202,7 @@ export async function loginAuth(input: {
       body: JSON.stringify(input),
     },
     'Login failed',
+    { timeoutMs: 30_000, retryCount: 0 },
   )
   cacheAuthIdentity(payload.user)
   return payload
@@ -218,6 +220,7 @@ export async function loginAuthChallenge(input: {
       body: JSON.stringify(input),
     },
     'Login challenge failed',
+    { timeoutMs: 30_000, retryCount: 0 },
   )
 }
 
@@ -236,6 +239,7 @@ export async function verifyLoginTwoFactor(input: {
       }),
     },
     '2FA verification failed',
+    { timeoutMs: 30_000, retryCount: 0 },
   )
   cacheAuthIdentity(payload.user)
   return payload

@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import hmac
+import logging
 import os
 import secrets
 import shutil
 import string
+import threading
+import time
 from pathlib import Path
 
 from sqlalchemy import select
@@ -56,6 +59,10 @@ REQUIRE_EMAIL_VERIFICATION = os.getenv(
 ).strip().lower() in {"1", "true", "yes", "on"}
 _DUMMY_PASSWORD_HASH = hash_password("AaweDummyPassword123")
 _UNSET = object()
+logger = logging.getLogger(__name__)
+_SIGNIN_RECONCILE_LOCK = threading.Lock()
+_SIGNIN_RECONCILE_INFLIGHT: set[str] = set()
+_SIGNIN_RECONCILE_LAST_RUN_MONOTONIC: dict[str, float] = {}
 
 
 class AuthValidationError(RuntimeError):
@@ -261,7 +268,25 @@ def _enqueue_post_sign_in_refresh(*, user_id: str, reason: str) -> None:
     return
 
 
-def _reconcile_data_library_after_sign_in(
+def _signin_reconcile_async_enabled() -> bool:
+    return str(os.getenv("AUTH_SIGNIN_RECONCILE_ASYNC", "1")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _signin_reconcile_min_interval_seconds() -> int:
+    raw = str(os.getenv("AUTH_SIGNIN_RECONCILE_MIN_INTERVAL_SECONDS", "900")).strip()
+    try:
+        parsed = int(raw)
+    except Exception:
+        parsed = 900
+    return max(0, min(24 * 60 * 60, parsed))
+
+
+def _reconcile_data_library_sync(
     *, user_id: str, account_key_hint: str | None = None
 ) -> None:
     clean_user_id = str(user_id or "").strip()
@@ -275,7 +300,56 @@ def _reconcile_data_library_after_sign_in(
             account_key_hint=account_key_hint,
         )
     except Exception:
+        logger.warning(
+            "signin_data_library_reconcile_failed",
+            extra={"user_id": clean_user_id},
+        )
         return
+
+
+def _reconcile_data_library_after_sign_in(
+    *, user_id: str, account_key_hint: str | None = None
+) -> None:
+    clean_user_id = str(user_id or "").strip()
+    if not clean_user_id:
+        return
+    now_monotonic = time.monotonic()
+    min_interval_seconds = _signin_reconcile_min_interval_seconds()
+
+    with _SIGNIN_RECONCILE_LOCK:
+        if clean_user_id in _SIGNIN_RECONCILE_INFLIGHT:
+            return
+        last_run = _SIGNIN_RECONCILE_LAST_RUN_MONOTONIC.get(clean_user_id)
+        if (
+            last_run is not None
+            and min_interval_seconds > 0
+            and (now_monotonic - last_run) < min_interval_seconds
+        ):
+            return
+        _SIGNIN_RECONCILE_INFLIGHT.add(clean_user_id)
+        _SIGNIN_RECONCILE_LAST_RUN_MONOTONIC[clean_user_id] = now_monotonic
+
+    def _runner() -> None:
+        try:
+            _reconcile_data_library_sync(
+                user_id=clean_user_id,
+                account_key_hint=account_key_hint,
+            )
+        finally:
+            with _SIGNIN_RECONCILE_LOCK:
+                _SIGNIN_RECONCILE_INFLIGHT.discard(clean_user_id)
+                _SIGNIN_RECONCILE_LAST_RUN_MONOTONIC[clean_user_id] = (
+                    time.monotonic()
+                )
+
+    if _signin_reconcile_async_enabled():
+        threading.Thread(
+            target=_runner,
+            name=f"signin-reconcile-{clean_user_id[:8]}",
+            daemon=True,
+        ).start()
+        return
+    _runner()
 
 
 def _prune_login_challenges(*, session, user_id: str) -> None:

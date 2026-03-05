@@ -3063,10 +3063,10 @@ export function WorkspacesPage() {
 
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
           <ScrollArea className="h-full">
+            <div data-house-role="content-container" className="house-content-container house-content-container-wide">
             <Stack
               data-house-role="page"
               space="sm"
-              className="house-content-container house-content-container-wide"
             >
               <Row
                 align="center"
@@ -3076,44 +3076,58 @@ export function WorkspacesPage() {
               >
                 <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
                 <PageHeader
-                  heading="My Workspaces"
-                  description="Create and collaborate on research manuscripts with your team."
+                  heading={
+                    centerView === 'invitations'
+                      ? 'Invitations'
+                      : centerView === 'data-library'
+                        ? 'Data library'
+                        : 'My Workspaces'
+                  }
+                  description={
+                    centerView === 'invitations'
+                      ? 'Manage invitations to collaborate on research manuscripts and datasets.'
+                      : centerView === 'data-library'
+                        ? 'Display files, access, and permissions in your personal data library.'
+                        : 'Create and collaborate on research manuscripts with your team.'
+                  }
                   className="!ml-0 !mt-0"
                 />
               </Row>
 
-              <Section
-                className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}
-                surface="transparent"
-                inset="none"
-                spaceY="none"
-              >
-                <Toolbar>
-                  <Input
-                    value={newWorkspaceName}
-                    onChange={(event) => setNewWorkspaceName(event.target.value)}
-                    placeholder="New workspace name"
-                    className={cn('w-sz-220', HOUSE_INPUT_CLASS)}
-                  />
-                  <Button
-                    type="button"
-                    variant="primary"
-                    onClick={onCreateWorkspace}
-                    disabled={!canCreateWorkspace}
-                  >
-                    Create workspace
-                  </Button>
-                </Toolbar>
-                {!canCreateWorkspace ? (
-                  <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{WORKSPACE_OWNER_REQUIRED_MESSAGE}</p>
-                ) : null}
-                {createError ? (
-                  <p className="mt-3 text-sm text-red-700">{createError}</p>
-                ) : null}
-                {invitationStatus ? (
-                  <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{invitationStatus}</p>
-                ) : null}
-              </Section>
+              {centerView === 'workspaces' ? (
+                <Section
+                  className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}
+                  surface="transparent"
+                  inset="none"
+                  spaceY="none"
+                >
+                  <Toolbar>
+                    <Input
+                      value={newWorkspaceName}
+                      onChange={(event) => setNewWorkspaceName(event.target.value)}
+                      placeholder="New workspace name"
+                      className={cn('w-sz-220', HOUSE_INPUT_CLASS)}
+                    />
+                    <Button
+                      type="button"
+                      variant="primary"
+                      onClick={onCreateWorkspace}
+                      disabled={!canCreateWorkspace}
+                    >
+                      Create workspace
+                    </Button>
+                  </Toolbar>
+                  {!canCreateWorkspace ? (
+                    <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{WORKSPACE_OWNER_REQUIRED_MESSAGE}</p>
+                  ) : null}
+                  {createError ? (
+                    <p className="mt-3 text-sm text-red-700">{createError}</p>
+                  ) : null}
+                  {invitationStatus ? (
+                    <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{invitationStatus}</p>
+                  ) : null}
+                </Section>
+              ) : null}
 
               <Section
                 className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'rounded-lg border border-border', HOUSE_CARD_CLASS)}
@@ -3541,20 +3555,6 @@ export function WorkspacesPage() {
                   </>
                 ) : centerView === 'invitations' ? (
                   <>
-                    <Row
-                      align="center"
-                      gap="md"
-                      wrap={false}
-                      className="house-page-title-row"
-                    >
-                      <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
-                      <PageHeader
-                        heading="Invitations"
-                        description="Manage invitations to collaborate on research manuscripts and datasets."
-                        className="!ml-0 !mt-0"
-                      />
-                    </Row>
-
                     <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
                       <span className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
                         <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
@@ -3652,10 +3652,14 @@ export function WorkspacesPage() {
                     )}
                   </>
                 ) : (
-                  <WorkspacesDataLibraryView onOpenDrilldownMobile={() => setDataLibraryDrilldownMobileOpen(true)} />
+                  <WorkspacesDataLibraryView
+                    onOpenDrilldownMobile={() => setDataLibraryDrilldownMobileOpen(true)}
+                    showPageHeader={false}
+                  />
                 )}
               </Section>
             </Stack>
+            </div>
           </ScrollArea>
         </main>
 

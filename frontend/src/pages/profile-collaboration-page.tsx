@@ -218,8 +218,25 @@ function parseCommaSeparatedTokens(value: string): string[] {
     .slice(0, 20)
 }
 
+function openAlexIdentityKey(value: string | null | undefined): string {
+  const clean = String(value || '').trim()
+  if (!clean) {
+    return ''
+  }
+  const normalizedProtocol = clean.replace(/^http:\/\//i, 'https://')
+  const urlMatch = normalizedProtocol.match(/^https:\/\/openalex\.org\/(.+)$/i)
+  const suffix = (urlMatch ? urlMatch[1] : normalizedProtocol).trim().replace(/\/+$/, '')
+  if (!suffix) {
+    return ''
+  }
+  if (/^a\d+$/i.test(suffix)) {
+    return suffix.toUpperCase()
+  }
+  return suffix.toLowerCase()
+}
+
 function collaboratorIdentityKey(item: CollaboratorPayload): string {
-  const openAlexId = String(item.openalex_author_id || '').trim().toLowerCase()
+  const openAlexId = openAlexIdentityKey(item.openalex_author_id)
   if (openAlexId) {
     return `oa:${openAlexId}`
   }

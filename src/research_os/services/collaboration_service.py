@@ -342,9 +342,9 @@ def _metric_by_collaborator(
 
 
 def _collaborator_identity_key(collaborator: Collaborator) -> str:
-    openalex_id = re.sub(r"\s+", "", str(collaborator.openalex_author_id or "").strip().lower())
-    if openalex_id:
-        return f"oa:{openalex_id}"
+    openalex_key = _openalex_identity_key(collaborator.openalex_author_id)
+    if openalex_key:
+        return f"oa:{openalex_key}"
     orcid_id = _normalize_orcid_id(collaborator.orcid_id)
     if orcid_id:
         return f"orcid:{orcid_id.lower()}"
@@ -795,8 +795,8 @@ def create_collaborator_for_user(
             preferred_name=preferred_name,
             email=_normalize_email(payload.get("email")),
             orcid_id=orcid_id,
-            openalex_author_id=(
-                str(payload.get("openalex_author_id") or "").strip() or None
+            openalex_author_id=_normalize_openalex_author_id(
+                payload.get("openalex_author_id")
             ),
             primary_institution=primary_institution,
             department=(
@@ -882,8 +882,8 @@ def update_collaborator_for_user(
         if "orcid_id" in payload:
             collaborator.orcid_id = validate_orcid_id(payload.get("orcid_id"))
         if "openalex_author_id" in payload:
-            collaborator.openalex_author_id = (
-                str(payload.get("openalex_author_id") or "").strip() or None
+            collaborator.openalex_author_id = _normalize_openalex_author_id(
+                payload.get("openalex_author_id")
             )
         if "primary_institution" in payload:
             collaborator.primary_institution = (
@@ -1875,7 +1875,7 @@ def _resolve_openalex_author_id(
     if not isinstance(first, dict):
         return None
     author_id = str(first.get("id") or "").strip()
-    return author_id or None
+    return _normalize_openalex_author_id(author_id)
 
 
 def _normalize_openalex_author_id(value: str | None) -> str | None:
@@ -1886,10 +1886,22 @@ def _normalize_openalex_author_id(value: str | None) -> str | None:
         clean = "https://openalex.org/" + clean.removeprefix("http://openalex.org/")
     if clean.startswith("https://openalex.org/"):
         suffix = clean.removeprefix("https://openalex.org/").strip().strip("/")
+        if re.fullmatch(r"(?i)A\d+", suffix):
+            suffix = suffix.upper()
         return f"https://openalex.org/{suffix}" if suffix else None
     if re.fullmatch(r"(?i)A\d+", clean):
         return f"https://openalex.org/{clean.upper()}"
     return clean
+
+
+def _openalex_identity_key(value: str | None) -> str:
+    normalized = _normalize_openalex_author_id(value)
+    if not normalized:
+        return ""
+    lookup_id = _openalex_author_lookup_id(normalized)
+    if lookup_id:
+        return re.sub(r"\s+", "", lookup_id.strip().lower())
+    return re.sub(r"\s+", "", normalized.strip().lower())
 
 
 def _openalex_author_lookup_id(openalex_author_id: str) -> str | None:
@@ -2007,6 +2019,7 @@ def _iter_openalex_coauthors(
     openalex_author_id: str,
     mailto: str | None,
 ) -> list[dict[str, Any]]:
+    target_openalex_key = _openalex_identity_key(openalex_author_id)
     max_pages = _openalex_max_pages()
     coauthors: dict[str, dict[str, Any]] = {}
     for page in range(1, max_pages + 1):
@@ -2038,10 +2051,16 @@ def _iter_openalex_coauthors(
                 author = authorship.get("author")
                 if not isinstance(author, dict):
                     continue
-                candidate_openalex_id = str(author.get("id") or "").strip()
+                candidate_openalex_id = _normalize_openalex_author_id(
+                    str(author.get("id") or "").strip()
+                )
+                candidate_openalex_key = _openalex_identity_key(candidate_openalex_id)
                 if (
                     not candidate_openalex_id
-                    or candidate_openalex_id == openalex_author_id
+                    or (
+                        target_openalex_key
+                        and candidate_openalex_key == target_openalex_key
+                    )
                 ):
                     continue
                 name = re.sub(
@@ -2076,7 +2095,7 @@ def _iter_openalex_coauthors(
                             )
                             or None
                         )
-                key = candidate_orcid or candidate_openalex_id
+                key = candidate_orcid or candidate_openalex_key or candidate_openalex_id
                 existing = coauthors.get(key)
                 if existing is None:
                     coauthors[key] = {
@@ -2286,7 +2305,10 @@ def _match_existing_for_import(
     candidate: dict[str, Any],
 ) -> Collaborator | None:
     candidate_orcid = _safe_validate_orcid(candidate.get("orcid_id"))
-    candidate_openalex = str(candidate.get("openalex_author_id") or "").strip() or None
+    candidate_openalex = _normalize_openalex_author_id(
+        str(candidate.get("openalex_author_id") or "").strip() or None
+    )
+    candidate_openalex_key = _openalex_identity_key(candidate_openalex)
     candidate_name = str(candidate.get("full_name") or "").strip()
     candidate_inst = str(candidate.get("primary_institution") or "").strip()
     if candidate_orcid:
@@ -2310,6 +2332,10 @@ def _match_existing_for_import(
     rows = session.scalars(
         select(Collaborator).where(Collaborator.owner_user_id == user_id)
     ).all()
+    if candidate_openalex_key:
+        for row in rows:
+            if _openalex_identity_key(row.openalex_author_id) == candidate_openalex_key:
+                return row
     for row in rows:
         if _name_similarity(candidate_name, row.full_name) < 0.92:
             continue
@@ -2327,9 +2353,11 @@ def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:
                 "ORCID must be linked before importing collaborators from OpenAlex."
             )
         user_email = user.email
-    openalex_author_id = _resolve_openalex_author_id(
+    openalex_author_id = _normalize_openalex_author_id(
+        _resolve_openalex_author_id(
         orcid_id=user_orcid,
         mailto=_openalex_mailto(fallback_email=user_email),
+        )
     )
     if not openalex_author_id:
         raise CollaborationValidationError(
@@ -2358,10 +2386,9 @@ def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:
                     full_name=full_name,
                     full_name_lower=_normalize_name_lower(full_name),
                     orcid_id=candidate_orcid,
-                    openalex_author_id=str(
+                    openalex_author_id=_normalize_openalex_author_id(
                         candidate.get("openalex_author_id") or ""
-                    ).strip()
-                    or None,
+                    ),
                     primary_institution=(
                         re.sub(
                             r"\s+",
@@ -2404,9 +2431,9 @@ def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:
                 not existing.openalex_author_id
                 and str(candidate.get("openalex_author_id") or "").strip()
             ):
-                existing.openalex_author_id = str(
+                existing.openalex_author_id = _normalize_openalex_author_id(
                     candidate["openalex_author_id"]
-                ).strip()
+                )
                 changed = True
             if not existing.primary_institution and candidate.get(
                 "primary_institution"

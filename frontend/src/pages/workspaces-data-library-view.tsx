@@ -71,6 +71,7 @@ const HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS = cn(
 
 type WorkspacesDataLibraryViewProps = {
   onOpenDrilldownMobile?: () => void
+  showPageHeader?: boolean
 }
 
 function normalizeName(value: string | null | undefined): string {
@@ -142,7 +143,10 @@ function selectedCandidateByAssetIdValue(
   return map[assetId] || null
 }
 
-export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesDataLibraryViewProps = {}) {
+export function WorkspacesDataLibraryView({
+  onOpenDrilldownMobile,
+  showPageHeader = true,
+}: WorkspacesDataLibraryViewProps = {}) {
   const [assets, setAssets] = useState<LibraryAssetRecord[]>([])
   const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
@@ -570,19 +574,21 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
 
   return (
     <Stack data-house-role="page" space="sm">
-      <Row
-        align="center"
-        gap="md"
-        wrap={false}
-        className="house-page-title-row"
-      >
-        <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
-        <PageHeader
-          heading="Data library"
-          description="Display files, access, and permissions in your personal data library."
-          className="!ml-0 !mt-0"
-        />
-      </Row>
+      {showPageHeader ? (
+        <Row
+          align="center"
+          gap="md"
+          wrap={false}
+          className="house-page-title-row"
+        >
+          <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
+          <PageHeader
+            heading="Data library"
+            description="Display files, access, and permissions in your personal data library."
+            className="!ml-0 !mt-0"
+          />
+        </Row>
+      ) : null}
 
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
       <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
@@ -609,27 +615,27 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
         >
           <RefreshCw className={cn('mr-1 h-4 w-4', isLoading && 'animate-spin')} />
             Refresh
-          </Button>
-          {onOpenDrilldownMobile ? (
-            <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_DATA_CLASS, HOUSE_ACTIONS_PILL_CLASS, 'xl:hidden')}>
-              <button
-                type="button"
-                onClick={onOpenDrilldownMobile}
-                className={cn(
-                  HOUSE_ACTIONS_PILL_PRIMARY_CLASS,
-                  HOUSE_SECTION_TOOL_BUTTON_CLASS,
-                  HOUSE_BUTTON_TEXT_CLASS,
-                  'inline-flex h-8 items-center gap-1.5 px-3',
-                )}
-                aria-label="Open data library drilldown"
-                title="Open data library drilldown"
-              >
-                <PanelRightOpen className="h-3.5 w-3.5" />
-                Drilldown
-              </button>
-            </div>
-          ) : null}
-        </div>
+        </Button>
+        {onOpenDrilldownMobile ? (
+          <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_DATA_CLASS, HOUSE_ACTIONS_PILL_CLASS, 'xl:hidden')}>
+            <button
+              type="button"
+              onClick={onOpenDrilldownMobile}
+              className={cn(
+                HOUSE_ACTIONS_PILL_PRIMARY_CLASS,
+                HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                HOUSE_BUTTON_TEXT_CLASS,
+                'inline-flex h-8 items-center gap-1.5 px-3',
+              )}
+              aria-label="Open data library drilldown"
+              title="Open data library drilldown"
+            >
+              <PanelRightOpen className="h-3.5 w-3.5" />
+              Drilldown
+            </button>
+          </div>
+        ) : null}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <Input
