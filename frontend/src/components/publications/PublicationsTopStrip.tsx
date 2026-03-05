@@ -3416,7 +3416,7 @@ export function PublicationsPerYearChart({
     const sortedUnique = lineModeXAxisTicks
       .map((tick) => Math.max(0, Math.min(100, tick.leftPct)))
       .sort((left, right) => left - right)
-      .filter((value, index, values) => index === 0 || Math.abs(value - values[index - 1]) > 0.1)
+      .filter((value, index, values) => index === 0 || Math.abs(value - values[index - 1]) > 0.5)
     return sortedUnique
   }, [effectiveVisualMode, lineModeXAxisTicks])
 
@@ -3576,7 +3576,7 @@ export function PublicationsPerYearChart({
               </>
             ) : null}
             {effectiveVisualMode === 'line' && lineModeVerticalGridPercents.length ? (
-              <svg className="absolute inset-0 z-[1]" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <svg className="absolute inset-0 z-[1]" viewBox="0 0 100 100" preserveAspectRatio="none" shapeRendering="crispEdges">
                 {lineModeVerticalGridPercents.map((leftPct, index) => (
                   <line
                     key={`pub-line-grid-${index}`}
@@ -3586,6 +3586,7 @@ export function PublicationsPerYearChart({
                     y2="100"
                     stroke={`hsl(var(--stroke-soft) / 0.76)`}
                     strokeWidth="1"
+                    shapeRendering="crispEdges"
                     vectorEffect="non-scaling-stroke"
                   />
                 ))}
