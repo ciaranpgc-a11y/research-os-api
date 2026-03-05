@@ -5144,6 +5144,7 @@ export function PublicationCategoryDistributionChart({
     [activeBars, dimension, valueMode, windowMode],
   )
   const isEntryCycle = useIsFirstChartEntry(animationKey, animate && hasBars)
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const renderBars = activeBars
   const barsExpanded = useUnifiedToggleBarAnimation(
     `${animationKey}|distribution-bars`,
@@ -5179,10 +5180,16 @@ export function PublicationCategoryDistributionChart({
     : buildNiceAxis(maxWindowValue)
   const targetAxisMax = targetAxisScale.axisMax
   const axisMax = targetAxisMax
+  const displayedAxisMax = useEasedValue(
+    targetAxisMax,
+    `${animationKey}|distribution-y-axis-max`,
+    animate && hasBars && renderDisplayMode === 'chart',
+    axisDurationMs,
+  )
   const yAxisTickRatios = targetAxisScale.ticks.map((tickValue) => (
     targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax
   ))
-  const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * axisMax)
+  const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * Math.max(1, displayedAxisMax))
   const gridTickRatios = yAxisTickRatios.slice(1).filter((ratio) => Number.isFinite(ratio) && ratio > 0 && ratio < 1)
 
   if (!hasBars) {
@@ -5541,11 +5548,16 @@ export function PublicationCategoryDistributionChart({
         <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
           {yAxisTickValues.map((tickValue, index) => {
             const pct = Math.max(0, Math.min(100, (yAxisTickRatios[index] || 0) * 100))
+            const tickRatioKey = Math.round((yAxisTickRatios[index] || 0) * 1000)
             return (
               <p
-                key={`${dimension}-y-axis-${index}`}
+                key={`${dimension}-y-axis-${tickRatioKey}`}
                 className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
-                style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
+                style={{
+                  bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)`,
+                  transitionDuration: `${axisDurationMs}ms`,
+                  transitionProperty: 'bottom,opacity',
+                }}
               >
                 {showPercentageMode ? `${Math.round(tickValue)}%` : formatInt(tickValue)}
               </p>
