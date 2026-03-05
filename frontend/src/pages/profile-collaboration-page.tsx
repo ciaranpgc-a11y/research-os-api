@@ -235,21 +235,21 @@ function openAlexIdentityKey(value: string | null | undefined): string {
   return suffix.toLowerCase()
 }
 
-function collaboratorIdentityKey(item: CollaboratorPayload): string {
+function collaboratorIdentityTokens(item: CollaboratorPayload): string[] {
+  const tokens: string[] = []
   const openAlexId = openAlexIdentityKey(item.openalex_author_id)
   if (openAlexId) {
-    return `oa:${openAlexId}`
-  }
-  const orcidId = String(item.orcid_id || '').trim().toLowerCase()
-  if (orcidId) {
-    return `orcid:${orcidId}`
+    tokens.push(`oa:${openAlexId}`)
   }
   const email = String(item.email || '').trim().toLowerCase()
   if (email) {
-    return `email:${email}`
+    tokens.push(`email:${email}`)
   }
   const name = String(item.full_name || '').trim().toLowerCase().replace(/\s+/g, ' ')
-  return `name:${name}`
+  if (name) {
+    tokens.push(`name:${name}`)
+  }
+  return tokens
 }
 
 function relationshipTone(value: string): 'default' | 'secondary' | 'outline' {
@@ -990,12 +990,49 @@ export function ProfileCollaborationPage() {
   }, [listing])
 
   const canonicalCollaborators = useMemo<CollaboratorCanonical[]>(() => {
+    // Union-find grouping across all identity tokens (OpenAlex, email, name)
+    const items = listing?.items || []
+    const parent = new Map<string, string>()
+    function find(x: string): string {
+      let root = x
+      while (parent.get(root) !== root) {
+        root = parent.get(root) ?? root
+      }
+      let cur = x
+      while (cur !== root) {
+        const next = parent.get(cur) ?? cur
+        parent.set(cur, root)
+        cur = next
+      }
+      return root
+    }
+    function union(a: string, b: string) {
+      const ra = find(a)
+      const rb = find(b)
+      if (ra !== rb) parent.set(rb, ra)
+    }
+    const tokenToIds = new Map<string, string[]>()
+    for (const item of items) {
+      const id = String(item.id)
+      parent.set(id, id)
+      for (const token of collaboratorIdentityTokens(item)) {
+        const list = tokenToIds.get(token) || []
+        list.push(id)
+        tokenToIds.set(token, list)
+      }
+    }
+    for (const ids of tokenToIds.values()) {
+      if (ids.length <= 1) continue
+      for (let i = 1; i < ids.length; i++) {
+        union(ids[0], ids[i])
+      }
+    }
     const groups = new Map<string, CollaboratorPayload[]>()
-    for (const item of listing?.items || []) {
-      const key = collaboratorIdentityKey(item)
-      const group = groups.get(key) || []
+    for (const item of items) {
+      const root = find(String(item.id))
+      const group = groups.get(root) || []
       group.push(item)
-      groups.set(key, group)
+      groups.set(root, group)
     }
 
     const classificationRank: Record<CollaboratorPayload['metrics']['classification'], number> = {

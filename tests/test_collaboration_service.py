@@ -148,7 +148,7 @@ def test_update_collaborator_blocks_identity_collision(monkeypatch, tmp_path) ->
         user_id=user_id,
         payload={
             "full_name": "Alice Example",
-            "orcid_id": "0000-0002-1825-0097",
+            "email": "alice@example.com",
             "primary_institution": "AAWE Institute",
         },
     )
@@ -156,7 +156,7 @@ def test_update_collaborator_blocks_identity_collision(monkeypatch, tmp_path) ->
         user_id=user_id,
         payload={
             "full_name": "Bob Example",
-            "orcid_id": "0000-0001-5109-3700",
+            "email": "bob@example.com",
             "primary_institution": "Elsewhere Institute",
         },
     )
@@ -165,7 +165,7 @@ def test_update_collaborator_blocks_identity_collision(monkeypatch, tmp_path) ->
         update_collaborator_for_user(
             user_id=user_id,
             collaborator_id=second["id"],
-            payload={"orcid_id": "0000-0002-1825-0097"},
+            payload={"email": "alice@example.com"},
         )
     except CollaborationValidationError as exc:
         assert "duplicate" in str(exc).lower()

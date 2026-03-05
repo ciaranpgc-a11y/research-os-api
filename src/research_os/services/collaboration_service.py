@@ -345,30 +345,83 @@ def _metric_by_collaborator(
     return {str(row.collaborator_id): row for row in rows}
 
 
-def _collaborator_identity_key(collaborator: Collaborator) -> str:
+def _collaborator_identity_tokens(collaborator: Collaborator) -> list[str]:
+    """Return all identity tokens for a collaborator (used for union-find grouping)."""
+    tokens: list[str] = []
     openalex_key = _openalex_identity_key(collaborator.openalex_author_id)
     if openalex_key:
-        return f"oa:{openalex_key}"
-    orcid_id = _normalize_orcid_id(collaborator.orcid_id)
-    if orcid_id:
-        return f"orcid:{orcid_id.lower()}"
-    email = str(collaborator.email or "").strip().lower()
+        tokens.append(f"oa:{openalex_key}")
+    email = _email_identity_key(collaborator.email)
     if email:
-        return f"email:{email}"
+        tokens.append(f"email:{email}")
     name = _normalize_name_lower(collaborator.full_name or "")
-    return f"name:{name}"
+    if name:
+        tokens.append(f"name:{name}")
+    return tokens
+
+
+def _collaborator_identity_key(collaborator: Collaborator) -> str:
+    tokens = _collaborator_identity_tokens(collaborator)
+    return tokens[0] if tokens else f"id:{collaborator.id}"
 
 
 def _collaborator_groups(
     collaborators: list[Collaborator],
 ) -> tuple[dict[str, list[Collaborator]], dict[str, str]]:
-    groups: dict[str, list[Collaborator]] = defaultdict(list)
+    """Group collaborators via union-find across ALL identity tokens, not just the first."""
+    parent: dict[str, str] = {}
+
+    def _find(x: str) -> str:
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])
+            x = parent[x]
+        return x
+
+    def _union(a: str, b: str) -> None:
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    # Phase 1: hard identity linking (token → collaborator ids)
+    token_to_ids: dict[str, list[str]] = defaultdict(list)
+    for collab in collaborators:
+        cid = str(collab.id)
+        parent.setdefault(cid, cid)
+        for token in _collaborator_identity_tokens(collab):
+            token_to_ids[token].append(cid)
+
+    for ids in token_to_ids.values():
+        if len(ids) <= 1:
+            continue
+        first = ids[0]
+        for other in ids[1:]:
+            _union(first, other)
+
+    # Phase 2: fuzzy name + institution linking
+    for i, left in enumerate(collaborators):
+        lid = str(left.id)
+        for right in collaborators[i + 1:]:
+            rid = str(right.id)
+            if _find(lid) == _find(rid):
+                continue
+            name_sim = _name_similarity(left.full_name or "", right.full_name or "")
+            if name_sim < 0.94:
+                continue
+            inst_sim = _affiliation_similarity(
+                left.primary_institution, right.primary_institution
+            )
+            if inst_sim >= 0.82 or name_sim >= 0.98:
+                _union(lid, rid)
+
+    # Build groups
+    grouped: dict[str, list[Collaborator]] = defaultdict(list)
     collaborator_to_key: dict[str, str] = {}
-    for collaborator in collaborators:
-        key = _collaborator_identity_key(collaborator)
-        groups[key].append(collaborator)
-        collaborator_to_key[str(collaborator.id)] = key
-    return dict(groups), collaborator_to_key
+    for collab in collaborators:
+        cid = str(collab.id)
+        root = _find(cid)
+        grouped[root].append(collab)
+        collaborator_to_key[cid] = root
+    return dict(grouped), collaborator_to_key
 
 
 def _affiliation_labels_by_collaborator(
@@ -661,7 +714,6 @@ def _find_duplicate_warnings(
     *,
     user_id: str,
     full_name: str,
-    orcid_id: str | None,
     primary_institution: str | None,
     exclude_collaborator_id: str | None = None,
 ) -> list[str]:
@@ -671,11 +723,6 @@ def _find_duplicate_warnings(
     warnings: list[str] = []
     for row in rows:
         if exclude_collaborator_id and str(row.id) == str(exclude_collaborator_id):
-            continue
-        if orcid_id and row.orcid_id and _normalize_orcid_id(row.orcid_id) == orcid_id:
-            warnings.append(
-                f"Potential duplicate: ORCID already exists on collaborator '{row.full_name}'."
-            )
             continue
         if not row.full_name:
             continue
@@ -700,7 +747,6 @@ def _match_existing_collaborator_identity(
     *,
     user_id: str,
     full_name: str,
-    orcid_id: str | None,
     openalex_author_id: str | None,
     email: str | None,
     primary_institution: str | None,
@@ -708,7 +754,6 @@ def _match_existing_collaborator_identity(
     name_similarity_threshold: float = 0.92,
     name_only_similarity_threshold: float = 0.97,
 ) -> Collaborator | None:
-    candidate_orcid = _safe_validate_orcid(orcid_id)
     candidate_openalex = _normalize_openalex_author_id(openalex_author_id)
     candidate_openalex_key = _openalex_identity_key(candidate_openalex)
     candidate_email_key = _email_identity_key(email)
@@ -724,9 +769,6 @@ def _match_existing_collaborator_identity(
     for row in rows:
         if exclude_collaborator_id and str(row.id) == str(exclude_collaborator_id):
             continue
-        if candidate_orcid and row.orcid_id:
-            if _safe_validate_orcid(row.orcid_id) == candidate_orcid:
-                return row
         if candidate_openalex_key:
             if _openalex_identity_key(row.openalex_author_id) == candidate_openalex_key:
                 return row
@@ -845,7 +887,6 @@ def create_collaborator_for_user(
             session,
             user_id=user_id,
             full_name=full_name,
-            orcid_id=orcid_id,
             openalex_author_id=_normalize_openalex_author_id(
                 payload.get("openalex_author_id")
             ),
@@ -862,7 +903,6 @@ def create_collaborator_for_user(
             session,
             user_id=user_id,
             full_name=full_name,
-            orcid_id=orcid_id,
             primary_institution=primary_institution,
             exclude_collaborator_id=None,
         )
@@ -994,7 +1034,6 @@ def update_collaborator_for_user(
             session,
             user_id=user_id,
             full_name=collaborator.full_name,
-            orcid_id=collaborator.orcid_id,
             openalex_author_id=collaborator.openalex_author_id,
             email=collaborator.email,
             primary_institution=collaborator.primary_institution,
@@ -1009,7 +1048,6 @@ def update_collaborator_for_user(
             session,
             user_id=user_id,
             full_name=collaborator.full_name,
-            orcid_id=_safe_validate_orcid(collaborator.orcid_id),
             primary_institution=collaborator.primary_institution,
             exclude_collaborator_id=collaborator_id,
         )
@@ -2401,7 +2439,6 @@ def _match_existing_for_import(
         session,
         user_id=user_id,
         full_name=str(candidate.get("full_name") or "").strip(),
-        orcid_id=_safe_validate_orcid(candidate.get("orcid_id")),
         openalex_author_id=_normalize_openalex_author_id(
             str(candidate.get("openalex_author_id") or "").strip() or None
         ),

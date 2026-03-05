@@ -622,19 +622,37 @@ def _holder_matches_target(
     last_tokens = _tokenize_name(target_last_name)
     if not holder_tokens or not last_tokens:
         return False
-    target_last = last_tokens[-1]
-    if target_last not in holder_tokens:
+    target_last_candidates = set(last_tokens)
+    if not target_last_candidates.intersection(holder_tokens):
         return False
     target_first = first_tokens[0] if first_tokens else ""
     if not target_first:
         return True
-    first_holder = holder_tokens[0]
-    return (
-        target_first == first_holder
-        or first_holder.startswith(target_first[:1])
-        or target_first.startswith(first_holder[:1])
-        or target_first in holder_tokens
-    )
+    candidate_first_tokens: list[str] = []
+    candidate_first_tokens.append(holder_tokens[0])
+    if "," in holder_name and len(holder_tokens) > 1:
+        candidate_first_tokens.append(holder_tokens[-1])
+    if holder_tokens[0] in target_last_candidates and len(holder_tokens) > 1:
+        candidate_first_tokens.append(holder_tokens[1])
+
+    def _first_name_matches(target: str, candidate: str) -> bool:
+        if not target or not candidate:
+            return False
+        if target == candidate:
+            return True
+        if len(candidate) == 1 and candidate == target[:1]:
+            return True
+        if len(target) == 1 and target == candidate[:1]:
+            return True
+        return False
+
+    if any(_first_name_matches(target_first, candidate) for candidate in candidate_first_tokens):
+        return True
+
+    # If no first-name signals are available from the holder record, fall back to surname-only.
+    if not candidate_first_tokens:
+        return True
+    return False
 
 
 def _classify_grant_relationship(
@@ -927,6 +945,22 @@ def _sort_grant_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             _sanitize_text(item.get("display_name")).lower(),
         ),
     )
+
+
+def _enforce_openalex_supporting_works_only(
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for raw_item in items:
+        if not isinstance(raw_item, dict):
+            continue
+        item = dict(raw_item)
+        source_provider = _sanitize_text(item.get("source")).lower() or OPENALEX_SOURCE_PROVIDER
+        if source_provider != OPENALEX_SOURCE_PROVIDER:
+            item["supporting_works_count"] = 0
+            item["supporting_works"] = []
+        normalized.append(item)
+    return normalized
 
 
 def _fetch_ukri_grants_for_person(
@@ -1552,6 +1586,7 @@ def _load_persisted_persona_grants(
     if not items:
         return None
 
+    items = _enforce_openalex_supporting_works_only(items)
     latest_timestamp = items[0].get("source_timestamp") or _utcnow_iso()
     source_set = {
         _sanitize_text(item.get("source")).lower()
@@ -1850,6 +1885,7 @@ def list_openalex_grants_for_person(
         for item in external_items:
             merged_map[_build_persona_grant_key(item)] = item
         merged_items = _sort_grant_items(list(merged_map.values()))[:clean_limit]
+        merged_items = _enforce_openalex_supporting_works_only(merged_items)
 
     if clean_user_id:
         try:

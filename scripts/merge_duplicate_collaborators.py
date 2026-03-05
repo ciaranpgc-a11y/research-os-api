@@ -85,9 +85,6 @@ def _collaborator_identity_key(collaborator: Collaborator) -> str:
     openalex_id = _openalex_identity_key(collaborator.openalex_author_id)
     if openalex_id:
         return f"oa:{openalex_id}"
-    orcid_id = _normalize_orcid_id(collaborator.orcid_id)
-    if orcid_id:
-        return f"orcid:{orcid_id.lower()}"
     email = _normalize_email_key(collaborator.email)
     if email:
         return f"email:{email}"
@@ -165,9 +162,6 @@ def merge_duplicate_collaborators(user_id: str | None = None, dry_run: bool = Fa
                 openalex = _openalex_identity_key(collab.openalex_author_id)
                 if openalex:
                     token_to_ids[f"oa:{openalex}"].append(collab_id)
-                orcid = _normalize_orcid_id(collab.orcid_id)
-                if orcid:
-                    token_to_ids[f"orcid:{orcid.lower()}"] .append(collab_id)
                 email = _normalize_email_key(collab.email)
                 if email:
                     token_to_ids[f"email:{email}"].append(collab_id)

@@ -303,6 +303,95 @@ def test_list_openalex_grants_for_person_filters_published_under_with_owner(
     assert payload["items"][0]["grant_owner_is_target_person"] is False
 
 
+def test_list_openalex_grants_for_person_does_not_match_first_initial_only(
+    monkeypatch,
+) -> None:
+    author_url = "https://api.openalex.org/authors"
+    works_url = "https://api.openalex.org/works"
+    awards_url = "https://api.openalex.org/awards"
+
+    responses = {
+        f"{author_url}|search:Ciaran Grafton-Clarke": _FakeResponse(
+            200,
+            {
+                "results": [
+                    {
+                        "id": "https://openalex.org/A555",
+                        "display_name": "Ciaran Grafton-Clarke",
+                        "orcid": None,
+                        "works_count": 5,
+                        "cited_by_count": 10,
+                    }
+                ]
+            },
+        ),
+        f"{works_url}|filter:authorships.author.id:A555,awards.id:!null|cursor:*": _FakeResponse(
+            200,
+            {
+                "results": [
+                    {
+                        "id": "https://openalex.org/W555",
+                        "display_name": "Example work",
+                        "publication_year": 2024,
+                        "authorships": [
+                            {
+                                "author_position": "first",
+                                "author": {"id": "https://openalex.org/A555"},
+                            }
+                        ],
+                        "awards": [
+                            {
+                                "id": "https://openalex.org/G555",
+                                "funder_award_id": "CLARKE-1",
+                                "funder_id": "https://openalex.org/F555",
+                                "funder_display_name": "Example Funder",
+                            }
+                        ],
+                    }
+                ],
+                "meta": {"next_cursor": None},
+            },
+        ),
+        f"{awards_url}|filter:funder.id:https://openalex.org/F555,funder_award_id:CLARKE-1": _FakeResponse(
+            200,
+            {
+                "results": [
+                    {
+                        "id": "https://openalex.org/G555",
+                        "display_name": "Example grant",
+                        "funder_award_id": "CLARKE-1",
+                        "funder": {
+                            "id": "https://openalex.org/F555",
+                            "display_name": "Example Funder",
+                        },
+                        "lead_investigator": {
+                            "given_name": "Catherine",
+                            "family_name": "Clarke",
+                            "orcid": None,
+                        },
+                    }
+                ]
+            },
+        ),
+    }
+
+    monkeypatch.setattr(
+        "research_os.services.grants_service.httpx.Client",
+        lambda timeout: _FakeClient(responses),
+    )
+
+    payload = list_openalex_grants_for_person(
+        first_name="Ciaran",
+        last_name="Grafton-Clarke",
+        relationship="all",
+    )
+
+    assert payload["total"] == 1
+    assert payload["items"][0]["relationship_to_person"] == "published_under_other_grant"
+    assert payload["items"][0]["grant_owner_name"] == "Catherine Clarke"
+    assert payload["items"][0]["grant_owner_is_target_person"] is False
+
+
 def test_list_openalex_grants_for_person_uses_award_id_fallback_for_details(
     monkeypatch,
 ) -> None:
@@ -542,6 +631,74 @@ def test_list_openalex_grants_for_person_includes_external_sources(
     assert {"ukri", "nih_reporter", "nsf", "cordis"} <= sources
     won_rows = [item for item in payload["items"] if item.get("relationship_to_person") == "won_by_person"]
     assert len(won_rows) >= 3
+
+
+def test_list_openalex_grants_for_person_external_sources_do_not_include_supporting_works(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "research_os.services.grants_service._resolve_openalex_author",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(
+        "research_os.services.grants_service._fetch_external_provider_grants_for_person",
+        lambda **_: [
+            {
+                "openalex_award_id": "EXT-001",
+                "display_name": "External-only grant",
+                "description": "External provider grant payload",
+                "funder_award_id": "EXT-001",
+                "funder": {
+                    "id": "nsf",
+                    "display_name": "NSF",
+                    "doi": None,
+                    "ror": None,
+                },
+                "amount": 12345.0,
+                "currency": "USD",
+                "funding_type": None,
+                "funder_scheme": None,
+                "start_date": "2024-01-01",
+                "end_date": "2026-12-31",
+                "start_year": 2024,
+                "end_year": 2026,
+                "landing_page_url": "https://example.org/grant/EXT-001",
+                "doi": None,
+                "updated_date": "2025-01-01",
+                "supporting_works_count": 2,
+                "supporting_works": [
+                    {
+                        "id": "https://openalex.org/WEXT1",
+                        "title": "Should be suppressed",
+                        "publication_year": 2025,
+                        "user_author_position": "middle",
+                    }
+                ],
+                "relationship_to_person": "won_by_person",
+                "grant_owner_name": "Ada Lovelace",
+                "grant_owner_role": "lead_investigator",
+                "grant_owner_orcid": None,
+                "grant_owner_is_target_person": True,
+                "award_holders": [],
+                "person_role": "PI",
+                "source": "nsf",
+                "source_timestamp": "2026-03-05T00:00:00+00:00",
+            }
+        ],
+    )
+
+    payload = list_openalex_grants_for_person(
+        first_name="Ada",
+        last_name="Lovelace",
+        relationship="all",
+        limit=20,
+    )
+
+    assert payload["total"] == 1
+    item = payload["items"][0]
+    assert item["source"] == "nsf"
+    assert item["supporting_works_count"] == 0
+    assert item["supporting_works"] == []
 
 
 def test_list_openalex_grants_for_person_requires_name_parts() -> None:
