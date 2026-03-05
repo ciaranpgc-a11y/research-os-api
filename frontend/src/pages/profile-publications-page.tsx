@@ -2264,7 +2264,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   )
   const [publicationTrajectoryWindowMode, setPublicationTrajectoryWindowMode] = useState<PublicationsWindowMode>('5y')
   const [publicationTrajectoryVisualMode, setPublicationTrajectoryVisualMode] = useState<PublicationTrendsVisualMode>('bars')
-  const [publicationTrajectoryAutoScaleByWindow, setPublicationTrajectoryAutoScaleByWindow] = useState(true)
   const [detailCacheByWorkId, setDetailCacheByWorkId] = useState<Record<string, PublicationDetailPayload>>({})
   const [authorsCacheByWorkId, setAuthorsCacheByWorkId] = useState<Record<string, PublicationAuthorsPayload>>({})
   const [impactCacheByWorkId, setImpactCacheByWorkId] = useState<Record<string, PublicationImpactResponsePayload>>({})
@@ -2507,8 +2506,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         availableWidth,
       })
     ))
-    // Re-run default auto-fit after persisted preferences hydrate.
-    publicationTableAutoFitAppliedRef.current = false
   }, [resolvePublicationTableAvailableWidth, user?.id])
 
   useEffect(() => {
@@ -3737,7 +3734,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   useEffect(() => {
     setPublicationTrajectoryWindowMode('5y')
     setPublicationTrajectoryVisualMode('bars')
-    setPublicationTrajectoryAutoScaleByWindow(true)
   }, [selectedWorkId])
 
   useEffect(() => {
@@ -3950,7 +3946,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return () => {
       window.cancelAnimationFrame(rafId)
     }
-  }, [loading, onAutoAdjustPublicationTableWidths, personaState?.works?.length, publicationLibraryVisible, user?.id])
+  }, [loading, onAutoAdjustPublicationTableWidths, personaState?.works?.length, publicationLibraryVisible])
 
   const onDownloadPublicationLibrary = useCallback(() => {
     const selectedFieldKeys = PUBLICATION_EXPORT_FIELD_OPTIONS
@@ -5960,57 +5956,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     value={publicationTrajectoryVisualMode}
                                     onChange={setPublicationTrajectoryVisualMode}
                                   />
-                                  {publicationTrajectoryVisualMode === 'line' ? (
-                                    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
-                                      <div
-                                        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
-                                        data-stop-tile-open="true"
-                                        data-ui="publication-trajectory-y-axis-toggle"
-                                        data-house-role="chart-toggle"
-                                        style={{ width: '9rem', minWidth: '9rem', maxWidth: '9rem' }}
-                                      >
-                                        <span
-                                          className={HOUSE_TOGGLE_THUMB_CLASS}
-                                          style={buildTileToggleThumbStyle(publicationTrajectoryAutoScaleByWindow ? 1 : 0, 2, false)}
-                                          aria-hidden="true"
-                                        />
-                                        <button
-                                          type="button"
-                                          data-stop-tile-open="true"
-                                          className={cn(
-                                            HOUSE_TOGGLE_BUTTON_CLASS,
-                                            !publicationTrajectoryAutoScaleByWindow ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                                          )}
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            setPublicationTrajectoryAutoScaleByWindow(false)
-                                          }}
-                                          onMouseDown={(event) => event.stopPropagation()}
-                                          aria-pressed={!publicationTrajectoryAutoScaleByWindow}
-                                          aria-label="Use fixed Y-axis across windows"
-                                        >
-                                          Fixed
-                                        </button>
-                                        <button
-                                          type="button"
-                                          data-stop-tile-open="true"
-                                          className={cn(
-                                            HOUSE_TOGGLE_BUTTON_CLASS,
-                                            publicationTrajectoryAutoScaleByWindow ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                                          )}
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            setPublicationTrajectoryAutoScaleByWindow(true)
-                                          }}
-                                          onMouseDown={(event) => event.stopPropagation()}
-                                          aria-pressed={publicationTrajectoryAutoScaleByWindow}
-                                          aria-label="Use per-window Y-axis"
-                                        >
-                                          Window
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : null}
                                 </div>
                                 {publicationTrajectoryChartTile ? (
                                   <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
@@ -6022,7 +5967,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       showPeriodHint
                                       showCurrentPeriodSemantic
                                       useCompletedMonthWindowLabels
-                                      autoScaleByWindow={publicationTrajectoryAutoScaleByWindow}
+                                      autoScaleByWindow
                                       showMeanLine
                                       showMeanValueLabel
                                       subtleGrid
