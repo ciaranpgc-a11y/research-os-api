@@ -2690,61 +2690,6 @@ export function PublicationsPerYearChart({
         }
       }
     }
-    if ((mode === '3y' || mode === '5y') && lifetimeMonthlyBars.bars.length > 0) {
-      const totalMonths = mode === '3y' ? 36 : 60
-      const sourceMonths = lifetimeMonthlyBars.bars.slice(-totalMonths)
-      if (sourceMonths.length > 0) {
-        const yearBuckets = new Map<number, { value: number; firstMs: number; lastMs: number }>()
-        for (const monthBar of sourceMonths) {
-          const monthStartMs = Number(monthBar.monthStartMs)
-          if (!Number.isFinite(monthStartMs)) {
-            continue
-          }
-          const date = new Date(monthStartMs)
-          const year = date.getUTCFullYear()
-          const existing = yearBuckets.get(year)
-          if (!existing) {
-            yearBuckets.set(year, {
-              value: Math.max(0, monthBar.value),
-              firstMs: monthStartMs,
-              lastMs: monthStartMs,
-            })
-            continue
-          }
-          existing.value += Math.max(0, monthBar.value)
-          if (monthStartMs < existing.firstMs) {
-            existing.firstMs = monthStartMs
-          }
-          if (monthStartMs > existing.lastMs) {
-            existing.lastMs = monthStartMs
-          }
-        }
-        const years = Array.from(yearBuckets.keys()).sort((left, right) => left - right)
-        const bars: PublicationChartBar[] = years.map((year) => {
-          const bucket = yearBuckets.get(year)
-          return {
-            key: `${year}-${year}`,
-            value: Math.max(0, bucket?.value ?? 0),
-            current: year === projectedYear,
-            axisLabel: String(year),
-            axisSubLabel: undefined,
-            monthStartMs: bucket?.firstMs,
-          }
-        })
-        const firstMs = Number(sourceMonths[0]?.monthStartMs)
-        const lastMs = Number(sourceMonths[sourceMonths.length - 1]?.monthStartMs)
-        const firstDate = Number.isFinite(firstMs) ? new Date(firstMs) : null
-        const lastDate = Number.isFinite(lastMs) ? new Date(lastMs) : null
-        const rangeLabel = firstDate && lastDate
-          ? `${MONTH_SHORT[firstDate.getUTCMonth()]} ${shortYearLabel(firstDate.getUTCFullYear())}-${MONTH_SHORT[lastDate.getUTCMonth()]} ${shortYearLabel(lastDate.getUTCFullYear())}`
-          : null
-        return {
-          bars,
-          bucketSize: 1,
-          rangeLabel,
-        }
-      }
-    }
     let sourceBars = historyBars
     if (mode === '3y' || mode === '5y') {
       const totalMonths = mode === '3y' ? 36 : 60
@@ -2783,8 +2728,6 @@ export function PublicationsPerYearChart({
     groupedMonthBars.bucketSize,
     groupedMonthBars.rangeLabel,
     historyBars,
-    lifetimeMonthlyBars.bars,
-    projectedYear,
   ])
 
   const activeLineWindowBars = isCompactTileMode
