@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Lightbulb, Search, Settings, Share2, Sparkles } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -745,6 +745,10 @@ export function ProfileCollaborationPage() {
   const [collaborationDownloadVisible, setCollaborationDownloadVisible] = useState(false)
   const [collaborationToolsOpen, setCollaborationToolsOpen] = useState(false)
   const [collaborationSettingsVisible, setCollaborationSettingsVisible] = useState(false)
+  const [collaborationTableLayoutWidth, setCollaborationTableLayoutWidth] = useState(1080)
+  const [collaborationTableColumnOrder, setCollaborationTableColumnOrder] = useState<CollaborationTableColumnKey[]>(
+    () => [...COLLABORATION_TABLE_COLUMN_ORDER],
+  )
   const [collaborationTableColumns, setCollaborationTableColumns] = useState<
     Record<CollaborationTableColumnKey, CollaborationTableColumnPreference>
   >({ ...COLLABORATION_TABLE_COLUMN_DEFAULTS })
@@ -752,9 +756,28 @@ export function ProfileCollaborationPage() {
   const [collaborationTableAlternateRowColoring, setCollaborationTableAlternateRowColoring] = useState(true)
   const [collaborationTableMetricHighlights, setCollaborationTableMetricHighlights] = useState(true)
   const [collaborationTableAutoFitTick, setCollaborationTableAutoFitTick] = useState(0)
+  const [collaborationTableResizingColumn, setCollaborationTableResizingColumn] = useState<CollaborationTableColumnKey | null>(null)
+  const [collaborationTableDraggingColumn, setCollaborationTableDraggingColumn] = useState<CollaborationTableColumnKey | null>(null)
   const [collaborationLibraryPageSize, setCollaborationLibraryPageSize] = useState<CollaborationTablePageSize>(
     COLLABORATORS_PAGE_SIZE_DEFAULT,
   )
+  const collaborationTableLayoutRef = useRef<HTMLDivElement | null>(null)
+  const collaborationTableResizeRef = useRef<{
+    column: CollaborationTableColumnKey
+    startX: number
+    startWidth: number
+  } | null>(null)
+  const resolveCollaborationTableAvailableWidth = useCallback(() => {
+    const measuredClient = collaborationTableLayoutRef.current?.clientWidth
+    if (Number.isFinite(measuredClient) && Number(measuredClient) > 0) {
+      return Math.max(320, Math.round(Number(measuredClient)))
+    }
+    const measuredRect = collaborationTableLayoutRef.current?.getBoundingClientRect().width
+    if (Number.isFinite(measuredRect) && Number(measuredRect) > 0) {
+      return Math.max(320, Math.round(Number(measuredRect)))
+    }
+    return Math.max(320, Math.round(Number(collaborationTableLayoutWidth) || 320))
+  }, [collaborationTableLayoutWidth])
 
   // Mock data for dev visualization
   useEffect(() => {
@@ -1536,12 +1559,33 @@ export function ProfileCollaborationPage() {
   }, [filteredCollaborators, selectedCollaborator])
 
   const visibleCollaborationTableColumns = useMemo(() => (
-    COLLABORATION_TABLE_COLUMN_ORDER.filter((column) => collaborationTableColumns[column].visible)
-  ), [collaborationTableColumns])
+    collaborationTableColumnOrder.filter((column) => collaborationTableColumns[column].visible)
+  ), [collaborationTableColumnOrder, collaborationTableColumns])
+
+  const onReorderCollaborationColumn = useCallback((fromColumn: CollaborationTableColumnKey, toColumn: CollaborationTableColumnKey) => {
+    if (fromColumn === toColumn) {
+      return
+    }
+    setCollaborationTableColumnOrder((current) => {
+      const visibleOrder = current.filter((columnKey) => collaborationTableColumns[columnKey].visible)
+      const fromIndex = visibleOrder.indexOf(fromColumn)
+      const toIndex = visibleOrder.indexOf(toColumn)
+      if (fromIndex < 0 || toIndex < 0) {
+        return current
+      }
+      const nextVisibleOrder = [...visibleOrder]
+      nextVisibleOrder.splice(fromIndex, 1)
+      nextVisibleOrder.splice(toIndex, 0, fromColumn)
+      const queue = [...nextVisibleOrder]
+      return current.map((columnKey) => (
+        collaborationTableColumns[columnKey].visible ? (queue.shift() || columnKey) : columnKey
+      ))
+    })
+  }, [collaborationTableColumns])
 
   const onToggleCollaborationColumnVisibility = (column: CollaborationTableColumnKey) => {
     setCollaborationTableColumns((current) => {
-      const visibleCount = COLLABORATION_TABLE_COLUMN_ORDER.reduce(
+      const visibleCount = collaborationTableColumnOrder.reduce(
         (count, key) => count + (current[key].visible ? 1 : 0),
         0,
       )
@@ -1560,6 +1604,7 @@ export function ProfileCollaborationPage() {
 
   const onResetCollaborationTableSettings = () => {
     setCollaborationTableColumns({ ...COLLABORATION_TABLE_COLUMN_DEFAULTS })
+    setCollaborationTableColumnOrder([...COLLABORATION_TABLE_COLUMN_ORDER])
     setCollaborationTableDensity('default')
     setCollaborationTableAlternateRowColoring(true)
     setCollaborationTableMetricHighlights(true)
@@ -1567,9 +1612,109 @@ export function ProfileCollaborationPage() {
     setPage(1)
   }
 
-  const onAutoAdjustCollaborationTableWidths = () => {
-    setCollaborationTableAutoFitTick((current) => current + 1)
-  }
+  const onAutoAdjustCollaborationTableWidths = useCallback(() => {
+    const availableWidth = resolveCollaborationTableAvailableWidth()
+    const visibleColumns = collaborationTableColumnOrder.filter((column) => collaborationTableColumns[column].visible)
+    if (visibleColumns.length === 0) {
+      return
+    }
+    const perColumnWidth = Math.max(120, Math.floor(availableWidth / visibleColumns.length))
+    setCollaborationTableColumns((current) => {
+      const next = { ...current }
+      for (const column of visibleColumns) {
+        next[column] = {
+          ...current[column],
+          width: clampCollaborationTableColumnWidth(column, perColumnWidth),
+        }
+      }
+      return next
+    })
+  }, [collaborationTableColumnOrder, collaborationTableColumns, resolveCollaborationTableAvailableWidth])
+
+  const onStartCollaborationHeadingResize = useCallback((
+    event: React.PointerEvent<HTMLButtonElement>,
+    column: CollaborationTableColumnKey,
+  ) => {
+    if (event.button !== 0) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    collaborationTableResizeRef.current = {
+      column,
+      startX: event.clientX,
+      startWidth: Number(collaborationTableColumns[column].width || COLLABORATION_TABLE_COLUMN_DEFAULTS[column].width),
+    }
+    setCollaborationTableResizingColumn(column)
+  }, [collaborationTableColumns])
+
+  const onCollaborationHeadingResizeHandleKeyDown = useCallback((
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    column: CollaborationTableColumnKey,
+  ) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const deltaPx = event.key === 'ArrowLeft' ? -16 : 16
+    setCollaborationTableColumns((current) => {
+      const nextWidth = clampCollaborationTableColumnWidth(
+        column,
+        Number(current[column].width || COLLABORATION_TABLE_COLUMN_DEFAULTS[column].width) + deltaPx,
+      )
+      if (nextWidth === current[column].width) {
+        return current
+      }
+      return {
+        ...current,
+        [column]: {
+          ...current[column],
+          width: nextWidth,
+        },
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!collaborationTableResizingColumn) {
+      return
+    }
+    const onPointerMove = (event: PointerEvent) => {
+      const resizeState = collaborationTableResizeRef.current
+      if (!resizeState) {
+        return
+      }
+      const nextWidth = clampCollaborationTableColumnWidth(
+        resizeState.column,
+        resizeState.startWidth + (event.clientX - resizeState.startX),
+      )
+      setCollaborationTableColumns((current) => {
+        if (nextWidth === current[resizeState.column].width) {
+          return current
+        }
+        return {
+          ...current,
+          [resizeState.column]: {
+            ...current[resizeState.column],
+            width: nextWidth,
+          },
+        }
+      })
+    }
+    const stopResize = () => {
+      collaborationTableResizeRef.current = null
+      setCollaborationTableResizingColumn(null)
+    }
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', stopResize)
+    window.addEventListener('pointercancel', stopResize)
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', stopResize)
+      window.removeEventListener('pointercancel', stopResize)
+    }
+  }, [collaborationTableResizingColumn])
 
   const onSortColumn = (column: CollaborationSortField) => {
     if (sort === column) {
@@ -2535,9 +2680,8 @@ export function ProfileCollaborationPage() {
           {collaborationLibraryVisible ? (
             <div className="space-y-3">
             <div className="hidden md:block">
-              <div className="relative w-full house-table-context-profile">
+              <div ref={collaborationTableLayoutRef} className="relative w-full house-table-context-profile">
                 <Table
-                  key={`collaboration-table-autofit-${collaborationTableAutoFitTick}`}
                   className={cn(
                     'w-full',
                     collaborationTableDensity === 'compact' && 'house-publications-table-density-compact',
@@ -2546,9 +2690,26 @@ export function ProfileCollaborationPage() {
                   data-house-no-column-resize="true"
                   data-house-no-column-controls="true"
                 >
+                  <colgroup>
+                    {visibleCollaborationTableColumns.map((columnKey) => {
+                      const width = clampCollaborationTableColumnWidth(
+                        columnKey,
+                        collaborationTableColumns[columnKey].width,
+                      )
+                      return (
+                        <col
+                          key={`collaboration-col-${columnKey}`}
+                          style={{
+                            width: `${width}px`,
+                            minWidth: `${COLLABORATION_TABLE_COLUMN_MIN_WIDTH[columnKey]}px`,
+                          }}
+                        />
+                      )
+                    })}
+                  </colgroup>
                   <TableHeader className="house-table-head text-left">
                     <TableRow style={{ backgroundColor: 'transparent' }}>
-                      {visibleCollaborationTableColumns.map((columnKey) => {
+                      {visibleCollaborationTableColumns.map((columnKey, columnIndex) => {
                         const sortField = COLLABORATION_TABLE_COLUMN_SORT_FIELD[columnKey]
                         const headerClassName = COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].headerClassName || 'text-left'
                         const alignClass = headerClassName.includes('text-center')
@@ -2556,10 +2717,25 @@ export function ProfileCollaborationPage() {
                           : headerClassName.includes('text-right')
                             ? 'justify-end text-right'
                             : 'justify-start text-left'
+                        const isLastVisibleColumn = columnIndex >= visibleCollaborationTableColumns.length - 1
                         return (
                           <TableHead
                             key={`collaboration-head-${columnKey}`}
-                            className={cn('house-table-head-text', headerClassName)}
+                            className={cn('house-table-head-text group relative', headerClassName)}
+                            onDragOver={(event) => {
+                              if (!collaborationTableDraggingColumn || collaborationTableDraggingColumn === columnKey) {
+                                return
+                              }
+                              event.preventDefault()
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault()
+                              if (!collaborationTableDraggingColumn || collaborationTableDraggingColumn === columnKey) {
+                                return
+                              }
+                              onReorderCollaborationColumn(collaborationTableDraggingColumn, columnKey)
+                              setCollaborationTableDraggingColumn(null)
+                            }}
                           >
                             {sortField ? (
                               <button
@@ -2585,6 +2761,43 @@ export function ProfileCollaborationPage() {
                             ) : (
                               COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label
                             )}
+                            <button
+                              type="button"
+                              draggable
+                              className="house-table-reorder-handle"
+                              data-house-dragging={collaborationTableDraggingColumn === columnKey ? 'true' : undefined}
+                              onDragStart={(event) => {
+                                event.dataTransfer.effectAllowed = 'move'
+                                event.dataTransfer.setData('text/plain', columnKey)
+                                setCollaborationTableDraggingColumn(columnKey)
+                              }}
+                              onDragEnd={() => {
+                                setCollaborationTableDraggingColumn(null)
+                              }}
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                              }}
+                              aria-label={`Reorder ${COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label} column`}
+                              title={`Drag to reorder ${COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label} column`}
+                            >
+                              <GripVertical className="h-3 w-3" />
+                            </button>
+                            {!isLastVisibleColumn ? (
+                              <button
+                                type="button"
+                                className="house-table-resize-handle"
+                                data-house-dragging={collaborationTableResizingColumn === columnKey ? 'true' : undefined}
+                                onPointerDown={(event) => onStartCollaborationHeadingResize(event, columnKey)}
+                                onKeyDown={(event) => onCollaborationHeadingResizeHandleKeyDown(event, columnKey)}
+                                onClick={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                }}
+                                aria-label={`Resize ${COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label} column`}
+                                title={`Resize ${COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label} column`}
+                              />
+                            ) : null}
                           </TableHead>
                         )
                       })}
