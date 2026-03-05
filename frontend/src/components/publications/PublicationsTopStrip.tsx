@@ -3284,14 +3284,15 @@ export function PublicationsPerYearChart({
     }
     const startMs = lineSeriesModel.timelineStartMs
     const endMs = lineSeriesModel.timelineEndMs
-    if (startMs == null || endMs == null || endMs <= startMs) {
-      return buildLineModeTicksForWindow(effectiveWindowMode)
-    }
-    return buildLineTicksFromRange(
-      startMs,
-      endMs,
-      effectiveWindowMode,
-    )
+    const ticks = (startMs == null || endMs == null || endMs <= startMs)
+      ? buildLineModeTicksForWindow(effectiveWindowMode)
+      : buildLineTicksFromRange(
+        startMs,
+        endMs,
+        effectiveWindowMode,
+      )
+    console.debug(`[PubChart] lineModeXAxisTicks: mode=${effectiveWindowMode}, hasTimeline=${startMs != null && endMs != null}, count=${ticks.length}`, ticks.slice(0, 3))
+    return ticks
   }, [
     buildLineModeTicksForWindow,
     effectiveVisualMode,
@@ -3346,8 +3347,10 @@ export function PublicationsPerYearChart({
       return []
     }
     // Draw gridlines at all tick positions for proper alignment with labels
-    return lineModeXAxisTicks.map((tick) => tick.leftPct)
-  }, [effectiveVisualMode, lineModeXAxisTicks])
+    const gridPercents = lineModeXAxisTicks.map((tick) => tick.leftPct)
+    console.debug(`[PubChart] lineModeVerticalGridPercents computed: ${gridPercents.length} values, mode=${effectiveWindowMode}, ticks=${lineModeXAxisTicks.length}`, gridPercents)
+    return gridPercents
+  }, [effectiveVisualMode, lineModeXAxisTicks, effectiveWindowMode])
 
   if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
