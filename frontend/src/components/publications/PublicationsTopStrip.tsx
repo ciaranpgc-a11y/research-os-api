@@ -6852,11 +6852,11 @@ function GenericMetricDrilldownWorkspace({
   activeTab: DrilldownTab
   animateCharts?: boolean
 }) {
+  const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
   const [articleTypeTrendsExpanded, setArticleTypeTrendsExpanded] = useState(true)
   const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
-  const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('5y')
-  const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
 
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
     breakdown: 'Breakdown results',
@@ -6866,16 +6866,324 @@ function GenericMetricDrilldownWorkspace({
   }
   const subsectionTitle = subsectionTitleByTab[activeTab] || null
 
-  const publicationTrendsWindowThumbStyle = useMemo(() => {
-    const optionValues = PUBLICATIONS_WINDOW_OPTIONS.map((opt) => opt.value)
-    const selectedIndex = optionValues.indexOf(publicationTrendsWindowMode)
-    const validIndex = selectedIndex >= 0 ? selectedIndex : 0
-    const totalOptions = PUBLICATIONS_WINDOW_OPTIONS.length
-    const thumbPercent = (validIndex * 100) / (totalOptions - 1 || 1)
-    return {
-      left: `${thumbPercent}%`,
+  const publicationTrendsAnimationKey = `pub-trends|${publicationTrendsWindowMode}|${publicationTrendsVisualMode}`
+  const publicationTrendsIsEntryCycle = useIsFirstChartEntry(publicationTrendsAnimationKey, true)
+  const publicationTrendsWindowThumbStyle: CSSProperties = publicationTrendsWindowMode === 'all'
+    ? {
+      width: '28%',
+      left: '72%',
+      willChange: 'left,width',
+      transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
     }
-  }, [publicationTrendsWindowMode])
+    : publicationTrendsWindowMode === '5y'
+      ? {
+        width: '24%',
+        left: '48%',
+        willChange: 'left,width',
+        transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
+      }
+      : publicationTrendsWindowMode === '3y'
+        ? {
+          width: '24%',
+          left: '24%',
+          willChange: 'left,width',
+          transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
+        }
+        : {
+          width: '24%',
+          left: '0%',
+          willChange: 'left,width',
+          transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
+        }
+
+  useEffect(() => {
+    setPublicationTrendsWindowMode('5y')
+    setPublicationTrendsVisualMode('bars')
+    setPublicationTrendsExpanded(true)
+    setArticleTypeTrendsExpanded(true)
+    setPublicationTypeTrendsExpanded(true)
+  }, [tile.key])
+
+  const publicationDrilldownRecords = useMemo(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const publications = Array.isArray(drilldown.publications) ? drilldown.publications : []
+    return publications
+      .map((item) => {
+        if (!item || typeof item !== 'object') {
+          return null
+        }
+        const row = item as Record<string, unknown>
+        const title = String(row.title || '').trim()
+        const role = String(row.role || '').trim()
+        const type = String(row.type || '').trim()
+        const publicationType = String(row.work_type || row.workType || row.publication_type || row.publicationType || '').trim()
+        const articleType = String(row.article_type || row.articleType || '').trim()
+        const venue = String(row.venue || row.journal || '').trim()
+        const citationsRaw = Number(row.citations ?? row.cited_by_count ?? 0)
+        const citations = Number.isFinite(citationsRaw) ? Math.max(0, Math.round(citationsRaw)) : 0
+        return {
+          title,
+          role,
+          type,
+          publication_type: publicationType,
+          article_type: articleType,
+          venue,
+          citations,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+  }, [tile.drilldown])
+
+  const headlineMetricTiles = useMemo(() => {
+    if (tile.key !== 'total_citations') {
+      return []
+    }
+
+    const chartData = (tile.chart_data || {}) as Record<string, unknown>
+    const yearsRaw = toNumberArray(chartData.years).map((item) => Math.round(item))
+    const valuesRaw = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+    const pairCount = Math.min(yearsRaw.length, valuesRaw.length)
+    const yearlyPairs = Array.from({ length: pairCount }, (_, index) => ({
+      year: yearsRaw[index],
+      value: valuesRaw[index],
+    })).sort((left, right) => left.year - right.year)
+    
+    const projectedYearRaw = Number(chartData.projected_year)
+    const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
+    const currentYearYtdRaw = Number(chartData.current_year_ytd)
+    
+    const historicalYearPairs = yearlyPairs.filter((item) => item.year !== projectedYear)
+    const historicalValues = historicalYearPairs.map((item) => item.value)
+    const sumNumbers = (items: number[]) => items.reduce((sum, value) => sum + Math.max(0, value), 0)
+    
+    const totalCitations = Math.round(sumNumbers([...historicalValues, Number.isFinite(currentYearYtdRaw) ? currentYearYtdRaw : yearlyPairs.find((item) => item.year === projectedYear)?.value ?? 0]))
+    const meanValueRaw = Number(chartData.mean_value)
+    const meanCitations = Number.isFinite(meanValueRaw) && meanValueRaw > 0
+      ? (Math.round(meanValueRaw * 10) / 10).toFixed(1)
+      : historicalValues.length > 0
+        ? (Math.round((sumNumbers(historicalValues) / historicalValues.length) * 10) / 10).toFixed(1)
+        : '\u2014'
+    
+    const rollingWindowMonthsSum = (windowMonths: number) => {
+      const monthlySeries = toNumberArray(chartData.monthly_values_lifetime || []).map((item) => Math.max(0, item))
+      if (monthlySeries.length > 0) {
+        return sumNumbers(monthlySeries.slice(-windowMonths))
+      }
+      return sumNumbers(historicalYearPairs.slice(-Math.max(1, Math.round(windowMonths / 12))).map((item) => item.value))
+    }
+    
+    const rolling1Year = Math.round(rollingWindowMonthsSum(12))
+    const rolling3Year = Math.round(rollingWindowMonthsSum(36))
+    const rolling5Year = Math.round(rollingWindowMonthsSum(60))
+    const yearToDateValue = Number.isFinite(currentYearYtdRaw) ? currentYearYtdRaw : yearlyPairs.find((item) => item.year === projectedYear)?.value ?? 0
+    
+    const firstCitationYearCandidates = yearlyPairs
+      .filter((entry) => entry.value > 0)
+      .map((entry) => entry.year)
+    const firstCitationYear = firstCitationYearCandidates.length ? Math.min(...firstCitationYearCandidates) : null
+    const activeYears = firstCitationYear !== null ? Math.max(1, projectedYear - firstCitationYear + 1) : 0
+
+    return [
+      { label: 'Total citations', value: formatInt(totalCitations) },
+      { label: 'Active years', value: activeYears > 0 ? formatInt(activeYears) : '\u2014' },
+      { label: 'Mean citations per year', value: meanCitations },
+      { label: 'Last 1 year', value: formatInt(rolling1Year) },
+      { label: 'Last 3 years', value: formatInt(rolling3Year) },
+      { label: 'Last 5 years', value: formatInt(rolling5Year) },
+      { label: 'Year-to-date', value: formatInt(Math.round(yearToDateValue)) },
+    ]
+  }, [tile])
+
+  return (
+    <div className="house-drilldown-stack-3" data-metric-key={tile.key}>
+      <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-drilldown-panel-no-pad')}>
+        {activeTab !== 'breakdown' && activeTab !== 'trajectory' ? (
+          <div className="house-drilldown-heading-block">
+            <p className="house-drilldown-heading-block-title">Headline results</p>
+          </div>
+        ) : null}
+        {activeTab === 'summary' && headlineMetricTiles.length > 0 ? (
+          <div className="house-drilldown-content-block house-publications-headline-content house-drilldown-heading-content-block w-full">
+            <div
+              className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
+              style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+            >
+              {headlineMetricTiles.map((metricTile) => (
+                <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
+                  <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                    <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : !headlineMetricTiles.length ? (
+          <div className="house-drilldown-content-block w-full" />
+        ) : null}
+
+        {activeTab === 'summary' ? (
+          <>
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Publication trends</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={publicationTrendsExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setPublicationTrendsExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {publicationTrendsExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
+                    <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+                      <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                        <div
+                          className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
+                          data-stop-tile-open="true"
+                          data-ui="publications-trends-window-toggle"
+                          data-house-role="chart-toggle"
+                          style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
+                        >
+                          <span
+                            className={HOUSE_TOGGLE_THUMB_CLASS}
+                            style={publicationTrendsWindowThumbStyle}
+                            aria-hidden="true"
+                          />
+                          {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+                            <button
+                              key={`pub-trends-window-${option.value}`}
+                              type="button"
+                              data-stop-tile-open="true"
+                              className={cn(
+                                HOUSE_TOGGLE_BUTTON_CLASS,
+                                publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                              )}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                if (publicationTrendsWindowMode === option.value) {
+                                  return
+                                }
+                                setPublicationTrendsWindowMode(option.value)
+                              }}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              aria-pressed={publicationTrendsWindowMode === option.value}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <PublicationTrendsVisualToggle
+                      value={publicationTrendsVisualMode}
+                      onChange={setPublicationTrendsVisualMode}
+                    />
+                  </div>
+
+                  <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
+                    <PublicationsPerYearChart
+                      tile={tile}
+                      animate={animateCharts}
+                      showAxes
+                      enableWindowToggle
+                      showPeriodHint
+                      showCurrentPeriodSemantic
+                      useCompletedMonthWindowLabels
+                      autoScaleByWindow
+                      showMeanLine
+                      showMeanValueLabel
+                      subtleGrid
+                      activeWindowMode={publicationTrendsWindowMode}
+                      onWindowModeChange={setPublicationTrendsWindowMode}
+                      visualMode={publicationTrendsVisualMode}
+                      onVisualModeChange={setPublicationTrendsVisualMode}
+                      showWindowToggle={false}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Article type trends</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={articleTypeTrendsExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setArticleTypeTrendsExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {articleTypeTrendsExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className="house-drilldown-content-block w-full">
+                    <PublicationCategoryDistributionChart
+                      publications={publicationDrilldownRecords}
+                      dimension="article"
+                      xAxisLabel="Article type"
+                      emptyLabel="No article type data"
+                      animate={animateCharts}
+                      enableValueModeToggle
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Publication type trends</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={publicationTypeTrendsExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setPublicationTypeTrendsExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {publicationTypeTrendsExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className="house-drilldown-content-block w-full">
+                    <PublicationCategoryDistributionChart
+                      publications={publicationDrilldownRecords}
+                      dimension="publication"
+                      xAxisLabel="Publication type"
+                      emptyLabel="No publication type data"
+                      animate={animateCharts}
+                      enableValueModeToggle
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+
+        {subsectionTitle ? (
+          <>
+            <div className="house-drilldown-heading-block-secondary">
+              <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>{subsectionTitle}</p>
+            </div>
+            <div className="house-drilldown-content-block w-full" />
+          </>
+        ) : null}
+      </div>
+    </div>
+  )
+}
 
   const publicationDrilldownRecords = useMemo(() => {
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>

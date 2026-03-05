@@ -517,3 +517,128 @@ def test_publication_file_download_restores_extension_for_legacy_filename(
         assert download_response.status_code == 200
         disposition = str(download_response.headers.get("content-disposition") or "")
         assert "filename*=UTF-8''legacy-final.pdf" in disposition
+
+
+def test_structured_abstract_payload_uses_model_when_quality_guard_passes(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        publication_console_service,
+        "_resolve_pubmed_pmid",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_structured_abstract_llm_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_generate_structured_abstract_with_model",
+        lambda **kwargs: (
+            "HEADING_BASED",
+            [
+                {
+                    "key": "introduction",
+                    "label": "Background",
+                    "content": "Right atrial pressure is prognostic in heart failure.",
+                },
+                {
+                    "key": "other",
+                    "label": "Purpose",
+                    "content": "Develop and validate a CMR-derived mRAP model.",
+                },
+                {
+                    "key": "methods",
+                    "label": "Methods",
+                    "content": "Cohort n=672 with regression analyses.",
+                },
+                {
+                    "key": "results",
+                    "label": "Results",
+                    "content": "AUC 0.93 with p<0.01 for hospitalisation outcomes.",
+                },
+                {
+                    "key": "conclusions",
+                    "label": "Conclusion",
+                    "content": "CMR-derived mRAP supports risk stratification.",
+                },
+            ],
+            "gpt-4.1-mini",
+        ),
+    )
+
+    payload, model_name = publication_console_service._build_structured_abstract_payload(
+        publication={
+            "title": "Cardiac MRI-derived mean right atrial pressure and outcomes",
+            "journal": "Open Heart",
+            "year": 2025,
+            "doi": None,
+            "pmid": None,
+            "keywords_json": ["heart failure"],
+            "abstract": (
+                "Background: Right atrial pressure is prognostic in heart failure. "
+                "Purpose: Develop and validate a CMR-derived mRAP model. "
+                "Methods: Cohort n=672 with regression analyses. "
+                "Results: AUC 0.93 with p<0.01 for hospitalisation outcomes. "
+                "Conclusion: CMR-derived mRAP supports risk stratification."
+            ),
+        }
+    )
+
+    assert model_name == "gpt-4.1-mini"
+    assert payload["metadata"]["generation_method"] == "model_extractive"
+    assert payload["metadata"]["quality_guard"]["passed"] is True
+    assert any(section["label"] == "Purpose" for section in payload["sections"])
+
+
+def test_structured_abstract_payload_falls_back_when_model_quality_guard_fails(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        publication_console_service,
+        "_resolve_pubmed_pmid",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_structured_abstract_llm_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_generate_structured_abstract_with_model",
+        lambda **kwargs: (
+            "HEADING_BASED",
+            [
+                {
+                    "key": "results",
+                    "label": "Results",
+                    "content": "Outcomes were favorable.",
+                }
+            ],
+            "gpt-4.1-mini",
+        ),
+    )
+
+    payload, model_name = publication_console_service._build_structured_abstract_payload(
+        publication={
+            "title": "Structured abstract fidelity guard",
+            "journal": "Test Journal",
+            "year": 2026,
+            "doi": None,
+            "pmid": None,
+            "keywords_json": [],
+            "abstract": (
+                "Background: Cohort n=101 was studied. "
+                "Results: AUC 0.75 and p<0.01 were observed."
+            ),
+        }
+    )
+
+    assert model_name is None
+    assert payload["metadata"]["generation_method"] == "deterministic"
+    model_fallback = payload["metadata"].get("model_fallback") or {}
+    assert model_fallback.get("reason") == "quality_guard_failed"

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Loader2, Paperclip, Search, Settings, Share2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -1713,8 +1713,10 @@ function splitLongTextIntoParagraphs(value: string, maxParagraphLength = 300): s
   }
 
   const normalized = raw.replace(/\s+/g, ' ').trim()
-  const sentenceMatches = normalized.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g) || []
-  const sentences = sentenceMatches.map((sentence) => sentence.trim()).filter(Boolean)
+  const sentences = normalized
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
   if (sentences.length < 3) {
     return [normalized]
   }
@@ -1745,8 +1747,8 @@ function extractRegistrationSectionContent(value: string): string {
   if (!text) {
     return ''
   }
-  const sentencePattern = /[^.!?]+(?:[.!?]+(?=\s|$)|$)/g
-  const sentences = (text.match(sentencePattern) || [])
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean)
   const registrationPattern =
@@ -2245,9 +2247,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [topMetricsResponse, setTopMetricsResponse] = useState<PublicationsTopMetricsPayload | null>(initialCachedTopMetricsResponse)
   const [query, setQuery] = useState('')
   const [publicationTableLayoutWidth, setPublicationTableLayoutWidth] = useState(1100)
-  const [publicationTableColumnOrder, setPublicationTableColumnOrder] = useState<PublicationTableColumnKey[]>(() => [...PUBLICATION_TABLE_COLUMN_ORDER])
+  const [publicationTableColumnOrder, setPublicationTableColumnOrder] = useState<PublicationTableColumnKey[]>(() => (
+    initialCachedUser?.id
+      ? loadPublicationTableColumnOrderPreference(initialCachedUser.id)
+      : [...PUBLICATION_TABLE_COLUMN_ORDER]
+  ))
   const [publicationTableColumns, setPublicationTableColumns] = useState<Record<PublicationTableColumnKey, PublicationTableColumnPreference>>(
-    () => createDefaultPublicationTableColumnPreferences(),
+    () => (
+      initialCachedUser?.id
+        ? loadPublicationTableColumnPreferences(initialCachedUser.id)
+        : createDefaultPublicationTableColumnPreferences()
+    ),
   )
   const [sortField, setSortField] = useState<PublicationSortField>('year')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
@@ -2322,6 +2332,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationLibrarySettingsButtonRef = useRef<HTMLButtonElement | null>(null)
   const publicationLibrarySettingsPopoverRef = useRef<HTMLDivElement | null>(null)
   const publicationTableAutoFitAppliedRef = useRef(false)
+  const publicationTablePrefsLoadedRef = useRef(false)
   const publicationTableResizeRef = useRef<{
     column: PublicationTableColumnKey
     visibleColumns: PublicationTableColumnKey[]
@@ -2488,6 +2499,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
   useEffect(() => {
     if (!user?.id) {
+      publicationTablePrefsLoadedRef.current = false
+      publicationTableAutoFitAppliedRef.current = false
       return
     }
     const loaded = loadPublicationTableColumnPreferences(user.id)
@@ -2506,6 +2519,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         availableWidth,
       })
     ))
+    publicationTablePrefsLoadedRef.current = true
+    publicationTableAutoFitAppliedRef.current = false
   }, [resolvePublicationTableAvailableWidth, user?.id])
 
   useEffect(() => {
@@ -2513,6 +2528,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     setPublicationTableColumnOrder(loadPublicationTableColumnOrderPreference(user.id))
+    publicationTableAutoFitAppliedRef.current = false
   }, [user?.id])
 
   useEffect(() => {
@@ -3929,8 +3945,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     publicationTableAutoFitAppliedRef.current = false
   }, [loading])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (publicationTableAutoFitAppliedRef.current) {
+      return
+    }
+    if (!publicationTablePrefsLoadedRef.current) {
       return
     }
     if (loading || !publicationLibraryVisible) {
@@ -3940,12 +3959,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     publicationTableAutoFitAppliedRef.current = true
-    const rafId = window.requestAnimationFrame(() => {
-      onAutoAdjustPublicationTableWidths()
-    })
-    return () => {
-      window.cancelAnimationFrame(rafId)
-    }
+    onAutoAdjustPublicationTableWidths()
   }, [loading, onAutoAdjustPublicationTableWidths, personaState?.works?.length, publicationLibraryVisible])
 
   const onDownloadPublicationLibrary = useCallback(() => {

@@ -55,7 +55,7 @@ FILE_TYPE_PDF = "PDF"
 FILE_TYPE_DOCX = "DOCX"
 FILE_TYPE_OTHER = "OTHER"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v4"
+STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
 
 _executor_lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
@@ -155,6 +155,30 @@ def _structured_abstract_model() -> str:
 
 def _structured_abstract_fallback_model() -> str:
     return str(os.getenv("PUB_STRUCTURED_ABSTRACT_FALLBACK_MODEL", "gpt-4.1")).strip()
+
+
+def _structured_abstract_llm_enabled() -> bool:
+    enabled = (
+        str(os.getenv("PUB_STRUCTURED_ABSTRACT_USE_LLM", "true")).strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
+    if not enabled:
+        return False
+    return bool(str(os.getenv("OPENAI_API_KEY", "")).strip())
+
+
+def _structured_abstract_llm_min_length_ratio() -> float:
+    value = _safe_float(
+        os.getenv("PUB_STRUCTURED_ABSTRACT_LLM_MIN_LENGTH_RATIO", "0.55")
+    )
+    return max(0.25, min(0.95, value if value is not None else 0.55))
+
+
+def _structured_abstract_llm_min_marker_recall() -> float:
+    value = _safe_float(
+        os.getenv("PUB_STRUCTURED_ABSTRACT_LLM_MIN_MARKER_RECALL", "0.7")
+    )
+    return max(0.0, min(1.0, value if value is not None else 0.7))
 
 
 def _openalex_timeout_seconds() -> float:
@@ -1762,6 +1786,79 @@ def _normalize_structured_content(value: Any) -> str:
     return _normalize_abstract_text(str(value or ""))
 
 
+def _normalize_quantitative_marker(value: str) -> str:
+    clean = _normalize_abstract_text(value).lower()
+    clean = clean.replace("≥", ">=").replace("≤", "<=").replace("−", "-")
+    clean = clean.replace("’", "'")
+    return re.sub(r"\s+", "", clean)
+
+
+def _extract_quantitative_markers(text: str | None) -> list[str]:
+    clean_text = _normalize_abstract_text(text)
+    if not clean_text:
+        return []
+    patterns = [
+        r"\bp\s*[<>=]\s*0?\.\d+\b",
+        r"\bn\s*=\s*\d+\b",
+        r"\b\d+(?:\.\d+)?\s*%",
+        r"(?:>=|<=|>|<|≥|≤)\s*\d+(?:\.\d+)?",
+        r"\b(?:auc|hr|or|rr|ci|r)\s*[=:]?\s*\d+(?:\.\d+)?\b",
+        r"\b(?:chi\s*2|χ2|x2)\s*=\s*\d+(?:\.\d+)?\b",
+    ]
+    markers: list[str] = []
+    seen: set[str] = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, clean_text, flags=re.IGNORECASE):
+            marker = _normalize_quantitative_marker(str(match.group(0) or ""))
+            if not marker or marker in seen:
+                continue
+            seen.add(marker)
+            markers.append(marker)
+    return markers
+
+
+def _structured_abstract_quality_report(
+    *, source_abstract: str, sections: list[dict[str, str]]
+) -> dict[str, Any]:
+    source_text = _normalize_abstract_text(source_abstract)
+    output_text = _normalize_abstract_text(
+        " ".join(
+            _normalize_structured_content(item.get("content"))
+            for item in sections
+            if isinstance(item, dict)
+        )
+    )
+    source_len = len(source_text)
+    output_len = len(output_text)
+    length_ratio = round((output_len / source_len), 3) if source_len > 0 else 1.0
+    min_length_ratio = _structured_abstract_llm_min_length_ratio()
+
+    source_markers = _extract_quantitative_markers(source_text)
+    output_markers_blob = _normalize_quantitative_marker(output_text)
+    missing_markers = [
+        marker for marker in source_markers if marker and marker not in output_markers_blob
+    ]
+    if source_markers:
+        marker_recall = round(
+            (len(source_markers) - len(missing_markers)) / len(source_markers), 3
+        )
+    else:
+        marker_recall = 1.0
+    min_marker_recall = _structured_abstract_llm_min_marker_recall()
+
+    passes_length = length_ratio >= min_length_ratio
+    passes_markers = marker_recall >= min_marker_recall if source_markers else True
+    return {
+        "passed": bool(passes_length and passes_markers),
+        "length_ratio": length_ratio,
+        "min_length_ratio": min_length_ratio,
+        "source_marker_count": len(source_markers),
+        "marker_recall": marker_recall,
+        "min_marker_recall": min_marker_recall,
+        "missing_markers": missing_markers[:12],
+    }
+
+
 def _coerce_structured_sections(payload: dict[str, Any]) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
 
@@ -1945,11 +2042,12 @@ def _build_structured_abstract_prompt(
         "  ]\n"
         "}\n"
         "Rules:\n"
-        "1) Preserve factual meaning from the source abstract.\n"
-        "2) If source headings exist (e.g., Aims, Background, Methods), keep them.\n"
-        "3) If headings are absent, infer best-effort section headings.\n"
-        "4) Keep each section concise and readable.\n"
-        "5) If trial/PROSPERO registration details are present, include them as a dedicated Registration section.\n\n"
+        "1) Use extractive rewriting only: do not invent, infer, or add facts not present in source.\n"
+        "2) Preserve quantitative details exactly (n=, p-values, %, AUC, CI, hazard/risk ratios, thresholds).\n"
+        "3) If source headings exist (e.g., Aims, Background, Methods), keep them.\n"
+        "4) If headings are absent, infer best-effort section headings.\n"
+        "5) You are not restricted to 4 sections; include additional sections when the source supports them.\n"
+        "6) If trial/PROSPERO registration details are present, include a dedicated Registration section.\n\n"
         f"TITLE: {title}\n"
         f"JOURNAL: {journal}\n"
         f"YEAR: {year_text}\n"
@@ -2060,22 +2158,79 @@ def _build_structured_abstract_payload(
             None,
         )
 
+    model_fallback: dict[str, Any] | None = None
+    if _structured_abstract_llm_enabled():
+        try:
+            model_format, model_sections, model_name = (
+                _generate_structured_abstract_with_model(
+                    title=title,
+                    journal=journal,
+                    year=year,
+                    abstract=abstract,
+                )
+            )
+            quality = _structured_abstract_quality_report(
+                source_abstract=abstract,
+                sections=model_sections,
+            )
+            if bool(quality.get("passed")):
+                return (
+                    {
+                        "format": model_format,
+                        "sections": model_sections,
+                        "keywords": effective_keywords,
+                        "source_abstract": abstract,
+                        "metadata": {
+                            "parser_version": parser_version,
+                            "source_abstract_sha256": source_hash,
+                            "generation_method": "model_extractive",
+                            "generated_at": generated_at,
+                            "title": title,
+                            "journal": journal,
+                            "year": year,
+                            "quality_guard": quality,
+                        },
+                    },
+                    model_name,
+                )
+            model_fallback = {
+                "reason": "quality_guard_failed",
+                "model_name": model_name,
+                "quality_guard": quality,
+            }
+            logger.warning(
+                "structured_abstract_model_quality_guard_failed",
+                extra={
+                    "publication_title": title[:180],
+                    "year": year,
+                    "length_ratio": quality.get("length_ratio"),
+                    "marker_recall": quality.get("marker_recall"),
+                },
+            )
+        except Exception as exc:
+            model_fallback = {
+                "reason": f"model_error:{type(exc).__name__}",
+            }
+
     fallback_format, fallback_sections = _fallback_structured_sections(abstract)
+    fallback_metadata: dict[str, Any] = {
+        "parser_version": parser_version,
+        "source_abstract_sha256": source_hash,
+        "generation_method": "deterministic",
+        "generated_at": generated_at,
+        "title": title,
+        "journal": journal,
+        "year": year,
+    }
+    if model_fallback is not None:
+        fallback_metadata["model_fallback"] = model_fallback
     return (
         {
             "format": fallback_format,
             "sections": fallback_sections,
             "keywords": effective_keywords,
             "source_abstract": abstract,
-            "metadata": {
-                "parser_version": parser_version,
-                "source_abstract_sha256": source_hash,
-                "generation_method": "deterministic",
-                "generated_at": generated_at,
-                "title": title,
-                "journal": journal,
-                "year": year,
-            },
+            "metadata": fallback_metadata,
         },
         None,
     )

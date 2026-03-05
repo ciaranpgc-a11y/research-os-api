@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Lightbulb, Search, Settings, Share2, Sparkles } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
@@ -217,6 +218,7 @@ const COLLABORATION_TABLE_COLUMN_MAX_WIDTH: Record<CollaborationTableColumnKey, 
   coauthored_works: 220,
   collaboration_score: 240,
 }
+const COLLABORATION_TABLE_COLUMN_HARD_MIN = 56
 
 function toFormState(value: CollaboratorPayload): CollaboratorFormState {
   return {
@@ -613,6 +615,257 @@ function clampCollaborationTableColumnWidth(
   return Math.max(min, Math.min(max, Math.round(Number(value) || COLLABORATION_TABLE_COLUMN_DEFAULTS[column].width)))
 }
 
+function collaborationTableColumnsEqual(
+  left: Record<CollaborationTableColumnKey, CollaborationTableColumnPreference>,
+  right: Record<CollaborationTableColumnKey, CollaborationTableColumnPreference>,
+): boolean {
+  return COLLABORATION_TABLE_COLUMN_ORDER.every((column) => (
+    left[column].visible === right[column].visible &&
+    left[column].width === right[column].width
+  ))
+}
+
+function clampCollaborationTableDistributedResize(input: {
+  column: CollaborationTableColumnKey
+  visibleColumns: CollaborationTableColumnKey[]
+  startWidths: Partial<Record<CollaborationTableColumnKey, number>>
+  deltaPx: number
+}): Partial<Record<CollaborationTableColumnKey, number>> {
+  const primaryIndex = input.visibleColumns.indexOf(input.column)
+  if (primaryIndex < 0 || input.visibleColumns.length <= 1) {
+    return input.startWidths
+  }
+
+  const normalizedWidths: Partial<Record<CollaborationTableColumnKey, number>> = {}
+  for (const key of input.visibleColumns) {
+    normalizedWidths[key] = clampCollaborationTableColumnWidth(
+      key,
+      Number(input.startWidths[key] ?? COLLABORATION_TABLE_COLUMN_DEFAULTS[key].width),
+    )
+  }
+
+  const primaryStart = Number(
+    normalizedWidths[input.column] ?? COLLABORATION_TABLE_COLUMN_DEFAULTS[input.column].width,
+  )
+  const requestedDelta = Math.round(input.deltaPx)
+  if (!requestedDelta) {
+    return normalizedWidths
+  }
+
+  const rightColumns = input.visibleColumns.slice(primaryIndex + 1)
+  const leftColumns = input.visibleColumns.slice(0, primaryIndex).reverse()
+  const compensationOrder = [...rightColumns, ...leftColumns]
+  if (compensationOrder.length === 0) {
+    return normalizedWidths
+  }
+
+  const maxPrimaryGrow = Math.min(
+    COLLABORATION_TABLE_COLUMN_MAX_WIDTH[input.column] - primaryStart,
+    compensationOrder.reduce(
+      (sum, key) => sum + Math.max(0, Number(normalizedWidths[key] ?? 0) - COLLABORATION_TABLE_COLUMN_MIN_WIDTH[key]),
+      0,
+    ),
+  )
+  const maxPrimaryShrink = Math.min(
+    primaryStart - COLLABORATION_TABLE_COLUMN_MIN_WIDTH[input.column],
+    compensationOrder.reduce(
+      (sum, key) => sum + Math.max(0, COLLABORATION_TABLE_COLUMN_MAX_WIDTH[key] - Number(normalizedWidths[key] ?? 0)),
+      0,
+    ),
+  )
+
+  let appliedDelta = requestedDelta
+  if (appliedDelta > 0) {
+    appliedDelta = Math.min(appliedDelta, maxPrimaryGrow)
+  } else {
+    appliedDelta = -Math.min(Math.abs(appliedDelta), maxPrimaryShrink)
+  }
+  if (!appliedDelta) {
+    return normalizedWidths
+  }
+
+  let remaining = Math.abs(appliedDelta)
+  if (appliedDelta > 0) {
+    for (const key of compensationOrder) {
+      if (!remaining) {
+        break
+      }
+      const current = Number(normalizedWidths[key] ?? COLLABORATION_TABLE_COLUMN_DEFAULTS[key].width)
+      const reducible = Math.max(0, current - COLLABORATION_TABLE_COLUMN_MIN_WIDTH[key])
+      if (!reducible) {
+        continue
+      }
+      const step = Math.min(reducible, remaining)
+      normalizedWidths[key] = current - step
+      remaining -= step
+    }
+    const actualDelta = Math.abs(appliedDelta) - remaining
+    normalizedWidths[input.column] = primaryStart + actualDelta
+  } else {
+    for (const key of compensationOrder) {
+      if (!remaining) {
+        break
+      }
+      const current = Number(normalizedWidths[key] ?? COLLABORATION_TABLE_COLUMN_DEFAULTS[key].width)
+      const growable = Math.max(0, COLLABORATION_TABLE_COLUMN_MAX_WIDTH[key] - current)
+      if (!growable) {
+        continue
+      }
+      const step = Math.min(growable, remaining)
+      normalizedWidths[key] = current + step
+      remaining -= step
+    }
+    const actualDelta = Math.abs(appliedDelta) - remaining
+    normalizedWidths[input.column] = primaryStart - actualDelta
+  }
+
+  for (const key of input.visibleColumns) {
+    normalizedWidths[key] = clampCollaborationTableColumnWidth(
+      key,
+      Number(normalizedWidths[key] ?? COLLABORATION_TABLE_COLUMN_DEFAULTS[key].width),
+    )
+  }
+  return normalizedWidths
+}
+
+function clampCollaborationTableColumnsToAvailableWidth(input: {
+  columns: Record<CollaborationTableColumnKey, CollaborationTableColumnPreference>
+  columnOrder: CollaborationTableColumnKey[]
+  availableWidth: number
+}): Record<CollaborationTableColumnKey, CollaborationTableColumnPreference> {
+  const next: Record<CollaborationTableColumnKey, CollaborationTableColumnPreference> = {
+    name: { ...input.columns.name },
+    institution: { ...input.columns.institution },
+    domains: { ...input.columns.domains },
+    relationship: { ...input.columns.relationship },
+    activity: { ...input.columns.activity },
+    last_year: { ...input.columns.last_year },
+    coauthored_works: { ...input.columns.coauthored_works },
+    collaboration_score: { ...input.columns.collaboration_score },
+  }
+  const visibleColumns = input.columnOrder.filter((column) => next[column].visible)
+  if (visibleColumns.length === 0) {
+    return next
+  }
+
+  const containerBudget = Math.max(
+    visibleColumns.length * COLLABORATION_TABLE_COLUMN_HARD_MIN,
+    Math.round(Number(input.availableWidth) || 0),
+  )
+  const preferredWidths = visibleColumns.reduce<Record<CollaborationTableColumnKey, number>>((accumulator, column) => {
+    accumulator[column] = clampCollaborationTableColumnWidth(
+      column,
+      Number(next[column].width || COLLABORATION_TABLE_COLUMN_DEFAULTS[column].width),
+    )
+    return accumulator
+  }, {
+    name: COLLABORATION_TABLE_COLUMN_DEFAULTS.name.width,
+    institution: COLLABORATION_TABLE_COLUMN_DEFAULTS.institution.width,
+    domains: COLLABORATION_TABLE_COLUMN_DEFAULTS.domains.width,
+    relationship: COLLABORATION_TABLE_COLUMN_DEFAULTS.relationship.width,
+    activity: COLLABORATION_TABLE_COLUMN_DEFAULTS.activity.width,
+    last_year: COLLABORATION_TABLE_COLUMN_DEFAULTS.last_year.width,
+    coauthored_works: COLLABORATION_TABLE_COLUMN_DEFAULTS.coauthored_works.width,
+    collaboration_score: COLLABORATION_TABLE_COLUMN_DEFAULTS.collaboration_score.width,
+  })
+
+  let totalWidth = visibleColumns.reduce((sum, column) => sum + preferredWidths[column], 0)
+  if (totalWidth > containerBudget) {
+    let overflow = totalWidth - containerBudget
+    const shrinkOrder: CollaborationTableColumnKey[] = [
+      'domains',
+      'institution',
+      'name',
+      'relationship',
+      'activity',
+      'coauthored_works',
+      'collaboration_score',
+      'last_year',
+    ].filter((column) => visibleColumns.includes(column))
+
+    for (const column of shrinkOrder) {
+      if (overflow <= 0) {
+        break
+      }
+      const reducible = Math.max(0, preferredWidths[column] - COLLABORATION_TABLE_COLUMN_MIN_WIDTH[column])
+      if (reducible <= 0) {
+        continue
+      }
+      const deduction = Math.min(reducible, overflow)
+      preferredWidths[column] -= deduction
+      overflow -= deduction
+    }
+
+    if (overflow > 0) {
+      for (const column of shrinkOrder) {
+        if (overflow <= 0) {
+          break
+        }
+        const reducible = Math.max(0, preferredWidths[column] - COLLABORATION_TABLE_COLUMN_HARD_MIN)
+        if (reducible <= 0) {
+          continue
+        }
+        const deduction = Math.min(reducible, overflow)
+        preferredWidths[column] -= deduction
+        overflow -= deduction
+      }
+    }
+    totalWidth = visibleColumns.reduce((sum, column) => sum + preferredWidths[column], 0)
+  }
+
+  if (totalWidth < containerBudget) {
+    let remaining = containerBudget - totalWidth
+    const growOrder: CollaborationTableColumnKey[] = [
+      'name',
+      'institution',
+      'domains',
+      'relationship',
+      'activity',
+      'coauthored_works',
+      'collaboration_score',
+      'last_year',
+    ].filter((column) => visibleColumns.includes(column))
+
+    while (remaining > 0) {
+      const growColumns = growOrder.filter(
+        (column) => preferredWidths[column] < COLLABORATION_TABLE_COLUMN_MAX_WIDTH[column],
+      )
+      if (growColumns.length === 0) {
+        break
+      }
+      const perColumn = Math.max(1, Math.floor(remaining / growColumns.length))
+      let grew = 0
+      for (const column of growColumns) {
+        if (remaining <= 0) {
+          break
+        }
+        const growable = Math.max(0, COLLABORATION_TABLE_COLUMN_MAX_WIDTH[column] - preferredWidths[column])
+        if (growable <= 0) {
+          continue
+        }
+        const step = Math.min(growable, perColumn, remaining)
+        if (step <= 0) {
+          continue
+        }
+        preferredWidths[column] += step
+        remaining -= step
+        grew += step
+      }
+      if (grew <= 0) {
+        break
+      }
+    }
+  }
+
+  for (const column of visibleColumns) {
+    next[column] = {
+      ...next[column],
+      width: Math.round(preferredWidths[column]),
+    }
+  }
+  return next
+}
+
 function normalizeHeatmapMode(value: string | null | undefined): HeatmapMode {
   if (value === 'institution' || value === 'domain') {
     return value
@@ -745,6 +998,10 @@ export function ProfileCollaborationPage() {
   const [collaborationDownloadVisible, setCollaborationDownloadVisible] = useState(false)
   const [collaborationToolsOpen, setCollaborationToolsOpen] = useState(false)
   const [collaborationSettingsVisible, setCollaborationSettingsVisible] = useState(false)
+  const [collaborationLibrarySearchPopoverPosition, setCollaborationLibrarySearchPopoverPosition] = useState({ top: 0, right: 0 })
+  const [collaborationLibraryFilterPopoverPosition, setCollaborationLibraryFilterPopoverPosition] = useState({ top: 0, right: 0 })
+  const [collaborationLibraryDownloadPopoverPosition, setCollaborationLibraryDownloadPopoverPosition] = useState({ top: 0, right: 0 })
+  const [collaborationLibrarySettingsPopoverPosition, setCollaborationLibrarySettingsPopoverPosition] = useState({ top: 0, right: 0 })
   const [collaborationTableLayoutWidth, setCollaborationTableLayoutWidth] = useState(1080)
   const [collaborationTableColumnOrder, setCollaborationTableColumnOrder] = useState<CollaborationTableColumnKey[]>(
     () => [...COLLABORATION_TABLE_COLUMN_ORDER],
@@ -755,17 +1012,25 @@ export function ProfileCollaborationPage() {
   const [collaborationTableDensity, setCollaborationTableDensity] = useState<CollaborationTableDensity>('default')
   const [collaborationTableAlternateRowColoring, setCollaborationTableAlternateRowColoring] = useState(true)
   const [collaborationTableMetricHighlights, setCollaborationTableMetricHighlights] = useState(true)
-  const [collaborationTableAutoFitTick, setCollaborationTableAutoFitTick] = useState(0)
   const [collaborationTableResizingColumn, setCollaborationTableResizingColumn] = useState<CollaborationTableColumnKey | null>(null)
   const [collaborationTableDraggingColumn, setCollaborationTableDraggingColumn] = useState<CollaborationTableColumnKey | null>(null)
   const [collaborationLibraryPageSize, setCollaborationLibraryPageSize] = useState<CollaborationTablePageSize>(
     COLLABORATORS_PAGE_SIZE_DEFAULT,
   )
   const collaborationTableLayoutRef = useRef<HTMLDivElement | null>(null)
+  const collaborationLibrarySearchButtonRef = useRef<HTMLButtonElement | null>(null)
+  const collaborationLibrarySearchPopoverRef = useRef<HTMLDivElement | null>(null)
+  const collaborationLibraryFilterButtonRef = useRef<HTMLButtonElement | null>(null)
+  const collaborationLibraryFilterPopoverRef = useRef<HTMLDivElement | null>(null)
+  const collaborationLibraryDownloadButtonRef = useRef<HTMLButtonElement | null>(null)
+  const collaborationLibraryDownloadPopoverRef = useRef<HTMLDivElement | null>(null)
+  const collaborationLibrarySettingsButtonRef = useRef<HTMLButtonElement | null>(null)
+  const collaborationLibrarySettingsPopoverRef = useRef<HTMLDivElement | null>(null)
   const collaborationTableResizeRef = useRef<{
     column: CollaborationTableColumnKey
+    visibleColumns: CollaborationTableColumnKey[]
     startX: number
-    startWidth: number
+    startWidths: Partial<Record<CollaborationTableColumnKey, number>>
   } | null>(null)
   const resolveCollaborationTableAvailableWidth = useCallback(() => {
     const measuredClient = collaborationTableLayoutRef.current?.clientWidth
@@ -1562,6 +1827,124 @@ export function ProfileCollaborationPage() {
     collaborationTableColumnOrder.filter((column) => collaborationTableColumns[column].visible)
   ), [collaborationTableColumnOrder, collaborationTableColumns])
 
+  useEffect(() => {
+    const node = collaborationTableLayoutRef.current
+    if (!node) {
+      return
+    }
+    const updateWidth = () => {
+      const measuredWidth = Math.round(node.clientWidth || node.getBoundingClientRect().width || 320)
+      setCollaborationTableLayoutWidth(Math.max(320, measuredWidth))
+    }
+    updateWidth()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth)
+      return () => {
+        window.removeEventListener('resize', updateWidth)
+      }
+    }
+    const observer = new ResizeObserver(() => {
+      updateWidth()
+    })
+    observer.observe(node)
+    return () => {
+      observer.disconnect()
+    }
+  }, [collaborationLibraryVisible, visibleCollaborationTableColumns.length])
+
+  useEffect(() => {
+    const availableWidth = resolveCollaborationTableAvailableWidth()
+    setCollaborationTableColumns((current) => {
+      const next = clampCollaborationTableColumnsToAvailableWidth({
+        columns: current,
+        columnOrder: collaborationTableColumnOrder,
+        availableWidth,
+      })
+      if (collaborationTableColumnsEqual(current, next)) {
+        return current
+      }
+      return next
+    })
+  }, [collaborationTableColumnOrder, collaborationTableLayoutWidth, resolveCollaborationTableAvailableWidth])
+
+  useEffect(() => {
+    if (!collaborationSearchVisible || !collaborationLibrarySearchButtonRef.current) return
+    const rect = collaborationLibrarySearchButtonRef.current.getBoundingClientRect()
+    setCollaborationLibrarySearchPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8,
+    })
+  }, [collaborationSearchVisible])
+
+  useEffect(() => {
+    if (!collaborationFilterVisible || !collaborationLibraryFilterButtonRef.current) return
+    const rect = collaborationLibraryFilterButtonRef.current.getBoundingClientRect()
+    setCollaborationLibraryFilterPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8,
+    })
+  }, [collaborationFilterVisible])
+
+  useEffect(() => {
+    if (!collaborationDownloadVisible || !collaborationLibraryDownloadButtonRef.current) return
+    const rect = collaborationLibraryDownloadButtonRef.current.getBoundingClientRect()
+    setCollaborationLibraryDownloadPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8,
+    })
+  }, [collaborationDownloadVisible])
+
+  useEffect(() => {
+    if (!collaborationSettingsVisible || !collaborationLibrarySettingsButtonRef.current) return
+    const rect = collaborationLibrarySettingsButtonRef.current.getBoundingClientRect()
+    setCollaborationLibrarySettingsPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8,
+    })
+  }, [collaborationSettingsVisible])
+
+  useEffect(() => {
+    if (!collaborationFilterVisible && !collaborationSearchVisible && !collaborationDownloadVisible && !collaborationSettingsVisible) {
+      return
+    }
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null
+      if (!target) {
+        return
+      }
+      const popoverNode = collaborationLibraryFilterPopoverRef.current
+      const buttonNode = collaborationLibraryFilterButtonRef.current
+      const searchPopoverNode = collaborationLibrarySearchPopoverRef.current
+      const searchButtonNode = collaborationLibrarySearchButtonRef.current
+      const downloadPopoverNode = collaborationLibraryDownloadPopoverRef.current
+      const downloadButtonNode = collaborationLibraryDownloadButtonRef.current
+      const settingsPopoverNode = collaborationLibrarySettingsPopoverRef.current
+      const settingsButtonNode = collaborationLibrarySettingsButtonRef.current
+      if (
+        (popoverNode && popoverNode.contains(target)) ||
+        (buttonNode && buttonNode.contains(target)) ||
+        (searchPopoverNode && searchPopoverNode.contains(target)) ||
+        (searchButtonNode && searchButtonNode.contains(target)) ||
+        (downloadPopoverNode && downloadPopoverNode.contains(target)) ||
+        (downloadButtonNode && downloadButtonNode.contains(target)) ||
+        (settingsPopoverNode && settingsPopoverNode.contains(target)) ||
+        (settingsButtonNode && settingsButtonNode.contains(target))
+      ) {
+        return
+      }
+      setCollaborationFilterVisible(false)
+      setCollaborationSearchVisible(false)
+      setCollaborationDownloadVisible(false)
+      setCollaborationSettingsVisible(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('touchstart', onPointerDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('touchstart', onPointerDown)
+    }
+  }, [collaborationDownloadVisible, collaborationFilterVisible, collaborationSearchVisible, collaborationSettingsVisible])
+
   const onReorderCollaborationColumn = useCallback((fromColumn: CollaborationTableColumnKey, toColumn: CollaborationTableColumnKey) => {
     if (fromColumn === toColumn) {
       return
@@ -1584,26 +1967,39 @@ export function ProfileCollaborationPage() {
   }, [collaborationTableColumns])
 
   const onToggleCollaborationColumnVisibility = (column: CollaborationTableColumnKey) => {
+    const availableWidth = resolveCollaborationTableAvailableWidth()
     setCollaborationTableColumns((current) => {
       const visibleCount = collaborationTableColumnOrder.reduce(
         (count, key) => count + (current[key].visible ? 1 : 0),
-        0,
+      0,
       )
       if (current[column].visible && visibleCount <= 1) {
         return current
       }
-      return {
+      const next = {
         ...current,
         [column]: {
           ...current[column],
           visible: !current[column].visible,
         },
       }
+      return clampCollaborationTableColumnsToAvailableWidth({
+        columns: next,
+        columnOrder: collaborationTableColumnOrder,
+        availableWidth,
+      })
     })
   }
 
   const onResetCollaborationTableSettings = () => {
-    setCollaborationTableColumns({ ...COLLABORATION_TABLE_COLUMN_DEFAULTS })
+    const availableWidth = resolveCollaborationTableAvailableWidth()
+    setCollaborationTableColumns(
+      clampCollaborationTableColumnsToAvailableWidth({
+        columns: { ...COLLABORATION_TABLE_COLUMN_DEFAULTS },
+        columnOrder: COLLABORATION_TABLE_COLUMN_ORDER,
+        availableWidth,
+      }),
+    )
     setCollaborationTableColumnOrder([...COLLABORATION_TABLE_COLUMN_ORDER])
     setCollaborationTableDensity('default')
     setCollaborationTableAlternateRowColoring(true)
@@ -1627,12 +2023,16 @@ export function ProfileCollaborationPage() {
           width: clampCollaborationTableColumnWidth(column, perColumnWidth),
         }
       }
-      return next
+      return clampCollaborationTableColumnsToAvailableWidth({
+        columns: next,
+        columnOrder: collaborationTableColumnOrder,
+        availableWidth,
+      })
     })
   }, [collaborationTableColumnOrder, collaborationTableColumns, resolveCollaborationTableAvailableWidth])
 
   const onStartCollaborationHeadingResize = useCallback((
-    event: React.PointerEvent<HTMLButtonElement>,
+    event: ReactPointerEvent<HTMLButtonElement>,
     column: CollaborationTableColumnKey,
   ) => {
     if (event.button !== 0) {
@@ -1640,16 +2040,25 @@ export function ProfileCollaborationPage() {
     }
     event.preventDefault()
     event.stopPropagation()
+    const visibleColumns = collaborationTableColumnOrder.filter((key) => collaborationTableColumns[key].visible)
+    if (visibleColumns.length <= 1 || !visibleColumns.includes(column)) {
+      return
+    }
+    const startWidths = visibleColumns.reduce<Partial<Record<CollaborationTableColumnKey, number>>>((accumulator, key) => {
+      accumulator[key] = Number(collaborationTableColumns[key].width || COLLABORATION_TABLE_COLUMN_DEFAULTS[key].width)
+      return accumulator
+    }, {})
     collaborationTableResizeRef.current = {
       column,
+      visibleColumns,
       startX: event.clientX,
-      startWidth: Number(collaborationTableColumns[column].width || COLLABORATION_TABLE_COLUMN_DEFAULTS[column].width),
+      startWidths,
     }
     setCollaborationTableResizingColumn(column)
-  }, [collaborationTableColumns])
+  }, [collaborationTableColumnOrder, collaborationTableColumns])
 
   const onCollaborationHeadingResizeHandleKeyDown = useCallback((
-    event: React.KeyboardEvent<HTMLButtonElement>,
+    event: ReactKeyboardEvent<HTMLButtonElement>,
     column: CollaborationTableColumnKey,
   ) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
@@ -1658,23 +2067,45 @@ export function ProfileCollaborationPage() {
     event.preventDefault()
     event.stopPropagation()
     const deltaPx = event.key === 'ArrowLeft' ? -16 : 16
+    const availableWidth = resolveCollaborationTableAvailableWidth()
     setCollaborationTableColumns((current) => {
-      const nextWidth = clampCollaborationTableColumnWidth(
-        column,
-        Number(current[column].width || COLLABORATION_TABLE_COLUMN_DEFAULTS[column].width) + deltaPx,
-      )
-      if (nextWidth === current[column].width) {
+      const visibleColumns = collaborationTableColumnOrder.filter((key) => current[key].visible)
+      if (visibleColumns.length <= 1 || !visibleColumns.includes(column)) {
         return current
       }
-      return {
-        ...current,
-        [column]: {
-          ...current[column],
+      const startWidths = visibleColumns.reduce<Partial<Record<CollaborationTableColumnKey, number>>>((accumulator, key) => {
+        accumulator[key] = Number(current[key].width || COLLABORATION_TABLE_COLUMN_DEFAULTS[key].width)
+        return accumulator
+      }, {})
+      const resized = clampCollaborationTableDistributedResize({
+        column,
+        visibleColumns,
+        startWidths,
+        deltaPx,
+      })
+      let changed = false
+      const next = { ...current }
+      for (const key of visibleColumns) {
+        const nextWidth = Number(resized[key] ?? current[key].width)
+        if (nextWidth === current[key].width) {
+          continue
+        }
+        changed = true
+        next[key] = {
+          ...current[key],
           width: nextWidth,
-        },
+        }
       }
+      if (!changed) {
+        return current
+      }
+      return clampCollaborationTableColumnsToAvailableWidth({
+        columns: next,
+        columnOrder: collaborationTableColumnOrder,
+        availableWidth,
+      })
     })
-  }, [])
+  }, [collaborationTableColumnOrder, resolveCollaborationTableAvailableWidth])
 
   useEffect(() => {
     if (!collaborationTableResizingColumn) {
@@ -1685,21 +2116,35 @@ export function ProfileCollaborationPage() {
       if (!resizeState) {
         return
       }
-      const nextWidth = clampCollaborationTableColumnWidth(
-        resizeState.column,
-        resizeState.startWidth + (event.clientX - resizeState.startX),
-      )
+      const availableWidth = resolveCollaborationTableAvailableWidth()
+      const resized = clampCollaborationTableDistributedResize({
+        column: resizeState.column,
+        visibleColumns: resizeState.visibleColumns,
+        startWidths: resizeState.startWidths,
+        deltaPx: event.clientX - resizeState.startX,
+      })
       setCollaborationTableColumns((current) => {
-        if (nextWidth === current[resizeState.column].width) {
+        let changed = false
+        const next = { ...current }
+        for (const key of resizeState.visibleColumns) {
+          const nextWidth = Number(resized[key] ?? current[key].width)
+          if (nextWidth === current[key].width) {
+            continue
+          }
+          changed = true
+          next[key] = {
+            ...current[key],
+            width: nextWidth,
+          }
+        }
+        if (!changed) {
           return current
         }
-        return {
-          ...current,
-          [resizeState.column]: {
-            ...current[resizeState.column],
-            width: nextWidth,
-          },
-        }
+        return clampCollaborationTableColumnsToAvailableWidth({
+          columns: next,
+          columnOrder: collaborationTableColumnOrder,
+          availableWidth,
+        })
       })
     }
     const stopResize = () => {
@@ -1714,7 +2159,7 @@ export function ProfileCollaborationPage() {
       window.removeEventListener('pointerup', stopResize)
       window.removeEventListener('pointercancel', stopResize)
     }
-  }, [collaborationTableResizingColumn])
+  }, [collaborationTableColumnOrder, collaborationTableResizingColumn, resolveCollaborationTableAvailableWidth])
 
   const onSortColumn = (column: CollaborationSortField) => {
     if (sort === column) {
@@ -2244,6 +2689,7 @@ export function ProfileCollaborationPage() {
               {collaborationLibraryVisible ? (
                 <div className="relative order-1 shrink-0">
                   <button
+                    ref={collaborationLibrarySearchButtonRef}
                     type="button"
                     data-state={collaborationSearchVisible ? 'open' : 'closed'}
                     className={cn(
@@ -2267,8 +2713,15 @@ export function ProfileCollaborationPage() {
                   >
                     <Search className="house-publications-tools-toggle-icon house-publications-search-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
                   </button>
-                  {collaborationSearchVisible ? (
-                    <div className="house-publications-search-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[22.5rem]">
+                  {collaborationSearchVisible ? createPortal(
+                    <div
+                      ref={collaborationLibrarySearchPopoverRef}
+                      className="house-publications-search-popover fixed z-50 w-[22.5rem]"
+                      style={{
+                        top: `${collaborationLibrarySearchPopoverPosition.top}px`,
+                        right: `${collaborationLibrarySearchPopoverPosition.right}px`,
+                      }}
+                    >
                       <label className="house-publications-search-label" htmlFor="collaboration-library-search-input">
                         Search collaborators
                       </label>
@@ -2287,13 +2740,15 @@ export function ProfileCollaborationPage() {
                         placeholder="Search by collaborator name, email, ORCID, institution..."
                         className="house-publications-search-input"
                       />
-                    </div>
+                    </div>,
+                    document.body
                   ) : null}
                 </div>
               ) : null}
               {collaborationLibraryVisible ? (
                 <div className="relative order-2 shrink-0">
                   <button
+                    ref={collaborationLibraryFilterButtonRef}
                     type="button"
                     data-state={collaborationFilterVisible ? 'open' : 'closed'}
                     className={cn(
@@ -2317,8 +2772,15 @@ export function ProfileCollaborationPage() {
                   >
                     <Filter className="house-publications-tools-toggle-icon house-publications-filter-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
                   </button>
-                  {collaborationFilterVisible ? (
-                    <div className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[17.5rem]">
+                  {collaborationFilterVisible ? createPortal(
+                    <div
+                      ref={collaborationLibraryFilterPopoverRef}
+                      className="house-publications-filter-popover fixed z-50 w-[17.5rem]"
+                      style={{
+                        top: `${collaborationLibraryFilterPopoverPosition.top}px`,
+                        right: `${collaborationLibraryFilterPopoverPosition.right}px`,
+                      }}
+                    >
                       <div className="house-publications-filter-header">
                         <p className="house-publications-filter-title">Filter library</p>
                         <button
@@ -2335,7 +2797,8 @@ export function ProfileCollaborationPage() {
                       <p className="house-publications-filter-empty">
                         {heatmapSelection ? 'Heat map filter currently applied.' : 'No active collaborator filters.'}
                       </p>
-                    </div>
+                    </div>,
+                    document.body
                   ) : null}
                 </div>
               ) : null}
@@ -2352,6 +2815,7 @@ export function ProfileCollaborationPage() {
               <div className="flex min-w-0 flex-nowrap whitespace-nowrap gap-1">
                 <div className="relative inline-flex">
                   <Button
+                    ref={collaborationLibraryDownloadButtonRef}
                     type="button"
                     variant="house"
                     size="icon"
@@ -2394,8 +2858,15 @@ export function ProfileCollaborationPage() {
                   >
                     <Download className="h-4 w-4" strokeWidth={2.1} />
                   </Button>
-                  {collaborationDownloadVisible ? (
-                    <div className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-40 w-[14rem]">
+                  {collaborationDownloadVisible ? createPortal(
+                    <div
+                      ref={collaborationLibraryDownloadPopoverRef}
+                      className="house-publications-filter-popover fixed z-50 w-[14rem]"
+                      style={{
+                        top: `${collaborationLibraryDownloadPopoverPosition.top}px`,
+                        right: `${collaborationLibraryDownloadPopoverPosition.right}px`,
+                      }}
+                    >
                       <div className="house-publications-filter-header">
                         <p className="house-publications-filter-title">Download</p>
                       </div>
@@ -2408,7 +2879,8 @@ export function ProfileCollaborationPage() {
                           Download CSV
                         </button>
                       </div>
-                    </div>
+                    </div>,
+                    document.body
                   ) : null}
                   <span
                     className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100"
@@ -2465,6 +2937,7 @@ export function ProfileCollaborationPage() {
               {collaborationLibraryVisible ? (
                 <div className="relative order-5 shrink-0">
                   <button
+                    ref={collaborationLibrarySettingsButtonRef}
                     type="button"
                     data-state={collaborationSettingsVisible ? 'open' : 'closed'}
                     className={cn(
@@ -2488,8 +2961,15 @@ export function ProfileCollaborationPage() {
                   >
                     <Settings className="house-publications-tools-toggle-icon house-publications-settings-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
                   </button>
-                  {collaborationSettingsVisible ? (
-                    <div className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[18.75rem]">
+                  {collaborationSettingsVisible ? createPortal(
+                    <div
+                      ref={collaborationLibrarySettingsPopoverRef}
+                      className="house-publications-filter-popover fixed z-50 w-[18.75rem]"
+                      style={{
+                        top: `${collaborationLibrarySettingsPopoverPosition.top}px`,
+                        right: `${collaborationLibrarySettingsPopoverPosition.right}px`,
+                      }}
+                    >
                       <div className="house-publications-filter-header">
                         <p className="house-publications-filter-title">Table settings</p>
                         <div className="inline-flex items-center gap-2">
@@ -2527,11 +3007,11 @@ export function ProfileCollaborationPage() {
                         <summary className="house-publications-filter-summary">
                           <span>Columns</span>
                           <span className="house-publications-filter-count">
-                            {visibleCollaborationTableColumns.length}/{COLLABORATION_TABLE_COLUMN_ORDER.length}
+                            {visibleCollaborationTableColumns.length}/{collaborationTableColumnOrder.length}
                           </span>
                         </summary>
                         <div className="house-publications-filter-options">
-                          {COLLABORATION_TABLE_COLUMN_ORDER.map((columnKey) => {
+                          {collaborationTableColumnOrder.map((columnKey) => {
                             const checked = collaborationTableColumns[columnKey].visible
                             const visibleCount = visibleCollaborationTableColumns.length
                             const disableToggle = checked && visibleCount <= 1
@@ -2641,7 +3121,8 @@ export function ProfileCollaborationPage() {
                           ))}
                         </div>
                       </details>
-                    </div>
+                    </div>,
+                    document.body
                   ) : null}
                 </div>
               ) : null}
@@ -2683,7 +3164,7 @@ export function ProfileCollaborationPage() {
               <div ref={collaborationTableLayoutRef} className="relative w-full house-table-context-profile">
                 <Table
                   className={cn(
-                    'w-full',
+                    'w-full table-fixed house-table-resizable',
                     collaborationTableDensity === 'compact' && 'house-publications-table-density-compact',
                     collaborationTableDensity === 'comfortable' && 'house-publications-table-density-comfortable',
                   )}
