@@ -4609,7 +4609,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 {publicationLibrarySearchVisible ? (
                   <div
                     ref={publicationLibrarySearchPopoverRef}
-                    className="house-publications-search-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[22.5rem]"
+                    className="house-publications-search-popover absolute right-[calc(100%+0.5rem)] top-0 z-50 w-[22.5rem]"
                   >
                     <label className="house-publications-search-label" htmlFor="publication-library-search-input">
                       Search library
@@ -4658,7 +4658,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 {publicationLibraryFiltersVisible ? (
                   <div
                     ref={publicationLibraryFilterPopoverRef}
-                    className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[17.5rem]"
+                    className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-50 w-[17.5rem]"
                   >
                     <div className="house-publications-filter-header">
                       <p className="house-publications-filter-title">Filter library</p>
@@ -4794,7 +4794,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   {publicationLibraryDownloadVisible ? (
                     <div
                       ref={publicationLibraryDownloadPopoverRef}
-                      className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-40 w-[20.5rem]"
+                      className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-50 w-[20.5rem]"
                     >
                       <div className="house-publications-filter-header">
                         <p className="house-publications-filter-title">Download library</p>
@@ -4995,7 +4995,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 {publicationLibrarySettingsVisible ? (
                   <div
                     ref={publicationLibrarySettingsPopoverRef}
-                    className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[18.75rem]"
+                    className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-50 w-[18.75rem]"
                   >
                       <div className="house-publications-filter-header">
                         <p className="house-publications-filter-title">Table settings</p>
