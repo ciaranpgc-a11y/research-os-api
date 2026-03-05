@@ -278,6 +278,53 @@ def test_import_mapping_logic_matches_orcid_openalex_and_name(
         assert int(total or 0) == 4
 
 
+def test_import_collaborators_uses_user_openalex_id_without_orcid(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="import-no-orcid@example.com", orcid_id=None)
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        assert user is not None
+        user.openalex_author_id = "A12345"
+        session.flush()
+
+    def _should_not_resolve_author_id(**kwargs):
+        raise AssertionError("_resolve_openalex_author_id should not be called")
+
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service._resolve_openalex_author_id",
+        _should_not_resolve_author_id,
+    )
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service._iter_openalex_coauthors",
+        lambda **kwargs: [
+            {
+                "full_name": "OpenAlex Only Collaborator",
+                "orcid_id": None,
+                "openalex_author_id": "https://openalex.org/A777",
+                "primary_institution": "Institute OA",
+                "country": "GB",
+                "shared_openalex_work_ids": ["W777"],
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service.enqueue_collaboration_metrics_recompute",
+        lambda **_: True,
+    )
+
+    payload = import_collaborators_from_openalex(user_id=user_id)
+
+    assert payload["created_count"] == 1
+    assert payload["updated_count"] == 0
+    assert payload["skipped_count"] == 0
+    assert payload["openalex_author_id"] == "https://openalex.org/A12345"
+    assert payload["imported_candidates"] == 1
+
+
 def test_list_collaborators_dedupes_openalex_id_format_variants(
     monkeypatch, tmp_path
 ) -> None:
@@ -1024,3 +1071,100 @@ def test_list_collaborators_does_not_group_different_people(monkeypatch, tmp_pat
     assert result["total"] == 2, (
         f"Expected 2 separate collaborators but got {result['total']}"
     )
+
+
+def test_singleton_no_institution_filtered_out(monkeypatch, tmp_path):
+    """A singleton collaborator with no institution is removed from results."""
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="no-inst-filter@example.com")
+
+    with session_scope() as session:
+        # One with institution, one without
+        session.add(
+            Collaborator(
+                owner_user_id=user_id,
+                full_name="Alice Swift",
+                full_name_lower="alice swift",
+                primary_institution="University of Oxford",
+                research_domains=[],
+            )
+        )
+        session.add(
+            Collaborator(
+                owner_user_id=user_id,
+                full_name="Bob Alone",
+                full_name_lower="bob alone",
+                primary_institution="",
+                research_domains=[],
+            )
+        )
+        session.flush()
+
+        for collab in session.scalars(
+            select(Collaborator).where(Collaborator.owner_user_id == user_id)
+        ).all():
+            session.add(
+                CollaborationMetric(
+                    owner_user_id=user_id,
+                    collaborator_id=collab.id,
+                    status="READY",
+                )
+            )
+        session.flush()
+
+    result = list_collaborators_for_user(user_id=user_id)
+    # Bob (no institution, no group) should be filtered out
+    assert result["total"] == 1, (
+        f"Expected 1 collaborator but got {result['total']}: "
+        + ", ".join(item["full_name"] for item in result["items"])
+    )
+    assert result["items"][0]["full_name"] == "Alice Swift"
+
+
+def test_no_institution_merges_with_initial_compatible_match(monkeypatch, tmp_path):
+    """A. Swift (no institution) merges with Alice Swift (has institution)."""
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="initial-merge@example.com")
+
+    with session_scope() as session:
+        session.add(
+            Collaborator(
+                owner_user_id=user_id,
+                full_name="Alice Swift",
+                full_name_lower="alice swift",
+                primary_institution="University of Oxford",
+                research_domains=[],
+            )
+        )
+        session.add(
+            Collaborator(
+                owner_user_id=user_id,
+                full_name="A. Swift",
+                full_name_lower="a. swift",
+                primary_institution="",
+                research_domains=[],
+            )
+        )
+        session.flush()
+
+        for collab in session.scalars(
+            select(Collaborator).where(Collaborator.owner_user_id == user_id)
+        ).all():
+            session.add(
+                CollaborationMetric(
+                    owner_user_id=user_id,
+                    collaborator_id=collab.id,
+                    status="READY",
+                )
+            )
+        session.flush()
+
+    result = list_collaborators_for_user(user_id=user_id)
+    # Should be grouped into 1 entry (not filtered out, because group size > 1)
+    assert result["total"] == 1, (
+        f"Expected 1 grouped collaborator but got {result['total']}: "
+        + ", ".join(item["full_name"] for item in result["items"])
+    )
+    assert result["items"][0]["duplicate_count"] == 2

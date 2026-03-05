@@ -241,11 +241,14 @@ def merge_duplicate_collaborators(user_id: str | None = None, dry_run: bool = Fa
                             union(left_id, right_id)
                             continue
                     if _name_initial_compatible(left_name, right_name):
-                        inst_sim = _institution_similarity(
-                            left.primary_institution,
-                            right.primary_institution,
-                        )
-                        if inst_sim >= 0.82:
+                        left_inst = (left.primary_institution or "").strip()
+                        right_inst = (right.primary_institution or "").strip()
+                        # Both have institutions → require similarity
+                        if left_inst and right_inst:
+                            if _institution_similarity(left_inst, right_inst) >= 0.82:
+                                union(left_id, right_id)
+                        # Exactly one has institution → institution side confirms
+                        elif left_inst or right_inst:
                             union(left_id, right_id)
 
             grouped_ids: dict[str, list[str]] = defaultdict(list)

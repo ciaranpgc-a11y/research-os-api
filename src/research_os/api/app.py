@@ -2339,7 +2339,7 @@ def v1_openalex_import(
         )
         
         return OpenAlexImportResponse(
-            job_id=str(job["id"]),
+            job_id=str(job.id),
             openalex_author_id=author_id,
             openalex_author_name="",  # Will be populated during job execution
         )

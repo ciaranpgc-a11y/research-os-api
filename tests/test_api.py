@@ -1,5 +1,6 @@
 import base64
 import time
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -2972,6 +2973,72 @@ def test_v1_auth_me_openalex_profile_confirmation_flow(monkeypatch, tmp_path) ->
     assert cleared_payload["openalex_author_id"] is None
     assert cleared_payload["openalex_integration_approved"] is False
     assert cleared_payload["openalex_auto_update_enabled"] is False
+
+
+def test_v1_openalex_import_returns_job_id_from_job_model(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.api.app.enqueue_persona_sync_job",
+        lambda **_: SimpleNamespace(id="job-openalex-1"),
+    )
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "openalex-import@example.com",
+                "password": "StrongPassword123",
+                "name": "OpenAlex Import User",
+            },
+        )
+        token = register_response.json()["session_token"]
+        response = client.post(
+            "/v1/openalex/import",
+            headers=_auth_headers(token),
+            json={"openalex_author_id": "https://openalex.org/A1234567890"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == "job-openalex-1"
+    assert payload["openalex_author_id"] == "A1234567890"
+
+
+def test_upsert_work_accepts_user_author_position_hint(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "position-hint@example.com",
+                "password": "StrongPassword123",
+                "name": "Position Hint User",
+            },
+        )
+        user_id = register_response.json()["user"]["id"]
+
+        payload = upsert_work(
+            user_id=user_id,
+            provenance="manual",
+            work={
+                "title": "Author position hint regression test",
+                "year": 2025,
+                "doi": "10.1000/position-hint",
+                "url": "https://example.org/position-hint",
+                "user_author_position": "2",
+                "authors": [
+                    {"name": "Co Author 1"},
+                    {"name": "Position Hint User"},
+                ],
+            },
+        )
+
+    assert payload["id"]
+    assert payload["title"] == "Author position hint regression test"
+    assert payload["provenance"] == "manual"
 
 
 def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> None:

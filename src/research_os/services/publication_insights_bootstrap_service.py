@@ -721,12 +721,7 @@ def import_openalex_works_direct(
     This bypasses ORCID and name resolution, using the author ID provided.
     Returns the same structure as import_orcid_works for consistency.
     """
-    from research_os.services.orcid_service import (
-        _work_from_openalex,
-        _upsert_imported_orcid_work,
-        _openalex_mailto,
-        OrcidValidationError,
-    )
+    from research_os.services.orcid_service import _upsert_imported_orcid_work
     
     # Normalize the author ID
     author_id = str(openalex_author_id).strip()
@@ -745,7 +740,6 @@ def import_openalex_works_direct(
         user = session.get(User, user_id)
         if not user:
             raise PublicationInsightsBootstrapNotFoundError(f"User '{user_id}' not found")
-        user_name = user.name or ""
         user_email = user.email
     
     mailto = _openalex_mailto(fallback_email=user_email)

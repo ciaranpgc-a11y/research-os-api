@@ -420,12 +420,16 @@ def _collaborator_groups(
                     _union(lid, rid)
                     continue
             # Initial-compatible names (e.g. "G. Matthews" ↔ "Gareth Matthews")
-            # require institution confirmation to avoid false positives
             if _name_initial_compatible(left_name, right_name):
-                inst_sim = _affiliation_similarity(
-                    left.primary_institution, right.primary_institution
-                )
-                if inst_sim >= 0.82:
+                left_inst = (left.primary_institution or "").strip()
+                right_inst = (right.primary_institution or "").strip()
+                # If both have institutions, require institution similarity
+                if left_inst and right_inst:
+                    if _affiliation_similarity(left_inst, right_inst) >= 0.82:
+                        _union(lid, rid)
+                # If exactly one has an institution, the institution side
+                # provides sufficient confirmation for the match
+                elif left_inst or right_inst:
                     _union(lid, rid)
 
     # Build groups
@@ -569,6 +573,14 @@ def _canonicalize_collaborator_payloads(
     metrics_by_collaborator: dict[str, CollaborationMetric],
 ) -> list[dict[str, Any]]:
     groups, _ = _collaborator_groups(collaborators)
+    # Remove ungrouped (singleton) collaborators that have no institution —
+    # they are low-quality records that cannot be confirmed as real people.
+    groups = {
+        key: members
+        for key, members in groups.items()
+        if len(members) > 1
+        or any((m.primary_institution or "").strip() for m in members)
+    }
     collaborator_ids = [str(item.id) for item in collaborators]
     affiliation_labels = _affiliation_labels_by_collaborator(
         session,
@@ -2539,23 +2551,26 @@ def _match_existing_for_import(
 
 def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:
     create_all_tables()
+    openalex_author_id: str | None = None
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
-        user_orcid = validate_orcid_id(user.orcid_id)
-        if not user_orcid:
-            raise CollaborationValidationError(
-                "ORCID must be linked before importing collaborators from OpenAlex."
-            )
         user_email = user.email
-    openalex_author_id = _normalize_openalex_author_id(
-        _resolve_openalex_author_id(
-        orcid_id=user_orcid,
-        mailto=_openalex_mailto(fallback_email=user_email),
-        )
-    )
+        openalex_author_id = _normalize_openalex_author_id(user.openalex_author_id)
+        if not openalex_author_id:
+            user_orcid = validate_orcid_id(user.orcid_id)
+            if not user_orcid:
+                raise CollaborationValidationError(
+                    "Link ORCID or set OpenAlex author ID before importing collaborators."
+                )
+            openalex_author_id = _normalize_openalex_author_id(
+                _resolve_openalex_author_id(
+                    orcid_id=user_orcid,
+                    mailto=_openalex_mailto(fallback_email=user_email),
+                )
+            )
     if not openalex_author_id:
         raise CollaborationValidationError(
-            "Could not resolve OpenAlex author from linked ORCID."
+            "Could not resolve OpenAlex author profile for collaborator import."
         )
     candidates = _iter_openalex_coauthors(
         openalex_author_id=openalex_author_id,

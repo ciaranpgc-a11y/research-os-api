@@ -1099,7 +1099,15 @@ export function ProfileCollaborationPage() {
           if (stringSimilarity(leftInst, rightInst) >= 0.82) { union(lid, rid); continue }
         }
         if (nameInitialCompatible(left.full_name || '', right.full_name || '')) {
-          if (stringSimilarity(leftInst, rightInst) >= 0.82) { union(lid, rid) }
+          const li = String(left.primary_institution || '').trim()
+          const ri = String(right.primary_institution || '').trim()
+          // Both have institutions → require similarity
+          if (li && ri) {
+            if (stringSimilarity(li.toLowerCase().replace(/\s+/g, ' '), ri.toLowerCase().replace(/\s+/g, ' ')) >= 0.82) { union(lid, rid) }
+          // Exactly one has institution → institution side confirms
+          } else if (li || ri) {
+            union(lid, rid)
+          }
         }
       }
     }
@@ -1109,6 +1117,14 @@ export function ProfileCollaborationPage() {
       const group = groups.get(root) || []
       group.push(item)
       groups.set(root, group)
+    }
+
+    // Remove singleton groups where no member has an institution —
+    // low-quality records that cannot be confirmed as real people.
+    for (const [root, members] of groups) {
+      if (members.length <= 1 && !members.some(m => (m.primary_institution || '').trim())) {
+        groups.delete(root)
+      }
     }
 
     const classificationRank: Record<CollaboratorPayload['metrics']['classification'], number> = {
