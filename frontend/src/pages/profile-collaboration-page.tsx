@@ -17,7 +17,7 @@ import {
 } from '@/components/primitives'
 import { SectionMarker, SectionToolDivider, SectionTools } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
-import { houseLayout } from '@/lib/house-style'
+import { houseLayout, houseTables } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { UKCollaborationMap } from '@/components/collaboration/UKCollaborationMap'
 import {
@@ -116,6 +116,13 @@ type CollaborationTableColumnKey =
   | 'collaboration_score'
 type CollaborationTableDensity = 'compact' | 'default' | 'comfortable'
 type CollaborationTablePageSize = 25 | 50 | 100 | 'all'
+type CollaborationSortField =
+  | 'name'
+  | 'works'
+  | 'last_collaboration_year'
+  | 'strength'
+  | 'relationship_tier'
+  | 'activity_status'
 type SortDirection = 'asc' | 'desc'
 type CollaborationTableColumnPreference = {
   visible: boolean
@@ -141,6 +148,7 @@ const EMPTY_FORM: CollaboratorFormState = {
 }
 
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
+const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
 const COLLABORATORS_PAGE_SIZE_DEFAULT: CollaborationTablePageSize = 50
 const HEATMAP_TOP_CELL_LIMIT = 24
 const HEATMAP_OTHERS_KEY = '__others__'
@@ -167,8 +175,10 @@ const COLLABORATION_TABLE_COLUMN_DEFINITIONS: Record<
   coauthored_works: { label: 'Coauthored works', headerClassName: 'text-center', cellClassName: 'align-top text-center whitespace-nowrap' },
   collaboration_score: { label: 'Collaboration score', headerClassName: 'text-center', cellClassName: 'align-top text-center whitespace-nowrap tabular-nums' },
 }
-const COLLABORATION_TABLE_COLUMN_SORT_FIELD: Partial<Record<CollaborationTableColumnKey, 'name' | 'works' | 'last_collaboration_year' | 'strength'>> = {
+const COLLABORATION_TABLE_COLUMN_SORT_FIELD: Partial<Record<CollaborationTableColumnKey, CollaborationSortField>> = {
   name: 'name',
+  relationship: 'relationship_tier',
+  activity: 'activity_status',
   last_year: 'last_collaboration_year',
   coauthored_works: 'works',
   collaboration_score: 'strength',
@@ -511,12 +521,66 @@ function parsePositiveInteger(value: string | null | undefined, fallback: number
   return Math.max(1, Math.floor(parsed))
 }
 
-function normalizeSortValue(value: string | null | undefined): string {
+function normalizeSortValue(value: string | null | undefined): CollaborationSortField {
   const clean = String(value || '').trim()
-  if (clean === 'works' || clean === 'last_collaboration_year' || clean === 'strength') {
+  if (
+    clean === 'works' ||
+    clean === 'last_collaboration_year' ||
+    clean === 'strength' ||
+    clean === 'relationship_tier' ||
+    clean === 'activity_status'
+  ) {
     return clean
   }
   return 'name'
+}
+
+function relationshipSortRank(value: string): number {
+  if (value === 'CORE') {
+    return 3
+  }
+  if (value === 'REGULAR') {
+    return 2
+  }
+  if (value === 'OCCASIONAL') {
+    return 1
+  }
+  return 0
+}
+
+function activitySortRank(value: string): number {
+  if (value === 'ACTIVE') {
+    return 4
+  }
+  if (value === 'RECENT') {
+    return 3
+  }
+  if (value === 'DORMANT') {
+    return 2
+  }
+  if (value === 'HISTORIC') {
+    return 1
+  }
+  return 0
+}
+
+function collaborationSortLabel(value: CollaborationSortField): string {
+  if (value === 'name') {
+    return 'Name'
+  }
+  if (value === 'works') {
+    return 'Coauthored works'
+  }
+  if (value === 'last_collaboration_year') {
+    return 'Last collaboration year'
+  }
+  if (value === 'strength') {
+    return 'Strength score'
+  }
+  if (value === 'relationship_tier') {
+    return 'Relationship'
+  }
+  return 'Activity'
 }
 
 function normalizeHeatmapMode(value: string | null | undefined): HeatmapMode {
@@ -607,7 +671,7 @@ export function ProfileCollaborationPage() {
   const [summary, setSummary] = useState<CollaborationMetricsSummaryPayload | null>(initialCachedLandingData?.summary || null)
   const [listing, setListing] = useState<CollaboratorsListPayload | null>(initialCachedLandingData?.listing || null)
   const [query, setQuery] = useState(() => initialQuery)
-  const [sort, setSort] = useState(() => initialSort)
+  const [sort, setSort] = useState<CollaborationSortField>(() => initialSort)
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => (
     initialSort === 'name' ? 'asc' : 'desc'
   ))
@@ -1477,7 +1541,7 @@ export function ProfileCollaborationPage() {
     setCollaborationTableAutoFitTick((current) => current + 1)
   }
 
-  const onSortColumn = (column: 'name' | 'works' | 'last_collaboration_year' | 'strength') => {
+  const onSortColumn = (column: CollaborationSortField) => {
     if (sort === column) {
       setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))
       setPage(1)
@@ -1492,25 +1556,44 @@ export function ProfileCollaborationPage() {
     const items = [...filteredCollaborators]
     const direction = sortDirection === 'asc' ? 1 : -1
     items.sort((left, right) => {
+      const tieBreakByName =
+        left.full_name.localeCompare(right.full_name, 'en-GB', { sensitivity: 'base' }) * direction
       if (sort === 'works') {
-        return (
+        const delta = (
           (Number(left.metrics.coauthored_works_count || 0) - Number(right.metrics.coauthored_works_count || 0))
           * direction
         )
+        return delta !== 0 ? delta : tieBreakByName
       }
       if (sort === 'strength') {
-        return (
+        const delta = (
           (Number(left.metrics.collaboration_strength_score || 0) - Number(right.metrics.collaboration_strength_score || 0))
           * direction
         )
+        return delta !== 0 ? delta : tieBreakByName
+      }
+      if (sort === 'relationship_tier') {
+        const delta = (
+          relationshipSortRank(resolveRelationshipTier(left.metrics)) -
+          relationshipSortRank(resolveRelationshipTier(right.metrics))
+        ) * direction
+        return delta !== 0 ? delta : tieBreakByName
+      }
+      if (sort === 'activity_status') {
+        const delta = (
+          activitySortRank(resolveActivityStatus(left.metrics)) -
+          activitySortRank(resolveActivityStatus(right.metrics))
+        ) * direction
+        return delta !== 0 ? delta : tieBreakByName
       }
       if (sort === 'last_collaboration_year') {
-        return (
+        const delta = (
           (Number(left.metrics.last_collaboration_year || 0) - Number(right.metrics.last_collaboration_year || 0))
           * direction
         )
+        return delta !== 0 ? delta : tieBreakByName
       }
-      return left.full_name.localeCompare(right.full_name, 'en-GB', { sensitivity: 'base' }) * direction
+      return tieBreakByName
     })
     return items
   }, [filteredCollaborators, sort, sortDirection])
@@ -1703,7 +1786,7 @@ export function ProfileCollaborationPage() {
     await load(token)
   }
 
-  const onSortChange = (value: string) => {
+  const onSortChange = (value: CollaborationSortField) => {
     setPage(1)
     setSort(value)
     setSortDirection(value === 'name' ? 'asc' : 'desc')
@@ -2247,17 +2330,11 @@ export function ProfileCollaborationPage() {
                         <summary className="house-publications-filter-summary">
                           <span>Sort</span>
                           <span className="house-publications-filter-count">
-                            {sort === 'name'
-                              ? 'Name'
-                              : sort === 'works'
-                                ? 'Works'
-                                : sort === 'last_collaboration_year'
-                                  ? 'Last year'
-                                  : 'Strength'}
+                            {collaborationSortLabel(sort)}
                           </span>
                         </summary>
                         <div className="house-publications-filter-options">
-                          {(['name', 'works', 'last_collaboration_year', 'strength'] as const).map((sortOption) => (
+                          {(['name', 'relationship_tier', 'activity_status', 'works', 'last_collaboration_year', 'strength'] as const).map((sortOption) => (
                             <label key={`collaboration-sort-${sortOption}`} className="house-publications-filter-option">
                               <input
                                 type="radio"
@@ -2266,15 +2343,7 @@ export function ProfileCollaborationPage() {
                                 checked={sort === sortOption}
                                 onChange={() => onSortChange(sortOption)}
                               />
-                              <span className="house-publications-filter-option-label">
-                                {sortOption === 'name'
-                                  ? 'Name'
-                                  : sortOption === 'works'
-                                    ? 'Coauthored works'
-                                    : sortOption === 'last_collaboration_year'
-                                      ? 'Last collaboration year'
-                                      : 'Strength score'}
-                              </span>
+                              <span className="house-publications-filter-option-label">{collaborationSortLabel(sortOption)}</span>
                             </label>
                           ))}
                         </div>
@@ -2449,33 +2518,46 @@ export function ProfileCollaborationPage() {
                 >
                   <TableHeader className="house-table-head text-left">
                     <TableRow style={{ backgroundColor: 'transparent' }}>
-                      {visibleCollaborationTableColumns.map((columnKey) => (
-                        <TableHead
-                          key={`collaboration-head-${columnKey}`}
-                          className={cn('house-table-head-text', COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].headerClassName)}
-                        >
-                          {COLLABORATION_TABLE_COLUMN_SORT_FIELD[columnKey] ? (
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1 text-inherit"
-                              onClick={() => onSortColumn(COLLABORATION_TABLE_COLUMN_SORT_FIELD[columnKey] as 'name' | 'works' | 'last_collaboration_year' | 'strength')}
-                            >
-                              <span>{COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label}</span>
-                              {sort === COLLABORATION_TABLE_COLUMN_SORT_FIELD[columnKey] ? (
-                                sortDirection === 'desc' ? (
-                                  <ChevronDown className="h-3.5 w-3.5" />
+                      {visibleCollaborationTableColumns.map((columnKey) => {
+                        const sortField = COLLABORATION_TABLE_COLUMN_SORT_FIELD[columnKey]
+                        const headerClassName = COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].headerClassName || 'text-left'
+                        const alignClass = headerClassName.includes('text-center')
+                          ? 'justify-center text-center'
+                          : headerClassName.includes('text-right')
+                            ? 'justify-end text-right'
+                            : 'justify-start text-left'
+                        return (
+                          <TableHead
+                            key={`collaboration-head-${columnKey}`}
+                            className={cn('house-table-head-text', headerClassName)}
+                          >
+                            {sortField ? (
+                              <button
+                                type="button"
+                                className={cn(
+                                  'inline-flex w-full items-center gap-1 transition-colors hover:text-foreground',
+                                  HOUSE_TABLE_SORT_TRIGGER_CLASS,
+                                  alignClass,
+                                )}
+                                onClick={() => onSortColumn(sortField)}
+                              >
+                                <span>{COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label}</span>
+                                {sort === sortField ? (
+                                  sortDirection === 'desc' ? (
+                                    <ChevronDown className="h-3.5 w-3.5 text-foreground" />
+                                  ) : (
+                                    <ChevronUp className="h-3.5 w-3.5 text-foreground" />
+                                  )
                                 ) : (
-                                  <ChevronUp className="h-3.5 w-3.5" />
-                                )
-                              ) : (
-                                <ChevronsUpDown className="h-3.5 w-3.5 opacity-60" />
-                              )}
-                            </button>
-                          ) : (
-                            COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label
-                          )}
-                        </TableHead>
-                      ))}
+                                  <ChevronsUpDown className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            ) : (
+                              COLLABORATION_TABLE_COLUMN_DEFINITIONS[columnKey].label
+                            )}
+                          </TableHead>
+                        )
+                      })}
                     </TableRow>
                   </TableHeader>
                   <TableBody>

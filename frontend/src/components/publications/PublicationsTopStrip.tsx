@@ -3516,8 +3516,8 @@ export function PublicationsPerYearChart({
                     y1="0"
                     x2={String(leftPct)}
                     y2="100"
-                    stroke={`hsl(var(--stroke-soft) / 0.5)`}
-                    strokeWidth="1.2"
+                    stroke="#FF0000"
+                    strokeWidth="2"
                     vectorEffect="non-scaling-stroke"
                   />
                 ))}
@@ -3528,8 +3528,8 @@ export function PublicationsPerYearChart({
                     y1="0"
                     x2="100"
                     y2="100"
-                    stroke={`hsl(var(--stroke-soft) / 0.5)`}
-                    strokeWidth="1.2"
+                    stroke="#FF0000"
+                    strokeWidth="2"
                     vectorEffect="non-scaling-stroke"
                   />
                 ) : null}
