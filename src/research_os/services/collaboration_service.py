@@ -2459,12 +2459,18 @@ def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:
         force=True,
         reason="openalex_import",
     )
+    
+    # Auto-dedupe with AI
+    from research_os.services.ai_dedupe_service import auto_dedupe_collaborators
+    dedupe_result = auto_dedupe_collaborators(user_id=user_id)
+    
     return {
         "created_count": created_count,
         "updated_count": updated_count,
         "skipped_count": skipped_count,
         "openalex_author_id": openalex_author_id,
         "imported_candidates": len(candidates),
+        "ai_deduplication": dedupe_result,
     }
 
 
@@ -2639,6 +2645,11 @@ def enrich_collaborators_from_openalex(
             force=True,
             reason="openalex_enrichment",
         )
+    
+    # Auto-dedupe with AI after enrichment
+    from research_os.services.ai_dedupe_service import auto_dedupe_collaborators
+    dedupe_result = auto_dedupe_collaborators(user_id=user_id)
+    
     return {
         "targeted_count": len(target_rows),
         "resolved_author_count": resolved_author_count,
@@ -2648,6 +2659,7 @@ def enrich_collaborators_from_openalex(
         "failed_count": failed_count,
         "enqueued_metrics_recompute": enqueued,
         "field_updates": dict(field_updates),
+        "ai_deduplication": dedupe_result,
     }
 
 
