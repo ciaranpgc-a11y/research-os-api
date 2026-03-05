@@ -2728,8 +2728,28 @@ export function PublicationsPerYearChart({
   const activeLineWindowBars = isCompactTileMode
     ? { bars: compactTileBars, bucketSize: 1, rangeLabel: null as string | null }
     : resolveLineBarsForWindowMode(effectiveWindowMode)
-  const lineUsesMonthlyTimeline = activeLineWindowBars.bars.length > 0
-    && activeLineWindowBars.bars.every((bar) => Number.isFinite(bar.monthStartMs ?? Number.NaN))
+  const lineUsesMonthlyTimeline = useMemo(() => {
+    const bars = activeLineWindowBars.bars
+    if (bars.length < 2) {
+      return false
+    }
+    const monthStartMsValues = bars
+      .map((bar) => Number(bar.monthStartMs))
+      .filter((value): value is number => Number.isFinite(value))
+      .sort((left, right) => left - right)
+    if (monthStartMsValues.length < 2) {
+      return false
+    }
+    const monthStepSampleCount = Math.min(6, monthStartMsValues.length - 1)
+    const maxMonthlyStepMs = 1000 * 60 * 60 * 24 * 45
+    for (let index = 1; index <= monthStepSampleCount; index += 1) {
+      const deltaMs = monthStartMsValues[index] - monthStartMsValues[index - 1]
+      if (!Number.isFinite(deltaMs) || deltaMs <= 0 || deltaMs > maxMonthlyStepMs) {
+        return false
+      }
+    }
+    return true
+  }, [activeLineWindowBars.bars])
   const usingMonthlyTimelineForMode = effectiveWindowMode === '1y' || (effectiveVisualMode === 'line' && lineUsesMonthlyTimeline)
 
   const activeWindowBars = isCompactTileMode
