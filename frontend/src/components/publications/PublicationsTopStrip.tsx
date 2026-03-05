@@ -6956,33 +6956,64 @@ function GenericMetricDrilldownWorkspace({
     const projectedYearRaw = Number(chartData.projected_year)
     const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
     const currentYearYtdRaw = Number(chartData.current_year_ytd)
+    const resolvedCurrentYearYtd = Number.isFinite(currentYearYtdRaw)
+      ? Math.max(0, currentYearYtdRaw)
+      : Math.max(
+        0,
+        yearlyPairs.find((entry) => entry.year === projectedYear)?.value
+        ?? yearlyPairs[yearlyPairs.length - 1]?.value
+        ?? 0,
+      )
     
-    const historicalYearPairs = yearlyPairs.filter((item) => item.year !== projectedYear)
-    const historicalValues = historicalYearPairs.map((item) => item.value)
+    const historyCitations = yearlyPairs
+      .filter((entry) => entry.year !== projectedYear)
+      .concat(
+        yearlyPairs.length > 0 || Number.isFinite(currentYearYtdRaw)
+          ? [{ year: projectedYear, value: resolvedCurrentYearYtd }]
+          : [],
+      )
+      .sort((left, right) => left.year - right.year)
+    
     const sumNumbers = (items: number[]) => items.reduce((sum, value) => sum + Math.max(0, value), 0)
+    const totalCitations = Math.round(sumNumbers(historyCitations.map((entry) => entry.value)))
     
-    const totalCitations = Math.round(sumNumbers([...historicalValues, Number.isFinite(currentYearYtdRaw) ? currentYearYtdRaw : yearlyPairs.find((item) => item.year === projectedYear)?.value ?? 0]))
     const meanValueRaw = Number(chartData.mean_value)
     const meanCitations = Number.isFinite(meanValueRaw) && meanValueRaw > 0
       ? (Math.round(meanValueRaw * 10) / 10).toFixed(1)
-      : historicalValues.length > 0
-        ? (Math.round((sumNumbers(historicalValues) / historicalValues.length) * 10) / 10).toFixed(1)
+      : historyCitations.length > 0
+        ? (Math.round((sumNumbers(historyCitations.map((entry) => entry.value)) / historyCitations.length) * 10) / 10).toFixed(1)
         : '\u2014'
     
+    const lifetimeMonthlySeries = toNumberArray(chartData.monthly_values_lifetime).map((item) => Math.max(0, item))
+    const rollingWindowYearsSum = (windowYears: number) => sumNumbers(historyCitations.slice(-windowYears).map((entry) => entry.value))
     const rollingWindowMonthsSum = (windowMonths: number) => {
-      const monthlySeries = toNumberArray(chartData.monthly_values_lifetime || []).map((item) => Math.max(0, item))
-      if (monthlySeries.length > 0) {
-        return sumNumbers(monthlySeries.slice(-windowMonths))
+      if (lifetimeMonthlySeries.length > 0) {
+        return sumNumbers(lifetimeMonthlySeries.slice(-windowMonths))
       }
-      return sumNumbers(historicalYearPairs.slice(-Math.max(1, Math.round(windowMonths / 12))).map((item) => item.value))
+      return rollingWindowYearsSum(Math.max(1, Math.round(windowMonths / 12)))
     }
     
-    const rolling1Year = Math.round(rollingWindowMonthsSum(12))
+    const monthlySeries = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
+    const monthlyLabels = toStringArray(chartData.month_labels_12m)
+    const currentMonthIndex = new Date().getUTCMonth()
+    const sourceLastMonthIndex = monthlyLabels.length ? parseMonthIndex(monthlyLabels[monthlyLabels.length - 1]) : null
+    const sourceLikelyIncludesCurrentMonth = sourceLastMonthIndex !== null && sourceLastMonthIndex === currentMonthIndex
+    const sourceValuesWindow = monthlySeries.length >= 13 && sourceLikelyIncludesCurrentMonth
+      ? monthlySeries.slice(-13, -1)
+      : monthlySeries.length >= 12
+        ? monthlySeries.slice(-12)
+        : monthlySeries
+    const rolling1Year = Math.round(
+      monthlySeries.length > 0
+        ? sumNumbers(sourceValuesWindow)
+        : rollingWindowYearsSum(1),
+    )
     const rolling3Year = Math.round(rollingWindowMonthsSum(36))
     const rolling5Year = Math.round(rollingWindowMonthsSum(60))
-    const yearToDateValue = Number.isFinite(currentYearYtdRaw) ? currentYearYtdRaw : yearlyPairs.find((item) => item.year === projectedYear)?.value ?? 0
     
-    const firstCitationYearCandidates = yearlyPairs
+    const yearToDateValue = resolvedCurrentYearYtd
+    
+    const firstCitationYearCandidates = historyCitations
       .filter((entry) => entry.value > 0)
       .map((entry) => entry.year)
     const firstCitationYear = firstCitationYearCandidates.length ? Math.min(...firstCitationYearCandidates) : null
