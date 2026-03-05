@@ -2836,12 +2836,39 @@ export function PublicationsPerYearChart({
   const hideYearTickTabs = false
   const showXAxisTickTabs = !hideYearTickTabs
   const buildLineModeTicksForWindow = useCallback((mode: PublicationsWindowMode): PublicationLineAxisTick[] => {
-    const positions = [0, 0.5, 1]
     const lineWindowBars = resolveLineBarsForWindowMode(mode).bars
     const monthStartMsValues = lineWindowBars.map((bar) => Number(bar.monthStartMs))
     const hasLineMonthTimeline = monthStartMsValues.length > 0
       && monthStartMsValues.length === lineWindowBars.length
       && monthStartMsValues.every((value) => Number.isFinite(value))
+    
+    if (mode === '3y' || mode === '5y') {
+      // For rolling window modes, use actual trailing month boundaries
+      const totalMonths = mode === '3y' ? 36 : 60
+      const trailingMonthStarts = buildTrailingMonthStarts(totalMonths, true)
+      if (!trailingMonthStarts.length) {
+        return []
+      }
+      
+      // Show ticks at yearly intervals for better readability
+      const tickCount = mode === '3y' ? 4 : 6  // Start, mid-years, end
+      const positions = Array.from({ length: tickCount }, (_, i) => i / (tickCount - 1))
+      
+      return positions.map((position, index) => {
+        const rawMonthIndex = Math.round((trailingMonthStarts.length - 1) * position)
+        const monthIndex = Math.max(0, Math.min(trailingMonthStarts.length - 1, rawMonthIndex))
+        const date = trailingMonthStarts[monthIndex]
+        return {
+          key: `line-axis-${mode}-${index}`,
+          label: MONTH_SHORT[date.getUTCMonth()],
+          subLabel: String(date.getUTCFullYear()),
+          leftPct: position * 100,
+        }
+      })
+    }
+    
+    const positions = [0, 0.5, 1]
+    
     if (hasLineMonthTimeline) {
       return positions.map((position, index) => {
         const rawMonthIndex = Math.round((monthStartMsValues.length - 1) * position)
