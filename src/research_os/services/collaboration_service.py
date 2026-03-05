@@ -736,6 +736,12 @@ def _name_similarity(a: str, b: str) -> float:
     ).ratio()
 
 
+_SURNAME_PARTICLES = frozenset({
+    "van", "von", "de", "den", "der", "del", "della", "di", "du",
+    "la", "le", "el", "al", "bin", "ibn", "het", "ten", "ter", "op",
+})
+
+
 def _parse_name_parts(name: str) -> tuple[str, list[str]]:
     """Parse a name into (surname, [given_name_parts]).
 
@@ -746,6 +752,9 @@ def _parse_name_parts(name: str) -> tuple[str, list[str]]:
     - "Last, First Middle"      → ("last", ["first", "middle"])
     - "F. Last"                 → ("last", ["f"])
     - "F. M. Last"              → ("last", ["f", "m"])
+    - "Rob J. van der Geest"    → ("van der geest", ["rob", "j"])
+    - "van der Geest R"         → ("van der geest", ["r"])
+    - "van der Geest, R."       → ("van der geest", ["r"])
     """
     clean = re.sub(r"\s+", " ", str(name or "").strip())
     if not clean:
@@ -759,8 +768,32 @@ def _parse_name_parts(name: str) -> tuple[str, list[str]]:
         tokens = clean.lower().split()
         if len(tokens) <= 1:
             return (tokens[0] if tokens else "", [])
-        surname = tokens[-1]
-        given = [p.rstrip(".") for p in tokens[:-1] if p.rstrip(".")]
+        stripped = [t.rstrip(".") for t in tokens]
+        # Detect trailing single-letter initials (citation format:
+        # "van der Geest R J") — if preceded by particles, treat the
+        # preceding tokens as a compound surname.
+        trailing_start = len(stripped)
+        while trailing_start > 0 and len(stripped[trailing_start - 1]) == 1:
+            trailing_start -= 1
+        if trailing_start < len(stripped) and trailing_start >= 2:
+            preceding = stripped[:trailing_start]
+            if any(t in _SURNAME_PARTICLES for t in preceding):
+                surname = " ".join(preceding)
+                given = [s for s in stripped[trailing_start:] if s]
+                return (surname, given)
+        # Standard: surname is the last token plus any preceding particles
+        surname_start = len(stripped) - 1
+        while (
+            surname_start > 0
+            and stripped[surname_start - 1] in _SURNAME_PARTICLES
+        ):
+            surname_start -= 1
+        # If all tokens consumed as particles+root, keep compound surname
+        # with no given parts (e.g. "van Gogh" → ("van gogh", [])).
+        if surname_start == 0 and len(stripped) > 1:
+            surname_start = 0
+        surname = " ".join(stripped[surname_start:])
+        given = [s for s in stripped[:surname_start] if s]
     return (surname, given)
 
 
@@ -890,6 +923,22 @@ def _match_existing_collaborator_identity(
             continue
         if similarity >= name_only_similarity_threshold:
             return row
+
+    # Pass 3: initial-compatible names (catches compound-surname reorderings
+    # like "Rob J. van der Geest" ↔ "van der Geest R").
+    for row in rows:
+        if exclude_collaborator_id and str(row.id) == str(exclude_collaborator_id):
+            continue
+        if not _name_initial_compatible(candidate_name, row.full_name or ""):
+            continue
+        row_inst = (row.primary_institution or "").strip()
+        if candidate_institution and row_inst:
+            if _affiliation_similarity(candidate_institution, row_inst) >= 0.82:
+                return row
+        elif candidate_institution or row_inst:
+            # One side has institution — treat as confirmed
+            return row
+
     return None
 
 

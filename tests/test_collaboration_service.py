@@ -964,6 +964,12 @@ def test_parse_name_parts():
     assert _parse_name_parts("Matthews, Gareth James") == ("matthews", ["gareth", "james"])
     assert _parse_name_parts("") == ("", [])
     assert _parse_name_parts("Madonna") == ("madonna", [])
+    # Compound surnames with particles
+    assert _parse_name_parts("Rob J. van der Geest") == ("van der geest", ["rob", "j"])
+    assert _parse_name_parts("van der Geest R") == ("van der geest", ["r"])
+    assert _parse_name_parts("van der Geest, R.") == ("van der geest", ["r"])
+    assert _parse_name_parts("Maria de la Cruz") == ("de la cruz", ["maria"])
+    assert _parse_name_parts("de la Cruz M") == ("de la cruz", ["m"])
 
 
 def test_name_initial_compatible_positive():
@@ -977,6 +983,10 @@ def test_name_initial_compatible_positive():
     assert _name_initial_compatible("Matthews, G.", "Gareth Matthews")
     assert _name_initial_compatible("G Matthews", "Gareth Matthews")
     assert _name_initial_compatible("Gareth Matthews", "Gareth Matthews")
+    # Compound surnames with particles
+    assert _name_initial_compatible("Rob J. van der Geest", "van der Geest R")
+    assert _name_initial_compatible("Rob J. van der Geest", "van der Geest, R.")
+    assert _name_initial_compatible("Maria de la Cruz", "de la Cruz M")
 
 
 def test_name_initial_compatible_negative():

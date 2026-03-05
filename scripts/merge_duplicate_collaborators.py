@@ -109,6 +109,12 @@ def _institution_similarity(left: str | None, right: str | None) -> float:
     return SequenceMatcher(None, left_norm, right_norm).ratio()
 
 
+_SURNAME_PARTICLES = frozenset({
+    "van", "von", "de", "den", "der", "del", "della", "di", "du",
+    "la", "le", "el", "al", "bin", "ibn", "het", "ten", "ter", "op",
+})
+
+
 def _parse_name_parts(name: str) -> tuple[str, list[str]]:
     """Parse a name into (surname, [given_name_parts])."""
     clean = re.sub(r"\s+", " ", str(name or "").strip())
@@ -123,8 +129,26 @@ def _parse_name_parts(name: str) -> tuple[str, list[str]]:
         tokens = clean.lower().split()
         if len(tokens) <= 1:
             return (tokens[0] if tokens else "", [])
-        surname = tokens[-1]
-        given = [p.rstrip(".") for p in tokens[:-1] if p.rstrip(".")]
+        stripped = [t.rstrip(".") for t in tokens]
+        trailing_start = len(stripped)
+        while trailing_start > 0 and len(stripped[trailing_start - 1]) == 1:
+            trailing_start -= 1
+        if trailing_start < len(stripped) and trailing_start >= 2:
+            preceding = stripped[:trailing_start]
+            if any(t in _SURNAME_PARTICLES for t in preceding):
+                surname = " ".join(preceding)
+                given = [s for s in stripped[trailing_start:] if s]
+                return (surname, given)
+        surname_start = len(stripped) - 1
+        while (
+            surname_start > 0
+            and stripped[surname_start - 1] in _SURNAME_PARTICLES
+        ):
+            surname_start -= 1
+        if surname_start == 0 and len(stripped) > 1:
+            surname_start = 0
+        surname = " ".join(stripped[surname_start:])
+        given = [s for s in stripped[:surname_start] if s]
     return (surname, given)
 
 

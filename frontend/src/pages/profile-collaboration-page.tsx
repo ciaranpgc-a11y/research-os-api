@@ -253,6 +253,11 @@ function collaboratorIdentityTokens(item: CollaboratorPayload): string[] {
 }
 
 /** Parse a name into [surname, givenParts]. Handles "Last, First" and "First Last" formats. */
+const SURNAME_PARTICLES = new Set([
+  'van', 'von', 'de', 'den', 'der', 'del', 'della', 'di', 'du',
+  'la', 'le', 'el', 'al', 'bin', 'ibn', 'het', 'ten', 'ter', 'op',
+])
+
 function parseNameParts(name: string): [string, string[]] {
   const clean = String(name || '').trim().replace(/\s+/g, ' ')
   if (!clean) return ['', []]
@@ -264,9 +269,24 @@ function parseNameParts(name: string): [string, string[]] {
   }
   const tokens = clean.toLowerCase().split(/\s+/)
   if (tokens.length <= 1) return [tokens[0] || '', []]
-  const surname = tokens[tokens.length - 1]
-  const given = tokens.slice(0, -1).map((p) => p.replace(/\.$/, '')).filter(Boolean)
-  return [surname, given]
+  const stripped = tokens.map((t) => t.replace(/\.$/, ''))
+  // Detect trailing single-letter initials preceded by compound surname particles
+  let trailingStart = stripped.length
+  while (trailingStart > 0 && stripped[trailingStart - 1].length === 1) {
+    trailingStart--
+  }
+  if (trailingStart < stripped.length && trailingStart >= 2) {
+    const preceding = stripped.slice(0, trailingStart)
+    if (preceding.some((t) => SURNAME_PARTICLES.has(t))) {
+      return [preceding.join(' '), stripped.slice(trailingStart).filter(Boolean)]
+    }
+  }
+  // Standard: surname is last token plus any preceding particles
+  let surnameStart = stripped.length - 1
+  while (surnameStart > 0 && SURNAME_PARTICLES.has(stripped[surnameStart - 1])) {
+    surnameStart--
+  }
+  return [stripped.slice(surnameStart).join(' '), stripped.slice(0, surnameStart).filter(Boolean)]
 }
 
 /** SequenceMatcher-style similarity ratio between two strings (simple LCS approach). */
@@ -1161,13 +1181,21 @@ export function ProfileCollaborationPage() {
         return String(left.id).localeCompare(String(right.id))
       })[0]
 
-      const institutionLabels = Array.from(
-        new Set(
-          group
-            .map((item) => String(item.primary_institution || '').trim())
-            .filter(Boolean),
-        ),
-      )
+      const institutionSeen = new Set<string>()
+      const institutionLabels: string[] = []
+      for (const item of group) {
+        const candidates = [...(item.institution_labels || [])]
+        const primary = String(item.primary_institution || '').trim()
+        if (primary) candidates.unshift(primary)
+        for (const label of candidates) {
+          const trimmed = label.trim()
+          if (!trimmed) continue
+          const key = trimmed.toLowerCase()
+          if (institutionSeen.has(key)) continue
+          institutionSeen.add(key)
+          institutionLabels.push(trimmed)
+        }
+      }
 
       const domainLabels = Array.from(
         new Set(group.flatMap((item) => item.research_domains || []).map((item) => item.trim()).filter(Boolean)),
