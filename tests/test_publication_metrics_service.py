@@ -286,6 +286,7 @@ def test_counts_by_year_prevents_lifetime_lumping(monkeypatch, tmp_path) -> None
     payload = compute_publication_top_metrics(user_id=user_id)
     total_tile = _tile(payload, "total_citations")
     last12_tile = _tile(payload, "this_year_vs_last")
+    total_chart_data = dict(total_tile.get("chart_data") or {})
 
     total_value = int(total_tile["value"] or 0)
     last12_value = int(last12_tile["value"] or 0)
@@ -295,6 +296,100 @@ def test_counts_by_year_prevents_lifetime_lumping(monkeypatch, tmp_path) -> None
     assert "Projected" in str(total_tile["delta_display"] or "")
     assert str(last12_tile["label"]) == "Total publications"
     assert last12_tile["delta_display"] in {None, ""}
+    assert len(list(total_chart_data.get("monthly_values_12m") or [])) == 12
+    assert len(list(total_chart_data.get("month_labels_12m") or [])) == 12
+    assert len(list(total_chart_data.get("monthly_values_lifetime") or [])) >= 12
+    assert len(list(total_chart_data.get("month_labels_lifetime") or [])) == len(
+        list(total_chart_data.get("monthly_values_lifetime") or [])
+    )
+    assert str(total_chart_data.get("lifetime_month_start") or "").startswith("2018-01")
+    assert int(sum(int(value or 0) for value in total_chart_data.get("monthly_values_lifetime") or [])) >= 995
+    total_drilldown = dict(total_tile.get("drilldown") or {})
+    publication_rows = list(total_drilldown.get("publications") or [])
+    older_publication = next(
+        (
+            row
+            for row in publication_rows
+            if isinstance(row, dict) and int(row.get("year") or 0) == 2022
+        ),
+        None,
+    )
+    assert isinstance(older_publication, dict)
+    assert int(older_publication.get("citations_1y_rolling") or 0) > 0
+    assert int(older_publication.get("citations_3y_rolling") or 0) >= int(
+        older_publication.get("citations_1y_rolling") or 0
+    )
+    assert int(older_publication.get("citations_life_rolling") or 0) == int(
+        older_publication.get("citations_lifetime") or 0
+    )
+
+
+def test_counts_by_year_lifetime_months_reconcile_to_total(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    now = datetime.now(timezone.utc)
+
+    with session_scope() as session:
+        user = User(
+            email="counts-by-year-reconcile@example.com",
+            password_hash="test-hash",
+            name="CountsByYearReconcile",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work = Work(
+            user_id=user_id,
+            title="Reconciled history work",
+            title_lower="reconciled history work",
+            year=2017,
+            doi="10.1000/reconciled-history-work",
+            venue_name="History Journal",
+            journal="History Journal",
+            publication_type="journal-article",
+            citations_total=0,
+            work_type="journal-article",
+            publisher="Publisher",
+            abstract="Abstract",
+            keywords=["history"],
+            url="https://example.org/reconciled-history",
+            provenance="manual",
+        )
+        session.add(work)
+        session.flush()
+
+        session.add(
+            MetricsSnapshot(
+                work_id=str(work.id),
+                provider="openalex",
+                citations_count=450,
+                influential_citations=None,
+                altmetric_score=None,
+                metric_payload={
+                    "match_method": "doi",
+                    "counts_by_year": [
+                        {"year": 2022, "cited_by_count": 70},
+                        {"year": 2023, "cited_by_count": 90},
+                        {"year": 2024, "cited_by_count": 80},
+                        {"year": 2025, "cited_by_count": 60},
+                    ],
+                },
+                captured_at=now - timedelta(days=5),
+            )
+        )
+
+    payload = compute_publication_top_metrics(user_id=user_id)
+    total_tile = _tile(payload, "total_citations")
+    total_chart_data = dict(total_tile.get("chart_data") or {})
+    total_value = int(total_tile["value"] or 0)
+    lifetime_values = [
+        int(value or 0) for value in total_chart_data.get("monthly_values_lifetime") or []
+    ]
+
+    assert total_value == 450
+    assert sum(lifetime_values) == total_value
+    assert len(lifetime_values) >= 12
 
 
 def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) -> None:

@@ -246,8 +246,10 @@ function buildChartAxisLayout({
     ? (axisNameLineCount * subAxisLineHeightRem) + 0.24
     : 0
   const xAxisNameBottomRem = hasXAxisName ? 0.24 : 0
-  const axisBottomRem = hasXAxisName ? xAxisNameBottomRem + xAxisNameHeightRem + 0.2 : 0.3
-  const plotBottomRem = axisBottomRem + axisMinHeightRem + 0.28
+  const axisTitleGapRem = subLabelLineCount > 0 ? 0.38 : 0.2
+  const plotToAxisGapRem = subLabelLineCount > 0 ? 0.36 : 0.28
+  const axisBottomRem = hasXAxisName ? xAxisNameBottomRem + xAxisNameHeightRem + axisTitleGapRem : 0.3
+  const plotBottomRem = axisBottomRem + axisMinHeightRem + plotToAxisGapRem
   const framePaddingBottomRem = plotBottomRem + 0.45
   return {
     framePaddingBottomRem,
@@ -1329,6 +1331,100 @@ function buildLineTicksFromRange(startMs: number, endMs: number, mode: Publicati
       },
     ]
   }
+
+  if (mode === '1y') {
+    const spanMs = Math.max(1, endMs - startMs)
+    const startDate = new Date(startMs)
+    const endDate = new Date(endMs)
+    const monthAnchors = [0, 3, 6, 9].map((offset) => (
+      new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + offset, 1))
+    ))
+    const ticks: PublicationLineAxisTick[] = monthAnchors
+      .map((anchor, index) => {
+        const anchorMs = anchor.getTime()
+        if (anchorMs < startMs || anchorMs > endMs) {
+          return null
+        }
+        const position = Math.max(0, Math.min(1, (anchorMs - startMs) / spanMs))
+        return {
+          key: `line-axis-${mode}-${index}`,
+          label: MONTH_SHORT[anchor.getUTCMonth()],
+          subLabel: String(anchor.getUTCFullYear()),
+          leftPct: position * 100,
+        }
+      })
+      .filter((tick): tick is PublicationLineAxisTick => tick !== null)
+
+    const endTick: PublicationLineAxisTick = {
+      key: `line-axis-${mode}-end`,
+      label: MONTH_SHORT[endDate.getUTCMonth()],
+      subLabel: String(endDate.getUTCFullYear()),
+      leftPct: 100,
+    }
+
+    const combinedTicks = [...ticks, endTick]
+      .filter((tick, index, values) => index === 0 || Math.abs(tick.leftPct - values[index - 1].leftPct) > 4)
+
+    return combinedTicks
+  }
+
+  if (mode === 'all') {
+    const spanMs = Math.max(1, endMs - startMs)
+    const startDate = new Date(startMs)
+    const endDate = new Date(endMs)
+    const startYear = startDate.getUTCFullYear()
+    const endYear = endDate.getUTCFullYear()
+    const targetTickCount = endYear - startYear <= 5
+      ? 5
+      : endYear - startYear <= 12
+        ? 4
+        : endYear - startYear <= 25
+          ? 4
+          : 3
+    const step = Math.max(1, Math.ceil((endYear - startYear + 1) / Math.max(1, targetTickCount)))
+    const tickYears = new Set<number>()
+    for (let year = startYear; year <= endYear; year += step) {
+      tickYears.add(year)
+    }
+    tickYears.add(endYear)
+
+    const yearBoundaryTicks = Array.from(tickYears)
+      .sort((left, right) => left - right)
+      .map((year) => {
+        const yearStartMs = new Date(Date.UTC(year, 0, 1)).getTime()
+        const clampedMs = Math.max(startMs, Math.min(endMs, yearStartMs))
+        const position = Math.max(0, Math.min(1, (clampedMs - startMs) / spanMs))
+        return {
+          key: `line-axis-${mode}-${year}`,
+          label: String(year),
+          subLabel: undefined,
+          leftPct: position * 100,
+        }
+      })
+      .filter((tick, index, ticks) => index === 0 || Math.abs(tick.leftPct - ticks[index - 1].leftPct) > 0.5)
+
+    const MIN_LABEL_SPACING_PCT = 12
+    const filteredTicks: PublicationLineAxisTick[] = []
+    for (const tick of yearBoundaryTicks) {
+      const previousTick = filteredTicks[filteredTicks.length - 1]
+      if (!previousTick) {
+        filteredTicks.push(tick)
+        continue
+      }
+      const isLastTick = tick === yearBoundaryTicks[yearBoundaryTicks.length - 1]
+      if (tick.leftPct - previousTick.leftPct < MIN_LABEL_SPACING_PCT) {
+        if (isLastTick) {
+          filteredTicks[filteredTicks.length - 1] = tick
+        }
+        continue
+      }
+      filteredTicks.push(tick)
+    }
+
+    if (filteredTicks.length > 0) {
+      return filteredTicks
+    }
+  }
   
   const spanMonths = getSpanMonths(startMs, endMs)
   const spanYears = spanMonths / 12
@@ -2333,6 +2429,9 @@ export function PublicationsPerYearChart({
   autoScaleByWindow = false,
   showMeanLine = false,
   showMeanValueLabel = false,
+  meanValueOneDecimalIn1y = false,
+  roundMeanValueInLongWindows = false,
+  longWindowLineXAxisTitleTranslateRem = 0,
   chartTitle,
   chartTitleClassName,
   activeWindowMode,
@@ -2357,6 +2456,9 @@ export function PublicationsPerYearChart({
   autoScaleByWindow?: boolean
   showMeanLine?: boolean
   showMeanValueLabel?: boolean
+  meanValueOneDecimalIn1y?: boolean
+  roundMeanValueInLongWindows?: boolean
+  longWindowLineXAxisTitleTranslateRem?: number
   chartTitle?: string
   chartTitleClassName?: string
   activeWindowMode?: PublicationsWindowMode
@@ -2619,12 +2721,125 @@ export function PublicationsPerYearChart({
     }
   }, [chartData.month_labels_lifetime, chartData.monthly_values_lifetime])
 
+  const buildRollingYearBarsFromMonthly = useCallback((mode: Exclude<PublicationsWindowMode, '1y'>): PublicationYearWindowBars | null => {
+    if (!lifetimeMonthlyBars.bars.length) {
+      return null
+    }
+    const monthCount = mode === '3y'
+      ? 36
+      : mode === '5y'
+        ? 60
+        : lifetimeMonthlyBars.bars.length
+    const sourceBars = lifetimeMonthlyBars.bars.slice(-monthCount)
+    if (!sourceBars.length) {
+      return null
+    }
+
+    const yearlyBars: PublicationChartBar[] = []
+    for (let index = 0; index < sourceBars.length; index += 12) {
+      const chunk = sourceBars.slice(index, index + 12)
+      if (!chunk.length) {
+        continue
+      }
+      const firstMs = chunk[0]?.monthStartMs
+      const lastMs = chunk[chunk.length - 1]?.monthStartMs
+      const firstDate = Number.isFinite(firstMs) ? new Date(firstMs as number) : null
+      const lastDate = Number.isFinite(lastMs) ? new Date(lastMs as number) : null
+      yearlyBars.push({
+        key: firstDate && lastDate
+          ? `${firstDate.getUTCFullYear()}-${lastDate.getUTCFullYear()}-${index}`
+          : `${mode}-${index}`,
+        value: chunk.reduce((sum, item) => sum + Math.max(0, item.value), 0),
+        current: false,
+        axisLabel: firstDate && lastDate
+          ? `${MONTH_SHORT[firstDate.getUTCMonth()]}-${MONTH_SHORT[lastDate.getUTCMonth()]}`
+          : String(index + 1),
+        axisSubLabel: firstDate && lastDate
+          ? (firstDate.getUTCFullYear() === lastDate.getUTCFullYear()
+            ? shortYearLabel(firstDate.getUTCFullYear())
+            : `${shortYearLabel(firstDate.getUTCFullYear())}-${shortYearLabel(lastDate.getUTCFullYear())}`)
+          : undefined,
+        monthStartMs: firstMs ?? undefined,
+      })
+    }
+
+    const bucketSize = mode === 'all'
+      ? selectPublicationBucketSize(yearlyBars.length)
+      : 1
+    const groupedBars: PublicationChartBar[] = []
+    for (let index = 0; index < yearlyBars.length; index += bucketSize) {
+      const chunk = yearlyBars.slice(index, index + bucketSize)
+      if (!chunk.length) {
+        continue
+      }
+      const firstBar = chunk[0]
+      const lastBar = chunk[chunk.length - 1]
+      groupedBars.push({
+        key: `${firstBar.key}|${lastBar.key}`,
+        value: chunk.reduce((sum, item) => sum + Math.max(0, item.value), 0),
+        current: false,
+        axisLabel: bucketSize === 1
+          ? firstBar.axisLabel
+          : `${firstBar.axisLabel}-${lastBar.axisLabel}`,
+        axisSubLabel: bucketSize === 1
+          ? firstBar.axisSubLabel
+          : `${firstBar.axisSubLabel || ''}-${lastBar.axisSubLabel || ''}`.replace(/^-|-$/g, ''),
+        monthStartMs: firstBar.monthStartMs,
+      })
+    }
+
+    const firstMs = sourceBars[0]?.monthStartMs
+    const lastMs = sourceBars[sourceBars.length - 1]?.monthStartMs
+    const firstDate = Number.isFinite(firstMs) ? new Date(firstMs as number) : null
+    const lastDate = Number.isFinite(lastMs) ? new Date(lastMs as number) : null
+    const rangeLabel = firstDate && lastDate
+      ? `${MONTH_SHORT[firstDate.getUTCMonth()]} ${shortYearLabel(firstDate.getUTCFullYear())}-${MONTH_SHORT[lastDate.getUTCMonth()]} ${shortYearLabel(lastDate.getUTCFullYear())}`
+      : null
+
+    return {
+      bars: groupedBars.slice(-MAX_PUBLICATION_CHART_BARS),
+      bucketSize: bucketSize * 12,
+      rangeLabel,
+    }
+  }, [lifetimeMonthlyBars.bars])
+
   const publicationEventDatesMs = useMemo(() => (
     toStringArray(chartData.publication_event_dates)
       .map((value) => parseIsoPublicationDate(value)?.getTime())
       .filter((value): value is number => Number.isFinite(value))
       .sort((left, right) => left - right)
   ), [chartData.publication_event_dates])
+
+  const hasLifetimeMonthlyLineSeries = publicationEventDatesMs.length === 0 && lifetimeMonthlyBars.bars.length > 0
+
+  const buildLifetimeMonthlyLineWindowBars = useCallback((mode: PublicationsWindowMode): PublicationYearWindowBars | null => {
+    if (!hasLifetimeMonthlyLineSeries) {
+      return null
+    }
+    const monthCount = mode === '1y'
+      ? 12
+      : mode === '3y'
+        ? 36
+        : mode === '5y'
+          ? 60
+          : lifetimeMonthlyBars.bars.length
+    const sourceBars = lifetimeMonthlyBars.bars.slice(-monthCount)
+    if (!sourceBars.length) {
+      return null
+    }
+    const firstMs = sourceBars[0]?.monthStartMs
+    const lastMs = sourceBars[sourceBars.length - 1]?.monthStartMs
+    const firstDate = Number.isFinite(firstMs) ? new Date(firstMs as number) : null
+    const lastDate = Number.isFinite(lastMs) ? new Date(lastMs as number) : null
+    const rangeLabel = firstDate && lastDate
+      ? `${MONTH_SHORT[firstDate.getUTCMonth()]} ${shortYearLabel(firstDate.getUTCFullYear())}-${MONTH_SHORT[lastDate.getUTCMonth()]} ${shortYearLabel(lastDate.getUTCFullYear())}`
+      : null
+    return {
+      bars: sourceBars,
+      bucketSize: 1,
+      rangeLabel,
+    }
+  }, [hasLifetimeMonthlyLineSeries, lifetimeMonthlyBars.bars])
 
   const resolveBarsForWindowMode = (mode: PublicationsWindowMode): PublicationYearWindowBars => {
     if (mode === '1y') {
@@ -2634,54 +2849,20 @@ export function PublicationsPerYearChart({
         rangeLabel: groupedMonthBars.rangeLabel,
       }
     }
-    if ((mode === '3y' || mode === '5y') && lifetimeMonthlyBars.bars.length) {
-      const monthCount = mode === '3y' ? 36 : 60
-      const sourceBars = lifetimeMonthlyBars.bars.slice(-monthCount)
-      if (sourceBars.length > 0) {
-        const grouped: PublicationChartBar[] = []
-        for (let index = 0; index < sourceBars.length; index += 12) {
-          const chunk = sourceBars.slice(index, index + 12)
-          if (!chunk.length) {
-            continue
-          }
-          const firstMs = chunk[0]?.monthStartMs
-          const lastMs = chunk[chunk.length - 1]?.monthStartMs
-          const firstDate = Number.isFinite(firstMs) ? new Date(firstMs as number) : null
-          const lastDate = Number.isFinite(lastMs) ? new Date(lastMs as number) : null
-          grouped.push({
-            key: firstDate && lastDate
-              ? `${firstDate.getUTCFullYear()}-${lastDate.getUTCFullYear()}-${index}`
-              : `${mode}-${index}`,
-            value: chunk.reduce((sum, item) => sum + Math.max(0, item.value), 0),
-            current: false,
-            axisLabel: firstDate && lastDate
-              ? `${MONTH_SHORT[firstDate.getUTCMonth()]}-${MONTH_SHORT[lastDate.getUTCMonth()]}`
-              : String(index + 1),
-            axisSubLabel: firstDate && lastDate
-              ? (firstDate.getUTCFullYear() === lastDate.getUTCFullYear()
-                ? shortYearLabel(firstDate.getUTCFullYear())
-                : `${shortYearLabel(firstDate.getUTCFullYear())}-${shortYearLabel(lastDate.getUTCFullYear())}`)
-              : undefined,
-          })
-        }
-        const firstMs = sourceBars[0]?.monthStartMs
-        const lastMs = sourceBars[sourceBars.length - 1]?.monthStartMs
-        const firstDate = Number.isFinite(firstMs) ? new Date(firstMs as number) : null
-        const lastDate = Number.isFinite(lastMs) ? new Date(lastMs as number) : null
-        const rangeLabel = firstDate && lastDate
-          ? `${MONTH_SHORT[firstDate.getUTCMonth()]} ${shortYearLabel(firstDate.getUTCFullYear())}-${MONTH_SHORT[lastDate.getUTCMonth()]} ${shortYearLabel(lastDate.getUTCFullYear())}`
-          : null
-        return {
-          bars: grouped,
-          bucketSize: 12,
-          rangeLabel,
-        }
+    if (mode === '3y' || mode === '5y' || mode === 'all') {
+      const rollingBars = buildRollingYearBarsFromMonthly(mode)
+      if (rollingBars) {
+        return rollingBars
       }
     }
     return groupedYearBarsByWindow[mode]
   }
 
   const resolveLineBarsForWindowMode = useCallback((mode: PublicationsWindowMode): PublicationYearWindowBars => {
+    const lifetimeMonthlyWindowBars = buildLifetimeMonthlyLineWindowBars(mode)
+    if (lifetimeMonthlyWindowBars) {
+      return lifetimeMonthlyWindowBars
+    }
     if (mode === '1y') {
       const hasMonthlySignal = groupedMonthBars.bars.some((bar) => Math.max(0, bar.value) > 0)
       if (hasMonthlySignal) {
@@ -2730,6 +2911,7 @@ export function PublicationsPerYearChart({
     groupedMonthBars.bucketSize,
     groupedMonthBars.rangeLabel,
     historyBars,
+    buildLifetimeMonthlyLineWindowBars,
   ])
 
   const activeLineWindowBars = isCompactTileMode
@@ -2770,14 +2952,15 @@ export function PublicationsPerYearChart({
   const meanValue = isCompactTileMode && showMeanLine && Number.isFinite(meanValueRaw) && meanValueRaw >= 0
     ? meanValueRaw
     : effectiveWindowMode === '1y'
-      ? activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+      ? activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
       : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
-  const meanPerYearValue = useMemo(() => {
+  const meanDisplayValue = useMemo(() => {
     if (isCompactTileMode && showMeanLine && Number.isFinite(meanValueRaw) && meanValueRaw >= 0) {
       return Math.max(0, meanValueRaw)
     }
     if (effectiveWindowMode === '1y') {
-      return groupedMonthBars.bars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+      const total = groupedMonthBars.bars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+      return total / Math.max(1, groupedMonthBars.bars.length)
     }
     if (effectiveWindowMode === '3y' || effectiveWindowMode === '5y') {
       if (lifetimeMonthlyBars.bars.length > 0) {
@@ -2812,9 +2995,19 @@ export function PublicationsPerYearChart({
     meanValueRaw,
     showMeanLine,
   ])
-  const meanPerYearDisplay = Number.isFinite(meanPerYearValue)
+  const meanDisplayUnit = effectiveWindowMode === '1y' ? 'month' : 'year'
+  const meanDisplay = Number.isFinite(meanDisplayValue)
     ? (() => {
-      const rounded = Math.round(meanPerYearValue * 10) / 10
+      if (effectiveWindowMode === '1y') {
+        if (meanValueOneDecimalIn1y) {
+          return (Math.round(meanDisplayValue * 10) / 10).toFixed(1)
+        }
+        return formatInt(Math.round(meanDisplayValue))
+      }
+      if (roundMeanValueInLongWindows) {
+        return formatInt(Math.round(meanDisplayValue))
+      }
+      const rounded = Math.round(meanDisplayValue * 10) / 10
       if (Math.abs(rounded - Math.round(rounded)) <= 1e-9) {
         return formatInt(Math.round(rounded))
       }
@@ -2841,13 +3034,32 @@ export function PublicationsPerYearChart({
     () => renderBars.map((bar) => Math.max(0, bar.value)),
     [renderBars],
   )
+  const resolveLineCumulativeValuesForWindowMode = useCallback((mode: PublicationsWindowMode): number[] => {
+    const lineBars = resolveLineBarsForWindowMode(mode).bars
+    if (!lineBars.length) {
+      return []
+    }
+    let runningTotal = 0
+    return lineBars.map((bar) => {
+      runningTotal += Math.max(0, bar.value)
+      return runningTotal
+    })
+  }, [resolveLineBarsForWindowMode])
   const renderedCumulativeValuesTarget = useMemo(() => {
+    if (effectiveVisualMode === 'line') {
+      return resolveLineCumulativeValuesForWindowMode(effectiveWindowMode)
+    }
     let runningTotal = 0
     return renderedValuesTarget.map((value) => {
       runningTotal += Math.max(0, value)
       return runningTotal
     })
-  }, [renderedValuesTarget])
+  }, [
+    effectiveVisualMode,
+    effectiveWindowMode,
+    renderedValuesTarget,
+    resolveLineCumulativeValuesForWindowMode,
+  ])
   const renderedValuesAnimated = renderedValuesTarget
   const renderedCumulativeValuesAnimated = renderedCumulativeValuesTarget
 
@@ -2868,7 +3080,7 @@ export function PublicationsPerYearChart({
   const maxWindowValueLine = Math.max(
     1,
     ...PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-      resolveLineBarsForWindowMode(option.value).bars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+      resolveLineCumulativeValuesForWindowMode(option.value).slice(-1)[0] ?? 0
     )),
   )
   const maxWindowValueForAxisWidth = Math.max(maxWindowValueBars, maxWindowValueLine)
@@ -3091,7 +3303,7 @@ export function PublicationsPerYearChart({
     ? buildYAxisPanelWidthRem(stableToggleTickValues, Boolean(yAxisLabel), enableWindowToggle ? 1.7 : 1.2)
     : 0
   const yAxisTitleLeft = '36%'
-  const shouldReserveMeanLabelBand = showMeanValueLabel && Boolean(meanPerYearDisplay)
+  const shouldReserveMeanLabelBand = showMeanValueLabel && Boolean(meanDisplay)
   const meanLabelBandInsetRem = shouldReserveMeanLabelBand ? 0.75 : 0
   const chartTopInsetRem = PUBLICATIONS_CHART_TOP_INSET_REM + meanLabelBandInsetRem
   const chartLeftInset = showAxes
@@ -3110,6 +3322,13 @@ export function PublicationsPerYearChart({
     bottom: `${xAxisLabelLayout.axisBottomRem}rem`,
     minHeight: `${xAxisLabelLayout.axisMinHeightRem}rem`,
   }
+  const isLifeBarChart = effectiveVisualMode !== 'line' && effectiveWindowMode === 'all'
+  const lifeXAxisTitleNudgeRem = isLifeBarChart ? 0.28 : 0
+  const lifeXAxisTitleTranslateRem = isLifeBarChart ? 0.22 : 0
+  const longWindowLineXAxisTitleTranslate = effectiveVisualMode === 'line'
+    && (effectiveWindowMode === '3y' || effectiveWindowMode === '5y' || effectiveWindowMode === 'all')
+    ? longWindowLineXAxisTitleTranslateRem
+    : 0
   const slotMetrics = useMemo(() => {
     const slotCount = Math.max(1, renderBars.length)
     const slotGapPct = slotCount >= 10
@@ -3311,6 +3530,50 @@ export function PublicationsPerYearChart({
         }
       }
     }
+    if (hasLifetimeMonthlyLineSeries) {
+      const firstMonthStartMs = Number(renderBars[0]?.monthStartMs)
+      const lastMonthStartMs = Number(renderBars[renderBars.length - 1]?.monthStartMs)
+      if (Number.isFinite(firstMonthStartMs) && Number.isFinite(lastMonthStartMs)) {
+        const timelineStartMs = Number(firstMonthStartMs)
+        const lastMonthDate = new Date(Number(lastMonthStartMs))
+        const timelineEndMs = Date.UTC(
+          lastMonthDate.getUTCFullYear(),
+          lastMonthDate.getUTCMonth() + 1,
+          1,
+        ) - 1
+        const spanMs = Math.max(1, timelineEndMs - timelineStartMs)
+        const cumulativePoints = renderBars.map((bar, index) => {
+          const monthStartMs = Number(bar.monthStartMs)
+          const monthEndMs = Number.isFinite(monthStartMs)
+            ? (Date.UTC(new Date(monthStartMs).getUTCFullYear(), new Date(monthStartMs).getUTCMonth() + 1, 1) - 1)
+            : timelineStartMs
+          const cumulativeValue = renderedCumulativeValuesTarget[index] ?? 0
+          return {
+            key: `line-cumulative-${bar.key}-${index}`,
+            xPct: clampPct(((monthEndMs - timelineStartMs) / spanMs) * 100),
+            yPct: clampPct((cumulativeValue / Math.max(1, barHeightAxisMax)) * 100),
+            value: cumulativeValue,
+            timeMs: monthEndMs,
+          }
+        })
+        const pathPoints = [
+          {
+            key: 'line-period-start',
+            xPct: 0,
+            yPct: 0,
+            value: 0,
+            timeMs: timelineStartMs,
+          },
+          ...cumulativePoints,
+        ]
+        return {
+          points: pathPoints,
+          markerPoints: cumulativePoints,
+          timelineStartMs,
+          timelineEndMs,
+        }
+      }
+    }
     let cumulativeValue = 0
     const cumulativePoints = renderBars.map((bar, index) => {
       cumulativeValue += Math.max(0, bar.value)
@@ -3355,6 +3618,7 @@ export function PublicationsPerYearChart({
     renderedCumulativeValuesTarget,
     renderBars,
     effectiveWindowMode,
+    hasLifetimeMonthlyLineSeries,
     publicationEventDatesMs,
     slotMetrics.slotStepPct,
     slotMetrics.slotWidthPct,
@@ -3380,16 +3644,7 @@ export function PublicationsPerYearChart({
     lineSeriesModel.timelineEndMs,
     lineSeriesModel.timelineStartMs,
   ])
-  const lineSeriesMarkerPoints = lineSeriesModel.markerPoints
   const lineSeriesPathPoints = lineSeriesModel.points
-  const lineMarkerPoints = useMemo(
-    () => (
-      effectiveVisualMode === 'line'
-        ? lineSeriesMarkerPoints
-        : []
-    ),
-    [effectiveVisualMode, lineSeriesMarkerPoints],
-  )
   const linePathD = useMemo(() => {
     if (effectiveVisualMode !== 'line' || lineSeriesPathPoints.length === 0) {
       return ''
@@ -3408,20 +3663,16 @@ export function PublicationsPerYearChart({
       return ''
     }
     const orderedPoints = [...points].sort((left, right) => left.x - right.x)
-    let path = `M ${orderedPoints[0].x} ${orderedPoints[0].y}`
-    for (let index = 1; index < orderedPoints.length; index += 1) {
-      const point = orderedPoints[index]
-      path += ` H ${point.x} V ${point.y}`
-    }
     const lastPoint = orderedPoints[orderedPoints.length - 1]
-    if (lastPoint.x < 100) {
-      path += ' H 100'
+    const smoothedPoints = lastPoint.x < 100
+      ? [...orderedPoints, { x: 100, y: lastPoint.y }]
+      : orderedPoints
+    if (smoothedPoints.length < 2) {
+      const onlyPoint = smoothedPoints[0]
+      return onlyPoint ? `M ${onlyPoint.x} ${onlyPoint.y}` : ''
     }
-    return path
+    return monotonePathFromPoints(smoothedPoints)
   }, [effectiveVisualMode, lineSeriesPathPoints])
-  const hoveredLinePoint = effectiveVisualMode === 'line' && hoveredIndex !== null
-    ? lineMarkerPoints[hoveredIndex] || null
-    : null
   const lineModeVerticalGridPercents = useMemo(() => {
     if (effectiveVisualMode !== 'line') {
       return []
@@ -3526,7 +3777,7 @@ export function PublicationsPerYearChart({
         data-ui="publications-chart-frame"
         data-house-role="chart-frame"
       >
-        {showMeanValueLabel && meanPerYearDisplay && effectiveVisualMode !== 'line' ? (
+        {showMeanValueLabel && meanDisplay && effectiveVisualMode !== 'line' ? (
           <p
               className={cn(
                 HOUSE_DRILLDOWN_CHART_META_CLASS,
@@ -3534,7 +3785,7 @@ export function PublicationsPerYearChart({
                 'pointer-events-none absolute right-2 top-0 z-[2]',
               )}
           >
-            Mean: {meanPerYearDisplay} per year
+            Mean: {meanDisplay} per {meanDisplayUnit}
           </p>
         ) : null}
         <div className="absolute overflow-visible" style={plotAreaStyle}>
@@ -3710,41 +3961,6 @@ export function PublicationsPerYearChart({
               )
             })}
           </div>
-          {effectiveVisualMode === 'line' ? (
-            <div className="absolute inset-0 z-[3]">
-              {lineMarkerPoints.map((point, index) => (
-                <span
-                  key={`pub-cumulative-point-hit-${point.key}`}
-                  className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 cursor-default rounded-full"
-                  style={{
-                    left: `${Math.max(0, Math.min(100, point.xPct))}%`,
-                    bottom: `${Math.max(0, Math.min(100, point.yPct))}%`,
-                  }}
-                  onMouseEnter={() => setHoveredIndex(index)}
-                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                  aria-hidden="true"
-                />
-              ))}
-            </div>
-          ) : null}
-          {effectiveVisualMode === 'line' && hoveredLinePoint ? (
-            <>
-              <span
-                className={cn(
-                  HOUSE_DRILLDOWN_TOOLTIP_CLASS,
-                  'pointer-events-none z-[4] opacity-100 translate-y-0',
-                )}
-                style={{
-                  left: `${Math.max(0, Math.min(100, hoveredLinePoint.xPct))}%`,
-                  transform: 'translateX(-50%)',
-                  bottom: `calc(${Math.max(0, Math.min(100, hoveredLinePoint.yPct))}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)`,
-                }}
-                aria-hidden="true"
-              >
-                {formatInt(hoveredLinePoint.value)}
-              </span>
-            </>
-          ) : null}
         </div>
 
         {showAxes ? (
@@ -3776,32 +3992,47 @@ export function PublicationsPerYearChart({
         ) : null}
 
         {showXAxisTickTabs ? (
-          effectiveVisualMode === 'line' && !usingMonthlyTimelineForMode ? (
+          effectiveVisualMode === 'line' ? (
             <div
               className={cn('pointer-events-none absolute', HOUSE_TOGGLE_CHART_LABEL_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
               style={xAxisTicksStyle}
             >
               {lineModeXAxisTicks.map((tick, index) => {
                 const lastIndex = lineModeXAxisTicks.length - 1
+                const shouldClampEdgeTickLabel = effectiveWindowMode === '1y'
                 const isNearLeftEdge = tick.leftPct <= 2
                 const isNearRightEdge = tick.leftPct >= 98
                 const isFirst = index === 0
                 const isLast = index === lastIndex
                 const tickRoleLabel = isFirst ? 'Start' : isLast ? 'End' : 'Middle'
+                const tickAlignmentClass = shouldClampEdgeTickLabel
+                  ? isFirst
+                    ? 'text-left'
+                    : isLast
+                      ? 'text-right'
+                      : 'text-center'
+                  : 'text-center'
                 return (
                   <div
                     key={tick.key}
                     className={cn(
                       'house-chart-axis-period-item absolute top-0 leading-none',
+                      tickAlignmentClass,
                       HOUSE_CHART_SCALE_TICK_CLASS,
                     )}
                     style={{
                       left: `${tick.leftPct}%`,
-                      transform: isNearLeftEdge
-                        ? 'translateX(0)'
-                        : isNearRightEdge
-                          ? 'translateX(-100%)'
-                          : 'translateX(-50%)',
+                      transform: shouldClampEdgeTickLabel
+                        ? isFirst
+                          ? 'translateX(0)'
+                          : isLast
+                            ? 'translateX(-100%)'
+                            : 'translateX(-50%)'
+                        : isNearLeftEdge
+                          ? 'translateX(0)'
+                          : isNearRightEdge
+                            ? 'translateX(-100%)'
+                            : 'translateX(-50%)',
                       transitionDuration: `${axisDurationMs}ms`,
                       transitionProperty: 'opacity',
                     }}
@@ -3835,6 +4066,7 @@ export function PublicationsPerYearChart({
                     'house-chart-axis-period-item text-center leading-none',
                     HOUSE_CHART_SCALE_TICK_CLASS,
                   )}
+                  style={isLifeBarChart ? { transform: 'translateY(0.42rem)' } : undefined}
                 >
                   <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
                     {bar.axisLabel}
@@ -3856,11 +4088,18 @@ export function PublicationsPerYearChart({
             style={{
               left: chartLeftInset,
               right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
-              bottom: `${xAxisLabelLayout.xAxisNameBottomRem}rem`,
+              bottom: `${Math.max(0, xAxisLabelLayout.xAxisNameBottomRem - lifeXAxisTitleNudgeRem)}rem`,
               minHeight: `${xAxisLabelLayout.xAxisNameMinHeightRem}rem`,
             }}
           >
-            <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
+            <p
+              className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}
+              style={
+                lifeXAxisTitleTranslateRem > 0 || longWindowLineXAxisTitleTranslate !== 0
+                  ? { transform: `translateY(${lifeXAxisTitleTranslateRem - longWindowLineXAxisTitleTranslate}rem)` }
+                  : undefined
+              }
+            >
               {resolvedXAxisLabel}
             </p>
           </div>
@@ -4677,6 +4916,44 @@ type PublicationDrilldownRecord = {
   articleType: string
   venue: string
   citations: number
+  citations1yRolling?: number
+  citations3yRolling?: number
+  citations5yRolling?: number
+  citationsLifeRolling?: number
+}
+
+function parsePublicationCitationCount(value: unknown): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0
+  }
+  if (typeof value !== 'string') {
+    return 0
+  }
+  const normalized = value.replace(/,/g, '').trim()
+  if (!normalized) {
+    return 0
+  }
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0
+}
+
+function resolvePublicationCitationValueForWindow(
+  record: PublicationDrilldownRecord,
+  windowMode: PublicationsWindowMode,
+): number {
+  if (windowMode === '1y' && typeof record.citations1yRolling === 'number') {
+    return Math.max(0, Number(record.citations1yRolling) || 0)
+  }
+  if (windowMode === '3y' && typeof record.citations3yRolling === 'number') {
+    return Math.max(0, Number(record.citations3yRolling) || 0)
+  }
+  if (windowMode === '5y' && typeof record.citations5yRolling === 'number') {
+    return Math.max(0, Number(record.citations5yRolling) || 0)
+  }
+  if (windowMode === 'all' && typeof record.citationsLifeRolling === 'number') {
+    return Math.max(0, Number(record.citationsLifeRolling) || 0)
+  }
+  return Math.max(0, Number(record.citations || 0))
 }
 
 const PUBLICATION_TYPE_LABEL_OVERRIDES: Record<string, string> = {
@@ -4894,16 +5171,20 @@ export function PublicationCategoryDistributionChart({
   publications,
   dimension,
   xAxisLabel,
+  yAxisLabel = 'Publications',
   emptyLabel,
   animate = true,
   enableValueModeToggle = false,
+  valueMetric = 'count',
 }: {
   publications: PublicationDrilldownRecord[]
   dimension: PublicationCategoryDimension
   xAxisLabel: string
+  yAxisLabel?: string
   emptyLabel: string
   animate?: boolean
   enableValueModeToggle?: boolean
+  valueMetric?: 'count' | 'citations'
 }) {
   const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
   const [valueMode, setValueMode] = useState<PublicationCategoryValueMode>('absolute')
@@ -4956,7 +5237,10 @@ export function PublicationCategoryDistributionChart({
         continue
       }
       const label = categoryLabelFromPublication(record, dimension)
-      totals.set(label, (totals.get(label) || 0) + 1)
+      const metricValue = valueMetric === 'citations'
+        ? Math.max(0, Number(record.citations || 0))
+        : 1
+      totals.set(label, (totals.get(label) || 0) + metricValue)
     }
     const sortedLabels = Array.from(totals.entries())
       .sort((left, right) => {
@@ -4971,7 +5255,7 @@ export function PublicationCategoryDistributionChart({
       primaryLabels: sortedLabels.slice(0, maxPrimaryCategories),
       hasOtherBucket: sortedLabels.length > maxPrimaryCategories,
     }
-  }, [dimension, publications])
+  }, [dimension, publications, valueMetric])
 
   const barsByWindowMode = useMemo(() => {
     const primaryLabelSet = new Set(categoryConfig.primaryLabels)
@@ -4990,16 +5274,20 @@ export function PublicationCategoryDistributionChart({
       const counts = new Map<string, number>()
       let otherCount = 0
       for (const record of publications) {
-        if (record.year === null || !yearSet.has(record.year)) {
+        const isYearWindowMatch = record.year !== null && yearSet.has(record.year)
+        if (valueMetric === 'count' && !isYearWindowMatch) {
           continue
         }
         const label = categoryLabelFromPublication(record, dimension)
+        const metricValue = valueMetric === 'citations'
+          ? resolvePublicationCitationValueForWindow(record, mode)
+          : 1
         if (primaryLabelSet.has(label)) {
-          counts.set(label, (counts.get(label) || 0) + 1)
+          counts.set(label, (counts.get(label) || 0) + metricValue)
           continue
         }
         if (categoryConfig.hasOtherBucket) {
-          otherCount += 1
+          otherCount += metricValue
         }
       }
       const bars = categoryConfig.primaryLabels.map((label) => ({
@@ -5046,16 +5334,20 @@ export function PublicationCategoryDistributionChart({
       '5y': build('5y'),
       all: build('all'),
     } as const
-  }, [categoryConfig.hasOtherBucket, categoryConfig.primaryLabels, dimension, fullYears, publications])
+  }, [categoryConfig.hasOtherBucket, categoryConfig.primaryLabels, dimension, fullYears, publications, valueMetric])
   const tableRows = useMemo(() => {
     const yearSet = new Set(windowYears)
     const counts = new Map<string, number>()
     for (const record of publications) {
-      if (record.year === null || !yearSet.has(record.year)) {
+      const isYearWindowMatch = record.year !== null && yearSet.has(record.year)
+      if (valueMetric === 'count' && !isYearWindowMatch) {
         continue
       }
       const label = categoryLabelFromPublication(record, dimension)
-      counts.set(label, (counts.get(label) || 0) + 1)
+      const metricValue = valueMetric === 'citations'
+        ? resolvePublicationCitationValueForWindow(record, windowMode)
+        : 1
+      counts.set(label, (counts.get(label) || 0) + metricValue)
     }
     const visibleRows = Array.from(counts.entries())
       .filter(([, count]) => Math.max(0, count) >= MIN_PUBLICATION_TYPE_BAR_VALUE)
@@ -5072,7 +5364,7 @@ export function PublicationCategoryDistributionChart({
         count,
         percentage: totalCount > 0 ? (count / totalCount) * 100 : 0,
       }))
-  }, [dimension, publications, windowYears])
+  }, [dimension, publications, valueMetric, windowYears])
 
   const activeWindowBars = barsByWindowMode[windowMode]
   const activeBars = activeWindowBars.bars
@@ -5137,9 +5429,6 @@ export function PublicationCategoryDistributionChart({
   const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * Math.max(1, displayedAxisMax))
   const gridTickRatios = yAxisTickRatios.slice(1).filter((ratio) => Number.isFinite(ratio) && ratio > 0 && ratio < 1)
 
-  if (!hasBars) {
-    return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
-  }
   const xAxisLabelLayout = mergeChartAxisLayouts(
     PUBLICATIONS_WINDOW_OPTIONS.map((option) =>
       buildChartAxisLayout({
@@ -5413,7 +5702,7 @@ export function PublicationCategoryDistributionChart({
             </table>
           </div>
         </div>
-      ) : (
+      ) : hasBars ? (
         <div
           className={cn(
             HOUSE_CHART_TRANSITION_CLASS,
@@ -5512,7 +5801,7 @@ export function PublicationCategoryDistributionChart({
             className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
             style={{ left: yAxisTitleLeft }}
           >
-            {showPercentageMode ? 'Share (%)' : 'Publications'}
+            {showPercentageMode ? 'Share (%)' : yAxisLabel}
           </p>
         </div>
         <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
@@ -5538,6 +5827,10 @@ export function PublicationCategoryDistributionChart({
           </p>
         </div>
       </div>
+      ) : (
+        <div className={cn(dashboardTileStyles.emptyChart, 'mt-3 flex-1')}>
+          {emptyLabel}
+        </div>
       )}
     </div>
   )
@@ -5652,8 +5945,9 @@ function TotalPublicationsDrilldownWorkspace({
         const publicationType = String(record.work_type || record.workType || record.publication_type || record.publicationType || '').trim()
         const articleType = String(record.article_type || record.articleType || '').trim()
         const venue = String(record.venue || record.journal || '').trim()
-        const citationsRaw = Number(record.citations ?? record.cited_by_count ?? 0)
-        const citations = Number.isFinite(citationsRaw) ? Math.max(0, Math.round(citationsRaw)) : 0
+        const citations = parsePublicationCitationCount(
+          record.citations_lifetime ?? record.citations ?? record.cited_by_count ?? 0,
+        )
         return {
           workId,
           year,
@@ -5664,6 +5958,12 @@ function TotalPublicationsDrilldownWorkspace({
           articleType,
           venue,
           citations,
+          citations1yRolling: parsePublicationCitationCount(record.citations_1y_rolling ?? 0),
+          citations3yRolling: parsePublicationCitationCount(record.citations_3y_rolling ?? 0),
+          citations5yRolling: parsePublicationCitationCount(record.citations_5y_rolling ?? 0),
+          citationsLifeRolling: parsePublicationCitationCount(
+            record.citations_life_rolling ?? record.citations_lifetime ?? record.citations ?? 0,
+          ),
         }
       })
       .filter((item): item is PublicationDrilldownRecord => item !== null)
@@ -6096,9 +6396,9 @@ function TotalPublicationsDrilldownWorkspace({
       { label: 'Active years', value: activeYearsValue },
       { label: 'Mean yearly publications', value: meanYearlyValue },
       { label: 'Highest yield', value: highestYieldValue },
-      { label: 'Last 1 year', value: formatInt(rolling1Year) },
-      { label: 'Last 3 years', value: formatInt(rolling3Year) },
-      { label: 'Last 5 years', value: formatInt(rolling5Year) },
+      { label: 'Last 1 year (rolling)', value: formatInt(rolling1Year) },
+      { label: 'Last 3 years (rolling)', value: formatInt(rolling3Year) },
+      { label: 'Last 5 years (rolling)', value: formatInt(rolling5Year) },
       { label: 'Year-to-date', value: yearToDateValue },
     ]
   }, [tile])
@@ -6253,7 +6553,7 @@ function TotalPublicationsDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section">
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">Publication trends</p>
+                  <p className="house-drilldown-heading-block-title">Publication Volume Over Time</p>
                   <DrilldownSheet.HeadingToggle
                     expanded={publicationTrendsExpanded}
                     onClick={(event) => {
@@ -6317,6 +6617,7 @@ function TotalPublicationsDrilldownWorkspace({
                       tile={tile}
                       animate={animateCharts}
                       showAxes
+                      yAxisLabel="Publications"
                       enableWindowToggle
                       showPeriodHint
                       showCurrentPeriodSemantic
@@ -6324,6 +6625,8 @@ function TotalPublicationsDrilldownWorkspace({
                       autoScaleByWindow
                       showMeanLine
                       showMeanValueLabel
+                      meanValueOneDecimalIn1y
+                      longWindowLineXAxisTitleTranslateRem={1.1}
                       subtleGrid
                       activeWindowMode={publicationTrendsWindowMode}
                       onWindowModeChange={setPublicationTrendsWindowMode}
@@ -6339,7 +6642,7 @@ function TotalPublicationsDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section">
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">Article type trends</p>
+                  <p className="house-drilldown-heading-block-title">Type of Articles Published Over Time</p>
                   <DrilldownSheet.HeadingToggle
                     expanded={articleTypeTrendsExpanded}
                     onClick={(event) => {
@@ -6357,6 +6660,7 @@ function TotalPublicationsDrilldownWorkspace({
                       publications={publicationDrilldownRecords}
                       dimension="article"
                       xAxisLabel="Article type"
+                      yAxisLabel="Publications"
                       emptyLabel="No article type data"
                       animate={animateCharts}
                       enableValueModeToggle
@@ -6369,7 +6673,7 @@ function TotalPublicationsDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section">
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">Publication type trends</p>
+                  <p className="house-drilldown-heading-block-title">Type of Publications Published Over Time</p>
                   <DrilldownSheet.HeadingToggle
                     expanded={publicationTypeTrendsExpanded}
                     onClick={(event) => {
@@ -6387,6 +6691,7 @@ function TotalPublicationsDrilldownWorkspace({
                       publications={publicationDrilldownRecords}
                       dimension="publication"
                       xAxisLabel="Publication type"
+                      yAxisLabel="Publications"
                       emptyLabel="No publication type data"
                       animate={animateCharts}
                       enableValueModeToggle
@@ -6970,8 +7275,9 @@ function GenericMetricDrilldownWorkspace({
         const publicationType = String(record.work_type || record.workType || record.publication_type || record.publicationType || '').trim()
         const articleType = String(record.article_type || record.articleType || '').trim()
         const venue = String(record.venue || record.journal || '').trim()
-        const citationsRaw = Number(record.citations ?? record.cited_by_count ?? 0)
-        const citations = Number.isFinite(citationsRaw) ? Math.max(0, Math.round(citationsRaw)) : 0
+        const citations = parsePublicationCitationCount(
+          record.citations_lifetime ?? record.citations ?? record.cited_by_count ?? 0,
+        )
         return {
           workId,
           year,
@@ -6982,6 +7288,12 @@ function GenericMetricDrilldownWorkspace({
           articleType,
           venue,
           citations,
+          citations1yRolling: parsePublicationCitationCount(record.citations_1y_rolling ?? 0),
+          citations3yRolling: parsePublicationCitationCount(record.citations_3y_rolling ?? 0),
+          citations5yRolling: parsePublicationCitationCount(record.citations_5y_rolling ?? 0),
+          citationsLifeRolling: parsePublicationCitationCount(
+            record.citations_life_rolling ?? record.citations_lifetime ?? record.citations ?? 0,
+          ),
         }
       })
       .filter((item): item is PublicationDrilldownRecord => item !== null)
@@ -7027,7 +7339,7 @@ function GenericMetricDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section">
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">Publication trends</p>
+                  <p className="house-drilldown-heading-block-title">Citation Counts Over Time</p>
                   <DrilldownSheet.HeadingToggle
                     expanded={publicationTrendsExpanded}
                     onClick={(event) => {
@@ -7091,6 +7403,7 @@ function GenericMetricDrilldownWorkspace({
                       tile={tile}
                       animate={animateCharts}
                       showAxes
+                      yAxisLabel="Citations"
                       enableWindowToggle
                       showPeriodHint
                       showCurrentPeriodSemantic
@@ -7098,6 +7411,8 @@ function GenericMetricDrilldownWorkspace({
                       autoScaleByWindow
                       showMeanLine
                       showMeanValueLabel
+                      roundMeanValueInLongWindows
+                      longWindowLineXAxisTitleTranslateRem={1.1}
                       subtleGrid
                       activeWindowMode={publicationTrendsWindowMode}
                       onWindowModeChange={setPublicationTrendsWindowMode}
@@ -7113,7 +7428,7 @@ function GenericMetricDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section">
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">Article type trends</p>
+                  <p className="house-drilldown-heading-block-title">Citation Counts Based on Article Type</p>
                   <DrilldownSheet.HeadingToggle
                     expanded={articleTypeTrendsExpanded}
                     onClick={(event) => {
@@ -7130,7 +7445,9 @@ function GenericMetricDrilldownWorkspace({
                     <PublicationCategoryDistributionChart
                       publications={publicationDrilldownRecords}
                       dimension="article"
+                      valueMetric="citations"
                       xAxisLabel="Article type"
+                      yAxisLabel="Citations"
                       emptyLabel="No article type data"
                       animate={animateCharts}
                       enableValueModeToggle
@@ -7143,7 +7460,7 @@ function GenericMetricDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section">
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">Publication type trends</p>
+                  <p className="house-drilldown-heading-block-title">Citation Counts Based on Publication Type</p>
                   <DrilldownSheet.HeadingToggle
                     expanded={publicationTypeTrendsExpanded}
                     onClick={(event) => {
@@ -7160,7 +7477,9 @@ function GenericMetricDrilldownWorkspace({
                     <PublicationCategoryDistributionChart
                       publications={publicationDrilldownRecords}
                       dimension="publication"
+                      valueMetric="citations"
                       xAxisLabel="Publication type"
+                      yAxisLabel="Citations"
                       emptyLabel="No publication type data"
                       animate={animateCharts}
                       enableValueModeToggle

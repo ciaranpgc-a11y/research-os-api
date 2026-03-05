@@ -937,6 +937,42 @@ def _normalize_monthly_to_total(
     return [max(0, int(value)) for value in scaled]
 
 
+def _reconcile_monthly_series_to_total(
+    *,
+    monthly_values: list[int],
+    target_total: int,
+    eligible_indexes: list[int] | None = None,
+) -> list[int]:
+    clean = [max(0, int(value or 0)) for value in monthly_values]
+    target = max(0, int(target_total or 0))
+    if target <= 0:
+        return [0 for _ in clean]
+
+    total = int(sum(clean))
+    if total > target:
+        return _normalize_monthly_to_total(
+            monthly_added=clean,
+            target_total=target,
+        )
+    if total == target:
+        return clean
+
+    resolved_indexes = [
+        int(index)
+        for index in (eligible_indexes if eligible_indexes is not None else range(len(clean)))
+        if 0 <= int(index) < len(clean)
+    ]
+    if not resolved_indexes:
+        return clean
+
+    remainder = target - total
+    base = remainder // len(resolved_indexes)
+    extra = remainder % len(resolved_indexes)
+    for offset, target_index in enumerate(resolved_indexes):
+        clean[target_index] += base + (1 if offset < extra else 0)
+    return clean
+
+
 def _cumulative_from_monthly(
     *, monthly_added: list[int], target_total: int
 ) -> list[int]:
@@ -2716,6 +2752,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "publication_date": row.get("publication_date"),
                 "publication_month_start": row.get("publication_month_start"),
                 "citations_lifetime": row["citations_lifetime"],
+                "citations_1y_rolling": row.get("citations_1y_rolling", 0),
+                "citations_3y_rolling": row.get("citations_3y_rolling", 0),
+                "citations_5y_rolling": row.get("citations_5y_rolling", 0),
+                "citations_life_rolling": row.get("citations_life_rolling", 0),
                 "confidence_score": row["confidence_score"],
                 "confidence_label": row["confidence_label"],
                 "match_source": row["match_source"],
@@ -3660,6 +3700,139 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         _shift_month(last_complete_month_start, -offset) for offset in range(11, -1, -1)
     ]
     month_labels_12m = [point.strftime("%b") for point in month_points_12m]
+    lifetime_month_index_by_key = {
+        (int(point.year), int(point.month)): index
+        for index, point in enumerate(lifetime_month_points)
+    }
+    monthly_citation_values_lifetime = [0 for _ in range(len(lifetime_month_points))]
+    current_month_start = _month_start(now)
+    trailing_24_month_points = [
+        _shift_month(last_complete_month_start, -offset) for offset in range(23, -1, -1)
+    ]
+    trailing_24_month_keys = [
+        (int(point.year), int(point.month)) for point in trailing_24_month_points
+    ]
+    trailing_24_window_start = trailing_24_month_points[0] if trailing_24_month_points else None
+
+    for row in per_work_rows:
+        row_total_citations = max(0, int(row.get("citations_lifetime") or 0))
+        row_monthly_values = [0 for _ in range(len(lifetime_month_points))]
+        if row_total_citations <= 0:
+            row["citations_1y_rolling"] = 0
+            row["citations_3y_rolling"] = 0
+            row["citations_5y_rolling"] = 0
+            row["citations_life_rolling"] = 0
+            continue
+        publication_month_start = _safe_publication_month_start(
+            row.get("publication_month_start")
+        )
+        fallback_year = _safe_int(row.get("fallback_year"))
+        publication_year = _safe_int(row.get("year"))
+        row_start_year = (
+            publication_month_start.year
+            if publication_month_start is not None
+            else fallback_year
+            if fallback_year is not None
+            else publication_year
+            if publication_year is not None
+            else lifetime_month_points[0].year
+        )
+        row_start_month = (
+            publication_month_start.month if publication_month_start is not None else 1
+        )
+        row_start_point = datetime(
+            int(row_start_year),
+            int(row_start_month),
+            1,
+            tzinfo=timezone.utc,
+        )
+        eligible_lifetime_indexes = [
+            index
+            for index, point in enumerate(lifetime_month_points)
+            if point >= row_start_point
+        ]
+        yearly_counts_raw = row.get("yearly_counts")
+        yearly_counts = (
+            {
+                int(year): max(0, int(value or 0))
+                for year, value in yearly_counts_raw.items()
+                if _safe_int(year) is not None and int(_safe_int(year) or 0) >= 1900
+            }
+            if isinstance(yearly_counts_raw, dict)
+            else {}
+        )
+        if yearly_counts:
+            row_monthly_values = [
+                max(
+                    0,
+                    int(
+                        _estimate_window_citations(
+                            yearly_counts,
+                            start=point,
+                            end=_shift_month(point, 1),
+                            now=current_month_start,
+                        )
+                    ),
+                )
+                for point in lifetime_month_points
+            ]
+            row_monthly_values = _reconcile_monthly_series_to_total(
+                monthly_values=row_monthly_values,
+                target_total=row_total_citations,
+                eligible_indexes=eligible_lifetime_indexes,
+            )
+        else:
+            monthly_added_24 = [
+                max(0, int(value or 0))
+                for value in list(row.get("monthly_added_24") or [])[-24:]
+            ]
+            if len(monthly_added_24) < 24:
+                monthly_added_24 = [0 for _ in range(24 - len(monthly_added_24))] + monthly_added_24
+            recent_total = 0
+            for month_key, value in zip(trailing_24_month_keys, monthly_added_24):
+                target_index = lifetime_month_index_by_key.get(month_key)
+                if target_index is None:
+                    continue
+                row_monthly_values[target_index] += value
+                recent_total += value
+
+            older_remainder = max(0, row_total_citations - recent_total)
+            if older_remainder > 0:
+                eligible_indexes = [
+                    index
+                    for index in eligible_lifetime_indexes
+                    if trailing_24_window_start is None
+                    or lifetime_month_points[index] < trailing_24_window_start
+                ]
+                if not eligible_indexes:
+                    eligible_indexes = eligible_lifetime_indexes
+                if eligible_indexes:
+                    base = older_remainder // len(eligible_indexes)
+                    remainder = older_remainder % len(eligible_indexes)
+                    for offset, target_index in enumerate(eligible_indexes):
+                        row_monthly_values[target_index] += base + (
+                            1 if offset < remainder else 0
+                        )
+
+        row["citations_1y_rolling"] = int(
+            sum(max(0, int(value or 0)) for value in row_monthly_values[-12:])
+        )
+        row["citations_3y_rolling"] = int(
+            sum(max(0, int(value or 0)) for value in row_monthly_values[-36:])
+        )
+        row["citations_5y_rolling"] = int(
+            sum(max(0, int(value or 0)) for value in row_monthly_values[-60:])
+        )
+        row["citations_life_rolling"] = int(
+            sum(max(0, int(value or 0)) for value in row_monthly_values)
+        )
+        for index, month_value in enumerate(row_monthly_values):
+            monthly_citation_values_lifetime[index] += max(0, int(month_value or 0))
+ 
+    monthly_citation_values_12m_raw = monthly_citation_values_lifetime[-12:]
+    monthly_citation_values_12m = [
+        0 for _ in range(max(0, 12 - len(monthly_citation_values_12m_raw)))
+    ] + [int(value) for value in monthly_citation_values_12m_raw]
     lifetime_month_start_iso = (
         f"{lifetime_month_start_point.year:04d}-{lifetime_month_start_point.month:02d}-01"
     )
@@ -4154,7 +4327,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             chart_data={
                 "years": last5_complete_years,
                 "values": last5_complete_values,
-                "monthly_values_12m": monthly_last_12,
+                "monthly_values_12m": monthly_citation_values_12m,
+                "month_labels_12m": month_labels_12m,
+                "monthly_values_lifetime": monthly_citation_values_lifetime,
+                "month_labels_lifetime": lifetime_month_labels,
+                "lifetime_month_start": lifetime_month_start_iso,
+                "lifetime_month_end": lifetime_month_end_iso,
                 "mean_value": round(five_year_mean, 2),
                 "projected_year": now.year,
                 "projected_value": projected_current_year,
