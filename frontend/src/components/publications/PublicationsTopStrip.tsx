@@ -5527,7 +5527,6 @@ function TotalPublicationsDrilldownWorkspace({
   void _onOpenPublication
   const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('5y')
   const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
-  const [publicationTrendsAutoScaleByWindow, setPublicationTrendsAutoScaleByWindow] = useState(true)
   const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
   const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
   const [articleTypeTrendsExpanded, setArticleTypeTrendsExpanded] = useState(true)
@@ -5593,7 +5592,6 @@ function TotalPublicationsDrilldownWorkspace({
   useEffect(() => {
     setPublicationTrendsWindowMode('5y')
     setPublicationTrendsVisualMode('bars')
-    setPublicationTrendsAutoScaleByWindow(true)
     setPublicationTrendsExpanded(true)
     setPublicationTypeTrendsExpanded(true)
     setArticleTypeTrendsExpanded(true)
@@ -6279,57 +6277,6 @@ function TotalPublicationsDrilldownWorkspace({
                       value={publicationTrendsVisualMode}
                       onChange={setPublicationTrendsVisualMode}
                     />
-                    {publicationTrendsVisualMode === 'line' ? (
-                      <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
-                        <div
-                          className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
-                          data-stop-tile-open="true"
-                          data-ui="publications-trends-y-axis-toggle"
-                          data-house-role="chart-toggle"
-                          style={{ width: '9rem', minWidth: '9rem', maxWidth: '9rem' }}
-                        >
-                          <span
-                            className={HOUSE_TOGGLE_THUMB_CLASS}
-                            style={buildTileToggleThumbStyle(publicationTrendsAutoScaleByWindow ? 1 : 0, 2, publicationTrendsIsEntryCycle)}
-                            aria-hidden="true"
-                          />
-                          <button
-                            type="button"
-                            data-stop-tile-open="true"
-                            className={cn(
-                              HOUSE_TOGGLE_BUTTON_CLASS,
-                              !publicationTrendsAutoScaleByWindow ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                            )}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setPublicationTrendsAutoScaleByWindow(false)
-                            }}
-                            onMouseDown={(event) => event.stopPropagation()}
-                            aria-pressed={!publicationTrendsAutoScaleByWindow}
-                            aria-label="Use fixed Y-axis across windows"
-                          >
-                            Fixed
-                          </button>
-                          <button
-                            type="button"
-                            data-stop-tile-open="true"
-                            className={cn(
-                              HOUSE_TOGGLE_BUTTON_CLASS,
-                              publicationTrendsAutoScaleByWindow ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                            )}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setPublicationTrendsAutoScaleByWindow(true)
-                            }}
-                            onMouseDown={(event) => event.stopPropagation()}
-                            aria-pressed={publicationTrendsAutoScaleByWindow}
-                            aria-label="Use per-window Y-axis"
-                          >
-                            Window
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
 
                   <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
@@ -6341,7 +6288,7 @@ function TotalPublicationsDrilldownWorkspace({
                       showPeriodHint
                       showCurrentPeriodSemantic
                       useCompletedMonthWindowLabels
-                      autoScaleByWindow={publicationTrendsAutoScaleByWindow}
+                      autoScaleByWindow
                       showMeanLine
                       showMeanValueLabel
                       subtleGrid
