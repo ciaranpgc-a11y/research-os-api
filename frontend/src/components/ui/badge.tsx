@@ -15,9 +15,9 @@ const badgeVariants = cva(
         positive:
           'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-900))]',
         yellow:
-          'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-900))]',
+          'border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-800))]',
         intermediate:
-          'border-[hsl(var(--tone-warning-500))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-900))]',
+          'border-[hsl(var(--tone-warning-600))] bg-[hsl(var(--tone-warning-200))] text-[hsl(var(--tone-warning-900))]',
         negative:
           'border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-900))]',
         userAdmin:

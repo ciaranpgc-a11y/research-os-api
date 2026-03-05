@@ -3345,15 +3345,8 @@ export function PublicationsPerYearChart({
     if (effectiveVisualMode !== 'line') {
       return []
     }
-    if (lineModeXAxisTicks.length >= 4) {
-      return lineModeXAxisTicks
-        .slice(1, -1)
-        .map((tick) => tick.leftPct)
-    }
-    if (lineModeXAxisTicks.length === 3) {
-      return [lineModeXAxisTicks[1]?.leftPct ?? 50]
-    }
-    return []
+    // Draw gridlines at all tick positions for proper alignment with labels
+    return lineModeXAxisTicks.map((tick) => tick.leftPct)
   }, [effectiveVisualMode, lineModeXAxisTicks])
 
   if (!hasBars) {
