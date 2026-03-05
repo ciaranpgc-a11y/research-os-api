@@ -6975,7 +6975,12 @@ function GenericMetricDrilldownWorkspace({
       .sort((left, right) => left.year - right.year)
     
     const sumNumbers = (items: number[]) => items.reduce((sum, value) => sum + Math.max(0, value), 0)
-    const totalCitations = Math.round(sumNumbers(historyCitations.map((entry) => entry.value)))
+    
+    // Use tile.value as authoritative source for total citations
+    const tileValueRaw = Number(tile.value_display || tile.main_value_display || tile.value)
+    const totalCitations = Number.isFinite(tileValueRaw) && tileValueRaw > 0
+      ? Math.round(tileValueRaw)
+      : Math.round(sumNumbers(historyCitations.map((entry) => entry.value)))
     
     const meanValueRaw = Number(chartData.mean_value)
     const meanCitations = Number.isFinite(meanValueRaw) && meanValueRaw > 0
