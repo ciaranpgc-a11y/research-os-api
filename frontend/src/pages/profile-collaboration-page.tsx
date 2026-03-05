@@ -326,21 +326,27 @@ function nameInitialCompatible(a: string, b: string): boolean {
   return true
 }
 
-function relationshipTone(value: string): 'positive' | 'intermediate' | 'negative' {
+function relationshipTone(value: string): 'positive' | 'yellow' | 'intermediate' | 'negative' {
   if (value === 'CORE') {
     return 'positive'
   }
   if (value === 'REGULAR') {
+    return 'yellow'
+  }
+  if (value === 'OCCASIONAL') {
     return 'intermediate'
   }
   return 'negative'
 }
 
-function activityTone(value: string): 'positive' | 'intermediate' | 'negative' {
+function activityTone(value: string): 'positive' | 'yellow' | 'intermediate' | 'negative' {
   if (value === 'ACTIVE') {
     return 'positive'
   }
   if (value === 'RECENT') {
+    return 'yellow'
+  }
+  if (value === 'DORMANT') {
     return 'intermediate'
   }
   return 'negative'

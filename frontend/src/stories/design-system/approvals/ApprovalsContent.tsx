@@ -1933,7 +1933,7 @@ export function ApprovalsContent() {
                   </Row>
                 </TooltipProvider>
               </MatrixCell>
-              <MatrixCell title="Badge" note="default + small status badges (positive / intermediate / negative)">
+              <MatrixCell title="Badge" note="default + small status badges (positive / yellow / intermediate / negative)">
                 <Stack space="sm">
                   <Row gap="sm" align="start">
                     <Badge>Default</Badge>
@@ -1941,15 +1941,18 @@ export function ApprovalsContent() {
                     <Badge variant="outline">Outline</Badge>
                     <Badge variant="destructive">Destructive</Badge>
                     <Badge variant="positive">Positive</Badge>
+                    <Badge variant="yellow">Yellow</Badge>
                     <Badge variant="intermediate">Intermediate</Badge>
                     <Badge variant="negative">Negative</Badge>
                   </Row>
                   <Row gap="sm" align="start">
                     <Badge size="sm" variant="positive">CORE</Badge>
-                    <Badge size="sm" variant="intermediate">REGULAR</Badge>
-                    <Badge size="sm" variant="negative">OCCASIONAL</Badge>
+                    <Badge size="sm" variant="yellow">REGULAR</Badge>
+                    <Badge size="sm" variant="intermediate">OCCASIONAL</Badge>
+                    <Badge size="sm" variant="negative">UNCLASSIFIED</Badge>
                     <Badge size="sm" variant="positive">ACTIVE</Badge>
-                    <Badge size="sm" variant="intermediate">RECENT</Badge>
+                    <Badge size="sm" variant="yellow">RECENT</Badge>
+                    <Badge size="sm" variant="intermediate">DORMANT</Badge>
                     <Badge size="sm" variant="negative">HISTORIC</Badge>
                   </Row>
                 </Stack>

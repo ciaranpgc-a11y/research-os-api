@@ -14,8 +14,10 @@ const badgeVariants = cva(
         destructive: 'border-transparent bg-destructive text-destructive-foreground',
         positive:
           'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]',
+        yellow:
+          'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-700))]',
         intermediate:
-          'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-800))]',
+          'border-[hsl(var(--tone-warning-500))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-900))]',
         negative:
           'border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]',
         userAdmin:
@@ -26,7 +28,7 @@ const badgeVariants = cva(
       },
       size: {
         default: 'px-2 py-1 text-micro',
-        sm: 'rounded-sm px-1.5 py-0.5 text-[10px] leading-tight',
+        sm: 'min-h-5 justify-center rounded-sm px-2 py-0.5 text-xs leading-none font-normal',
       },
     },
     defaultVariants: {
