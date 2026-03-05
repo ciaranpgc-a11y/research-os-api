@@ -3040,14 +3040,10 @@ export function WorkspacesPage() {
       <div
         className={cn(
           'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)]',
-          centerView === 'workspaces' &&
-            (workspaceDrilldownDesktopOpen
-              ? 'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_22rem]'
-              : 'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_3rem]'),
-          centerView === 'data-library' &&
-            (dataLibraryDrilldownDesktopOpen
-              ? 'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_22rem]'
-              : 'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_3rem]'),
+          centerView === 'workspaces' && workspaceDrilldownDesktopOpen &&
+            'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_22rem]',
+          centerView === 'data-library' && dataLibraryDrilldownDesktopOpen &&
+            'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_22rem]',
         )}
       >
         <aside className="hidden border-r border-border nav:block">
@@ -3190,7 +3186,6 @@ export function WorkspacesPage() {
                         HOUSE_BUTTON_TEXT_CLASS,
                         HOUSE_SECTION_TOOL_BUTTON_CLASS,
                         'h-8 gap-1.5 px-3',
-                        'xl:hidden',
                       )}
                       onClick={() => {
                         setWorkspaceDrilldownSelectionId(null)
@@ -3663,9 +3658,8 @@ export function WorkspacesPage() {
           </ScrollArea>
         </main>
 
-        {centerView === 'workspaces' ? (
+        {centerView === 'workspaces' && workspaceDrilldownDesktopOpen ? (
           <aside className="hidden border-l border-border xl:block">
-            {workspaceDrilldownDesktopOpen ? (
               <ScrollArea className="h-full">
                 <div className="space-y-3 p-3">
                   <div className="flex justify-end">
@@ -3707,33 +3701,9 @@ export function WorkspacesPage() {
                   />
                 </div>
               </ScrollArea>
-            ) : (
-              <div className="flex h-full items-start justify-center pt-3">
-                <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_WORKSPACE_CLASS, HOUSE_ACTIONS_PILL_CLASS)}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWorkspaceDrilldownSelectionId(null)
-                      resetCollaboratorComposer()
-                      setWorkspaceDrilldownDesktopOpen(true)
-                    }}
-                    className={cn(
-                      HOUSE_ACTIONS_PILL_ICON_CLASS,
-                      HOUSE_SECTION_TOOL_BUTTON_CLASS,
-                      'inline-flex h-8 w-8 items-center justify-center p-0',
-                    )}
-                    aria-label="Expand workspace drilldown panel"
-                    title="Expand workspace drilldown panel"
-                  >
-                    <PanelRightOpen className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            )}
           </aside>
-        ) : centerView === 'data-library' ? (
+        ) : centerView === 'data-library' && dataLibraryDrilldownDesktopOpen ? (
           <aside className="hidden border-l border-border xl:block">
-            {dataLibraryDrilldownDesktopOpen ? (
               <ScrollArea className="h-full">
                 <div className="space-y-3 p-3">
                   <div className="flex justify-end">
@@ -3750,25 +3720,6 @@ export function WorkspacesPage() {
                   <DataLibraryDrilldownPanel />
                 </div>
               </ScrollArea>
-            ) : (
-              <div className="flex h-full items-start justify-center pt-3">
-                <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_DATA_CLASS, HOUSE_ACTIONS_PILL_CLASS)}>
-                  <button
-                    type="button"
-                    onClick={() => setDataLibraryDrilldownDesktopOpen(true)}
-                    className={cn(
-                      HOUSE_ACTIONS_PILL_ICON_CLASS,
-                      HOUSE_SECTION_TOOL_BUTTON_CLASS,
-                      'inline-flex h-8 w-8 items-center justify-center p-0',
-                    )}
-                    aria-label="Expand data library drilldown panel"
-                    title="Expand data library drilldown panel"
-                  >
-                    <PanelRightOpen className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            )}
           </aside>
         ) : null}
       </div>

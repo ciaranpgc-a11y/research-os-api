@@ -2993,6 +2993,10 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
             "/v1/admin/users/user-unknown/library/recover-storage",
             json={"reason": "test"},
         )
+        collaboration_recompute_response = client.post(
+            "/v1/admin/system/collaboration-metrics/recompute-all",
+            json={},
+        )
         reconcile_library_response = client.post(
             "/v1/admin/users/user-unknown/library/reconcile"
         )
@@ -3020,6 +3024,8 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
     assert delete_user_response.json()["error"]["type"] == "unauthorized"
     assert recover_storage_response.status_code == 401
     assert recover_storage_response.json()["error"]["type"] == "unauthorized"
+    assert collaboration_recompute_response.status_code == 401
+    assert collaboration_recompute_response.json()["error"]["type"] == "unauthorized"
     assert reconcile_library_response.status_code == 401
     assert reconcile_library_response.json()["error"]["type"] == "unauthorized"
     assert cancel_job_response.status_code == 401
@@ -3076,6 +3082,11 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
             headers=_auth_headers(token),
             json={"reason": "test"},
         )
+        collaboration_recompute_response = client.post(
+            "/v1/admin/system/collaboration-metrics/recompute-all",
+            headers=_auth_headers(token),
+            json={},
+        )
         reconcile_library_response = client.post(
             "/v1/admin/users/user-unknown/library/reconcile",
             headers=_auth_headers(token),
@@ -3116,6 +3127,8 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
     assert delete_user_response.json()["error"]["type"] == "forbidden"
     assert recover_storage_response.status_code == 403
     assert recover_storage_response.json()["error"]["type"] == "forbidden"
+    assert collaboration_recompute_response.status_code == 403
+    assert collaboration_recompute_response.json()["error"]["type"] == "forbidden"
     assert reconcile_library_response.status_code == 403
     assert reconcile_library_response.json()["error"]["type"] == "forbidden"
     assert cancel_job_response.status_code == 403
@@ -3126,6 +3139,57 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
     assert impersonate_response.json()["error"]["type"] == "forbidden"
     assert audit_response.status_code == 403
     assert audit_response.json()["error"]["type"] == "forbidden"
+
+
+def test_v1_admin_collaboration_metrics_recompute_all_endpoint(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        admin_register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "admin-collab-recompute@example.com",
+                "password": "StrongPassword123",
+                "name": "Admin Collab",
+            },
+        )
+        assert admin_register_response.status_code == 200
+        admin_user_payload = admin_register_response.json()["user"]
+        _promote_user_to_admin(admin_user_payload["id"])
+        admin_token = admin_register_response.json()["session_token"]
+
+        recompute_response = client.post(
+            "/v1/admin/system/collaboration-metrics/recompute-all",
+            headers=_auth_headers(admin_token),
+            json={
+                "include_inactive": False,
+                "reason": "Admin integration test collaboration recompute action",
+            },
+        )
+        audit_response = client.get(
+            "/v1/admin/audit/events",
+            headers=_auth_headers(admin_token),
+            params={
+                "action": "collaboration_metrics_recompute_all",
+                "limit": 20,
+                "offset": 0,
+            },
+        )
+
+    assert recompute_response.status_code == 200
+    payload = recompute_response.json()
+    assert payload["processed_users"] >= 1
+    assert payload["enqueued_users"] >= 0
+    assert payload["failed_users"] >= 0
+    assert payload["audit_event"]["action"] == "collaboration_metrics_recompute_all"
+    assert payload["audit_event"]["status"] == "success"
+
+    assert audit_response.status_code == 200
+    items = audit_response.json()["items"]
+    assert len(items) >= 1
+    assert items[0]["action"] == "collaboration_metrics_recompute_all"
 
 
 def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None:

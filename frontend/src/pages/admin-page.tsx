@@ -42,6 +42,7 @@ import {
   impersonateAdminOrganisation,
   recoverAdminUserLibraryStorage,
   reconcileAdminUserLibrary,
+  runAdminCollaborationMetricsRecomputeAllUsers,
   refreshAdminUserPublications,
   runAdminPublicationsSyncAllUsers,
   retryAdminJob,
@@ -483,6 +484,7 @@ export function AdminPage() {
   const [updatingWorkTypeLlm, setUpdatingWorkTypeLlm] = useState(false)
   const [updatingPublicationsAutoSync, setUpdatingPublicationsAutoSync] = useState(false)
   const [runningPublicationsSyncAll, setRunningPublicationsSyncAll] = useState(false)
+  const [runningCollaborationRecomputeAll, setRunningCollaborationRecomputeAll] = useState(false)
   const [publicationsAutoSyncIntervalDraft, setPublicationsAutoSyncIntervalDraft] = useState('')
   const [deletingUserId, setDeletingUserId] = useState('')
   const [loading, setLoading] = useState(false)
@@ -822,6 +824,30 @@ export function AdminPage() {
       setError(actionError instanceof Error ? actionError.message : 'Could not run publications sync for all users.')
     } finally {
       setRunningPublicationsSyncAll(false)
+    }
+  }
+
+  const onRunCollaborationRecomputeAllUsers = async () => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setRunningCollaborationRecomputeAll(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await runAdminCollaborationMetricsRecomputeAllUsers(token, {
+        includeInactive: false,
+        reason: 'Admin console manual all-users collaboration recompute.',
+      })
+      setStatus(
+        `${payload.message} Processed ${formatInteger(payload.processed_users)} users; skipped inactive: ${formatInteger(payload.skipped_inactive)}; skipped no collaborators or already running: ${formatInteger(payload.skipped_no_collaborators_or_running)}.`,
+      )
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not run collaboration metrics recompute for all users.')
+    } finally {
+      setRunningCollaborationRecomputeAll(false)
     }
   }
 
@@ -2744,6 +2770,29 @@ export function AdminPage() {
                             {publicationsAutoSyncSetting?.scope || 'process'}
                           </p>
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">Collaboration metrics recompute</p>
+                          <p className="text-sm text-[hsl(var(--tone-neutral-700))]">
+                            Force a collaboration metrics rebuild for all active users.
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Use after identity/dedupe logic changes to correct collaborator counts and classifications.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => void onRunCollaborationRecomputeAllUsers()}
+                          isLoading={runningCollaborationRecomputeAll}
+                          loadingText="Queueing..."
+                        >
+                          Run All Users Now
+                        </Button>
                       </div>
                     </div>
                   </CardContent>

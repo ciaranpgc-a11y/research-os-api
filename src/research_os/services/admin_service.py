@@ -42,6 +42,9 @@ from research_os.services.publications_sync_scheduler_service import (
     trigger_publications_auto_sync_for_all_users,
     update_publications_auto_sync_runtime_settings,
 )
+from research_os.services.collaboration_service import (
+    trigger_collaboration_metrics_recompute,
+)
 from research_os.services.api_telemetry_service import summarize_api_usage_for_admin
 
 PERSONAL_EMAIL_DOMAINS = {
@@ -1866,6 +1869,90 @@ def admin_run_publications_sync_for_all_users(
         "skipped_not_due": int(summary.get("skipped_not_due") or 0),
         "conflict_users": int(summary.get("conflict_users") or 0),
         "failed_users": int(summary.get("failed_users") or 0),
+        "audit_event": audit_event,
+    }
+
+
+def admin_run_collaboration_metrics_recompute_for_all_users(
+    *,
+    actor_user_id: str,
+    include_inactive: bool = False,
+    reason: str = "",
+) -> dict[str, object]:
+    clean_actor_user_id = str(actor_user_id or "").strip()
+    if not clean_actor_user_id:
+        raise AdminValidationError("Actor user id is required.")
+
+    create_all_tables()
+    with session_scope() as session:
+        user_rows = session.execute(
+            select(User.id, User.is_active).order_by(User.created_at.asc())
+        ).all()
+    users: list[tuple[str, bool]] = [
+        (str(row[0] or "").strip(), bool(row[1])) for row in user_rows
+    ]
+
+    processed_users = 0
+    enqueued_users = 0
+    skipped_inactive = 0
+    skipped_no_collaborators_or_running = 0
+    failed_users = 0
+
+    for user_id, is_active in users:
+        if not user_id:
+            continue
+        if not include_inactive and not is_active:
+            skipped_inactive += 1
+            continue
+        processed_users += 1
+        try:
+            result = trigger_collaboration_metrics_recompute(
+                user_id=user_id,
+                force=True,
+            )
+            if bool(result.get("enqueued")):
+                enqueued_users += 1
+            else:
+                skipped_no_collaborators_or_running += 1
+        except Exception:
+            failed_users += 1
+
+    clean_reason = str(reason or "").strip()
+    audit_event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id,
+        action="collaboration_metrics_recompute_all",
+        target_type="runtime_action",
+        target_id="collaboration_metrics",
+        status="success",
+        metadata={
+            "include_inactive": bool(include_inactive),
+            "reason": clean_reason,
+            "processed_users": int(processed_users),
+            "enqueued_users": int(enqueued_users),
+            "skipped_inactive": int(skipped_inactive),
+            "skipped_no_collaborators_or_running": int(
+                skipped_no_collaborators_or_running
+            ),
+            "failed_users": int(failed_users),
+        },
+    )
+
+    message = (
+        f"Queued collaboration metrics recompute for {int(enqueued_users)} user(s). "
+        f"Skipped no collaborators/already running: {int(skipped_no_collaborators_or_running)}; "
+        f"failed: {int(failed_users)}."
+    )
+    return {
+        "message": message,
+        "generated_at": _utcnow(),
+        "include_inactive": bool(include_inactive),
+        "processed_users": int(processed_users),
+        "enqueued_users": int(enqueued_users),
+        "skipped_inactive": int(skipped_inactive),
+        "skipped_no_collaborators_or_running": int(
+            skipped_no_collaborators_or_running
+        ),
+        "failed_users": int(failed_users),
         "audit_event": audit_event,
     }
 

@@ -433,6 +433,18 @@ export type AdminPublicationsSyncRunAllPayload = {
   audit_event: AdminAuditEventPayload
 }
 
+export type AdminCollaborationMetricsRecomputeAllPayload = {
+  message: string
+  generated_at: string
+  include_inactive: boolean
+  processed_users: number
+  enqueued_users: number
+  skipped_inactive: number
+  skipped_no_collaborators_or_running: number
+  failed_users: number
+  audit_event: AdminAuditEventPayload
+}
+
 export type AdminJobSummaryPayload = {
   id: string
   status: string

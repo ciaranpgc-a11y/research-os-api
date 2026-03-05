@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, PanelRightOpen, RefreshCw, Save, Search, UserPlus, X } from 'lucide-react'
 
 import { Button, Input, ScrollArea, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
-import { PageHeader, Row, Section, Stack } from '@/components/primitives'
+import { PageHeader, Row, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { getAuthSessionToken } from '@/lib/auth-session'
@@ -590,7 +590,7 @@ export function WorkspacesDataLibraryView({
         </Row>
       ) : null}
 
-      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
+      <div className={showPageHeader ? cn(HOUSE_SECTION_ANCHOR_CLASS) : undefined}>
       <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
         <span className="inline-flex items-center rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
           Total {total}
@@ -617,7 +617,7 @@ export function WorkspacesDataLibraryView({
             Refresh
         </Button>
         {onOpenDrilldownMobile ? (
-          <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_DATA_CLASS, HOUSE_ACTIONS_PILL_CLASS, 'xl:hidden')}>
+          <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_DATA_CLASS, HOUSE_ACTIONS_PILL_CLASS)}>
             <button
               type="button"
               onClick={onOpenDrilldownMobile}
@@ -1047,7 +1047,7 @@ export function WorkspacesDataLibraryView({
       {status ? (
         <p className={cn('px-4 py-3 text-sm text-emerald-700', HOUSE_FIELD_HELPER_CLASS)}>{status}</p>
       ) : null}
-      </Section>
+      </div>
     </Stack>
   )
 }

@@ -48,6 +48,8 @@ from research_os.api.schemas import (
     AdminRuntimeSettingsResponse,
     AdminPublicationsAutoSyncSettingUpdateRequest,
     AdminPublicationsAutoSyncSettingUpdateResponse,
+    AdminCollaborationMetricsRecomputeAllRequest,
+    AdminCollaborationMetricsRecomputeAllResponse,
     AdminPublicationsSyncRunAllRequest,
     AdminPublicationsSyncRunAllResponse,
     AdminWorkTypeLlmSettingUpdateRequest,
@@ -251,6 +253,7 @@ from research_os.services.admin_service import (
     AdminNotFoundError,
     AdminStateError,
     AdminValidationError,
+    admin_run_collaboration_metrics_recompute_for_all_users,
     admin_run_publications_sync_for_all_users,
     admin_cancel_job,
     admin_delete_user_account,
@@ -1826,6 +1829,32 @@ def v1_admin_run_publications_sync_all_users(
             reason=str((payload.reason if payload is not None else "") or ""),
         )
         return AdminPublicationsSyncRunAllResponse(**result)
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/admin/system/collaboration-metrics/recompute-all",
+    response_model=AdminCollaborationMetricsRecomputeAllResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_run_collaboration_metrics_recompute_all_users(
+    request: Request,
+    payload: AdminCollaborationMetricsRecomputeAllRequest | None = None,
+) -> AdminCollaborationMetricsRecomputeAllResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        result = admin_run_collaboration_metrics_recompute_for_all_users(
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            include_inactive=(
+                bool(payload.include_inactive) if payload is not None else False
+            ),
+            reason=str((payload.reason if payload is not None else "") or ""),
+        )
+        return AdminCollaborationMetricsRecomputeAllResponse(**result)
     except AdminValidationError as exc:
         return _build_bad_request_response(str(exc))
 

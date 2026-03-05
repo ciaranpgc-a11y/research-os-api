@@ -1386,6 +1386,23 @@ class AdminPublicationsSyncRunAllResponse(BaseModel):
     audit_event: AdminAuditEventResponse
 
 
+class AdminCollaborationMetricsRecomputeAllRequest(BaseModel):
+    include_inactive: bool = False
+    reason: str = ""
+
+
+class AdminCollaborationMetricsRecomputeAllResponse(BaseModel):
+    message: str
+    generated_at: datetime
+    include_inactive: bool = False
+    processed_users: int = 0
+    enqueued_users: int = 0
+    skipped_inactive: int = 0
+    skipped_no_collaborators_or_running: int = 0
+    failed_users: int = 0
+    audit_event: AdminAuditEventResponse
+
+
 class AdminAuditActionTotalResponse(BaseModel):
     action: str
     count: int = 0

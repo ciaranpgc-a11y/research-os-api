@@ -16,6 +16,7 @@ import type {
   AdminOrganisationImpersonationStartPayload,
   AdminApiMonitorPayload,
   AdminPublicationsAutoSyncSettingUpdatePayload,
+  AdminCollaborationMetricsRecomputeAllPayload,
   AdminPublicationsSyncRunAllPayload,
   AdminRuntimeSettingsPayload,
   AdminUsageCostsPayload,
@@ -550,6 +551,27 @@ export async function runAdminPublicationsSyncAllUsers(
       }),
     },
     'Admin publications sync run failed',
+  )
+}
+
+export async function runAdminCollaborationMetricsRecomputeAllUsers(
+  token: string,
+  input?: {
+    includeInactive?: boolean
+    reason?: string
+  },
+): Promise<AdminCollaborationMetricsRecomputeAllPayload> {
+  return requestJson<AdminCollaborationMetricsRecomputeAllPayload>(
+    `${API_BASE_URL}/v1/admin/system/collaboration-metrics/recompute-all`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        include_inactive: Boolean(input?.includeInactive),
+        reason: String(input?.reason || ''),
+      }),
+    },
+    'Admin collaboration metrics run failed',
   )
 }
 
