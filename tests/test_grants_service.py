@@ -29,7 +29,13 @@ class _FakeClient:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def get(self, url: str, params: dict[str, Any] | None = None) -> _FakeResponse:
+    def get(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, Any] | None = None,
+    ) -> _FakeResponse:
+        _ = headers
         params = params or {}
         if url.endswith("/authors"):
             key = f"{url}|search:{params.get('search')}"
@@ -45,7 +51,32 @@ class _FakeClient:
         if url.endswith("/awards"):
             key = f"{url}|filter:{params.get('filter')}"
             return self._responses.get(key, _FakeResponse(200, {"results": []}))
+        if "gtr.ukri.org/api/search/project" in url:
+            key = f"{url}|term:{params.get('term')}"
+            return self._responses.get(key, _FakeResponse(200, {"facetedSearchResultBean": {"results": []}}))
+        if "api.nsf.gov/services/v1/awards.json" in url:
+            key = f"{url}|keyword:{params.get('keyword')}"
+            return self._responses.get(key, _FakeResponse(200, {"response": {"award": []}}))
+        if "cordis.europa.eu/search/en" in url:
+            key = f"{url}|q:{params.get('q')}"
+            return self._responses.get(key, _FakeResponse(200, {"result": {"hits": {"hit": []}}}))
         return _FakeResponse(404, {})
+
+    def post(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+        headers: dict[str, Any] | None = None,
+    ) -> _FakeResponse:
+        _ = params
+        _ = headers
+        criteria = json.get("criteria") if isinstance(json, dict) and isinstance(json.get("criteria"), dict) else {}
+        pi_names = criteria.get("pi_names") if isinstance(criteria.get("pi_names"), list) else []
+        first_pi = pi_names[0] if pi_names and isinstance(pi_names[0], dict) else {}
+        any_name = first_pi.get("any_name") if isinstance(first_pi, dict) else ""
+        key = f"{url}|pi:{any_name}"
+        return self._responses.get(key, _FakeResponse(200, {"results": []}))
 
 
 def test_list_openalex_grants_for_person_aggregates_and_enriches(monkeypatch) -> None:
@@ -377,6 +408,140 @@ def test_list_openalex_grants_for_person_returns_empty_when_author_not_found(
     )
     assert payload["total"] == 0
     assert payload["items"] == []
+
+
+def test_list_openalex_grants_for_person_includes_external_sources(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_UKRI_GRANTS_LOOKUP", "true")
+    monkeypatch.setenv("ENABLE_NIH_GRANTS_LOOKUP", "true")
+    monkeypatch.setenv("ENABLE_NSF_GRANTS_LOOKUP", "true")
+    monkeypatch.setenv("ENABLE_CORDIS_GRANTS_LOOKUP", "true")
+
+    author_url = "https://api.openalex.org/authors"
+    ukri_url = "https://gtr.ukri.org/api/search/project"
+    nih_url = "https://api.reporter.nih.gov/v2/projects/search"
+    nsf_url = "https://api.nsf.gov/services/v1/awards.json"
+    cordis_url = "https://cordis.europa.eu/search/en"
+
+    responses = {
+        f"{author_url}|search:Ada Lovelace": _FakeResponse(200, {"results": []}),
+        f"{ukri_url}|term:Ada Lovelace": _FakeResponse(
+            200,
+            {
+                "facetedSearchResultBean": {
+                    "results": [
+                        {
+                            "projectComposition": {
+                                "project": {
+                                    "id": "UKRI-P1",
+                                    "title": "UKRI project",
+                                    "grantReference": "EP/ABC123",
+                                    "abstractText": "A UKRI-funded study.",
+                                    "resourceUrl": "http://gtr.ukri.org/api/projects?ref=EP%2FABC123",
+                                    "fund": {
+                                        "valuePounds": 250000,
+                                        "start": 1672531200000,
+                                        "end": 1735603200000,
+                                        "funder": {"id": "EPSRC", "name": "EPSRC"},
+                                    },
+                                },
+                                "personRoles": [
+                                    {
+                                        "fullName": "Ada Lovelace",
+                                        "orcidId": "https://orcid.org/0000-0001-2345-6789",
+                                        "principalInvestigator": True,
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                }
+            },
+        ),
+        f"{nih_url}|pi:Ada Lovelace": _FakeResponse(
+            200,
+            {
+                "results": [
+                    {
+                        "appl_id": 112233,
+                        "project_title": "NIH project",
+                        "project_num": "1R01HL000001-01",
+                        "core_project_num": "R01HL000001",
+                        "award_amount": 500000,
+                        "project_start_date": "2024-01-01T00:00:00",
+                        "project_end_date": "2028-12-31T00:00:00",
+                        "principal_investigators": [
+                            {"full_name": "Ada Lovelace", "is_contact_pi": True}
+                        ],
+                        "agency_ic_admin": {"code": "HL", "name": "NHLBI"},
+                        "project_detail_url": "https://reporter.nih.gov/project-details/112233",
+                    }
+                ]
+            },
+        ),
+        f"{nsf_url}|keyword:Ada Lovelace": _FakeResponse(
+            200,
+            {
+                "response": {
+                    "award": [
+                        {
+                            "id": "2554298",
+                            "title": "NSF project",
+                            "abstractText": "An NSF-funded project.",
+                            "agency": "NSF",
+                            "awardAgencyCode": "4900",
+                            "estimatedTotalAmt": "25000",
+                            "pi": ["Ada Lovelace ada@example.com"],
+                            "startDate": "06/01/2024",
+                            "expDate": "05/31/2026",
+                        }
+                    ]
+                }
+            },
+        ),
+        f"{cordis_url}|q:contenttype='project' AND \"Ada Lovelace\"": _FakeResponse(
+            200,
+            {
+                "result": {
+                    "hits": {
+                        "hit": [
+                            {
+                                "project": {
+                                    "id": "101052200",
+                                    "title": "CORDIS project",
+                                    "objective": "This project builds on Ada Lovelace research.",
+                                    "startDate": "2021-01-01",
+                                    "endDate": "2025-12-31",
+                                    "ecMaxContribution": "549442000",
+                                    "status": "SIGNED",
+                                }
+                            }
+                        ]
+                    }
+                }
+            },
+        ),
+    }
+
+    monkeypatch.setattr(
+        "research_os.services.grants_service.httpx.Client",
+        lambda timeout: _FakeClient(responses),
+    )
+
+    payload = list_openalex_grants_for_person(
+        first_name="Ada",
+        last_name="Lovelace",
+        relationship="all",
+        limit=20,
+    )
+
+    assert payload["author"]["openalex_author_id"] is None
+    assert payload["total"] == 4
+    sources = {item.get("source") for item in payload["items"]}
+    assert {"ukri", "nih_reporter", "nsf", "cordis"} <= sources
+    won_rows = [item for item in payload["items"] if item.get("relationship_to_person") == "won_by_person"]
+    assert len(won_rows) >= 3
 
 
 def test_list_openalex_grants_for_person_requires_name_parts() -> None:

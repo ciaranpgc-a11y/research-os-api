@@ -16,8 +16,23 @@ from research_os.db import PersonaGrantRecord, User, create_all_tables, session_
 from research_os.services.api_telemetry_service import record_api_usage_event
 
 OPENALEX_BASE_URL = "https://api.openalex.org"
+UKRI_GTR_BASE_URL = "https://gtr.ukri.org"
+NIH_REPORTER_BASE_URL = "https://api.reporter.nih.gov"
+NSF_AWARDS_BASE_URL = "https://api.nsf.gov"
+CORDIS_BASE_URL = "https://cordis.europa.eu"
 OPENALEX_RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 OPENALEX_SOURCE_PROVIDER = "openalex"
+UKRI_SOURCE_PROVIDER = "ukri"
+NIH_SOURCE_PROVIDER = "nih_reporter"
+NSF_SOURCE_PROVIDER = "nsf"
+CORDIS_SOURCE_PROVIDER = "cordis"
+MULTI_PROVIDER_SOURCE = "multi_provider"
+EXTERNAL_SOURCE_PROVIDERS = (
+    UKRI_SOURCE_PROVIDER,
+    NIH_SOURCE_PROVIDER,
+    NSF_SOURCE_PROVIDER,
+    CORDIS_SOURCE_PROVIDER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +112,77 @@ def _openalex_max_pages() -> int:
     return max(1, min(20, value))
 
 
+def _bool_env(name: str, *, default: bool) -> bool:
+    raw = _sanitize_text(os.getenv(name, ""))
+    if not raw:
+        return default
+    lowered = raw.lower()
+    if lowered in {"1", "true", "yes", "y", "on"}:
+        return True
+    if lowered in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
+def _provider_max_results(provider: str) -> int:
+    defaults = {
+        UKRI_SOURCE_PROVIDER: 120,
+        NIH_SOURCE_PROVIDER: 120,
+        NSF_SOURCE_PROVIDER: 120,
+        CORDIS_SOURCE_PROVIDER: 60,
+    }
+    env_names = {
+        UKRI_SOURCE_PROVIDER: "UKRI_GRANTS_MAX_RESULTS",
+        NIH_SOURCE_PROVIDER: "NIH_GRANTS_MAX_RESULTS",
+        NSF_SOURCE_PROVIDER: "NSF_GRANTS_MAX_RESULTS",
+        CORDIS_SOURCE_PROVIDER: "CORDIS_GRANTS_MAX_RESULTS",
+    }
+    default_value = defaults.get(provider, 100)
+    raw = _sanitize_text(os.getenv(env_names.get(provider, ""), ""))
+    try:
+        value = int(raw) if raw else default_value
+    except Exception:
+        value = default_value
+    return max(1, min(300, value))
+
+
+def _provider_enabled(provider: str) -> bool:
+    env_names = {
+        UKRI_SOURCE_PROVIDER: "ENABLE_UKRI_GRANTS_LOOKUP",
+        NIH_SOURCE_PROVIDER: "ENABLE_NIH_GRANTS_LOOKUP",
+        NSF_SOURCE_PROVIDER: "ENABLE_NSF_GRANTS_LOOKUP",
+        CORDIS_SOURCE_PROVIDER: "ENABLE_CORDIS_GRANTS_LOOKUP",
+    }
+    defaults = {
+        UKRI_SOURCE_PROVIDER: True,
+        NIH_SOURCE_PROVIDER: True,
+        NSF_SOURCE_PROVIDER: True,
+        CORDIS_SOURCE_PROVIDER: False,
+    }
+    env_name = env_names.get(provider)
+    if not env_name:
+        return False
+    return _bool_env(env_name, default=defaults.get(provider, False))
+
+
+def _external_provider_timeout_seconds() -> float:
+    raw = _sanitize_text(os.getenv("EXTERNAL_GRANTS_TIMEOUT_SECONDS", "12"))
+    try:
+        value = float(raw)
+    except Exception:
+        value = 12.0
+    return max(4.0, min(30.0, value))
+
+
+def _external_provider_retry_count() -> int:
+    raw = _sanitize_text(os.getenv("EXTERNAL_GRANTS_RETRY_COUNT", "2"))
+    try:
+        value = int(raw)
+    except Exception:
+        value = 2
+    return max(0, min(6, value))
+
+
 def _openalex_mailto(*, fallback_email: str | None = None) -> str | None:
     explicit = _sanitize_text(os.getenv("OPENALEX_MAILTO", ""))
     if explicit and "@" in explicit:
@@ -161,6 +247,70 @@ def _request_openalex_json(
 
         record_api_usage_event(
             provider="openalex",
+            operation="grants_lookup",
+            endpoint=url,
+            success=False,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            error_code=f"http_{response.status_code}",
+        )
+        if (
+            response.status_code not in OPENALEX_RETRYABLE_STATUS_CODES
+            or attempt >= retries
+        ):
+            return {}
+        time.sleep(0.25 * (attempt + 1))
+    return {}
+
+
+def _request_provider_json(
+    *,
+    client: httpx.Client,
+    provider: str,
+    url: str,
+    method: str = "GET",
+    params: dict[str, Any] | None = None,
+    json_body: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    retries = _external_provider_retry_count()
+    clean_method = _sanitize_text(method).upper() or "GET"
+    for attempt in range(retries + 1):
+        started = time.perf_counter()
+        try:
+            if clean_method == "POST":
+                response = client.post(url, params=params, json=json_body, headers=headers)
+            else:
+                response = client.get(url, params=params, headers=headers)
+        except Exception as exc:
+            record_api_usage_event(
+                provider=provider,
+                operation="grants_lookup",
+                endpoint=url,
+                success=False,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                error_code=type(exc).__name__,
+            )
+            if attempt < retries:
+                time.sleep(0.25 * (attempt + 1))
+                continue
+            return {}
+
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        if response.status_code < 400:
+            record_api_usage_event(
+                provider=provider,
+                operation="grants_lookup",
+                endpoint=url,
+                success=True,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+            payload = response.json()
+            return payload if isinstance(payload, dict) else {}
+
+        record_api_usage_event(
+            provider=provider,
             operation="grants_lookup",
             endpoint=url,
             success=False,
@@ -561,7 +711,730 @@ def _persona_role_from_relationship(
     return None
 
 
+def _dedupe_holders(holders: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for holder in holders:
+        name = _sanitize_text(holder.get("name"))
+        if not name:
+            continue
+        role = _sanitize_text(holder.get("role")) or "investigator"
+        orcid = _normalize_orcid(holder.get("orcid"))
+        key = f"{name.lower()}|{role.lower()}|{_sanitize_text(orcid).lower()}"
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(
+            {
+                "name": name,
+                "role": role,
+                "orcid": orcid,
+            }
+        )
+    return deduped
+
+
+def _classify_relationship_from_holders(
+    *,
+    holders: list[dict[str, Any]],
+    target_first_name: str,
+    target_last_name: str,
+    target_display_name: str,
+    target_orcid: str | None,
+) -> dict[str, Any]:
+    matched_holder = next(
+        (
+            holder
+            for holder in holders
+            if _holder_matches_target(
+                holder=holder,
+                target_first_name=target_first_name,
+                target_last_name=target_last_name,
+                target_display_name=target_display_name,
+                target_orcid=target_orcid,
+            )
+        ),
+        None,
+    )
+    if matched_holder:
+        return {
+            "relationship_to_person": "won_by_person",
+            "grant_owner_name": _sanitize_text(matched_holder.get("name")) or target_display_name,
+            "grant_owner_role": _sanitize_text(matched_holder.get("role")) or "investigator",
+            "grant_owner_orcid": _normalize_orcid(matched_holder.get("orcid")),
+            "grant_owner_is_target_person": True,
+            "award_holders": holders[:8],
+        }
+    owner = next(
+        (
+            holder
+            for holder in holders
+            if _sanitize_text(holder.get("role")).lower()
+            in {"lead_investigator", "co_lead_investigator"}
+        ),
+        holders[0] if holders else None,
+    )
+    if owner:
+        return {
+            "relationship_to_person": "published_under_other_grant",
+            "grant_owner_name": _sanitize_text(owner.get("name")) or None,
+            "grant_owner_role": _sanitize_text(owner.get("role")) or None,
+            "grant_owner_orcid": _normalize_orcid(owner.get("orcid")),
+            "grant_owner_is_target_person": False,
+            "award_holders": holders[:8],
+        }
+    return {
+        "relationship_to_person": "published_under_unknown_grant",
+        "grant_owner_name": None,
+        "grant_owner_role": None,
+        "grant_owner_orcid": None,
+        "grant_owner_is_target_person": False,
+        "award_holders": [],
+    }
+
+
+def _parse_date_string(value: Any) -> str | None:
+    clean = _sanitize_text(value)
+    if not clean:
+        return None
+    if "T" in clean:
+        clean = clean.split("T", 1)[0]
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", clean):
+        return clean
+    parts = clean.split("/")
+    if len(parts) == 3:
+        month, day, year = parts
+        if len(year) == 4:
+            return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+    return None
+
+
+def _year_from_date_string(value: Any) -> int | None:
+    parsed = _parse_date_string(value)
+    if not parsed:
+        return None
+    return _safe_int(parsed[:4]) or None
+
+
+def _date_string_from_epoch_ms(value: Any) -> str | None:
+    numeric = _safe_int(value)
+    if numeric <= 0:
+        return None
+    try:
+        parsed = datetime.fromtimestamp(numeric / 1000, tz=timezone.utc)
+    except Exception:
+        return None
+    return parsed.date().isoformat()
+
+
+def _build_external_grant_item(
+    *,
+    source_provider: str,
+    generated_at: str,
+    relationship_filter: str,
+    target_first_name: str,
+    target_last_name: str,
+    target_display_name: str,
+    target_orcid: str | None,
+    holders: list[dict[str, Any]],
+    openalex_award_id: str | None,
+    display_name: str | None,
+    description: str | None,
+    funder_award_id: str | None,
+    funder_name: str | None,
+    funder_identifier: str | None,
+    amount: float | None,
+    currency: str | None,
+    funding_type: str | None = None,
+    funder_scheme: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    start_year: int | None = None,
+    end_year: int | None = None,
+    landing_page_url: str | None = None,
+    doi: str | None = None,
+    updated_date: str | None = None,
+) -> dict[str, Any] | None:
+    deduped_holders = _dedupe_holders(holders)
+    relationship_payload = _classify_relationship_from_holders(
+        holders=deduped_holders,
+        target_first_name=target_first_name,
+        target_last_name=target_last_name,
+        target_display_name=target_display_name,
+        target_orcid=target_orcid,
+    )
+    relation = _sanitize_text(relationship_payload.get("relationship_to_person"))
+    if relationship_filter == "won" and relation != "won_by_person":
+        return None
+    if relationship_filter == "published_under" and relation == "won_by_person":
+        return None
+    return {
+        "openalex_award_id": _sanitize_text(openalex_award_id) or None,
+        "display_name": _sanitize_text(display_name) or None,
+        "description": _sanitize_text(description) or None,
+        "funder_award_id": _sanitize_text(funder_award_id) or None,
+        "funder": {
+            "id": _sanitize_text(funder_identifier) or None,
+            "display_name": _sanitize_text(funder_name) or None,
+            "doi": None,
+            "ror": None,
+        },
+        "amount": amount,
+        "currency": _sanitize_text(currency) or None,
+        "funding_type": _sanitize_text(funding_type) or None,
+        "funder_scheme": _sanitize_text(funder_scheme) or None,
+        "start_date": _sanitize_text(start_date) or None,
+        "end_date": _sanitize_text(end_date) or None,
+        "start_year": _safe_int(start_year) or None,
+        "end_year": _safe_int(end_year) or None,
+        "landing_page_url": _sanitize_text(landing_page_url) or None,
+        "doi": _sanitize_text(doi) or None,
+        "updated_date": _sanitize_text(updated_date) or None,
+        "supporting_works_count": 0,
+        "supporting_works": [],
+        "relationship_to_person": relation or "published_under_unknown_grant",
+        "grant_owner_name": relationship_payload.get("grant_owner_name"),
+        "grant_owner_role": relationship_payload.get("grant_owner_role"),
+        "grant_owner_orcid": relationship_payload.get("grant_owner_orcid"),
+        "grant_owner_is_target_person": bool(
+            relationship_payload.get("grant_owner_is_target_person")
+        ),
+        "award_holders": list(relationship_payload.get("award_holders") or []),
+        "person_role": _persona_role_from_relationship(
+            relationship_to_person=relation,
+            grant_owner_role=relationship_payload.get("grant_owner_role"),
+        ),
+        "source": source_provider,
+        "source_timestamp": generated_at,
+    }
+
+
+def _sort_grant_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    relationship_rank = {
+        "won_by_person": 0,
+        "published_under_other_grant": 1,
+        "published_under_unknown_grant": 2,
+    }
+    return sorted(
+        items,
+        key=lambda item: (
+            relationship_rank.get(
+                _sanitize_text(item.get("relationship_to_person")), 3
+            ),
+            -max(0, _safe_int(item.get("supporting_works_count"))),
+            -max(0, _safe_int(item.get("start_year"))),
+            _sanitize_text(item.get("funder_award_id")).lower(),
+            _sanitize_text(item.get("display_name")).lower(),
+        ),
+    )
+
+
+def _fetch_ukri_grants_for_person(
+    *,
+    client: httpx.Client,
+    first_name: str,
+    last_name: str,
+    target_display_name: str,
+    target_orcid: str | None,
+    relationship_filter: str,
+    generated_at: str,
+) -> list[dict[str, Any]]:
+    if not _provider_enabled(UKRI_SOURCE_PROVIDER):
+        return []
+    max_results = _provider_max_results(UKRI_SOURCE_PROVIDER)
+    full_name = _sanitize_text(f"{first_name} {last_name}")
+    payload = _request_provider_json(
+        client=client,
+        provider=UKRI_SOURCE_PROVIDER,
+        url=f"{UKRI_GTR_BASE_URL}/api/search/project",
+        params={
+            "term": full_name,
+            "page": 1,
+            "fetchSize": max_results,
+        },
+    )
+    faceted = (
+        payload.get("facetedSearchResultBean")
+        if isinstance(payload.get("facetedSearchResultBean"), dict)
+        else {}
+    )
+    rows = faceted.get("results") if isinstance(faceted.get("results"), list) else []
+    items: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        composition = (
+            row.get("projectComposition")
+            if isinstance(row.get("projectComposition"), dict)
+            else {}
+        )
+        project = composition.get("project") if isinstance(composition.get("project"), dict) else {}
+        if not project:
+            continue
+        fund = project.get("fund") if isinstance(project.get("fund"), dict) else {}
+        funder = fund.get("funder") if isinstance(fund.get("funder"), dict) else {}
+        project_id = _sanitize_text(project.get("id")) or _sanitize_text(project.get("resourceUrl"))
+        award_identifier = (
+            _sanitize_text(project.get("grantReference"))
+            or project_id
+            or _sanitize_text(project.get("title"))
+        )
+        if not award_identifier:
+            continue
+        holders: list[dict[str, Any]] = []
+        person_roles = (
+            composition.get("personRoles")
+            if isinstance(composition.get("personRoles"), list)
+            else []
+        )
+        for person in person_roles:
+            if not isinstance(person, dict):
+                continue
+            holder_name = (
+                _sanitize_text(person.get("fullName"))
+                or _sanitize_text(person.get("displayName"))
+                or _sanitize_text(
+                    f"{_sanitize_text(person.get('firstName'))} {_sanitize_text(person.get('surname'))}"
+                )
+            )
+            if not holder_name:
+                continue
+            role = "investigator"
+            if bool(person.get("principalInvestigator")):
+                role = "lead_investigator"
+            elif bool(person.get("coInvestigator")):
+                role = "co_lead_investigator"
+            holders.append(
+                {
+                    "name": holder_name,
+                    "role": role,
+                    "orcid": _normalize_orcid(person.get("orcidId")),
+                }
+            )
+        item = _build_external_grant_item(
+            source_provider=UKRI_SOURCE_PROVIDER,
+            generated_at=generated_at,
+            relationship_filter=relationship_filter,
+            target_first_name=first_name,
+            target_last_name=last_name,
+            target_display_name=target_display_name,
+            target_orcid=target_orcid,
+            holders=holders,
+            openalex_award_id=project_id or award_identifier,
+            display_name=_sanitize_text(project.get("title")) or None,
+            description=_sanitize_text(project.get("abstractText"))
+            or _sanitize_text(project.get("technicalSummary"))
+            or None,
+            funder_award_id=award_identifier,
+            funder_name=_sanitize_text(funder.get("name")) or "UKRI",
+            funder_identifier=_sanitize_text(funder.get("id")) or None,
+            amount=_safe_float(fund.get("valuePounds")),
+            currency="GBP",
+            funding_type=_sanitize_text(project.get("grantCategory")) or None,
+            start_date=_date_string_from_epoch_ms(fund.get("start")),
+            end_date=_date_string_from_epoch_ms(fund.get("end")),
+            start_year=_year_from_date_string(_date_string_from_epoch_ms(fund.get("start"))),
+            end_year=_year_from_date_string(_date_string_from_epoch_ms(fund.get("end"))),
+            landing_page_url=_sanitize_text(project.get("resourceUrl")) or None,
+            updated_date=None,
+        )
+        if not item:
+            continue
+        item_key = _build_persona_grant_key(item)
+        if item_key in seen_keys:
+            continue
+        seen_keys.add(item_key)
+        items.append(item)
+        if len(items) >= max_results:
+            break
+    return items
+
+
+def _fetch_nih_reporter_grants_for_person(
+    *,
+    client: httpx.Client,
+    first_name: str,
+    last_name: str,
+    target_display_name: str,
+    target_orcid: str | None,
+    relationship_filter: str,
+    generated_at: str,
+) -> list[dict[str, Any]]:
+    if not _provider_enabled(NIH_SOURCE_PROVIDER):
+        return []
+    max_results = _provider_max_results(NIH_SOURCE_PROVIDER)
+    full_name = _sanitize_text(f"{first_name} {last_name}")
+    payload = _request_provider_json(
+        client=client,
+        provider=NIH_SOURCE_PROVIDER,
+        url=f"{NIH_REPORTER_BASE_URL}/v2/projects/search",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        json_body={
+            "criteria": {
+                "pi_names": [
+                    {
+                        "any_name": full_name,
+                    }
+                ]
+            },
+            "offset": 0,
+            "limit": max_results,
+            "sort_field": "relevance",
+            "sort_order": "desc",
+        },
+    )
+    rows = payload.get("results") if isinstance(payload.get("results"), list) else []
+    items: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        org = row.get("organization") if isinstance(row.get("organization"), dict) else {}
+        principal_investigators = (
+            row.get("principal_investigators")
+            if isinstance(row.get("principal_investigators"), list)
+            else []
+        )
+        holders: list[dict[str, Any]] = []
+        for person in principal_investigators:
+            if not isinstance(person, dict):
+                continue
+            holder_name = _sanitize_text(person.get("full_name")) or _sanitize_text(
+                f"{_sanitize_text(person.get('first_name'))} {_sanitize_text(person.get('last_name'))}"
+            )
+            if not holder_name:
+                continue
+            holders.append(
+                {
+                    "name": holder_name,
+                    "role": "lead_investigator"
+                    if bool(person.get("is_contact_pi"))
+                    else "investigator",
+                    "orcid": None,
+                }
+            )
+        project_num = _sanitize_text(row.get("project_num"))
+        appl_id = _sanitize_text(row.get("appl_id"))
+        core_project_num = _sanitize_text(row.get("core_project_num"))
+        award_identifier = core_project_num or project_num or appl_id
+        if not award_identifier:
+            continue
+        project_detail_url = _sanitize_text(row.get("project_detail_url"))
+        if not project_detail_url and appl_id:
+            project_detail_url = f"https://reporter.nih.gov/project-details/{appl_id}"
+        item = _build_external_grant_item(
+            source_provider=NIH_SOURCE_PROVIDER,
+            generated_at=generated_at,
+            relationship_filter=relationship_filter,
+            target_first_name=first_name,
+            target_last_name=last_name,
+            target_display_name=target_display_name,
+            target_orcid=target_orcid,
+            holders=holders,
+            openalex_award_id=appl_id or award_identifier,
+            display_name=_sanitize_text(row.get("project_title")) or None,
+            description=_sanitize_text(row.get("abstract_text"))
+            or _sanitize_text(row.get("phr_text"))
+            or None,
+            funder_award_id=award_identifier,
+            funder_name=_sanitize_text(
+                (row.get("agency_ic_admin") or {}).get("name")
+                if isinstance(row.get("agency_ic_admin"), dict)
+                else None
+            )
+            or "NIH",
+            funder_identifier=_sanitize_text(
+                (row.get("agency_ic_admin") or {}).get("code")
+                if isinstance(row.get("agency_ic_admin"), dict)
+                else None
+            )
+            or None,
+            amount=_safe_float(row.get("award_amount")),
+            currency="USD",
+            funding_type=_sanitize_text(row.get("activity_code")) or None,
+            start_date=_parse_date_string(row.get("project_start_date")),
+            end_date=_parse_date_string(row.get("project_end_date")),
+            start_year=_year_from_date_string(row.get("project_start_date")),
+            end_year=_year_from_date_string(row.get("project_end_date")),
+            landing_page_url=project_detail_url or None,
+            updated_date=_parse_date_string(row.get("date_added"))
+            or _parse_date_string(row.get("award_notice_date")),
+        )
+        if not item:
+            continue
+        item_key = _build_persona_grant_key(item)
+        if item_key in seen_keys:
+            continue
+        seen_keys.add(item_key)
+        items.append(item)
+        if len(items) >= max_results:
+            break
+    return items
+
+
+def _fetch_nsf_grants_for_person(
+    *,
+    client: httpx.Client,
+    first_name: str,
+    last_name: str,
+    target_display_name: str,
+    target_orcid: str | None,
+    relationship_filter: str,
+    generated_at: str,
+) -> list[dict[str, Any]]:
+    if not _provider_enabled(NSF_SOURCE_PROVIDER):
+        return []
+    max_results = _provider_max_results(NSF_SOURCE_PROVIDER)
+    full_name = _sanitize_text(f"{first_name} {last_name}")
+    payload = _request_provider_json(
+        client=client,
+        provider=NSF_SOURCE_PROVIDER,
+        url=f"{NSF_AWARDS_BASE_URL}/services/v1/awards.json",
+        params={
+            "keyword": full_name,
+            "offset": 1,
+            "rpp": max_results,
+        },
+    )
+    response_payload = (
+        payload.get("response") if isinstance(payload.get("response"), dict) else {}
+    )
+    rows = response_payload.get("award") if isinstance(response_payload.get("award"), list) else []
+    items: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        holders: list[dict[str, Any]] = []
+        pi_names = row.get("pi") if isinstance(row.get("pi"), list) else []
+        for index, person in enumerate(pi_names):
+            name_blob = _sanitize_text(person)
+            if not name_blob:
+                continue
+            # NSF PI strings can contain email appended to the name.
+            name_blob = re.sub(r"\s+[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$", "", name_blob)
+            holders.append(
+                {
+                    "name": name_blob,
+                    "role": "lead_investigator" if index == 0 else "investigator",
+                    "orcid": None,
+                }
+            )
+        pd_name = _sanitize_text(row.get("pdPIName"))
+        if pd_name:
+            holders.insert(
+                0,
+                {
+                    "name": pd_name,
+                    "role": "lead_investigator",
+                    "orcid": None,
+                },
+            )
+        award_id = _sanitize_text(row.get("id"))
+        if not award_id:
+            continue
+        amount_value = _safe_float(
+            _sanitize_text(row.get("estimatedTotalAmt")).replace(",", "")
+        )
+        if amount_value is None:
+            amount_value = _safe_float(
+                _sanitize_text(row.get("fundsObligatedAmt")).replace(",", "")
+            )
+        item = _build_external_grant_item(
+            source_provider=NSF_SOURCE_PROVIDER,
+            generated_at=generated_at,
+            relationship_filter=relationship_filter,
+            target_first_name=first_name,
+            target_last_name=last_name,
+            target_display_name=target_display_name,
+            target_orcid=target_orcid,
+            holders=holders,
+            openalex_award_id=award_id,
+            display_name=_sanitize_text(row.get("title")) or None,
+            description=_sanitize_text(row.get("abstractText")) or None,
+            funder_award_id=award_id,
+            funder_name=_sanitize_text(row.get("agency"))
+            or _sanitize_text(row.get("fundProgramName"))
+            or "NSF",
+            funder_identifier=_sanitize_text(row.get("awardAgencyCode"))
+            or _sanitize_text(row.get("fundAgencyCode"))
+            or None,
+            amount=amount_value,
+            currency="USD",
+            funding_type=_sanitize_text(row.get("transType")) or None,
+            start_date=_parse_date_string(row.get("startDate")),
+            end_date=_parse_date_string(row.get("expDate")),
+            start_year=_year_from_date_string(row.get("startDate")),
+            end_year=_year_from_date_string(row.get("expDate")),
+            landing_page_url=f"https://www.nsf.gov/awardsearch/showAward?AWD_ID={award_id}",
+            updated_date=_parse_date_string(row.get("latestAmendmentDate"))
+            or _parse_date_string(row.get("date")),
+        )
+        if not item:
+            continue
+        item_key = _build_persona_grant_key(item)
+        if item_key in seen_keys:
+            continue
+        seen_keys.add(item_key)
+        items.append(item)
+        if len(items) >= max_results:
+            break
+    return items
+
+
+def _fetch_cordis_grants_for_person(
+    *,
+    client: httpx.Client,
+    first_name: str,
+    last_name: str,
+    target_display_name: str,
+    target_orcid: str | None,
+    relationship_filter: str,
+    generated_at: str,
+) -> list[dict[str, Any]]:
+    if not _provider_enabled(CORDIS_SOURCE_PROVIDER):
+        return []
+    max_results = _provider_max_results(CORDIS_SOURCE_PROVIDER)
+    full_name = _sanitize_text(f"{first_name} {last_name}")
+    query = f"contenttype='project' AND \"{full_name}\""
+    payload = _request_provider_json(
+        client=client,
+        provider=CORDIS_SOURCE_PROVIDER,
+        url=f"{CORDIS_BASE_URL}/search/en",
+        params={
+            "q": query,
+            "p": 1,
+            "num": max_results,
+            "format": "json",
+        },
+    )
+    result_payload = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+    hits_payload = result_payload.get("hits") if isinstance(result_payload.get("hits"), dict) else {}
+    raw_hits = hits_payload.get("hit")
+    if isinstance(raw_hits, dict):
+        rows = [raw_hits]
+    elif isinstance(raw_hits, list):
+        rows = [item for item in raw_hits if isinstance(item, dict)]
+    else:
+        rows = []
+    items: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for row in rows:
+        project = row.get("project") if isinstance(row.get("project"), dict) else {}
+        if not project:
+            continue
+        project_title = _sanitize_text(project.get("title"))
+        project_objective = _sanitize_text(project.get("objective"))
+        teaser = _sanitize_text(project.get("teaser"))
+        search_blob = f"{project_title} {project_objective} {teaser}".lower()
+        if full_name.lower() not in search_blob:
+            continue
+        award_identifier = _sanitize_text(project.get("id")) or _sanitize_text(project.get("rcn"))
+        if not award_identifier:
+            continue
+        item = _build_external_grant_item(
+            source_provider=CORDIS_SOURCE_PROVIDER,
+            generated_at=generated_at,
+            relationship_filter=relationship_filter,
+            target_first_name=first_name,
+            target_last_name=last_name,
+            target_display_name=target_display_name,
+            target_orcid=target_orcid,
+            holders=[],
+            openalex_award_id=award_identifier,
+            display_name=project_title or None,
+            description=project_objective or teaser or None,
+            funder_award_id=award_identifier,
+            funder_name="European Commission",
+            funder_identifier=_sanitize_text(project.get("programme")) or None,
+            amount=_safe_float(project.get("ecMaxContribution")),
+            currency="EUR",
+            funding_type=_sanitize_text(project.get("status")) or None,
+            start_date=_parse_date_string(project.get("startDate")),
+            end_date=_parse_date_string(project.get("endDate")),
+            start_year=_year_from_date_string(project.get("startDate")),
+            end_year=_year_from_date_string(project.get("endDate")),
+            landing_page_url=f"https://cordis.europa.eu/project/id/{award_identifier}",
+            updated_date=_parse_date_string(project.get("lastUpdateDate"))
+            or _parse_date_string(project.get("sourceUpdateDate")),
+        )
+        if not item:
+            continue
+        item_key = _build_persona_grant_key(item)
+        if item_key in seen_keys:
+            continue
+        seen_keys.add(item_key)
+        items.append(item)
+        if len(items) >= max_results:
+            break
+    return items
+
+
+def _fetch_external_provider_grants_for_person(
+    *,
+    client: httpx.Client,
+    first_name: str,
+    last_name: str,
+    target_display_name: str,
+    target_orcid: str | None,
+    relationship_filter: str,
+    generated_at: str,
+) -> list[dict[str, Any]]:
+    provider_items: list[dict[str, Any]] = []
+    provider_items.extend(
+        _fetch_ukri_grants_for_person(
+            client=client,
+            first_name=first_name,
+            last_name=last_name,
+            target_display_name=target_display_name,
+            target_orcid=target_orcid,
+            relationship_filter=relationship_filter,
+            generated_at=generated_at,
+        )
+    )
+    provider_items.extend(
+        _fetch_nih_reporter_grants_for_person(
+            client=client,
+            first_name=first_name,
+            last_name=last_name,
+            target_display_name=target_display_name,
+            target_orcid=target_orcid,
+            relationship_filter=relationship_filter,
+            generated_at=generated_at,
+        )
+    )
+    provider_items.extend(
+        _fetch_nsf_grants_for_person(
+            client=client,
+            first_name=first_name,
+            last_name=last_name,
+            target_display_name=target_display_name,
+            target_orcid=target_orcid,
+            relationship_filter=relationship_filter,
+            generated_at=generated_at,
+        )
+    )
+    provider_items.extend(
+        _fetch_cordis_grants_for_person(
+            client=client,
+            first_name=first_name,
+            last_name=last_name,
+            target_display_name=target_display_name,
+            target_orcid=target_orcid,
+            relationship_filter=relationship_filter,
+            generated_at=generated_at,
+        )
+    )
+    deduped: dict[str, dict[str, Any]] = {}
+    for item in provider_items:
+        deduped[_build_persona_grant_key(item)] = item
+    return _sort_grant_items(list(deduped.values()))
+
+
 def _build_persona_grant_key(item: dict[str, Any]) -> str:
+    source_provider = _sanitize_text(item.get("source")).lower() or OPENALEX_SOURCE_PROVIDER
     funder = item.get("funder") if isinstance(item.get("funder"), dict) else {}
     funder_identifier = _sanitize_text(funder.get("id")).lower()
     award_identifier = _sanitize_text(item.get("funder_award_id")).lower()
@@ -573,7 +1446,7 @@ def _build_persona_grant_key(item: dict[str, Any]) -> str:
         award_identifier = "unknown"
     if not funder_identifier:
         funder_identifier = _sanitize_text(funder.get("display_name")).lower() or "unknown"
-    return f"{OPENALEX_SOURCE_PROVIDER}|{funder_identifier}|{award_identifier}"
+    return f"{source_provider}|{funder_identifier}|{award_identifier}"
 
 
 def _parse_iso_timestamp(value: str) -> datetime:
@@ -601,16 +1474,16 @@ def _persist_persona_grant_records(
         session.execute(
             delete(PersonaGrantRecord).where(
                 PersonaGrantRecord.user_id == clean_user_id,
-                PersonaGrantRecord.source_provider == OPENALEX_SOURCE_PROVIDER,
             )
         )
         for item in items:
             funder = item.get("funder") if isinstance(item.get("funder"), dict) else {}
+            source_provider = _sanitize_text(item.get("source")).lower() or OPENALEX_SOURCE_PROVIDER
             session.add(
                 PersonaGrantRecord(
                     user_id=clean_user_id,
                     grant_key=_build_persona_grant_key(item),
-                    source_provider=OPENALEX_SOURCE_PROVIDER,
+                    source_provider=source_provider,
                     funder_name=_sanitize_text(funder.get("display_name")) or None,
                     funder_identifier=_sanitize_text(funder.get("id")) or None,
                     award_identifier=(
@@ -648,7 +1521,6 @@ def _load_persisted_persona_grants(
             select(PersonaGrantRecord)
             .where(
                 PersonaGrantRecord.user_id == clean_user_id,
-                PersonaGrantRecord.source_provider == OPENALEX_SOURCE_PROVIDER,
             )
             .order_by(
                 PersonaGrantRecord.source_timestamp.desc(),
@@ -681,6 +1553,11 @@ def _load_persisted_persona_grants(
         return None
 
     latest_timestamp = items[0].get("source_timestamp") or _utcnow_iso()
+    source_set = {
+        _sanitize_text(item.get("source")).lower()
+        for item in items
+        if _sanitize_text(item.get("source"))
+    }
     user_name = _sanitize_text(user.name) if user and user.name else _sanitize_text(f"{first_name} {last_name}")
     return {
         "first_name": first_name,
@@ -696,7 +1573,11 @@ def _load_persisted_persona_grants(
         "items": items,
         "total": len(items),
         "relationship_filter": relationship_filter,
-        "source": OPENALEX_SOURCE_PROVIDER,
+        "source": (
+            next(iter(source_set))
+            if len(source_set) == 1
+            else MULTI_PROVIDER_SOURCE
+        ),
         "generated_at": latest_timestamp,
     }
 
@@ -735,8 +1616,20 @@ def list_openalex_grants_for_person(
             return persisted_payload
 
     mailto = _openalex_mailto(fallback_email=user_email)
-    timeout = httpx.Timeout(_openalex_timeout_seconds())
+    timeout_seconds = max(
+        _openalex_timeout_seconds(),
+        _external_provider_timeout_seconds(),
+    )
+    timeout = httpx.Timeout(timeout_seconds)
     generated_at = _utcnow_iso()
+    openalex_author_payload: dict[str, Any] = {
+        "openalex_author_id": None,
+        "display_name": _sanitize_text(f"{clean_first_name} {clean_last_name}") or None,
+        "orcid": None,
+        "works_count": 0,
+        "cited_by_count": 0,
+    }
+    merged_items: list[dict[str, Any]] = []
 
     with httpx.Client(timeout=timeout) as client:
         author = _resolve_openalex_author(
@@ -745,231 +1638,246 @@ def list_openalex_grants_for_person(
             last_name=clean_last_name,
             mailto=mailto,
         )
-        if not author:
-            return {
-                "first_name": clean_first_name,
-                "last_name": clean_last_name,
-                "full_name": _sanitize_text(f"{clean_first_name} {clean_last_name}"),
-                "author": {
-                    "openalex_author_id": None,
-                    "display_name": None,
-                    "orcid": None,
-                    "works_count": 0,
-                    "cited_by_count": 0,
-                },
-                "items": [],
-                "total": 0,
-                "relationship_filter": relationship_filter,
-                "source": OPENALEX_SOURCE_PROVIDER,
-                "generated_at": generated_at,
+        if author:
+            openalex_author_payload = {
+                "openalex_author_id": author.get("openalex_author_id"),
+                "display_name": author.get("display_name"),
+                "orcid": author.get("orcid"),
+                "works_count": max(0, _safe_int(author.get("works_count"))),
+                "cited_by_count": max(0, _safe_int(author.get("cited_by_count"))),
             }
-
-        author_token = str(author["openalex_author_token"])
-        grant_map: dict[str, dict[str, Any]] = {}
-        cursor = "*"
-        pages = 0
-        max_pages = _openalex_max_pages()
-        while cursor and pages < max_pages:
-            params: dict[str, Any] = {
-                "filter": f"authorships.author.id:{author_token},awards.id:!null",
-                "select": "id,display_name,publication_year,awards,authorships",
-                "per-page": 200,
-                "sort": "publication_date:desc",
-                "cursor": cursor,
-            }
-            if mailto:
-                params["mailto"] = mailto
-            payload = _request_openalex_json(
-                client=client,
-                url=f"{OPENALEX_BASE_URL}/works",
-                params=params,
-            )
-            rows = payload.get("results") if isinstance(payload.get("results"), list) else []
-            if not rows:
-                break
-            for work in rows:
-                if not isinstance(work, dict):
-                    continue
-                work_id = _sanitize_text(work.get("id"))
-                work_title = _sanitize_text(work.get("display_name"))
-                work_year = _safe_int(work.get("publication_year")) or None
-                work_author_position = _extract_author_position(
-                    authorships=work.get("authorships"),
-                    author_token=author_token,
-                )
-                award_rows = (
-                    work.get("awards") if isinstance(work.get("awards"), list) else []
-                )
-                for raw_award in award_rows:
-                    if not isinstance(raw_award, dict):
-                        continue
-                    dedupe_key = _grant_key(raw_award)
-                    if not dedupe_key:
-                        continue
-                    existing = grant_map.get(dedupe_key)
-                    if existing is None:
-                        existing = {
-                            "openalex_award_id": _sanitize_text(raw_award.get("id")) or None,
-                            "display_name": _sanitize_text(raw_award.get("display_name")) or None,
-                            "description": None,
-                            "funder_award_id": _sanitize_text(raw_award.get("funder_award_id")) or None,
-                            "funder": {
-                                "id": _sanitize_text(raw_award.get("funder_id")) or None,
-                                "display_name": _sanitize_text(raw_award.get("funder_display_name")) or None,
-                                "doi": None,
-                                "ror": None,
-                            },
-                            "amount": None,
-                            "currency": None,
-                            "funding_type": None,
-                            "funder_scheme": None,
-                            "start_date": None,
-                            "end_date": None,
-                            "start_year": None,
-                            "end_year": None,
-                            "landing_page_url": None,
-                            "doi": None,
-                            "updated_date": None,
-                            "supporting_works_count": 0,
-                            "supporting_works": [],
-                            "_latest_publication_year": work_year or 0,
-                            "_supporting_work_ids": set(),
-                        }
-                        grant_map[dedupe_key] = existing
-                    if work_id and work_id not in existing["_supporting_work_ids"]:
-                        existing["_supporting_work_ids"].add(work_id)
-                        existing["supporting_works_count"] += 1
-                        existing["supporting_works"].append(
-                            {
-                                "id": work_id,
-                                "title": work_title or "Untitled work",
-                                "publication_year": work_year,
-                                "user_author_position": work_author_position,
-                            }
-                        )
-                    existing["_latest_publication_year"] = max(
-                        int(existing["_latest_publication_year"]),
-                        int(work_year or 0),
-                    )
-
-            meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
-            next_cursor = _sanitize_text(meta.get("next_cursor"))
-            if not next_cursor or next_cursor == cursor:
-                break
-            cursor = next_cursor
-            pages += 1
-
-        grants = list(grant_map.values())
-        grants.sort(
-            key=lambda item: (
-                -max(0, _safe_int(item.get("supporting_works_count"))),
-                -max(0, _safe_int(item.get("_latest_publication_year"))),
-                _sanitize_text(item.get("funder_award_id")).lower(),
-                _sanitize_text((item.get("funder") or {}).get("display_name")).lower(),
-            )
+        target_display_name = (
+            _sanitize_text(openalex_author_payload.get("display_name"))
+            or _sanitize_text(f"{clean_first_name} {clean_last_name}")
         )
+        target_orcid = _normalize_orcid(openalex_author_payload.get("orcid"))
 
-        output_items: list[dict[str, Any]] = []
-        for item in grants:
-            enriched = _merge_award_details(
-                item,
-                _lookup_award_detail(
+        openalex_items: list[dict[str, Any]] = []
+        if author and author.get("openalex_author_token"):
+            author_token = str(author["openalex_author_token"])
+            grant_map: dict[str, dict[str, Any]] = {}
+            cursor = "*"
+            pages = 0
+            max_pages = _openalex_max_pages()
+            while cursor and pages < max_pages:
+                params: dict[str, Any] = {
+                    "filter": f"authorships.author.id:{author_token},awards.id:!null",
+                    "select": "id,display_name,publication_year,awards,authorships",
+                    "per-page": 200,
+                    "sort": "publication_date:desc",
+                    "cursor": cursor,
+                }
+                if mailto:
+                    params["mailto"] = mailto
+                payload = _request_openalex_json(
                     client=client,
-                    mailto=mailto,
-                    award_id=item.get("openalex_award_id"),
-                    funder_id=(item.get("funder") or {}).get("id"),
-                    funder_award_id=item.get("funder_award_id"),
-                ),
-            )
-            relationship_payload = _classify_grant_relationship(
-                item=enriched,
-                target_first_name=clean_first_name,
-                target_last_name=clean_last_name,
-                target_display_name=_sanitize_text(author.get("display_name")),
-                target_orcid=_normalize_orcid(author.get("orcid")),
-            )
-            relation = str(relationship_payload.get("relationship_to_person") or "").strip()
-            if relationship_filter == "won" and relation != "won_by_person":
-                continue
-            if relationship_filter == "published_under" and relation == "won_by_person":
-                continue
-            supporting = list(enriched.get("supporting_works") or [])
-            supporting.sort(
-                key=lambda work: (
-                    -max(0, _safe_int(work.get("publication_year"))),
-                    _sanitize_text(work.get("title")).lower(),
+                    url=f"{OPENALEX_BASE_URL}/works",
+                    params=params,
+                )
+                rows = payload.get("results") if isinstance(payload.get("results"), list) else []
+                if not rows:
+                    break
+                for work in rows:
+                    if not isinstance(work, dict):
+                        continue
+                    work_id = _sanitize_text(work.get("id"))
+                    work_title = _sanitize_text(work.get("display_name"))
+                    work_year = _safe_int(work.get("publication_year")) or None
+                    work_author_position = _extract_author_position(
+                        authorships=work.get("authorships"),
+                        author_token=author_token,
+                    )
+                    award_rows = (
+                        work.get("awards") if isinstance(work.get("awards"), list) else []
+                    )
+                    for raw_award in award_rows:
+                        if not isinstance(raw_award, dict):
+                            continue
+                        dedupe_key = _grant_key(raw_award)
+                        if not dedupe_key:
+                            continue
+                        existing = grant_map.get(dedupe_key)
+                        if existing is None:
+                            existing = {
+                                "openalex_award_id": _sanitize_text(raw_award.get("id")) or None,
+                                "display_name": _sanitize_text(raw_award.get("display_name")) or None,
+                                "description": None,
+                                "funder_award_id": _sanitize_text(raw_award.get("funder_award_id")) or None,
+                                "funder": {
+                                    "id": _sanitize_text(raw_award.get("funder_id")) or None,
+                                    "display_name": _sanitize_text(raw_award.get("funder_display_name")) or None,
+                                    "doi": None,
+                                    "ror": None,
+                                },
+                                "amount": None,
+                                "currency": None,
+                                "funding_type": None,
+                                "funder_scheme": None,
+                                "start_date": None,
+                                "end_date": None,
+                                "start_year": None,
+                                "end_year": None,
+                                "landing_page_url": None,
+                                "doi": None,
+                                "updated_date": None,
+                                "supporting_works_count": 0,
+                                "supporting_works": [],
+                                "_latest_publication_year": work_year or 0,
+                                "_supporting_work_ids": set(),
+                            }
+                            grant_map[dedupe_key] = existing
+                        if work_id and work_id not in existing["_supporting_work_ids"]:
+                            existing["_supporting_work_ids"].add(work_id)
+                            existing["supporting_works_count"] += 1
+                            existing["supporting_works"].append(
+                                {
+                                    "id": work_id,
+                                    "title": work_title or "Untitled work",
+                                    "publication_year": work_year,
+                                    "user_author_position": work_author_position,
+                                }
+                            )
+                        existing["_latest_publication_year"] = max(
+                            int(existing["_latest_publication_year"]),
+                            int(work_year or 0),
+                        )
+
+                meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+                next_cursor = _sanitize_text(meta.get("next_cursor"))
+                if not next_cursor or next_cursor == cursor:
+                    break
+                cursor = next_cursor
+                pages += 1
+
+            grants = list(grant_map.values())
+            grants.sort(
+                key=lambda item: (
+                    -max(0, _safe_int(item.get("supporting_works_count"))),
+                    -max(0, _safe_int(item.get("_latest_publication_year"))),
+                    _sanitize_text(item.get("funder_award_id")).lower(),
+                    _sanitize_text((item.get("funder") or {}).get("display_name")).lower(),
                 )
             )
-            output_items.append(
-                {
-                    "openalex_award_id": enriched.get("openalex_award_id"),
-                    "display_name": enriched.get("display_name"),
-                    "description": enriched.get("description"),
-                    "funder_award_id": enriched.get("funder_award_id"),
-                    "funder": enriched.get("funder") or {
-                        "id": None,
-                        "display_name": None,
-                        "doi": None,
-                        "ror": None,
-                    },
-                    "amount": enriched.get("amount"),
-                    "currency": enriched.get("currency"),
-                    "funding_type": enriched.get("funding_type"),
-                    "funder_scheme": enriched.get("funder_scheme"),
-                    "start_date": enriched.get("start_date"),
-                    "end_date": enriched.get("end_date"),
-                    "start_year": enriched.get("start_year"),
-                    "end_year": enriched.get("end_year"),
-                    "landing_page_url": enriched.get("landing_page_url"),
-                    "doi": enriched.get("doi"),
-                    "updated_date": enriched.get("updated_date"),
-                    "supporting_works_count": max(
-                        0, _safe_int(enriched.get("supporting_works_count"))
+
+            for item in grants:
+                enriched = _merge_award_details(
+                    item,
+                    _lookup_award_detail(
+                        client=client,
+                        mailto=mailto,
+                        award_id=item.get("openalex_award_id"),
+                        funder_id=(item.get("funder") or {}).get("id"),
+                        funder_award_id=item.get("funder_award_id"),
                     ),
-                    "supporting_works": supporting[:8],
-                    "relationship_to_person": relationship_payload.get("relationship_to_person"),
-                    "grant_owner_name": relationship_payload.get("grant_owner_name"),
-                    "grant_owner_role": relationship_payload.get("grant_owner_role"),
-                    "grant_owner_orcid": relationship_payload.get("grant_owner_orcid"),
-                    "grant_owner_is_target_person": bool(
-                        relationship_payload.get("grant_owner_is_target_person")
-                    ),
-                    "award_holders": list(relationship_payload.get("award_holders") or []),
-                    "person_role": _persona_role_from_relationship(
-                        relationship_to_person=relation,
-                        grant_owner_role=relationship_payload.get("grant_owner_role"),
-                    ),
-                    "source": OPENALEX_SOURCE_PROVIDER,
-                    "source_timestamp": generated_at,
-                }
-            )
-            if len(output_items) >= clean_limit:
-                break
+                )
+                relationship_payload = _classify_grant_relationship(
+                    item=enriched,
+                    target_first_name=clean_first_name,
+                    target_last_name=clean_last_name,
+                    target_display_name=target_display_name,
+                    target_orcid=target_orcid,
+                )
+                relation = _sanitize_text(
+                    relationship_payload.get("relationship_to_person")
+                )
+                if relationship_filter == "won" and relation != "won_by_person":
+                    continue
+                if relationship_filter == "published_under" and relation == "won_by_person":
+                    continue
+                supporting = list(enriched.get("supporting_works") or [])
+                supporting.sort(
+                    key=lambda work: (
+                        -max(0, _safe_int(work.get("publication_year"))),
+                        _sanitize_text(work.get("title")).lower(),
+                    )
+                )
+                openalex_items.append(
+                    {
+                        "openalex_award_id": enriched.get("openalex_award_id"),
+                        "display_name": enriched.get("display_name"),
+                        "description": enriched.get("description"),
+                        "funder_award_id": enriched.get("funder_award_id"),
+                        "funder": enriched.get("funder") or {
+                            "id": None,
+                            "display_name": None,
+                            "doi": None,
+                            "ror": None,
+                        },
+                        "amount": enriched.get("amount"),
+                        "currency": enriched.get("currency"),
+                        "funding_type": enriched.get("funding_type"),
+                        "funder_scheme": enriched.get("funder_scheme"),
+                        "start_date": enriched.get("start_date"),
+                        "end_date": enriched.get("end_date"),
+                        "start_year": enriched.get("start_year"),
+                        "end_year": enriched.get("end_year"),
+                        "landing_page_url": enriched.get("landing_page_url"),
+                        "doi": enriched.get("doi"),
+                        "updated_date": enriched.get("updated_date"),
+                        "supporting_works_count": max(
+                            0, _safe_int(enriched.get("supporting_works_count"))
+                        ),
+                        "supporting_works": supporting[:8],
+                        "relationship_to_person": relation or "published_under_unknown_grant",
+                        "grant_owner_name": relationship_payload.get("grant_owner_name"),
+                        "grant_owner_role": relationship_payload.get("grant_owner_role"),
+                        "grant_owner_orcid": relationship_payload.get("grant_owner_orcid"),
+                        "grant_owner_is_target_person": bool(
+                            relationship_payload.get("grant_owner_is_target_person")
+                        ),
+                        "award_holders": list(relationship_payload.get("award_holders") or []),
+                        "person_role": _persona_role_from_relationship(
+                            relationship_to_person=relation,
+                            grant_owner_role=relationship_payload.get("grant_owner_role"),
+                        ),
+                        "source": OPENALEX_SOURCE_PROVIDER,
+                        "source_timestamp": generated_at,
+                    }
+                )
+
+        external_items = _fetch_external_provider_grants_for_person(
+            client=client,
+            first_name=clean_first_name,
+            last_name=clean_last_name,
+            target_display_name=target_display_name,
+            target_orcid=target_orcid,
+            relationship_filter=relationship_filter,
+            generated_at=generated_at,
+        )
+        merged_map: dict[str, dict[str, Any]] = {}
+        for item in openalex_items:
+            merged_map[_build_persona_grant_key(item)] = item
+        for item in external_items:
+            merged_map[_build_persona_grant_key(item)] = item
+        merged_items = _sort_grant_items(list(merged_map.values()))[:clean_limit]
 
     if clean_user_id:
         try:
             _persist_persona_grant_records(
                 user_id=clean_user_id,
-                items=output_items,
+                items=merged_items,
                 source_timestamp_iso=generated_at,
             )
         except Exception:
             logger.exception("Could not persist persona grant records for user_id=%s", clean_user_id)
 
+    source_set = {
+        _sanitize_text(item.get("source")).lower()
+        for item in merged_items
+        if _sanitize_text(item.get("source"))
+    }
     return {
         "first_name": clean_first_name,
         "last_name": clean_last_name,
         "full_name": _sanitize_text(f"{clean_first_name} {clean_last_name}"),
-        "author": {
-            "openalex_author_id": author.get("openalex_author_id"),
-            "display_name": author.get("display_name"),
-            "orcid": author.get("orcid"),
-            "works_count": max(0, _safe_int(author.get("works_count"))),
-            "cited_by_count": max(0, _safe_int(author.get("cited_by_count"))),
-        },
-        "items": output_items,
-        "total": len(output_items),
+        "author": openalex_author_payload,
+        "items": merged_items,
+        "total": len(merged_items),
         "relationship_filter": relationship_filter,
-        "source": OPENALEX_SOURCE_PROVIDER,
+        "source": (
+            next(iter(source_set))
+            if len(source_set) == 1
+            else MULTI_PROVIDER_SOURCE
+        ),
         "generated_at": generated_at,
     }

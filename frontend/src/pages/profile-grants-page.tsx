@@ -596,9 +596,23 @@ export function ProfileGrantsPage() {
   ), [publicationsUnderGrantsRaw])
 
   const lookupGeneratedAtLabel = formatSourceTimestamp(payload?.generated_at || null)
+  const liveSourceSet = useMemo(() => {
+    const values = new Set<string>()
+    for (const item of payload?.items || []) {
+      const source = normalizeNamePart(String(item.source || '').toLowerCase())
+      if (source) {
+        values.add(source)
+      }
+    }
+    return values
+  }, [payload?.items])
 
   const providerCards = useMemo(() => {
     const openAlexStatus: ProviderStatus = matchedAuthorId ? 'connected' : 'pending'
+    const ukriStatus: ProviderStatus = liveSourceSet.has('ukri') ? 'connected' : 'pending'
+    const nihStatus: ProviderStatus = liveSourceSet.has('nih_reporter') ? 'connected' : 'pending'
+    const nsfStatus: ProviderStatus = liveSourceSet.has('nsf') ? 'connected' : 'pending'
+    const cordisStatus: ProviderStatus = liveSourceSet.has('cordis') ? 'connected' : 'pending'
     return [
       {
         key: 'openalex',
@@ -612,33 +626,33 @@ export function ProfileGrantsPage() {
       {
         key: 'ukri',
         label: 'UKRI GtR',
-        status: 'planned' as const,
-        detail: 'Planned direct import for UK grant ownership and project metadata.',
-        meta: 'Not connected',
+        status: ukriStatus,
+        detail: 'Direct lookup for UK grant ownership and project metadata.',
+        meta: ukriStatus === 'connected' ? 'Results loaded in current snapshot' : 'No results in current snapshot',
       },
       {
         key: 'nih_reporter',
         label: 'NIH RePORTER',
-        status: 'planned' as const,
-        detail: 'Planned direct lookup for PI and grant history from NIH.',
-        meta: 'Not connected',
+        status: nihStatus,
+        detail: 'Direct lookup for PI and grant history from NIH.',
+        meta: nihStatus === 'connected' ? 'Results loaded in current snapshot' : 'No results in current snapshot',
       },
       {
         key: 'nsf',
         label: 'NSF Awards',
-        status: 'planned' as const,
-        detail: 'Planned direct lookup for US federal grant records.',
-        meta: 'Not connected',
+        status: nsfStatus,
+        detail: 'Direct lookup for NSF award records.',
+        meta: nsfStatus === 'connected' ? 'Results loaded in current snapshot' : 'No results in current snapshot',
       },
       {
         key: 'cordis',
         label: 'CORDIS',
-        status: 'planned' as const,
-        detail: 'Optional planned import for EU framework programme grants.',
-        meta: 'Not connected',
+        status: cordisStatus,
+        detail: 'Direct lookup for matching EU framework programme projects.',
+        meta: cordisStatus === 'connected' ? 'Results loaded in current snapshot' : 'No results in current snapshot',
       },
     ]
-  }, [lookupGeneratedAtLabel, matchedAuthorId, payload])
+  }, [liveSourceSet, lookupGeneratedAtLabel, matchedAuthorId, payload])
 
   const onManualDraftChange = useCallback((key: keyof ManualGrantDraft, value: string) => {
     setManualDraft((current) => ({ ...current, [key]: value }))
@@ -877,7 +891,7 @@ export function ProfileGrantsPage() {
                     onClick={() => void runLookup({ refresh: true })}
                   >
                     {lookupBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                    {lookupBusy ? 'Refreshing...' : 'Refresh OpenAlex'}
+                    {lookupBusy ? 'Refreshing...' : 'Refresh all sources'}
                   </Button>
                 </div>
                 {error ? (
