@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
+import { PageHeader, Row, Section, SectionHeader, Stack, Subheading } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { houseLayout } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui'
+import { Button, Input } from '@/components/ui'
 import { fetchMe, searchOpenAlexAuthors, updateMe } from '@/lib/impact-api'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import type { AuthUser } from '@/types/impact'
@@ -78,6 +78,12 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   const [openAlexSearchError, setOpenAlexSearchError] = useState('')
   const [openAlexSelectedAuthorId, setOpenAlexSelectedAuthorId] = useState<string | null>(
     String(initialCachedUser?.openalex_author_id || '').trim() || null,
+  )
+  const [openAlexDraftIntegrationApproved, setOpenAlexDraftIntegrationApproved] = useState(
+    Boolean(initialCachedUser?.openalex_integration_approved),
+  )
+  const [openAlexDraftAutoUpdateEnabled, setOpenAlexDraftAutoUpdateEnabled] = useState(
+    Boolean(initialCachedUser?.openalex_auto_update_enabled),
   )
   const [status, setStatus] = useState(fixture?.status ?? '')
   const [error, setError] = useState(fixture?.error ?? '')
@@ -151,11 +157,19 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     }
   }, [openAlexSearchResults.length, openAlexSelectedAuthorId, user?.openalex_author_id])
 
+  useEffect(() => {
+    setOpenAlexDraftIntegrationApproved(Boolean(user?.openalex_integration_approved))
+    setOpenAlexDraftAutoUpdateEnabled(Boolean(user?.openalex_auto_update_enabled))
+  }, [user?.openalex_auto_update_enabled, user?.openalex_integration_approved])
+
   const openAlexAuthorId = String(user?.openalex_author_id || '').trim()
   const hasConfirmedOpenAlexAuthor = Boolean(openAlexAuthorId)
   const openAlexIntegrationApproved = Boolean(user?.openalex_integration_approved)
   const openAlexAutoUpdateEnabled = Boolean(user?.openalex_auto_update_enabled)
   const openAlexSettingsBusy = Boolean(isFixtureMode) || !token || updatingOpenAlexSettings
+  const openAlexPreferencesDirty =
+    openAlexDraftIntegrationApproved !== openAlexIntegrationApproved ||
+    openAlexDraftAutoUpdateEnabled !== openAlexAutoUpdateEnabled
 
   const onSearchOpenAlex = async () => {
     if (!token || isFixtureMode) {
@@ -290,7 +304,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     }
   }
 
-  const onToggleOpenAlexApproval = async (enabled: boolean) => {
+  const onToggleOpenAlexApprovalDraft = (enabled: boolean) => {
     if (openAlexSettingsBusy) {
       return
     }
@@ -298,20 +312,42 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
       setError('Search OpenAlex and confirm your author profile before approving integration.')
       return
     }
+    setError('')
+    setStatus('')
     const nextApproved = Boolean(enabled)
-    const nextAutoUpdate = nextApproved ? openAlexAutoUpdateEnabled : false
-    await applyOpenAlexSettings(nextApproved, nextAutoUpdate)
+    setOpenAlexDraftIntegrationApproved(nextApproved)
+    if (!nextApproved) {
+      setOpenAlexDraftAutoUpdateEnabled(false)
+    }
   }
 
-  const onToggleOpenAlexAutoUpdate = async (enabled: boolean) => {
-    if (openAlexSettingsBusy || !openAlexIntegrationApproved) {
+  const onToggleOpenAlexAutoUpdateDraft = (enabled: boolean) => {
+    if (openAlexSettingsBusy) {
+      return
+    }
+    if (!openAlexDraftIntegrationApproved) {
       return
     }
     if (enabled && !hasConfirmedOpenAlexAuthor) {
       setError('Confirm your OpenAlex author profile before enabling auto-update.')
       return
     }
-    await applyOpenAlexSettings(true, Boolean(enabled))
+    setError('')
+    setStatus('')
+    setOpenAlexDraftAutoUpdateEnabled(Boolean(enabled))
+  }
+
+  const onSaveOpenAlexPreferences = async () => {
+    if (openAlexSettingsBusy || !openAlexPreferencesDirty) {
+      return
+    }
+    if (openAlexDraftIntegrationApproved && !hasConfirmedOpenAlexAuthor) {
+      setError('Search OpenAlex and confirm your author profile before approving integration.')
+      return
+    }
+    const nextApproved = Boolean(openAlexDraftIntegrationApproved)
+    const nextAutoUpdate = nextApproved ? Boolean(openAlexDraftAutoUpdateEnabled) : false
+    await applyOpenAlexSettings(nextApproved, nextAutoUpdate)
   }
 
   const statusLower = status.toLowerCase()
@@ -340,39 +376,28 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader heading="OpenAlex" className="house-section-header-marker-aligned" />
         <div className="house-separator-main-heading-to-content house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
-          <div className="space-y-3 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+          <div className="space-y-3">
             <div className="flex w-full flex-wrap items-start justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[hsl(var(--tone-accent-600))] text-xs font-semibold text-white">
                   OA
                 </span>
-                <div className="space-y-0.5">
-                  <p className="text-caption uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
-                    OpenAlex integration settings
-                  </p>
-                </div>
+                <Subheading>OpenAlex integration settings</Subheading>
               </div>
             </div>
           </div>
           <div className="space-y-3 pt-3 text-sm">
-            <p className="text-sm text-[hsl(var(--tone-neutral-700))]">
-              Confirm your OpenAlex author profile first, then approve integration and enable auto-update for scheduled weekly sync.
-            </p>
-
             <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-3">
               <p className="text-label font-medium text-[hsl(var(--tone-neutral-900))]">
                 Find and confirm your OpenAlex profile
               </p>
-              <p className="mt-1 text-xs text-[hsl(var(--tone-neutral-600))]">
-                Search by full name, select your profile, then confirm it for future sync runs.
-              </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <input
+                <Input
                   type="text"
                   value={openAlexSearchQuery}
                   onChange={(event) => setOpenAlexSearchQuery(event.target.value)}
                   placeholder="e.g., Jane Smith"
-                  className="min-w-[220px] flex-1 rounded-md border border-[hsl(var(--tone-neutral-300))] px-3 py-2 text-sm focus:border-[hsl(var(--tone-accent-500))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-accent-200))]"
+                  className="min-w-[220px] flex-1"
                   disabled={openAlexSearchLoading || openAlexSettingsBusy}
                 />
                 <Button
@@ -455,34 +480,13 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
               <p className="text-label font-medium text-[hsl(var(--tone-neutral-900))]">
                 OpenAlex sync eligibility
               </p>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                <span
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${
-                    openAlexIntegrationApproved
-                      ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
-                      : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
-                  }`}
-                >
-                  {openAlexIntegrationApproved ? 'Integration approved' : 'Integration not approved'}
-                </span>
-                <span
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${
-                    openAlexAutoUpdateEnabled
-                      ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
-                      : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
-                  }`}
-                >
-                  {openAlexAutoUpdateEnabled ? 'Auto-update every 7 days' : 'Auto-update off'}
-                </span>
-              </div>
-
               <div className="mt-3 space-y-2">
                 <label className="flex items-start gap-2 rounded-md border border-[hsl(var(--tone-neutral-200))] px-2 py-1.5">
                   <input
                     type="checkbox"
-                    checked={openAlexIntegrationApproved}
+                    checked={openAlexDraftIntegrationApproved}
                     disabled={openAlexSettingsBusy || !hasConfirmedOpenAlexAuthor}
-                    onChange={(event) => void onToggleOpenAlexApproval(event.target.checked)}
+                    onChange={(event) => onToggleOpenAlexApprovalDraft(event.target.checked)}
                     className="mt-0.5 h-4 w-4 rounded border-[hsl(var(--tone-neutral-300))] text-[hsl(var(--tone-accent-700))] focus:ring-[hsl(var(--tone-accent-500))]"
                   />
                   <span className="min-w-0">
@@ -498,9 +502,9 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 <label className="flex items-start gap-2 rounded-md border border-[hsl(var(--tone-neutral-200))] px-2 py-1.5">
                   <input
                     type="checkbox"
-                    checked={openAlexAutoUpdateEnabled}
-                    disabled={openAlexSettingsBusy || !openAlexIntegrationApproved || !hasConfirmedOpenAlexAuthor}
-                    onChange={(event) => void onToggleOpenAlexAutoUpdate(event.target.checked)}
+                    checked={openAlexDraftAutoUpdateEnabled}
+                    disabled={openAlexSettingsBusy || !openAlexDraftIntegrationApproved || !hasConfirmedOpenAlexAuthor}
+                    onChange={(event) => onToggleOpenAlexAutoUpdateDraft(event.target.checked)}
                     className="mt-0.5 h-4 w-4 rounded border-[hsl(var(--tone-neutral-300))] text-[hsl(var(--tone-accent-700))] focus:ring-[hsl(var(--tone-accent-500))]"
                   />
                   <span className="min-w-0">
@@ -514,9 +518,28 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 </label>
               </div>
 
-              <p className="mt-2 text-xs text-[hsl(var(--tone-neutral-500))]">
-                Weekly cadence is controlled by admin runtime settings.
-              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="cta"
+                  onClick={() => void onSaveOpenAlexPreferences()}
+                  disabled={openAlexSettingsBusy || !openAlexPreferencesDirty}
+                >
+                  {updatingOpenAlexSettings ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save preferences'
+                  )}
+                </Button>
+                {openAlexPreferencesDirty ? (
+                  <span className="text-xs text-[hsl(var(--tone-neutral-600))]">Unsaved changes.</span>
+                ) : null}
+              </div>
+
             </div>
 
             {status || error ? (
