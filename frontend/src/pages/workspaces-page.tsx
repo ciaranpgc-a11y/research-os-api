@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
-import { PageHeader, Row, Toolbar } from '@/components/primitives'
+import { PageHeader, Row, Section, Stack, Toolbar } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import {
   Button,
@@ -110,6 +110,7 @@ const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
 
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
+const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_SIDEBAR_FRAME_CLASS = houseLayout.sidebarFrame
 const HOUSE_SIDEBAR_CLASS = houseLayout.sidebar
 const HOUSE_SIDEBAR_SCROLL_CLASS = houseLayout.sidebarScroll
@@ -3062,7 +3063,11 @@ export function WorkspacesPage() {
 
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
           <ScrollArea className="h-full">
-            <div data-house-role="content-container" className="house-content-container house-content-container-wide space-y-4">
+            <Stack
+              data-house-role="page"
+              space="sm"
+              className="house-content-container house-content-container-wide"
+            >
               <Row
                 align="center"
                 gap="md"
@@ -3077,7 +3082,12 @@ export function WorkspacesPage() {
                 />
               </Row>
 
-              <section className={cn('rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}>
+              <Section
+                className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}
+                surface="transparent"
+                inset="none"
+                spaceY="none"
+              >
                 <Toolbar>
                   <Input
                     value={newWorkspaceName}
@@ -3103,9 +3113,14 @@ export function WorkspacesPage() {
                 {invitationStatus ? (
                   <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{invitationStatus}</p>
                 ) : null}
-              </section>
+              </Section>
 
-              <section className={cn('rounded-lg border border-border', HOUSE_CARD_CLASS)}>
+              <Section
+                className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'rounded-lg border border-border', HOUSE_CARD_CLASS)}
+                surface="transparent"
+                inset="none"
+                spaceY="none"
+              >
                 {centerView === 'workspaces' ? (
                   <>
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
@@ -3639,8 +3654,8 @@ export function WorkspacesPage() {
                 ) : (
                   <WorkspacesDataLibraryView onOpenDrilldownMobile={() => setDataLibraryDrilldownMobileOpen(true)} />
                 )}
-              </section>
-            </div>
+              </Section>
+            </Stack>
           </ScrollArea>
         </main>
 

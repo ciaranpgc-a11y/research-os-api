@@ -1158,17 +1158,20 @@ export async function fetchPersonaGrants(
     lastName: string
     limit?: number
     relationship?: 'all' | 'won' | 'published_under'
+    refresh?: boolean
   },
 ): Promise<PersonaGrantsPayload> {
   const firstName = String(input.firstName || '').trim()
   const lastName = String(input.lastName || '').trim()
   const limit = Math.max(1, Math.min(100, Number(input.limit || 30)))
   const relationship = input.relationship || 'all'
+  const refresh = Boolean(input.refresh)
   const params = new URLSearchParams({
     first_name: firstName,
     last_name: lastName,
     limit: String(limit),
     relationship,
+    refresh: refresh ? 'true' : 'false',
   })
   return requestJson<PersonaGrantsPayload>(
     `${API_BASE_URL}/v1/persona/grants?${params.toString()}`,

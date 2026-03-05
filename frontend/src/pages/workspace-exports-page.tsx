@@ -1,10 +1,13 @@
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { PageHeader, Row, Stack } from '@/components/primitives'
+import { PageHeader, Row, Section, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { Button } from '@/components/ui'
+import { houseLayout } from '@/lib/house-style'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { PageFrame } from '@/pages/page-frame'
+
+const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 
 export function WorkspaceExportsPage() {
   const navigate = useNavigate()
@@ -13,7 +16,7 @@ export function WorkspaceExportsPage() {
 
   return (
     <PageFrame tone="workspace" hideScaffoldHeader>
-      <Stack space="lg">
+      <Stack data-house-role="page" space="lg">
         <Row
           align="center"
           gap="md"
@@ -28,7 +31,7 @@ export function WorkspaceExportsPage() {
           />
         </Row>
 
-        <section data-house-role="section-content" className="space-y-4">
+        <Section className={`${HOUSE_SECTION_ANCHOR_CLASS} space-y-4`} surface="transparent" inset="none" spaceY="none">
           <div>
             <h2 data-house-role="section-title" className="house-section-title">Export checklist</h2>
             <p data-house-role="section-subtitle" className="house-section-subtitle mt-1">
@@ -46,7 +49,7 @@ export function WorkspaceExportsPage() {
               Open run wizard
             </Button>
           </Stack>
-        </section>
+        </Section>
       </Stack>
     </PageFrame>
   )

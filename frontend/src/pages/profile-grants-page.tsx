@@ -96,6 +96,7 @@ export function ProfileGrantsPage() {
   const [lookupBusy, setLookupBusy] = useState(false)
   const [error, setError] = useState('')
   const [lookupError, setLookupError] = useState('')
+  const [grantSearchQuery, setGrantSearchQuery] = useState('')
   const [payload, setPayload] = useState<PersonaGrantsPayload | null>(null)
   const autoLookupTriggeredRef = useRef(false)
 
@@ -139,6 +140,7 @@ export function ProfileGrantsPage() {
   const runLookup = useCallback(async (input?: {
     firstName?: string
     lastName?: string
+    refresh?: boolean
   }) => {
     const sessionToken = token || getAuthSessionToken()
     if (!sessionToken) {
@@ -159,6 +161,7 @@ export function ProfileGrantsPage() {
         lastName: cleanLastName,
         limit: 40,
         relationship: 'all',
+        refresh: Boolean(input?.refresh),
       })
       setPayload(response)
     } catch (lookupErr) {
@@ -197,6 +200,24 @@ export function ProfileGrantsPage() {
     () => (payload?.items || []).filter((item) => item.relationship_to_person === 'won_by_person'),
     [payload?.items],
   )
+  const filteredMyGrants = useMemo(() => {
+    const query = normalizeNamePart(grantSearchQuery).toLowerCase()
+    if (!query) {
+      return myGrants
+    }
+    return myGrants.filter((item) => {
+      const haystack = [
+        item.display_name,
+        item.description,
+        item.funder.display_name,
+        item.funder_award_id,
+        item.grant_owner_name,
+      ]
+        .map((value) => String(value || '').toLowerCase())
+        .join(' ')
+      return haystack.includes(query)
+    })
+  }, [grantSearchQuery, myGrants])
   const publicationsUnderGrants = useMemo(
     () => (payload?.items || []).filter((item) => item.relationship_to_person !== 'won_by_person'),
     [payload?.items],
@@ -326,7 +347,7 @@ export function ProfileGrantsPage() {
         <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
           <SectionHeader heading="Lookup" className="house-section-header-marker-aligned" />
           <div className="house-separator-main-heading-to-content rounded-md border p-3">
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] md:items-end">
               <label data-house-role="field-group" className="space-y-1">
                 <span data-house-role="field-label" className="text-label font-medium text-[hsl(var(--foreground))]">First name</span>
                 <Input
@@ -352,7 +373,16 @@ export function ProfileGrantsPage() {
                 onClick={() => void runLookup()}
               >
                 {lookupBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-                {lookupBusy ? 'Looking up...' : 'Lookup grants'}
+                {lookupBusy ? 'Loading saved grants...' : 'Load grants'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!canLookup || lookupBusy || initialising}
+                onClick={() => void runLookup({ refresh: true })}
+              >
+                {lookupBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                {lookupBusy ? 'Refreshing...' : 'Refresh from OpenAlex'}
               </Button>
             </div>
             {error ? (
@@ -378,14 +408,21 @@ export function ProfileGrantsPage() {
           <SectionHeader heading="My grants" className="house-section-header-marker-aligned" />
           <div className="house-separator-main-heading-to-content space-y-3">
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Grants identified as awarded to the matched person (using investigator metadata when available).
+              Grants identified as awarded to the matched person (using investigator metadata when available). Search filters this table only.
             </p>
+            <Input
+              value={grantSearchQuery}
+              onChange={(event) => setGrantSearchQuery(event.target.value)}
+              placeholder="Search grant, funder, award ID, or owner"
+              disabled={initialising || lookupBusy}
+              className="max-w-[30rem]"
+            />
             {initialising || lookupBusy ? (
               <div className="rounded-md border px-3 py-5 text-sm text-[hsl(var(--muted-foreground))]">
                 {initialising ? 'Loading profile details...' : 'Looking up grants...'}
               </div>
             ) : (
-              renderGrantTable(myGrants)
+              renderGrantTable(filteredMyGrants)
             )}
           </div>
         </Section>
@@ -394,7 +431,7 @@ export function ProfileGrantsPage() {
           <SectionHeader heading="Publications under grants" className="house-section-header-marker-aligned" />
           <div className="house-separator-main-heading-to-content space-y-3">
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Publications linked to grants where ownership is unclear or attributed to someone else.
+              Publications linked to grants where ownership is unclear or attributed to someone else. This table is loaded from the same lookup response as My grants.
             </p>
             {initialising || lookupBusy ? (
               <div className="rounded-md border px-3 py-5 text-sm text-[hsl(var(--muted-foreground))]">

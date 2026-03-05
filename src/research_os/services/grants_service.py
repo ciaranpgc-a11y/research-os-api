@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
-from research_os.db import PersonaGrantRecord, create_all_tables, session_scope
+from research_os.db import PersonaGrantRecord, User, create_all_tables, session_scope
 
 from research_os.services.api_telemetry_service import record_api_usage_event
 
@@ -630,6 +630,77 @@ def _persist_persona_grant_records(
             )
 
 
+def _load_persisted_persona_grants(
+    *,
+    user_id: str,
+    first_name: str,
+    last_name: str,
+    relationship_filter: str,
+    limit: int,
+) -> dict[str, Any] | None:
+    clean_user_id = _sanitize_text(user_id)
+    if not clean_user_id:
+        return None
+    create_all_tables()
+    with session_scope() as session:
+        user = session.scalar(select(User).where(User.id == clean_user_id))
+        rows = session.scalars(
+            select(PersonaGrantRecord)
+            .where(
+                PersonaGrantRecord.user_id == clean_user_id,
+                PersonaGrantRecord.source_provider == OPENALEX_SOURCE_PROVIDER,
+            )
+            .order_by(
+                PersonaGrantRecord.source_timestamp.desc(),
+                PersonaGrantRecord.updated_at.desc(),
+            )
+        ).all()
+
+    if not rows:
+        return None
+
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        payload = dict(row.raw_payload or {})
+        relation = _sanitize_text(payload.get("relationship_to_person"))
+        if relationship_filter == "won" and relation != "won_by_person":
+            continue
+        if relationship_filter == "published_under" and relation == "won_by_person":
+            continue
+        payload["source"] = _sanitize_text(payload.get("source")) or row.source_provider
+        payload["source_timestamp"] = (
+            row.source_timestamp.astimezone(timezone.utc).isoformat()
+            if row.source_timestamp
+            else _utcnow_iso()
+        )
+        items.append(payload)
+        if len(items) >= limit:
+            break
+
+    if not items:
+        return None
+
+    latest_timestamp = items[0].get("source_timestamp") or _utcnow_iso()
+    user_name = _sanitize_text(user.name) if user and user.name else _sanitize_text(f"{first_name} {last_name}")
+    return {
+        "first_name": first_name,
+        "last_name": last_name,
+        "full_name": _sanitize_text(f"{first_name} {last_name}"),
+        "author": {
+            "openalex_author_id": _sanitize_text(user.openalex_author_id) if user else None,
+            "display_name": user_name or None,
+            "orcid": _sanitize_text(user.orcid_id) if user else None,
+            "works_count": 0,
+            "cited_by_count": 0,
+        },
+        "items": items,
+        "total": len(items),
+        "relationship_filter": relationship_filter,
+        "source": OPENALEX_SOURCE_PROVIDER,
+        "generated_at": latest_timestamp,
+    }
+
+
 def list_openalex_grants_for_person(
     *,
     first_name: str,
@@ -638,6 +709,7 @@ def list_openalex_grants_for_person(
     user_id: str | None = None,
     limit: int = 30,
     relationship: str = "all",
+    refresh: bool = False,
 ) -> dict[str, Any]:
     clean_first_name = _normalize_name_part(first_name)
     clean_last_name = _normalize_name_part(last_name)
@@ -650,6 +722,18 @@ def list_openalex_grants_for_person(
         )
 
     clean_limit = max(1, min(100, _safe_int(limit) or 30))
+    clean_user_id = _sanitize_text(user_id)
+    if clean_user_id and not refresh:
+        persisted_payload = _load_persisted_persona_grants(
+            user_id=clean_user_id,
+            first_name=clean_first_name,
+            last_name=clean_last_name,
+            relationship_filter=relationship_filter,
+            limit=clean_limit,
+        )
+        if persisted_payload:
+            return persisted_payload
+
     mailto = _openalex_mailto(fallback_email=user_email)
     timeout = httpx.Timeout(_openalex_timeout_seconds())
     generated_at = _utcnow_iso()
@@ -862,7 +946,6 @@ def list_openalex_grants_for_person(
             if len(output_items) >= clean_limit:
                 break
 
-    clean_user_id = _sanitize_text(user_id)
     if clean_user_id:
         try:
             _persist_persona_grant_records(

@@ -9,11 +9,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, PanelRightOpen, RefreshCw, Save, Search, UserPlus, X } from 'lucide-react'
 
 import { Button, Input, ScrollArea, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
-import { PageHeader, Row } from '@/components/primitives'
+import { PageHeader, Row, Section, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseActions, houseCollaborators, houseForms, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import { houseActions, houseCollaborators, houseForms, houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import { listCollaborators } from '@/lib/impact-api'
 import {
   downloadLibraryAsset,
@@ -32,6 +32,7 @@ import type {
 
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
 const HOUSE_BUTTON_TEXT_CLASS = houseTypography.buttonText
+const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
 const HOUSE_TABLE_HEAD_CLASS = houseSurfaces.tableHead
 const HOUSE_TABLE_ROW_CLASS = houseSurfaces.tableRow
@@ -568,7 +569,7 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
   const visibleEnd = Math.min(total, page * pageSize)
 
   return (
-    <>
+    <Stack data-house-role="page" space="sm">
       <Row
         align="center"
         gap="md"
@@ -583,6 +584,7 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
         />
       </Row>
 
+      <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
       <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
         <span className="inline-flex items-center rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
           Total {total}
@@ -1039,6 +1041,7 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
       {status ? (
         <p className={cn('px-4 py-3 text-sm text-emerald-700', HOUSE_FIELD_HELPER_CLASS)}>{status}</p>
       ) : null}
-    </>
+      </Section>
+    </Stack>
   )
 }

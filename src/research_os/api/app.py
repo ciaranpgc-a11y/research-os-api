@@ -591,6 +591,19 @@ _AUTH_RATE_LIMIT_EVENTS: dict[str, deque[float]] = defaultdict(deque)
 _AUTH_RATE_LIMIT_LOCK = Lock()
 
 
+def _startup_timeout_seconds(env_name: str, default_seconds: float) -> float:
+    raw = str(os.getenv(env_name, "")).strip()
+    if not raw:
+        return default_seconds
+    try:
+        parsed = float(raw)
+    except Exception:
+        return default_seconds
+    if not parsed or parsed < 1:
+        return default_seconds
+    return min(parsed, 120.0)
+
+
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
     # In local development, allow API startup even if OPENAI_API_KEY is not set so
@@ -606,8 +619,15 @@ async def app_lifespan(_: FastAPI):
         if strict_startup:
             raise
         logger.warning("openai_api_key_missing_at_startup", extra={"detail": str(exc)})
+    bootstrap_seed_timeout_seconds = _startup_timeout_seconds(
+        "AAWE_BOOTSTRAP_SEED_TIMEOUT_SECONDS",
+        10.0,
+    )
     try:
-        seed_result = ensure_bootstrap_user()
+        seed_result = await asyncio.wait_for(
+            asyncio.to_thread(ensure_bootstrap_user),
+            timeout=bootstrap_seed_timeout_seconds,
+        )
         if seed_result:
             logger.info(
                 "bootstrap_user_ready",
@@ -618,6 +638,11 @@ async def app_lifespan(_: FastAPI):
                     "role": seed_result["role"],
                 },
             )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "bootstrap_user_seed_timed_out",
+            extra={"timeout_seconds": bootstrap_seed_timeout_seconds},
+        )
     except Exception as exc:
         logger.warning(
             "bootstrap_user_seed_failed",
@@ -2616,6 +2641,7 @@ def v1_persona_grants(
     last_name: str = Query(min_length=1, max_length=120),
     limit: int = Query(default=30, ge=1, le=100),
     relationship: Literal["all", "won", "published_under"] = Query(default="all"),
+    refresh: bool = Query(default=False),
 ) -> PersonaGrantsResponse | JSONResponse:
     token = _extract_session_token(request)
     if not token:
@@ -2629,6 +2655,7 @@ def v1_persona_grants(
             user_id=str(user.get("id") or "").strip() or None,
             limit=limit,
             relationship=relationship,
+            refresh=refresh,
         )
         return PersonaGrantsResponse(**payload)
     except AuthNotFoundError as exc:

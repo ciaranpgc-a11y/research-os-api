@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { TopBar } from '@/components/layout/top-bar'
-import { PageHeader, Row } from '@/components/primitives'
+import { PageHeader, Row, Section, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { Button, Textarea } from '@/components/ui'
 import { API_BASE_URL } from '@/lib/api'
@@ -132,6 +132,7 @@ const HOUSE_LEFT_BORDER_WORKSPACE_CLASS = getHouseLeftBorderToneClass('workspace
 const HOUSE_NAV_ITEM_WORKSPACE_CLASS = getHouseNavToneClass('workspace')
 const HOUSE_NAV_ITEM_GOVERNANCE_CLASS = getHouseNavToneClass('governance')
 const HOUSE_NAV_ITEM_DATA_CLASS = getHouseNavToneClass('data')
+const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 
 function buildWorkspaceInboxWsUrl(input: { workspaceId: string }): string {
   const base = API_BASE_URL.replace(/\/+$/, '')
@@ -1488,7 +1489,11 @@ export function WorkspaceInboxPage() {
         </aside>
 
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
-          <div data-house-role="content-container" className="house-content-container house-content-container-wide h-full">
+          <Stack
+            data-house-role="page"
+            space="sm"
+            className="house-content-container house-content-container-wide h-full"
+          >
             <Row
               align="center"
               gap="md"
@@ -1498,7 +1503,12 @@ export function WorkspaceInboxPage() {
               <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
               <PageHeader heading="Inbox" className="!ml-0 !mt-0" />
             </Row>
-            <section className={cn('flex h-full min-h-0 flex-col rounded-lg border border-border', houseSurfaces.card)}>
+            <Section
+              className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'flex h-full min-h-0 flex-col rounded-lg border border-border', houseSurfaces.card)}
+              surface="transparent"
+              inset="none"
+              spaceY="none"
+            >
               {isAllConversationsView ? (
                 <>
                   <div className="house-main-heading-block border-b border-border px-4 py-3">
@@ -1725,8 +1735,8 @@ export function WorkspaceInboxPage() {
                   </footer>
                 </>
               )}
-            </section>
-          </div>
+            </Section>
+          </Stack>
         </main>
 
         <aside
