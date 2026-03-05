@@ -33,7 +33,7 @@ python -m uvicorn research_os.api.app:app --reload
 Frontend dev:
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -150,6 +150,7 @@ Recommended API environment variables:
 - `AAWE_BOOTSTRAP_FORCE_PASSWORD` (`1` to reset seeded account password on every startup)
 
 Frontend environment variables:
+- `NODE_VERSION=20` (recommended on Render for the static frontend build; matches `frontend/package.json`)
 - `VITE_API_BASE_URL=https://api.axiomos.studio` (production)
 - `VITE_TEST_ACCOUNT_EMAIL` / `VITE_TEST_ACCOUNT_PASSWORD` (optional auth-page shortcut for test environments).
 

@@ -12,7 +12,10 @@
 - `research-os-ui-achk`
   - Type: `web`
   - Runtime: `static`
-  - Builds from `frontend/` and publishes `frontend/dist`.
+  - Builds from `frontend/` with `npm ci && npm run build`.
+  - Pins `NODE_VERSION=20` to match the frontend engine requirement.
+  - Publishes `frontend/dist`.
+  - Rewrites `/*` to `/index.html` for SPA deep-link refreshes.
 
 The render service names and routes in this file represent the production deployment targets.
 
@@ -25,11 +28,10 @@ blueprint.
 ## Health check endpoint difference
 
 - `render.yaml` uses `/v1/health/ready` for the API service.
-- `local_render.yaml` uses `/v1/health`.
+- `local_render.yaml` also uses `/v1/health/ready`.
 
-These differ by intent:
-- `/v1/health/ready` is stricter and suitable for production readiness checks.
-- `/v1/health` is a simpler liveness-style probe and can be useful for local/quick checks.
+Both currently use the stricter readiness probe:
+- `/v1/health/ready` verifies database connectivity and is suitable for deployment health checks.
 
 ## Deployment flow summary
 

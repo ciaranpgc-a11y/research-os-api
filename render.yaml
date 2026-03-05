@@ -22,6 +22,8 @@ services:
         value: /var/data/data_library_store
       - key: CORS_ALLOW_ORIGINS
         value: http://localhost:5173,https://app.axiomos.studio
+      - key: FRONTEND_BASE_URL
+        value: https://app.axiomos.studio
       - key: AAWE_BOOTSTRAP_EMAIL
         sync: false
       - key: AAWE_BOOTSTRAP_PASSWORD
@@ -38,7 +40,7 @@ services:
     branch: main
     autoDeployTrigger: checksPass
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     staticPublishPath: dist
     headers:
       - path: /index.html
@@ -49,6 +51,8 @@ services:
         source: /*
         destination: /index.html
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: VITE_API_BASE_URL
         value: https://api.axiomos.studio
       - key: VITE_TEST_ACCOUNT_EMAIL

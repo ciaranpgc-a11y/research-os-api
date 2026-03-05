@@ -4,25 +4,33 @@ services:
     runtime: docker
     branch: main
     autoDeployTrigger: commit
-    healthCheckPath: /v1/health
+    healthCheckPath: /v1/health/ready
     envVars:
       - key: OPENAI_API_KEY
         sync: false
       - key: CORS_ALLOW_ORIGINS
         value: http://localhost:5173,https://app.axiomos.studio
+      - key: FRONTEND_BASE_URL
+        value: https://app.axiomos.studio
   - name: research-os-ui-achk
     type: web
     runtime: static
     branch: main
     autoDeployTrigger: commit
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     staticPublishPath: dist
     headers:
       - path: /index.html
         name: Cache-Control
         value: no-cache
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: VITE_API_BASE_URL
         value: https://api.axiomos.studio
 

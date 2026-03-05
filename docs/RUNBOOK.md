@@ -34,7 +34,8 @@
   - Health check: `https://api.axiomos.studio/v1/health/ready`.
 - UI service: `research-os-ui-achk`
   - Uses static runtime.
-  - Builds from `frontend/` using `npm install && npm run build`.
+  - Builds from `frontend/` using `npm ci && npm run build`.
+  - Pins `NODE_VERSION=20` to match `frontend/package.json`.
   - Publishes output from `frontend/dist`.
 
 ## If you feel lost
