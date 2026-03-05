@@ -6858,13 +6858,93 @@ function GenericMetricDrilldownWorkspace({
   }
   const subsectionTitle = subsectionTitleByTab[activeTab] || null
 
+  const headlineMetricTiles = useMemo(() => {
+    if (tile.key !== 'total_citations') {
+      return []
+    }
+
+    const chartData = (tile.chart_data || {}) as Record<string, unknown>
+    const yearsRaw = toNumberArray(chartData.years).map((item) => Math.round(item))
+    const valuesRaw = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+    const pairCount = Math.min(yearsRaw.length, valuesRaw.length)
+    const yearlyPairs = Array.from({ length: pairCount }, (_, index) => ({
+      year: yearsRaw[index],
+      value: valuesRaw[index],
+    })).sort((left, right) => left.year - right.year)
+    
+    const projectedYearRaw = Number(chartData.projected_year)
+    const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
+    const currentYearYtdRaw = Number(chartData.current_year_ytd)
+    
+    const historicalYearPairs = yearlyPairs.filter((item) => item.year !== projectedYear)
+    const historicalValues = historicalYearPairs.map((item) => item.value)
+    const sumNumbers = (items: number[]) => items.reduce((sum, value) => sum + Math.max(0, value), 0)
+    
+    const totalCitations = Math.round(sumNumbers([...historicalValues, Number.isFinite(currentYearYtdRaw) ? currentYearYtdRaw : yearlyPairs.find((item) => item.year === projectedYear)?.value ?? 0]))
+    const meanValueRaw = Number(chartData.mean_value)
+    const meanCitations = Number.isFinite(meanValueRaw) && meanValueRaw > 0
+      ? (Math.round(meanValueRaw * 10) / 10).toFixed(1)
+      : historicalValues.length > 0
+        ? (Math.round((sumNumbers(historicalValues) / historicalValues.length) * 10) / 10).toFixed(1)
+        : '\u2014'
+    
+    const rollingWindowMonthsSum = (windowMonths: number) => {
+      const monthlySeries = toNumberArray(chartData.monthly_values_lifetime || []).map((item) => Math.max(0, item))
+      if (monthlySeries.length > 0) {
+        return sumNumbers(monthlySeries.slice(-windowMonths))
+      }
+      return sumNumbers(historicalYearPairs.slice(-Math.max(1, Math.round(windowMonths / 12))).map((item) => item.value))
+    }
+    
+    const rolling1Year = Math.round(rollingWindowMonthsSum(12))
+    const rolling3Year = Math.round(rollingWindowMonthsSum(36))
+    const rolling5Year = Math.round(rollingWindowMonthsSum(60))
+    const yearToDateValue = Number.isFinite(currentYearYtdRaw) ? currentYearYtdRaw : yearlyPairs.find((item) => item.year === projectedYear)?.value ?? 0
+    
+    const firstCitationYearCandidates = yearlyPairs
+      .filter((entry) => entry.value > 0)
+      .map((entry) => entry.year)
+    const firstCitationYear = firstCitationYearCandidates.length ? Math.min(...firstCitationYearCandidates) : null
+    const activeYears = firstCitationYear !== null ? Math.max(1, projectedYear - firstCitationYear + 1) : 0
+
+    return [
+      { label: 'Total citations', value: formatInt(totalCitations) },
+      { label: 'Active years', value: activeYears > 0 ? formatInt(activeYears) : '\u2014' },
+      { label: 'Mean citations per year', value: meanCitations },
+      { label: 'Last 1 year', value: formatInt(rolling1Year) },
+      { label: 'Last 3 years', value: formatInt(rolling3Year) },
+      { label: 'Last 5 years', value: formatInt(rolling5Year) },
+      { label: 'Year-to-date', value: formatInt(Math.round(yearToDateValue)) },
+    ]
+  }, [tile])
+
   return (
     <div className="house-drilldown-stack-3" data-metric-key={tile.key}>
       <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-drilldown-panel-no-pad')}>
-        <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Headline results</p>
-        </div>
-        <div className="house-drilldown-content-block w-full" />
+        {activeTab !== 'breakdown' && activeTab !== 'trajectory' ? (
+          <div className="house-drilldown-heading-block">
+            <p className="house-drilldown-heading-block-title">Headline results</p>
+          </div>
+        ) : null}
+        {activeTab === 'summary' && headlineMetricTiles.length > 0 ? (
+          <div className="house-drilldown-content-block house-publications-headline-content house-drilldown-heading-content-block w-full">
+            <div
+              className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
+              style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+            >
+              {headlineMetricTiles.map((metricTile) => (
+                <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
+                  <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                    <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : !headlineMetricTiles.length ? (
+          <div className="house-drilldown-content-block w-full" />
+        ) : null}
 
         {subsectionTitle ? (
           <>
