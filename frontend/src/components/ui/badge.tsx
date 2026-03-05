@@ -13,13 +13,13 @@ const badgeVariants = cva(
         outline: 'border-border text-foreground',
         destructive: 'border-transparent bg-destructive text-destructive-foreground',
         positive:
-          'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]',
+          'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-900))]',
         yellow:
-          'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-700))]',
+          'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-900))]',
         intermediate:
           'border-[hsl(var(--tone-warning-500))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-900))]',
         negative:
-          'border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]',
+          'border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-900))]',
         userAdmin:
           'border-[hsl(var(--tone-warning-400))] bg-[linear-gradient(135deg,hsl(var(--tone-warning-100)),hsl(var(--tone-warning-200)))] text-[hsl(var(--tone-warning-900))] shadow-[var(--elevation-2)] ring-1 ring-[hsl(var(--tone-warning-300)/0.75)]',
         userMember:

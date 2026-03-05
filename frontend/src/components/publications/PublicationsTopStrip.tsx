@@ -1278,6 +1278,23 @@ type PublicationLineAxisTick = {
 }
 
 function buildLineTicksFromRange(startMs: number, endMs: number, mode: PublicationsWindowMode): PublicationLineAxisTick[] {
+  // For rolling window modes (3y, 5y), use fixed tick counts for yearly intervals
+  if (mode === '3y' || mode === '5y') {
+    const tickCount = mode === '3y' ? 4 : 6
+    const spanMs = Math.max(1, endMs - startMs)
+    return Array.from({ length: tickCount }, (_, index) => {
+      const position = index / (tickCount - 1)
+      const timeMs = Math.round(startMs + (spanMs * position))
+      const date = new Date(timeMs)
+      return {
+        key: `line-axis-${mode}-${index}`,
+        label: MONTH_SHORT[date.getUTCMonth()],
+        subLabel: String(date.getUTCFullYear()),
+        leftPct: position * 100,
+      }
+    })
+  }
+  
   const spanMonths = getSpanMonths(startMs, endMs)
   const spanYears = spanMonths / 12
   const tickCount = spanYears <= 5
