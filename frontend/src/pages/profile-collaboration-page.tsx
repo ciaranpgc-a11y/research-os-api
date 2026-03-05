@@ -815,7 +815,7 @@ function clampCollaborationTableColumnsToAvailableWidth(input: {
 
   if (totalWidth < containerBudget) {
     let remaining = containerBudget - totalWidth
-    const growOrder: CollaborationTableColumnKey[] = [
+    const growOrder: CollaborationTableColumnKey[] = ([
       'name',
       'institution',
       'domains',
@@ -824,7 +824,7 @@ function clampCollaborationTableColumnsToAvailableWidth(input: {
       'coauthored_works',
       'collaboration_score',
       'last_year',
-    ].filter((column): column is CollaborationTableColumnKey => visibleColumns.includes(column))
+    ] as CollaborationTableColumnKey[]).filter((column) => visibleColumns.includes(column))
 
     while (remaining > 0) {
       const growColumns = growOrder.filter(
