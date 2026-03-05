@@ -6846,10 +6846,18 @@ function TotalPublicationsDrilldownWorkspace({
 function GenericMetricDrilldownWorkspace({
   tile,
   activeTab,
+  animateCharts = true,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
+  animateCharts?: boolean
 }) {
+  const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
+  const [articleTypeTrendsExpanded, setArticleTypeTrendsExpanded] = useState(true)
+  const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
+  const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
+
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
     breakdown: 'Breakdown results',
     trajectory: 'Trajectory results',
@@ -6857,6 +6865,47 @@ function GenericMetricDrilldownWorkspace({
     methods: 'Methods metadata',
   }
   const subsectionTitle = subsectionTitleByTab[activeTab] || null
+
+  const publicationTrendsWindowThumbStyle = useMemo(() => {
+    const optionValues = PUBLICATIONS_WINDOW_OPTIONS.map((opt) => opt.value)
+    const selectedIndex = optionValues.indexOf(publicationTrendsWindowMode)
+    const validIndex = selectedIndex >= 0 ? selectedIndex : 0
+    const totalOptions = PUBLICATIONS_WINDOW_OPTIONS.length
+    const thumbPercent = (validIndex * 100) / (totalOptions - 1 || 1)
+    return {
+      left: `${thumbPercent}%`,
+    }
+  }, [publicationTrendsWindowMode])
+
+  const publicationDrilldownRecords = useMemo(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const publications = Array.isArray(drilldown.publications) ? drilldown.publications : []
+    return publications
+      .map((item) => {
+        if (!item || typeof item !== 'object') {
+          return null
+        }
+        const row = item as Record<string, unknown>
+        const title = String(row.title || '').trim()
+        const role = String(row.role || '').trim()
+        const type = String(row.type || '').trim()
+        const publicationType = String(row.work_type || row.workType || row.publication_type || row.publicationType || '').trim()
+        const articleType = String(row.article_type || row.articleType || '').trim()
+        const venue = String(row.venue || row.journal || '').trim()
+        const citationsRaw = Number(row.citations ?? row.cited_by_count ?? 0)
+        const citations = Number.isFinite(citationsRaw) ? Math.max(0, Math.round(citationsRaw)) : 0
+        return {
+          title,
+          role,
+          type,
+          publication_type: publicationType,
+          article_type: articleType,
+          venue,
+          citations,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+  }, [tile.drilldown])
 
   const headlineMetricTiles = useMemo(() => {
     if (tile.key !== 'total_citations') {
@@ -6944,6 +6993,156 @@ function GenericMetricDrilldownWorkspace({
           </div>
         ) : !headlineMetricTiles.length ? (
           <div className="house-drilldown-content-block w-full" />
+        ) : null}
+
+        {activeTab === 'summary' ? (
+          <>
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Publication trends</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={publicationTrendsExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setPublicationTrendsExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {publicationTrendsExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
+                    <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+                      <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                        <div
+                          className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
+                          data-stop-tile-open="true"
+                          data-ui="publications-trends-window-toggle"
+                          data-house-role="chart-toggle"
+                          style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
+                        >
+                          <span
+                            className={HOUSE_TOGGLE_THUMB_CLASS}
+                            style={publicationTrendsWindowThumbStyle}
+                            aria-hidden="true"
+                          />
+                          {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+                            <button
+                              key={`pub-trends-window-${option.value}`}
+                              type="button"
+                              data-stop-tile-open="true"
+                              className={cn(
+                                HOUSE_TOGGLE_BUTTON_CLASS,
+                                publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                              )}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                if (publicationTrendsWindowMode === option.value) {
+                                  return
+                                }
+                                setPublicationTrendsWindowMode(option.value)
+                              }}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              aria-pressed={publicationTrendsWindowMode === option.value}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <PublicationTrendsVisualToggle
+                      value={publicationTrendsVisualMode}
+                      onChange={setPublicationTrendsVisualMode}
+                    />
+                  </div>
+
+                  <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
+                    <PublicationsPerYearChart
+                      tile={tile}
+                      animate={animateCharts}
+                      showAxes
+                      enableWindowToggle
+                      showPeriodHint
+                      showCurrentPeriodSemantic
+                      useCompletedMonthWindowLabels
+                      autoScaleByWindow
+                      showMeanLine
+                      showMeanValueLabel
+                      subtleGrid
+                      activeWindowMode={publicationTrendsWindowMode}
+                      onWindowModeChange={setPublicationTrendsWindowMode}
+                      visualMode={publicationTrendsVisualMode}
+                      onVisualModeChange={setPublicationTrendsVisualMode}
+                      showWindowToggle={false}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Article type trends</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={articleTypeTrendsExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setArticleTypeTrendsExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {articleTypeTrendsExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className="house-drilldown-content-block w-full">
+                    <PublicationCategoryDistributionChart
+                      publications={publicationDrilldownRecords}
+                      dimension="article"
+                      xAxisLabel="Article type"
+                      emptyLabel="No article type data"
+                      animate={animateCharts}
+                      enableValueModeToggle
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Publication type trends</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={publicationTypeTrendsExpanded}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setPublicationTypeTrendsExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {publicationTypeTrendsExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className="house-drilldown-content-block w-full">
+                    <PublicationCategoryDistributionChart
+                      publications={publicationDrilldownRecords}
+                      dimension="publication"
+                      xAxisLabel="Publication type"
+                      emptyLabel="No publication type data"
+                      animate={animateCharts}
+                      enableValueModeToggle
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </>
         ) : null}
 
         {subsectionTitle ? (
@@ -8633,6 +8832,7 @@ export function PublicationsTopStrip({
                 <GenericMetricDrilldownWorkspace
                   tile={activeTile}
                   activeTab={activeDrilldownTab}
+                  animateCharts={drawerOpen && activeDrilldownTab === 'summary'}
                 />
               )}
             </DrilldownSheet.TabPanel>
