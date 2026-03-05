@@ -287,6 +287,10 @@ def _normalize_email(value: str | None) -> str | None:
     return clean
 
 
+def _email_identity_key(value: str | None) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip().lower())
+
+
 def _normalize_domains(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -691,6 +695,63 @@ def _find_duplicate_warnings(
     return warnings[:3]
 
 
+def _match_existing_collaborator_identity(
+    session,
+    *,
+    user_id: str,
+    full_name: str,
+    orcid_id: str | None,
+    openalex_author_id: str | None,
+    email: str | None,
+    primary_institution: str | None,
+    exclude_collaborator_id: str | None = None,
+    name_similarity_threshold: float = 0.92,
+    name_only_similarity_threshold: float = 0.97,
+) -> Collaborator | None:
+    candidate_orcid = _safe_validate_orcid(orcid_id)
+    candidate_openalex = _normalize_openalex_author_id(openalex_author_id)
+    candidate_openalex_key = _openalex_identity_key(candidate_openalex)
+    candidate_email_key = _email_identity_key(email)
+    candidate_name = _normalize_name(str(full_name or ""))
+    candidate_institution = re.sub(
+        r"\s+", " ", str(primary_institution or "").strip()
+    ) or None
+
+    rows = session.scalars(
+        select(Collaborator).where(Collaborator.owner_user_id == user_id)
+    ).all()
+
+    for row in rows:
+        if exclude_collaborator_id and str(row.id) == str(exclude_collaborator_id):
+            continue
+        if candidate_orcid and row.orcid_id:
+            if _safe_validate_orcid(row.orcid_id) == candidate_orcid:
+                return row
+        if candidate_openalex_key:
+            if _openalex_identity_key(row.openalex_author_id) == candidate_openalex_key:
+                return row
+        if candidate_email_key and _email_identity_key(row.email) == candidate_email_key:
+            return row
+
+    for row in rows:
+        if exclude_collaborator_id and str(row.id) == str(exclude_collaborator_id):
+            continue
+        similarity = _name_similarity(candidate_name, row.full_name)
+        if similarity < name_similarity_threshold:
+            continue
+        if candidate_institution and row.primary_institution:
+            inst_similarity = _affiliation_similarity(
+                candidate_institution,
+                row.primary_institution,
+            )
+            if inst_similarity >= 0.82 or similarity >= name_only_similarity_threshold:
+                return row
+            continue
+        if similarity >= name_only_similarity_threshold:
+            return row
+    return None
+
+
 def _collab_sort_key(item: dict[str, Any], sort: str) -> tuple:
     metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
     normalized = (sort or "name").strip().lower()
@@ -780,6 +841,23 @@ def create_collaborator_for_user(
     )
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
+        existing = _match_existing_collaborator_identity(
+            session,
+            user_id=user_id,
+            full_name=full_name,
+            orcid_id=orcid_id,
+            openalex_author_id=_normalize_openalex_author_id(
+                payload.get("openalex_author_id")
+            ),
+            email=_normalize_email(payload.get("email")),
+            primary_institution=primary_institution,
+            exclude_collaborator_id=None,
+        )
+        if existing is not None:
+            raise CollaborationValidationError(
+                "Collaborator already exists for this identity "
+                f"('{existing.full_name}', id={existing.id})."
+            )
         warnings = _find_duplicate_warnings(
             session,
             user_id=user_id,
@@ -912,6 +990,21 @@ def update_collaborator_for_user(
             )
         if "notes" in payload:
             collaborator.notes = str(payload.get("notes") or "").strip() or None
+        existing = _match_existing_collaborator_identity(
+            session,
+            user_id=user_id,
+            full_name=collaborator.full_name,
+            orcid_id=collaborator.orcid_id,
+            openalex_author_id=collaborator.openalex_author_id,
+            email=collaborator.email,
+            primary_institution=collaborator.primary_institution,
+            exclude_collaborator_id=collaborator_id,
+        )
+        if existing is not None:
+            raise CollaborationValidationError(
+                "Collaborator update would create a duplicate identity "
+                f"with '{existing.full_name}' (id={existing.id})."
+            )
         warnings = _find_duplicate_warnings(
             session,
             user_id=user_id,
@@ -2304,43 +2397,20 @@ def _match_existing_for_import(
     user_id: str,
     candidate: dict[str, Any],
 ) -> Collaborator | None:
-    candidate_orcid = _safe_validate_orcid(candidate.get("orcid_id"))
-    candidate_openalex = _normalize_openalex_author_id(
-        str(candidate.get("openalex_author_id") or "").strip() or None
+    return _match_existing_collaborator_identity(
+        session,
+        user_id=user_id,
+        full_name=str(candidate.get("full_name") or "").strip(),
+        orcid_id=_safe_validate_orcid(candidate.get("orcid_id")),
+        openalex_author_id=_normalize_openalex_author_id(
+            str(candidate.get("openalex_author_id") or "").strip() or None
+        ),
+        email=None,
+        primary_institution=str(candidate.get("primary_institution") or "").strip() or None,
+        exclude_collaborator_id=None,
+        name_similarity_threshold=0.92,
+        name_only_similarity_threshold=0.92,
     )
-    candidate_openalex_key = _openalex_identity_key(candidate_openalex)
-    candidate_name = str(candidate.get("full_name") or "").strip()
-    candidate_inst = str(candidate.get("primary_institution") or "").strip()
-    if candidate_orcid:
-        found = session.scalars(
-            select(Collaborator).where(
-                Collaborator.owner_user_id == user_id,
-                Collaborator.orcid_id == candidate_orcid,
-            )
-        ).first()
-        if found is not None:
-            return found
-    if candidate_openalex:
-        found = session.scalars(
-            select(Collaborator).where(
-                Collaborator.owner_user_id == user_id,
-                Collaborator.openalex_author_id == candidate_openalex,
-            )
-        ).first()
-        if found is not None:
-            return found
-    rows = session.scalars(
-        select(Collaborator).where(Collaborator.owner_user_id == user_id)
-    ).all()
-    if candidate_openalex_key:
-        for row in rows:
-            if _openalex_identity_key(row.openalex_author_id) == candidate_openalex_key:
-                return row
-    for row in rows:
-        if _name_similarity(candidate_name, row.full_name) < 0.92:
-            continue
-        return row
-    return None
 
 
 def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:

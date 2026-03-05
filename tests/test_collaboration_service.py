@@ -24,6 +24,7 @@ from research_os.services.collaboration_service import (
     import_collaborators_from_openalex,
     list_collaborators_for_user,
     run_collaboration_metrics_scheduler_tick,
+    update_collaborator_for_user,
     validate_orcid_id,
 )
 
@@ -99,6 +100,77 @@ def test_collaborator_crud_is_scoped_to_user(monkeypatch, tmp_path) -> None:
         assert True
     else:  # pragma: no cover
         raise AssertionError("Expected cross-user lookup to be blocked.")
+
+
+def test_create_collaborator_blocks_duplicate_identity(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="duplicate-create@example.com")
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service.enqueue_collaboration_metrics_recompute",
+        lambda **_: True,
+    )
+
+    create_collaborator_for_user(
+        user_id=user_id,
+        payload={
+            "full_name": "Alice Example",
+            "orcid_id": "0000-0002-1825-0097",
+            "primary_institution": "AAWE Institute",
+        },
+    )
+
+    try:
+        create_collaborator_for_user(
+            user_id=user_id,
+            payload={
+                "full_name": "Alice Example",
+                "orcid_id": "0000-0002-1825-0097",
+                "primary_institution": "AAWE Institute",
+            },
+        )
+    except CollaborationValidationError as exc:
+        assert "already exists" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected duplicate collaborator creation to be blocked.")
+
+
+def test_update_collaborator_blocks_identity_collision(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="duplicate-update@example.com")
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service.enqueue_collaboration_metrics_recompute",
+        lambda **_: True,
+    )
+
+    first = create_collaborator_for_user(
+        user_id=user_id,
+        payload={
+            "full_name": "Alice Example",
+            "orcid_id": "0000-0002-1825-0097",
+            "primary_institution": "AAWE Institute",
+        },
+    )
+    second = create_collaborator_for_user(
+        user_id=user_id,
+        payload={
+            "full_name": "Bob Example",
+            "orcid_id": "0000-0001-5109-3700",
+            "primary_institution": "Elsewhere Institute",
+        },
+    )
+
+    try:
+        update_collaborator_for_user(
+            user_id=user_id,
+            collaborator_id=second["id"],
+            payload={"orcid_id": "0000-0002-1825-0097"},
+        )
+    except CollaborationValidationError as exc:
+        assert "duplicate" in str(exc).lower()
+    else:  # pragma: no cover
+        raise AssertionError("Expected duplicate collaborator update to be blocked.")
 
 
 def test_import_mapping_logic_matches_orcid_openalex_and_name(
