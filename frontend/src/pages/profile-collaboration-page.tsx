@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, Hammer, Lightbulb, Search, Settings, Share2, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Lightbulb, Search, Settings, Share2, Sparkles } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
@@ -126,6 +126,7 @@ type CollaborationSortField =
 type SortDirection = 'asc' | 'desc'
 type CollaborationTableColumnPreference = {
   visible: boolean
+  width: number
 }
 
 type MockMetricsSeed = Pick<
@@ -187,14 +188,34 @@ const COLLABORATION_TABLE_COLUMN_DEFAULTS: Record<
   CollaborationTableColumnKey,
   CollaborationTableColumnPreference
 > = {
-  name: { visible: true },
-  institution: { visible: true },
-  domains: { visible: true },
-  relationship: { visible: true },
-  activity: { visible: true },
-  last_year: { visible: true },
-  coauthored_works: { visible: true },
-  collaboration_score: { visible: true },
+  name: { visible: true, width: 260 },
+  institution: { visible: true, width: 240 },
+  domains: { visible: true, width: 220 },
+  relationship: { visible: true, width: 170 },
+  activity: { visible: true, width: 150 },
+  last_year: { visible: true, width: 120 },
+  coauthored_works: { visible: true, width: 160 },
+  collaboration_score: { visible: true, width: 170 },
+}
+const COLLABORATION_TABLE_COLUMN_MIN_WIDTH: Record<CollaborationTableColumnKey, number> = {
+  name: 180,
+  institution: 180,
+  domains: 170,
+  relationship: 130,
+  activity: 120,
+  last_year: 96,
+  coauthored_works: 120,
+  collaboration_score: 130,
+}
+const COLLABORATION_TABLE_COLUMN_MAX_WIDTH: Record<CollaborationTableColumnKey, number> = {
+  name: 520,
+  institution: 460,
+  domains: 420,
+  relationship: 260,
+  activity: 240,
+  last_year: 180,
+  coauthored_works: 220,
+  collaboration_score: 240,
 }
 
 function toFormState(value: CollaboratorPayload): CollaboratorFormState {
@@ -581,6 +602,15 @@ function collaborationSortLabel(value: CollaborationSortField): string {
     return 'Relationship'
   }
   return 'Activity'
+}
+
+function clampCollaborationTableColumnWidth(
+  column: CollaborationTableColumnKey,
+  value: number,
+): number {
+  const min = COLLABORATION_TABLE_COLUMN_MIN_WIDTH[column]
+  const max = COLLABORATION_TABLE_COLUMN_MAX_WIDTH[column]
+  return Math.max(min, Math.min(max, Math.round(Number(value) || COLLABORATION_TABLE_COLUMN_DEFAULTS[column].width)))
 }
 
 function normalizeHeatmapMode(value: string | null | undefined): HeatmapMode {

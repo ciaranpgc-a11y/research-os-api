@@ -1278,19 +1278,52 @@ type PublicationLineAxisTick = {
 }
 
 function buildLineTicksFromRange(startMs: number, endMs: number, mode: PublicationsWindowMode): PublicationLineAxisTick[] {
-  // For rolling window modes (3y, 5y), use fixed tick counts for yearly intervals
+  // For rolling window modes (3y, 5y), position ticks at actual year boundaries
   if (mode === '3y' || mode === '5y') {
     const tickCount = mode === '3y' ? 4 : 6
     const spanMs = Math.max(1, endMs - startMs)
-    return Array.from({ length: tickCount }, (_, index) => {
-      const position = index / (tickCount - 1)
-      const timeMs = Math.round(startMs + (spanMs * position))
+    
+    // Find the actual year boundaries within the time range
+    const startDate = new Date(startMs)
+    const endDate = new Date(endMs)
+    const startYear = startDate.getUTCFullYear()
+    const endYear = endDate.getUTCFullYear()
+    
+    // Generate positions for each year from startYear to endYear
+    const yearPositions = []
+    for (let year = startYear; year <= endYear; year += 1) {
+      const yearStartMs = new Date(Date.UTC(year, 0, 1)).getTime()
+      const position = Math.max(0, Math.min(1, (yearStartMs - startMs) / spanMs))
+      yearPositions.push({ year, position })
+    }
+    
+    // Take evenly distributed ticks from the year positions
+    const positions: Array<{ year: number; position: number }> = []
+    if (yearPositions.length > 0) {
+      const step = Math.max(1, Math.floor((yearPositions.length - 1) / (tickCount - 1)))
+      for (let i = 0; i < yearPositions.length; i += step) {
+        positions.push(yearPositions[i])
+      }
+      // Ensure we have exactly tickCount items
+      while (positions.length < tickCount && yearPositions.length > 0) {
+        const lastPos = positions[positions.length - 1]
+        const remaining = yearPositions.filter(yp => yp.year > lastPos.year)
+        if (remaining.length > 0) {
+          positions.push(remaining[Math.floor(remaining.length / 2)])
+        } else {
+          break
+        }
+      }
+    }
+    
+    return positions.map((pos, index) => {
+      const timeMs = Math.round(startMs + (spanMs * pos.position))
       const date = new Date(timeMs)
       return {
         key: `line-axis-${mode}-${index}`,
         label: MONTH_SHORT[date.getUTCMonth()],
         subLabel: String(date.getUTCFullYear()),
-        leftPct: position * 100,
+        leftPct: pos.position * 100,
       }
     })
   }
@@ -3284,15 +3317,14 @@ export function PublicationsPerYearChart({
     }
     const startMs = lineSeriesModel.timelineStartMs
     const endMs = lineSeriesModel.timelineEndMs
-    const ticks = (startMs == null || endMs == null || endMs <= startMs)
-      ? buildLineModeTicksForWindow(effectiveWindowMode)
-      : buildLineTicksFromRange(
-        startMs,
-        endMs,
-        effectiveWindowMode,
-      )
-    console.debug(`[PubChart] lineModeXAxisTicks: mode=${effectiveWindowMode}, hasTimeline=${startMs != null && endMs != null}, count=${ticks.length}`, ticks.slice(0, 3))
-    return ticks
+    if (startMs == null || endMs == null || endMs <= startMs) {
+      return buildLineModeTicksForWindow(effectiveWindowMode)
+    }
+    return buildLineTicksFromRange(
+      startMs,
+      endMs,
+      effectiveWindowMode,
+    )
   }, [
     buildLineModeTicksForWindow,
     effectiveVisualMode,
@@ -3347,10 +3379,8 @@ export function PublicationsPerYearChart({
       return []
     }
     // Draw gridlines at all tick positions for proper alignment with labels
-    const gridPercents = lineModeXAxisTicks.map((tick) => tick.leftPct)
-    console.debug(`[PubChart] lineModeVerticalGridPercents computed: ${gridPercents.length} values, mode=${effectiveWindowMode}, ticks=${lineModeXAxisTicks.length}`, gridPercents)
-    return gridPercents
-  }, [effectiveVisualMode, lineModeXAxisTicks, effectiveWindowMode])
+    return lineModeXAxisTicks.map((tick) => tick.leftPct)
+  }, [effectiveVisualMode, lineModeXAxisTicks])
 
   if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
@@ -3516,8 +3546,8 @@ export function PublicationsPerYearChart({
                     y1="0"
                     x2={String(leftPct)}
                     y2="100"
-                    stroke="#FF0000"
-                    strokeWidth="2"
+                    stroke={`hsl(var(--stroke-soft) / 0.76)`}
+                    strokeWidth="1"
                     vectorEffect="non-scaling-stroke"
                   />
                 ))}
@@ -3528,8 +3558,8 @@ export function PublicationsPerYearChart({
                     y1="0"
                     x2="100"
                     y2="100"
-                    stroke="#FF0000"
-                    strokeWidth="2"
+                    stroke={`hsl(var(--stroke-soft) / 0.76)`}
+                    strokeWidth="1"
                     vectorEffect="non-scaling-stroke"
                   />
                 ) : null}
