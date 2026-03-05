@@ -168,7 +168,6 @@ const HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS = houseDrilldown.collapsibleEntit
 const WORKSPACE_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
 const HOUSE_SECTION_TOOLS_CLASS = houseActions.sectionTools
 const HOUSE_SECTION_TOOLS_WORKSPACE_CLASS = houseActions.sectionToolsWorkspace
-const HOUSE_SECTION_TOOLS_DATA_CLASS = houseActions.sectionToolsData
 const HOUSE_SECTION_TOOL_BUTTON_CLASS = houseActions.sectionToolButton
 const HOUSE_SECTION_TOOL_TOGGLE_CLASS = houseActions.sectionToolToggle
 const HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS = houseActions.sectionToolToggleOn
