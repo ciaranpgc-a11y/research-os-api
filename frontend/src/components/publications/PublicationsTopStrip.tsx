@@ -3509,24 +3509,24 @@ export function PublicationsPerYearChart({
                 {lineModeVerticalGridPercents.map((leftPct, index) => (
                   <line
                     key={`pub-line-grid-${index}`}
-                    x1={leftPct}
-                    y1={0}
-                    x2={leftPct}
-                    y2={100}
-                    stroke={`hsl(var(--stroke-soft) / 0.76)`}
-                    strokeWidth={1}
+                    x1={String(leftPct)}
+                    y1="0"
+                    x2={String(leftPct)}
+                    y2="100"
+                    stroke={`hsl(var(--stroke-soft) / 0.5)`}
+                    strokeWidth="1.2"
                     vectorEffect="non-scaling-stroke"
                   />
                 ))}
                 {enableWindowToggle ? (
                   <line
                     key="pub-line-grid-right"
-                    x1={100}
-                    y1={0}
-                    x2={100}
-                    y2={100}
-                    stroke={`hsl(var(--stroke-soft) / 0.76)`}
-                    strokeWidth={1}
+                    x1="100"
+                    y1="0"
+                    x2="100"
+                    y2="100"
+                    stroke={`hsl(var(--stroke-soft) / 0.5)`}
+                    strokeWidth="1.2"
                     vectorEffect="non-scaling-stroke"
                   />
                 ) : null}

@@ -161,11 +161,11 @@ const COLLABORATION_TABLE_COLUMN_DEFINITIONS: Record<
   name: { label: 'Name', headerClassName: 'text-left', cellClassName: 'align-top font-medium whitespace-normal break-words leading-tight' },
   institution: { label: 'Institution', headerClassName: 'text-left', cellClassName: 'align-top whitespace-normal break-words leading-tight' },
   domains: { label: 'Domains', headerClassName: 'text-left', cellClassName: 'align-top whitespace-normal break-words leading-tight' },
-  relationship: { label: 'Relationship', headerClassName: 'text-left', cellClassName: 'align-top whitespace-nowrap' },
-  activity: { label: 'Activity', headerClassName: 'text-left', cellClassName: 'align-top whitespace-nowrap' },
-  last_year: { label: 'Last year', headerClassName: 'text-left', cellClassName: 'align-top whitespace-nowrap' },
-  coauthored_works: { label: 'Coauthored works', headerClassName: 'text-right', cellClassName: 'align-top text-right whitespace-nowrap' },
-  collaboration_score: { label: 'Collaboration score', headerClassName: 'text-right', cellClassName: 'align-top text-right whitespace-nowrap tabular-nums' },
+  relationship: { label: 'Relationship', headerClassName: 'text-center', cellClassName: 'align-top text-center whitespace-nowrap' },
+  activity: { label: 'Activity', headerClassName: 'text-center', cellClassName: 'align-top text-center whitespace-nowrap' },
+  last_year: { label: 'Last year', headerClassName: 'text-center', cellClassName: 'align-top text-center whitespace-nowrap' },
+  coauthored_works: { label: 'Coauthored works', headerClassName: 'text-center', cellClassName: 'align-top text-center whitespace-nowrap' },
+  collaboration_score: { label: 'Collaboration score', headerClassName: 'text-center', cellClassName: 'align-top text-center whitespace-nowrap tabular-nums' },
 }
 const COLLABORATION_TABLE_COLUMN_SORT_FIELD: Partial<Record<CollaborationTableColumnKey, 'name' | 'works' | 'last_collaboration_year' | 'strength'>> = {
   name: 'name',
@@ -2518,7 +2518,7 @@ export function ProfileCollaborationPage() {
                           }
                           if (columnKey === 'relationship') {
                             return (
-                              <TableCell key={`${item.id}-relationship`} className="house-table-cell-text align-top whitespace-nowrap">
+                              <TableCell key={`${item.id}-relationship`} className="house-table-cell-text align-top text-center whitespace-nowrap">
                                 <Badge size="sm" variant={relationshipTone(resolveRelationshipTier(item.metrics))}>
                                   {resolveRelationshipTier(item.metrics)}
                                 </Badge>
@@ -2527,7 +2527,7 @@ export function ProfileCollaborationPage() {
                           }
                           if (columnKey === 'activity') {
                             return (
-                              <TableCell key={`${item.id}-activity`} className="house-table-cell-text align-top whitespace-nowrap">
+                              <TableCell key={`${item.id}-activity`} className="house-table-cell-text align-top text-center whitespace-nowrap">
                                 <Badge size="sm" variant={activityTone(resolveActivityStatus(item.metrics))}>
                                   {resolveActivityStatus(item.metrics)}
                                 </Badge>
@@ -2536,14 +2536,14 @@ export function ProfileCollaborationPage() {
                           }
                           if (columnKey === 'last_year') {
                             return (
-                              <TableCell key={`${item.id}-last-year`} className="house-table-cell-text align-top whitespace-nowrap">
+                              <TableCell key={`${item.id}-last-year`} className="house-table-cell-text align-top text-center whitespace-nowrap">
                                 {item.metrics.last_collaboration_year ?? '-'}
                               </TableCell>
                             )
                           }
                           if (columnKey === 'coauthored_works') {
                             return (
-                              <TableCell key={`${item.id}-works`} className="house-table-cell-text align-top text-right whitespace-nowrap">
+                              <TableCell key={`${item.id}-works`} className="house-table-cell-text align-top text-center whitespace-nowrap">
                                 {item.metrics.coauthored_works_count}
                               </TableCell>
                             )
@@ -2552,7 +2552,7 @@ export function ProfileCollaborationPage() {
                             <TableCell
                               key={`${item.id}-collaboration-score`}
                               className={cn(
-                                'house-table-cell-text align-top text-right whitespace-nowrap tabular-nums',
+                                'house-table-cell-text align-top text-center whitespace-nowrap tabular-nums',
                                 collaborationTableMetricHighlights && 'font-semibold text-[hsl(var(--tone-accent-800))]',
                               )}
                             >
