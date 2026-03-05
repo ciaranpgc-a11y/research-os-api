@@ -1278,54 +1278,49 @@ type PublicationLineAxisTick = {
 }
 
 function buildLineTicksFromRange(startMs: number, endMs: number, mode: PublicationsWindowMode): PublicationLineAxisTick[] {
-  // For rolling window modes (3y, 5y), position ticks at actual year boundaries
+  // For rolling window modes (3y, 5y), use only real year-boundary ticks.
   if (mode === '3y' || mode === '5y') {
-    const tickCount = mode === '3y' ? 4 : 6
     const spanMs = Math.max(1, endMs - startMs)
-    
-    // Find the actual year boundaries within the time range
     const startDate = new Date(startMs)
     const endDate = new Date(endMs)
     const startYear = startDate.getUTCFullYear()
     const endYear = endDate.getUTCFullYear()
-    
-    // Generate positions for each year from startYear to endYear
-    const yearPositions = []
+
+    const yearBoundaryTicks: PublicationLineAxisTick[] = []
     for (let year = startYear; year <= endYear; year += 1) {
       const yearStartMs = new Date(Date.UTC(year, 0, 1)).getTime()
+      if (yearStartMs < startMs || yearStartMs > endMs) {
+        continue
+      }
       const position = Math.max(0, Math.min(1, (yearStartMs - startMs) / spanMs))
-      yearPositions.push({ year, position })
+      yearBoundaryTicks.push({
+        key: `line-axis-${mode}-${year}`,
+        label: String(year),
+        subLabel: undefined,
+        leftPct: position * 100,
+      })
     }
-    
-    // Take evenly distributed ticks from the year positions
-    const positions: Array<{ year: number; position: number }> = []
-    if (yearPositions.length > 0) {
-      const step = Math.max(1, Math.floor((yearPositions.length - 1) / (tickCount - 1)))
-      for (let i = 0; i < yearPositions.length; i += step) {
-        positions.push(yearPositions[i])
-      }
-      // Ensure we have exactly tickCount items
-      while (positions.length < tickCount && yearPositions.length > 0) {
-        const lastPos = positions[positions.length - 1]
-        const remaining = yearPositions.filter(yp => yp.year > lastPos.year)
-        if (remaining.length > 0) {
-          positions.push(remaining[Math.floor(remaining.length / 2)])
-        } else {
-          break
-        }
-      }
+
+    if (yearBoundaryTicks.length > 0) {
+      return yearBoundaryTicks
     }
-    
-    return positions.map((pos, index) => {
-      const timeMs = Math.round(startMs + (spanMs * pos.position))
-      const date = new Date(timeMs)
-      return {
-        key: `line-axis-${mode}-${index}`,
-        label: MONTH_SHORT[date.getUTCMonth()],
-        subLabel: String(date.getUTCFullYear()),
-        leftPct: pos.position * 100,
-      }
-    })
+
+    const fallbackStartYear = startDate.getUTCFullYear()
+    const fallbackEndYear = endDate.getUTCFullYear()
+    return [
+      {
+        key: `line-axis-${mode}-fallback-start`,
+        label: String(fallbackStartYear),
+        subLabel: undefined,
+        leftPct: 0,
+      },
+      {
+        key: `line-axis-${mode}-fallback-end`,
+        label: String(fallbackEndYear),
+        subLabel: undefined,
+        leftPct: 100,
+      },
+    ]
   }
   
   const spanMonths = getSpanMonths(startMs, endMs)
@@ -3551,18 +3546,6 @@ export function PublicationsPerYearChart({
                     vectorEffect="non-scaling-stroke"
                   />
                 ))}
-                {enableWindowToggle ? (
-                  <line
-                    key="pub-line-grid-right"
-                    x1="100"
-                    y1="0"
-                    x2="100"
-                    y2="100"
-                    stroke={`hsl(var(--stroke-soft) / 0.76)`}
-                    strokeWidth="1"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ) : null}
               </svg>
             ) : null}
           </div>
