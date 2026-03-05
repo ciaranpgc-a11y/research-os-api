@@ -109,6 +109,49 @@ def _institution_similarity(left: str | None, right: str | None) -> float:
     return SequenceMatcher(None, left_norm, right_norm).ratio()
 
 
+def _parse_name_parts(name: str) -> tuple[str, list[str]]:
+    """Parse a name into (surname, [given_name_parts])."""
+    clean = re.sub(r"\s+", " ", str(name or "").strip())
+    if not clean:
+        return ("", [])
+    if "," in clean:
+        parts = clean.split(",", 1)
+        surname = parts[0].strip().lower()
+        given_str = parts[1].strip().lower()
+        given = [p.rstrip(".") for p in given_str.split() if p.rstrip(".")]
+    else:
+        tokens = clean.lower().split()
+        if len(tokens) <= 1:
+            return (tokens[0] if tokens else "", [])
+        surname = tokens[-1]
+        given = [p.rstrip(".") for p in tokens[:-1] if p.rstrip(".")]
+    return (surname, given)
+
+
+def _name_initial_compatible(a: str, b: str) -> bool:
+    """Check if two names could be the same person via surname + initial match."""
+    surname_a, given_a = _parse_name_parts(a)
+    surname_b, given_b = _parse_name_parts(b)
+    if not surname_a or not surname_b:
+        return False
+    if surname_a != surname_b:
+        if SequenceMatcher(None, surname_a, surname_b).ratio() < 0.85:
+            return False
+    if not given_a or not given_b:
+        return False
+    if given_a[0][0] != given_b[0][0]:
+        return False
+    shorter = min(len(given_a), len(given_b))
+    for i in range(1, shorter):
+        pa, pb = given_a[i], given_b[i]
+        if len(pa) > 1 and len(pb) > 1:
+            if SequenceMatcher(None, pa, pb).ratio() < 0.7:
+                return False
+        elif pa[0] != pb[0]:
+            return False
+    return True
+
+
 def merge_duplicate_collaborators(user_id: str | None = None, dry_run: bool = False):
     """
     Find and merge duplicate collaborator records.
@@ -183,15 +226,27 @@ def merge_duplicate_collaborators(user_id: str | None = None, dry_run: bool = Fa
                     right_id = str(right.id)
                     if find(left_id) == find(right_id):
                         continue
-                    name_sim = _name_similarity(left.full_name, right.full_name)
-                    if name_sim < 0.94:
-                        continue
-                    inst_sim = _institution_similarity(
-                        left.primary_institution,
-                        right.primary_institution,
-                    )
-                    if inst_sim >= 0.82 or name_sim >= 0.98:
+                    left_name = left.full_name or ""
+                    right_name = right.full_name or ""
+                    name_sim = _name_similarity(left_name, right_name)
+                    if name_sim >= 0.98:
                         union(left_id, right_id)
+                        continue
+                    if name_sim >= 0.94:
+                        inst_sim = _institution_similarity(
+                            left.primary_institution,
+                            right.primary_institution,
+                        )
+                        if inst_sim >= 0.82:
+                            union(left_id, right_id)
+                            continue
+                    if _name_initial_compatible(left_name, right_name):
+                        inst_sim = _institution_similarity(
+                            left.primary_institution,
+                            right.primary_institution,
+                        )
+                        if inst_sim >= 0.82:
+                            union(left_id, right_id)
 
             grouped_ids: dict[str, list[str]] = defaultdict(list)
             for collab in user_collaborators:

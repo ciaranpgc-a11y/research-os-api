@@ -252,6 +252,60 @@ function collaboratorIdentityTokens(item: CollaboratorPayload): string[] {
   return tokens
 }
 
+/** Parse a name into [surname, givenParts]. Handles "Last, First" and "First Last" formats. */
+function parseNameParts(name: string): [string, string[]] {
+  const clean = String(name || '').trim().replace(/\s+/g, ' ')
+  if (!clean) return ['', []]
+  if (clean.includes(',')) {
+    const [surnameRaw, ...rest] = clean.split(',')
+    const surname = surnameRaw.trim().toLowerCase()
+    const given = rest.join(' ').trim().toLowerCase().split(/\s+/).map((p) => p.replace(/\.$/, '')).filter(Boolean)
+    return [surname, given]
+  }
+  const tokens = clean.toLowerCase().split(/\s+/)
+  if (tokens.length <= 1) return [tokens[0] || '', []]
+  const surname = tokens[tokens.length - 1]
+  const given = tokens.slice(0, -1).map((p) => p.replace(/\.$/, '')).filter(Boolean)
+  return [surname, given]
+}
+
+/** SequenceMatcher-style similarity ratio between two strings (simple LCS approach). */
+function stringSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0
+  if (a === b) return 1
+  const la = a.length
+  const lb = b.length
+  // Use longest common subsequence ratio (matches Python's SequenceMatcher behaviour closely enough)
+  const dp: number[][] = Array.from({ length: la + 1 }, () => Array(lb + 1).fill(0) as number[])
+  for (let i = 1; i <= la; i++) {
+    for (let j = 1; j <= lb; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1])
+    }
+  }
+  return (2 * dp[la][lb]) / (la + lb)
+}
+
+/** Check if two names could be the same person (surname + initial match). */
+function nameInitialCompatible(a: string, b: string): boolean {
+  const [surnameA, givenA] = parseNameParts(a)
+  const [surnameB, givenB] = parseNameParts(b)
+  if (!surnameA || !surnameB) return false
+  if (surnameA !== surnameB && stringSimilarity(surnameA, surnameB) < 0.85) return false
+  if (!givenA.length || !givenB.length) return false
+  if (givenA[0][0] !== givenB[0][0]) return false
+  const shorter = Math.min(givenA.length, givenB.length)
+  for (let i = 1; i < shorter; i++) {
+    const pa = givenA[i]
+    const pb = givenB[i]
+    if (pa.length > 1 && pb.length > 1) {
+      if (stringSimilarity(pa, pb) < 0.7) return false
+    } else if (pa[0] !== pb[0]) {
+      return false
+    }
+  }
+  return true
+}
+
 function relationshipTone(value: string): 'default' | 'secondary' | 'outline' {
   if (value === 'CORE') {
     return 'default'
@@ -1025,6 +1079,28 @@ export function ProfileCollaborationPage() {
       if (ids.length <= 1) continue
       for (let i = 1; i < ids.length; i++) {
         union(ids[0], ids[i])
+      }
+    }
+    // Phase 2: fuzzy name + institution matching (initial-aware)
+    for (let i = 0; i < items.length; i++) {
+      const left = items[i]
+      const lid = String(left.id)
+      for (let j = i + 1; j < items.length; j++) {
+        const right = items[j]
+        const rid = String(right.id)
+        if (find(lid) === find(rid)) continue
+        const leftName = String(left.full_name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+        const rightName = String(right.full_name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+        const nameSim = stringSimilarity(leftName, rightName)
+        if (nameSim >= 0.98) { union(lid, rid); continue }
+        const leftInst = String(left.primary_institution || '').trim().toLowerCase().replace(/\s+/g, ' ')
+        const rightInst = String(right.primary_institution || '').trim().toLowerCase().replace(/\s+/g, ' ')
+        if (nameSim >= 0.94) {
+          if (stringSimilarity(leftInst, rightInst) >= 0.82) { union(lid, rid); continue }
+        }
+        if (nameInitialCompatible(left.full_name || '', right.full_name || '')) {
+          if (stringSimilarity(leftInst, rightInst) >= 0.82) { union(lid, rid) }
+        }
       }
     }
     const groups = new Map<string, CollaboratorPayload[]>()

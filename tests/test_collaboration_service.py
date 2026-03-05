@@ -900,3 +900,127 @@ def test_scheduler_tick_enqueues_due_users(monkeypatch, tmp_path) -> None:
 
     assert count >= 1
     assert user_id in enqueued
+
+
+# ---------------------------------------------------------------------------
+# Name matching / initial-compatible tests
+# ---------------------------------------------------------------------------
+
+def test_parse_name_parts():
+    from research_os.services.collaboration_service import _parse_name_parts
+
+    assert _parse_name_parts("Gareth Matthews") == ("matthews", ["gareth"])
+    assert _parse_name_parts("Gareth J. Matthews") == ("matthews", ["gareth", "j"])
+    assert _parse_name_parts("G. Matthews") == ("matthews", ["g"])
+    assert _parse_name_parts("G. J. Matthews") == ("matthews", ["g", "j"])
+    assert _parse_name_parts("Matthews, Gareth") == ("matthews", ["gareth"])
+    assert _parse_name_parts("Matthews, Gareth James") == ("matthews", ["gareth", "james"])
+    assert _parse_name_parts("") == ("", [])
+    assert _parse_name_parts("Madonna") == ("madonna", [])
+
+
+def test_name_initial_compatible_positive():
+    from research_os.services.collaboration_service import _name_initial_compatible
+
+    # Same person, different formats
+    assert _name_initial_compatible("Gareth Matthews", "G. Matthews")
+    assert _name_initial_compatible("Gareth Matthews", "Gareth J. Matthews")
+    assert _name_initial_compatible("Gareth James Matthews", "G. J. Matthews")
+    assert _name_initial_compatible("Matthews, Gareth", "Gareth Matthews")
+    assert _name_initial_compatible("Matthews, G.", "Gareth Matthews")
+    assert _name_initial_compatible("G Matthews", "Gareth Matthews")
+    assert _name_initial_compatible("Gareth Matthews", "Gareth Matthews")
+
+
+def test_name_initial_compatible_negative():
+    from research_os.services.collaboration_service import _name_initial_compatible
+
+    # Different people — must NOT match
+    assert not _name_initial_compatible("Alice Matthews", "Gareth Matthews")
+    assert not _name_initial_compatible("Gareth Matthews", "Gareth Smith")
+    assert not _name_initial_compatible("Gareth A. Matthews", "Gareth B. Matthews")
+    assert not _name_initial_compatible("", "Gareth Matthews")
+    assert not _name_initial_compatible("Madonna", "Gareth Matthews")
+
+
+def test_list_collaborators_groups_initial_variants(monkeypatch, tmp_path):
+    """Collaborators with name variations at the same institution are grouped."""
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="name-variants@example.com")
+
+    with session_scope() as session:
+        names = [
+            "Gareth Matthews",
+            "G. Matthews",
+            "Gareth J. Matthews",
+        ]
+        for name in names:
+            session.add(
+                Collaborator(
+                    owner_user_id=user_id,
+                    full_name=name,
+                    full_name_lower=name.lower(),
+                    primary_institution="Norfolk and Norwich University Hospitals NHS Foundation Trust",
+                    research_domains=[],
+                )
+            )
+            session.flush()
+
+        for collab in session.scalars(
+            select(Collaborator).where(Collaborator.owner_user_id == user_id)
+        ).all():
+            session.add(
+                CollaborationMetric(
+                    owner_user_id=user_id,
+                    collaborator_id=collab.id,
+                    status="READY",
+                )
+            )
+        session.flush()
+
+    result = list_collaborators_for_user(user_id=user_id)
+    # All 3 should be grouped into a single canonical entry
+    assert result["total"] == 1, (
+        f"Expected 1 grouped collaborator but got {result['total']}: "
+        + ", ".join(item["full_name"] for item in result["items"])
+    )
+    item = result["items"][0]
+    assert item["duplicate_count"] == 3
+
+
+def test_list_collaborators_does_not_group_different_people(monkeypatch, tmp_path):
+    """Same surname, different first initial, same institution — must stay separate."""
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="different-people@example.com")
+
+    with session_scope() as session:
+        for name in ["Gareth Matthews", "Alice Matthews"]:
+            session.add(
+                Collaborator(
+                    owner_user_id=user_id,
+                    full_name=name,
+                    full_name_lower=name.lower(),
+                    primary_institution="Norfolk and Norwich University Hospitals NHS Foundation Trust",
+                    research_domains=[],
+                )
+            )
+            session.flush()
+
+        for collab in session.scalars(
+            select(Collaborator).where(Collaborator.owner_user_id == user_id)
+        ).all():
+            session.add(
+                CollaborationMetric(
+                    owner_user_id=user_id,
+                    collaborator_id=collab.id,
+                    status="READY",
+                )
+            )
+        session.flush()
+
+    result = list_collaborators_for_user(user_id=user_id)
+    assert result["total"] == 2, (
+        f"Expected 2 separate collaborators but got {result['total']}"
+    )

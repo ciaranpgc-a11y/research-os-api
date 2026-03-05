@@ -404,14 +404,29 @@ def _collaborator_groups(
             rid = str(right.id)
             if _find(lid) == _find(rid):
                 continue
-            name_sim = _name_similarity(left.full_name or "", right.full_name or "")
-            if name_sim < 0.94:
-                continue
-            inst_sim = _affiliation_similarity(
-                left.primary_institution, right.primary_institution
-            )
-            if inst_sim >= 0.82 or name_sim >= 0.98:
+            left_name = left.full_name or ""
+            right_name = right.full_name or ""
+            name_sim = _name_similarity(left_name, right_name)
+            # Very high similarity → merge regardless
+            if name_sim >= 0.98:
                 _union(lid, rid)
+                continue
+            # Good similarity + institution match → merge
+            if name_sim >= 0.94:
+                inst_sim = _affiliation_similarity(
+                    left.primary_institution, right.primary_institution
+                )
+                if inst_sim >= 0.82:
+                    _union(lid, rid)
+                    continue
+            # Initial-compatible names (e.g. "G. Matthews" ↔ "Gareth Matthews")
+            # require institution confirmation to avoid false positives
+            if _name_initial_compatible(left_name, right_name):
+                inst_sim = _affiliation_similarity(
+                    left.primary_institution, right.primary_institution
+                )
+                if inst_sim >= 0.82:
+                    _union(lid, rid)
 
     # Build groups
     grouped: dict[str, list[Collaborator]] = defaultdict(list)
@@ -707,6 +722,78 @@ def _name_similarity(a: str, b: str) -> float:
     return SequenceMatcher(
         None, _normalize_name_lower(a), _normalize_name_lower(b)
     ).ratio()
+
+
+def _parse_name_parts(name: str) -> tuple[str, list[str]]:
+    """Parse a name into (surname, [given_name_parts]).
+
+    Handles:
+    - "First Last"              → ("last", ["first"])
+    - "First Middle Last"       → ("last", ["first", "middle"])
+    - "Last, First"             → ("last", ["first"])
+    - "Last, First Middle"      → ("last", ["first", "middle"])
+    - "F. Last"                 → ("last", ["f"])
+    - "F. M. Last"              → ("last", ["f", "m"])
+    """
+    clean = re.sub(r"\s+", " ", str(name or "").strip())
+    if not clean:
+        return ("", [])
+    if "," in clean:
+        parts = clean.split(",", 1)
+        surname = parts[0].strip().lower()
+        given_str = parts[1].strip().lower()
+        given = [p.rstrip(".") for p in given_str.split() if p.rstrip(".")]
+    else:
+        tokens = clean.lower().split()
+        if len(tokens) <= 1:
+            return (tokens[0] if tokens else "", [])
+        surname = tokens[-1]
+        given = [p.rstrip(".") for p in tokens[:-1] if p.rstrip(".")]
+    return (surname, given)
+
+
+def _name_initial_compatible(a: str, b: str) -> bool:
+    """Check if two names could be the same person via surname + initial match.
+
+    Returns True when:
+    - Surnames are identical (or very similar for hyphenated/accented names)
+    - First initials match
+    - Any overlapping middle parts do not conflict
+
+    Examples that match:
+      "Gareth Matthews"      ↔ "G. Matthews"
+      "Gareth Matthews"      ↔ "Gareth J. Matthews"
+      "Gareth James Matthews" ↔ "G. J. Matthews"
+      "Matthews, Gareth"     ↔ "Gareth Matthews"
+
+    Examples that do NOT match:
+      "Alice Matthews"  ↔ "Gareth Matthews"  (different first initial)
+      "Gareth Matthews" ↔ "Gareth Smith"     (different surname)
+    """
+    surname_a, given_a = _parse_name_parts(a)
+    surname_b, given_b = _parse_name_parts(b)
+    if not surname_a or not surname_b:
+        return False
+    # Surnames must match closely
+    if surname_a != surname_b:
+        if SequenceMatcher(None, surname_a, surname_b).ratio() < 0.85:
+            return False
+    # Need at least one given name on each side
+    if not given_a or not given_b:
+        return False
+    # First initials must match
+    if given_a[0][0] != given_b[0][0]:
+        return False
+    # Remaining overlapping parts must not conflict
+    shorter = min(len(given_a), len(given_b))
+    for i in range(1, shorter):
+        pa, pb = given_a[i], given_b[i]
+        if len(pa) > 1 and len(pb) > 1:
+            if SequenceMatcher(None, pa, pb).ratio() < 0.7:
+                return False
+        elif pa[0] != pb[0]:
+            return False
+    return True
 
 
 def _find_duplicate_warnings(
