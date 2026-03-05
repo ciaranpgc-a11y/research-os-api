@@ -164,6 +164,10 @@ const COLLABORATION_TABLE_COLUMN_ORDER: CollaborationTableColumnKey[] = [
   'coauthored_works',
   'collaboration_score',
 ]
+
+function isCollaborationTableColumnKey(value: string): value is CollaborationTableColumnKey {
+  return (COLLABORATION_TABLE_COLUMN_ORDER as string[]).includes(value)
+}
 const COLLABORATION_TABLE_COLUMN_DEFINITIONS: Record<
   CollaborationTableColumnKey,
   { label: string; headerClassName?: string; cellClassName?: string }
@@ -781,7 +785,7 @@ function clampCollaborationTableColumnsToAvailableWidth(input: {
       'coauthored_works',
       'collaboration_score',
       'last_year',
-    ].filter((column): column is CollaborationTableColumnKey => visibleColumns.includes(column))
+    ].filter(isCollaborationTableColumnKey)
 
     for (const column of shrinkOrder) {
       if (overflow <= 0) {

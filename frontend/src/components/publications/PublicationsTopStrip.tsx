@@ -1281,6 +1281,10 @@ type PublicationLineAxisTick = {
   leftPct: number
 }
 
+function isNonNullish<T>(value: T | null | undefined): value is T {
+  return value != null
+}
+
 function buildLineTicksFromRange(startMs: number, endMs: number, mode: PublicationsWindowMode): PublicationLineAxisTick[] {
   // For rolling window modes (3y, 5y), use only real year-boundary ticks.
   if (mode === '3y' || mode === '5y') {
@@ -1339,8 +1343,8 @@ function buildLineTicksFromRange(startMs: number, endMs: number, mode: Publicati
     const monthAnchors = [0, 3, 6, 9].map((offset) => (
       new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + offset, 1))
     ))
-    const ticks: PublicationLineAxisTick[] = monthAnchors
-      .map((anchor, index) => {
+    const ticks = monthAnchors
+      .map<PublicationLineAxisTick | null>((anchor, index) => {
         const anchorMs = anchor.getTime()
         if (anchorMs < startMs || anchorMs > endMs) {
           return null
@@ -1353,7 +1357,7 @@ function buildLineTicksFromRange(startMs: number, endMs: number, mode: Publicati
           leftPct: position * 100,
         }
       })
-      .filter((tick): tick is PublicationLineAxisTick => tick !== null)
+      .filter(isNonNullish)
 
     const endTick: PublicationLineAxisTick = {
       key: `line-axis-${mode}-end`,
@@ -1437,7 +1441,7 @@ function buildLineTicksFromRange(startMs: number, endMs: number, mode: Publicati
         : 3
   const count = Math.max(2, tickCount)
   const spanMs = Math.max(1, endMs - startMs)
-  const showMonth = spanMonths <= 18 || mode === '1y'
+  const showMonth = spanMonths <= 18
   return Array.from({ length: count }, (_, index) => {
     const position = count === 1 ? 0 : index / (count - 1)
     const timeMs = Math.round(startMs + (spanMs * position))
@@ -5931,7 +5935,7 @@ function TotalPublicationsDrilldownWorkspace({
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
     const publications = Array.isArray(drilldown.publications) ? drilldown.publications : []
     return publications
-      .map((item, index) => {
+      .map<PublicationDrilldownRecord | null>((item, index) => {
         if (!item || typeof item !== 'object') {
           return null
         }
@@ -5966,7 +5970,7 @@ function TotalPublicationsDrilldownWorkspace({
           ),
         }
       })
-      .filter((item): item is PublicationDrilldownRecord => item !== null)
+      .filter(isNonNullish)
   }, [tile.drilldown])
 
   const trajectoryFallbackYears = useMemo(
@@ -7261,7 +7265,7 @@ function GenericMetricDrilldownWorkspace({
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
     const publications = Array.isArray(drilldown.publications) ? drilldown.publications : []
     return publications
-      .map((item, index) => {
+      .map<PublicationDrilldownRecord | null>((item, index) => {
         if (!item || typeof item !== 'object') {
           return null
         }
@@ -7296,7 +7300,7 @@ function GenericMetricDrilldownWorkspace({
           ),
         }
       })
-      .filter((item): item is PublicationDrilldownRecord => item !== null)
+      .filter(isNonNullish)
   }, [tile.drilldown])
 
   const headlineMetricTiles = useMemo(() => {
