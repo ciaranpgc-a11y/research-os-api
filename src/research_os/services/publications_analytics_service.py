@@ -1348,7 +1348,6 @@ def start_publications_analytics_scheduler() -> None:
     with _scheduler_lock:
         if _scheduler is not None:
             return
-        create_all_tables()
         scheduler = BackgroundScheduler(timezone="UTC")
         scheduler.add_job(
             run_publications_analytics_scheduler_tick,

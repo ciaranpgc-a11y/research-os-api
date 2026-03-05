@@ -3527,23 +3527,29 @@ export function WorkspacesPage() {
                   </>
                 ) : centerView === 'invitations' ? (
                   <>
-                    <div className="house-main-heading-block flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-                      <div className="house-main-title-block">
-                        <h2 className={HOUSE_SECTION_TITLE_CLASS}>Invitations</h2>
-                        <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
-                          Manage invitations to collaborate on research manuscripts and datasets.
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
-                          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                          Incoming {incomingInvitationCount}
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
-                          <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
-                          Outgoing {outgoingInvitationCount}
-                        </span>
-                      </div>
+                    <Row
+                      align="center"
+                      gap="md"
+                      wrap={false}
+                      className="house-page-title-row"
+                    >
+                      <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
+                      <PageHeader
+                        heading="Invitations"
+                        description="Manage invitations to collaborate on research manuscripts and datasets."
+                        className="!ml-0 !mt-0"
+                      />
+                    </Row>
+
+                    <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+                      <span className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
+                        <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                        Incoming {incomingInvitationCount}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
+                        <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
+                        Outgoing {outgoingInvitationCount}
+                      </span>
                     </div>
 
                     {invitationRows.length === 0 ? (

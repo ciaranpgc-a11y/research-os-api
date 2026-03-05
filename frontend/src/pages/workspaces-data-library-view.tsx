@@ -1,7 +1,17 @@
+/**
+ * Data library view page
+ *
+ * Displays files, access controls, and permissions for the personal data library.
+ * Supports browsing, filtering, searching, and managing asset visibility and metadata.
+ */
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, PanelRightOpen, RefreshCw, Save, Search, UserPlus, X } from 'lucide-react'
 
 import { Button, Input, ScrollArea, SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
+import { PageHeader, Row } from '@/components/primitives'
+import { SectionMarker } from '@/components/patterns'
+import { getSectionMarkerTone } from '@/lib/section-tone'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseActions, houseCollaborators, houseForms, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import { listCollaborators } from '@/lib/impact-api'
@@ -561,36 +571,43 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
 
   return (
     <>
-      <div className="house-main-heading-block flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <div className="house-main-title-block">
-          <h2 className={HOUSE_SECTION_TITLE_CLASS}>Data library</h2>
-          <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
-            Display files, access, and permissions in your personal data library.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
-            Total {total}
+      <Row
+        align="center"
+        gap="md"
+        wrap={false}
+        className="house-page-title-row"
+      >
+        <SectionMarker tone={getSectionMarkerTone('workspaces')} size="title" className="self-stretch h-auto" />
+        <PageHeader
+          heading="Data library"
+          description="Display files, access, and permissions in your personal data library."
+          className="!ml-0 !mt-0"
+        />
+      </Row>
+
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
+        <span className="inline-flex items-center rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
+          Total {total}
+        </span>
+        <span className="inline-flex items-center rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
+          Owned {ownedAssetCount}
+        </span>
+        <span className="inline-flex items-center rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
+          Shared {sharedAssetCount}
+        </span>
+        {unavailableAssetCount > 0 ? (
+          <span className="inline-flex items-center rounded border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] px-2 py-1 text-xs text-[hsl(var(--tone-warning-900))]">
+            Missing storage {unavailableAssetCount}
           </span>
-          <span className="inline-flex items-center rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
-            Owned {ownedAssetCount}
-          </span>
-          <span className="inline-flex items-center rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
-            Shared {sharedAssetCount}
-          </span>
-          {unavailableAssetCount > 0 ? (
-            <span className="inline-flex items-center rounded border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] px-2 py-1 text-xs text-[hsl(var(--tone-warning-900))]">
-              Missing storage {unavailableAssetCount}
-            </span>
-          ) : null}
-          <Button
-            type="button"
-            size="sm"
-            className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-            onClick={onRefresh}
-            disabled={!hasSessionToken || isLoading}
-          >
-            <RefreshCw className={cn('mr-1 h-4 w-4', isLoading && 'animate-spin')} />
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+          onClick={onRefresh}
+          disabled={!hasSessionToken || isLoading}
+        >
+          <RefreshCw className={cn('mr-1 h-4 w-4', isLoading && 'animate-spin')} />
             Refresh
           </Button>
           {onOpenDrilldownMobile ? (
@@ -613,7 +630,6 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
             </div>
           ) : null}
         </div>
-      </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <Input
