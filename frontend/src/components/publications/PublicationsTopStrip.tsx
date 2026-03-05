@@ -3074,14 +3074,18 @@ export function PublicationsPerYearChart({
     if (publicationEventDatesMs.length) {
       const now = new Date()
       const trailing12MonthStarts = buildTrailingMonthStarts(12, true)
+      const trailing36MonthStarts = buildTrailingMonthStarts(36, true)
+      const trailing60MonthStarts = buildTrailingMonthStarts(60, true)
       const trailingStart = trailing12MonthStarts[0] || null
       const trailingEnd = trailing12MonthStarts[trailing12MonthStarts.length - 1] || null
       const oneYearStartMs = trailingStart ? trailingStart.getTime() : null
       const oneYearEndExclusiveMs = trailingEnd
         ? Date.UTC(trailingEnd.getUTCFullYear(), trailingEnd.getUTCMonth() + 1, 1)
         : null
-      const threeYearStartMs = Date.UTC(now.getUTCFullYear() - 2, 0, 1)
-      const fiveYearStartMs = Date.UTC(now.getUTCFullYear() - 4, 0, 1)
+      const threeYearStart = trailing36MonthStarts[0] || null
+      const threeYearStartMs = threeYearStart ? threeYearStart.getTime() : Date.UTC(now.getUTCFullYear() - 2, 0, 1)
+      const fiveYearStart = trailing60MonthStarts[0] || null
+      const fiveYearStartMs = fiveYearStart ? fiveYearStart.getTime() : Date.UTC(now.getUTCFullYear() - 4, 0, 1)
       const currentMonthEndExclusiveMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
       const filteredEventMs = publicationEventDatesMs.filter((timeMs) => {
         if (effectiveWindowMode === '1y') {
