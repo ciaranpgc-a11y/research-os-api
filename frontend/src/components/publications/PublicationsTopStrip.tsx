@@ -1301,6 +1301,11 @@ function buildLineTicksFromRange(startMs: number, endMs: number, mode: Publicati
       })
     }
 
+    const interiorTicks = yearBoundaryTicks.filter((tick) => tick.leftPct > 0.5 && tick.leftPct < 99.5)
+    if (interiorTicks.length > 0) {
+      return interiorTicks
+    }
+
     if (yearBoundaryTicks.length > 0) {
       return yearBoundaryTicks
     }
@@ -2892,25 +2897,28 @@ export function PublicationsPerYearChart({
         return []
       }
 
-      const lastIndex = lineWindowBars.length - 1
-      const januaryTicks = lineWindowBars
-        .map((bar, index) => {
-          const timeMs = Number(bar.monthStartMs)
-          if (!Number.isFinite(timeMs)) {
-            return null
-          }
-          const date = new Date(timeMs)
-          if (date.getUTCMonth() !== 0) {
-            return null
-          }
+      const totalMonths = mode === '3y' ? 36 : 60
+      const trailingMonthStarts = buildTrailingMonthStarts(totalMonths, true)
+      if (trailingMonthStarts.length < 2) {
+        return []
+      }
+
+      const windowStartMs = trailingMonthStarts[0].getTime()
+      const windowEndMs = trailingMonthStarts[trailingMonthStarts.length - 1].getTime()
+      const spanMs = Math.max(1, windowEndMs - windowStartMs)
+
+      const januaryTicks = trailingMonthStarts
+        .filter((date) => date.getUTCMonth() === 0)
+        .map((date) => {
+          const position = ((date.getTime() - windowStartMs) / spanMs) * 100
           return {
             key: `line-axis-${mode}-${date.getUTCFullYear()}`,
             label: String(date.getUTCFullYear()),
             subLabel: undefined,
-            leftPct: (index / Math.max(1, lastIndex)) * 100,
+            leftPct: position,
           }
         })
-        .filter((tick): tick is PublicationLineAxisTick => tick !== null)
+        .filter((tick) => tick.leftPct > 0.5 && tick.leftPct < 99.5)
 
       if (!januaryTicks.length) {
         return []
