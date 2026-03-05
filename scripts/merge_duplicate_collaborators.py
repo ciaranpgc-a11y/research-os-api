@@ -31,6 +31,39 @@ logger = logging.getLogger(__name__)
 _ORCID_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-[\dX]{4}$")
 
 
+def _normalize_openalex_author_id(value: str | None) -> str | None:
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    if clean.startswith("http://openalex.org/"):
+        clean = "https://openalex.org/" + clean.removeprefix("http://openalex.org/")
+    if clean.startswith("https://openalex.org/"):
+        suffix = clean.removeprefix("https://openalex.org/").strip().strip("/")
+        if re.fullmatch(r"(?i)A\d+", suffix):
+            suffix = suffix.upper()
+        return f"https://openalex.org/{suffix}" if suffix else None
+    if re.fullmatch(r"(?i)A\d+", clean):
+        return f"https://openalex.org/{clean.upper()}"
+    return clean
+
+
+def _openalex_identity_key(value: str | None) -> str:
+    normalized = _normalize_openalex_author_id(value)
+    if not normalized:
+        return ""
+    if normalized.startswith("https://openalex.org/"):
+        normalized = normalized.removeprefix("https://openalex.org/")
+    return re.sub(r"\s+", "", normalized.strip().lower())
+
+
+def _normalize_email_key(value: str | None) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip().lower())
+
+
+def _normalize_institution(value: str | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip())
+
+
 def _normalize_orcid_id(value: str | None) -> str | None:
     if not value:
         return None
@@ -49,13 +82,13 @@ def _normalize_name_lower(value: str | None) -> str:
 
 def _collaborator_identity_key(collaborator: Collaborator) -> str:
     """Generate canonical identity key for deduplication."""
-    openalex_id = re.sub(r"\s+", "", str(collaborator.openalex_author_id or "").strip().lower())
+    openalex_id = _openalex_identity_key(collaborator.openalex_author_id)
     if openalex_id:
         return f"oa:{openalex_id}"
     orcid_id = _normalize_orcid_id(collaborator.orcid_id)
     if orcid_id:
         return f"orcid:{orcid_id.lower()}"
-    email = str(collaborator.email or "").strip().lower()
+    email = _normalize_email_key(collaborator.email)
     if email:
         return f"email:{email}"
     name = _normalize_name_lower(collaborator.full_name or "")
@@ -64,6 +97,14 @@ def _collaborator_identity_key(collaborator: Collaborator) -> str:
 
 def _name_similarity(left: str | None, right: str | None) -> float:
     """Compute name similarity score (0.0 to 1.0)."""
+    left_norm = _normalize_name_lower(left)
+    right_norm = _normalize_name_lower(right)
+    if not left_norm or not right_norm:
+        return 0.0
+    return SequenceMatcher(None, left_norm, right_norm).ratio()
+
+
+def _institution_similarity(left: str | None, right: str | None) -> float:
     left_norm = _normalize_name_lower(left)
     right_norm = _normalize_name_lower(right)
     if not left_norm or not right_norm:
@@ -99,22 +140,90 @@ def merge_duplicate_collaborators(user_id: str | None = None, dry_run: bool = Fa
         total_groups = 0
         
         for owner_id, user_collaborators in by_user.items():
-            groups: dict[str, list[Collaborator]] = defaultdict(list)
+            collaborators_by_id = {str(collab.id): collab for collab in user_collaborators}
+            parent: dict[str, str] = {str(collab.id): str(collab.id) for collab in user_collaborators}
+
+            def find(value: str) -> str:
+                root = parent[value]
+                while root != parent[root]:
+                    root = parent[root]
+                while value != root:
+                    next_value = parent[value]
+                    parent[value] = root
+                    value = next_value
+                return root
+
+            def union(left: str, right: str) -> None:
+                left_root = find(left)
+                right_root = find(right)
+                if left_root != right_root:
+                    parent[right_root] = left_root
+
+            token_to_ids: dict[str, list[str]] = defaultdict(list)
             for collab in user_collaborators:
-                key = _collaborator_identity_key(collab)
-                groups[key].append(collab)
-            
+                collab_id = str(collab.id)
+                openalex = _openalex_identity_key(collab.openalex_author_id)
+                if openalex:
+                    token_to_ids[f"oa:{openalex}"].append(collab_id)
+                orcid = _normalize_orcid_id(collab.orcid_id)
+                if orcid:
+                    token_to_ids[f"orcid:{orcid.lower()}"] .append(collab_id)
+                email = _normalize_email_key(collab.email)
+                if email:
+                    token_to_ids[f"email:{email}"].append(collab_id)
+                fallback_name = _normalize_name_lower(collab.full_name)
+                if fallback_name:
+                    token_to_ids[f"name:{fallback_name}"].append(collab_id)
+
+            for ids in token_to_ids.values():
+                if len(ids) <= 1:
+                    continue
+                first = ids[0]
+                for other in ids[1:]:
+                    union(first, other)
+
+            # Fuzzy pass for near duplicates that missed hard identity linking.
+            for index, left in enumerate(user_collaborators):
+                left_id = str(left.id)
+                for right in user_collaborators[index + 1 :]:
+                    right_id = str(right.id)
+                    if find(left_id) == find(right_id):
+                        continue
+                    name_sim = _name_similarity(left.full_name, right.full_name)
+                    if name_sim < 0.94:
+                        continue
+                    inst_sim = _institution_similarity(
+                        left.primary_institution,
+                        right.primary_institution,
+                    )
+                    if inst_sim >= 0.82 or name_sim >= 0.98:
+                        union(left_id, right_id)
+
+            grouped_ids: dict[str, list[str]] = defaultdict(list)
+            for collab in user_collaborators:
+                collab_id = str(collab.id)
+                grouped_ids[find(collab_id)].append(collab_id)
+
             # Process groups with duplicates
-            for key, group in groups.items():
+            for ids in grouped_ids.values():
+                group = [collaborators_by_id[item_id] for item_id in ids]
                 if len(group) <= 1:
                     continue
                 
                 total_groups += 1
-                
+
+                metrics_by_collaborator: dict[str, CollaborationMetric] = {}
+                for metric in session.scalars(
+                    select(CollaborationMetric).where(
+                        CollaborationMetric.collaborator_id.in_(ids)
+                    )
+                ).all():
+                    metrics_by_collaborator[str(metric.collaborator_id)] = metric
+
                 # Sort by most complete record (most works, most recent)
                 group.sort(
                     key=lambda c: (
-                        -int((session.scalars(select(CollaborationMetric).where(CollaborationMetric.collaborator_id == c.id)).first() or type('obj', (object,), {'coauthored_works_count': 0})()).coauthored_works_count or 0),
+                        -int((metrics_by_collaborator.get(str(c.id)) or type("obj", (object,), {"coauthored_works_count": 0})()).coauthored_works_count or 0),
                         -c.updated_at.timestamp() if c.updated_at else 0,
                         str(c.id),
                     )
@@ -136,7 +245,7 @@ def merge_duplicate_collaborators(user_id: str | None = None, dry_run: bool = Fa
                 for collab in group:
                     # Add primary institution
                     if collab.primary_institution:
-                        institutions.add(collab.primary_institution.strip())
+                        institutions.add(_normalize_institution(collab.primary_institution))
                     
                     # Add existing affiliation institutions
                     affiliations = session.scalars(
@@ -146,7 +255,7 @@ def merge_duplicate_collaborators(user_id: str | None = None, dry_run: bool = Fa
                     ).all()
                     for aff in affiliations:
                         if aff.institution_name:
-                            institutions.add(aff.institution_name.strip())
+                            institutions.add(_normalize_institution(aff.institution_name))
                 
                 # Merge fields from duplicates into canonical (fill missing fields only)
                 for dup in duplicates:
