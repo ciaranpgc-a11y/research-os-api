@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import os
 import re
@@ -8,11 +9,17 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+from sqlalchemy import delete
+
+from research_os.db import PersonaGrantRecord, create_all_tables, session_scope
 
 from research_os.services.api_telemetry_service import record_api_usage_event
 
 OPENALEX_BASE_URL = "https://api.openalex.org"
 OPENALEX_RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+OPENALEX_SOURCE_PROVIDER = "openalex"
+
+logger = logging.getLogger(__name__)
 
 
 class GrantsValidationError(RuntimeError):
@@ -539,11 +546,96 @@ def _classify_grant_relationship(
     }
 
 
+def _persona_role_from_relationship(
+    *,
+    relationship_to_person: str,
+    grant_owner_role: str | None,
+) -> str | None:
+    if _sanitize_text(relationship_to_person) != "won_by_person":
+        return None
+    role = _sanitize_text(grant_owner_role).lower()
+    if role == "lead_investigator":
+        return "PI"
+    if role in {"co_lead_investigator", "investigator"}:
+        return "Co-I"
+    return None
+
+
+def _build_persona_grant_key(item: dict[str, Any]) -> str:
+    funder = item.get("funder") if isinstance(item.get("funder"), dict) else {}
+    funder_identifier = _sanitize_text(funder.get("id")).lower()
+    award_identifier = _sanitize_text(item.get("funder_award_id")).lower()
+    if not award_identifier:
+        award_identifier = _sanitize_text(item.get("openalex_award_id")).lower()
+    if not award_identifier:
+        award_identifier = _sanitize_text(item.get("display_name")).lower()
+    if not award_identifier:
+        award_identifier = "unknown"
+    if not funder_identifier:
+        funder_identifier = _sanitize_text(funder.get("display_name")).lower() or "unknown"
+    return f"{OPENALEX_SOURCE_PROVIDER}|{funder_identifier}|{award_identifier}"
+
+
+def _parse_iso_timestamp(value: str) -> datetime:
+    clean = _sanitize_text(value)
+    if clean.endswith("Z"):
+        clean = f"{clean[:-1]}+00:00"
+    parsed = datetime.fromisoformat(clean) if clean else datetime.now(timezone.utc)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _persist_persona_grant_records(
+    *,
+    user_id: str,
+    items: list[dict[str, Any]],
+    source_timestamp_iso: str,
+) -> None:
+    clean_user_id = _sanitize_text(user_id)
+    if not clean_user_id:
+        return
+    create_all_tables()
+    source_timestamp = _parse_iso_timestamp(source_timestamp_iso)
+    with session_scope() as session:
+        session.execute(
+            delete(PersonaGrantRecord).where(
+                PersonaGrantRecord.user_id == clean_user_id,
+                PersonaGrantRecord.source_provider == OPENALEX_SOURCE_PROVIDER,
+            )
+        )
+        for item in items:
+            funder = item.get("funder") if isinstance(item.get("funder"), dict) else {}
+            session.add(
+                PersonaGrantRecord(
+                    user_id=clean_user_id,
+                    grant_key=_build_persona_grant_key(item),
+                    source_provider=OPENALEX_SOURCE_PROVIDER,
+                    funder_name=_sanitize_text(funder.get("display_name")) or None,
+                    funder_identifier=_sanitize_text(funder.get("id")) or None,
+                    award_identifier=(
+                        _sanitize_text(item.get("funder_award_id"))
+                        or _sanitize_text(item.get("openalex_award_id"))
+                        or None
+                    ),
+                    award_title=_sanitize_text(item.get("display_name")) or None,
+                    person_role=_sanitize_text(item.get("person_role")) or None,
+                    start_date=_sanitize_text(item.get("start_date")) or None,
+                    end_date=_sanitize_text(item.get("end_date")) or None,
+                    amount=_safe_float(item.get("amount")),
+                    currency=_sanitize_text(item.get("currency")) or None,
+                    source_timestamp=source_timestamp,
+                    raw_payload=item,
+                )
+            )
+
+
 def list_openalex_grants_for_person(
     *,
     first_name: str,
     last_name: str,
     user_email: str | None = None,
+    user_id: str | None = None,
     limit: int = 30,
     relationship: str = "all",
 ) -> dict[str, Any]:
@@ -560,6 +652,7 @@ def list_openalex_grants_for_person(
     clean_limit = max(1, min(100, _safe_int(limit) or 30))
     mailto = _openalex_mailto(fallback_email=user_email)
     timeout = httpx.Timeout(_openalex_timeout_seconds())
+    generated_at = _utcnow_iso()
 
     with httpx.Client(timeout=timeout) as client:
         author = _resolve_openalex_author(
@@ -583,8 +676,8 @@ def list_openalex_grants_for_person(
                 "items": [],
                 "total": 0,
                 "relationship_filter": relationship_filter,
-                "source": "openalex",
-                "generated_at": _utcnow_iso(),
+                "source": OPENALEX_SOURCE_PROVIDER,
+                "generated_at": generated_at,
             }
 
         author_token = str(author["openalex_author_token"])
@@ -758,10 +851,27 @@ def list_openalex_grants_for_person(
                         relationship_payload.get("grant_owner_is_target_person")
                     ),
                     "award_holders": list(relationship_payload.get("award_holders") or []),
+                    "person_role": _persona_role_from_relationship(
+                        relationship_to_person=relation,
+                        grant_owner_role=relationship_payload.get("grant_owner_role"),
+                    ),
+                    "source": OPENALEX_SOURCE_PROVIDER,
+                    "source_timestamp": generated_at,
                 }
             )
             if len(output_items) >= clean_limit:
                 break
+
+    clean_user_id = _sanitize_text(user_id)
+    if clean_user_id:
+        try:
+            _persist_persona_grant_records(
+                user_id=clean_user_id,
+                items=output_items,
+                source_timestamp_iso=generated_at,
+            )
+        except Exception:
+            logger.exception("Could not persist persona grant records for user_id=%s", clean_user_id)
 
     return {
         "first_name": clean_first_name,
@@ -777,6 +887,6 @@ def list_openalex_grants_for_person(
         "items": output_items,
         "total": len(output_items),
         "relationship_filter": relationship_filter,
-        "source": "openalex",
-        "generated_at": _utcnow_iso(),
+        "source": OPENALEX_SOURCE_PROVIDER,
+        "generated_at": generated_at,
     }

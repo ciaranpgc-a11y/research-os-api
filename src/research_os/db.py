@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 from threading import Lock
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -380,6 +381,9 @@ class User(Base):
     workspace_inbox_state_caches: Mapped[list["WorkspaceInboxStateCache"]] = (
         relationship(back_populates="user", cascade="all, delete-orphan")
     )
+    persona_grant_records: Mapped[list["PersonaGrantRecord"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     owned_projects: Mapped[list["Project"]] = relationship(back_populates="owner_user")
     owned_data_assets: Mapped[list["DataLibraryAsset"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
@@ -411,6 +415,40 @@ class WorkspaceStateCache(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="workspace_state_caches")
+
+
+class PersonaGrantRecord(Base):
+    __tablename__ = "persona_grant_records"
+    __table_args__ = (
+        UniqueConstraint("user_id", "grant_key", name="uq_persona_grant_records_user_key"),
+        Index("ix_persona_grant_records_user_source", "user_id", "source_provider"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    grant_key: Mapped[str] = mapped_column(String(512), index=True)
+    source_provider: Mapped[str] = mapped_column(String(64), default="openalex", index=True)
+    funder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    funder_identifier: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    award_identifier: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    award_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    person_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    start_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    end_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    raw_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="persona_grant_records")
 
 
 class WorkspaceInboxStateCache(Base):

@@ -109,7 +109,6 @@ const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
 ]
 
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
-const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
 const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
 const HOUSE_SIDEBAR_FRAME_CLASS = houseLayout.sidebarFrame
 const HOUSE_SIDEBAR_CLASS = houseLayout.sidebar

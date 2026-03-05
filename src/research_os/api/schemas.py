@@ -1711,6 +1711,9 @@ class PersonaGrantResponse(BaseModel):
     grant_owner_orcid: str | None = None
     grant_owner_is_target_person: bool = False
     award_holders: list[PersonaGrantAwardHolderResponse] = Field(default_factory=list)
+    person_role: Literal["PI", "Co-I"] | None = None
+    source: str = "openalex"
+    source_timestamp: str | None = None
 
 
 class PersonaGrantsResponse(BaseModel):

@@ -2626,6 +2626,7 @@ def v1_persona_grants(
             first_name=first_name,
             last_name=last_name,
             user_email=str(user.get("email") or "").strip() or None,
+            user_id=str(user.get("id") or "").strip() or None,
             limit=limit,
             relationship=relationship,
         )

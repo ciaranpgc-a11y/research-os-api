@@ -30,8 +30,6 @@ import type {
   LibraryAssetSortDirection,
 } from '@/types/study-core'
 
-const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
-const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
 const HOUSE_BUTTON_TEXT_CLASS = houseTypography.buttonText
 const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
@@ -577,7 +575,7 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
         wrap={false}
         className="house-page-title-row"
       >
-        <SectionMarker tone={getSectionMarkerTone('workspaces')} size="title" className="self-stretch h-auto" />
+        <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
         <PageHeader
           heading="Data library"
           description="Display files, access, and permissions in your personal data library."

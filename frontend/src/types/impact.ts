@@ -1182,6 +1182,9 @@ export type PersonaGrantPayload = {
   grant_owner_orcid: string | null
   grant_owner_is_target_person: boolean
   award_holders: PersonaGrantAwardHolderPayload[]
+  person_role: 'PI' | 'Co-I' | null
+  source: string
+  source_timestamp: string | null
 }
 
 export type PersonaGrantsPayload = {

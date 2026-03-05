@@ -75,6 +75,18 @@ function formatAwardPeriod(item: {
   return '-'
 }
 
+function formatSourceTimestamp(value: string | null): string {
+  const clean = String(value || '').trim()
+  if (!clean) {
+    return '-'
+  }
+  const date = new Date(clean)
+  if (Number.isNaN(date.getTime())) {
+    return clean
+  }
+  return date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
 export function ProfileGrantsPage() {
   const navigate = useNavigate()
   const [token, setToken] = useState<string | null>(() => getAuthSessionToken())
@@ -232,9 +244,14 @@ export function ProfileGrantsPage() {
                     {item.grant_owner_name || 'Unknown in OpenAlex'}
                   </div>
                   <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
-                    {item.grant_owner_role
-                      ? item.grant_owner_role.replace(/_/g, ' ')
-                      : 'owner role not provided'}
+                    {item.person_role
+                      ? `Matched person role: ${item.person_role}`
+                      : item.grant_owner_role
+                        ? item.grant_owner_role.replace(/_/g, ' ')
+                        : 'owner role not provided'}
+                  </div>
+                  <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                    Source: {(item.source || 'openalex').toUpperCase()} · Snapshot: {formatSourceTimestamp(item.source_timestamp)}
                   </div>
                   {item.award_holders.length > 1 ? (
                     <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
