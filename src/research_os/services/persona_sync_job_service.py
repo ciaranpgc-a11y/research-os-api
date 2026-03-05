@@ -174,6 +174,21 @@ def _run_persona_sync_job(job_id: str) -> None:
                 overwrite_user_metadata=bool(job.overwrite_user_metadata),
             )
             result_payload["orcid_import"] = _json_safe(import_payload)
+            
+            # Auto-import collaborators after publications import
+            try:
+                from research_os.services.collaboration_service import (
+                    import_collaborators_from_openalex,
+                    enrich_collaborators_from_openalex,
+                )
+                collab_import = import_collaborators_from_openalex(user_id=user_id)
+                result_payload["collaborators_import"] = _json_safe(collab_import)
+                
+                collab_enrich = enrich_collaborators_from_openalex(user_id=user_id, only_missing=True, limit=200)
+                result_payload["collaborators_enrich"] = _json_safe(collab_enrich)
+            except Exception as e:
+                # Don't fail the whole job if collaborator import fails
+                result_payload["collaborators_import_error"] = str(e)
 
             should_sync_metrics = (
                 bool(job.run_metrics_sync) or _orcid_import_always_sync_metrics()
@@ -207,6 +222,21 @@ def _run_persona_sync_job(job_id: str) -> None:
                 overwrite_user_metadata=bool(job.overwrite_user_metadata),
             )
             result_payload["openalex_import"] = _json_safe(import_payload)
+            
+            # Auto-import collaborators after publications import
+            try:
+                from research_os.services.collaboration_service import (
+                    import_collaborators_from_openalex,
+                    enrich_collaborators_from_openalex,
+                )
+                collab_import = import_collaborators_from_openalex(user_id=user_id)
+                result_payload["collaborators_import"] = _json_safe(collab_import)
+                
+                collab_enrich = enrich_collaborators_from_openalex(user_id=user_id, only_missing=True, limit=200)
+                result_payload["collaborators_enrich"] = _json_safe(collab_enrich)
+            except Exception as e:
+                # Don't fail the whole job if collaborator import fails
+                result_payload["collaborators_import_error"] = str(e)
 
             should_sync_metrics = (
                 bool(job.run_metrics_sync) or _orcid_import_always_sync_metrics()
