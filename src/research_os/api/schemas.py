@@ -1312,10 +1312,23 @@ class AdminRuntimeSettingWorkTypeLlmResponse(BaseModel):
     note: str = ""
 
 
+class AdminRuntimeSettingPublicationsAutoSyncResponse(BaseModel):
+    enabled: bool = True
+    interval_hours: int = 168
+    sweep_minutes: int = 60
+    scope: Literal["process"] = "process"
+    persistence: Literal["restart_resets"] = "restart_resets"
+    description: str = ""
+    note: str = ""
+
+
 class AdminRuntimeSettingsResponse(BaseModel):
     generated_at: datetime
     work_type_llm: AdminRuntimeSettingWorkTypeLlmResponse = Field(
         default_factory=AdminRuntimeSettingWorkTypeLlmResponse
+    )
+    publications_auto_sync: AdminRuntimeSettingPublicationsAutoSyncResponse = Field(
+        default_factory=AdminRuntimeSettingPublicationsAutoSyncResponse
     )
 
 
@@ -1330,6 +1343,41 @@ class AdminWorkTypeLlmSettingUpdateResponse(BaseModel):
     work_type_llm: AdminRuntimeSettingWorkTypeLlmResponse = Field(
         default_factory=AdminRuntimeSettingWorkTypeLlmResponse
     )
+    audit_event: AdminAuditEventResponse
+
+
+class AdminPublicationsAutoSyncSettingUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    interval_hours: int | None = Field(default=None, ge=6, le=2160)
+    reason: str = ""
+
+
+class AdminPublicationsAutoSyncSettingUpdateResponse(BaseModel):
+    message: str
+    generated_at: datetime
+    publications_auto_sync: AdminRuntimeSettingPublicationsAutoSyncResponse = Field(
+        default_factory=AdminRuntimeSettingPublicationsAutoSyncResponse
+    )
+    audit_event: AdminAuditEventResponse
+
+
+class AdminPublicationsSyncRunAllRequest(BaseModel):
+    due_only: bool = False
+    reason: str = ""
+
+
+class AdminPublicationsSyncRunAllResponse(BaseModel):
+    message: str
+    generated_at: datetime
+    due_only: bool = False
+    interval_hours: int = 168
+    processed_users: int = 0
+    enqueued_users: int = 0
+    skipped_inactive: int = 0
+    skipped_not_linked: int = 0
+    skipped_not_due: int = 0
+    conflict_users: int = 0
+    failed_users: int = 0
     audit_event: AdminAuditEventResponse
 
 

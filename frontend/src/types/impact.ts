@@ -383,15 +383,48 @@ export type AdminRuntimeSettingWorkTypeLlmPayload = {
   note: string
 }
 
+export type AdminRuntimeSettingPublicationsAutoSyncPayload = {
+  enabled: boolean
+  interval_hours: number
+  sweep_minutes: number
+  scope: 'process'
+  persistence: 'restart_resets'
+  description: string
+  note: string
+}
+
 export type AdminRuntimeSettingsPayload = {
   generated_at: string
   work_type_llm: AdminRuntimeSettingWorkTypeLlmPayload
+  publications_auto_sync: AdminRuntimeSettingPublicationsAutoSyncPayload
 }
 
 export type AdminWorkTypeLlmSettingUpdatePayload = {
   message: string
   generated_at: string
   work_type_llm: AdminRuntimeSettingWorkTypeLlmPayload
+  audit_event: AdminAuditEventPayload
+}
+
+export type AdminPublicationsAutoSyncSettingUpdatePayload = {
+  message: string
+  generated_at: string
+  publications_auto_sync: AdminRuntimeSettingPublicationsAutoSyncPayload
+  audit_event: AdminAuditEventPayload
+}
+
+export type AdminPublicationsSyncRunAllPayload = {
+  message: string
+  generated_at: string
+  due_only: boolean
+  interval_hours: number
+  processed_users: number
+  enqueued_users: number
+  skipped_inactive: number
+  skipped_not_linked: number
+  skipped_not_due: number
+  conflict_users: number
+  failed_users: number
   audit_event: AdminAuditEventPayload
 }
 

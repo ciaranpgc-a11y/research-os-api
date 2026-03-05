@@ -37,6 +37,11 @@ from research_os.services.publications_analytics_service import (
     compute_publications_analytics,
     enqueue_publications_analytics_recompute,
 )
+from research_os.services.publications_sync_scheduler_service import (
+    get_publications_auto_sync_runtime_settings,
+    trigger_publications_auto_sync_for_all_users,
+    update_publications_auto_sync_runtime_settings,
+)
 from research_os.services.api_telemetry_service import summarize_api_usage_for_admin
 
 PERSONAL_EMAIL_DOMAINS = {
@@ -1702,6 +1707,7 @@ def get_admin_runtime_settings() -> dict[str, object]:
     return {
         "generated_at": _utcnow(),
         "work_type_llm": _build_work_type_llm_runtime_setting(),
+        "publications_auto_sync": get_publications_auto_sync_runtime_settings(),
     }
 
 
@@ -1749,6 +1755,109 @@ def update_admin_work_type_llm_setting(
         "message": message,
         "generated_at": _utcnow(),
         "work_type_llm": current_setting,
+        "audit_event": audit_event,
+    }
+
+
+def update_admin_publications_auto_sync_setting(
+    *,
+    actor_user_id: str,
+    enabled: bool | None = None,
+    interval_hours: int | None = None,
+    reason: str = "",
+) -> dict[str, object]:
+    clean_actor_user_id = str(actor_user_id or "").strip()
+    if not clean_actor_user_id:
+        raise AdminValidationError("Actor user id is required.")
+    if enabled is None and interval_hours is None:
+        raise AdminValidationError(
+            "At least one publications auto-sync setting must be provided."
+        )
+
+    previous_setting = get_publications_auto_sync_runtime_settings()
+    try:
+        current_setting = update_publications_auto_sync_runtime_settings(
+            enabled=enabled,
+            interval_hours=interval_hours,
+        )
+    except ValueError as exc:
+        raise AdminValidationError(str(exc)) from exc
+
+    clean_reason = str(reason or "").strip()
+    audit_event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id,
+        action="publications_auto_sync_settings_update",
+        target_type="runtime_setting",
+        target_id="publications_auto_sync",
+        status="success",
+        metadata={
+            "previous_enabled": bool(previous_setting.get("enabled")),
+            "new_enabled": bool(current_setting.get("enabled")),
+            "previous_interval_hours": int(previous_setting.get("interval_hours") or 0),
+            "new_interval_hours": int(current_setting.get("interval_hours") or 0),
+            "reason": clean_reason,
+        },
+    )
+    message = (
+        "Updated publications auto-sync runtime settings. "
+        "Changes apply to the current API process and reset on restart."
+    )
+    return {
+        "message": message,
+        "generated_at": _utcnow(),
+        "publications_auto_sync": current_setting,
+        "audit_event": audit_event,
+    }
+
+
+def admin_run_publications_sync_for_all_users(
+    *,
+    actor_user_id: str,
+    due_only: bool = False,
+    reason: str = "",
+) -> dict[str, object]:
+    clean_actor_user_id = str(actor_user_id or "").strip()
+    if not clean_actor_user_id:
+        raise AdminValidationError("Actor user id is required.")
+
+    summary = trigger_publications_auto_sync_for_all_users(due_only=bool(due_only))
+    clean_reason = str(reason or "").strip()
+    audit_event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id,
+        action="publications_sync_run_all",
+        target_type="runtime_action",
+        target_id="publications_auto_sync",
+        status="success",
+        metadata={
+            "due_only": bool(due_only),
+            "reason": clean_reason,
+            "processed_users": int(summary.get("processed_users") or 0),
+            "enqueued_users": int(summary.get("enqueued_users") or 0),
+            "skipped_inactive": int(summary.get("skipped_inactive") or 0),
+            "skipped_not_linked": int(summary.get("skipped_not_linked") or 0),
+            "skipped_not_due": int(summary.get("skipped_not_due") or 0),
+            "conflict_users": int(summary.get("conflict_users") or 0),
+            "failed_users": int(summary.get("failed_users") or 0),
+            "interval_hours": int(summary.get("interval_hours") or 0),
+        },
+    )
+    message = (
+        f"Queued publication sync jobs for {int(summary.get('enqueued_users') or 0)} user(s). "
+        f"Conflicts: {int(summary.get('conflict_users') or 0)}; "
+        f"failed: {int(summary.get('failed_users') or 0)}."
+    )
+    return {
+        "message": message,
+        "generated_at": _utcnow(),
+        "due_only": bool(summary.get("due_only")),
+        "interval_hours": int(summary.get("interval_hours") or 0),
+        "processed_users": int(summary.get("processed_users") or 0),
+        "enqueued_users": int(summary.get("enqueued_users") or 0),
+        "skipped_inactive": int(summary.get("skipped_inactive") or 0),
+        "skipped_not_linked": int(summary.get("skipped_not_linked") or 0),
+        "skipped_not_due": int(summary.get("skipped_not_due") or 0),
+        "conflict_users": int(summary.get("conflict_users") or 0),
+        "failed_users": int(summary.get("failed_users") or 0),
         "audit_event": audit_event,
     }
 

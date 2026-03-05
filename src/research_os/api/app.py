@@ -46,6 +46,10 @@ from research_os.api.schemas import (
     AdminOverviewResponse,
     AdminApiMonitorResponse,
     AdminRuntimeSettingsResponse,
+    AdminPublicationsAutoSyncSettingUpdateRequest,
+    AdminPublicationsAutoSyncSettingUpdateResponse,
+    AdminPublicationsSyncRunAllRequest,
+    AdminPublicationsSyncRunAllResponse,
     AdminWorkTypeLlmSettingUpdateRequest,
     AdminWorkTypeLlmSettingUpdateResponse,
     AdminUsageCostsResponse,
@@ -247,6 +251,7 @@ from research_os.services.admin_service import (
     AdminNotFoundError,
     AdminStateError,
     AdminValidationError,
+    admin_run_publications_sync_for_all_users,
     admin_cancel_job,
     admin_delete_user_account,
     admin_recover_user_library_storage,
@@ -263,6 +268,7 @@ from research_os.services.admin_service import (
     list_admin_organisations,
     list_admin_workspaces,
     list_admin_users,
+    update_admin_publications_auto_sync_setting,
     update_admin_work_type_llm_setting,
 )
 from research_os.services.affiliation_suggestion_service import (
@@ -426,6 +432,10 @@ from research_os.services.publications_analytics_service import (
     get_publications_analytics_top_drivers,
     start_publications_analytics_scheduler,
     stop_publications_analytics_scheduler,
+)
+from research_os.services.publications_sync_scheduler_service import (
+    start_publications_auto_sync_scheduler,
+    stop_publications_auto_sync_scheduler,
 )
 from research_os.services.publication_metrics_service import (
     PublicationMetricsNotFoundError,
@@ -628,6 +638,13 @@ async def app_lifespan(_: FastAPI):
             extra={"detail": str(exc)},
         )
     try:
+        start_publications_auto_sync_scheduler()
+    except Exception as exc:
+        logger.warning(
+            "publications_auto_sync_scheduler_start_failed",
+            extra={"detail": str(exc)},
+        )
+    try:
         yield
     finally:
         try:
@@ -636,6 +653,10 @@ async def app_lifespan(_: FastAPI):
             pass
         try:
             stop_collaboration_metrics_scheduler()
+        except Exception:
+            pass
+        try:
+            stop_publications_auto_sync_scheduler()
         except Exception:
             pass
 
@@ -1731,6 +1752,55 @@ def v1_admin_update_work_type_llm_setting(
             reason=str(payload.reason or ""),
         )
         return AdminWorkTypeLlmSettingUpdateResponse(**result)
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/admin/system/runtime-settings/publications-auto-sync",
+    response_model=AdminPublicationsAutoSyncSettingUpdateResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_update_publications_auto_sync_setting(
+    request: Request,
+    payload: AdminPublicationsAutoSyncSettingUpdateRequest,
+) -> AdminPublicationsAutoSyncSettingUpdateResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        result = update_admin_publications_auto_sync_setting(
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            enabled=payload.enabled,
+            interval_hours=payload.interval_hours,
+            reason=str(payload.reason or ""),
+        )
+        return AdminPublicationsAutoSyncSettingUpdateResponse(**result)
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/admin/system/publications-sync/run-all",
+    response_model=AdminPublicationsSyncRunAllResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_run_publications_sync_all_users(
+    request: Request,
+    payload: AdminPublicationsSyncRunAllRequest | None = None,
+) -> AdminPublicationsSyncRunAllResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        result = admin_run_publications_sync_for_all_users(
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            due_only=bool(payload.due_only) if payload is not None else False,
+            reason=str((payload.reason if payload is not None else "") or ""),
+        )
+        return AdminPublicationsSyncRunAllResponse(**result)
     except AdminValidationError as exc:
         return _build_bad_request_response(str(exc))
 

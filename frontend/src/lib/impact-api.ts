@@ -15,6 +15,8 @@ import type {
   AdminOverviewPayload,
   AdminOrganisationImpersonationStartPayload,
   AdminApiMonitorPayload,
+  AdminPublicationsAutoSyncSettingUpdatePayload,
+  AdminPublicationsSyncRunAllPayload,
   AdminRuntimeSettingsPayload,
   AdminUsageCostsPayload,
   AdminUsersListPayload,
@@ -497,6 +499,53 @@ export async function updateAdminWorkTypeLlmSetting(
       }),
     },
     'Admin runtime setting update failed',
+  )
+}
+
+export async function updateAdminPublicationsAutoSyncSetting(
+  token: string,
+  input: {
+    enabled?: boolean
+    intervalHours?: number
+    reason?: string
+  },
+): Promise<AdminPublicationsAutoSyncSettingUpdatePayload> {
+  return requestJson<AdminPublicationsAutoSyncSettingUpdatePayload>(
+    `${API_BASE_URL}/v1/admin/system/runtime-settings/publications-auto-sync`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: typeof input.enabled === 'boolean' ? input.enabled : null,
+        interval_hours:
+          Number.isFinite(Number(input.intervalHours))
+            ? Math.max(6, Math.min(2160, Math.round(Number(input.intervalHours))))
+            : null,
+        reason: String(input.reason || ''),
+      }),
+    },
+    'Admin publications auto-sync setting update failed',
+  )
+}
+
+export async function runAdminPublicationsSyncAllUsers(
+  token: string,
+  input?: {
+    dueOnly?: boolean
+    reason?: string
+  },
+): Promise<AdminPublicationsSyncRunAllPayload> {
+  return requestJson<AdminPublicationsSyncRunAllPayload>(
+    `${API_BASE_URL}/v1/admin/system/publications-sync/run-all`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        due_only: Boolean(input?.dueOnly),
+        reason: String(input?.reason || ''),
+      }),
+    },
+    'Admin publications sync run failed',
   )
 }
 

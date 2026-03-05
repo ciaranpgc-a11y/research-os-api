@@ -43,7 +43,9 @@ import {
   recoverAdminUserLibraryStorage,
   reconcileAdminUserLibrary,
   refreshAdminUserPublications,
+  runAdminPublicationsSyncAllUsers,
   retryAdminJob,
+  updateAdminPublicationsAutoSyncSetting,
   updateAdminWorkTypeLlmSetting,
 } from '@/lib/impact-api'
 import { getHouseLeftBorderToneClass } from '@/lib/section-tone'
@@ -479,6 +481,9 @@ export function AdminPage() {
   const [recoveringStorageUserId, setRecoveringStorageUserId] = useState('')
   const [refreshingPublicationsUserId, setRefreshingPublicationsUserId] = useState('')
   const [updatingWorkTypeLlm, setUpdatingWorkTypeLlm] = useState(false)
+  const [updatingPublicationsAutoSync, setUpdatingPublicationsAutoSync] = useState(false)
+  const [runningPublicationsSyncAll, setRunningPublicationsSyncAll] = useState(false)
+  const [publicationsAutoSyncIntervalDraft, setPublicationsAutoSyncIntervalDraft] = useState('')
   const [deletingUserId, setDeletingUserId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
@@ -728,15 +733,95 @@ export function AdminPage() {
         enabled: !workTypeLlmSettingEnabled,
         reason: 'Admin console runtime toggle.',
       })
-      setRuntimeSettings({
-        generated_at: payload.generated_at,
-        work_type_llm: payload.work_type_llm,
-      })
+      const runtimePayload = await fetchAdminRuntimeSettings(token)
+      setRuntimeSettings(runtimePayload)
       setStatus(payload.message)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Could not update work-type LLM setting.')
     } finally {
       setUpdatingWorkTypeLlm(false)
+    }
+  }
+
+  const onTogglePublicationsAutoSync = async () => {
+    if (!publicationsAutoSyncSetting) {
+      return
+    }
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setUpdatingPublicationsAutoSync(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await updateAdminPublicationsAutoSyncSetting(token, {
+        enabled: !publicationsAutoSyncEnabled,
+        reason: 'Admin console runtime toggle.',
+      })
+      const runtimePayload = await fetchAdminRuntimeSettings(token)
+      setRuntimeSettings(runtimePayload)
+      setStatus(payload.message)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not update publications auto-sync setting.')
+    } finally {
+      setUpdatingPublicationsAutoSync(false)
+    }
+  }
+
+  const onSavePublicationsAutoSyncInterval = async () => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    const parsed = Number(publicationsAutoSyncIntervalDraft)
+    if (!Number.isFinite(parsed)) {
+      setError('Interval must be a whole number of hours.')
+      return
+    }
+    const normalized = Math.max(6, Math.min(2160, Math.round(parsed)))
+    setUpdatingPublicationsAutoSync(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await updateAdminPublicationsAutoSyncSetting(token, {
+        intervalHours: normalized,
+        reason: 'Admin console cadence update.',
+      })
+      const runtimePayload = await fetchAdminRuntimeSettings(token)
+      setRuntimeSettings(runtimePayload)
+      setPublicationsAutoSyncIntervalDraft(String(normalized))
+      setStatus(payload.message)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not update publications auto-sync interval.')
+    } finally {
+      setUpdatingPublicationsAutoSync(false)
+    }
+  }
+
+  const onRunPublicationsSyncAllUsers = async () => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setRunningPublicationsSyncAll(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await runAdminPublicationsSyncAllUsers(token, {
+        dueOnly: false,
+        reason: 'Admin console manual all-users run.',
+      })
+      setStatus(
+        `${payload.message} Processed ${formatInteger(payload.processed_users)} users; skipped not linked: ${formatInteger(payload.skipped_not_linked)}.`,
+      )
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not run publications sync for all users.')
+    } finally {
+      setRunningPublicationsSyncAll(false)
     }
   }
 
@@ -870,6 +955,8 @@ export function AdminPage() {
   const workTypeLlmSetting = runtimeSettings?.work_type_llm || null
   const workTypeLlmSettingEnabled = Boolean(workTypeLlmSetting?.setting_enabled)
   const workTypeLlmEffectiveEnabled = Boolean(workTypeLlmSetting?.effective_enabled)
+  const publicationsAutoSyncSetting = runtimeSettings?.publications_auto_sync || null
+  const publicationsAutoSyncEnabled = Boolean(publicationsAutoSyncSetting?.enabled)
   const jobsItems = useMemo(() => jobs?.items || [], [jobs?.items])
   const auditItems = useMemo(() => auditEvents?.items || [], [auditEvents?.items])
   const reconcileAuditItems = useMemo(
@@ -883,6 +970,14 @@ export function AdminPage() {
         .slice(0, 12),
     [auditItems],
   )
+
+  useEffect(() => {
+    if (!publicationsAutoSyncSetting) {
+      setPublicationsAutoSyncIntervalDraft('')
+      return
+    }
+    setPublicationsAutoSyncIntervalDraft(String(publicationsAutoSyncSetting.interval_hours || 168))
+  }, [publicationsAutoSyncSetting?.interval_hours, publicationsAutoSyncSetting])
 
   const metrics = useMemo(
     () => [
@@ -2572,6 +2667,81 @@ export function AdminPage() {
                           <p className="text-xs uppercase tracking-wide text-muted-foreground">Raw env value</p>
                           <p className="truncate text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
                             {workTypeLlmSetting?.raw_value || '(empty)'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">Publications auto-sync</p>
+                          <p className="text-sm text-[hsl(var(--tone-neutral-700))]">
+                            {publicationsAutoSyncSetting?.description || 'Automatically queues publication sync jobs for active ORCID-linked users.'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {publicationsAutoSyncSetting?.note || 'Runtime-only setting. Restart resets configured values.'}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            variant={publicationsAutoSyncEnabled ? 'secondary' : 'cta'}
+                            onClick={() => void onTogglePublicationsAutoSync()}
+                            isLoading={updatingPublicationsAutoSync}
+                            loadingText={publicationsAutoSyncEnabled ? 'Disabling...' : 'Enabling...'}
+                            disabled={!publicationsAutoSyncSetting}
+                          >
+                            {publicationsAutoSyncEnabled ? 'Disable' : 'Enable'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => void onRunPublicationsSyncAllUsers()}
+                            isLoading={runningPublicationsSyncAll}
+                            loadingText="Queueing..."
+                          >
+                            Run All Users Now
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Auto-sync</p>
+                          <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            {publicationsAutoSyncEnabled ? 'Enabled' : 'Disabled'}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Cadence (hours)</p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <Input
+                              value={publicationsAutoSyncIntervalDraft}
+                              onChange={(event) => setPublicationsAutoSyncIntervalDraft(event.target.value)}
+                              inputMode="numeric"
+                              className="h-8 max-w-[7.5rem]"
+                            />
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => void onSavePublicationsAutoSyncInterval()}
+                              disabled={updatingPublicationsAutoSync}
+                            >
+                              Save
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Sweep interval</p>
+                          <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            {formatInteger(publicationsAutoSyncSetting?.sweep_minutes || 0)} min
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Scope</p>
+                          <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            {publicationsAutoSyncSetting?.scope || 'process'}
                           </p>
                         </div>
                       </div>
