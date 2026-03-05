@@ -2888,27 +2888,39 @@ export function PublicationsPerYearChart({
       && monthStartMsValues.every((value) => Number.isFinite(value))
     
     if (mode === '3y' || mode === '5y') {
-      // For rolling window modes, use actual trailing month boundaries
-      const totalMonths = mode === '3y' ? 36 : 60
-      const trailingMonthStarts = buildTrailingMonthStarts(totalMonths, true)
-      if (!trailingMonthStarts.length) {
+      if (!hasLineMonthTimeline || lineWindowBars.length < 2) {
         return []
       }
-      
-      // Show ticks at yearly intervals for better readability
-      const tickCount = mode === '3y' ? 4 : 6  // Start, mid-years, end
-      const positions = Array.from({ length: tickCount }, (_, i) => i / (tickCount - 1))
-      
-      return positions.map((position, index) => {
-        const rawMonthIndex = Math.round((trailingMonthStarts.length - 1) * position)
-        const monthIndex = Math.max(0, Math.min(trailingMonthStarts.length - 1, rawMonthIndex))
-        const date = trailingMonthStarts[monthIndex]
-        return {
-          key: `line-axis-${mode}-${index}`,
-          label: MONTH_SHORT[date.getUTCMonth()],
-          subLabel: String(date.getUTCFullYear()),
-          leftPct: position * 100,
+
+      const lastIndex = lineWindowBars.length - 1
+      const januaryTicks = lineWindowBars
+        .map((bar, index) => {
+          const timeMs = Number(bar.monthStartMs)
+          if (!Number.isFinite(timeMs)) {
+            return null
+          }
+          const date = new Date(timeMs)
+          if (date.getUTCMonth() !== 0) {
+            return null
+          }
+          return {
+            key: `line-axis-${mode}-${date.getUTCFullYear()}`,
+            label: String(date.getUTCFullYear()),
+            subLabel: undefined,
+            leftPct: (index / Math.max(1, lastIndex)) * 100,
+          }
+        })
+        .filter((tick): tick is PublicationLineAxisTick => tick !== null)
+
+      if (!januaryTicks.length) {
+        return []
+      }
+
+      return januaryTicks.filter((tick, index, ticks) => {
+        if (index === 0) {
+          return true
         }
+        return Math.abs(tick.leftPct - ticks[index - 1].leftPct) > 0.1
       })
     }
     
@@ -3373,8 +3385,11 @@ export function PublicationsPerYearChart({
     if (effectiveVisualMode !== 'line') {
       return []
     }
-    // Draw gridlines at all tick positions for proper alignment with labels
-    return lineModeXAxisTicks.map((tick) => tick.leftPct)
+    const sortedUnique = lineModeXAxisTicks
+      .map((tick) => Math.max(0, Math.min(100, tick.leftPct)))
+      .sort((left, right) => left - right)
+      .filter((value, index, values) => index === 0 || Math.abs(value - values[index - 1]) > 0.1)
+    return sortedUnique
   }, [effectiveVisualMode, lineModeXAxisTicks])
 
   if (!hasBars) {
@@ -3721,6 +3736,8 @@ export function PublicationsPerYearChart({
             >
               {lineModeXAxisTicks.map((tick, index) => {
                 const lastIndex = lineModeXAxisTicks.length - 1
+                const isNearLeftEdge = tick.leftPct <= 2
+                const isNearRightEdge = tick.leftPct >= 98
                 const isFirst = index === 0
                 const isLast = index === lastIndex
                 const tickRoleLabel = isFirst ? 'Start' : isLast ? 'End' : 'Middle'
@@ -3733,7 +3750,11 @@ export function PublicationsPerYearChart({
                     )}
                     style={{
                       left: `${tick.leftPct}%`,
-                      transform: isFirst ? 'translateX(0)' : isLast ? 'translateX(-100%)' : 'translateX(-50%)',
+                      transform: isNearLeftEdge
+                        ? 'translateX(0)'
+                        : isNearRightEdge
+                          ? 'translateX(-100%)'
+                          : 'translateX(-50%)',
                       transitionDuration: `${axisDurationMs}ms`,
                       transitionProperty: 'opacity',
                     }}
