@@ -2640,14 +2640,20 @@ export function PublicationsPerYearChart({
         }
       }
     }
-    const windowYears = mode === '3y'
-      ? 3
-      : mode === '5y'
-        ? 5
-        : mode === '1y'
-          ? 1
-          : null
-    const sourceBars = windowYears === null ? historyBars : historyBars.slice(-windowYears)
+    let sourceBars = historyBars
+    if (mode === '3y' || mode === '5y') {
+      const totalMonths = mode === '3y' ? 36 : 60
+      const trailingMonthStarts = buildTrailingMonthStarts(totalMonths, true)
+      const windowStartDate = trailingMonthStarts[0]
+      if (windowStartDate) {
+        const windowStartYear = windowStartDate.getUTCFullYear()
+        sourceBars = historyBars.filter((bar) => bar.year >= windowStartYear)
+      } else {
+        sourceBars = historyBars.slice(mode === '3y' ? -3 : -5)
+      }
+    } else if (mode === '1y') {
+      sourceBars = historyBars.slice(-1)
+    }
     const shouldUseShortYearAxisLabels = mode === 'all' && sourceBars.length >= 10
     const bars: PublicationChartBar[] = sourceBars.map((bar) => ({
       key: `${bar.year}-${bar.year}`,
