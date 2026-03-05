@@ -11,7 +11,6 @@ import {
   fetchOAuthConnect,
   fetchOAuthProviderStatuses,
   fetchMe,
-  importOrcidWorks,
   loginAuth,
   loginAuthChallenge,
   pingApiHealth,
@@ -23,9 +22,6 @@ import {
 import type { AuthOAuthProviderStatusItem } from '@/types/impact'
 
 const LAST_AUTH_EMAIL_STORAGE_KEY = 'aawe-last-auth-email'
-const ORCID_AUTO_SYNC_RESULT_STORAGE_KEY = 'aawe_orcid_auto_sync_result'
-const ORCID_AUTO_SYNC_THROTTLE_STORAGE_KEY = 'aawe_orcid_auto_sync_last_at'
-const ORCID_AUTO_SYNC_THROTTLE_MS = 1000 * 60 * 15
 const TEST_ACCOUNT_EMAIL = String(import.meta.env.VITE_TEST_ACCOUNT_EMAIL || '').trim()
 const TEST_ACCOUNT_PASSWORD = String(import.meta.env.VITE_TEST_ACCOUNT_PASSWORD || '').trim()
 const SOCIAL_PROVIDERS = ['google', 'microsoft'] as const
@@ -172,38 +168,6 @@ export function AuthPage() {
     window.localStorage.setItem(LAST_AUTH_EMAIL_STORAGE_KEY, clean)
   }
 
-  const triggerOrcidAutoSync = (
-    sessionToken: string,
-    user: { orcid_id?: string | null } | null | undefined,
-  ) => {
-    if (typeof window === 'undefined') {
-      return
-    }
-    if (!user?.orcid_id) {
-      return
-    }
-    const now = Date.now()
-    const lastSyncRaw = window.localStorage.getItem(ORCID_AUTO_SYNC_THROTTLE_STORAGE_KEY)
-    const lastSync = Number(lastSyncRaw || '0')
-    if (Number.isFinite(lastSync) && now - lastSync < ORCID_AUTO_SYNC_THROTTLE_MS) {
-      return
-    }
-    window.localStorage.setItem(ORCID_AUTO_SYNC_THROTTLE_STORAGE_KEY, String(now))
-    void importOrcidWorks(sessionToken)
-      .then((payload) => {
-        window.sessionStorage.setItem(
-          ORCID_AUTO_SYNC_RESULT_STORAGE_KEY,
-          JSON.stringify({
-            imported_count: payload.imported_count,
-            synced_at: payload.last_synced_at || new Date().toISOString(),
-          }),
-        )
-      })
-      .catch(() => {
-        // Keep sign-in fast even when import sync is unavailable.
-      })
-  }
-
   const beginEmailVerificationGate = async (sessionToken: string, email: string, entryMessage: string) => {
     setVerificationToken(sessionToken)
     setAwaitingEmailVerification(true)
@@ -239,7 +203,6 @@ export function AuthPage() {
           return
         }
         if (user.email_verified_at) {
-          triggerOrcidAutoSync(token, user)
           navigate('/profile', { replace: true })
           return
         }
@@ -296,7 +259,6 @@ export function AuthPage() {
         if (session.user.email_verified_at) {
           setAuthSessionToken(session.session_token)
           persistLastEmail(session.user.email)
-          triggerOrcidAutoSync(session.session_token, session.user)
           setStatus('Sign-in complete. Redirecting to profile...')
           navigate('/profile', { replace: true })
           return
@@ -464,7 +426,6 @@ export function AuthPage() {
       const user = await confirmEmailVerification({ token, code: verificationCode })
       setAuthSessionToken(token)
       persistLastEmail(user.email)
-      triggerOrcidAutoSync(token, user)
       setAwaitingEmailVerification(false)
       setStatus('Email verified. Redirecting to profile...')
       navigate('/profile', { replace: true })
@@ -492,7 +453,6 @@ export function AuthPage() {
         persistLastEmail(payload.session.user.email)
         if (payload.session.user.email_verified_at) {
           setAuthSessionToken(payload.session.session_token)
-          triggerOrcidAutoSync(payload.session.session_token, payload.session.user)
           setStatus('Signed in. Redirecting to profile...')
           navigate('/profile', { replace: true })
           return
@@ -523,7 +483,6 @@ export function AuthPage() {
         persistLastEmail(session.user.email)
         if (session.user.email_verified_at) {
           setAuthSessionToken(session.session_token)
-          triggerOrcidAutoSync(session.session_token, session.user)
           setStatus('Signed in. Redirecting to profile...')
           navigate('/profile', { replace: true })
           return
@@ -557,7 +516,6 @@ export function AuthPage() {
       persistLastEmail(payload.user.email)
       if (payload.user.email_verified_at) {
         setAuthSessionToken(payload.session_token)
-        triggerOrcidAutoSync(payload.session_token, payload.user)
         setStatus('Two-factor verification complete. Redirecting...')
         navigate('/profile', { replace: true })
         return

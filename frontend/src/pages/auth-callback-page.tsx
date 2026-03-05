@@ -92,7 +92,7 @@ export function AuthCallbackPage() {
           )
         }
         if (staleState) {
-          setStatus('Sign-in session expired. Start ORCID sign-in again from the main window.')
+          setStatus('Sign-in session expired. Start OAuth sign-in again from the main window.')
           return
         }
         setError(detail)

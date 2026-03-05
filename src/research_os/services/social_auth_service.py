@@ -10,22 +10,19 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from research_os.db import (
     AuthOAuthState,
     AuthSession,
-    MetricsSnapshot,
     User,
-    Work,
     create_all_tables,
     session_scope,
 )
 from research_os.services.auth_service import AuthNotFoundError, AuthValidationError
 from research_os.services.api_telemetry_service import record_api_usage_event
 from research_os.services.security_service import (
-    encrypt_secret,
     generate_session_token,
     hash_password,
     hash_session_token,
@@ -35,7 +32,7 @@ OAUTH_STATE_TTL_MINUTES = max(5, int(os.getenv("AUTH_OAUTH_STATE_TTL_MINUTES", "
 SESSION_DAYS = max(1, int(os.getenv("AUTH_SESSION_DAYS", "30")))
 MAX_ACTIVE_SESSIONS = max(1, int(os.getenv("AUTH_MAX_ACTIVE_SESSIONS", "5")))
 
-SUPPORTED_OAUTH_PROVIDERS = {"orcid", "google", "microsoft"}
+SUPPORTED_OAUTH_PROVIDERS = {"google", "microsoft"}
 LOCAL_REDIRECT_HOSTS = {"localhost", "127.0.0.1"}
 logger = logging.getLogger(__name__)
 _SIGNIN_RECONCILE_LOCK = threading.Lock()
@@ -198,45 +195,11 @@ def _is_local_origin(value: str | None) -> bool:
     return host in LOCAL_REDIRECT_HOSTS
 
 
-def _orcid_signin_redirect_uri(frontend_origin: str | None = None) -> str:
-    if _is_local_origin(frontend_origin):
-        configured_dev = os.getenv("ORCID_SIGNIN_REDIRECT_URI_DEV", "").strip()
-        if configured_dev:
-            return configured_dev
-        local_origin = _origin_base(frontend_origin)
-        if local_origin:
-            return f"{local_origin}/auth/callback?provider=orcid"
-    return os.getenv(
-        "ORCID_SIGNIN_REDIRECT_URI",
-        "http://localhost:5173/auth/callback?provider=orcid",
-    ).strip()
-
-
 def _provider_config(
     provider: str,
     *,
     frontend_origin: str | None = None,
 ) -> dict[str, str]:
-    if provider == "orcid":
-        return {
-            "client_id": _env_required(
-                "ORCID_CLIENT_ID",
-                "ORCID is not configured (missing ORCID_CLIENT_ID).",
-            ),
-            "client_secret": _env_required(
-                "ORCID_CLIENT_SECRET",
-                "ORCID is not configured (missing ORCID_CLIENT_SECRET).",
-            ),
-            "authorize_url": os.getenv(
-                "ORCID_AUTHORIZE_URL", "https://orcid.org/oauth/authorize"
-            ).strip(),
-            "token_url": os.getenv(
-                "ORCID_TOKEN_URL", "https://orcid.org/oauth/token"
-            ).strip(),
-            "redirect_uri": _orcid_signin_redirect_uri(frontend_origin),
-            "scope": "/authenticate",
-        }
-
     if provider == "google":
         return {
             "client_id": _env_required(
@@ -285,9 +248,7 @@ def _build_authorize_url(provider: str, config: dict[str, str], state: str) -> s
         "redirect_uri": config["redirect_uri"],
         "state": state,
     }
-    if provider == "orcid":
-        params["scope"] = config["scope"]
-    elif provider == "google":
+    if provider == "google":
         params["scope"] = config["scope"]
         params["access_type"] = "offline"
         params["prompt"] = "consent"
@@ -390,7 +351,7 @@ def _exchange_oauth_code(
         ),
     )
     if response.status_code >= 400:
-        provider_label = "ORCID" if provider == "orcid" else provider.capitalize()
+        provider_label = provider.capitalize()
         error_code = ""
         try:
             raw_payload = response.json()
@@ -419,19 +380,6 @@ def _fetch_userinfo(
     access_token = str(token_payload.get("access_token", "")).strip()
     if not access_token:
         raise AuthValidationError("OAuth token response did not include access_token.")
-
-    if provider == "orcid":
-        orcid_id = str(
-            token_payload.get("orcid") or token_payload.get("orcid_id") or ""
-        ).strip()
-        if not orcid_id:
-            raise AuthValidationError("ORCID token response did not include ORCID iD.")
-        return {
-            "provider_subject": orcid_id,
-            "email": f"orcid-{orcid_id.replace('-', '')}@orcid.local",
-            "name": f"ORCID {orcid_id}",
-            "orcid_id": orcid_id,
-        }
 
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
     with httpx.Client(timeout=20.0) as client:
@@ -464,7 +412,6 @@ def _fetch_userinfo(
             "provider_subject": subject,
             "email": email or f"google-{subject}@oauth.local",
             "name": name,
-            "orcid_id": "",
         }
 
     subject = str(payload.get("sub") or payload.get("oid") or "").strip()
@@ -479,7 +426,6 @@ def _fetch_userinfo(
         "provider_subject": subject,
         "email": email or f"microsoft-{subject}@oauth.local",
         "name": name,
-        "orcid_id": "",
     }
 
 
@@ -536,87 +482,6 @@ def _resolve_user_for_oauth(
     name = identity["name"] or "Research User"
     user: User | None = None
     is_new_user = False
-
-    if provider == "orcid":
-        orcid_id = identity["orcid_id"]
-        users_with_orcid = session.scalars(
-            select(User).where(User.orcid_id == orcid_id)
-        ).all()
-        user = None
-        if users_with_orcid:
-            if len(users_with_orcid) == 1:
-                user = users_with_orcid[0]
-            else:
-                # Deterministically resolve duplicate ORCID mappings by choosing the
-                # account with the most works, then most recent sign-in/update.
-                candidate_ids = [candidate.id for candidate in users_with_orcid]
-                work_counts = {
-                    str(user_id): int(count or 0)
-                    for user_id, count in session.execute(
-                        select(Work.user_id, func.count(Work.id))
-                        .where(Work.user_id.in_(candidate_ids))
-                        .group_by(Work.user_id)
-                    ).all()
-                }
-                citation_totals = {
-                    str(user_id): int(total or 0)
-                    for user_id, total in session.execute(
-                        select(Work.user_id, func.sum(MetricsSnapshot.citations_count))
-                        .select_from(MetricsSnapshot)
-                        .join(Work, MetricsSnapshot.work_id == Work.id)
-                        .where(Work.user_id.in_(candidate_ids))
-                        .group_by(Work.user_id)
-                    ).all()
-                }
-
-                def _candidate_rank(
-                    candidate: User,
-                ) -> tuple[int, int, datetime, datetime]:
-                    works_count = int(work_counts.get(candidate.id, 0))
-                    citations_total = int(citation_totals.get(candidate.id, 0))
-                    last_sign_in = _as_utc(candidate.last_sign_in_at) or datetime(
-                        1970, 1, 1, tzinfo=timezone.utc
-                    )
-                    updated = _as_utc(candidate.updated_at) or datetime(
-                        1970, 1, 1, tzinfo=timezone.utc
-                    )
-                    return (works_count, citations_total, last_sign_in, updated)
-
-                user = max(users_with_orcid, key=_candidate_rank)
-                for duplicate in users_with_orcid:
-                    if duplicate.id == user.id:
-                        continue
-                    duplicate.orcid_id = None
-                    duplicate.orcid_access_token = None
-                    duplicate.orcid_refresh_token = None
-                    duplicate.orcid_token_expires_at = None
-        if user is None:
-            user = session.scalars(select(User).where(User.email == email)).first()
-        if user is None:
-            user = User(
-                email=email,
-                password_hash=hash_password(_random_password_seed()),
-                name=name,
-                is_active=True,
-                role="user",
-            )
-            session.add(user)
-            is_new_user = True
-        user.orcid_id = orcid_id
-        if user.email_verified_at is None:
-            user.email_verified_at = _utcnow()
-        access_token = str(token_payload.get("access_token", "")).strip()
-        refresh_token = str(token_payload.get("refresh_token", "")).strip() or None
-        expires_in = int(token_payload.get("expires_in", 3600) or 3600)
-        if access_token:
-            user.orcid_access_token = encrypt_secret(access_token)
-            user.orcid_refresh_token = (
-                encrypt_secret(refresh_token) if refresh_token else None
-            )
-            user.orcid_token_expires_at = _utcnow() + timedelta(
-                seconds=max(0, expires_in)
-            )
-        return user, is_new_user
 
     if provider == "google":
         user = session.scalars(

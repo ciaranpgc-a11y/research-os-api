@@ -2689,9 +2689,49 @@ export function PublicationsPerYearChart({
     : effectiveWindowMode === '1y'
       ? activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
       : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
-  const meanValueDisplay = Number.isFinite(meanValue)
+  const meanPerYearValue = useMemo(() => {
+    if (isCompactTileMode && showMeanLine && Number.isFinite(meanValueRaw) && meanValueRaw >= 0) {
+      return Math.max(0, meanValueRaw)
+    }
+    if (effectiveWindowMode === '1y') {
+      return groupedMonthBars.bars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+    }
+    if (effectiveWindowMode === '3y' || effectiveWindowMode === '5y') {
+      if (lifetimeMonthlyBars.bars.length > 0) {
+        const monthCount = effectiveWindowMode === '3y' ? 36 : 60
+        const sourceBars = lifetimeMonthlyBars.bars.slice(-monthCount)
+        if (sourceBars.length > 0) {
+          const total = sourceBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+          const yearSpan = sourceBars.length / 12
+          return yearSpan > 0 ? total / yearSpan : total
+        }
+      }
+      return activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
+    }
+    if (effectiveWindowMode === 'all') {
+      if (lifetimeMonthlyBars.bars.length > 0) {
+        const total = lifetimeMonthlyBars.bars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+        const yearSpan = lifetimeMonthlyBars.bars.length / 12
+        return yearSpan > 0 ? total / yearSpan : total
+      }
+      const sourceBars = historyBars
+      const total = sourceBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0)
+      return total / Math.max(1, sourceBars.length)
+    }
+    return activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
+  }, [
+    activeBars,
+    effectiveWindowMode,
+    groupedMonthBars.bars,
+    historyBars,
+    isCompactTileMode,
+    lifetimeMonthlyBars.bars,
+    meanValueRaw,
+    showMeanLine,
+  ])
+  const meanPerYearDisplay = Number.isFinite(meanPerYearValue)
     ? (() => {
-      const rounded = Math.round(meanValue * 10) / 10
+      const rounded = Math.round(meanPerYearValue * 10) / 10
       if (Math.abs(rounded - Math.round(rounded)) <= 1e-9) {
         return formatInt(Math.round(rounded))
       }
@@ -2920,7 +2960,7 @@ export function PublicationsPerYearChart({
     ? buildYAxisPanelWidthRem(stableToggleTickValues, Boolean(yAxisLabel), enableWindowToggle ? 1.7 : 1.2)
     : 0
   const yAxisTitleLeft = '36%'
-  const shouldReserveMeanLabelBand = showMeanValueLabel && Boolean(meanValueDisplay)
+  const shouldReserveMeanLabelBand = showMeanValueLabel && Boolean(meanPerYearDisplay)
   const meanLabelBandInsetRem = shouldReserveMeanLabelBand ? 0.75 : 0
   const chartTopInsetRem = PUBLICATIONS_CHART_TOP_INSET_REM + meanLabelBandInsetRem
   const chartLeftInset = showAxes
@@ -3042,6 +3082,7 @@ export function PublicationsPerYearChart({
         : null
       const threeYearStartMs = Date.UTC(now.getUTCFullYear() - 2, 0, 1)
       const fiveYearStartMs = Date.UTC(now.getUTCFullYear() - 4, 0, 1)
+      const currentMonthEndExclusiveMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
       const filteredEventMs = publicationEventDatesMs.filter((timeMs) => {
         if (effectiveWindowMode === '1y') {
           if (oneYearStartMs === null || oneYearEndExclusiveMs === null) {
@@ -3088,13 +3129,26 @@ export function PublicationsPerYearChart({
             expandedEventMs.push(group.timeMs + offsetMs)
           }
         }
-        const timelineStartMs = expandedEventMs[0]
-        const timelineEndMs = expandedEventMs[expandedEventMs.length - 1]
-        const spanMs = timelineEndMs - timelineStartMs
+        const resolvedWindowStartMs = effectiveWindowMode === '1y'
+          ? oneYearStartMs
+          : effectiveWindowMode === '3y'
+            ? threeYearStartMs
+            : effectiveWindowMode === '5y'
+              ? fiveYearStartMs
+              : expandedEventMs[0]
+        const resolvedWindowEndMs = effectiveWindowMode === '1y'
+          ? (oneYearEndExclusiveMs === null ? null : oneYearEndExclusiveMs - 1)
+          : (currentMonthEndExclusiveMs - 1)
+        const timelineStartMs = Number.isFinite(resolvedWindowStartMs ?? Number.NaN)
+          ? Number(resolvedWindowStartMs)
+          : expandedEventMs[0]
+        const timelineEndMsRaw = Number.isFinite(resolvedWindowEndMs ?? Number.NaN)
+          ? Number(resolvedWindowEndMs)
+          : expandedEventMs[expandedEventMs.length - 1]
+        const timelineEndMs = Math.max(timelineStartMs + 1, timelineEndMsRaw)
+        const spanMs = Math.max(1, timelineEndMs - timelineStartMs)
         const eventPoints = expandedEventMs.map((timeMs, index) => {
-          const position = spanMs > 0
-            ? ((timeMs - timelineStartMs) / spanMs)
-            : (expandedEventMs.length <= 1 ? 0 : index / (expandedEventMs.length - 1))
+          const position = (timeMs - timelineStartMs) / spanMs
           const cumulativeValue = index + 1
           return {
             key: `line-event-${timeMs}-${index}`,
@@ -3104,8 +3158,18 @@ export function PublicationsPerYearChart({
             timeMs,
           }
         })
+        const pathPoints = [
+          {
+            key: 'line-event-period-start',
+            xPct: 0,
+            yPct: 0,
+            value: 0,
+            timeMs: timelineStartMs,
+          },
+          ...eventPoints,
+        ]
         return {
-          points: eventPoints,
+          points: pathPoints,
           markerPoints: eventPoints,
           timelineStartMs,
           timelineEndMs,
@@ -3132,8 +3196,18 @@ export function PublicationsPerYearChart({
       .sort((left, right) => left - right)
     const timelineStartMs = timelineMsValues.length ? timelineMsValues[0] : null
     const timelineEndMs = timelineMsValues.length ? timelineMsValues[timelineMsValues.length - 1] : null
+    const pathPoints = [
+      {
+        key: 'line-period-start',
+        xPct: 0,
+        yPct: 0,
+        value: 0,
+        timeMs: timelineStartMs,
+      },
+      ...cumulativePoints,
+    ]
     return {
-      points: cumulativePoints,
+      points: pathPoints,
       markerPoints: cumulativePoints,
       timelineStartMs,
       timelineEndMs,
@@ -3172,6 +3246,7 @@ export function PublicationsPerYearChart({
     lineSeriesModel.timelineStartMs,
   ])
   const lineSeriesMarkerPoints = lineSeriesModel.markerPoints
+  const lineSeriesPathPoints = lineSeriesModel.points
   const lineMarkerPoints = useMemo(
     () => (
       effectiveVisualMode === 'line'
@@ -3181,10 +3256,10 @@ export function PublicationsPerYearChart({
     [effectiveVisualMode, lineSeriesMarkerPoints],
   )
   const linePathD = useMemo(() => {
-    if (effectiveVisualMode !== 'line' || lineMarkerPoints.length < 2) {
+    if (effectiveVisualMode !== 'line' || lineSeriesPathPoints.length === 0) {
       return ''
     }
-    const points = lineMarkerPoints
+    const points = lineSeriesPathPoints
       .map((point) => {
         const clampedX = Math.max(0, Math.min(100, Number(point.xPct)))
         const clampedY = Math.max(0, Math.min(100, 100 - Number(point.yPct)))
@@ -3194,18 +3269,21 @@ export function PublicationsPerYearChart({
         return { x: clampedX, y: clampedY }
       })
       .filter((point): point is { x: number; y: number } => point !== null)
-    if (points.length < 2) {
+    if (points.length === 0) {
       return ''
     }
-    const cumulativeMaxValue = lineMarkerPoints[lineMarkerPoints.length - 1]?.value ?? 0
-    const shouldUseSmoothPath = points.length >= 6 || cumulativeMaxValue >= 40
-    if (shouldUseSmoothPath) {
-      return monotonePathFromPoints(points)
+    const orderedPoints = [...points].sort((left, right) => left.x - right.x)
+    let path = `M ${orderedPoints[0].x} ${orderedPoints[0].y}`
+    for (let index = 1; index < orderedPoints.length; index += 1) {
+      const point = orderedPoints[index]
+      path += ` H ${point.x} V ${point.y}`
     }
-    return points
-      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-      .join(' ')
-  }, [effectiveVisualMode, lineMarkerPoints])
+    const lastPoint = orderedPoints[orderedPoints.length - 1]
+    if (lastPoint.x < 100) {
+      path += ' H 100'
+    }
+    return path
+  }, [effectiveVisualMode, lineSeriesPathPoints])
   const hoveredLinePoint = effectiveVisualMode === 'line' && hoveredIndex !== null
     ? lineMarkerPoints[hoveredIndex] || null
     : null
@@ -3317,7 +3395,7 @@ export function PublicationsPerYearChart({
         data-ui="publications-chart-frame"
         data-house-role="chart-frame"
       >
-        {showMeanValueLabel && meanValueDisplay && effectiveVisualMode !== 'line' ? (
+        {showMeanValueLabel && meanPerYearDisplay && effectiveVisualMode !== 'line' ? (
           <p
               className={cn(
                 HOUSE_DRILLDOWN_CHART_META_CLASS,
@@ -3325,7 +3403,7 @@ export function PublicationsPerYearChart({
                 'pointer-events-none absolute right-2 top-0 z-[2]',
               )}
           >
-            Mean: {meanValueDisplay}
+            Mean: {meanPerYearDisplay} per year
           </p>
         ) : null}
         <div className="absolute overflow-visible" style={plotAreaStyle}>

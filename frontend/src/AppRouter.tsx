@@ -17,7 +17,6 @@ import { LandingPage } from '@/pages/landing-page'
 import { LiteraturePage } from '@/pages/literature-page'
 import { ManuscriptPage } from '@/pages/manuscript-page'
 import { ManuscriptTablesPage } from '@/pages/manuscript-tables-page'
-import { OrcidCallbackPage } from '@/pages/orcid-callback-page'
 import { OverviewPage } from '@/pages/overview-page'
 import { ImpactPage } from '@/pages/impact-page'
 import { ProfileIntegrationsPage } from '@/pages/profile-integrations-page'
@@ -176,7 +175,6 @@ export function AppRouter() {
       <Route path="/" element={<LandingOrWorkspace />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
-      <Route path="/orcid/callback" element={<OrcidCallbackPage />} />
 
       <Route element={<RequireSignIn />}>
         <Route path="/workspaces" element={<WorkspacesPage />} />

@@ -14,7 +14,6 @@ import {
   fetchPersonaSyncJob,
   fetchMe,
   fetchOrcidConnect,
-  fetchOrcidStatus,
   fetchPersonaState,
   listPersonaSyncJobs,
   pingApiHealth,
@@ -352,11 +351,10 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     try {
       const settled = await Promise.allSettled([
         fetchMe(sessionToken),
-        fetchOrcidStatus(sessionToken),
         fetchPersonaState(sessionToken),
         listPersonaSyncJobs(sessionToken, 5),
       ])
-      const [meResult, orcidResult, stateResult, jobsResult] = settled
+      const [meResult, stateResult, jobsResult] = settled
       if (meResult.status === 'fulfilled') {
         setUser(meResult.value)
         saveCachedIntegrationsUser(meResult.value)
@@ -382,10 +380,6 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             updated_at: new Date().toISOString(),
           })
         }
-      }
-      if (orcidResult.status === 'fulfilled') {
-        setOrcidStatus(orcidResult.value)
-        saveCachedOrcidStatus(orcidResult.value)
       }
       let resolvedPersonaState: PersonaStatePayload | null = null
       if (stateResult.status === 'fulfilled') {
@@ -563,6 +557,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   const hasConfirmedOpenAlexAuthor = Boolean(openAlexAuthorId)
   const openAlexIntegrationApproved = Boolean(user?.openalex_integration_approved)
   const openAlexAutoUpdateEnabled = Boolean(user?.openalex_auto_update_enabled)
+  const showOrcidIntegration = false
   const openAlexSettingsBusy =
     Boolean(isFixtureMode) || !token || loading || refreshing || updatingOpenAlexSettings
   const connectionStatusLabel = orcidStatusPending
@@ -1000,6 +995,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         />
       </Row>
 
+      {showOrcidIntegration ? (
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader heading="ORCID" className="house-section-header-marker-aligned" />
         <div className="house-separator-main-heading-to-content house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
@@ -1187,6 +1183,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         </div>
       </div>
       </Section>
+      ) : null}
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader heading="OpenAlex" className="house-section-header-marker-aligned" />
         <div className="house-separator-main-heading-to-content house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
@@ -1372,7 +1369,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         </div>
       </Section>
 
-      {confirmDisconnectOpen ? (
+      {showOrcidIntegration && confirmDisconnectOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
           onClick={() => {

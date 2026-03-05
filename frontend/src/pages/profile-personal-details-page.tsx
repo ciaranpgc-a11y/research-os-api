@@ -13,14 +13,12 @@ import {
   fetchAffiliationAddressForMe,
   fetchAffiliationSuggestionsForMe,
   fetchMe,
-  fetchOrcidStatus,
   updateMe,
 } from '@/lib/impact-api'
 import type {
   AffiliationAddressResolutionPayload,
   AffiliationSuggestionItemPayload,
   AuthUser,
-  OrcidStatusPayload,
 } from '@/types/impact'
 
 type PersonalDetailsDraft = {
@@ -65,7 +63,6 @@ type AffiliationSuggestionItem = {
 export type ProfilePersonalDetailsPageFixture = {
   token?: string
   user?: AuthUser | null
-  orcidStatus?: OrcidStatusPayload | null
   personalDetails?: Partial<PersonalDetailsDraft>
   status?: string
   error?: string
@@ -99,7 +96,6 @@ type AffiliationEditorSnapshot = {
 }
 
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
-const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const PERSONAL_DETAILS_STORAGE_PREFIX = 'aawe_profile_personal_details:'
 
 const TITLE_OPTIONS = [
@@ -466,28 +462,6 @@ function saveCachedUser(value: AuthUser): void {
   window.localStorage.setItem(INTEGRATIONS_USER_CACHE_KEY, JSON.stringify(value))
 }
 
-function loadCachedOrcidStatus(): OrcidStatusPayload | null {
-  if (typeof window === 'undefined') {
-    return null
-  }
-  const raw = window.localStorage.getItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY)
-  if (!raw) {
-    return null
-  }
-  try {
-    return JSON.parse(raw) as OrcidStatusPayload
-  } catch {
-    return null
-  }
-}
-
-function saveCachedOrcidStatus(value: OrcidStatusPayload): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-  window.localStorage.setItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY, JSON.stringify(value))
-}
-
 function buildProfileInitials(input: {
   firstName: string | null | undefined
   lastName: string | null | undefined
@@ -594,11 +568,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const navigate = useNavigate()
   const isFixtureMode = Boolean(fixture)
   const initialCachedUser = fixture?.user ?? loadCachedUser()
-  const initialCachedOrcidStatus = fixture?.orcidStatus ?? loadCachedOrcidStatus()
   const initialStoredDetails = initialCachedUser?.id
     ? loadStoredPersonalDetails(initialCachedUser.id)
     : null
-  const initialOrcidLinked = Boolean(initialCachedOrcidStatus?.linked || initialCachedUser?.orcid_id)
+  const initialOrcidLinked = Boolean(initialCachedUser?.orcid_id)
   const initialDraft = sanitizeDraft({
     ...draftFromSources(initialCachedUser, initialStoredDetails, initialOrcidLinked),
     ...(fixture?.personalDetails || {}),
@@ -610,7 +583,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
   const [token, setToken] = useState(() => fixture?.token ?? getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
-  const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
   const [draft, setDraft] = useState<PersonalDetailsDraft>(initialDraft)
   const [accountEmail, setAccountEmail] = useState(initialAccountEmail)
   const [primaryAffiliationInput, setPrimaryAffiliationInput] = useState(() => sanitizeAffiliation(initialDraft.organisation))
@@ -752,14 +724,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     }
     const fixtureUser = fixture?.user ?? null
     const stored = fixtureUser?.id ? loadStoredPersonalDetails(fixtureUser.id) : null
-    const fixtureOrcidLinked = Boolean(fixture?.orcidStatus?.linked || fixtureUser?.orcid_id)
+    const fixtureOrcidLinked = Boolean(fixtureUser?.orcid_id)
     const fixtureDraft = sanitizeDraft({
       ...draftFromSources(fixtureUser, stored, fixtureOrcidLinked),
       ...(fixture?.personalDetails || {}),
     })
     setToken(fixture?.token ?? 'storybook-session-token')
     setUser(fixtureUser)
-    setOrcidStatus(fixture?.orcidStatus ?? null)
     setDraft(fixtureDraft)
     setCommittedJournalByline(buildJournalBylineFromDraft(fixtureDraft))
     setPrimaryAffiliationInput(sanitizeAffiliation(fixtureDraft.organisation))
@@ -857,19 +828,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       setLoading(true)
       setError('')
       try {
-        const settled = await Promise.allSettled([fetchMe(sessionToken), fetchOrcidStatus(sessionToken)])
-        const [meResult, orcidResult] = settled
-
-        if (meResult.status === 'rejected') {
-          throw meResult.reason
-        }
-
-        const nextUser = meResult.value
+        const nextUser = await fetchMe(sessionToken)
         setUser(nextUser)
         saveCachedUser(nextUser)
-        const linkedFromSource =
-          (orcidResult.status === 'fulfilled' && Boolean(orcidResult.value.linked)) ||
-          Boolean(nextUser.orcid_id)
+        const linkedFromSource = Boolean(nextUser.orcid_id)
         if (!emailEditedRef.current) {
           setAccountEmail(resolveEditableAccountEmail({
             email: nextUser.email,
@@ -911,10 +873,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           }))
         }
 
-        if (orcidResult.status === 'fulfilled') {
-          setOrcidStatus(orcidResult.value)
-          saveCachedOrcidStatus(orcidResult.value)
-        }
       } catch (loadError) {
         const message = loadError instanceof Error ? loadError.message : 'Could not load personal details.'
         if (message.toLowerCase().includes('session')) {
@@ -2209,7 +2167,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       setDraft(cleanDraft)
       setAccountEmail(resolveEditableAccountEmail({
         email: nextUser.email,
-        orcidLinked: Boolean(orcidStatus?.linked || nextUser.orcid_id),
+        orcidLinked: Boolean(nextUser.orcid_id),
       }))
       setLastSavedAt(savedAt)
       setStatus(

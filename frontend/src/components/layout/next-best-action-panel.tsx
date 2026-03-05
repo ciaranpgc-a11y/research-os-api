@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui'
 import { ScrollArea } from '@/components/ui'
-import { fetchMe, fetchOrcidStatus, fetchPersonaState } from '@/lib/impact-api'
+import { fetchMe, fetchPersonaState } from '@/lib/impact-api'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import type { AuthUser, OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
+import type { AuthUser, PersonaStatePayload } from '@/types/impact'
 
 type RankedAction = {
   title: string
@@ -39,7 +39,6 @@ export function NextBestActionPanel() {
   const [error, setError] = useState('')
   const [user, setUser] = useState<AuthUser | null>(null)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(null)
-  const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
   const syncStatus = personaState?.sync_status || {
     metrics_last_synced_at: null,
     impact_last_computed_at: null,
@@ -51,17 +50,15 @@ export function NextBestActionPanel() {
     if (!currentToken) {
       setUser(null)
       setPersonaState(null)
-      setOrcidStatus(null)
       setError('')
       return
     }
     setLoading(true)
     setError('')
     try {
-      const [userResult, stateResult, orcidResult] = await Promise.allSettled([
+      const [userResult, stateResult] = await Promise.allSettled([
         fetchMe(currentToken),
         fetchPersonaState(currentToken),
-        fetchOrcidStatus(currentToken),
       ])
       if (userResult.status === 'fulfilled') {
         setUser(userResult.value)
@@ -70,7 +67,6 @@ export function NextBestActionPanel() {
         setError(userResult.reason instanceof Error ? userResult.reason.message : 'Could not load account context.')
       }
       setPersonaState(stateResult.status === 'fulfilled' ? stateResult.value : null)
-      setOrcidStatus(orcidResult.status === 'fulfilled' ? orcidResult.value : null)
     } finally {
       setLoading(false)
     }
@@ -85,7 +81,7 @@ export function NextBestActionPanel() {
       return [
         {
           title: 'Create account',
-          reason: 'Sign-in is required to save profile details, sync ORCID, and keep works.',
+          reason: 'Sign-in is required to save profile details and keep your works context in sync.',
           cta: 'Open account access',
           href: '/auth',
         },
@@ -100,16 +96,8 @@ export function NextBestActionPanel() {
     if (!user.email_verified_at) {
       ranked.push({
         title: 'Verify email',
-        reason: 'Email verification is required before ORCID import and metrics sync.',
+        reason: 'Email verification is required before account updates and sync operations.',
         cta: 'Open profile verification',
-        href: '/profile',
-      })
-    }
-    if (!orcidStatus?.linked) {
-      ranked.push({
-        title: 'Connect ORCID',
-        reason: 'Link ORCID to build your publication graph and import works.',
-        cta: 'Open integrations',
         href: '/profile',
       })
     }
@@ -124,7 +112,7 @@ export function NextBestActionPanel() {
     if (worksCount > 0 && citationCoverage < 60) {
       ranked.push({
         title: 'Synchronise citations',
-        reason: 'Citation coverage is incomplete; refresh provider metrics before impact interpretation.',
+        reason: 'Citation coverage is incomplete; refresh publication metrics before impact interpretation.',
         cta: 'Open integrations',
         href: '/profile',
       })
@@ -158,7 +146,7 @@ export function NextBestActionPanel() {
       })
     }
     return ranked.slice(0, 3)
-  }, [orcidStatus?.linked, personaState, token, user])
+  }, [personaState, token, user])
 
   const contextCitationCoverage = useMemo(() => {
     const worksCount = personaState?.works.length ?? 0
@@ -197,7 +185,6 @@ export function NextBestActionPanel() {
             </CardHeader>
             <CardContent className="space-y-1 text-xs">
               <p>Session: {token && user ? 'Signed in' : 'Guest'}</p>
-              <p>ORCID: {orcidStatus?.linked ? 'Linked' : 'Not linked'}</p>
               <p>Works: {personaState?.works.length ?? 0}</p>
               <p>Citation coverage: {contextCitationCoverage}</p>
               <p>Metrics sync: {formatTimestamp(syncStatus.metrics_last_synced_at)}</p>

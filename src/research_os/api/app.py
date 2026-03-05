@@ -196,10 +196,7 @@ from research_os.api.schemas import (
     PersonaContextResponse,
     PersonaEmbeddingsGenerateRequest,
     PersonaEmbeddingsGenerateResponse,
-    PersonaImportOrcidRequest,
-    PersonaImportOrcidResponse,
     PersonaSyncJobMetricsRequest,
-    PersonaSyncJobOrcidImportRequest,
     PersonaSyncJobResponse,
     PersonaGrantsResponse,
     PersonaOpenAccessDiscoverRequest,
@@ -237,9 +234,6 @@ from research_os.api.schemas import (
     SubmissionPackResponse,
     TitleAbstractSynthesisRequest,
     TitleAbstractSynthesisResponse,
-    OrcidCallbackResponse,
-    OrcidConnectResponse,
-    OrcidStatusResponse,
     OpenAlexAuthorSearchRequest,
     OpenAlexAuthorSearchResponse,
     OpenAlexImportRequest,
@@ -377,15 +371,6 @@ from research_os.services.auth_service import (
     request_password_reset,
     delete_current_user,
     update_current_user,
-)
-from research_os.services.orcid_service import (
-    disconnect_orcid,
-    OrcidNotFoundError,
-    OrcidValidationError,
-    complete_orcid_callback,
-    create_orcid_connect_url,
-    get_orcid_status,
-    import_orcid_works,
 )
 from research_os.services.publication_insights_bootstrap_service import (
     _resolve_openalex_author_by_name,
@@ -2238,192 +2223,6 @@ def v1_auth_password_reset_confirm(
         )
         return AuthPasswordResetConfirmResponse(**response_payload)
     except AuthValidationError as exc:
-        return _build_bad_request_response(str(exc))
-
-
-@app.get(
-    "/v1/orcid/connect",
-    response_model=OrcidConnectResponse,
-    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
-    tags=["v1"],
-)
-def v1_orcid_connect(request: Request) -> OrcidConnectResponse | JSONResponse:
-    token = _extract_session_token(request)
-    if not token:
-        return _build_unauthorized_response("Session token is required.")
-    try:
-        user = get_user_by_session_token(token)
-        payload = create_orcid_connect_url(
-            user_id=str(user["id"]),
-            frontend_origin=_request_origin(request),
-        )
-        return OrcidConnectResponse(**payload)
-    except AuthNotFoundError as exc:
-        return _build_unauthorized_response(str(exc))
-    except OrcidNotFoundError as exc:
-        return _build_not_found_response(str(exc))
-    except (OrcidValidationError, AuthValidationError) as exc:
-        return _build_bad_request_response(str(exc))
-
-
-@app.get(
-    "/v1/orcid/status",
-    response_model=OrcidStatusResponse,
-    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
-    tags=["v1"],
-)
-def v1_orcid_status(request: Request) -> OrcidStatusResponse | JSONResponse:
-    token = _extract_session_token(request)
-    if not token:
-        return _build_unauthorized_response("Session token is required.")
-    try:
-        user = get_user_by_session_token(token)
-        payload = get_orcid_status(
-            user_id=str(user["id"]),
-            frontend_origin=_request_origin(request),
-        )
-        return OrcidStatusResponse(**payload)
-    except AuthNotFoundError as exc:
-        return _build_unauthorized_response(str(exc))
-    except OrcidNotFoundError as exc:
-        return _build_not_found_response(str(exc))
-    except (OrcidValidationError, AuthValidationError) as exc:
-        return _build_bad_request_response(str(exc))
-
-
-@app.post(
-    "/v1/orcid/disconnect",
-    response_model=OrcidStatusResponse,
-    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
-    tags=["v1"],
-)
-def v1_orcid_disconnect(request: Request) -> OrcidStatusResponse | JSONResponse:
-    token = _extract_session_token(request)
-    if not token:
-        return _build_unauthorized_response("Session token is required.")
-    try:
-        user = get_user_by_session_token(token)
-        payload = disconnect_orcid(user_id=str(user["id"]))
-        return OrcidStatusResponse(**payload)
-    except AuthNotFoundError as exc:
-        return _build_unauthorized_response(str(exc))
-    except OrcidNotFoundError as exc:
-        return _build_not_found_response(str(exc))
-    except (OrcidValidationError, AuthValidationError) as exc:
-        return _build_bad_request_response(str(exc))
-
-
-@app.get(
-    "/v1/orcid/callback",
-    response_model=OrcidCallbackResponse,
-    responses=BAD_REQUEST_RESPONSES,
-    tags=["v1"],
-)
-def v1_orcid_callback(
-    request: Request,
-    state: str = Query(default=""),
-    code: str = Query(default=""),
-    mode: str = Query(default="auto"),
-) -> OrcidCallbackResponse | JSONResponse | RedirectResponse:
-    try:
-        payload = complete_orcid_callback(
-            state=state,
-            code=code,
-            frontend_origin=_request_origin(request),
-        )
-        clean_mode = mode.strip().lower()
-        accept_header = str(request.headers.get("accept", "")).lower()
-        user_agent = str(request.headers.get("user-agent", "")).lower()
-        sec_fetch_mode = str(request.headers.get("sec-fetch-mode", "")).lower()
-        if clean_mode == "json":
-            wants_json = True
-        elif clean_mode in {"redirect", "html"}:
-            wants_json = False
-        else:
-            # Auto mode: keep API clients JSON-first, but redirect browser navigations.
-            is_browser_navigation = (
-                "text/html" in accept_header
-                or sec_fetch_mode == "navigate"
-                or "mozilla/" in user_agent
-            )
-            wants_json = not is_browser_navigation
-        if wants_json:
-            return OrcidCallbackResponse(**payload)
-        frontend_base = _frontend_redirect_base()
-        redirect_url = (
-            f"{frontend_base}/profile/integrations/?orcid=linked"
-            f"&orcid_id={str(payload.get('orcid_id', '')).strip()}"
-        )
-        return RedirectResponse(url=redirect_url, status_code=303)
-    except OrcidValidationError as exc:
-        return _build_bad_request_response(str(exc))
-
-
-@app.post(
-    "/v1/persona/import/orcid",
-    response_model=PersonaImportOrcidResponse,
-    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
-    tags=["v1"],
-)
-def v1_persona_import_orcid(
-    request: Request,
-    payload: PersonaImportOrcidRequest,
-) -> PersonaImportOrcidResponse | JSONResponse:
-    token = _extract_session_token(request)
-    if not token:
-        return _build_unauthorized_response("Session token is required.")
-    try:
-        user = get_user_by_session_token(token)
-        imported = import_orcid_works(
-            user_id=str(user["id"]),
-            overwrite_user_metadata=payload.overwrite_user_metadata,
-        )
-        return PersonaImportOrcidResponse(**imported)
-    except AuthNotFoundError as exc:
-        return _build_unauthorized_response(str(exc))
-    except OrcidNotFoundError as exc:
-        return _build_not_found_response(str(exc))
-    except OrcidValidationError as exc:
-        return _build_bad_request_response(str(exc))
-
-
-@app.post(
-    "/v1/persona/jobs/orcid-import",
-    response_model=PersonaSyncJobResponse,
-    responses=(
-        BAD_REQUEST_RESPONSES
-        | NOT_FOUND_RESPONSES
-        | CONFLICT_RESPONSES
-        | UNAUTHORIZED_RESPONSES
-    ),
-    tags=["v1"],
-)
-def v1_persona_enqueue_orcid_import_job(
-    request: Request,
-    payload: PersonaSyncJobOrcidImportRequest,
-) -> PersonaSyncJobResponse | JSONResponse:
-    token = _extract_session_token(request)
-    if not token:
-        return _build_unauthorized_response("Session token is required.")
-    try:
-        user = get_user_by_session_token(token)
-        job = enqueue_persona_sync_job(
-            user_id=str(user["id"]),
-            job_type="orcid_import",
-            overwrite_user_metadata=payload.overwrite_user_metadata,
-            run_metrics_sync=payload.run_metrics_sync,
-            providers=payload.providers,
-            refresh_analytics=payload.refresh_analytics,
-            refresh_metrics=payload.refresh_metrics,
-        )
-        return PersonaSyncJobResponse(**serialize_persona_sync_job(job))
-    except AuthNotFoundError as exc:
-        return _build_unauthorized_response(str(exc))
-    except (PersonaSyncJobNotFoundError, OrcidNotFoundError) as exc:
-        return _build_not_found_response(str(exc))
-    except PersonaSyncJobConflictError as exc:
-        return _build_conflict_response(str(exc))
-    except (PersonaSyncJobValidationError, OrcidValidationError, ValueError) as exc:
         return _build_bad_request_response(str(exc))
 
 
