@@ -6850,8 +6850,6 @@ function GenericMetricDrilldownWorkspace({
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
 }) {
-  const [citationsTrendsExpanded, setCitationsTrendsExpanded] = useState(true)
-
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
     breakdown: 'Breakdown results',
     trajectory: 'Trajectory results',
@@ -6946,35 +6944,6 @@ function GenericMetricDrilldownWorkspace({
           </div>
         ) : !headlineMetricTiles.length ? (
           <div className="house-drilldown-content-block w-full" />
-        ) : null}
-
-        {activeTab === 'summary' && tile.key === 'total_citations' ? (
-          <div className="house-publications-drilldown-bounded-section">
-            <div className="house-drilldown-heading-block">
-              <div className="flex items-center justify-between gap-2">
-                <p className="house-drilldown-heading-block-title">Citation trends</p>
-                <DrilldownSheet.HeadingToggle
-                  expanded={citationsTrendsExpanded}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setCitationsTrendsExpanded((value) => !value)
-                  }}
-                  onMouseDown={(event) => event.stopPropagation()}
-                />
-              </div>
-            </div>
-            {citationsTrendsExpanded ? (
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
-                  <TotalCitationsModeChart
-                    tile={tile}
-                    chartTitle="Citations per year (last 5 years)"
-                    chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
-                  />
-                </div>
-              </div>
-            ) : null}
-          </div>
         ) : null}
 
         {subsectionTitle ? (
