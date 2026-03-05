@@ -2937,6 +2937,12 @@ export function PublicationsPerYearChart({
     ? targetAxisScale.axisMax
     : Math.max(1, maxValue * (isCompactTileMode ? 1.06 : 1.1), Math.max(0, meanValue) * 1.1)
   const axisMax = targetAxisMax
+  const displayedAxisMax = useEasedValue(
+    targetAxisMax,
+    `${animationKey}|y-axis-max`,
+    animate && hasBars && showAxes && enableWindowToggle,
+    axisDurationMs,
+  )
   const renderedMeanValue = Math.max(0, meanValue)
   const barHeightAxisMax = Math.max(1, axisMax)
   const rawYAxisTickRatios = useMemo(
@@ -2948,8 +2954,8 @@ export function PublicationsPerYearChart({
     [targetAxisScale],
   )
   const rawYAxisTickValues = useMemo(
-    () => rawYAxisTickRatios.map((ratio) => ratio * axisMax),
-    [axisMax, rawYAxisTickRatios],
+    () => rawYAxisTickRatios.map((ratio) => ratio * Math.max(1, displayedAxisMax)),
+    [displayedAxisMax, rawYAxisTickRatios],
   )
   const yAxisTickValues = useMemo(() => {
     if (effectiveVisualMode !== 'line') {
@@ -3800,11 +3806,16 @@ export function PublicationsPerYearChart({
           <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
             {yAxisTickValues.map((tickValue, index) => {
               const pct = Math.max(0, Math.min(100, (yAxisTickRatios[index] || 0) * 100))
+              const tickRatioKey = Math.round((yAxisTickRatios[index] || 0) * 1000)
                 return (
                   <p
-                    key={`pub-y-axis-${index}`}
+                    key={`pub-y-axis-${tickRatioKey}`}
                     className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
-                    style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
+                    style={{
+                      bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)`,
+                      transitionDuration: `${axisDurationMs}ms`,
+                      transitionProperty: 'bottom,opacity',
+                    }}
                   >
                     {formatInt(tickValue)}
                   </p>
