@@ -48,9 +48,6 @@ import type {
   ImpactRecomputePayload,
   ImpactReportPayload,
   ImpactThemesPayload,
-  OrcidConnectPayload,
-  OrcidStatusPayload,
-  OrcidImportPayload,
   PersonaSyncJobPayload,
   PublicationAiInsightsResponsePayload,
   PublicationAuthorsPayload,
@@ -960,99 +957,6 @@ export async function confirmPasswordReset(input: {
       }),
     },
     'Password reset failed',
-  )
-}
-
-export async function fetchOrcidConnect(token: string): Promise<OrcidConnectPayload> {
-  return requestJson<OrcidConnectPayload>(
-    `${API_BASE_URL}/v1/orcid/connect`,
-    {
-      method: 'GET',
-      headers: authHeaders(token),
-    },
-    'ORCID connect failed',
-  )
-}
-
-export async function fetchOrcidStatus(token: string): Promise<OrcidStatusPayload> {
-  return requestJson<OrcidStatusPayload>(
-    `${API_BASE_URL}/v1/orcid/status`,
-    {
-      method: 'GET',
-      headers: authHeaders(token),
-    },
-    'ORCID status lookup failed',
-  )
-}
-
-export async function disconnectOrcid(token: string): Promise<OrcidStatusPayload> {
-  return requestJson<OrcidStatusPayload>(
-    `${API_BASE_URL}/v1/orcid/disconnect`,
-    {
-      method: 'POST',
-      headers: authHeaders(token),
-    },
-    'ORCID disconnect failed',
-  )
-}
-
-export async function completeOrcidLink(input: {
-  state: string
-  code: string
-}): Promise<{ connected: boolean; user_id: string; orcid_id: string }> {
-  const state = encodeURIComponent(input.state.trim())
-  const code = encodeURIComponent(input.code.trim())
-  return requestJson<{ connected: boolean; user_id: string; orcid_id: string }>(
-    `${API_BASE_URL}/v1/orcid/callback?mode=json&state=${state}&code=${code}`,
-    {
-      method: 'GET',
-    },
-    'ORCID callback failed',
-  )
-}
-
-export async function importOrcidWorks(
-  token: string,
-  options?: {
-    overwriteUserMetadata?: boolean
-  },
-): Promise<OrcidImportPayload> {
-  return requestJson<OrcidImportPayload>(
-    `${API_BASE_URL}/v1/persona/import/orcid`,
-    {
-      method: 'POST',
-      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ overwrite_user_metadata: Boolean(options?.overwriteUserMetadata) }),
-    },
-    'ORCID import failed',
-    { timeoutMs: 90_000, retryCount: 1 },
-  )
-}
-
-export async function enqueueOrcidImportSyncJob(
-  token: string,
-  options?: {
-    overwriteUserMetadata?: boolean
-    runMetricsSync?: boolean
-    providers?: Array<'openalex' | 'semantic_scholar' | 'manual'>
-    refreshAnalytics?: boolean
-    refreshMetrics?: boolean
-  },
-): Promise<PersonaSyncJobPayload> {
-  return requestJson<PersonaSyncJobPayload>(
-    `${API_BASE_URL}/v1/persona/jobs/orcid-import`,
-    {
-      method: 'POST',
-      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        overwrite_user_metadata: Boolean(options?.overwriteUserMetadata),
-        run_metrics_sync: options?.runMetricsSync ?? true,
-        providers: options?.providers || ['openalex', 'semantic_scholar'],
-        refresh_analytics: options?.refreshAnalytics ?? true,
-        refresh_metrics: options?.refreshMetrics ?? true,
-      }),
-    },
-    'Could not start ORCID sync job',
   )
 }
 

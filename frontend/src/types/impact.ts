@@ -1211,20 +1211,6 @@ export type PersonaGrantsPayload = {
   generated_at: string
 }
 
-export type OrcidConnectPayload = {
-  url: string
-  state: string
-}
-
-export type OrcidStatusPayload = {
-  configured: boolean
-  linked: boolean
-  orcid_id: string | null
-  redirect_uri: string
-  can_import: boolean
-  issues: string[]
-}
-
 export type AuthOAuthConnectPayload = {
   provider: 'google' | 'microsoft'
   state: string
@@ -1266,14 +1252,6 @@ export type AuthPasswordResetRequestPayload = {
 
 export type AuthPasswordResetConfirmPayload = {
   success: boolean
-}
-
-export type OrcidImportPayload = {
-  imported_count: number
-  work_ids: string[]
-  provenance: string
-  last_synced_at: string
-  core_collaborators: Array<Record<string, unknown>>
 }
 
 export type PersonaSyncJobPayload = {

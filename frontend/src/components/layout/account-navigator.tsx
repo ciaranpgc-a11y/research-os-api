@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { prefetchCollaborationLandingData } from '@/lib/collaboration-preload'
 import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
-import { fetchOrcidStatus, fetchPersonaState } from '@/lib/impact-api'
+import { fetchPersonaState } from '@/lib/impact-api'
 import { writeCachedPersonaState } from '@/lib/persona-cache'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass, type HouseSectionTone } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
@@ -27,7 +27,6 @@ type AccountNavSection = {
   items: AccountNavItem[]
 }
 
-const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const PROFILE_PREFETCH_LAST_AT_KEY = 'aawe_profile_prefetch_last_at'
 const PROFILE_COLLAB_PREFETCH_LAST_AT_KEY = 'aawe_profile_collab_prefetch_last_at'
 const PROFILE_PREFETCH_MIN_INTERVAL_MS = 45_000
@@ -99,7 +98,7 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
     prefetchInFlight.current = true
     try {
       const profilePrefetchTask = shouldPrefetchProfile
-        ? Promise.allSettled([fetchPersonaState(token), fetchOrcidStatus(token)])
+        ? Promise.allSettled([fetchPersonaState(token)])
         : Promise.resolve(null)
       const collaborationPrefetchTask = shouldPrefetchCollaboration
         ? prefetchCollaborationLandingData(token).then(() => true).catch(() => false)
@@ -110,15 +109,9 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
       ])
 
       if (profileSettled) {
-        const [personaResult, orcidResult] = profileSettled
+        const [personaResult] = profileSettled
         if (personaResult.status === 'fulfilled') {
           writeCachedPersonaState(personaResult.value)
-        }
-        if (orcidResult.status === 'fulfilled') {
-          window.localStorage.setItem(
-            INTEGRATIONS_ORCID_STATUS_CACHE_KEY,
-            JSON.stringify(orcidResult.value),
-          )
         }
         window.localStorage.setItem(PROFILE_PREFETCH_LAST_AT_KEY, String(Date.now()))
       }
