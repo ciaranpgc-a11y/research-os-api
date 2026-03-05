@@ -352,8 +352,7 @@ def _collaborator_identity_key(collaborator: Collaborator) -> str:
     if email:
         return f"email:{email}"
     name = _normalize_name_lower(collaborator.full_name or "")
-    country = _normalize_name_lower(collaborator.country or "")
-    return f"name:{name}|country:{country}"
+    return f"name:{name}"
 
 
 def _collaborator_groups(

@@ -1300,6 +1300,39 @@ class AdminOrganisationImpersonationStartResponse(BaseModel):
     audit_event: AdminAuditEventResponse
 
 
+class AdminRuntimeSettingWorkTypeLlmResponse(BaseModel):
+    setting_key: str = "ENABLE_WORK_TYPE_LLM"
+    setting_enabled: bool = False
+    effective_enabled: bool = False
+    raw_value: str = ""
+    openai_api_key_present: bool = False
+    scope: Literal["process"] = "process"
+    persistence: Literal["restart_resets"] = "restart_resets"
+    description: str = ""
+    note: str = ""
+
+
+class AdminRuntimeSettingsResponse(BaseModel):
+    generated_at: datetime
+    work_type_llm: AdminRuntimeSettingWorkTypeLlmResponse = Field(
+        default_factory=AdminRuntimeSettingWorkTypeLlmResponse
+    )
+
+
+class AdminWorkTypeLlmSettingUpdateRequest(BaseModel):
+    enabled: bool
+    reason: str = ""
+
+
+class AdminWorkTypeLlmSettingUpdateResponse(BaseModel):
+    message: str
+    generated_at: datetime
+    work_type_llm: AdminRuntimeSettingWorkTypeLlmResponse = Field(
+        default_factory=AdminRuntimeSettingWorkTypeLlmResponse
+    )
+    audit_event: AdminAuditEventResponse
+
+
 class AdminAuditActionTotalResponse(BaseModel):
     action: str
     count: int = 0

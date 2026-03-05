@@ -45,6 +45,9 @@ from research_os.api.schemas import (
     AdminOrganisationsListResponse,
     AdminOverviewResponse,
     AdminApiMonitorResponse,
+    AdminRuntimeSettingsResponse,
+    AdminWorkTypeLlmSettingUpdateRequest,
+    AdminWorkTypeLlmSettingUpdateResponse,
     AdminUsageCostsResponse,
     AdminUsersListResponse,
     AnalysisScaffoldRequest,
@@ -253,12 +256,14 @@ from research_os.services.admin_service import (
     create_admin_org_impersonation,
     get_admin_api_monitor,
     get_admin_overview,
+    get_admin_runtime_settings,
     get_admin_usage_costs,
     list_admin_audit_events,
     list_admin_jobs,
     list_admin_organisations,
     list_admin_workspaces,
     list_admin_users,
+    update_admin_work_type_llm_setting,
 )
 from research_os.services.affiliation_suggestion_service import (
     AffiliationSuggestionValidationError,
@@ -1688,6 +1693,46 @@ def v1_admin_apis(
         return auth_error
     payload = get_admin_api_monitor(query=query)
     return AdminApiMonitorResponse(**payload)
+
+
+@app.get(
+    "/v1/admin/system/runtime-settings",
+    response_model=AdminRuntimeSettingsResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_runtime_settings(
+    request: Request,
+) -> AdminRuntimeSettingsResponse | JSONResponse:
+    _, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    payload = get_admin_runtime_settings()
+    return AdminRuntimeSettingsResponse(**payload)
+
+
+@app.post(
+    "/v1/admin/system/runtime-settings/work-type-llm",
+    response_model=AdminWorkTypeLlmSettingUpdateResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_update_work_type_llm_setting(
+    request: Request,
+    payload: AdminWorkTypeLlmSettingUpdateRequest,
+) -> AdminWorkTypeLlmSettingUpdateResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        result = update_admin_work_type_llm_setting(
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            enabled=bool(payload.enabled),
+            reason=str(payload.reason or ""),
+        )
+        return AdminWorkTypeLlmSettingUpdateResponse(**result)
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
 
 
 @app.get(

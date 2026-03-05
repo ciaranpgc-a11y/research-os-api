@@ -35,6 +35,7 @@ import {
   fetchAdminJobs,
   fetchAdminOrganisations,
   fetchAdminOverview,
+  fetchAdminRuntimeSettings,
   fetchAdminUsageCosts,
   fetchAdminUsers,
   fetchAdminWorkspaces,
@@ -43,6 +44,7 @@ import {
   reconcileAdminUserLibrary,
   refreshAdminUserPublications,
   retryAdminJob,
+  updateAdminWorkTypeLlmSetting,
 } from '@/lib/impact-api'
 import { getHouseLeftBorderToneClass } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
@@ -53,6 +55,7 @@ import type {
   AdminApiMonitorPayload,
   AdminOrganisationsListPayload,
   AdminOverviewPayload,
+  AdminRuntimeSettingsPayload,
   AdminUsageCostsPayload,
   AdminUsersListPayload,
   AdminWorkspacesListPayload,
@@ -459,6 +462,7 @@ export function AdminPage() {
   const [workspaces, setWorkspaces] = useState<AdminWorkspacesListPayload | null>(null)
   const [usageCosts, setUsageCosts] = useState<AdminUsageCostsPayload | null>(null)
   const [apiMonitor, setApiMonitor] = useState<AdminApiMonitorPayload | null>(null)
+  const [runtimeSettings, setRuntimeSettings] = useState<AdminRuntimeSettingsPayload | null>(null)
   const [jobs, setJobs] = useState<AdminJobsListPayload | null>(null)
   const [auditEvents, setAuditEvents] = useState<AdminAuditEventsListPayload | null>(null)
   const [userQuery, setUserQuery] = useState('')
@@ -474,6 +478,7 @@ export function AdminPage() {
   const [reconcilingUserId, setReconcilingUserId] = useState('')
   const [recoveringStorageUserId, setRecoveringStorageUserId] = useState('')
   const [refreshingPublicationsUserId, setRefreshingPublicationsUserId] = useState('')
+  const [updatingWorkTypeLlm, setUpdatingWorkTypeLlm] = useState(false)
   const [deletingUserId, setDeletingUserId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
@@ -522,6 +527,7 @@ export function AdminPage() {
           workspacesPayload,
           usagePayload,
           apiMonitorPayload,
+          runtimeSettingsPayload,
           jobsPayload,
           auditPayload,
         ] = await Promise.all([
@@ -547,6 +553,7 @@ export function AdminPage() {
           fetchAdminApiMonitor(token, {
             query: nextUsageQuery,
           }),
+          fetchAdminRuntimeSettings(token),
           fetchAdminJobs(token, {
             query: nextJobsQuery,
             status: nextJobStatus,
@@ -564,6 +571,7 @@ export function AdminPage() {
         setWorkspaces(workspacesPayload)
         setUsageCosts(usagePayload)
         setApiMonitor(apiMonitorPayload)
+        setRuntimeSettings(runtimeSettingsPayload)
         setJobs(jobsPayload)
         setAuditEvents(auditPayload)
         setSelectedOrganisationId((current) => {
@@ -703,6 +711,35 @@ export function AdminPage() {
     }
   }
 
+  const onToggleWorkTypeLlm = async () => {
+    if (!workTypeLlmSetting) {
+      return
+    }
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setUpdatingWorkTypeLlm(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await updateAdminWorkTypeLlmSetting(token, {
+        enabled: !workTypeLlmSettingEnabled,
+        reason: 'Admin console runtime toggle.',
+      })
+      setRuntimeSettings({
+        generated_at: payload.generated_at,
+        work_type_llm: payload.work_type_llm,
+      })
+      setStatus(payload.message)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not update work-type LLM setting.')
+    } finally {
+      setUpdatingWorkTypeLlm(false)
+    }
+  }
+
   const onReconcileUserLibrary = async (userId: string) => {
     const token = getAuthSessionToken()
     if (!token) {
@@ -830,6 +867,9 @@ export function AdminPage() {
   const apiMonitorSummary = apiMonitor?.summary || null
   const apiMonitorProviders = useMemo(() => apiMonitor?.providers || [], [apiMonitor?.providers])
   const apiMonitorTrend = useMemo(() => apiMonitor?.monthly_trend || [], [apiMonitor?.monthly_trend])
+  const workTypeLlmSetting = runtimeSettings?.work_type_llm || null
+  const workTypeLlmSettingEnabled = Boolean(workTypeLlmSetting?.setting_enabled)
+  const workTypeLlmEffectiveEnabled = Boolean(workTypeLlmSetting?.effective_enabled)
   const jobsItems = useMemo(() => jobs?.items || [], [jobs?.items])
   const auditItems = useMemo(() => auditEvents?.items || [], [auditEvents?.items])
   const reconcileAuditItems = useMemo(
@@ -2478,6 +2518,64 @@ export function AdminPage() {
                     ) : (
                       <p className="text-sm text-muted-foreground">No integration status rows available.</p>
                     )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>Runtime controls</CardTitle>
+                    <CardDescription>Process-local switches for provider-dependent behavior.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">Work-type LLM classification</p>
+                          <p className="text-sm text-[hsl(var(--tone-neutral-700))]">
+                            {workTypeLlmSetting?.description || 'Controls whether ambiguous work types can be classified via OpenAI.'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {workTypeLlmSetting?.note || 'Runtime-only toggle. Restart resets the setting.'}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant={workTypeLlmSettingEnabled ? 'secondary' : 'cta'}
+                          onClick={() => void onToggleWorkTypeLlm()}
+                          isLoading={updatingWorkTypeLlm}
+                          loadingText={workTypeLlmSettingEnabled ? 'Disabling...' : 'Enabling...'}
+                          disabled={!workTypeLlmSetting}
+                        >
+                          {workTypeLlmSettingEnabled ? 'Disable' : 'Enable'}
+                        </Button>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Setting</p>
+                          <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            {workTypeLlmSettingEnabled ? 'On' : 'Off'}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Effective state</p>
+                          <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            {workTypeLlmEffectiveEnabled ? 'Active' : 'Inactive'}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">OpenAI key</p>
+                          <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            {workTypeLlmSetting?.openai_api_key_present ? 'Present' : 'Missing'}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Raw env value</p>
+                          <p className="truncate text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            {workTypeLlmSetting?.raw_value || '(empty)'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
 

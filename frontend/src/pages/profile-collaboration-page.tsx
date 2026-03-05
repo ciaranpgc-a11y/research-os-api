@@ -232,8 +232,7 @@ function collaboratorIdentityKey(item: CollaboratorPayload): string {
     return `email:${email}`
   }
   const name = String(item.full_name || '').trim().toLowerCase().replace(/\s+/g, ' ')
-  const country = String(item.country || '').trim().toLowerCase()
-  return `name:${name}|country:${country}`
+  return `name:${name}`
 }
 
 function relationshipTone(value: string): 'default' | 'secondary' | 'outline' {

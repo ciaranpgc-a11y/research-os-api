@@ -371,6 +371,30 @@ export type AdminApiMonitorPayload = {
   monthly_trend: AdminApiMonitorMonthlyTrendPointPayload[]
 }
 
+export type AdminRuntimeSettingWorkTypeLlmPayload = {
+  setting_key: string
+  setting_enabled: boolean
+  effective_enabled: boolean
+  raw_value: string
+  openai_api_key_present: boolean
+  scope: 'process'
+  persistence: 'restart_resets'
+  description: string
+  note: string
+}
+
+export type AdminRuntimeSettingsPayload = {
+  generated_at: string
+  work_type_llm: AdminRuntimeSettingWorkTypeLlmPayload
+}
+
+export type AdminWorkTypeLlmSettingUpdatePayload = {
+  message: string
+  generated_at: string
+  work_type_llm: AdminRuntimeSettingWorkTypeLlmPayload
+  audit_event: AdminAuditEventPayload
+}
+
 export type AdminJobSummaryPayload = {
   id: string
   status: string

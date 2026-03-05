@@ -15,9 +15,11 @@ import type {
   AdminOverviewPayload,
   AdminOrganisationImpersonationStartPayload,
   AdminApiMonitorPayload,
+  AdminRuntimeSettingsPayload,
   AdminUsageCostsPayload,
   AdminUsersListPayload,
   AdminWorkspacesListPayload,
+  AdminWorkTypeLlmSettingUpdatePayload,
   AuthEmailVerificationRequestPayload,
   AuthLoginChallengePayload,
   AuthOAuthProviderStatusesPayload,
@@ -461,6 +463,40 @@ export async function fetchAdminApiMonitor(
       headers: authHeaders(token),
     },
     'Admin API monitor lookup failed',
+  )
+}
+
+export async function fetchAdminRuntimeSettings(
+  token: string,
+): Promise<AdminRuntimeSettingsPayload> {
+  return requestJson<AdminRuntimeSettingsPayload>(
+    `${API_BASE_URL}/v1/admin/system/runtime-settings`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Admin runtime settings lookup failed',
+  )
+}
+
+export async function updateAdminWorkTypeLlmSetting(
+  token: string,
+  input: {
+    enabled: boolean
+    reason?: string
+  },
+): Promise<AdminWorkTypeLlmSettingUpdatePayload> {
+  return requestJson<AdminWorkTypeLlmSettingUpdatePayload>(
+    `${API_BASE_URL}/v1/admin/system/runtime-settings/work-type-llm`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: Boolean(input.enabled),
+        reason: String(input.reason || ''),
+      }),
+    },
+    'Admin runtime setting update failed',
   )
 }
 

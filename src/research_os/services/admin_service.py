@@ -1660,6 +1660,99 @@ def get_admin_api_monitor(*, query: str = "") -> dict[str, object]:
     }
 
 
+def _work_type_llm_setting_enabled(raw_value: object) -> bool:
+    normalized = str(raw_value or "").strip().lower()
+    return normalized in {"1", "true", "yes"}
+
+
+def _build_work_type_llm_runtime_setting() -> dict[str, object]:
+    raw_value = str(os.getenv("ENABLE_WORK_TYPE_LLM", "true")).strip()
+    setting_enabled = _work_type_llm_setting_enabled(raw_value)
+    openai_api_key_present = bool(str(os.getenv("OPENAI_API_KEY", "")).strip())
+    effective_enabled = bool(openai_api_key_present and setting_enabled)
+
+    note = "Process-local runtime toggle. Restarting the API process resets this value."
+    if not openai_api_key_present:
+        note = (
+            "OPENAI_API_KEY is missing; work-type LLM classification will remain inactive "
+            "until the key is configured."
+        )
+    elif not raw_value:
+        note = (
+            "ENABLE_WORK_TYPE_LLM is empty in this process; empty values are treated as disabled."
+        )
+
+    return {
+        "setting_key": "ENABLE_WORK_TYPE_LLM",
+        "setting_enabled": setting_enabled,
+        "effective_enabled": effective_enabled,
+        "raw_value": raw_value,
+        "openai_api_key_present": openai_api_key_present,
+        "scope": "process",
+        "persistence": "restart_resets",
+        "description": (
+            "Controls whether persona work imports may use OpenAI to classify ambiguous "
+            "work types."
+        ),
+        "note": note,
+    }
+
+
+def get_admin_runtime_settings() -> dict[str, object]:
+    return {
+        "generated_at": _utcnow(),
+        "work_type_llm": _build_work_type_llm_runtime_setting(),
+    }
+
+
+def update_admin_work_type_llm_setting(
+    *,
+    actor_user_id: str,
+    enabled: bool,
+    reason: str = "",
+) -> dict[str, object]:
+    clean_actor_user_id = str(actor_user_id or "").strip()
+    if not clean_actor_user_id:
+        raise AdminValidationError("Actor user id is required.")
+
+    previous_setting = _build_work_type_llm_runtime_setting()
+    os.environ["ENABLE_WORK_TYPE_LLM"] = "true" if bool(enabled) else "false"
+    current_setting = _build_work_type_llm_runtime_setting()
+    clean_reason = str(reason or "").strip()
+
+    audit_event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id,
+        action="work_type_llm_toggle",
+        target_type="runtime_setting",
+        target_id="ENABLE_WORK_TYPE_LLM",
+        status="success",
+        metadata={
+            "previous_setting_enabled": bool(previous_setting.get("setting_enabled")),
+            "new_setting_enabled": bool(current_setting.get("setting_enabled")),
+            "effective_enabled": bool(current_setting.get("effective_enabled")),
+            "openai_api_key_present": bool(
+                current_setting.get("openai_api_key_present")
+            ),
+            "reason": clean_reason,
+        },
+    )
+    state_label = "enabled" if bool(current_setting.get("setting_enabled")) else "disabled"
+    message = (
+        f"Set ENABLE_WORK_TYPE_LLM to {state_label}. "
+        "This runtime setting applies only to the current API process."
+    )
+    if not bool(current_setting.get("openai_api_key_present")):
+        message = (
+            f"{message} OPENAI_API_KEY is not configured, so the effective state remains inactive."
+        )
+    return {
+        "message": message,
+        "generated_at": _utcnow(),
+        "work_type_llm": current_setting,
+        "audit_event": audit_event,
+    }
+
+
 def list_admin_users(
     *,
     query: str = "",
