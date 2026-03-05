@@ -6,6 +6,9 @@ export type AuthUser = {
   is_active: boolean
   role: 'user' | 'admin'
   orcid_id: string | null
+  openalex_author_id?: string | null
+  openalex_integration_approved?: boolean
+  openalex_auto_update_enabled?: boolean
   impact_last_computed_at: string | null
   email_verified_at: string | null
   last_sign_in_at: string | null
@@ -421,6 +424,8 @@ export type AdminPublicationsSyncRunAllPayload = {
   processed_users: number
   enqueued_users: number
   skipped_inactive: number
+  skipped_not_approved: number
+  skipped_auto_update_disabled: number
   skipped_not_linked: number
   skipped_not_due: number
   conflict_users: number

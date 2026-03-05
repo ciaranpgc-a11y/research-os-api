@@ -819,6 +819,8 @@ def import_openalex_works_direct(
             or 0
         )
         new_works_count = max(0, int(current_works_count) - int(baseline_works_count))
+        user.openalex_author_id = author_id
+        user.orcid_last_synced_at = _utcnow()
         session.flush()
     
     # Trigger warmup for imported publications

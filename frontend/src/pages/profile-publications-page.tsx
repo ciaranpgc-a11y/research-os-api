@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Loader2, Paperclip, Search, Settings, Share2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
@@ -2288,6 +2289,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationLibrarySettingsVisible, setPublicationLibrarySettingsVisible] = useState(false)
   const [publicationLibraryDownloadFormat, setPublicationLibraryDownloadFormat] = useState<PublicationExportFormat>('xlsx')
   const [publicationLibraryDownloadScope, setPublicationLibraryDownloadScope] = useState<PublicationExportScope>('filtered_results')
+  const [publicationLibrarySearchPopoverPosition, setPublicationLibrarySearchPopoverPosition] = useState({ top: 0, right: 0 })
+  const [publicationLibraryFilterPopoverPosition, setPublicationLibraryFilterPopoverPosition] = useState({ top: 0, right: 0 })
+  const [publicationLibraryDownloadPopoverPosition, setPublicationLibraryDownloadPopoverPosition] = useState({ top: 0, right: 0 })
+  const [publicationLibrarySettingsPopoverPosition, setPublicationLibrarySettingsPopoverPosition] = useState({ top: 0, right: 0 })
   const [publicationLibraryDownloadFields, setPublicationLibraryDownloadFields] = useState<Record<PublicationExportFieldKey, boolean>>(
     () => createDefaultPublicationExportFieldSelection(),
   )
@@ -2622,6 +2627,43 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       observer.disconnect()
     }
   }, [publicationLibraryVisible, personaState?.works?.length])
+
+  // Calculate popover positions when they become visible
+  useEffect(() => {
+    if (!publicationLibrarySearchVisible || !publicationLibrarySearchButtonRef.current) return
+    const rect = publicationLibrarySearchButtonRef.current.getBoundingClientRect()
+    setPublicationLibrarySearchPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8, // 0.5rem = 8px gap
+    })
+  }, [publicationLibrarySearchVisible])
+
+  useEffect(() => {
+    if (!publicationLibraryFiltersVisible || !publicationLibraryFilterButtonRef.current) return
+    const rect = publicationLibraryFilterButtonRef.current.getBoundingClientRect()
+    setPublicationLibraryFilterPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8,
+    })
+  }, [publicationLibraryFiltersVisible])
+
+  useEffect(() => {
+    if (!publicationLibraryDownloadVisible || !publicationLibraryDownloadButtonRef.current) return
+    const rect = publicationLibraryDownloadButtonRef.current.getBoundingClientRect()
+    setPublicationLibraryDownloadPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8,
+    })
+  }, [publicationLibraryDownloadVisible])
+
+  useEffect(() => {
+    if (!publicationLibrarySettingsVisible || !publicationLibrarySettingsButtonRef.current) return
+    const rect = publicationLibrarySettingsButtonRef.current.getBoundingClientRect()
+    setPublicationLibrarySettingsPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8,
+    })
+  }, [publicationLibrarySettingsVisible])
 
   useEffect(() => {
     if (!publicationLibraryFiltersVisible && !publicationLibrarySearchVisible && !publicationLibraryDownloadVisible && !publicationLibrarySettingsVisible) {
@@ -4606,10 +4648,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 >
                   <Search className="house-publications-tools-toggle-icon house-publications-search-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
                 </button>
-                {publicationLibrarySearchVisible ? (
+                {publicationLibrarySearchVisible ? createPortal(
                   <div
                     ref={publicationLibrarySearchPopoverRef}
-                    className="house-publications-search-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[22.5rem]"
+                    className="house-publications-search-popover fixed z-50 w-[22.5rem]"
+                    style={{
+                      top: `${publicationLibrarySearchPopoverPosition.top}px`,
+                      right: `${publicationLibrarySearchPopoverPosition.right}px`,
+                    }}
                   >
                     <label className="house-publications-search-label" htmlFor="publication-library-search-input">
                       Search library
@@ -4623,7 +4669,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       placeholder="Search by publication name, author, PMID, DOI, journal..."
                       className="house-publications-search-input"
                     />
-                  </div>
+                  </div>,
+                  document.body
                 ) : null}
               </div>
             ) : null}
@@ -4655,10 +4702,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 >
                   <Filter className="house-publications-tools-toggle-icon house-publications-filter-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
                 </button>
-                {publicationLibraryFiltersVisible ? (
+                {publicationLibraryFiltersVisible ? createPortal(
                   <div
                     ref={publicationLibraryFilterPopoverRef}
-                    className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[17.5rem]"
+                    className="house-publications-filter-popover fixed z-50 w-[17.5rem]"
+                    style={{
+                      top: `${publicationLibraryFilterPopoverPosition.top}px`,
+                      right: `${publicationLibraryFilterPopoverPosition.right}px`,
+                    }}
                   >
                     <div className="house-publications-filter-header">
                       <p className="house-publications-filter-title">Filter library</p>
@@ -4731,7 +4782,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         )}
                       </div>
                     </details>
-                  </div>
+                  </div>,
+                  document.body
                 ) : null}
               </div>
             ) : null}
@@ -4791,10 +4843,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   >
                     <Download className="h-4 w-4" strokeWidth={2.1} />
                   </Button>
-                  {publicationLibraryDownloadVisible ? (
+                  {publicationLibraryDownloadVisible ? createPortal(
                     <div
                       ref={publicationLibraryDownloadPopoverRef}
-                      className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-40 w-[20.5rem]"
+                      className="house-publications-filter-popover fixed z-50 w-[20.5rem]"
+                      style={{
+                        top: `${publicationLibraryDownloadPopoverPosition.top}px`,
+                        right: `${publicationLibraryDownloadPopoverPosition.right}px`,
+                      }}
                     >
                       <div className="house-publications-filter-header">
                         <p className="house-publications-filter-title">Download library</p>
@@ -4911,7 +4967,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           Download
                         </button>
                       </div>
-                    </div>
+                    </div>,
+                    document.body
                   ) : null}
                   <span
                     className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100"
@@ -4992,10 +5049,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 >
                   <Settings className="house-publications-tools-toggle-icon house-publications-settings-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
                 </button>
-                {publicationLibrarySettingsVisible ? (
+                {publicationLibrarySettingsVisible ? createPortal(
                   <div
                     ref={publicationLibrarySettingsPopoverRef}
-                    className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[18.75rem]"
+                    className="house-publications-filter-popover fixed z-50 w-[18.75rem]"
+                    style={{
+                      top: `${publicationLibrarySettingsPopoverPosition.top}px`,
+                      right: `${publicationLibrarySettingsPopoverPosition.right}px`,
+                    }}
                   >
                       <div className="house-publications-filter-header">
                         <p className="house-publications-filter-title">Table settings</p>
@@ -5131,7 +5192,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         ))}
                       </div>
                     </details>
-                  </div>
+                  </div>,
+                  document.body
                 ) : null}
               </div>
             ) : null}

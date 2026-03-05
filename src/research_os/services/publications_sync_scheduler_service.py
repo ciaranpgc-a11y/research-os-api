@@ -109,20 +109,31 @@ def _try_acquire_scheduler_leader(now: datetime) -> bool:
         return False
 
 
-def _enqueue_import_job_for_user(*, user_id: str, reason: str) -> tuple[str, str | None]:
+def _enqueue_import_job_for_user(
+    *, user_id: str, openalex_author_id: str, reason: str
+) -> tuple[str, str | None]:
+    clean_author_id = str(openalex_author_id or "").strip()
+    if not clean_author_id:
+        return "failed", "OpenAlex author ID is required."
     try:
         job = enqueue_persona_sync_job(
             user_id=user_id,
-            job_type="orcid_import",
+            job_type="openalex_import",
             overwrite_user_metadata=False,
             run_metrics_sync=True,
             providers=_AUTO_SYNC_PROVIDERS,
             refresh_analytics=True,
             refresh_metrics=False,
+            openalex_author_id=clean_author_id,
         )
         logger.info(
             "publications_auto_sync_job_enqueued",
-            extra={"user_id": user_id, "reason": reason, "job_id": str(job.id)},
+            extra={
+                "user_id": user_id,
+                "openalex_author_id": clean_author_id,
+                "reason": reason,
+                "job_id": str(job.id),
+            },
         )
         return "enqueued", str(job.id)
     except PersonaSyncJobConflictError:
@@ -158,7 +169,10 @@ def _queue_publications_sync_batch(
             select(
                 User.id,
                 User.is_active,
-                User.orcid_id,
+                User.name,
+                User.openalex_author_id,
+                User.openalex_integration_approved,
+                User.openalex_auto_update_enabled,
                 User.orcid_last_synced_at,
             )
         ).all()
@@ -167,18 +181,36 @@ def _queue_publications_sync_batch(
         "processed_users": 0,
         "enqueued_users": 0,
         "skipped_inactive": 0,
+        "skipped_not_approved": 0,
+        "skipped_auto_update_disabled": 0,
         "skipped_not_linked": 0,
         "skipped_not_due": 0,
         "conflict_users": 0,
         "failed_users": 0,
         "interval_hours": interval_hours,
     }
-    for user_id, is_active, orcid_id, last_synced_at in user_rows:
+    for (
+        user_id,
+        is_active,
+        name,
+        openalex_author_id,
+        openalex_integration_approved,
+        openalex_auto_update_enabled,
+        last_synced_at,
+    ) in user_rows:
         summary["processed_users"] += 1
         if not bool(is_active):
             summary["skipped_inactive"] += 1
             continue
-        if not str(orcid_id or "").strip():
+        if not bool(openalex_integration_approved):
+            summary["skipped_not_approved"] += 1
+            continue
+        if not bool(openalex_auto_update_enabled):
+            summary["skipped_auto_update_disabled"] += 1
+            continue
+        clean_openalex_author_id = str(openalex_author_id or "").strip()
+        has_identity = bool(clean_openalex_author_id or str(name or "").strip())
+        if not has_identity or not clean_openalex_author_id:
             summary["skipped_not_linked"] += 1
             continue
         last_synced = _coerce_utc(last_synced_at)
@@ -188,6 +220,7 @@ def _queue_publications_sync_batch(
             continue
         status, _ = _enqueue_import_job_for_user(
             user_id=str(user_id),
+            openalex_author_id=clean_openalex_author_id,
             reason=f"{trigger}_auto_publications_sync",
         )
         if status == "enqueued":
@@ -210,7 +243,7 @@ def get_publications_auto_sync_runtime_settings() -> dict[str, object]:
         "scope": "process",
         "persistence": "restart_resets",
         "description": (
-            "Automatically queues publication sync jobs for active ORCID-linked users."
+            "Automatically queues publication sync jobs for active users who confirmed an OpenAlex profile, approved integration, and enabled auto-update."
         ),
         "note": (
             "Scheduler checks due users periodically and enqueues import jobs. "

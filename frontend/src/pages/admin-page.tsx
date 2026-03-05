@@ -816,7 +816,7 @@ export function AdminPage() {
         reason: 'Admin console manual all-users run.',
       })
       setStatus(
-        `${payload.message} Processed ${formatInteger(payload.processed_users)} users; skipped not linked: ${formatInteger(payload.skipped_not_linked)}.`,
+        `${payload.message} Processed ${formatInteger(payload.processed_users)} users; skipped no profile: ${formatInteger(payload.skipped_not_linked)}; skipped not approved: ${formatInteger(payload.skipped_not_approved)}; skipped auto-update off: ${formatInteger(payload.skipped_auto_update_disabled)}.`,
       )
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Could not run publications sync for all users.')

@@ -271,6 +271,13 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     role: Mapped[str] = mapped_column(String(16), default="user")
     orcid_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    openalex_author_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    openalex_integration_approved: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    openalex_auto_update_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     google_sub: Mapped[str | None] = mapped_column(
         String(128), nullable=True, index=True
     )
@@ -1619,6 +1626,36 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                 column_name="account_key",
                 column_sql="VARCHAR(36)",
             )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="users",
+                column_name="openalex_author_id",
+                column_sql="VARCHAR(128)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="users",
+                column_name="openalex_integration_approved",
+                column_sql="BOOLEAN DEFAULT 0",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="users",
+                column_name="openalex_auto_update_enabled",
+                column_sql="BOOLEAN DEFAULT 0",
+            )
+            connection.execute(
+                text(
+                    "UPDATE users SET openalex_integration_approved = 0 "
+                    "WHERE openalex_integration_approved IS NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "UPDATE users SET openalex_auto_update_enabled = 0 "
+                    "WHERE openalex_auto_update_enabled IS NULL"
+                )
+            )
             missing_rows = connection.execute(
                 text(
                     "SELECT id FROM users "
@@ -1641,6 +1678,12 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                 text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_account_key "
                     "ON users (account_key)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_users_openalex_author_id "
+                    "ON users (openalex_author_id)"
                 )
             )
 
@@ -1799,6 +1842,36 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
                 "ADD COLUMN IF NOT EXISTS account_key VARCHAR(36)"
             )
         )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS users "
+                "ADD COLUMN IF NOT EXISTS openalex_author_id VARCHAR(128)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS users "
+                "ADD COLUMN IF NOT EXISTS openalex_integration_approved BOOLEAN DEFAULT FALSE"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS users "
+                "ADD COLUMN IF NOT EXISTS openalex_auto_update_enabled BOOLEAN DEFAULT FALSE"
+            )
+        )
+        connection.execute(
+            text(
+                "UPDATE users SET openalex_integration_approved = FALSE "
+                "WHERE openalex_integration_approved IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                "UPDATE users SET openalex_auto_update_enabled = FALSE "
+                "WHERE openalex_auto_update_enabled IS NULL"
+            )
+        )
         rows = connection.execute(
             text(
                 "SELECT id FROM users "
@@ -1821,6 +1894,12 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
             text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_account_key "
                 "ON users (account_key)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_users_openalex_author_id "
+                "ON users (openalex_author_id)"
             )
         )
 

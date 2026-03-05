@@ -803,6 +803,9 @@ class AuthUserResponse(BaseModel):
     is_active: bool
     role: Literal["user", "admin"]
     orcid_id: str | None = None
+    openalex_author_id: str | None = None
+    openalex_integration_approved: bool = False
+    openalex_auto_update_enabled: bool = False
     impact_last_computed_at: datetime | None = None
     email_verified_at: datetime | None = None
     last_sign_in_at: datetime | None = None
@@ -1374,6 +1377,8 @@ class AdminPublicationsSyncRunAllResponse(BaseModel):
     processed_users: int = 0
     enqueued_users: int = 0
     skipped_inactive: int = 0
+    skipped_not_approved: int = 0
+    skipped_auto_update_disabled: int = 0
     skipped_not_linked: int = 0
     skipped_not_due: int = 0
     conflict_users: int = 0
@@ -1477,6 +1482,9 @@ class AuthMeUpdateRequest(BaseModel):
     name: str | None = None
     email: str | None = None
     password: str | None = None
+    openalex_author_id: str | None = None
+    openalex_integration_approved: bool | None = None
+    openalex_auto_update_enabled: bool | None = None
 
 
 class AuthDeleteAccountRequest(BaseModel):

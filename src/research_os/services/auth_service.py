@@ -55,6 +55,7 @@ REQUIRE_EMAIL_VERIFICATION = os.getenv(
     "AUTH_REQUIRE_EMAIL_VERIFICATION", "1"
 ).strip().lower() in {"1", "true", "yes", "on"}
 _DUMMY_PASSWORD_HASH = hash_password("AaweDummyPassword123")
+_UNSET = object()
 
 
 class AuthValidationError(RuntimeError):
@@ -117,12 +118,29 @@ def _serialize_user(user: User) -> dict[str, object]:
         "is_active": bool(user.is_active),
         "role": user.role,
         "orcid_id": user.orcid_id,
+        "openalex_author_id": user.openalex_author_id,
+        "openalex_integration_approved": bool(user.openalex_integration_approved),
+        "openalex_auto_update_enabled": bool(user.openalex_auto_update_enabled),
         "impact_last_computed_at": user.impact_last_computed_at,
         "email_verified_at": user.email_verified_at,
         "last_sign_in_at": user.last_sign_in_at,
         "created_at": user.created_at,
         "updated_at": user.updated_at,
     }
+
+
+def _normalize_openalex_author_id(value: str) -> str:
+    clean = str(value or "").strip()
+    if clean.startswith("https://openalex.org/"):
+        clean = clean.removeprefix("https://openalex.org/")
+    elif clean.startswith("http://openalex.org/"):
+        clean = clean.removeprefix("http://openalex.org/")
+    clean = clean.strip().strip("/")
+    if not clean:
+        raise AuthValidationError("OpenAlex author ID is required.")
+    if not (len(clean) >= 2 and clean[0].upper() == "A" and clean[1:].isdigit()):
+        raise AuthValidationError("Invalid OpenAlex author ID format.")
+    return clean.upper()
 
 
 def _auto_verify_email_if_disabled(*, user: User) -> None:
@@ -593,6 +611,9 @@ def update_current_user(
     name: str | None = None,
     email: str | None = None,
     password: str | None = None,
+    openalex_author_id: str | None | object = _UNSET,
+    openalex_integration_approved: bool | None = None,
+    openalex_auto_update_enabled: bool | None = None,
 ) -> dict[str, object]:
     create_all_tables()
     identity_changed = False
@@ -619,6 +640,36 @@ def update_current_user(
                 user.password_hash = hash_password(normalized_password)
             except SecurityValidationError as exc:
                 raise AuthValidationError(str(exc)) from exc
+        if openalex_author_id is not _UNSET:
+            if openalex_author_id is None or not str(openalex_author_id).strip():
+                user.openalex_author_id = None
+                user.openalex_integration_approved = False
+                user.openalex_auto_update_enabled = False
+            else:
+                user.openalex_author_id = _normalize_openalex_author_id(
+                    str(openalex_author_id)
+                )
+        if openalex_integration_approved is not None:
+            if bool(openalex_integration_approved) and not str(
+                user.openalex_author_id or ""
+            ).strip():
+                raise AuthValidationError(
+                    "Confirm your OpenAlex profile before approving integration."
+                )
+            user.openalex_integration_approved = bool(openalex_integration_approved)
+            if not bool(user.openalex_integration_approved):
+                user.openalex_auto_update_enabled = False
+        if openalex_auto_update_enabled is not None:
+            requested_auto_update = bool(openalex_auto_update_enabled)
+            if requested_auto_update and not bool(user.openalex_integration_approved):
+                raise AuthValidationError(
+                    "OpenAlex auto-update requires OpenAlex integration approval."
+                )
+            if requested_auto_update and not str(user.openalex_author_id or "").strip():
+                raise AuthValidationError(
+                    "OpenAlex auto-update requires a confirmed OpenAlex author profile."
+                )
+            user.openalex_auto_update_enabled = requested_auto_update
 
         try:
             session.flush()

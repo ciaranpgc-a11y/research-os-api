@@ -18,6 +18,8 @@ import {
   fetchPersonaState,
   listPersonaSyncJobs,
   pingApiHealth,
+  searchOpenAlexAuthors,
+  updateMe,
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
@@ -101,6 +103,14 @@ type OrcidSyncSummaryStorage = {
   lastReferencesSyncedCount: number | null
   lastSyncSinceLabel: string | null
   lastSyncOutcome: string | null
+}
+
+type OpenAlexAuthorSearchItem = {
+  id: string
+  display_name: string
+  works_count: number
+  cited_by_count: number
+  orcid: string | null
 }
 
 function syncSummaryStorageKey(userId: string): string {
@@ -273,6 +283,14 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   const [connecting, setConnecting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [updatingOpenAlexSettings, setUpdatingOpenAlexSettings] = useState(false)
+  const [openAlexSearchQuery, setOpenAlexSearchQuery] = useState('')
+  const [openAlexSearchResults, setOpenAlexSearchResults] = useState<OpenAlexAuthorSearchItem[]>([])
+  const [openAlexSearchLoading, setOpenAlexSearchLoading] = useState(false)
+  const [openAlexSearchError, setOpenAlexSearchError] = useState('')
+  const [openAlexSelectedAuthorId, setOpenAlexSelectedAuthorId] = useState<string | null>(
+    String(initialCachedUser?.openalex_author_id || '').trim() || null,
+  )
   const [confirmDisconnectOpen, setConfirmDisconnectOpen] = useState(false)
   const [status, setStatus] = useState(fixture?.status ?? '')
   const [error, setError] = useState(fixture?.error ?? '')
@@ -458,6 +476,16 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   }, [user])
 
   useEffect(() => {
+    const authorId = String(user?.openalex_author_id || '').trim()
+    if (authorId && authorId !== openAlexSelectedAuthorId) {
+      setOpenAlexSelectedAuthorId(authorId)
+    }
+    if (!authorId && openAlexSelectedAuthorId && !openAlexSearchResults.length) {
+      setOpenAlexSelectedAuthorId(null)
+    }
+  }, [openAlexSearchResults.length, openAlexSelectedAuthorId, user?.openalex_author_id])
+
+  useEffect(() => {
     if (orcidStatus) {
       saveCachedOrcidStatus(orcidStatus)
       return
@@ -531,6 +559,12 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   const canImportOrcid =
     !isFixtureMode && emailVerified && orcidConfiguredForSync && orcidLinked && !syncBusy
   const canDisconnectOrcid = !isFixtureMode && !orcidStatusPending && orcidLinked && !busy
+  const openAlexAuthorId = String(user?.openalex_author_id || '').trim()
+  const hasConfirmedOpenAlexAuthor = Boolean(openAlexAuthorId)
+  const openAlexIntegrationApproved = Boolean(user?.openalex_integration_approved)
+  const openAlexAutoUpdateEnabled = Boolean(user?.openalex_auto_update_enabled)
+  const openAlexSettingsBusy =
+    Boolean(isFixtureMode) || !token || loading || refreshing || updatingOpenAlexSettings
   const connectionStatusLabel = orcidStatusPending
     ? 'Checking status...'
     : orcidLinked
@@ -748,6 +782,163 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     } finally {
       setRefreshing(false)
     }
+  }
+
+  const onSearchOpenAlex = async () => {
+    if (!token || isFixtureMode) {
+      return
+    }
+    const query = openAlexSearchQuery.trim()
+    if (query.length < 3) {
+      setOpenAlexSearchError('Enter at least 3 characters to search OpenAlex.')
+      return
+    }
+    setOpenAlexSearchLoading(true)
+    setOpenAlexSearchError('')
+    try {
+      const payload = await searchOpenAlexAuthors(token, query, { limit: 12 })
+      const results = Array.isArray(payload.results) ? payload.results : []
+      setOpenAlexSearchResults(results)
+      if (results.length <= 0) {
+        setOpenAlexSearchError('No OpenAlex author profiles matched that name.')
+        return
+      }
+      const existingAuthorId = String(user?.openalex_author_id || '').trim()
+      const matchingExisting =
+        existingAuthorId &&
+        results.some((item) => String(item.id || '').trim() === existingAuthorId)
+      if (matchingExisting) {
+        setOpenAlexSelectedAuthorId(existingAuthorId)
+      } else {
+        setOpenAlexSelectedAuthorId(String(results[0]?.id || '').trim() || null)
+      }
+    } catch (searchError) {
+      if (handleSessionExpiry(searchError)) {
+        return
+      }
+      setOpenAlexSearchError(
+        searchError instanceof Error
+          ? searchError.message
+          : 'OpenAlex author search failed.',
+      )
+    } finally {
+      setOpenAlexSearchLoading(false)
+    }
+  }
+
+  const onConfirmOpenAlexAuthor = async () => {
+    if (!token || isFixtureMode) {
+      return
+    }
+    const selectedId = String(openAlexSelectedAuthorId || '').trim()
+    if (!selectedId) {
+      setOpenAlexSearchError('Select an OpenAlex author profile first.')
+      return
+    }
+    setUpdatingOpenAlexSettings(true)
+    setError('')
+    setStatus('')
+    setOpenAlexSearchError('')
+    try {
+      const payload = await updateMe(token, { openalex_author_id: selectedId })
+      setUser(payload)
+      saveCachedIntegrationsUser(payload)
+      setStatus(`OpenAlex profile confirmed (${selectedId}).`)
+    } catch (confirmError) {
+      if (handleSessionExpiry(confirmError)) {
+        return
+      }
+      setError(
+        confirmError instanceof Error
+          ? confirmError.message
+          : 'Could not confirm OpenAlex profile.',
+      )
+    } finally {
+      setUpdatingOpenAlexSettings(false)
+    }
+  }
+
+  const onClearOpenAlexAuthor = async () => {
+    if (!token || isFixtureMode || openAlexSettingsBusy) {
+      return
+    }
+    setUpdatingOpenAlexSettings(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await updateMe(token, { openalex_author_id: null })
+      setUser(payload)
+      saveCachedIntegrationsUser(payload)
+      setOpenAlexSelectedAuthorId(null)
+      setStatus('OpenAlex profile cleared.')
+    } catch (clearError) {
+      if (handleSessionExpiry(clearError)) {
+        return
+      }
+      setError(
+        clearError instanceof Error
+          ? clearError.message
+          : 'Could not clear OpenAlex profile.',
+      )
+    } finally {
+      setUpdatingOpenAlexSettings(false)
+    }
+  }
+
+  const applyOpenAlexSettings = async (
+    nextApproved: boolean,
+    nextAutoUpdateEnabled: boolean,
+  ) => {
+    if (!token || isFixtureMode) {
+      return
+    }
+    setUpdatingOpenAlexSettings(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await updateMe(token, {
+        openalex_integration_approved: nextApproved,
+        openalex_auto_update_enabled: nextAutoUpdateEnabled,
+      })
+      setUser(payload)
+      saveCachedIntegrationsUser(payload)
+      setStatus('OpenAlex sync preferences updated.')
+    } catch (settingsError) {
+      if (handleSessionExpiry(settingsError)) {
+        return
+      }
+      setError(
+        settingsError instanceof Error
+          ? settingsError.message
+          : 'Could not update OpenAlex preferences.',
+      )
+    } finally {
+      setUpdatingOpenAlexSettings(false)
+    }
+  }
+
+  const onToggleOpenAlexApproval = async (enabled: boolean) => {
+    if (openAlexSettingsBusy) {
+      return
+    }
+    if (enabled && !hasConfirmedOpenAlexAuthor) {
+      setError('Search OpenAlex and confirm your author profile before approving integration.')
+      return
+    }
+    const nextApproved = Boolean(enabled)
+    const nextAutoUpdate = nextApproved ? openAlexAutoUpdateEnabled : false
+    await applyOpenAlexSettings(nextApproved, nextAutoUpdate)
+  }
+
+  const onToggleOpenAlexAutoUpdate = async (enabled: boolean) => {
+    if (openAlexSettingsBusy || !openAlexIntegrationApproved) {
+      return
+    }
+    if (enabled && !hasConfirmedOpenAlexAuthor) {
+      setError('Confirm your OpenAlex author profile before enabling auto-update.')
+      return
+    }
+    await applyOpenAlexSettings(true, Boolean(enabled))
   }
 
   const requestDisconnectOrcid = () => {
@@ -996,7 +1187,6 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         </div>
       </div>
       </Section>
-
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader heading="OpenAlex" className="house-section-header-marker-aligned" />
         <div className="house-separator-main-heading-to-content house-metric-tile-shell rounded-md border p-3 hover:bg-[var(--metric-tile-bg-rest)] focus-visible:bg-[var(--metric-tile-bg-rest)]">
@@ -1008,7 +1198,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 </span>
                 <div className="space-y-0.5">
                   <p className="text-caption uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
-                    Direct publication import via Open Alex
+                    OpenAlex integration settings
                   </p>
                 </div>
               </div>
@@ -1016,36 +1206,167 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
           </div>
           <div className="space-y-3 pt-3 text-sm">
             <p className="text-sm text-[hsl(var(--tone-neutral-700))]">
-              Search for your OpenAlex profile by name and import your publications directly—no ORCID required.
+              Confirm your OpenAlex author profile first, then approve integration and enable auto-update for scheduled weekly sync.
             </p>
-            
+
             <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-3">
-              <p className="text-label font-medium text-[hsl(var(--tone-neutral-900))]">Search for your profile</p>
-              <p className="mt-1 text-xs text-[hsl(var(--tone-neutral-600))]">Enter your full name to find your OpenAlex author profile</p>
-              
-              <div className="mt-3 flex gap-2">
+              <p className="text-label font-medium text-[hsl(var(--tone-neutral-900))]">
+                Find and confirm your OpenAlex profile
+              </p>
+              <p className="mt-1 text-xs text-[hsl(var(--tone-neutral-600))]">
+                Search by full name, select your profile, then confirm it for future sync runs.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
                 <input
                   type="text"
+                  value={openAlexSearchQuery}
+                  onChange={(event) => setOpenAlexSearchQuery(event.target.value)}
                   placeholder="e.g., Jane Smith"
-                  className="flex-1 rounded-md border border-[hsl(var(--tone-neutral-300))] px-3 py-2 text-sm focus:border-[hsl(var(--tone-accent-500))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-accent-200))]"
-                  disabled={true}
+                  className="min-w-[220px] flex-1 rounded-md border border-[hsl(var(--tone-neutral-300))] px-3 py-2 text-sm focus:border-[hsl(var(--tone-accent-500))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-accent-200))]"
+                  disabled={openAlexSearchLoading || openAlexSettingsBusy}
                 />
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={true}
+                  onClick={() => void onSearchOpenAlex()}
+                  disabled={openAlexSearchLoading || openAlexSettingsBusy}
                 >
-                  Search
+                  {openAlexSearchLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    'Search'
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void onConfirmOpenAlexAuthor()}
+                  disabled={
+                    openAlexSettingsBusy ||
+                    !openAlexSelectedAuthorId ||
+                    openAlexSelectedAuthorId === openAlexAuthorId
+                  }
+                >
+                  Confirm profile
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void onClearOpenAlexAuthor()}
+                  disabled={openAlexSettingsBusy || !hasConfirmedOpenAlexAuthor}
+                >
+                  Clear profile
                 </Button>
               </div>
-              
-              <p className="mt-2 text-xs text-[hsl(var(--tone-neutral-500))]">
-                <strong>Coming soon:</strong> Search and import directly from OpenAlex
-              </p>
+              {hasConfirmedOpenAlexAuthor ? (
+                <p className="mt-2 text-xs text-[hsl(var(--tone-neutral-600))]">
+                  Confirmed author ID: <span className="font-semibold">{openAlexAuthorId}</span>
+                </p>
+              ) : null}
+              {openAlexSearchError ? (
+                <p className="mt-2 text-xs text-[hsl(var(--tone-danger-700))]">{openAlexSearchError}</p>
+              ) : null}
+              {openAlexSearchResults.length > 0 ? (
+                <div className="mt-3 max-h-56 overflow-auto rounded-md border border-[hsl(var(--tone-neutral-200))]">
+                  <ul className="divide-y divide-[hsl(var(--tone-neutral-200))]">
+                    {openAlexSearchResults.map((item) => {
+                      const itemId = String(item.id || '').trim()
+                      return (
+                        <li key={itemId} className="px-2.5 py-2">
+                          <label className="flex cursor-pointer items-start gap-2">
+                            <input
+                              type="radio"
+                              name="openalex-author-selection"
+                              checked={openAlexSelectedAuthorId === itemId}
+                              onChange={() => setOpenAlexSelectedAuthorId(itemId)}
+                              className="mt-0.5 h-4 w-4 border-[hsl(var(--tone-neutral-300))] text-[hsl(var(--tone-accent-700))] focus:ring-[hsl(var(--tone-accent-500))]"
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-label font-medium text-[hsl(var(--tone-neutral-900))]">
+                                {item.display_name || 'Unknown author'}
+                              </span>
+                              <span className="block text-micro text-[hsl(var(--tone-neutral-600))]">
+                                {itemId} • Works {Math.max(0, Number(item.works_count || 0)).toLocaleString('en-GB')} • Citations {Math.max(0, Number(item.cited_by_count || 0)).toLocaleString('en-GB')}
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ) : null}
             </div>
 
-            <div className="rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] px-3 py-2 text-xs text-[hsl(var(--tone-accent-800))]">
-              <strong>Alternative:</strong> You can still import publications via ORCID above. The system will find your OpenAlex profile automatically.
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-3">
+              <p className="text-label font-medium text-[hsl(var(--tone-neutral-900))]">
+                OpenAlex sync eligibility
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${
+                    openAlexIntegrationApproved
+                      ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
+                      : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
+                  }`}
+                >
+                  {openAlexIntegrationApproved ? 'Integration approved' : 'Integration not approved'}
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${
+                    openAlexAutoUpdateEnabled
+                      ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
+                      : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
+                  }`}
+                >
+                  {openAlexAutoUpdateEnabled ? 'Auto-update every 7 days' : 'Auto-update off'}
+                </span>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                <label className="flex items-start gap-2 rounded-md border border-[hsl(var(--tone-neutral-200))] px-2 py-1.5">
+                  <input
+                    type="checkbox"
+                    checked={openAlexIntegrationApproved}
+                    disabled={openAlexSettingsBusy || !hasConfirmedOpenAlexAuthor}
+                    onChange={(event) => void onToggleOpenAlexApproval(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-[hsl(var(--tone-neutral-300))] text-[hsl(var(--tone-accent-700))] focus:ring-[hsl(var(--tone-accent-500))]"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-label font-medium text-[hsl(var(--tone-neutral-900))]">
+                      Approve OpenAlex integration
+                    </span>
+                    <span className="mt-0.5 block text-micro text-[hsl(var(--tone-neutral-600))]">
+                      Required before this account can be auto-synced.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-2 rounded-md border border-[hsl(var(--tone-neutral-200))] px-2 py-1.5">
+                  <input
+                    type="checkbox"
+                    checked={openAlexAutoUpdateEnabled}
+                    disabled={openAlexSettingsBusy || !openAlexIntegrationApproved || !hasConfirmedOpenAlexAuthor}
+                    onChange={(event) => void onToggleOpenAlexAutoUpdate(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-[hsl(var(--tone-neutral-300))] text-[hsl(var(--tone-accent-700))] focus:ring-[hsl(var(--tone-accent-500))]"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-label font-medium text-[hsl(var(--tone-neutral-900))]">
+                      Auto update every 7 days
+                    </span>
+                    <span className="mt-0.5 block text-micro text-[hsl(var(--tone-neutral-600))]">
+                      Enables scheduled weekly publication refresh for this account.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <p className="mt-2 text-xs text-[hsl(var(--tone-neutral-500))]">
+                Weekly cadence is controlled by admin runtime settings.
+              </p>
             </div>
           </div>
         </div>
@@ -1105,4 +1426,3 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     </Stack>
   )
 }
-

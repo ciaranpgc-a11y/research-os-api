@@ -793,6 +793,7 @@ def import_orcid_works(
             or 0
         )
         new_works_count = max(0, int(current_works_count) - int(baseline_works_count))
+        user.openalex_author_id = openalex_author_id
         user.orcid_last_synced_at = _utcnow()
         session.flush()
     for work_id in upserted_ids:

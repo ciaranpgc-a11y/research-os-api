@@ -25,7 +25,7 @@ from fastapi.responses import Response
 from sqlalchemy import text
 
 from research_os.config import get_openai_api_key
-from research_os.db import session_scope
+from research_os.db import User, session_scope
 from research_os.api.schemas import (
     AdminUserLibraryStorageRecoverRequest,
     AdminUserLibraryStorageRecoverResponse,
@@ -2045,12 +2045,17 @@ def v1_auth_update_me(
     if not token:
         return _build_unauthorized_response("Session token is required.")
     try:
-        user_payload = update_current_user(
-            session_token=token,
-            name=payload.name,
-            email=payload.email,
-            password=payload.password,
-        )
+        update_kwargs: dict[str, Any] = {
+            "session_token": token,
+            "name": payload.name,
+            "email": payload.email,
+            "password": payload.password,
+            "openalex_integration_approved": payload.openalex_integration_approved,
+            "openalex_auto_update_enabled": payload.openalex_auto_update_enabled,
+        }
+        if "openalex_author_id" in payload.model_fields_set:
+            update_kwargs["openalex_author_id"] = payload.openalex_author_id
+        user_payload = update_current_user(**update_kwargs)
         return AuthUserResponse(**user_payload)
     except AuthValidationError as exc:
         return _build_bad_request_response(str(exc))
@@ -2461,6 +2466,12 @@ def v1_openalex_import(
         
         if not author_id:
             return _build_bad_request_response("Invalid OpenAlex author ID")
+
+        with session_scope() as session:
+            user_row = session.get(User, str(user["id"]))
+            if user_row is not None:
+                user_row.openalex_author_id = author_id
+                session.flush()
         
         # Create a sync job for the import
         job = enqueue_persona_sync_job(

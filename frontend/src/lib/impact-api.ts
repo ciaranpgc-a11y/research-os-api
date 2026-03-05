@@ -736,7 +736,14 @@ export async function fetchAffiliationAddressForMe(
 
 export async function updateMe(
   token: string,
-  input: { name?: string; email?: string; password?: string },
+  input: {
+    name?: string
+    email?: string
+    password?: string
+    openalex_author_id?: string | null
+    openalex_integration_approved?: boolean
+    openalex_auto_update_enabled?: boolean
+  },
 ): Promise<AuthUser> {
   const payload = await requestJson<AuthUser>(
     `${API_BASE_URL}/v1/auth/me`,

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Merge duplicate collaborator records in the database.
+Merge duplicate collaborator records in the database
 
-This script finds collaborators that represent the same person (based on OpenAlex ID,
-ORCID, email, or name similarity) and merges them into a single canonical record,
-preserving all unique institutions in CollaboratorAffiliation records.
+Finds and merges collaborators that represent the same person based on OpenAlex ID, 
+ORCID, email, or name similarity into a single canonical record, preserving all 
+unique institutions in CollaboratorAffiliation records.
 
 Usage:
     python scripts/merge_duplicate_collaborators.py [--dry-run] [--user-id USER_ID]

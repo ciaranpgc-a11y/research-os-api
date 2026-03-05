@@ -1834,6 +1834,10 @@ def admin_run_publications_sync_for_all_users(
             "processed_users": int(summary.get("processed_users") or 0),
             "enqueued_users": int(summary.get("enqueued_users") or 0),
             "skipped_inactive": int(summary.get("skipped_inactive") or 0),
+            "skipped_not_approved": int(summary.get("skipped_not_approved") or 0),
+            "skipped_auto_update_disabled": int(
+                summary.get("skipped_auto_update_disabled") or 0
+            ),
             "skipped_not_linked": int(summary.get("skipped_not_linked") or 0),
             "skipped_not_due": int(summary.get("skipped_not_due") or 0),
             "conflict_users": int(summary.get("conflict_users") or 0),
@@ -1854,6 +1858,10 @@ def admin_run_publications_sync_for_all_users(
         "processed_users": int(summary.get("processed_users") or 0),
         "enqueued_users": int(summary.get("enqueued_users") or 0),
         "skipped_inactive": int(summary.get("skipped_inactive") or 0),
+        "skipped_not_approved": int(summary.get("skipped_not_approved") or 0),
+        "skipped_auto_update_disabled": int(
+            summary.get("skipped_auto_update_disabled") or 0
+        ),
         "skipped_not_linked": int(summary.get("skipped_not_linked") or 0),
         "skipped_not_due": int(summary.get("skipped_not_due") or 0),
         "conflict_users": int(summary.get("conflict_users") or 0),

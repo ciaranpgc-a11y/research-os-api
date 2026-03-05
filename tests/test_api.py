@@ -2912,6 +2912,68 @@ def test_v1_auth_register_login_me_patch_logout(monkeypatch, tmp_path) -> None:
     assert login_response.json()["user"]["email"] == "ciaran@example.com"
 
 
+def test_v1_auth_me_openalex_profile_confirmation_flow(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "openalex-flow@example.com",
+                "password": "StrongPassword123",
+                "name": "OpenAlex User",
+            },
+        )
+        assert register_response.status_code == 200
+        token = register_response.json()["session_token"]
+        headers = _auth_headers(token)
+
+        approve_without_profile = client.patch(
+            "/v1/auth/me",
+            headers=headers,
+            json={"openalex_integration_approved": True},
+        )
+        confirm_profile = client.patch(
+            "/v1/auth/me",
+            headers=headers,
+            json={"openalex_author_id": "https://openalex.org/A1234567890"},
+        )
+        enable_sync = client.patch(
+            "/v1/auth/me",
+            headers=headers,
+            json={
+                "openalex_integration_approved": True,
+                "openalex_auto_update_enabled": True,
+            },
+        )
+        clear_profile = client.patch(
+            "/v1/auth/me",
+            headers=headers,
+            json={"openalex_author_id": None},
+        )
+
+    assert approve_without_profile.status_code == 400
+    assert approve_without_profile.json()["error"]["type"] == "bad_request"
+
+    assert confirm_profile.status_code == 200
+    confirmed_payload = confirm_profile.json()
+    assert confirmed_payload["openalex_author_id"] == "A1234567890"
+    assert confirmed_payload["openalex_integration_approved"] is False
+    assert confirmed_payload["openalex_auto_update_enabled"] is False
+
+    assert enable_sync.status_code == 200
+    enabled_payload = enable_sync.json()
+    assert enabled_payload["openalex_author_id"] == "A1234567890"
+    assert enabled_payload["openalex_integration_approved"] is True
+    assert enabled_payload["openalex_auto_update_enabled"] is True
+
+    assert clear_profile.status_code == 200
+    cleared_payload = clear_profile.json()
+    assert cleared_payload["openalex_author_id"] is None
+    assert cleared_payload["openalex_integration_approved"] is False
+    assert cleared_payload["openalex_auto_update_enabled"] is False
+
+
 def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 
