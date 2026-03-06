@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildLineTicksFromRange } from '@/components/publications/PublicationsTopStrip'
+import { buildCitationHistogramBuckets, buildLineTicksFromRange } from '@/components/publications/PublicationsTopStrip'
 import {
   buildTotalCitationsHeadlineMetricTiles,
   buildTotalCitationsHeadlineStats,
@@ -142,5 +142,33 @@ describe('buildLineTicksFromRange', () => {
     )
 
     expect(ticks.map((tick) => tick.label)).toEqual(['2022', '2023', '2024'])
+  })
+})
+
+describe('buildCitationHistogramBuckets', () => {
+  it('opens the top bucket based on the portfolio maximum for mid-range citation counts', () => {
+    const buckets = buildCitationHistogramBuckets([0, 0, 1, 4, 7, 15, 40])
+
+    expect(buckets.map((bucket) => bucket.label)).toEqual(['0', '1', '2-4', '5-9', '10-24', '25+'])
+    expect(buckets.map((bucket) => bucket.count)).toEqual([2, 1, 1, 1, 1, 1])
+  })
+
+  it('extends higher-range buckets when the portfolio includes very highly cited papers', () => {
+    const buckets = buildCitationHistogramBuckets([0, 12, 37, 65, 145, 320, 1200])
+
+    expect(buckets.map((bucket) => bucket.label)).toEqual([
+      '0',
+      '1',
+      '2-4',
+      '5-9',
+      '10-24',
+      '25-49',
+      '50-99',
+      '100-199',
+      '200-499',
+      '500-999',
+      '1000+',
+    ])
+    expect(buckets.map((bucket) => bucket.count)).toEqual([1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1])
   })
 })

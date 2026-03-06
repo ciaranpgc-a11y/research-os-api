@@ -140,6 +140,16 @@ function formatRecentConcentrationTableTooltip(recordsCount: number, windowPhras
   return `Your top ${formatInt(recordsCount)} publications ${windowPhrase} are listed here. Select a title to open it in your library.`
 }
 
+function formatCitationHistogramTooltip(totalPublications: number, maxCitations: number): string {
+  if (totalPublications <= 0) {
+    return 'This histogram groups papers by lifetime citations per paper once publication-level citation counts are available.'
+  }
+  if (maxCitations <= 0) {
+    return `This histogram groups your ${formatInt(totalPublications)} papers by lifetime citations per paper. All currently sit in the uncited bucket.`
+  }
+  return `This histogram groups your ${formatInt(totalPublications)} papers by lifetime citations per paper. The zero-citation bucket stays separate, and the highest bucket adapts to your current maximum of ${formatInt(maxCitations)} citations.`
+}
+
 function formatCitationActivationStateTooltip({
   totalPublications,
   newlyActiveCount,
@@ -1643,6 +1653,93 @@ function buildNiceAxis(maxObservedValue: number): { axisMax: number; ticks: numb
   const axisMax = step * intervals
   const ticks = Array.from({ length: intervals + 1 }, (_, index) => step * index)
   return { axisMax, ticks }
+}
+
+export type CitationHistogramBucket = {
+  key: string
+  label: string
+  minCitations: number
+  maxCitations: number | null
+  count: number
+  sharePct: number
+}
+
+type CitationHistogramBucketDefinition = {
+  minCitations: number
+  maxCitations: number | null
+  label: string
+}
+
+const CITATION_HISTOGRAM_BASE_BUCKETS: CitationHistogramBucketDefinition[] = [
+  { minCitations: 0, maxCitations: 0, label: '0' },
+  { minCitations: 1, maxCitations: 1, label: '1' },
+  { minCitations: 2, maxCitations: 4, label: '2-4' },
+  { minCitations: 5, maxCitations: 9, label: '5-9' },
+  { minCitations: 10, maxCitations: 24, label: '10-24' },
+]
+
+const CITATION_HISTOGRAM_HIGH_BUCKET_STARTS = [25, 50, 100, 200, 500, 1000] as const
+
+function formatCitationHistogramBoundary(value: number): string {
+  return String(Math.max(0, Math.round(Number.isFinite(value) ? value : 0)))
+}
+
+export function buildCitationHistogramBuckets(citationCounts: number[]): CitationHistogramBucket[] {
+  const normalizedCounts = citationCounts
+    .map((value) => {
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed)) {
+        return 0
+      }
+      return Math.max(0, Math.round(parsed))
+    })
+  if (!normalizedCounts.length) {
+    return []
+  }
+  const totalPublications = normalizedCounts.length
+  const maxCitations = Math.max(0, ...normalizedCounts)
+  const bucketDefinitions = CITATION_HISTOGRAM_BASE_BUCKETS
+    .filter((bucket) => bucket.minCitations <= maxCitations)
+    .map((bucket) => ({ ...bucket }))
+
+  if (maxCitations >= 25) {
+    const eligibleHighStarts = CITATION_HISTOGRAM_HIGH_BUCKET_STARTS.filter((start) => start <= maxCitations)
+    eligibleHighStarts.forEach((start, index) => {
+      const nextStart = eligibleHighStarts[index + 1]
+      const isLastBucket = index === eligibleHighStarts.length - 1
+      bucketDefinitions.push({
+        minCitations: start,
+        maxCitations: isLastBucket ? null : nextStart - 1,
+        label: isLastBucket
+          ? `${formatCitationHistogramBoundary(start)}+`
+          : `${formatCitationHistogramBoundary(start)}-${formatCitationHistogramBoundary(nextStart - 1)}`,
+      })
+    })
+  }
+
+  if (!bucketDefinitions.length) {
+    bucketDefinitions.push({ minCitations: 0, maxCitations: 0, label: '0' })
+  }
+
+  return bucketDefinitions.map((bucket) => {
+    const count = normalizedCounts.filter((value) => {
+      if (value < bucket.minCitations) {
+        return false
+      }
+      if (bucket.maxCitations === null) {
+        return true
+      }
+      return value <= bucket.maxCitations
+    }).length
+    return {
+      key: `citation-histogram-${bucket.minCitations}-${bucket.maxCitations === null ? 'plus' : bucket.maxCitations}`,
+      label: bucket.label,
+      minCitations: bucket.minCitations,
+      maxCitations: bucket.maxCitations,
+      count,
+      sharePct: totalPublications > 0 ? (count / totalPublications) * 100 : 0,
+    }
+  })
 }
 
 function buildMomentumBreakdown(tile: PublicationMetricTilePayload): MomentumBreakdown {
@@ -6153,7 +6250,7 @@ function CitationActivationHistorySeriesToggle({
       <div
         className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
         data-stop-tile-open="true"
-        style={{ width: '10.5rem' }}
+        style={{ width: '13rem' }}
       >
         <span
           className={HOUSE_TOGGLE_THUMB_CLASS}
@@ -7622,6 +7719,7 @@ function GenericMetricDrilldownWorkspace({
   const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
   const [uncitedBreakdownExpanded, setUncitedBreakdownExpanded] = useState(true)
   const [recentConcentrationExpanded, setRecentConcentrationExpanded] = useState(true)
+  const [citationHistogramExpanded, setCitationHistogramExpanded] = useState(true)
   const [citationActivationExpanded, setCitationActivationExpanded] = useState(true)
   const [citationActivationHistoryExpanded, setCitationActivationHistoryExpanded] = useState(true)
   const [fieldPercentileDrilldownThreshold, setFieldPercentileDrilldownThreshold] = useState<FieldPercentileThreshold>(75)
@@ -7637,6 +7735,7 @@ function GenericMetricDrilldownWorkspace({
   const [publicationInsightsErrorByRequestKey, setPublicationInsightsErrorByRequestKey] = useState<Record<string, string>>({})
   const [uncitedInsightOpen, setUncitedInsightOpen] = useState(false)
   const [recentConcentrationInsightOpen, setRecentConcentrationInsightOpen] = useState(false)
+  const [citationHistogramInsightOpen, setCitationHistogramInsightOpen] = useState(false)
   const [citationActivationInsightOpen, setCitationActivationInsightOpen] = useState(false)
   const [citationActivationHistoryInsightOpen, setCitationActivationHistoryInsightOpen] = useState(false)
 
@@ -7700,6 +7799,7 @@ function GenericMetricDrilldownWorkspace({
     setPublicationInsightsErrorByRequestKey({})
     setUncitedInsightOpen(false)
     setRecentConcentrationInsightOpen(false)
+    setCitationHistogramInsightOpen(false)
     setCitationActivationInsightOpen(false)
     setCitationActivationHistoryInsightOpen(false)
   }, [tile.key])
@@ -7784,10 +7884,29 @@ function GenericMetricDrilldownWorkspace({
       if (next) {
         setUncitedInsightOpen(false)
         setRecentConcentrationInsightOpen(false)
+        setCitationHistogramInsightOpen(false)
         setCitationActivationHistoryInsightOpen(false)
         void requestPublicationInsights({
           windowId: '1y',
           sectionKey: 'citation_activation',
+          scope: 'section',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  const onToggleCitationHistogramInsight = useCallback(() => {
+    setCitationHistogramInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setUncitedInsightOpen(false)
+        setRecentConcentrationInsightOpen(false)
+        setCitationActivationInsightOpen(false)
+        setCitationActivationHistoryInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: 'all',
+          sectionKey: 'citation_drivers',
           scope: 'section',
         })
       }
@@ -7801,6 +7920,7 @@ function GenericMetricDrilldownWorkspace({
       if (next) {
         setUncitedInsightOpen(false)
         setRecentConcentrationInsightOpen(false)
+        setCitationHistogramInsightOpen(false)
         setCitationActivationInsightOpen(false)
         void requestPublicationInsights({
           windowId: 'all',
@@ -7846,6 +7966,25 @@ function GenericMetricDrilldownWorkspace({
     })
   }, [
     citationActivationInsightOpen,
+    publicationInsightsByRequestKey,
+    requestPublicationInsights,
+  ])
+
+  useEffect(() => {
+    if (!citationHistogramInsightOpen) {
+      return
+    }
+    const requestKey = 'citation_drivers:section:all'
+    if (publicationInsightsByRequestKey[requestKey]) {
+      return
+    }
+    void requestPublicationInsights({
+      windowId: 'all',
+      sectionKey: 'citation_drivers',
+      scope: 'section',
+    })
+  }, [
+    citationHistogramInsightOpen,
     publicationInsightsByRequestKey,
     requestPublicationInsights,
   ])
@@ -7941,6 +8080,14 @@ function GenericMetricDrilldownWorkspace({
       .slice(3)
       .reduce((sum, record) => sum + record.selectedWindowCitations, 0),
     [recentConcentrationWindowRecords],
+  )
+  const citationHistogramBuckets = useMemo(
+    () => buildCitationHistogramBuckets(publicationDrilldownRecords.map((record) => record.citations)),
+    [publicationDrilldownRecords],
+  )
+  const citationHistogramMaxCitations = useMemo(
+    () => Math.max(0, ...publicationDrilldownRecords.map((record) => Math.max(0, record.citations))),
+    [publicationDrilldownRecords],
   )
   const citationActivationPublicationRecords = useMemo(
     () => publicationDrilldownRecords
@@ -8333,28 +8480,34 @@ function GenericMetricDrilldownWorkspace({
   }, [recentConcentrationOtherCitations, recentConcentrationTopThreeCitations])
   const uncitedInsightsRequestKey = 'uncited_works:window:all'
   const recentConcentrationInsightsRequestKey = 'citation_drivers:section:1y'
+  const citationHistogramInsightsRequestKey = 'citation_drivers:section:all'
   const citationActivationInsightsRequestKey = 'citation_activation:section:1y'
   const citationActivationHistoryInsightsRequestKey = 'citation_activation_history:section:all'
   const uncitedInsightsPayload = publicationInsightsByRequestKey[uncitedInsightsRequestKey] || null
   const recentConcentrationInsightsPayload = publicationInsightsByRequestKey[recentConcentrationInsightsRequestKey] || null
+  const citationHistogramInsightsPayload = publicationInsightsByRequestKey[citationHistogramInsightsRequestKey] || null
   const citationActivationInsightsPayload = publicationInsightsByRequestKey[citationActivationInsightsRequestKey] || null
   const citationActivationHistoryInsightsPayload = publicationInsightsByRequestKey[citationActivationHistoryInsightsRequestKey] || null
   const uncitedInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[uncitedInsightsRequestKey])
   const recentConcentrationInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[recentConcentrationInsightsRequestKey])
+  const citationHistogramInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[citationHistogramInsightsRequestKey])
   const citationActivationInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[citationActivationInsightsRequestKey])
   const citationActivationHistoryInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[citationActivationHistoryInsightsRequestKey])
   const uncitedInsightsError = publicationInsightsErrorByRequestKey[uncitedInsightsRequestKey] || ''
   const recentConcentrationInsightsError = publicationInsightsErrorByRequestKey[recentConcentrationInsightsRequestKey] || ''
+  const citationHistogramInsightsError = publicationInsightsErrorByRequestKey[citationHistogramInsightsRequestKey] || ''
   const citationActivationInsightsError = publicationInsightsErrorByRequestKey[citationActivationInsightsRequestKey] || ''
   const citationActivationHistoryInsightsError = publicationInsightsErrorByRequestKey[citationActivationHistoryInsightsRequestKey] || ''
   const closeUncitedInsight = useCallback(() => setUncitedInsightOpen(false), [])
   const closeRecentConcentrationInsight = useCallback(() => setRecentConcentrationInsightOpen(false), [])
+  const closeCitationHistogramInsight = useCallback(() => setCitationHistogramInsightOpen(false), [])
   const closeCitationActivationInsight = useCallback(() => setCitationActivationInsightOpen(false), [])
   const closeCitationActivationHistoryInsight = useCallback(() => setCitationActivationHistoryInsightOpen(false), [])
   const navigateToInsightTab = useCallback((tab: DrilldownTab) => {
     onDrilldownTabChange?.(tab)
     setUncitedInsightOpen(false)
     setRecentConcentrationInsightOpen(false)
+    setCitationHistogramInsightOpen(false)
     setCitationActivationInsightOpen(false)
     setCitationActivationHistoryInsightOpen(false)
   }, [onDrilldownTabChange])
@@ -8447,6 +8600,39 @@ function GenericMetricDrilldownWorkspace({
     recentConcentrationPublicationRecords.length,
     recentConcentrationViewMode,
   ])
+  const citationHistogramInsightActions = useMemo<PublicationInsightAction[]>(() => {
+    const actions: PublicationInsightAction[] = []
+    const citationEvidence = getPublicationInsightsSection(citationHistogramInsightsPayload, 'citation_drivers')?.evidence as Record<string, unknown> | undefined
+    const topPublicationsEvidence = citationEvidence?.['publications']
+    const leadPublication = Array.isArray(topPublicationsEvidence) && topPublicationsEvidence.length > 0 && topPublicationsEvidence[0] && typeof topPublicationsEvidence[0] === 'object'
+      ? topPublicationsEvidence[0] as Record<string, unknown>
+      : null
+    const leadPublicationId = String(leadPublication?.work_id || '').trim()
+    if (leadPublicationId && onOpenPublication) {
+      actions.push({
+        key: 'citation-distribution-open-lead-paper',
+        label: 'Open lead paper',
+        description: 'Open the strongest citation driver in your library.',
+        onSelect: () => {
+          onOpenPublication(leadPublicationId)
+          setCitationHistogramInsightOpen(false)
+        },
+      })
+    }
+    actions.push({
+      key: 'citation-distribution-context',
+      label: 'Citation context',
+      description: 'Compare this distribution with the wider citation profile.',
+      onSelect: () => navigateToInsightTab('context'),
+    })
+    actions.push({
+      key: 'citation-distribution-trajectory',
+      label: 'Citation activation',
+      description: 'See how active and inactive papers are changing over time.',
+      onSelect: () => navigateToInsightTab('trajectory'),
+    })
+    return actions.slice(0, 3)
+  }, [citationHistogramInsightsPayload, navigateToInsightTab, onOpenPublication])
   const citationActivationInsightActions = useMemo<PublicationInsightAction[]>(() => {
     const actions: PublicationInsightAction[] = []
     if (citationActivationViewMode !== 'table' && newlyActivePublicationRecords.length > 0) {
@@ -9048,6 +9234,62 @@ function GenericMetricDrilldownWorkspace({
                     />
                   )}
                 </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain citation distribution"
+                  content={formatCitationHistogramTooltip(publicationDrilldownRecords.length, citationHistogramMaxCitations)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open citation distribution insight"
+                  active={citationHistogramInsightOpen}
+                  onClick={onToggleCitationHistogramInsight}
+                />
+              </div>
+              {citationHistogramInsightOpen ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close citation distribution insight"
+                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+                    onClick={closeCitationHistogramInsight}
+                  />
+                  <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+                    <div className="pointer-events-auto w-full max-w-[26rem]">
+                      <PublicationInsightsCallout
+                        payload={citationHistogramInsightsPayload}
+                        sectionKey="citation_drivers"
+                        loading={citationHistogramInsightsLoading}
+                        error={citationHistogramInsightsError}
+                        actions={citationHistogramInsightActions}
+                        onClose={closeCitationHistogramInsight}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">How are citations distributed across my papers?</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={citationHistogramExpanded}
+                    expandedLabel="Collapse citation distribution"
+                    collapsedLabel="Expand citation distribution"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setCitationHistogramExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {citationHistogramExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <CitationHistogramChart buckets={citationHistogramBuckets} />
                 </div>
               ) : null}
             </div>
@@ -10808,6 +11050,255 @@ function CitationActivationStateBarCard({
   )
 }
 
+function CitationHistogramChart({
+  buckets,
+}: {
+  buckets: CitationHistogramBucket[]
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const hasBars = buckets.length > 0
+  const animationKey = useMemo(
+    () => `citation-histogram:${buckets.map((bucket) => `${bucket.key}-${bucket.count}`).join('|') || 'empty'}`,
+    [buckets],
+  )
+  const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
+  const targetValues = useMemo(
+    () => buckets.map((bucket) => Math.max(0, bucket.count)),
+    [buckets],
+  )
+  const animatedValues = useEasedSeries(
+    targetValues,
+    `${animationKey}|values`,
+    hasBars,
+    isEntryCycle ? 0 : axisDurationMs,
+  )
+  const targetAxisScale = useMemo(
+    () => buildNiceAxis(targetValues.length ? Math.max(1, ...targetValues) : 1),
+    [targetValues],
+  )
+  const scaledMax = Math.max(1, targetAxisScale.axisMax)
+  const axisLayout = useMemo(
+    () => buildChartAxisLayout({
+      axisLabels: buckets.map((bucket) => bucket.label),
+      axisSubLabels: buckets.map(() => null),
+      showXAxisName: true,
+      xAxisName: 'Lifetime citations per paper',
+      dense: buckets.length >= 8,
+      maxLabelLines: 2,
+      maxAxisNameLines: 1,
+    }),
+    [buckets],
+  )
+  const yAxisTickValues = targetAxisScale.ticks
+  const yAxisLabelTicks = useMemo(
+    () => yAxisTickValues.filter((_, index) => index < yAxisTickValues.length - 1 || yAxisTickValues.length <= 4),
+    [yAxisTickValues],
+  )
+  const yAxisTickRatios = useMemo(
+    () => yAxisTickValues.map((tick) => Math.max(0, Math.min(1, tick / scaledMax))),
+    [scaledMax, yAxisTickValues],
+  )
+  const yAxisLabelItems = useMemo(
+    () => yAxisTickValues
+      .map((tick, index) => ({
+        tick,
+        ratio: yAxisTickRatios[index] || 0,
+      }))
+      .filter((item) => yAxisLabelTicks.includes(item.tick)),
+    [yAxisLabelTicks, yAxisTickRatios, yAxisTickValues],
+  )
+  const interiorGridTickRatios = useMemo(
+    () => yAxisTickRatios.filter((_, index) => index > 0 && index < yAxisTickRatios.length - 1),
+    [yAxisTickRatios],
+  )
+  const hasTopYAxisGridLine = yAxisTickValues.length > 1
+  const yAxisPanelWidthRem = buildYAxisPanelWidthRem(yAxisLabelTicks, true, 1.2)
+  const chartLeftInset = `${yAxisPanelWidthRem + PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM}rem`
+  const plotAreaStyle = {
+    left: chartLeftInset,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
+    bottom: `${axisLayout.plotBottomRem}rem`,
+  }
+  const xAxisTicksStyle = {
+    left: chartLeftInset,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    bottom: `${axisLayout.axisBottomRem}rem`,
+    minHeight: `${axisLayout.axisMinHeightRem}rem`,
+  }
+  const yAxisPanelStyle = {
+    left: `${PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM}rem`,
+    top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
+    bottom: `${axisLayout.plotBottomRem}rem`,
+    width: `${yAxisPanelWidthRem}rem`,
+  }
+  const yAxisTitleLeft = '36%'
+
+  if (!hasBars) {
+    return (
+      <div className="py-1">
+        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">No citation distribution is available yet.</p>
+      </div>
+    )
+  }
+
+  const toneClassForBucket = (bucket: CitationHistogramBucket) => {
+    if (bucket.minCitations === 0 && bucket.maxCitations === 0) {
+      return HOUSE_CHART_BAR_WARNING_CLASS
+    }
+    if (bucket.maxCitations === null) {
+      return HOUSE_CHART_BAR_POSITIVE_CLASS
+    }
+    if (bucket.minCitations >= 10) {
+      return HOUSE_CHART_BAR_ACCENT_CLASS
+    }
+    return HOUSE_CHART_BAR_NEUTRAL_CLASS
+  }
+
+  return (
+    <div className="relative h-[26rem]">
+      <div
+        className={cn(
+          HOUSE_CHART_TRANSITION_CLASS,
+          HOUSE_CHART_SERIES_BY_SLOT_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
+          'house-publications-trend-chart-frame-borderless',
+          'h-full',
+        )}
+        style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
+      >
+        <div className="absolute" style={plotAreaStyle}>
+          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+            <div
+              className={cn('absolute inset-y-0 left-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={{ borderLeft: '1px solid hsl(var(--stroke-soft) / 0.78)' }}
+            />
+            <div
+              className={cn('absolute inset-x-0 bottom-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={{ borderTop: '1px solid hsl(var(--stroke-soft) / 0.9)' }}
+            />
+            {interiorGridTickRatios.map((ratio, index) => (
+              <div
+                key={`citation-histogram-grid-y-${index}`}
+                className={cn('absolute inset-x-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{ bottom: `${Math.max(0, Math.min(100, ratio * 100))}%`, borderTop: '1px solid hsl(var(--stroke-soft) / 0.72)' }}
+              />
+            ))}
+            {hasTopYAxisGridLine ? (
+              <div
+                className={cn('absolute inset-x-0 top-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{ borderTop: '1px solid hsl(var(--stroke-soft) / 0.72)' }}
+              />
+            ) : null}
+          </div>
+
+          <TooltipProvider delayDuration={120}>
+            <div className="absolute inset-0 flex items-end gap-1">
+              {buckets.map((bucket, index) => {
+                const animatedValue = Math.max(0, animatedValues[index] ?? 0)
+                const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / scaledMax) * 100)
+                const isActive = hoveredIndex === index
+                return (
+                  <Tooltip key={bucket.key}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="relative flex h-full min-h-0 flex-1 items-end rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                        onMouseEnter={() => setHoveredIndex(index)}
+                        onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                        onFocus={() => setHoveredIndex(index)}
+                        onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                        aria-label={`${bucket.label} citations: ${formatInt(bucket.count)} ${pluralize(bucket.count, 'paper')}, ${Math.round(bucket.sharePct)}% of papers`}
+                      >
+                        <span
+                          className={cn(
+                            'block w-full rounded',
+                            HOUSE_TOGGLE_CHART_BAR_CLASS,
+                            toneClassForBucket(bucket),
+                            isActive && 'brightness-[1.08] saturate-[1.14]',
+                          )}
+                          style={{
+                            height: `${heightPct}%`,
+                            transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                            transformOrigin: 'bottom',
+                            transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
+                            transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
+                          }}
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      align="center"
+                      sideOffset={8}
+                      className="house-approved-tooltip max-w-[16rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                    >
+                      <div className="space-y-1">
+                        <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{`${bucket.label} citations`}</p>
+                        <p>{`${formatInt(bucket.count)} ${pluralize(bucket.count, 'paper')}`}</p>
+                        <p>{`${Math.round(bucket.sharePct)}% of publication set`}</p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              })}
+            </div>
+          </TooltipProvider>
+        </div>
+
+        <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
+          {yAxisLabelItems.map(({ tick, ratio }) => {
+            const pct = Math.max(0, Math.min(100, ratio * 100))
+            const tickRatioKey = Math.round(ratio * 1000)
+            return (
+              <p
+                key={`citation-histogram-y-axis-${tickRatioKey}`}
+                className={cn('absolute right-0 whitespace-nowrap tabular-nums text-[0.68rem] leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
+                style={{ bottom: `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM}rem)` }}
+              >
+                {formatInt(tick)}
+              </p>
+            )
+          })}
+          <p
+            className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
+            style={{ left: yAxisTitleLeft }}
+          >
+            Papers
+          </p>
+        </div>
+
+        <div
+          className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)}
+          style={xAxisTicksStyle}
+        >
+          {buckets.map((bucket) => (
+            <div key={`${bucket.key}-axis`} className="text-center leading-none">
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 text-[0.68rem] leading-[1.05]')}>{bucket.label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            left: chartLeftInset,
+            right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+            bottom: `${axisLayout.xAxisNameBottomRem}rem`,
+            minHeight: `${axisLayout.xAxisNameMinHeightRem}rem`,
+          }}
+        >
+          <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
+            Lifetime citations per paper
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function CompletedPeriodRangeSlider({
   minIndex,
   maxIndex,
@@ -10946,7 +11437,7 @@ function CompletedPeriodRangeSlider({
             onPointerDown={handleEndPointerDown}
           />
         </div>
-        <p className="w-[14rem] shrink-0 whitespace-nowrap text-right text-[0.72rem] font-semibold uppercase tracking-[0.18em] tabular-nums text-[hsl(var(--tone-neutral-700))]">
+        <p className="w-[11.25rem] shrink-0 whitespace-nowrap text-right text-[0.72rem] font-semibold uppercase tracking-[0.18em] tabular-nums text-[hsl(var(--tone-neutral-700))]">
           {selectionLabel}
         </p>
       </div>
