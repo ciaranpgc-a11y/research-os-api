@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Download, Eye, EyeOff, FileText, Hammer, Share2 } from 'lucide-react'
+import { ArrowUpRight, Download, Eye, EyeOff, FileText, Hammer, Share2, X } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui'
 import { Button } from '@/components/ui'
 import { DrilldownSheet } from '@/components/ui'
-import { SectionTools } from '@/components/patterns'
+import { HelpTooltipIconButton, InsightsGlyph, SectionTools } from '@/components/patterns'
 import { Section, SectionHeader } from '@/components/primitives'
 import { readAccountSettings } from '@/lib/account-preferences'
-import { fetchPublicationMetricDetail } from '@/lib/impact-api'
+import { fetchPublicationInsightsAgent, fetchPublicationMetricDetail } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
 import type {
   PublicationMetricDetailPayload,
   PublicationMetricTilePayload,
+  PublicationInsightsAgentPayload,
   PublicationsTopMetricsPayload,
 } from '@/types/impact'
 
@@ -64,6 +65,14 @@ type PublicationsTopStripProps = {
   forceInsightsVisible?: boolean
 }
 
+type PublicationInsightsSectionKey = 'uncited_works' | 'citation_drivers' | 'citation_activation'
+type PublicationInsightAction = {
+  key: string
+  label: string
+  description: string
+  onSelect: () => void
+}
+
 function estimatePolylineLength(points: Array<{ x: number; y: number }>): number {
   if (points.length < 2) {
     return 0
@@ -95,6 +104,60 @@ function formatInt(value: number): string {
   const finiteValue = Number.isFinite(value) ? value : 0
   const boundedValue = Math.max(-Number.MAX_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, finiteValue))
   return Math.round(boundedValue).toLocaleString('en-GB')
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return Math.abs(Math.round(count)) === 1 ? singular : plural
+}
+
+function formatUncitedPapersTooltip(stats: TotalCitationsHeadlineStats): string {
+  return `You have ${formatInt(stats.uncitedPapersCount)} uncited publications, representing ${Math.round(stats.uncitedPapersPct)}% of your publication set.`
+}
+
+function formatUncitedPapersTableTooltip(stats: TotalCitationsHeadlineStats): string {
+  return `You have ${formatInt(stats.uncitedPapersCount)} uncited publications. Select a title to open it in your library.`
+}
+
+function formatRecentConcentrationWindowTooltip({
+  windowPhrase,
+  topPublicationCount,
+  topThreeCitations,
+  otherCitations,
+}: {
+  windowPhrase: string
+  topPublicationCount: number
+  topThreeCitations: number
+  otherCitations: number
+}): string {
+  const total = topThreeCitations + otherCitations
+  if (total <= 0) {
+    return `You have no recorded citations ${windowPhrase}.`
+  }
+  const publicationLabel = pluralize(topPublicationCount, 'publication')
+  const topShare = Math.round((topThreeCitations / total) * 100)
+  return `${windowPhrase.charAt(0).toUpperCase()}${windowPhrase.slice(1)}, your top ${formatInt(topPublicationCount)} ${publicationLabel} account for ${formatInt(topThreeCitations)} of ${formatInt(total)} citations (${topShare}%).`
+}
+
+function formatRecentConcentrationTableTooltip(recordsCount: number, windowPhrase: string): string {
+  return `Your top ${formatInt(recordsCount)} publications ${windowPhrase} are listed here. Select a title to open it in your library.`
+}
+
+function formatCitationActivationStateTooltip({
+  totalPublications,
+  newlyActiveCount,
+  stillActiveCount,
+  inactiveCount,
+}: {
+  totalPublications: number
+  newlyActiveCount: number
+  stillActiveCount: number
+  inactiveCount: number
+}): string {
+  return `Of your ${formatInt(totalPublications)} publications, ${formatInt(newlyActiveCount)} are newly active, ${formatInt(stillActiveCount)} are still active, and ${formatInt(inactiveCount)} had no citations in the last 12 months.`
+}
+
+function formatCitationActivationTableTooltip(recordsCount: number): string {
+  return `Your ${formatInt(recordsCount)} newly active publications are listed here with last-12-month and total citations. Select a title to open it in your library.`
 }
 
 function formatSignedPercentCompact(value: number): string {
@@ -328,6 +391,7 @@ type MomentumYearBreakdown = {
 
 type MomentumWindowMode = '12m' | '5y'
 type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
+type RecentConcentrationWindowMode = Exclude<PublicationsWindowMode, 'all'>
 type PublicationTrendsVisualMode = 'bars' | 'line'
 type PublicationCategoryValueMode = 'absolute' | 'percentage' | 'perPaper'
 type PublicationCategoryDisplayMode = 'chart' | 'table'
@@ -336,6 +400,8 @@ type TopicBreakdownViewMode = 'top-ten' | 'all-topics'
 type HIndexViewMode = 'trajectory' | 'needed'
 type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
 type DrilldownTab = 'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'
+
+type SplitBreakdownViewMode = 'bar' | 'table'
 
 const DRILLDOWN_TABS: Array<{ value: DrilldownTab; label: string }> = [
   { value: 'summary', label: 'Summary' },
@@ -350,6 +416,11 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
   { value: '3y', label: '3y' },
   { value: '5y', label: '5y' },
   { value: 'all', label: 'Life' },
+]
+const RECENT_CONCENTRATION_WINDOW_OPTIONS: Array<{ value: RecentConcentrationWindowMode; label: string }> = [
+  { value: '1y', label: '1y' },
+  { value: '3y', label: '3y' },
+  { value: '5y', label: '5y' },
 ]
 const PUBLICATION_TRENDS_VISUAL_OPTIONS: Array<{ value: PublicationTrendsVisualMode; label: string }> = [
   { value: 'bars', label: 'Bar view' },
@@ -445,6 +516,7 @@ const HOUSE_CHART_BAR_ACCENT_CLASS = publicationsHouseCharts.barAccent
 const HOUSE_CHART_BAR_POSITIVE_CLASS = publicationsHouseCharts.barPositive
 const HOUSE_CHART_BAR_WARNING_CLASS = publicationsHouseCharts.barWarning
 const HOUSE_CHART_BAR_NEUTRAL_CLASS = publicationsHouseCharts.barNeutral
+const HOUSE_CHART_BAR_DANGER_CLASS = 'bg-[hsl(var(--tone-danger-500))]'
 const HOUSE_CHART_BAR_CURRENT_CLASS = publicationsHouseCharts.barCurrent
 const HOUSE_CHART_GRID_LINE_CLASS = publicationsHouseCharts.gridLine
 const HOUSE_CHART_GRID_DASHED_CLASS = publicationsHouseCharts.gridDashed
@@ -5998,6 +6070,107 @@ export function PublicationCategoryDistributionChart({
   )
 }
 
+function SplitBreakdownViewToggle({
+  value,
+  onChange,
+}: {
+  value: SplitBreakdownViewMode
+  onChange: (mode: SplitBreakdownViewMode) => void
+}) {
+  const activeIndex = value === 'bar' ? 0 : 1
+
+  return (
+    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+      <div
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        data-stop-tile-open="true"
+        style={{ width: '7rem' }}
+      >
+        <span
+          className={HOUSE_TOGGLE_THUMB_CLASS}
+          style={buildTileToggleThumbStyle(activeIndex, 2, false)}
+          aria-hidden="true"
+        />
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'bar' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'bar'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('bar')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          Bar
+        </button>
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'table' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'table'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange(value === 'table' ? 'bar' : 'table')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          Table
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PublicationWindowToggle({
+  value,
+  onChange,
+  options = PUBLICATIONS_WINDOW_OPTIONS,
+}: {
+  value: PublicationsWindowMode | RecentConcentrationWindowMode
+  onChange: (mode: PublicationsWindowMode | RecentConcentrationWindowMode) => void
+  options?: Array<{ value: PublicationsWindowMode | RecentConcentrationWindowMode; label: string }>
+}) {
+  const activeIndex = Math.max(0, options.findIndex((option) => option.value === value))
+  const gridColsClass = options.length === 3 ? 'grid-cols-3' : 'grid-cols-[24%_24%_24%_28%]'
+  const toggleWidth = options.length === 3 ? '6.75rem' : '8.75rem'
+
+  return (
+    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+      <div
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, gridColsClass)}
+        data-stop-tile-open="true"
+        style={{ width: toggleWidth, minWidth: toggleWidth, maxWidth: toggleWidth }}
+      >
+        <span
+          className={HOUSE_TOGGLE_THUMB_CLASS}
+          style={buildTileToggleThumbStyle(activeIndex, options.length, false)}
+          aria-hidden="true"
+        />
+        {options.map((option) => (
+          <button
+            key={`recent-concentration-window-${option.value}`}
+            type="button"
+            data-stop-tile-open="true"
+            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (value === option.value) {
+                return
+              }
+              onChange(option.value)
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+            aria-pressed={value === option.value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function TotalPublicationsDrilldownWorkspace({
   tile,
   activeTab,
@@ -7362,17 +7535,36 @@ function GenericMetricDrilldownWorkspace({
   tile,
   activeTab,
   animateCharts = true,
+  token = null,
+  onOpenPublication,
+  onDrilldownTabChange,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
   animateCharts?: boolean
+  token?: string | null
+  onOpenPublication?: (workId: string) => void
+  onDrilldownTabChange?: (tab: DrilldownTab) => void
 }) {
   const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('5y')
   const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
   const [articleTypeTrendsExpanded, setArticleTypeTrendsExpanded] = useState(true)
   const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
+  const [uncitedBreakdownExpanded, setUncitedBreakdownExpanded] = useState(true)
+  const [recentConcentrationExpanded, setRecentConcentrationExpanded] = useState(true)
+  const [citationActivationExpanded, setCitationActivationExpanded] = useState(true)
   const [fieldPercentileDrilldownThreshold, setFieldPercentileDrilldownThreshold] = useState<FieldPercentileThreshold>(75)
+  const [uncitedBreakdownViewMode, setUncitedBreakdownViewMode] = useState<SplitBreakdownViewMode>('bar')
+  const [recentConcentrationViewMode, setRecentConcentrationViewMode] = useState<SplitBreakdownViewMode>('bar')
+  const [citationActivationViewMode, setCitationActivationViewMode] = useState<SplitBreakdownViewMode>('bar')
+  const [recentConcentrationWindowMode, setRecentConcentrationWindowMode] = useState<RecentConcentrationWindowMode>('1y')
+  const [publicationInsightsByRequestKey, setPublicationInsightsByRequestKey] = useState<Record<string, PublicationInsightsAgentPayload>>({})
+  const [publicationInsightsLoadingByRequestKey, setPublicationInsightsLoadingByRequestKey] = useState<Record<string, boolean>>({})
+  const [publicationInsightsErrorByRequestKey, setPublicationInsightsErrorByRequestKey] = useState<Record<string, string>>({})
+  const [uncitedInsightOpen, setUncitedInsightOpen] = useState(false)
+  const [recentConcentrationInsightOpen, setRecentConcentrationInsightOpen] = useState(false)
+  const [citationActivationInsightOpen, setCitationActivationInsightOpen] = useState(false)
 
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
     breakdown: 'Breakdown results',
@@ -7418,7 +7610,146 @@ function GenericMetricDrilldownWorkspace({
     setPublicationTrendsExpanded(true)
     setArticleTypeTrendsExpanded(true)
     setPublicationTypeTrendsExpanded(true)
+    setUncitedBreakdownExpanded(true)
+    setRecentConcentrationExpanded(true)
+    setCitationActivationExpanded(true)
+    setUncitedBreakdownViewMode('bar')
+    setRecentConcentrationViewMode('bar')
+    setCitationActivationViewMode('bar')
+    setRecentConcentrationWindowMode('1y')
+    setPublicationInsightsByRequestKey({})
+    setPublicationInsightsLoadingByRequestKey({})
+    setPublicationInsightsErrorByRequestKey({})
+    setUncitedInsightOpen(false)
+    setRecentConcentrationInsightOpen(false)
+    setCitationActivationInsightOpen(false)
   }, [tile.key])
+
+  const requestPublicationInsights = useCallback(
+    async ({
+      windowId,
+      sectionKey,
+      scope = 'window',
+    }: {
+      windowId: PublicationsWindowMode
+      sectionKey: PublicationInsightsSectionKey
+      scope?: 'window' | 'section'
+    }) => {
+      const normalizedWindowId = windowId === 'all' ? 'all' : windowId
+      const requestKey = `${sectionKey}:${scope}:${normalizedWindowId}`
+      if (publicationInsightsByRequestKey[requestKey]) {
+        return publicationInsightsByRequestKey[requestKey]
+      }
+      if (!token) {
+        const message = 'Session token is required to generate publication insights.'
+        setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
+        return null
+      }
+      setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: true }))
+      setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: '' }))
+      try {
+        const payload = await fetchPublicationInsightsAgent(token, {
+          windowId: normalizedWindowId,
+          scope,
+          sectionKey,
+        })
+        setPublicationInsightsByRequestKey((current) => ({ ...current, [requestKey]: payload }))
+        return payload
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not generate publication insights.'
+        setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
+        return null
+      } finally {
+        setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: false }))
+      }
+    },
+    [publicationInsightsByRequestKey, token],
+  )
+
+  const onToggleUncitedInsight = useCallback(() => {
+    setUncitedInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setRecentConcentrationInsightOpen(false)
+        setCitationActivationInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: 'all',
+          sectionKey: 'uncited_works',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  const onToggleRecentConcentrationInsight = useCallback(() => {
+    setRecentConcentrationInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setUncitedInsightOpen(false)
+        setCitationActivationInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: '1y',
+          sectionKey: 'citation_drivers',
+          scope: 'section',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  const onToggleCitationActivationInsight = useCallback(() => {
+    setCitationActivationInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setUncitedInsightOpen(false)
+        setRecentConcentrationInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: '1y',
+          sectionKey: 'citation_activation',
+          scope: 'section',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  useEffect(() => {
+    if (!recentConcentrationInsightOpen) {
+      return
+    }
+    const requestKey = 'citation_drivers:section:1y'
+    if (publicationInsightsByRequestKey[requestKey]) {
+      return
+    }
+    void requestPublicationInsights({
+      windowId: '1y',
+      sectionKey: 'citation_drivers',
+      scope: 'section',
+    })
+  }, [
+    publicationInsightsByRequestKey,
+    recentConcentrationInsightOpen,
+    requestPublicationInsights,
+  ])
+
+  useEffect(() => {
+    if (!citationActivationInsightOpen) {
+      return
+    }
+    const requestKey = 'citation_activation:section:1y'
+    if (publicationInsightsByRequestKey[requestKey]) {
+      return
+    }
+    void requestPublicationInsights({
+      windowId: '1y',
+      sectionKey: 'citation_activation',
+      scope: 'section',
+    })
+  }, [
+    citationActivationInsightOpen,
+    publicationInsightsByRequestKey,
+    requestPublicationInsights,
+  ])
 
   const publicationDrilldownRecords = useMemo<PublicationDrilldownRecord[]>(() => {
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
@@ -7461,6 +7792,289 @@ function GenericMetricDrilldownWorkspace({
       })
       .filter(isNonNullish)
   }, [tile.drilldown])
+  const uncitedPublicationRecords = useMemo(
+    () => publicationDrilldownRecords
+      .filter((record) => record.citations <= 0)
+      .sort((left, right) => left.title.localeCompare(right.title, 'en-GB')),
+    [publicationDrilldownRecords],
+  )
+  const recentConcentrationWindowRecords = useMemo(
+    () => publicationDrilldownRecords
+      .map((record) => ({
+        ...record,
+        selectedWindowCitations: resolvePublicationCitationValueForWindow(record, recentConcentrationWindowMode),
+      }))
+      .filter((record) => record.selectedWindowCitations > 0)
+      .slice()
+      .sort((left, right) => {
+        if (right.selectedWindowCitations !== left.selectedWindowCitations) {
+          return right.selectedWindowCitations - left.selectedWindowCitations
+        }
+        return left.title.localeCompare(right.title, 'en-GB')
+      }),
+    [publicationDrilldownRecords, recentConcentrationWindowMode],
+  )
+  const recentConcentrationPublicationRecords = useMemo(
+    () => recentConcentrationWindowRecords.slice(0, 3),
+    [recentConcentrationWindowRecords],
+  )
+  const recentConcentrationOtherCitations = useMemo(
+    () => recentConcentrationWindowRecords
+      .slice(3)
+      .reduce((sum, record) => sum + record.selectedWindowCitations, 0),
+    [recentConcentrationWindowRecords],
+  )
+  const citationActivationPublicationRecords = useMemo(
+    () => publicationDrilldownRecords
+      .filter((record) => record.citations1yRolling > 0)
+      .slice()
+      .sort((left, right) => {
+        if (right.citations1yRolling !== left.citations1yRolling) {
+          return right.citations1yRolling - left.citations1yRolling
+        }
+        return left.title.localeCompare(right.title, 'en-GB')
+      }),
+    [publicationDrilldownRecords],
+  )
+  const newlyActivePublicationRecords = useMemo(
+    () => citationActivationPublicationRecords
+      .filter((record) => Math.max(0, record.citations3yRolling - record.citations1yRolling) <= 0),
+    [citationActivationPublicationRecords],
+  )
+  const stillActivePublicationRecords = useMemo(
+    () => citationActivationPublicationRecords
+      .filter((record) => Math.max(0, record.citations3yRolling - record.citations1yRolling) > 0),
+    [citationActivationPublicationRecords],
+  )
+  const inactivePublicationCount = useMemo(
+    () => Math.max(0, publicationDrilldownRecords.length - citationActivationPublicationRecords.length),
+    [citationActivationPublicationRecords.length, publicationDrilldownRecords.length],
+  )
+  const citationActivationCohortRows = useMemo(() => {
+    const rowsByYear = new Map<number, {
+      key: string
+      label: string
+      newlyActiveCount: number
+      stillActiveCount: number
+      inactiveCount: number
+      totalCount: number
+      year: number
+    }>()
+    publicationDrilldownRecords.forEach((record) => {
+      if (!Number.isInteger(record.year)) {
+        return
+      }
+      const year = Number(record.year)
+      const current = rowsByYear.get(year) || {
+        key: String(year),
+        label: String(year),
+        newlyActiveCount: 0,
+        stillActiveCount: 0,
+        inactiveCount: 0,
+        totalCount: 0,
+        year,
+      }
+      const priorWindowCitations = Math.max(0, (record.citations3yRolling || 0) - (record.citations1yRolling || 0))
+      const recentWindowCitations = Math.max(0, record.citations1yRolling || 0)
+      current.totalCount += 1
+      if (recentWindowCitations > 0 && priorWindowCitations <= 0) {
+        current.newlyActiveCount += 1
+      } else if (recentWindowCitations > 0) {
+        current.stillActiveCount += 1
+      } else {
+        current.inactiveCount += 1
+      }
+      rowsByYear.set(year, current)
+    })
+    const orderedRows = Array.from(rowsByYear.values()).sort((left, right) => left.year - right.year)
+    if (orderedRows.length <= 8) {
+      return orderedRows
+    }
+    const recentRows = orderedRows.slice(-7)
+    const olderRows = orderedRows.slice(0, -7)
+    const olderRow = olderRows.reduce((accumulator, row) => {
+      accumulator.newlyActiveCount += row.newlyActiveCount
+      accumulator.stillActiveCount += row.stillActiveCount
+      accumulator.inactiveCount += row.inactiveCount
+      accumulator.totalCount += row.totalCount
+      return accumulator
+    }, {
+      key: 'older',
+      label: 'Older',
+      newlyActiveCount: 0,
+      stillActiveCount: 0,
+      inactiveCount: 0,
+      totalCount: 0,
+      year: (olderRows[0]?.year ?? 0) - 1,
+    })
+    return [olderRow, ...recentRows]
+  }, [publicationDrilldownRecords])
+  const recentConcentrationTopThreeCitations = useMemo(
+    () => recentConcentrationPublicationRecords.reduce((sum, record) => sum + record.selectedWindowCitations, 0),
+    [recentConcentrationPublicationRecords],
+  )
+  const recentConcentrationWindowLabel = useMemo(
+    () => RECENT_CONCENTRATION_WINDOW_OPTIONS.find((option) => option.value === recentConcentrationWindowMode)?.label || '1y',
+    [recentConcentrationWindowMode],
+  )
+  const recentConcentrationWindowPhrase = useMemo(() => {
+    switch (recentConcentrationWindowMode) {
+      case '1y':
+        return 'in the last year'
+      case '3y':
+        return 'in the last 3 years'
+      case '5y':
+        return 'in the last 5 years'
+      default:
+        return 'in the selected period'
+    }
+  }, [recentConcentrationWindowMode])
+  const recentConcentrationPct = useMemo(() => {
+    const total = recentConcentrationTopThreeCitations + recentConcentrationOtherCitations
+    return total > 0 ? (recentConcentrationTopThreeCitations / total) * 100 : 0
+  }, [recentConcentrationOtherCitations, recentConcentrationTopThreeCitations])
+  const uncitedInsightsRequestKey = 'uncited_works:window:all'
+  const recentConcentrationInsightsRequestKey = 'citation_drivers:section:1y'
+  const citationActivationInsightsRequestKey = 'citation_activation:section:1y'
+  const uncitedInsightsPayload = publicationInsightsByRequestKey[uncitedInsightsRequestKey] || null
+  const recentConcentrationInsightsPayload = publicationInsightsByRequestKey[recentConcentrationInsightsRequestKey] || null
+  const citationActivationInsightsPayload = publicationInsightsByRequestKey[citationActivationInsightsRequestKey] || null
+  const uncitedInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[uncitedInsightsRequestKey])
+  const recentConcentrationInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[recentConcentrationInsightsRequestKey])
+  const citationActivationInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[citationActivationInsightsRequestKey])
+  const uncitedInsightsError = publicationInsightsErrorByRequestKey[uncitedInsightsRequestKey] || ''
+  const recentConcentrationInsightsError = publicationInsightsErrorByRequestKey[recentConcentrationInsightsRequestKey] || ''
+  const citationActivationInsightsError = publicationInsightsErrorByRequestKey[citationActivationInsightsRequestKey] || ''
+  const closeUncitedInsight = useCallback(() => setUncitedInsightOpen(false), [])
+  const closeRecentConcentrationInsight = useCallback(() => setRecentConcentrationInsightOpen(false), [])
+  const closeCitationActivationInsight = useCallback(() => setCitationActivationInsightOpen(false), [])
+  const navigateToInsightTab = useCallback((tab: DrilldownTab) => {
+    onDrilldownTabChange?.(tab)
+    setUncitedInsightOpen(false)
+    setRecentConcentrationInsightOpen(false)
+    setCitationActivationInsightOpen(false)
+  }, [onDrilldownTabChange])
+  const uncitedInsightActions = useMemo<PublicationInsightAction[]>(() => {
+    const actions: PublicationInsightAction[] = []
+    const uncitedPattern = readInsightEvidenceString(uncitedInsightsPayload, 'uncited_works', 'pattern')
+    const recentUncitedCount = readInsightEvidenceNumber(uncitedInsightsPayload, 'uncited_works', 'recent_publication_count') || 0
+    if (uncitedBreakdownViewMode !== 'table' && uncitedPublicationRecords.length > 0) {
+      actions.push({
+        key: 'uncited-open-list',
+        label: 'View uncited papers',
+        description: 'Open the table of uncited publications.',
+        onSelect: () => {
+          setUncitedBreakdownExpanded(true)
+          setUncitedBreakdownViewMode('table')
+          setUncitedInsightOpen(false)
+        },
+      })
+    }
+    if (recentUncitedCount > 0 || uncitedPattern === 'mostly_recent') {
+      actions.push({
+        key: 'uncited-trajectory',
+        label: 'Citation activation',
+        description: 'See which papers have started gaining citations.',
+        onSelect: () => navigateToInsightTab('trajectory'),
+      })
+    }
+    if (uncitedPattern === 'mostly_older' || uncitedPattern === 'mixed_ages') {
+      actions.push({
+        key: 'uncited-context',
+        label: 'Citation context',
+        description: 'Compare older and newer citation performance.',
+        onSelect: () => navigateToInsightTab('context'),
+      })
+    }
+    return actions.slice(0, 3)
+  }, [navigateToInsightTab, uncitedBreakdownViewMode, uncitedInsightsPayload, uncitedPublicationRecords.length])
+  const recentConcentrationInsightActions = useMemo<PublicationInsightAction[]>(() => {
+    const actions: PublicationInsightAction[] = []
+    const sectionPattern = readInsightEvidenceString(recentConcentrationInsightsPayload, 'citation_drivers', 'section_pattern')
+    const recentCitationEvidence = getPublicationInsightsSection(recentConcentrationInsightsPayload, 'citation_drivers')?.evidence as Record<string, unknown> | undefined
+    const topPublicationsEvidence = recentCitationEvidence?.['publications']
+    const leadPublication = Array.isArray(topPublicationsEvidence) && topPublicationsEvidence.length > 0 && topPublicationsEvidence[0] && typeof topPublicationsEvidence[0] === 'object'
+      ? topPublicationsEvidence[0] as Record<string, unknown>
+      : null
+    const leadPublicationId = String(leadPublication?.work_id || '').trim()
+    if (recentConcentrationViewMode !== 'table' && recentConcentrationPublicationRecords.length > 0) {
+      actions.push({
+        key: 'citation-open-top-papers',
+        label: 'View top papers',
+        description: 'Open the table of papers driving citations.',
+        onSelect: () => {
+          setRecentConcentrationExpanded(true)
+          setRecentConcentrationViewMode('table')
+          setRecentConcentrationInsightOpen(false)
+        },
+      })
+    }
+    if (leadPublicationId && onOpenPublication) {
+      actions.push({
+        key: 'citation-open-lead-paper',
+        label: 'Open lead paper',
+        description: 'Open the current lead publication in your library.',
+        onSelect: () => {
+          onOpenPublication(leadPublicationId)
+          setRecentConcentrationInsightOpen(false)
+        },
+      })
+    }
+    if (sectionPattern === 'persistent_leader' || sectionPattern === 'persistently_concentrated' || sectionPattern === 'single_standout') {
+      actions.push({
+        key: 'citation-context',
+        label: 'Citation context',
+        description: 'Compare concentration with overall citation performance.',
+        onSelect: () => navigateToInsightTab('context'),
+      })
+    } else {
+      actions.push({
+        key: 'citation-trajectory',
+        label: 'Citation activation',
+        description: 'See how citation leaders change over time.',
+        onSelect: () => navigateToInsightTab('trajectory'),
+      })
+    }
+    return actions.slice(0, 3)
+  }, [
+    navigateToInsightTab,
+    onOpenPublication,
+    recentConcentrationInsightsPayload,
+    recentConcentrationPublicationRecords.length,
+    recentConcentrationViewMode,
+  ])
+  const citationActivationInsightActions = useMemo<PublicationInsightAction[]>(() => {
+    const actions: PublicationInsightAction[] = []
+    if (citationActivationViewMode !== 'table' && newlyActivePublicationRecords.length > 0) {
+      actions.push({
+        key: 'activation-open-list',
+        label: 'View newly active papers',
+        description: 'Open the table of papers that picked up citations only in the last 12 months.',
+        onSelect: () => {
+          setCitationActivationExpanded(true)
+          setCitationActivationViewMode('table')
+          setCitationActivationInsightOpen(false)
+        },
+      })
+    }
+    actions.push({
+      key: 'activation-breakdown',
+      label: 'Citation breakdown',
+      description: 'Compare uncited work and citation drivers in the breakdown tab.',
+      onSelect: () => navigateToInsightTab('breakdown'),
+    })
+    actions.push({
+      key: 'activation-context',
+      label: 'Citation context',
+      description: 'Compare activation with overall citation performance.',
+      onSelect: () => navigateToInsightTab('context'),
+    })
+    return actions.slice(0, 3)
+  }, [
+    newlyActivePublicationRecords.length,
+    citationActivationViewMode,
+    navigateToInsightTab,
+  ])
 
   const headlineMetricTiles = useMemo(() => {
     if (tile.key !== 'total_citations') {
@@ -7808,46 +8422,202 @@ function GenericMetricDrilldownWorkspace({
 
         {activeTab === 'breakdown' && totalCitationsHeadlineStats ? (
           <>
-            <div className="house-publications-drilldown-bounded-section">
-              <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title">Portfolio structure</p>
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain uncited papers"
+                  content={
+                    uncitedBreakdownViewMode === 'table'
+                      ? formatUncitedPapersTableTooltip(totalCitationsHeadlineStats)
+                      : formatUncitedPapersTooltip(totalCitationsHeadlineStats)
+                  }
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open uncited publications insight"
+                  active={uncitedInsightOpen}
+                  onClick={onToggleUncitedInsight}
+                />
               </div>
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <CitationSplitBarCard
-                    title="Uncited papers"
-                    subtitle="Shows the share of the portfolio that has not yet received any citations."
-                    left={{
-                      label: 'Uncited',
-                      value: `${formatInt(totalCitationsHeadlineStats.uncitedPapersCount)} (${Math.round(totalCitationsHeadlineStats.uncitedPapersPct)}%)`,
-                      ratioPct: totalCitationsHeadlineStats.uncitedPapersPct,
-                      toneClass: HOUSE_CHART_BAR_WARNING_CLASS,
-                    }}
-                    right={{
-                      label: 'Cited',
-                      value: `${formatInt(Math.max(0, totalCitationsHeadlineStats.publicationCount - totalCitationsHeadlineStats.uncitedPapersCount))} (${Math.max(0, 100 - Math.round(totalCitationsHeadlineStats.uncitedPapersPct))}%)`,
-                      ratioPct: Math.max(0, 100 - totalCitationsHeadlineStats.uncitedPapersPct),
-                      toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
-                    }}
+              {uncitedInsightOpen ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close uncited insight"
+                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+                    onClick={closeUncitedInsight}
                   />
-                  <CitationSplitBarCard
-                    title="Recent concentration"
-                    subtitle="Last 12 months citations split between the top three papers and the rest of the portfolio."
-                    left={{
-                      label: 'Top 3 papers',
-                      value: `${formatInt(totalCitationsHeadlineStats.recentConcentrationTopThreeCitations)} (${Math.round(totalCitationsHeadlineStats.recentConcentrationPct || 0)}%)`,
-                      ratioPct: totalCitationsHeadlineStats.recentConcentrationPct || 0,
-                      toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
+                  <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+                    <div className="pointer-events-auto w-full max-w-[26rem]">
+                      <PublicationInsightsCallout
+                        payload={uncitedInsightsPayload}
+                        sectionKey="uncited_works"
+                        loading={uncitedInsightsLoading}
+                        error={uncitedInsightsError}
+                        actions={uncitedInsightActions}
+                        onClose={closeUncitedInsight}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">How many uncited publications do I have?</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={uncitedBreakdownExpanded}
+                    expandedLabel="Collapse uncited papers"
+                    collapsedLabel="Expand uncited papers"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setUncitedBreakdownExpanded((value) => !value)
                     }}
-                    right={{
-                      label: 'All other papers',
-                      value: `${formatInt(totalCitationsHeadlineStats.recentConcentrationOtherCitations)} (${Math.max(0, 100 - Math.round(totalCitationsHeadlineStats.recentConcentrationPct || 0))}%)`,
-                      ratioPct: Math.max(0, 100 - (totalCitationsHeadlineStats.recentConcentrationPct || 0)),
-                      toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
-                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
                   />
                 </div>
               </div>
+              {uncitedBreakdownExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <div className="space-y-3">
+                  <div className="flex justify-center">
+                    <SplitBreakdownViewToggle value={uncitedBreakdownViewMode} onChange={setUncitedBreakdownViewMode} />
+                  </div>
+                  {uncitedBreakdownViewMode === 'bar' ? (
+                    <CitationSplitBarCard
+                      bare
+                      left={{
+                        label: 'Uncited',
+                        value: `${formatInt(totalCitationsHeadlineStats.uncitedPapersCount)} (${Math.round(totalCitationsHeadlineStats.uncitedPapersPct)}%)`,
+                        ratioPct: totalCitationsHeadlineStats.uncitedPapersPct,
+                        toneClass: HOUSE_CHART_BAR_WARNING_CLASS,
+                      }}
+                      right={{
+                        label: 'Cited',
+                        value: `${formatInt(Math.max(0, totalCitationsHeadlineStats.publicationCount - totalCitationsHeadlineStats.uncitedPapersCount))} (${Math.max(0, 100 - Math.round(totalCitationsHeadlineStats.uncitedPapersPct))}%)`,
+                        ratioPct: Math.max(0, 100 - totalCitationsHeadlineStats.uncitedPapersPct),
+                        toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
+                      }}
+                    />
+                  ) : (
+                    <PublicationLinkTable
+                      nameColumnLabel="Name of publication with no citations"
+                      rows={uncitedPublicationRecords.map((record) => ({
+                        key: record.workId,
+                        label: record.title || 'Untitled publication',
+                        year: record.year,
+                        workId: record.workId,
+                      }))}
+                      onOpenPublication={onOpenPublication}
+                      emptyMessage="No uncited-paper breakdown available."
+                    />
+                  )}
+                </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain recent concentration"
+                  content={
+                    recentConcentrationViewMode === 'table'
+                      ? formatRecentConcentrationTableTooltip(recentConcentrationPublicationRecords.length, recentConcentrationWindowPhrase)
+                      : formatRecentConcentrationWindowTooltip({
+                        windowPhrase: recentConcentrationWindowPhrase,
+                        topPublicationCount: recentConcentrationPublicationRecords.length,
+                        topThreeCitations: recentConcentrationTopThreeCitations,
+                        otherCitations: recentConcentrationOtherCitations,
+                      })
+                  }
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open citation driver insight"
+                  active={recentConcentrationInsightOpen}
+                  onClick={onToggleRecentConcentrationInsight}
+                />
+              </div>
+              {recentConcentrationInsightOpen ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close citation insight"
+                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+                    onClick={closeRecentConcentrationInsight}
+                  />
+                  <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+                    <div className="pointer-events-auto w-full max-w-[26rem]">
+                      <PublicationInsightsCallout
+                        payload={recentConcentrationInsightsPayload}
+                        sectionKey="citation_drivers"
+                        loading={recentConcentrationInsightsLoading}
+                        error={recentConcentrationInsightsError}
+                        actions={recentConcentrationInsightActions}
+                        onClose={closeRecentConcentrationInsight}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">Which publications are driving my citations?</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={recentConcentrationExpanded}
+                    expandedLabel="Collapse recent concentration"
+                    collapsedLabel="Expand recent concentration"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setRecentConcentrationExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {recentConcentrationExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-center gap-2">
+                    <PublicationWindowToggle
+                      value={recentConcentrationWindowMode}
+                      onChange={(mode) => setRecentConcentrationWindowMode(mode as RecentConcentrationWindowMode)}
+                      options={RECENT_CONCENTRATION_WINDOW_OPTIONS}
+                    />
+                    <SplitBreakdownViewToggle value={recentConcentrationViewMode} onChange={setRecentConcentrationViewMode} />
+                  </div>
+                  {recentConcentrationViewMode === 'bar' ? (
+                    <CitationSplitBarCard
+                      bare
+                      left={{
+                        label: 'Top 3 papers',
+                        value: `${formatInt(recentConcentrationTopThreeCitations)} (${Math.round(recentConcentrationPct)}%)`,
+                        ratioPct: recentConcentrationPct,
+                        toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
+                      }}
+                      right={{
+                        label: 'All other papers',
+                        value: `${formatInt(recentConcentrationOtherCitations)} (${Math.max(0, 100 - Math.round(recentConcentrationPct))}%)`,
+                        ratioPct: Math.max(0, 100 - recentConcentrationPct),
+                        toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
+                      }}
+                    />
+                  ) : (
+                    <PublicationLinkTable
+                      nameColumnLabel={`Name of publication driving ${recentConcentrationWindowLabel} citations`}
+                      rows={recentConcentrationPublicationRecords.map((record) => ({
+                        key: record.workId,
+                        label: record.title || 'Untitled publication',
+                        year: record.year,
+                        metricValue: formatInt(record.selectedWindowCitations),
+                        workId: record.workId,
+                      }))}
+                      metricColumnLabel="Citations"
+                      onOpenPublication={onOpenPublication}
+                      emptyMessage="No recent concentration breakdown available."
+                    />
+                  )}
+                </div>
+                </div>
+              ) : null}
             </div>
           </>
         ) : null}
@@ -8010,32 +8780,129 @@ function GenericMetricDrilldownWorkspace({
 
         {activeTab === 'trajectory' && totalCitationsHeadlineStats ? (
           <>
-            <div className="house-publications-drilldown-bounded-section">
-              <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title">Citation activation</p>
-              </div>
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <CitationSplitBarCard
-                  title="Newly cited papers (12m)"
-                  subtitle="Papers that received at least one citation in the last rolling 12 months versus those that did not."
-                  left={{
-                    label: 'Newly cited',
-                    value: `${formatInt(totalCitationsHeadlineStats.newlyCitedPapersCount)} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.round((totalCitationsHeadlineStats.newlyCitedPapersCount / totalCitationsHeadlineStats.publicationCount) * 100) : 0}%)`,
-                    ratioPct: totalCitationsHeadlineStats.publicationCount > 0
-                      ? (totalCitationsHeadlineStats.newlyCitedPapersCount / totalCitationsHeadlineStats.publicationCount) * 100
-                      : 0,
-                    toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
-                  }}
-                  right={{
-                    label: 'No new citations',
-                    value: `${formatInt(Math.max(0, totalCitationsHeadlineStats.publicationCount - totalCitationsHeadlineStats.newlyCitedPapersCount))} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.max(0, 100 - Math.round((totalCitationsHeadlineStats.newlyCitedPapersCount / totalCitationsHeadlineStats.publicationCount) * 100)) : 0}%)`,
-                    ratioPct: totalCitationsHeadlineStats.publicationCount > 0
-                      ? Math.max(0, 100 - ((totalCitationsHeadlineStats.newlyCitedPapersCount / totalCitationsHeadlineStats.publicationCount) * 100))
-                      : 0,
-                    toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
-                  }}
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain citation activation"
+                  content={
+                    citationActivationViewMode === 'table'
+                      ? formatCitationActivationTableTooltip(newlyActivePublicationRecords.length)
+                      : formatCitationActivationStateTooltip({
+                        totalPublications: totalCitationsHeadlineStats.publicationCount,
+                        newlyActiveCount: newlyActivePublicationRecords.length,
+                        stillActiveCount: stillActivePublicationRecords.length,
+                        inactiveCount: inactivePublicationCount,
+                      })
+                  }
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open citation activation insight"
+                  active={citationActivationInsightOpen}
+                  onClick={onToggleCitationActivationInsight}
                 />
               </div>
+              {citationActivationInsightOpen ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close citation activation insight"
+                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+                    onClick={closeCitationActivationInsight}
+                  />
+                  <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+                    <div className="pointer-events-auto w-full max-w-[26rem]">
+                      <PublicationInsightsCallout
+                        payload={citationActivationInsightsPayload}
+                        sectionKey="citation_activation"
+                        loading={citationActivationInsightsLoading}
+                        error={citationActivationInsightsError}
+                        actions={citationActivationInsightActions}
+                        onClose={closeCitationActivationInsight}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">How much of my portfolio is actively being cited?</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={citationActivationExpanded}
+                    expandedLabel="Collapse citation activation"
+                    collapsedLabel="Expand citation activation"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setCitationActivationExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {citationActivationExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className="space-y-3">
+                    <div className="flex justify-center">
+                      <SplitBreakdownViewToggle value={citationActivationViewMode} onChange={setCitationActivationViewMode} />
+                    </div>
+                    {citationActivationViewMode === 'bar' ? (
+                      <div className="space-y-3">
+                        <CitationActivationStateBarCard
+                          bare
+                          segments={[
+                            {
+                              key: 'newly-active',
+                              label: 'Newly active',
+                              value: `${formatInt(newlyActivePublicationRecords.length)} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.round((newlyActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100) : 0}%)`,
+                              ratioPct: totalCitationsHeadlineStats.publicationCount > 0
+                                ? (newlyActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100
+                                : 0,
+                              toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
+                              align: 'left',
+                            },
+                            {
+                              key: 'still-active',
+                              label: 'Still active',
+                              value: `${formatInt(stillActivePublicationRecords.length)} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.round((stillActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100) : 0}%)`,
+                              ratioPct: totalCitationsHeadlineStats.publicationCount > 0
+                                ? (stillActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100
+                                : 0,
+                              toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
+                              align: 'center',
+                            },
+                            {
+                              key: 'inactive',
+                              label: 'Inactive',
+                              value: `${formatInt(inactivePublicationCount)} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.round((inactivePublicationCount / totalCitationsHeadlineStats.publicationCount) * 100) : 0}%)`,
+                              ratioPct: totalCitationsHeadlineStats.publicationCount > 0
+                                ? (inactivePublicationCount / totalCitationsHeadlineStats.publicationCount) * 100
+                                : 0,
+                              toneClass: HOUSE_CHART_BAR_DANGER_CLASS,
+                              align: 'right',
+                            },
+                          ]}
+                        />
+                        <CitationActivationYearCohortChart rows={citationActivationCohortRows} />
+                      </div>
+                    ) : (
+                      <PublicationLinkTable
+                        nameColumnLabel="Newly active publication"
+                        metricColumnLabel="Last 12m"
+                        secondaryMetricColumnLabel="Total citations"
+                        rows={newlyActivePublicationRecords.map((record) => ({
+                          key: record.workId,
+                          label: record.title || 'Untitled publication',
+                          year: record.year,
+                        metricValue: formatInt(record.citations1yRolling),
+                        secondaryMetricValue: formatInt(record.citations),
+                        workId: record.workId,
+                        }))}
+                        onOpenPublication={onOpenPublication}
+                        emptyMessage="No newly active publications available."
+                      />
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </>
         ) : null}
@@ -9314,11 +10181,13 @@ function MiniChart({ tile }: { tile: PublicationMetricTilePayload }) {
 function CitationSplitBarCard({
   title,
   subtitle,
+  bare = false,
   left,
   right,
 }: {
-  title: string
-  subtitle: string
+  title?: string
+  subtitle?: string
+  bare?: boolean
   left: {
     label: string
     value: string
@@ -9335,14 +10204,16 @@ function CitationSplitBarCard({
   const leftWidth = Math.max(0, Math.min(100, left.ratioPct))
   const rightWidth = Math.max(0, Math.min(100, right.ratioPct))
   return (
-    <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-      <div className="space-y-1">
-        <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p>
-        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p>
-      </div>
-      <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'flex h-[0.82rem] overflow-hidden rounded-full')}>
+    <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+      {title || subtitle ? (
+        <div className="space-y-1">
+          {title ? <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p> : null}
+          {subtitle ? <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p> : null}
+        </div>
+      ) : null}
+      <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'flex h-[var(--metric-progress-track-height)] overflow-hidden rounded-full')}>
         <div
-          className={cn('h-full', left.toneClass)}
+          className={cn('h-full border-r border-white/75', left.toneClass)}
           style={{ width: `${leftWidth}%` }}
           aria-hidden="true"
         />
@@ -9361,6 +10232,163 @@ function CitationSplitBarCard({
           <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'leading-tight')}>{right.label}</p>
           <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')}>{right.value}</p>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function CitationActivationStateBarCard({
+  bare = false,
+  segments,
+}: {
+  bare?: boolean
+  segments: Array<{
+    key: string
+    label: string
+    value: string
+    ratioPct: number
+    toneClass: string
+    align?: 'left' | 'center' | 'right'
+  }>
+}) {
+  const getTextToneStyle = (key: string): CSSProperties | undefined => {
+    if (key === 'newly-active') {
+      return { color: 'hsl(var(--tone-positive-700))' }
+    }
+    if (key === 'still-active') {
+      return { color: 'hsl(var(--tone-accent-700))' }
+    }
+    if (key === 'inactive') {
+      return { color: 'hsl(var(--tone-danger-700))' }
+    }
+    return undefined
+  }
+
+  return (
+    <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+      <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'flex h-[var(--metric-progress-track-height)] overflow-hidden rounded-full')}>
+        {segments.map((segment, index) => (
+          <div
+            key={segment.key}
+            className={cn(
+              'h-full',
+              index < segments.length - 1 && 'border-r border-white/75',
+              segment.toneClass,
+            )}
+            style={{ width: `${Math.max(0, Math.min(100, segment.ratioPct))}%` }}
+            aria-hidden="true"
+          />
+        ))}
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        {segments.map((segment) => {
+          const textToneStyle = getTextToneStyle(segment.key)
+          return (
+            <div
+              key={segment.key}
+              className={cn(
+                'space-y-1',
+                segment.align === 'center' ? 'text-center' : segment.align === 'right' ? 'text-right' : 'text-left',
+              )}
+            >
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'leading-tight')}>{segment.label}</p>
+              <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')} style={textToneStyle}>{segment.value}</p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function CitationActivationYearCohortChart({
+  rows,
+}: {
+  rows: Array<{
+    key: string
+    label: string
+    newlyActiveCount: number
+    stillActiveCount: number
+    inactiveCount: number
+    totalCount: number
+  }>
+}) {
+  const maxTotal = Math.max(1, ...rows.map((row) => row.totalCount))
+
+  if (!rows.length) {
+    return (
+      <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+        <div className="space-y-1">
+          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Activation by publication year</p>
+          <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">No publication-year cohort data available.</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+      <div className="space-y-1">
+        <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Activation by publication year</p>
+        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">Shows which publication-year cohorts are newly active, still active, or inactive.</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
+        <span className="inline-flex items-center gap-1.5">
+          <span className={cn('h-2.5 w-2.5 rounded-full', HOUSE_CHART_BAR_POSITIVE_CLASS)} aria-hidden="true" />
+          Newly active
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className={cn('h-2.5 w-2.5 rounded-full', HOUSE_CHART_BAR_ACCENT_CLASS)} aria-hidden="true" />
+          Still active
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className={cn('h-2.5 w-2.5 rounded-full', HOUSE_CHART_BAR_DANGER_CLASS)} aria-hidden="true" />
+          Inactive
+        </span>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(3.25rem,1fr))] gap-2">
+        {rows.map((row) => {
+          const totalHeightPct = (row.totalCount / maxTotal) * 100
+          const newlyHeightPct = row.totalCount > 0 ? (row.newlyActiveCount / row.totalCount) * 100 : 0
+          const stillHeightPct = row.totalCount > 0 ? (row.stillActiveCount / row.totalCount) * 100 : 0
+          const inactiveHeightPct = row.totalCount > 0 ? (row.inactiveCount / row.totalCount) * 100 : 0
+          return (
+            <div key={row.key} className="space-y-1.5">
+              <p className="text-center text-[0.78rem] font-semibold leading-none text-[hsl(var(--tone-neutral-800))]">
+                {formatInt(row.totalCount)}
+              </p>
+              <div className="flex h-36 items-end justify-center">
+                <div
+                  className="flex w-full max-w-[2.5rem] flex-col justify-end overflow-hidden rounded-[0.8rem] border border-[hsl(var(--stroke-soft)/0.78)] bg-[hsl(var(--tone-neutral-100))]"
+                  style={{ height: `${Math.max(16, totalHeightPct)}%` }}
+                >
+                  {row.inactiveCount > 0 ? (
+                    <div
+                      className={cn('w-full', HOUSE_CHART_BAR_DANGER_CLASS)}
+                      style={{ height: `${inactiveHeightPct}%` }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  {row.stillActiveCount > 0 ? (
+                    <div
+                      className={cn('w-full border-t border-white/70', HOUSE_CHART_BAR_ACCENT_CLASS)}
+                      style={{ height: `${stillHeightPct}%` }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  {row.newlyActiveCount > 0 ? (
+                    <div
+                      className={cn('w-full border-t border-white/70', HOUSE_CHART_BAR_POSITIVE_CLASS)}
+                      style={{ height: `${newlyHeightPct}%` }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </div>
+              </div>
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'text-center leading-tight')}>{row.label}</p>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -9446,17 +10474,372 @@ function DrilldownNarrativeCard({
   )
 }
 
+function getPublicationInsightsSection(
+  payload: PublicationInsightsAgentPayload | null | undefined,
+  key: PublicationInsightsSectionKey,
+) {
+  if (!payload || !Array.isArray(payload.sections)) {
+    return null
+  }
+  const match = payload.sections.find((section) => section?.key === key)
+  return match || null
+}
+
+function readInsightEvidenceNumber(
+  payload: PublicationInsightsAgentPayload | null | undefined,
+  key: PublicationInsightsSectionKey,
+  evidenceKey: string,
+): number | null {
+  const section = getPublicationInsightsSection(payload, key)
+  const evidence = section?.evidence
+  if (!evidence || typeof evidence !== 'object') {
+    return null
+  }
+  const rawValue = (evidence as Record<string, unknown>)[evidenceKey]
+  const parsed = Number(rawValue)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function readInsightEvidenceString(
+  payload: PublicationInsightsAgentPayload | null | undefined,
+  key: PublicationInsightsSectionKey,
+  evidenceKey: string,
+): string {
+  const section = getPublicationInsightsSection(payload, key)
+  const evidence = section?.evidence
+  if (!evidence || typeof evidence !== 'object') {
+    return ''
+  }
+  return String((evidence as Record<string, unknown>)[evidenceKey] || '').trim()
+}
+
+function PublicationInsightsTriggerButton({
+  ariaLabel,
+  active = false,
+  onClick,
+}: {
+  ariaLabel: string
+  active?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      aria-pressed={active}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick()
+      }}
+      onMouseDown={(event) => event.stopPropagation()}
+      className={cn(
+        'inline-flex h-7 w-7 items-center justify-center rounded-full border shadow-[var(--elevation-xs)] transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-200))]',
+        active
+          ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-100)/0.95)]'
+          : 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-50)/0.96)] hover:border-[hsl(var(--tone-accent-400))] hover:bg-[hsl(var(--tone-accent-50)/0.96)]',
+      )}
+    >
+      <InsightsGlyph className="h-4 w-4" />
+    </button>
+  )
+}
+
+function PublicationInsightsCallout({
+  payload,
+  sectionKey,
+  loading = false,
+  error = '',
+  actions = [],
+  onClose,
+}: {
+  payload: PublicationInsightsAgentPayload | null
+  sectionKey: PublicationInsightsSectionKey
+  loading?: boolean
+  error?: string
+  actions?: PublicationInsightAction[]
+  onClose: () => void
+}) {
+  const section = getPublicationInsightsSection(payload, sectionKey)
+  const usesPositiveTone = sectionKey === 'uncited_works' || sectionKey === 'citation_activation'
+  const title = String(
+    section?.headline
+    || section?.title
+    || (sectionKey === 'uncited_works'
+      ? 'Uncited publications'
+      : sectionKey === 'citation_activation'
+        ? 'Citation activation'
+        : 'Citation concentration'),
+  ).trim()
+  const considerationLabel = String(section?.consideration_label || '').trim() || 'Why this matters'
+  const consideration = String(section?.consideration || '').trim()
+  const generatedAt = String(((payload?.provenance as Record<string, unknown> | undefined) || {})['generated_at'] || '').trim()
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return
+      }
+      event.preventDefault()
+      onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  return (
+    <div
+      className={cn(
+        'relative w-full overflow-hidden rounded-[1.1rem] border px-4 py-4',
+        'border-[hsl(var(--tone-neutral-250))] bg-white',
+        'shadow-[0_30px_70px_-34px_rgba(15,23,42,0.42)]',
+      )}
+      role="dialog"
+      aria-label="Deeper insights"
+    >
+      <div
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none absolute inset-x-0 top-0 h-1',
+          usesPositiveTone ? 'bg-[hsl(var(--tone-positive-400))]' : 'bg-[hsl(var(--tone-accent-400))]',
+        )}
+      />
+      <div className="space-y-3.5">
+        <div className="flex items-start justify-between gap-3 border-b border-[hsl(var(--tone-neutral-200))] pb-2.5">
+          <div className="space-y-1">
+            <p className="text-[1rem] font-semibold leading-6 text-[hsl(var(--tone-neutral-950))]">{title}</p>
+            <p className="max-w-[20rem] text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
+              {generatedAt
+                ? 'Based on your latest publication metrics.'
+                : 'Based on your current publication metrics.'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onClose()
+              }}
+              className={cn(
+                'inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-700))] transition-colors focus-visible:outline-none focus-visible:ring-2',
+                usesPositiveTone
+                  ? 'hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-50))] hover:text-[hsl(var(--tone-positive-700))] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+                  : 'hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-700))] focus-visible:ring-[hsl(var(--tone-accent-200))]',
+              )}
+              aria-label="Close deeper insights"
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+            </button>
+          </div>
+        </div>
+        {loading ? (
+          <div className="space-y-2.5 py-1">
+            <div className="h-3 w-4/5 rounded-full bg-[hsl(var(--tone-neutral-200))]" />
+            <div className="h-3 w-full rounded-full bg-[hsl(var(--tone-neutral-200))]" />
+            <div className="h-3 w-3/4 rounded-full bg-[hsl(var(--tone-neutral-200))]" />
+          </div>
+        ) : error ? (
+          <div className="rounded-xl border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2.5">
+            <p className="text-sm leading-6 text-[hsl(var(--tone-danger-700))]">{error}</p>
+          </div>
+        ) : section ? (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <p className={cn(HOUSE_METRIC_NARRATIVE_CLASS, 'text-[0.94rem] leading-7 text-[hsl(var(--tone-neutral-800))]')}>{section.body}</p>
+            </div>
+            {consideration ? (
+              <div
+                className={cn(
+                  'rounded-[0.95rem] border px-3.5 py-3',
+                  usesPositiveTone
+                    ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))]'
+                    : 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]',
+                )}
+              >
+                <div
+                  className={cn(
+                    'space-y-1 border-l-2 pl-3',
+                    usesPositiveTone ? 'border-[hsl(var(--tone-positive-400))]' : 'border-[hsl(var(--tone-accent-400))]',
+                  )}
+                >
+                  <p className={cn(HOUSE_DRILLDOWN_STAT_TITLE_CLASS, usesPositiveTone ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-accent-700))]')}>{considerationLabel}</p>
+                  <p className={cn(HOUSE_METRIC_NARRATIVE_CLASS, 'text-sm leading-6 text-[hsl(var(--tone-neutral-700))]')}>{consideration}</p>
+                </div>
+              </div>
+            ) : null}
+            {actions.length ? (
+              <div className="space-y-1.5 border-t border-[hsl(var(--tone-neutral-200))] pt-3.5">
+                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[hsl(var(--tone-neutral-500))]">Explore next</p>
+                <div className="grid gap-2">
+                  {actions.map((action) => (
+                    <button
+                      key={action.key}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        action.onSelect()
+                      }}
+                      className={cn(
+                        'group flex items-center justify-between gap-3 rounded-[0.95rem] border px-3 py-2.5 text-left transition-colors',
+                        'border-[hsl(var(--tone-neutral-200))] bg-white',
+                        usesPositiveTone
+                          ? 'hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-50))] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+                          : 'hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] focus-visible:ring-[hsl(var(--tone-accent-200))]',
+                        'focus-visible:outline-none focus-visible:ring-2',
+                      )}
+                    >
+                      <div className="space-y-0.5 pr-2">
+                        <p className="text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))]">{action.label}</p>
+                        <p className="text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">{action.description}</p>
+                      </div>
+                      <span
+                        className={cn(
+                          'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors',
+                          usesPositiveTone
+                            ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))] group-hover:border-[hsl(var(--tone-positive-300))] group-hover:bg-[hsl(var(--tone-positive-100))]'
+                            : 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-700))] group-hover:border-[hsl(var(--tone-accent-300))] group-hover:bg-[hsl(var(--tone-accent-100))]',
+                        )}
+                      >
+                        <ArrowUpRight className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className={cn(HOUSE_METRIC_NARRATIVE_CLASS, 'text-sm leading-6 text-[hsl(var(--tone-neutral-700))]')}>
+            No insight copy is available yet for this section.
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PublicationLinkTable({
+  nameColumnLabel,
+  metricColumnLabel,
+  secondaryMetricColumnLabel,
+  rows,
+  onOpenPublication,
+  emptyMessage,
+}: {
+  nameColumnLabel: string
+  metricColumnLabel?: string
+  secondaryMetricColumnLabel?: string
+  rows: Array<{
+    key: string
+    label: string
+    year: number | null
+    metricValue?: string
+    secondaryMetricValue?: string
+    workId: string
+  }>
+  onOpenPublication?: (workId: string) => void
+  emptyMessage: string
+}) {
+  return (
+    <div className="w-full overflow-visible">
+      <div
+        className="house-table-shell house-publications-trend-table-shell-plain h-auto w-full overflow-hidden rounded-md bg-background"
+        style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
+      >
+        <table
+          className="w-full border-collapse"
+          data-house-no-column-resize="true"
+          data-house-no-column-controls="true"
+        >
+          <thead className="house-table-head">
+            <tr>
+              <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">
+                {nameColumnLabel}
+              </th>
+              <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>
+                Year
+              </th>
+              {metricColumnLabel ? (
+                <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>
+                  {metricColumnLabel}
+                </th>
+              ) : null}
+              {secondaryMetricColumnLabel ? (
+                <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>
+                  {secondaryMetricColumnLabel}
+                </th>
+              ) : null}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key} className="border-b border-[hsl(var(--stroke-soft)/0.55)] last:border-b-0">
+                <td className="house-table-cell-text px-2 py-0">
+                  <button
+                    type="button"
+                    data-stop-tile-open="true"
+                    disabled={!onOpenPublication}
+                    className={cn(
+                      'block w-full px-0 py-2 text-left transition-colors duration-[var(--motion-duration-ui)] ease-out',
+                      onOpenPublication
+                        ? 'cursor-pointer text-[hsl(var(--tone-accent-700))] hover:text-[hsl(var(--tone-accent-800))] hover:underline focus-visible:outline-none focus-visible:underline'
+                        : 'cursor-default text-[hsl(var(--tone-neutral-700))]',
+                    )}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (!onOpenPublication) {
+                        return
+                      }
+                      onOpenPublication(row.workId)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <span className="block max-w-full break-words leading-snug">{row.label}</span>
+                  </button>
+                </td>
+                <td className="house-table-cell-text px-1.5 py-2 text-center font-semibold whitespace-nowrap tabular-nums">
+                  {row.year === null ? '\u2014' : String(row.year)}
+                </td>
+                {metricColumnLabel ? (
+                  <td className="house-table-cell-text px-1.5 py-2 text-center font-semibold whitespace-nowrap tabular-nums">
+                    {row.metricValue ?? '\u2014'}
+                  </td>
+                ) : null}
+                {secondaryMetricColumnLabel ? (
+                  <td className="house-table-cell-text px-1.5 py-2 text-center font-semibold whitespace-nowrap tabular-nums">
+                    {row.secondaryMetricValue ?? '\u2014'}
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+            {!rows.length ? (
+              <tr>
+                <td className={cn('house-table-cell-text px-3 py-4 text-center', HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS)} colSpan={2 + (metricColumnLabel ? 1 : 0) + (secondaryMetricColumnLabel ? 1 : 0)}>
+                  {emptyMessage}
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function CanonicalTablePanel({
   title,
   subtitle,
   columns,
   rows,
+  bare = false,
   emptyMessage = 'No rows available.',
 }: {
-  title: string
-  subtitle: string
+  title?: string
+  subtitle?: string
   columns: CanonicalTableColumn[]
   rows: Array<{ key: string; cells: Record<string, ReactNode> }>
+  bare?: boolean
   emptyMessage?: string
 }) {
   const alignClassName = (align: CanonicalTableColumn['align']) => {
@@ -9471,11 +10854,13 @@ function CanonicalTablePanel({
   }
 
   return (
-    <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-      <div className="space-y-1">
-        <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p>
-        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p>
-      </div>
+    <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+      {!bare && (title || subtitle) ? (
+        <div className="space-y-1">
+          {title ? <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p> : null}
+          {subtitle ? <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p> : null}
+        </div>
+      ) : null}
       <div className="overflow-hidden rounded-[1rem] border border-[hsl(var(--stroke-soft)/0.78)]">
         <table className="w-full border-collapse">
           <thead>
@@ -11840,6 +13225,9 @@ export function PublicationsTopStrip({
                   tile={activeTile}
                   activeTab={activeDrilldownTab}
                   animateCharts={drawerOpen && activeDrilldownTab === 'summary'}
+                  token={token}
+                  onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
+                  onDrilldownTabChange={setActiveDrilldownTab}
                 />
               )}
             </DrilldownSheet.TabPanel>

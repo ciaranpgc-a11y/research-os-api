@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, Hammer, Search, Settings, Share2 } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, Hammer, Pencil, Plus, Search, Settings, Share2, X } from 'lucide-react'
 
 import {
   Container,
@@ -47,6 +47,8 @@ import {
 } from '@/components/ui'
 import {
   ChartFrame,
+  HelpTooltipIconButton,
+  InsightsGlyph,
   PanelShell,
   SectionMarker,
   SectionToolDivider,
@@ -1734,7 +1736,7 @@ export function ApprovalsContent() {
           <SectionHeader
             eyebrow="2"
             heading="Icons"
-            description="Icon size scale, currentColor behavior, and IconButton state samples."
+            description="Icon size scale, currentColor behavior, IconButton state samples, and the canonical contextual-help trigger."
           />
           <Grid cols={3} gap="md">
             <PanelShell heading="Size scale" description="sm / md / lg">
@@ -1759,6 +1761,68 @@ export function ApprovalsContent() {
                 <IconButton aria-label="Default icon button" variant="outline" size="icon"><IconGlyph size={16} /></IconButton>
                 <IconButton aria-label="Focus-visible target" variant="secondary" size="icon" autoFocus><IconGlyph size={16} /></IconButton>
                 <IconButton aria-label="Disabled icon button" variant="outline" size="icon" disabled><IconGlyph size={16} /></IconButton>
+              </Row>
+            </PanelShell>
+            <PanelShell heading="Inline action icons" description="Approved add, edit, save, and discard controls for staged inline field editing.">
+              <Stack space="sm">
+                <Row gap="sm" align="start" className="items-center">
+                  <button type="button" className="house-collaborator-action-icon house-collaborator-action-icon-add" aria-label="Add secondary field">
+                    <Plus className="h-4 w-4" strokeWidth={2.2} />
+                  </button>
+                  <button type="button" className="house-collaborator-action-icon house-collaborator-action-icon-edit" aria-label="Edit inline field">
+                    <Pencil className="h-4 w-4" strokeWidth={2.2} />
+                  </button>
+                  <button type="button" className="house-collaborator-action-icon house-collaborator-action-icon-save" aria-label="Save inline field">
+                    <Check className="h-4 w-4" strokeWidth={2.2} />
+                  </button>
+                  <button type="button" className="house-collaborator-action-icon house-collaborator-action-icon-discard" aria-label="Discard inline field changes">
+                    <X className="h-4 w-4" strokeWidth={2.2} />
+                  </button>
+                </Row>
+                <p className="max-w-[15rem] text-caption text-[hsl(var(--muted-foreground))]">
+                  Use plus to add a new inline field, pencil to enter edit mode, tick to save the draft state, and the red cross to discard it.
+                </p>
+              </Stack>
+            </PanelShell>
+            <PanelShell heading="Primary switch badges" description="Approved pairing for author-affiliation lists and similar primary/secondary swaps.">
+              <Stack space="sm">
+                <Row gap="sm" align="start" className="items-center">
+                  <Badge variant="positive" className="w-[6.75rem] justify-center">
+                    Primary
+                  </Badge>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className="w-[6.75rem] min-h-0 h-auto justify-center px-2 py-1 text-micro font-medium leading-tight hover:border-[hsl(var(--tone-neutral-900))] hover:bg-white hover:text-[hsl(var(--tone-neutral-900))] active:border-[hsl(var(--tone-neutral-900))] active:bg-white active:text-[hsl(var(--tone-neutral-900))]"
+                  >
+                    Set primary
+                  </Button>
+                </Row>
+                <p className="max-w-[20rem] text-caption text-[hsl(var(--muted-foreground))]">
+                  Use the positive badge to mark the committed primary item, and the paired small button to promote a secondary item into primary.
+                </p>
+              </Stack>
+            </PanelShell>
+            <PanelShell heading="Tile help trigger" description="Reusable question-mark icon for tile and section-level explanatory tooltips.">
+              <Row gap="sm" align="start" className="items-center">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain tile metric"
+                  content="Use this question-mark trigger in the top-right corner of tiles and drilldown sections when readers need concise context for how to interpret a metric."
+                />
+                <p className="max-w-[15rem] text-caption text-[hsl(var(--muted-foreground))]">
+                  Uses the canonical tooltip surface and keyboard-focus behavior.
+                </p>
+              </Row>
+            </PanelShell>
+            <PanelShell heading="Insights glyph" description="Reusable marker for sections and tiles that surface interpreted portfolio signals.">
+              <Row gap="sm" align="start" className="items-center">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--tone-accent-700))]">
+                  <InsightsGlyph className="h-5 w-5" />
+                </div>
+                <p className="max-w-[15rem] text-caption text-[hsl(var(--muted-foreground))]">
+                  Use this glyph beside insight-oriented headings such as uncited-works interpretation blocks.
+                </p>
               </Row>
             </PanelShell>
           </Grid>

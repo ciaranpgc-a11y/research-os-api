@@ -50,6 +50,7 @@ import type {
   ImpactThemesPayload,
   PersonaSyncJobPayload,
   PublicationAiInsightsResponsePayload,
+  PublicationInsightsAgentPayload,
   PublicationAuthorsPayload,
   PublicationDetailPayload,
   PublicationMetricDetailPayload,
@@ -1310,6 +1311,35 @@ export async function fetchPublicationAiInsights(
   )
 }
 
+export async function fetchPublicationInsightsAgent(
+  token: string,
+  options?: {
+    windowId?: '1y' | '3y' | '5y' | 'all'
+    scope?: 'window' | 'section'
+    sectionKey?: 'uncited_works' | 'citation_drivers' | 'citation_activation'
+  },
+): Promise<PublicationInsightsAgentPayload> {
+  const windowId = options?.windowId || '1y'
+  const scope = options?.scope || 'window'
+  const sectionKey = options?.sectionKey
+  const searchParams = new URLSearchParams({
+    window_id: windowId,
+    scope,
+  })
+  if (sectionKey) {
+    searchParams.set('section_key', sectionKey)
+  }
+  return requestJson<PublicationInsightsAgentPayload>(
+    `${API_BASE_URL}/v1/publications/ai/insights?${searchParams.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publication insights agent lookup failed',
+    { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
 export async function fetchPublicationFiles(
   token: string,
   publicationId: string,
@@ -1464,11 +1494,35 @@ export async function createCollaborator(
     full_name: string
     preferred_name?: string | null
     email?: string | null
+    secondary_email?: string | null
+    contact_salutation?: string | null
+    contact_first_name?: string | null
+    contact_middle_initial?: string | null
+    contact_surname?: string | null
+    contact_email?: string | null
+    contact_secondary_email?: string | null
     orcid_id?: string | null
     openalex_author_id?: string | null
     primary_institution?: string | null
+    contact_primary_institution?: string | null
+    contact_secondary_institution?: string | null
+    contact_primary_institution_openalex_id?: string | null
+    contact_secondary_institution_openalex_id?: string | null
+    contact_primary_affiliation_department?: string | null
+    contact_primary_affiliation_address_line_1?: string | null
+    contact_primary_affiliation_city?: string | null
+    contact_primary_affiliation_region?: string | null
+    contact_primary_affiliation_postal_code?: string | null
+    contact_primary_affiliation_country?: string | null
+    contact_secondary_affiliation_department?: string | null
+    contact_secondary_affiliation_address_line_1?: string | null
+    contact_secondary_affiliation_city?: string | null
+    contact_secondary_affiliation_region?: string | null
+    contact_secondary_affiliation_postal_code?: string | null
+    contact_secondary_affiliation_country?: string | null
     department?: string | null
     country?: string | null
+    contact_country?: string | null
     current_position?: string | null
     research_domains?: string[]
     notes?: string | null
@@ -1503,11 +1557,35 @@ export async function updateCollaborator(
     full_name?: string
     preferred_name?: string | null
     email?: string | null
+    secondary_email?: string | null
+    contact_salutation?: string | null
+    contact_first_name?: string | null
+    contact_middle_initial?: string | null
+    contact_surname?: string | null
+    contact_email?: string | null
+    contact_secondary_email?: string | null
     orcid_id?: string | null
     openalex_author_id?: string | null
     primary_institution?: string | null
+    contact_primary_institution?: string | null
+    contact_secondary_institution?: string | null
+    contact_primary_institution_openalex_id?: string | null
+    contact_secondary_institution_openalex_id?: string | null
+    contact_primary_affiliation_department?: string | null
+    contact_primary_affiliation_address_line_1?: string | null
+    contact_primary_affiliation_city?: string | null
+    contact_primary_affiliation_region?: string | null
+    contact_primary_affiliation_postal_code?: string | null
+    contact_primary_affiliation_country?: string | null
+    contact_secondary_affiliation_department?: string | null
+    contact_secondary_affiliation_address_line_1?: string | null
+    contact_secondary_affiliation_city?: string | null
+    contact_secondary_affiliation_region?: string | null
+    contact_secondary_affiliation_postal_code?: string | null
+    contact_secondary_affiliation_country?: string | null
     department?: string | null
     country?: string | null
+    contact_country?: string | null
     current_position?: string | null
     research_domains?: string[]
     notes?: string | null

@@ -1428,6 +1428,7 @@ class AdminAuditEventsListResponse(BaseModel):
 class AffiliationSuggestionItemResponse(BaseModel):
     name: str
     label: str
+    openalex_id: str | None = None
     country_code: str | None = None
     country_name: str | None = None
     city: str | None = None
@@ -2117,6 +2118,26 @@ class PublicationAiInsightsResponse(BaseModel):
     last_error: str | None = None
 
 
+class PublicationInsightsAgentSectionResponse(BaseModel):
+    key: Literal["uncited_works", "citation_drivers", "citation_activation"]
+    title: str
+    headline: str
+    body: str
+    consideration_label: str | None = None
+    consideration: str | None = None
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class PublicationInsightsAgentResponse(BaseModel):
+    agent_name: str = "Publication insights agent"
+    status: Literal["draft"] = "draft"
+    window_id: Literal["1y", "3y", "5y", "all"] = "1y"
+    window_label: str = "1y"
+    overall_summary: str = ""
+    sections: list[PublicationInsightsAgentSectionResponse] = Field(default_factory=list)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+
 class PublicationStructuredAbstractRefreshResponse(BaseModel):
     enqueued: bool = False
     status: Literal["READY", "RUNNING", "FAILED", "MISSING"] = "RUNNING"
@@ -2173,11 +2194,35 @@ class CollaboratorResponse(BaseModel):
     full_name: str
     preferred_name: str | None = None
     email: str | None = None
+    secondary_email: str | None = None
+    contact_salutation: str | None = None
+    contact_first_name: str | None = None
+    contact_middle_initial: str | None = None
+    contact_surname: str | None = None
+    contact_email: str | None = None
+    contact_secondary_email: str | None = None
     orcid_id: str | None = None
     openalex_author_id: str | None = None
     primary_institution: str | None = None
+    contact_primary_institution: str | None = None
+    contact_secondary_institution: str | None = None
+    contact_primary_institution_openalex_id: str | None = None
+    contact_secondary_institution_openalex_id: str | None = None
+    contact_primary_affiliation_department: str | None = None
+    contact_primary_affiliation_address_line_1: str | None = None
+    contact_primary_affiliation_city: str | None = None
+    contact_primary_affiliation_region: str | None = None
+    contact_primary_affiliation_postal_code: str | None = None
+    contact_primary_affiliation_country: str | None = None
+    contact_secondary_affiliation_department: str | None = None
+    contact_secondary_affiliation_address_line_1: str | None = None
+    contact_secondary_affiliation_city: str | None = None
+    contact_secondary_affiliation_region: str | None = None
+    contact_secondary_affiliation_postal_code: str | None = None
+    contact_secondary_affiliation_country: str | None = None
     department: str | None = None
     country: str | None = None
+    contact_country: str | None = None
     current_position: str | None = None
     research_domains: list[str] = Field(default_factory=list)
     notes: str | None = None
@@ -2193,11 +2238,35 @@ class CollaboratorCreateRequest(BaseModel):
     full_name: str
     preferred_name: str | None = None
     email: str | None = None
+    secondary_email: str | None = None
+    contact_salutation: str | None = None
+    contact_first_name: str | None = None
+    contact_middle_initial: str | None = None
+    contact_surname: str | None = None
+    contact_email: str | None = None
+    contact_secondary_email: str | None = None
     orcid_id: str | None = None
     openalex_author_id: str | None = None
     primary_institution: str | None = None
+    contact_primary_institution: str | None = None
+    contact_secondary_institution: str | None = None
+    contact_primary_institution_openalex_id: str | None = None
+    contact_secondary_institution_openalex_id: str | None = None
+    contact_primary_affiliation_department: str | None = None
+    contact_primary_affiliation_address_line_1: str | None = None
+    contact_primary_affiliation_city: str | None = None
+    contact_primary_affiliation_region: str | None = None
+    contact_primary_affiliation_postal_code: str | None = None
+    contact_primary_affiliation_country: str | None = None
+    contact_secondary_affiliation_department: str | None = None
+    contact_secondary_affiliation_address_line_1: str | None = None
+    contact_secondary_affiliation_city: str | None = None
+    contact_secondary_affiliation_region: str | None = None
+    contact_secondary_affiliation_postal_code: str | None = None
+    contact_secondary_affiliation_country: str | None = None
     department: str | None = None
     country: str | None = None
+    contact_country: str | None = None
     current_position: str | None = None
     research_domains: list[str] = Field(default_factory=list)
     notes: str | None = None
@@ -2207,11 +2276,35 @@ class CollaboratorUpdateRequest(BaseModel):
     full_name: str | None = None
     preferred_name: str | None = None
     email: str | None = None
+    secondary_email: str | None = None
+    contact_salutation: str | None = None
+    contact_first_name: str | None = None
+    contact_middle_initial: str | None = None
+    contact_surname: str | None = None
+    contact_email: str | None = None
+    contact_secondary_email: str | None = None
     orcid_id: str | None = None
     openalex_author_id: str | None = None
     primary_institution: str | None = None
+    contact_primary_institution: str | None = None
+    contact_secondary_institution: str | None = None
+    contact_primary_institution_openalex_id: str | None = None
+    contact_secondary_institution_openalex_id: str | None = None
+    contact_primary_affiliation_department: str | None = None
+    contact_primary_affiliation_address_line_1: str | None = None
+    contact_primary_affiliation_city: str | None = None
+    contact_primary_affiliation_region: str | None = None
+    contact_primary_affiliation_postal_code: str | None = None
+    contact_primary_affiliation_country: str | None = None
+    contact_secondary_affiliation_department: str | None = None
+    contact_secondary_affiliation_address_line_1: str | None = None
+    contact_secondary_affiliation_city: str | None = None
+    contact_secondary_affiliation_region: str | None = None
+    contact_secondary_affiliation_postal_code: str | None = None
+    contact_secondary_affiliation_country: str | None = None
     department: str | None = None
     country: str | None = None
+    contact_country: str | None = None
     current_position: str | None = None
     research_domains: list[str] | None = None
     notes: str | None = None

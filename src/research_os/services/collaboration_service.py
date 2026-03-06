@@ -287,6 +287,15 @@ def _normalize_email(value: str | None) -> str | None:
     return clean
 
 
+def _normalize_optional_text(value: Any, *, max_length: int | None = None) -> str | None:
+    clean = re.sub(r"\s+", " ", str(value or "").strip())
+    if not clean:
+        return None
+    if max_length is not None and len(clean) > max_length:
+        return clean[:max_length]
+    return clean
+
+
 def _email_identity_key(value: str | None) -> str:
     return re.sub(r"\s+", "", str(value or "").strip().lower())
 
@@ -354,6 +363,9 @@ def _collaborator_identity_tokens(collaborator: Collaborator) -> list[str]:
     email = _email_identity_key(collaborator.email)
     if email:
         tokens.append(f"email:{email}")
+    secondary_email = _email_identity_key(collaborator.secondary_email)
+    if secondary_email:
+        tokens.append(f"email:{secondary_email}")
     name = _normalize_name_lower(collaborator.full_name or "")
     if name:
         tokens.append(f"name:{name}")
@@ -707,11 +719,35 @@ def _serialize_collaborator(
         "full_name": collaborator.full_name,
         "preferred_name": collaborator.preferred_name,
         "email": collaborator.email,
+        "secondary_email": collaborator.secondary_email,
+        "contact_salutation": collaborator.contact_salutation,
+        "contact_first_name": collaborator.contact_first_name,
+        "contact_middle_initial": collaborator.contact_middle_initial,
+        "contact_surname": collaborator.contact_surname,
+        "contact_email": collaborator.contact_email,
+        "contact_secondary_email": collaborator.contact_secondary_email,
         "orcid_id": collaborator.orcid_id,
         "openalex_author_id": collaborator.openalex_author_id,
         "primary_institution": collaborator.primary_institution,
+        "contact_primary_institution": collaborator.contact_primary_institution,
+        "contact_secondary_institution": collaborator.contact_secondary_institution,
+        "contact_primary_institution_openalex_id": collaborator.contact_primary_institution_openalex_id,
+        "contact_secondary_institution_openalex_id": collaborator.contact_secondary_institution_openalex_id,
+        "contact_primary_affiliation_department": collaborator.contact_primary_affiliation_department,
+        "contact_primary_affiliation_address_line_1": collaborator.contact_primary_affiliation_address_line_1,
+        "contact_primary_affiliation_city": collaborator.contact_primary_affiliation_city,
+        "contact_primary_affiliation_region": collaborator.contact_primary_affiliation_region,
+        "contact_primary_affiliation_postal_code": collaborator.contact_primary_affiliation_postal_code,
+        "contact_primary_affiliation_country": collaborator.contact_primary_affiliation_country,
+        "contact_secondary_affiliation_department": collaborator.contact_secondary_affiliation_department,
+        "contact_secondary_affiliation_address_line_1": collaborator.contact_secondary_affiliation_address_line_1,
+        "contact_secondary_affiliation_city": collaborator.contact_secondary_affiliation_city,
+        "contact_secondary_affiliation_region": collaborator.contact_secondary_affiliation_region,
+        "contact_secondary_affiliation_postal_code": collaborator.contact_secondary_affiliation_postal_code,
+        "contact_secondary_affiliation_country": collaborator.contact_secondary_affiliation_country,
         "department": collaborator.department,
         "country": collaborator.country,
+        "contact_country": collaborator.contact_country,
         "current_position": collaborator.current_position,
         "research_domains": list(collaborator.research_domains or []),
         "notes": collaborator.notes,
@@ -881,6 +917,7 @@ def _match_existing_collaborator_identity(
     full_name: str,
     openalex_author_id: str | None,
     email: str | None,
+    secondary_email: str | None,
     primary_institution: str | None,
     exclude_collaborator_id: str | None = None,
     name_similarity_threshold: float = 0.92,
@@ -889,6 +926,7 @@ def _match_existing_collaborator_identity(
     candidate_openalex = _normalize_openalex_author_id(openalex_author_id)
     candidate_openalex_key = _openalex_identity_key(candidate_openalex)
     candidate_email_key = _email_identity_key(email)
+    candidate_secondary_email_key = _email_identity_key(secondary_email)
     candidate_name = _normalize_name(str(full_name or ""))
     candidate_institution = re.sub(
         r"\s+", " ", str(primary_institution or "").strip()
@@ -904,7 +942,13 @@ def _match_existing_collaborator_identity(
         if candidate_openalex_key:
             if _openalex_identity_key(row.openalex_author_id) == candidate_openalex_key:
                 return row
-        if candidate_email_key and _email_identity_key(row.email) == candidate_email_key:
+        row_email_keys = {
+            _email_identity_key(row.email),
+            _email_identity_key(row.secondary_email),
+        }
+        if candidate_email_key and candidate_email_key in row_email_keys:
+            return row
+        if candidate_secondary_email_key and candidate_secondary_email_key in row_email_keys:
             return row
 
     for row in rows:
@@ -987,9 +1031,16 @@ def list_collaborators_for_user(
             base_query = base_query.where(
                 or_(
                     func.lower(Collaborator.full_name).like(search_like),
+                    func.lower(Collaborator.contact_first_name).like(search_like),
+                    func.lower(Collaborator.contact_surname).like(search_like),
+                    func.lower(Collaborator.contact_email).like(search_like),
+                    func.lower(Collaborator.contact_secondary_email).like(search_like),
                     func.lower(Collaborator.email).like(search_like),
+                    func.lower(Collaborator.secondary_email).like(search_like),
                     func.lower(Collaborator.orcid_id).like(search_like),
+                    func.lower(Collaborator.contact_primary_institution).like(search_like),
                     func.lower(Collaborator.primary_institution).like(search_like),
+                    func.lower(Collaborator.contact_country).like(search_like),
                 )
             )
         collaborators = session.scalars(base_query).all()
@@ -1039,6 +1090,7 @@ def create_collaborator_for_user(
                 payload.get("openalex_author_id")
             ),
             email=_normalize_email(payload.get("email")),
+            secondary_email=_normalize_email(payload.get("secondary_email")),
             primary_institution=primary_institution,
             exclude_collaborator_id=None,
         )
@@ -1060,17 +1112,110 @@ def create_collaborator_for_user(
             full_name_lower=_normalize_name_lower(full_name),
             preferred_name=preferred_name,
             email=_normalize_email(payload.get("email")),
+            secondary_email=_normalize_email(payload.get("secondary_email")),
+            contact_salutation=(
+                re.sub(r"\s+", " ", str(payload.get("contact_salutation") or "").strip())
+                or None
+            ),
+            contact_first_name=(
+                re.sub(r"\s+", " ", str(payload.get("contact_first_name") or "").strip())
+                or None
+            ),
+            contact_middle_initial=(
+                re.sub(r"\s+", " ", str(payload.get("contact_middle_initial") or "").strip())
+                or None
+            ),
+            contact_surname=(
+                re.sub(r"\s+", " ", str(payload.get("contact_surname") or "").strip())
+                or None
+            ),
+            contact_email=_normalize_email(payload.get("contact_email")),
+            contact_secondary_email=_normalize_email(payload.get("contact_secondary_email")),
             orcid_id=orcid_id,
             openalex_author_id=_normalize_openalex_author_id(
                 payload.get("openalex_author_id")
             ),
             primary_institution=primary_institution,
+            contact_primary_institution=(
+                re.sub(
+                    r"\s+",
+                    " ",
+                    str(payload.get("contact_primary_institution") or "").strip(),
+                )
+                or None
+            ),
+            contact_secondary_institution=(
+                re.sub(
+                    r"\s+",
+                    " ",
+                    str(payload.get("contact_secondary_institution") or "").strip(),
+                )
+                or None
+            ),
+            contact_primary_institution_openalex_id=_normalize_openalex_institution_id(
+                payload.get("contact_primary_institution_openalex_id")
+            ),
+            contact_secondary_institution_openalex_id=_normalize_openalex_institution_id(
+                payload.get("contact_secondary_institution_openalex_id")
+            ),
+            contact_primary_affiliation_department=_normalize_optional_text(
+                payload.get("contact_primary_affiliation_department"),
+                max_length=255,
+            ),
+            contact_primary_affiliation_address_line_1=_normalize_optional_text(
+                payload.get("contact_primary_affiliation_address_line_1"),
+                max_length=255,
+            ),
+            contact_primary_affiliation_city=_normalize_optional_text(
+                payload.get("contact_primary_affiliation_city"),
+                max_length=128,
+            ),
+            contact_primary_affiliation_region=_normalize_optional_text(
+                payload.get("contact_primary_affiliation_region"),
+                max_length=128,
+            ),
+            contact_primary_affiliation_postal_code=_normalize_optional_text(
+                payload.get("contact_primary_affiliation_postal_code"),
+                max_length=32,
+            ),
+            contact_primary_affiliation_country=_normalize_optional_text(
+                payload.get("contact_primary_affiliation_country"),
+                max_length=64,
+            ),
+            contact_secondary_affiliation_department=_normalize_optional_text(
+                payload.get("contact_secondary_affiliation_department"),
+                max_length=255,
+            ),
+            contact_secondary_affiliation_address_line_1=_normalize_optional_text(
+                payload.get("contact_secondary_affiliation_address_line_1"),
+                max_length=255,
+            ),
+            contact_secondary_affiliation_city=_normalize_optional_text(
+                payload.get("contact_secondary_affiliation_city"),
+                max_length=128,
+            ),
+            contact_secondary_affiliation_region=_normalize_optional_text(
+                payload.get("contact_secondary_affiliation_region"),
+                max_length=128,
+            ),
+            contact_secondary_affiliation_postal_code=_normalize_optional_text(
+                payload.get("contact_secondary_affiliation_postal_code"),
+                max_length=32,
+            ),
+            contact_secondary_affiliation_country=_normalize_optional_text(
+                payload.get("contact_secondary_affiliation_country"),
+                max_length=64,
+            ),
             department=(
                 re.sub(r"\s+", " ", str(payload.get("department") or "").strip())
                 or None
             ),
             country=(
                 re.sub(r"\s+", " ", str(payload.get("country") or "").strip()) or None
+            ),
+            contact_country=(
+                re.sub(r"\s+", " ", str(payload.get("contact_country") or "").strip())
+                or None
             ),
             current_position=(
                 re.sub(r"\s+", " ", str(payload.get("current_position") or "").strip())
@@ -1145,6 +1290,36 @@ def update_collaborator_for_user(
             )
         if "email" in payload:
             collaborator.email = _normalize_email(payload.get("email"))
+        if "secondary_email" in payload:
+            collaborator.secondary_email = _normalize_email(payload.get("secondary_email"))
+        if "contact_salutation" in payload:
+            collaborator.contact_salutation = (
+                re.sub(r"\s+", " ", str(payload.get("contact_salutation") or "").strip())
+                or None
+            )
+        if "contact_first_name" in payload:
+            collaborator.contact_first_name = (
+                re.sub(r"\s+", " ", str(payload.get("contact_first_name") or "").strip())
+                or None
+            )
+        if "contact_middle_initial" in payload:
+            collaborator.contact_middle_initial = (
+                re.sub(
+                    r"\s+", " ", str(payload.get("contact_middle_initial") or "").strip()
+                )
+                or None
+            )
+        if "contact_surname" in payload:
+            collaborator.contact_surname = (
+                re.sub(r"\s+", " ", str(payload.get("contact_surname") or "").strip())
+                or None
+            )
+        if "contact_email" in payload:
+            collaborator.contact_email = _normalize_email(payload.get("contact_email"))
+        if "contact_secondary_email" in payload:
+            collaborator.contact_secondary_email = _normalize_email(
+                payload.get("contact_secondary_email")
+            )
         if "orcid_id" in payload:
             collaborator.orcid_id = validate_orcid_id(payload.get("orcid_id"))
         if "openalex_author_id" in payload:
@@ -1158,6 +1333,118 @@ def update_collaborator_for_user(
                 )
                 or None
             )
+        if "contact_primary_institution" in payload:
+            collaborator.contact_primary_institution = (
+                re.sub(
+                    r"\s+",
+                    " ",
+                    str(payload.get("contact_primary_institution") or "").strip(),
+                )
+                or None
+            )
+        if "contact_secondary_institution" in payload:
+            collaborator.contact_secondary_institution = (
+                re.sub(
+                    r"\s+",
+                    " ",
+                    str(payload.get("contact_secondary_institution") or "").strip(),
+                )
+                or None
+            )
+        if "contact_primary_institution_openalex_id" in payload:
+            collaborator.contact_primary_institution_openalex_id = (
+                _normalize_openalex_institution_id(
+                    payload.get("contact_primary_institution_openalex_id")
+                )
+            )
+        if "contact_secondary_institution_openalex_id" in payload:
+            collaborator.contact_secondary_institution_openalex_id = (
+                _normalize_openalex_institution_id(
+                    payload.get("contact_secondary_institution_openalex_id")
+                )
+            )
+        if "contact_primary_affiliation_department" in payload:
+            collaborator.contact_primary_affiliation_department = (
+                _normalize_optional_text(
+                    payload.get("contact_primary_affiliation_department"),
+                    max_length=255,
+                )
+            )
+        if "contact_primary_affiliation_address_line_1" in payload:
+            collaborator.contact_primary_affiliation_address_line_1 = (
+                _normalize_optional_text(
+                    payload.get("contact_primary_affiliation_address_line_1"),
+                    max_length=255,
+                )
+            )
+        if "contact_primary_affiliation_city" in payload:
+            collaborator.contact_primary_affiliation_city = _normalize_optional_text(
+                payload.get("contact_primary_affiliation_city"),
+                max_length=128,
+            )
+        if "contact_primary_affiliation_region" in payload:
+            collaborator.contact_primary_affiliation_region = (
+                _normalize_optional_text(
+                    payload.get("contact_primary_affiliation_region"),
+                    max_length=128,
+                )
+            )
+        if "contact_primary_affiliation_postal_code" in payload:
+            collaborator.contact_primary_affiliation_postal_code = (
+                _normalize_optional_text(
+                    payload.get("contact_primary_affiliation_postal_code"),
+                    max_length=32,
+                )
+            )
+        if "contact_primary_affiliation_country" in payload:
+            collaborator.contact_primary_affiliation_country = (
+                _normalize_optional_text(
+                    payload.get("contact_primary_affiliation_country"),
+                    max_length=64,
+                )
+            )
+        if "contact_secondary_affiliation_department" in payload:
+            collaborator.contact_secondary_affiliation_department = (
+                _normalize_optional_text(
+                    payload.get("contact_secondary_affiliation_department"),
+                    max_length=255,
+                )
+            )
+        if "contact_secondary_affiliation_address_line_1" in payload:
+            collaborator.contact_secondary_affiliation_address_line_1 = (
+                _normalize_optional_text(
+                    payload.get("contact_secondary_affiliation_address_line_1"),
+                    max_length=255,
+                )
+            )
+        if "contact_secondary_affiliation_city" in payload:
+            collaborator.contact_secondary_affiliation_city = (
+                _normalize_optional_text(
+                    payload.get("contact_secondary_affiliation_city"),
+                    max_length=128,
+                )
+            )
+        if "contact_secondary_affiliation_region" in payload:
+            collaborator.contact_secondary_affiliation_region = (
+                _normalize_optional_text(
+                    payload.get("contact_secondary_affiliation_region"),
+                    max_length=128,
+                )
+            )
+        if "contact_secondary_affiliation_postal_code" in payload:
+            collaborator.contact_secondary_affiliation_postal_code = (
+                _normalize_optional_text(
+                    payload.get("contact_secondary_affiliation_postal_code"),
+                    max_length=32,
+                )
+            )
+        if "contact_secondary_affiliation_country" in payload:
+            collaborator.contact_secondary_affiliation_country = (
+                _normalize_optional_text(
+                    payload.get("contact_secondary_affiliation_country"),
+                    max_length=64,
+                )
+            )
         if "department" in payload:
             collaborator.department = (
                 re.sub(r"\s+", " ", str(payload.get("department") or "").strip())
@@ -1166,6 +1453,11 @@ def update_collaborator_for_user(
         if "country" in payload:
             collaborator.country = (
                 re.sub(r"\s+", " ", str(payload.get("country") or "").strip()) or None
+            )
+        if "contact_country" in payload:
+            collaborator.contact_country = (
+                re.sub(r"\s+", " ", str(payload.get("contact_country") or "").strip())
+                or None
             )
         if "current_position" in payload:
             collaborator.current_position = (
@@ -1184,6 +1476,7 @@ def update_collaborator_for_user(
             full_name=collaborator.full_name,
             openalex_author_id=collaborator.openalex_author_id,
             email=collaborator.email,
+            secondary_email=collaborator.secondary_email,
             primary_institution=collaborator.primary_institution,
             exclude_collaborator_id=collaborator_id,
         )
@@ -1259,13 +1552,37 @@ def export_collaborators_csv(*, user_id: str) -> tuple[str, str]:
     writer.writerow(
         [
             "full_name",
+            "contact_salutation",
+            "contact_first_name",
+            "contact_middle_initial",
+            "contact_surname",
             "preferred_name",
             "email",
+            "secondary_email",
+            "contact_email",
+            "contact_secondary_email",
             "orcid_id",
             "openalex_author_id",
             "primary_institution",
+            "contact_primary_institution",
+            "contact_secondary_institution",
+            "contact_primary_institution_openalex_id",
+            "contact_secondary_institution_openalex_id",
+            "contact_primary_affiliation_department",
+            "contact_primary_affiliation_address_line_1",
+            "contact_primary_affiliation_city",
+            "contact_primary_affiliation_region",
+            "contact_primary_affiliation_postal_code",
+            "contact_primary_affiliation_country",
+            "contact_secondary_affiliation_department",
+            "contact_secondary_affiliation_address_line_1",
+            "contact_secondary_affiliation_city",
+            "contact_secondary_affiliation_region",
+            "contact_secondary_affiliation_postal_code",
+            "contact_secondary_affiliation_country",
             "department",
             "country",
+            "contact_country",
             "current_position",
             "classification",
             "coauthored_works_count",
@@ -1278,13 +1595,37 @@ def export_collaborators_csv(*, user_id: str) -> tuple[str, str]:
         writer.writerow(
             [
                 item.get("full_name") or "",
+                item.get("contact_salutation") or "",
+                item.get("contact_first_name") or "",
+                item.get("contact_middle_initial") or "",
+                item.get("contact_surname") or "",
                 item.get("preferred_name") or "",
                 item.get("email") or "",
+                item.get("secondary_email") or "",
+                item.get("contact_email") or "",
+                item.get("contact_secondary_email") or "",
                 item.get("orcid_id") or "",
                 item.get("openalex_author_id") or "",
                 item.get("primary_institution") or "",
+                item.get("contact_primary_institution") or "",
+                item.get("contact_secondary_institution") or "",
+                item.get("contact_primary_institution_openalex_id") or "",
+                item.get("contact_secondary_institution_openalex_id") or "",
+                item.get("contact_primary_affiliation_department") or "",
+                item.get("contact_primary_affiliation_address_line_1") or "",
+                item.get("contact_primary_affiliation_city") or "",
+                item.get("contact_primary_affiliation_region") or "",
+                item.get("contact_primary_affiliation_postal_code") or "",
+                item.get("contact_primary_affiliation_country") or "",
+                item.get("contact_secondary_affiliation_department") or "",
+                item.get("contact_secondary_affiliation_address_line_1") or "",
+                item.get("contact_secondary_affiliation_city") or "",
+                item.get("contact_secondary_affiliation_region") or "",
+                item.get("contact_secondary_affiliation_postal_code") or "",
+                item.get("contact_secondary_affiliation_country") or "",
                 item.get("department") or "",
                 item.get("country") or "",
+                item.get("contact_country") or "",
                 item.get("current_position") or "",
                 metrics.get("classification") or CLASSIFICATION_UNCLASSIFIED,
                 int(metrics.get("coauthored_works_count") or 0),
@@ -2173,6 +2514,22 @@ def _normalize_openalex_author_id(value: str | None) -> str | None:
     return clean
 
 
+def _normalize_openalex_institution_id(value: str | None) -> str | None:
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    if clean.startswith("http://openalex.org/"):
+        clean = "https://openalex.org/" + clean.removeprefix("http://openalex.org/")
+    if clean.startswith("https://openalex.org/"):
+        suffix = clean.removeprefix("https://openalex.org/").strip().strip("/")
+        if re.fullmatch(r"(?i)I\d+", suffix):
+            suffix = suffix.upper()
+        return f"https://openalex.org/{suffix}" if suffix else None
+    if re.fullmatch(r"(?i)I\d+", clean):
+        return f"https://openalex.org/{clean.upper()}"
+    return clean
+
+
 def _openalex_identity_key(value: str | None) -> str:
     normalized = _normalize_openalex_author_id(value)
     if not normalized:
@@ -2591,6 +2948,7 @@ def _match_existing_for_import(
             str(candidate.get("openalex_author_id") or "").strip() or None
         ),
         email=None,
+        secondary_email=None,
         primary_institution=str(candidate.get("primary_institution") or "").strip() or None,
         exclude_collaborator_id=None,
         name_similarity_threshold=0.92,

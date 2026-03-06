@@ -573,8 +573,10 @@ def _fetch_openalex_autocomplete(
         if not name:
             continue
         country_code = _sanitize_text(raw.get("country_code")).upper() or None
+        openalex_id = _sanitize_text(raw.get("id")) or None
         item = {
             "name": name,
+            "openalex_id": openalex_id,
             "country_code": country_code,
             "country_name": None,
             "city": None,
@@ -643,8 +645,10 @@ def _fetch_openalex(
         country_name = _nullable_part(geo.get("country") or raw.get("country"))
         city = _nullable_part(geo.get("city"))
         region = _nullable_part(geo.get("region"))
+        openalex_id = _sanitize_text(raw.get("id")) or None
         item = {
             "name": name,
+            "openalex_id": openalex_id,
             "country_code": country_code,
             "country_name": country_name,
             "city": city,
@@ -742,6 +746,7 @@ def _fetch_ror(
         country_name = _nullable_part(geonames.get("country_name"))
         item = {
             "name": name,
+            "openalex_id": None,
             "country_code": country_code,
             "country_name": country_name,
             "city": city,
@@ -1034,6 +1039,7 @@ def _normalize_suggestion_item(raw: dict[str, Any]) -> dict[str, Any] | None:
     if len(name) < 2:
         return None
     country_code = _sanitize_text(raw.get("country_code")).upper() or None
+    openalex_id = _sanitize_text(raw.get("openalex_id")) or None
     country_name = _nullable_part(raw.get("country_name"))
     city = _nullable_part(raw.get("city"))
     region = _nullable_part(raw.get("region"))
@@ -1051,6 +1057,7 @@ def _normalize_suggestion_item(raw: dict[str, Any]) -> dict[str, Any] | None:
     return {
         "name": name,
         "label": label,
+        "openalex_id": openalex_id,
         "country_code": country_code,
         "country_name": country_name,
         "city": city,

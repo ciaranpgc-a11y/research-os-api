@@ -7,6 +7,7 @@ import { AuthPage } from '@/pages/auth-page'
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
 import { PublicationsPerYearChart } from '@/components/publications/PublicationsTopStrip'
+import { InsightsGlyph } from '@/components/patterns'
 import type { PublicationMetricTilePayload } from '@/types/impact'
 import { TopBar } from '@/components/layout/top-bar'
 import { AccountNavigator } from '@/components/layout/account-navigator'
@@ -4643,6 +4644,18 @@ const approvedIcons: IconOption[] = [
     label: 'Menu',
     description: 'Navigation toggle',
     icon: <Menu className="h-5 w-5" />,
+  },
+  {
+    id: 'icon-help',
+    label: 'Help',
+    description: 'Contextual help trigger for tile and section tooltips',
+    icon: <span className="text-base font-semibold leading-none">?</span>,
+  },
+  {
+    id: 'icon-insights',
+    label: 'Insights',
+    description: 'Insight marker for interpreted portfolio sections',
+    icon: <InsightsGlyph className="h-5 w-5" />,
   },
 ]
 

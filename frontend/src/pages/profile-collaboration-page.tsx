@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Lightbulb, Search, Settings, Share2, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { Building2, Check, ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Lightbulb, Loader2, Pencil, Plus, Search, Settings, Share2, Sparkles, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -14,7 +14,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  TextareaPrimitive as Textarea,
 } from '@/components/primitives'
 import { SectionMarker, SectionToolDivider, SectionTools } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
@@ -46,7 +45,9 @@ import {
 } from '@/lib/collaboration-preload'
 import {
   deleteCollaborator,
+  fetchAffiliationAddressForMe,
   exportCollaboratorsCsv,
+  fetchAffiliationSuggestionsForMe,
   fetchCollaborationMetricsSummary,
   generateCollaborationAiAffiliationsNormaliser,
   generateCollaborationAiAuthorSuggestions,
@@ -56,6 +57,7 @@ import {
   updateCollaborator,
 } from '@/lib/impact-api'
 import type {
+  AffiliationSuggestionItemPayload,
   CollaborationAiAffiliationsNormalisePayload,
   CollaborationAiAuthorSuggestionsPayload,
   CollaborationAiContributionDraftPayload,
@@ -68,12 +70,31 @@ import type {
 } from '@/types/impact'
 
 type CollaboratorFormState = {
-  full_name: string
+  salutation: string
+  first_name: string
+  middle_initial: string
+  surname: string
   preferred_name: string
   email: string
+  secondary_email: string
   orcid_id: string
   openalex_author_id: string
   primary_institution: string
+  secondary_institution: string
+  primary_institution_openalex_id: string
+  secondary_institution_openalex_id: string
+  primary_affiliation_department: string
+  primary_affiliation_address_line_1: string
+  primary_affiliation_city: string
+  primary_affiliation_region: string
+  primary_affiliation_postal_code: string
+  primary_affiliation_country: string
+  secondary_affiliation_department: string
+  secondary_affiliation_address_line_1: string
+  secondary_affiliation_city: string
+  secondary_affiliation_region: string
+  secondary_affiliation_postal_code: string
+  secondary_affiliation_country: string
   department: string
   country: string
   current_position: string
@@ -81,9 +102,33 @@ type CollaboratorFormState = {
   notes: string
 }
 
+type CollaboratorAffiliationSlotKey = 'primary' | 'secondary'
+
+type CollaboratorAffiliationBylineDraft = {
+  department: string
+  address_line_1: string
+  city: string
+  region: string
+  postal_code: string
+  country: string
+}
+
 type CollaboratorCanonical = CollaboratorPayload & {
   institution_labels: string[]
   duplicate_count: number
+}
+
+type AffiliationSuggestionItem = {
+  name: string
+  label: string
+  openalexId: string | null
+  countryCode: string | null
+  countryName: string | null
+  city: string | null
+  region: string | null
+  address: string | null
+  postalCode: string | null
+  source: 'openai' | 'openalex' | 'ror' | 'openstreetmap' | 'clearbit'
 }
 
 type HeatmapMode = 'country' | 'institution' | 'domain'
@@ -124,6 +169,7 @@ type CollaborationSortField =
   | 'strength'
   | 'relationship_tier'
   | 'activity_status'
+type CollaboratorDrilldownTab = 'details' | 'history' | 'actions'
 type SortDirection = 'asc' | 'desc'
 type CollaborationTableColumnPreference = {
   visible: boolean
@@ -136,12 +182,31 @@ type MockMetricsSeed = Pick<
 >
 
 const EMPTY_FORM: CollaboratorFormState = {
-  full_name: '',
+  salutation: '',
+  first_name: '',
+  middle_initial: '',
+  surname: '',
   preferred_name: '',
   email: '',
+  secondary_email: '',
   orcid_id: '',
   openalex_author_id: '',
   primary_institution: '',
+  secondary_institution: '',
+  primary_institution_openalex_id: '',
+  secondary_institution_openalex_id: '',
+  primary_affiliation_department: '',
+  primary_affiliation_address_line_1: '',
+  primary_affiliation_city: '',
+  primary_affiliation_region: '',
+  primary_affiliation_postal_code: '',
+  primary_affiliation_country: '',
+  secondary_affiliation_department: '',
+  secondary_affiliation_address_line_1: '',
+  secondary_affiliation_city: '',
+  secondary_affiliation_region: '',
+  secondary_affiliation_postal_code: '',
+  secondary_affiliation_country: '',
   department: '',
   country: '',
   current_position: '',
@@ -152,8 +217,37 @@ const EMPTY_FORM: CollaboratorFormState = {
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
 const COLLABORATORS_PAGE_SIZE_DEFAULT: CollaborationTablePageSize = 50
+const AFFILIATION_LOOKUP_DEBOUNCE_MS = 60
 const HEATMAP_TOP_CELL_LIMIT = 24
 const HEATMAP_OTHERS_KEY = '__others__'
+const COLLABORATOR_DRILLDOWN_TABS: Array<{ id: CollaboratorDrilldownTab; label: string }> = [
+  { id: 'details', label: 'Details' },
+  { id: 'history', label: 'Collaboration history' },
+  { id: 'actions', label: 'Actions' },
+]
+const COLLABORATOR_SALUTATION_OPTIONS = [
+  'Professor',
+  'Professor Emeritus',
+  'Associate Professor',
+  'Assistant Professor',
+  'Reader',
+  'Senior Lecturer',
+  'Lecturer',
+  'Dr',
+  'Research Fellow',
+  'Postdoctoral Researcher',
+  'Mr',
+  'Ms',
+  'Mrs',
+  'Miss',
+  'Mx',
+  'Sir',
+  'Dame',
+  'Lord',
+  'Lady',
+  'Rev',
+  'Hon',
+] as const
 const COLLABORATION_TABLE_COLUMN_ORDER: CollaborationTableColumnKey[] = [
   'name',
   'institution',
@@ -223,28 +317,351 @@ const COLLABORATION_TABLE_COLUMN_MAX_WIDTH: Record<CollaborationTableColumnKey, 
   collaboration_score: 240,
 }
 const COLLABORATION_TABLE_COLUMN_HARD_MIN = 56
+const COLLABORATION_TABLE_LAYOUT_FALLBACK_WIDTH = 1080
+
+function normalizeSalutationToken(value: string): string {
+  return String(value || '').trim().replace(/\.+$/g, '').toLowerCase()
+}
+
+function sanitizeAffiliation(value: string | null | undefined): string {
+  return String(value || '').trim().replace(/\s+/g, ' ')
+}
+
+function toNullableAffiliationPart(value: unknown): string | null {
+  const clean = sanitizeAffiliation(String(value || ''))
+  return clean || null
+}
+
+function buildAffiliationSuggestionLabel(input: {
+  name: string
+  city?: string | null
+  countryName?: string | null
+  countryCode?: string | null
+}): string {
+  const city = toNullableAffiliationPart(input.city)
+  const countryName = toNullableAffiliationPart(input.countryName)
+  const countryCode = toNullableAffiliationPart(input.countryCode)
+  const location = [city, countryName].filter(Boolean).join(', ')
+  if (location) {
+    return `${input.name} (${location})`
+  }
+  if (countryCode) {
+    return `${input.name} (${countryCode.toUpperCase()})`
+  }
+  return input.name
+}
+
+function mapAffiliationSuggestionItem(raw: AffiliationSuggestionItemPayload): AffiliationSuggestionItem | null {
+  const name = sanitizeAffiliation(raw.name)
+  if (!name) {
+    return null
+  }
+  const countryCode = sanitizeAffiliation(raw.country_code).toUpperCase() || null
+  const countryName = toNullableAffiliationPart(raw.country_name)
+  const city = toNullableAffiliationPart(raw.city)
+  const region = toNullableAffiliationPart(raw.region)
+  const address = toNullableAffiliationPart(raw.address)
+  const postalCode = toNullableAffiliationPart(raw.postal_code)
+  const label = sanitizeAffiliation(raw.label) || buildAffiliationSuggestionLabel({
+    name,
+    city,
+    countryName,
+    countryCode,
+  })
+  return {
+    name,
+    label,
+    openalexId: sanitizeAffiliation(raw.openalex_id) || null,
+    countryCode,
+    countryName,
+    city,
+    region,
+    address,
+    postalCode,
+    source:
+      raw.source === 'openai' ||
+      raw.source === 'ror' ||
+      raw.source === 'openstreetmap' ||
+      raw.source === 'clearbit'
+        ? raw.source
+        : 'openalex',
+  }
+}
+
+function parseCollaboratorFullName(value: string): Pick<CollaboratorFormState, 'salutation' | 'first_name' | 'middle_initial' | 'surname'> {
+  const clean = String(value || '').trim().replace(/\s+/g, ' ')
+  if (!clean) {
+    return {
+      salutation: '',
+      first_name: '',
+      middle_initial: '',
+      surname: '',
+    }
+  }
+
+  const rawTokens = clean.split(' ')
+  let salutation = ''
+  let nameTokens = [...rawTokens]
+  const salutationOptionsByLength = [...COLLABORATOR_SALUTATION_OPTIONS].sort(
+    (left, right) => right.split(/\s+/).length - left.split(/\s+/).length,
+  )
+
+  for (const option of salutationOptionsByLength) {
+    const optionTokens = option.split(/\s+/)
+    const candidate = rawTokens.slice(0, optionTokens.length)
+    if (candidate.length !== optionTokens.length) {
+      continue
+    }
+    const isMatch = candidate.every((token, index) => (
+      normalizeSalutationToken(token) === normalizeSalutationToken(optionTokens[index])
+    ))
+    if (isMatch) {
+      salutation = option
+      nameTokens = rawTokens.slice(optionTokens.length)
+      break
+    }
+  }
+
+  if (nameTokens.length === 0) {
+    return {
+      salutation,
+      first_name: '',
+      middle_initial: '',
+      surname: '',
+    }
+  }
+
+  if (nameTokens.length === 1) {
+    return {
+      salutation,
+      first_name: '',
+      middle_initial: '',
+      surname: nameTokens[0],
+    }
+  }
+
+  const first_name = nameTokens[0] || ''
+  const surname = nameTokens[nameTokens.length - 1] || ''
+  const middleTokens = nameTokens.slice(1, -1)
+  const middle_initial = middleTokens
+    .filter((token) => /^[A-Za-z]\.?$/.test(token))
+    .map((token) => token.replace(/\./g, '').toUpperCase())
+    .filter(Boolean)
+    .join(' ')
+
+  return {
+    salutation,
+    first_name,
+    middle_initial,
+    surname,
+  }
+}
 
 function toFormState(value: CollaboratorPayload): CollaboratorFormState {
+  const hasContactName = Boolean(
+    value.contact_salutation ||
+    value.contact_first_name ||
+    value.contact_middle_initial ||
+    value.contact_surname,
+  )
+  const parsedName = hasContactName
+    ? {
+        salutation: value.contact_salutation || '',
+        first_name: value.contact_first_name || '',
+        middle_initial: value.contact_middle_initial || '',
+        surname: value.contact_surname || '',
+      }
+    : parseCollaboratorFullName(value.full_name)
   return {
-    full_name: value.full_name || '',
+    salutation: parsedName.salutation,
+    first_name: parsedName.first_name,
+    middle_initial: parsedName.middle_initial,
+    surname: parsedName.surname,
     preferred_name: value.preferred_name || '',
-    email: value.email || '',
+    email: value.contact_email || '',
+    secondary_email: value.contact_secondary_email || '',
     orcid_id: value.orcid_id || '',
     openalex_author_id: value.openalex_author_id || '',
-    primary_institution: value.primary_institution || '',
+    primary_institution: value.contact_primary_institution || value.primary_institution || '',
+    secondary_institution: value.contact_secondary_institution || '',
+    primary_institution_openalex_id: value.contact_primary_institution_openalex_id || '',
+    secondary_institution_openalex_id: value.contact_secondary_institution_openalex_id || '',
+    primary_affiliation_department: value.contact_primary_affiliation_department || '',
+    primary_affiliation_address_line_1: value.contact_primary_affiliation_address_line_1 || '',
+    primary_affiliation_city: value.contact_primary_affiliation_city || '',
+    primary_affiliation_region: value.contact_primary_affiliation_region || '',
+    primary_affiliation_postal_code: value.contact_primary_affiliation_postal_code || '',
+    primary_affiliation_country: value.contact_primary_affiliation_country || '',
+    secondary_affiliation_department: value.contact_secondary_affiliation_department || '',
+    secondary_affiliation_address_line_1: value.contact_secondary_affiliation_address_line_1 || '',
+    secondary_affiliation_city: value.contact_secondary_affiliation_city || '',
+    secondary_affiliation_region: value.contact_secondary_affiliation_region || '',
+    secondary_affiliation_postal_code: value.contact_secondary_affiliation_postal_code || '',
+    secondary_affiliation_country: value.contact_secondary_affiliation_country || '',
     department: value.department || '',
-    country: value.country || '',
+    country: value.contact_country || value.country || '',
     current_position: value.current_position || '',
     research_domains: (value.research_domains || []).join(', '),
     notes: value.notes || '',
   }
 }
 
-function parseDomains(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
+function composeCollaboratorContactName(value: {
+  salutation?: string | null
+  first_name?: string | null
+  middle_initial?: string | null
+  surname?: string | null
+}): string {
+  return [
+    String(value.salutation || '').trim(),
+    String(value.first_name || '').trim(),
+    String(value.middle_initial || '').trim(),
+    String(value.surname || '').trim(),
+  ].filter(Boolean).join(' ')
+}
+
+function collaboratorDisplayName(value: Pick<
+  CollaboratorPayload,
+  'full_name' | 'contact_salutation' | 'contact_first_name' | 'contact_middle_initial' | 'contact_surname'
+>): string {
+  return composeCollaboratorContactName({
+    salutation: value.contact_salutation,
+    first_name: value.contact_first_name,
+    middle_initial: value.contact_middle_initial,
+    surname: value.contact_surname,
+  }) || value.full_name
+}
+
+function collaboratorDisplayInstitution(value: Pick<
+  CollaboratorPayload,
+  'primary_institution' | 'contact_primary_institution' | 'institution_labels'
+>): string {
+  return String(value.contact_primary_institution || '').trim()
+    || value.institution_labels?.join(' • ')
+    || String(value.primary_institution || '').trim()
+}
+
+function collaboratorAuthorAffiliations(form: Pick<
+  CollaboratorFormState,
+  | 'primary_institution'
+  | 'secondary_institution'
+  | 'primary_institution_openalex_id'
+  | 'secondary_institution_openalex_id'
+>): Array<{
+  slot: CollaboratorAffiliationSlotKey
+  label: string
+  isPrimary: boolean
+  openalexId: string
+}> {
+  const primary = sanitizeAffiliation(form.primary_institution)
+  const secondary = sanitizeAffiliation(form.secondary_institution)
+  const items: Array<{
+    slot: CollaboratorAffiliationSlotKey
+    label: string
+    isPrimary: boolean
+    openalexId: string
+  }> = []
+  if (primary) {
+    items.push({
+      slot: 'primary',
+      label: primary,
+      isPrimary: true,
+      openalexId: sanitizeAffiliation(form.primary_institution_openalex_id),
+    })
+  }
+  if (secondary && secondary.toLowerCase() !== primary.toLowerCase()) {
+    items.push({
+      slot: 'secondary',
+      label: secondary,
+      isPrimary: false,
+      openalexId: sanitizeAffiliation(form.secondary_institution_openalex_id),
+    })
+  }
+  return items
+}
+
+function collaboratorBylineDraftFromForm(
+  form: CollaboratorFormState,
+  slot: CollaboratorAffiliationSlotKey,
+): CollaboratorAffiliationBylineDraft {
+  if (slot === 'secondary') {
+    return {
+      department: form.secondary_affiliation_department,
+      address_line_1: form.secondary_affiliation_address_line_1,
+      city: form.secondary_affiliation_city,
+      region: form.secondary_affiliation_region,
+      postal_code: form.secondary_affiliation_postal_code,
+      country: form.secondary_affiliation_country,
+    }
+  }
+  return {
+    department: form.primary_affiliation_department,
+    address_line_1: form.primary_affiliation_address_line_1,
+    city: form.primary_affiliation_city,
+    region: form.primary_affiliation_region,
+    postal_code: form.primary_affiliation_postal_code,
+    country: form.primary_affiliation_country,
+  }
+}
+
+function formatCollaboratorAffiliationByline(input: {
+  institution: string
+  draft: CollaboratorAffiliationBylineDraft
+}): string {
+  return [
+    sanitizeAffiliation(input.draft.department),
+    sanitizeAffiliation(input.institution),
+    sanitizeAffiliation(input.draft.address_line_1),
+    sanitizeAffiliation(input.draft.city),
+    sanitizeAffiliation(input.draft.region),
+    sanitizeAffiliation(input.draft.postal_code),
+    sanitizeAffiliation(input.draft.country),
+  ].filter(Boolean).join(', ')
+}
+
+function rawCollaboratorInstitutionCandidates(value: Pick<CollaboratorPayload, 'institution_labels' | 'primary_institution'>): string[] {
+  const seen = new Set<string>()
+  const output: string[] = []
+  for (const raw of [...(value.institution_labels || []), value.primary_institution || '']) {
+    const clean = sanitizeAffiliation(raw)
+    if (!clean) {
+      continue
+    }
+    const key = clean.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    output.push(clean)
+    if (output.length >= 2) {
+      break
+    }
+  }
+  return output
+}
+
+function normalizeInstitutionKey(value: string): string {
+  return sanitizeAffiliation(value)
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function pickClearOpenAlexInstitutionMatch(
+  candidate: string,
+  suggestions: AffiliationSuggestionItem[],
+): AffiliationSuggestionItem | null {
+  const normalizedCandidate = normalizeInstitutionKey(candidate)
+  if (!normalizedCandidate) {
+    return null
+  }
+  const exactOpenAlexMatches = suggestions.filter((item) => (
+    item.source === 'openalex'
+    && Boolean(item.openalexId)
+    && normalizeInstitutionKey(item.name) === normalizedCandidate
+  ))
+  return exactOpenAlexMatches.length === 1 ? exactOpenAlexMatches[0] : null
 }
 
 function parseCommaSeparatedTokens(value: string): string[] {
@@ -387,6 +804,25 @@ function activityTone(value: string): 'positive' | 'yellow' | 'intermediate' | '
     return 'intermediate'
   }
   return 'negative'
+}
+
+function collaborationStrengthTone(mixedScore: number, rawScore: number): string {
+  if (rawScore <= 0) {
+    return 'bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
+  }
+  if (mixedScore >= 0.85) {
+    return 'bg-[hsl(var(--tone-positive-600))] text-white'
+  }
+  if (mixedScore >= 0.7) {
+    return 'bg-[hsl(var(--tone-positive-400))] text-white'
+  }
+  if (mixedScore >= 0.55) {
+    return 'bg-[hsl(var(--tone-positive-200))] text-[hsl(var(--tone-positive-900))]'
+  }
+  if (mixedScore >= 0.4) {
+    return 'bg-[hsl(var(--tone-positive-100))] text-[hsl(var(--tone-positive-800))]'
+  }
+  return 'bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
 }
 
 function relationshipFromClassification(
@@ -536,6 +972,21 @@ function formatHeatmapMetricValue(value: number, metric: HeatmapMetric): string 
   return Math.round(value).toLocaleString('en-GB')
 }
 
+function formatCollaboratorDate(value: string | null | undefined): string {
+  if (!value) {
+    return 'Not available'
+  }
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Not available'
+  }
+  return parsed.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
 function normalizeHeatmapBucket(value: string | null | undefined, fallback: string): string {
   return (value || fallback).trim() || fallback
 }
@@ -559,7 +1010,7 @@ function normalizeSortValue(value: string | null | undefined): CollaborationSort
   ) {
     return clean
   }
-  return 'name'
+  return 'strength'
 }
 
 function relationshipSortRank(value: string): number {
@@ -870,6 +1321,23 @@ function clampCollaborationTableColumnsToAvailableWidth(input: {
   return next
 }
 
+function resolveInitialCollaborationTableLayoutWidth(): number {
+  if (typeof window === 'undefined') {
+    return COLLABORATION_TABLE_LAYOUT_FALLBACK_WIDTH
+  }
+  return Math.max(320, Math.round(window.innerWidth || COLLABORATION_TABLE_LAYOUT_FALLBACK_WIDTH))
+}
+
+function createDefaultCollaborationTableColumns(
+  availableWidth: number,
+): Record<CollaborationTableColumnKey, CollaborationTableColumnPreference> {
+  return clampCollaborationTableColumnsToAvailableWidth({
+    columns: { ...COLLABORATION_TABLE_COLUMN_DEFAULTS },
+    columnOrder: COLLABORATION_TABLE_COLUMN_ORDER,
+    availableWidth,
+  })
+}
+
 function normalizeHeatmapMode(value: string | null | undefined): HeatmapMode {
   if (value === 'institution' || value === 'domain') {
     return value
@@ -965,7 +1433,43 @@ export function ProfileCollaborationPage() {
   const [page, setPage] = useState(() => parsePositiveInteger(searchParams.get('page'), 1))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [collaboratorDrilldownOpen, setCollaboratorDrilldownOpen] = useState(false)
+  const [activeCollaboratorDrilldownTab, setActiveCollaboratorDrilldownTab] = useState<CollaboratorDrilldownTab>('details')
   const [form, setForm] = useState<CollaboratorFormState>(EMPTY_FORM)
+  const [primaryEmailDraft, setPrimaryEmailDraft] = useState('')
+  const [editingPrimaryEmail, setEditingPrimaryEmail] = useState(false)
+  const [institutionDraft, setInstitutionDraft] = useState('')
+  const [editingInstitution, setEditingInstitution] = useState(false)
+  const [showSecondaryInstitutionInput, setShowSecondaryInstitutionInput] = useState(false)
+  const [secondaryInstitutionDraft, setSecondaryInstitutionDraft] = useState('')
+  const [editingSecondaryInstitution, setEditingSecondaryInstitution] = useState(false)
+  const [primaryAffiliationBylineDraft, setPrimaryAffiliationBylineDraft] = useState<CollaboratorAffiliationBylineDraft>({
+    department: '',
+    address_line_1: '',
+    city: '',
+    region: '',
+    postal_code: '',
+    country: '',
+  })
+  const [secondaryAffiliationBylineDraft, setSecondaryAffiliationBylineDraft] = useState<CollaboratorAffiliationBylineDraft>({
+    department: '',
+    address_line_1: '',
+    city: '',
+    region: '',
+    postal_code: '',
+    country: '',
+  })
+  const [editingAffiliationBylineSlot, setEditingAffiliationBylineSlot] = useState<CollaboratorAffiliationSlotKey | null>(null)
+  const [pendingInstitutionReview, setPendingInstitutionReview] = useState<Record<CollaboratorAffiliationSlotKey, boolean>>({
+    primary: false,
+    secondary: false,
+  })
+  const [showSecondaryEmailInput, setShowSecondaryEmailInput] = useState(false)
+  const [secondaryEmailDraft, setSecondaryEmailDraft] = useState('')
+  const [editingSecondaryEmail, setEditingSecondaryEmail] = useState(false)
+  const [institutionInputFocused, setInstitutionInputFocused] = useState<'primary' | 'secondary' | null>(null)
+  const [institutionSuggestions, setInstitutionSuggestions] = useState<AffiliationSuggestionItem[]>([])
+  const [institutionSuggestionsLoading, setInstitutionSuggestionsLoading] = useState(false)
+  const [institutionSuggestionsError, setInstitutionSuggestionsError] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState('')
@@ -981,6 +1485,7 @@ export function ProfileCollaborationPage() {
   const [aiAffiliationDraft, setAiAffiliationDraft] = useState<CollaborationAiAffiliationsNormalisePayload | null>(null)
   const [aiLoading, setAiLoading] = useState<string | null>(null)
   const [aiError, setAiError] = useState('')
+  const collaboratorInstitutionLookupSequenceRef = useRef(0)
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>(() => normalizeHeatmapMode(searchParams.get('heatmap_mode')))
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>(
     () => normalizeHeatmapMetric(searchParams.get('heatmap_metric')),
@@ -1006,13 +1511,14 @@ export function ProfileCollaborationPage() {
   const [collaborationLibraryFilterPopoverPosition, setCollaborationLibraryFilterPopoverPosition] = useState({ top: 0, right: 0 })
   const [collaborationLibraryDownloadPopoverPosition, setCollaborationLibraryDownloadPopoverPosition] = useState({ top: 0, right: 0 })
   const [collaborationLibrarySettingsPopoverPosition, setCollaborationLibrarySettingsPopoverPosition] = useState({ top: 0, right: 0 })
-  const [collaborationTableLayoutWidth, setCollaborationTableLayoutWidth] = useState(1080)
+  const initialCollaborationTableLayoutWidth = useMemo(() => resolveInitialCollaborationTableLayoutWidth(), [])
+  const [collaborationTableLayoutWidth, setCollaborationTableLayoutWidth] = useState(initialCollaborationTableLayoutWidth)
   const [collaborationTableColumnOrder, setCollaborationTableColumnOrder] = useState<CollaborationTableColumnKey[]>(
     () => [...COLLABORATION_TABLE_COLUMN_ORDER],
   )
   const [collaborationTableColumns, setCollaborationTableColumns] = useState<
     Record<CollaborationTableColumnKey, CollaborationTableColumnPreference>
-  >({ ...COLLABORATION_TABLE_COLUMN_DEFAULTS })
+  >(() => createDefaultCollaborationTableColumns(initialCollaborationTableLayoutWidth))
   const [collaborationTableDensity, setCollaborationTableDensity] = useState<CollaborationTableDensity>('default')
   const [collaborationTableAlternateRowColoring, setCollaborationTableAlternateRowColoring] = useState(true)
   const [collaborationTableMetricHighlights, setCollaborationTableMetricHighlights] = useState(true)
@@ -1427,6 +1933,30 @@ export function ProfileCollaborationPage() {
       const hydratedMockCollaborators: CollaboratorPayload[] = mockCollaborators.map((item) => ({
         ...item,
         owner_user_id: 'mock-user',
+        secondary_email: null,
+        contact_salutation: null,
+        contact_first_name: null,
+        contact_middle_initial: null,
+        contact_surname: null,
+        contact_email: null,
+        contact_secondary_email: null,
+        contact_primary_institution: null,
+        contact_secondary_institution: null,
+        contact_primary_institution_openalex_id: null,
+        contact_secondary_institution_openalex_id: null,
+        contact_primary_affiliation_department: null,
+        contact_primary_affiliation_address_line_1: null,
+        contact_primary_affiliation_city: null,
+        contact_primary_affiliation_region: null,
+        contact_primary_affiliation_postal_code: null,
+        contact_primary_affiliation_country: null,
+        contact_secondary_affiliation_department: null,
+        contact_secondary_affiliation_address_line_1: null,
+        contact_secondary_affiliation_city: null,
+        contact_secondary_affiliation_region: null,
+        contact_secondary_affiliation_postal_code: null,
+        contact_secondary_affiliation_country: null,
+        contact_country: null,
         duplicate_warnings: [],
         metrics: hydrateMockMetrics(item.metrics),
       }))
@@ -1671,6 +2201,298 @@ export function ProfileCollaborationPage() {
   const selectedCollaborator = useMemo(() => {
     return canonicalCollaborators.find((item) => item.id === selectedId) || null
   }, [canonicalCollaborators, selectedId])
+  const selectedCollaboratorRelationship = selectedCollaborator ? resolveRelationshipTier(selectedCollaborator.metrics) : 'UNCLASSIFIED'
+  const selectedCollaboratorActivity = selectedCollaborator ? resolveActivityStatus(selectedCollaborator.metrics) : 'UNCLASSIFIED'
+  const collaboratorAffiliations = useMemo(
+    () => collaboratorAuthorAffiliations(form),
+    [form],
+  )
+
+  const resetInstitutionSuggestionState = useCallback(() => {
+    setInstitutionInputFocused(null)
+    setInstitutionSuggestions([])
+    setInstitutionSuggestionsError('')
+  }, [])
+
+  const syncAffiliationBylineDraftsFromForm = useCallback((nextForm: CollaboratorFormState) => {
+    setPrimaryAffiliationBylineDraft(collaboratorBylineDraftFromForm(nextForm, 'primary'))
+    setSecondaryAffiliationBylineDraft(collaboratorBylineDraftFromForm(nextForm, 'secondary'))
+  }, [])
+
+  const applyCollaboratorFormState = useCallback((
+    collaborator: CollaboratorPayload,
+    options?: { pendingReview?: Partial<Record<CollaboratorAffiliationSlotKey, boolean>> },
+  ) => {
+    collaboratorInstitutionLookupSequenceRef.current += 1
+    const nextForm = toFormState(collaborator)
+    setForm(nextForm)
+    setPrimaryEmailDraft(collaborator.contact_email || '')
+    setEditingPrimaryEmail(false)
+    setInstitutionDraft(nextForm.primary_institution)
+    setEditingInstitution(false)
+    setShowSecondaryInstitutionInput(Boolean(nextForm.secondary_institution))
+    setSecondaryInstitutionDraft(nextForm.secondary_institution)
+    setEditingSecondaryInstitution(false)
+    syncAffiliationBylineDraftsFromForm(nextForm)
+    setEditingAffiliationBylineSlot(null)
+    resetInstitutionSuggestionState()
+    setShowSecondaryEmailInput(Boolean(collaborator.contact_secondary_email))
+    setSecondaryEmailDraft(collaborator.contact_secondary_email || '')
+    setEditingSecondaryEmail(false)
+    setDuplicateWarnings(collaborator.duplicate_warnings || [])
+    setPendingInstitutionReview({
+      primary: Boolean(options?.pendingReview?.primary),
+      secondary: Boolean(options?.pendingReview?.secondary),
+    })
+  }, [resetInstitutionSuggestionState, syncAffiliationBylineDraftsFromForm])
+
+  const clearCollaboratorFormState = useCallback(() => {
+    collaboratorInstitutionLookupSequenceRef.current += 1
+    setForm(EMPTY_FORM)
+    setPrimaryEmailDraft('')
+    setEditingPrimaryEmail(false)
+    setInstitutionDraft('')
+    setEditingInstitution(false)
+    setShowSecondaryInstitutionInput(false)
+    setSecondaryInstitutionDraft('')
+    setEditingSecondaryInstitution(false)
+    syncAffiliationBylineDraftsFromForm(EMPTY_FORM)
+    setEditingAffiliationBylineSlot(null)
+    resetInstitutionSuggestionState()
+    setShowSecondaryEmailInput(false)
+    setSecondaryEmailDraft('')
+    setEditingSecondaryEmail(false)
+    setDuplicateWarnings([])
+    setPendingInstitutionReview({ primary: false, secondary: false })
+  }, [resetInstitutionSuggestionState, syncAffiliationBylineDraftsFromForm])
+
+  const onAffiliationBylineDraftChange = useCallback((
+    slot: CollaboratorAffiliationSlotKey,
+    field: keyof CollaboratorAffiliationBylineDraft,
+    value: string,
+  ) => {
+    if (slot === 'secondary') {
+      setSecondaryAffiliationBylineDraft((current) => ({ ...current, [field]: value }))
+      return
+    }
+    setPrimaryAffiliationBylineDraft((current) => ({ ...current, [field]: value }))
+  }, [])
+
+  const applyAffiliationBylineDraft = useCallback((slot: CollaboratorAffiliationSlotKey) => {
+    const draft = slot === 'secondary' ? secondaryAffiliationBylineDraft : primaryAffiliationBylineDraft
+    setForm((current) => {
+      if (slot === 'secondary') {
+        return {
+          ...current,
+          secondary_affiliation_department: draft.department,
+          secondary_affiliation_address_line_1: draft.address_line_1,
+          secondary_affiliation_city: draft.city,
+          secondary_affiliation_region: draft.region,
+          secondary_affiliation_postal_code: draft.postal_code,
+          secondary_affiliation_country: draft.country,
+        }
+      }
+      return {
+        ...current,
+        primary_affiliation_department: draft.department,
+        primary_affiliation_address_line_1: draft.address_line_1,
+        primary_affiliation_city: draft.city,
+        primary_affiliation_region: draft.region,
+        primary_affiliation_postal_code: draft.postal_code,
+        primary_affiliation_country: draft.country,
+      }
+    })
+    setEditingAffiliationBylineSlot(null)
+  }, [primaryAffiliationBylineDraft, secondaryAffiliationBylineDraft])
+
+  const cancelAffiliationBylineDraft = useCallback((slot: CollaboratorAffiliationSlotKey) => {
+    setEditingAffiliationBylineSlot(null)
+    if (slot === 'secondary') {
+      setSecondaryAffiliationBylineDraft(collaboratorBylineDraftFromForm(form, 'secondary'))
+      return
+    }
+    setPrimaryAffiliationBylineDraft(collaboratorBylineDraftFromForm(form, 'primary'))
+  }, [form])
+
+  const syncInstitutionSlotFromSuggestion = useCallback(async (
+    token: string,
+    slot: CollaboratorAffiliationSlotKey,
+    sourceName: string,
+    options?: {
+      clearInstitutionOnFailure?: boolean
+      markPending?: boolean
+    },
+  ) => {
+    const clean = sanitizeAffiliation(sourceName)
+    const requestId = collaboratorInstitutionLookupSequenceRef.current + 1
+    collaboratorInstitutionLookupSequenceRef.current = requestId
+    const clearInstitutionOnFailure = Boolean(options?.clearInstitutionOnFailure)
+    const markPending = Boolean(options?.markPending)
+    const setSlotState = (
+      resolvedInstitution: string,
+      openalexId: string,
+      metadata: CollaboratorAffiliationBylineDraft,
+    ) => {
+      setForm((current) => {
+        if (slot === 'secondary') {
+          return {
+            ...current,
+            secondary_institution: resolvedInstitution,
+            secondary_institution_openalex_id: openalexId,
+            secondary_affiliation_department: current.secondary_affiliation_department,
+            secondary_affiliation_address_line_1: metadata.address_line_1,
+            secondary_affiliation_city: metadata.city,
+            secondary_affiliation_region: metadata.region,
+            secondary_affiliation_postal_code: metadata.postal_code,
+            secondary_affiliation_country: metadata.country,
+          }
+        }
+        return {
+          ...current,
+          primary_institution: resolvedInstitution,
+          primary_institution_openalex_id: openalexId,
+          primary_affiliation_department: current.primary_affiliation_department,
+          primary_affiliation_address_line_1: metadata.address_line_1,
+          primary_affiliation_city: metadata.city,
+          primary_affiliation_region: metadata.region,
+          primary_affiliation_postal_code: metadata.postal_code,
+          primary_affiliation_country: metadata.country,
+        }
+      })
+      if (slot === 'secondary') {
+        setSecondaryInstitutionDraft(resolvedInstitution)
+        setShowSecondaryInstitutionInput(Boolean(resolvedInstitution))
+        setSecondaryAffiliationBylineDraft((current) => ({
+          ...current,
+          address_line_1: metadata.address_line_1,
+          city: metadata.city,
+          region: metadata.region,
+          postal_code: metadata.postal_code,
+          country: metadata.country,
+        }))
+      } else {
+        setInstitutionDraft(resolvedInstitution)
+        setPrimaryAffiliationBylineDraft((current) => ({
+          ...current,
+          address_line_1: metadata.address_line_1,
+          city: metadata.city,
+          region: metadata.region,
+          postal_code: metadata.postal_code,
+          country: metadata.country,
+        }))
+      }
+      setPendingInstitutionReview((current) => ({ ...current, [slot]: markPending }))
+    }
+    if (!clean) {
+      setSlotState('', '', {
+        department: '',
+        address_line_1: '',
+        city: '',
+        region: '',
+        postal_code: '',
+        country: '',
+      })
+      return false
+    }
+    try {
+      const suggestionsPayload = await fetchAffiliationSuggestionsForMe(token, {
+        query: clean,
+        limit: 5,
+      })
+      if (collaboratorInstitutionLookupSequenceRef.current !== requestId) {
+        return false
+      }
+      const suggestions = suggestionsPayload.items
+        .map(mapAffiliationSuggestionItem)
+        .filter((item): item is AffiliationSuggestionItem => Boolean(item))
+      const matched = pickClearOpenAlexInstitutionMatch(clean, suggestions)
+      if (!matched) {
+        setSlotState(clearInstitutionOnFailure ? '' : clean, '', {
+          department: '',
+          address_line_1: '',
+          city: '',
+          region: '',
+          postal_code: '',
+          country: '',
+        })
+        return false
+      }
+      let metadata: CollaboratorAffiliationBylineDraft = {
+        department: '',
+        address_line_1: sanitizeAffiliation(matched.address),
+        city: sanitizeAffiliation(matched.city),
+        region: sanitizeAffiliation(matched.region),
+        postal_code: sanitizeAffiliation(matched.postalCode),
+        country: sanitizeAffiliation(matched.countryName),
+      }
+      try {
+        const resolved = await fetchAffiliationAddressForMe(token, {
+          name: matched.name,
+          city: matched.city || undefined,
+          region: matched.region || undefined,
+          country: matched.countryName || undefined,
+        })
+        if (collaboratorInstitutionLookupSequenceRef.current !== requestId) {
+          return false
+        }
+        metadata = {
+          department: '',
+          address_line_1: sanitizeAffiliation(resolved.line_1) || metadata.address_line_1,
+          city: sanitizeAffiliation(resolved.city) || metadata.city,
+          region: sanitizeAffiliation(resolved.region) || metadata.region,
+          postal_code: sanitizeAffiliation(resolved.postal_code) || metadata.postal_code,
+          country: sanitizeAffiliation(resolved.country_name) || metadata.country,
+        }
+      } catch {
+        // Keep the suggestion metadata when address resolution misses.
+      }
+      setSlotState(matched.name, sanitizeAffiliation(matched.openalexId), metadata)
+      return true
+    } catch {
+      if (collaboratorInstitutionLookupSequenceRef.current === requestId) {
+        setSlotState(clearInstitutionOnFailure ? '' : clean, '', {
+          department: '',
+          address_line_1: '',
+          city: '',
+          region: '',
+          postal_code: '',
+          country: '',
+        })
+      }
+      return false
+    }
+  }, [])
+
+  const bootstrapCollaboratorAffiliations = useCallback(async (
+    token: string,
+    collaborator: CollaboratorPayload,
+  ) => {
+    const initialForm = toFormState(collaborator)
+    const rawCandidates = rawCollaboratorInstitutionCandidates(collaborator)
+    const existingPrimary = sanitizeAffiliation(initialForm.primary_institution)
+    const existingSecondary = sanitizeAffiliation(initialForm.secondary_institution)
+    const primarySource = existingPrimary || rawCandidates[0] || ''
+    const secondarySource = existingSecondary || rawCandidates.find(
+      (candidate) => normalizeInstitutionKey(candidate) !== normalizeInstitutionKey(primarySource),
+    ) || ''
+
+    if (!initialForm.primary_institution_openalex_id && primarySource) {
+      await syncInstitutionSlotFromSuggestion(token, 'primary', primarySource, {
+        clearInstitutionOnFailure: !existingPrimary,
+        markPending: !existingPrimary,
+      })
+    }
+    if (
+      secondarySource
+      && normalizeInstitutionKey(secondarySource) !== normalizeInstitutionKey(primarySource)
+      && !initialForm.secondary_institution_openalex_id
+    ) {
+      await syncInstitutionSlotFromSuggestion(token, 'secondary', secondarySource, {
+        clearInstitutionOnFailure: !existingSecondary,
+        markPending: !existingSecondary,
+      })
+    }
+  }, [syncInstitutionSlotFromSuggestion])
 
   const nowYear = new Date().getUTCFullYear()
   const heatmapCells = useMemo<HeatmapCell[]>(() => {
@@ -1764,7 +2586,36 @@ export function ProfileCollaborationPage() {
       max: Math.max(...values),
     }
   }, [heatmapCells])
+
 
+  const collaborationStrengthToneById = useMemo(() => {
+    const positiveScores = canonicalCollaborators
+      .map((item) => Math.max(0, Number(item.metrics.collaboration_strength_score || 0)))
+      .filter((value) => value > 0)
+      .sort((left, right) => left - right)
+    const fallbackTone = collaborationStrengthTone(0, 0)
+    const minScore = positiveScores[0] || 0
+    const maxScore = positiveScores[positiveScores.length - 1] || 0
+    return canonicalCollaborators.reduce<Map<string, string>>((accumulator, item) => {
+      const rawScore = Math.max(0, Number(item.metrics.collaboration_strength_score || 0))
+      if (positiveScores.length === 0 || rawScore <= 0) {
+        accumulator.set(item.id, fallbackTone)
+        return accumulator
+      }
+      let upperBoundIndex = 0
+      while (upperBoundIndex < positiveScores.length && positiveScores[upperBoundIndex] <= rawScore) {
+        upperBoundIndex += 1
+      }
+      const rankIndex = Math.max(0, upperBoundIndex - 1)
+      const rankShare = positiveScores.length === 1 ? 1 : rankIndex / Math.max(1, positiveScores.length - 1)
+      const absoluteShare = maxScore <= minScore
+        ? 1
+        : Math.max(0, Math.min(1, (rawScore - minScore) / Math.max(1e-6, maxScore - minScore)))
+      const mixedScore = (absoluteShare * 0.7) + (rankShare * 0.3)
+      accumulator.set(item.id, collaborationStrengthTone(mixedScore, rawScore))
+      return accumulator
+    }, new Map<string, string>())
+  }, [canonicalCollaborators])
   const activeHeatmapCell = useMemo(() => {
     if (!heatmapSelection || heatmapSelection.mode !== heatmapMode) {
       return null
@@ -1831,7 +2682,7 @@ export function ProfileCollaborationPage() {
     collaborationTableColumnOrder.filter((column) => collaborationTableColumns[column].visible)
   ), [collaborationTableColumnOrder, collaborationTableColumns])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = collaborationTableLayoutRef.current
     if (!node) {
       return
@@ -1856,7 +2707,7 @@ export function ProfileCollaborationPage() {
     }
   }, [collaborationLibraryVisible, visibleCollaborationTableColumns.length])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const availableWidth = resolveCollaborationTableAvailableWidth()
     setCollaborationTableColumns((current) => {
       const next = clampCollaborationTableColumnsToAvailableWidth({
@@ -1995,16 +2846,15 @@ export function ProfileCollaborationPage() {
     })
   }
 
-  const onResetCollaborationTableSettings = () => {
+  const onResetCollaborationTableLayout = () => {
     const availableWidth = resolveCollaborationTableAvailableWidth()
-    setCollaborationTableColumns(
-      clampCollaborationTableColumnsToAvailableWidth({
-        columns: { ...COLLABORATION_TABLE_COLUMN_DEFAULTS },
-        columnOrder: COLLABORATION_TABLE_COLUMN_ORDER,
-        availableWidth,
-      }),
-    )
+    setCollaborationTableColumns(createDefaultCollaborationTableColumns(availableWidth))
     setCollaborationTableColumnOrder([...COLLABORATION_TABLE_COLUMN_ORDER])
+  }
+
+  const onResetCollaborationTableFilters = () => {
+    setSort('strength')
+    setSortDirection('desc')
     setCollaborationTableDensity('default')
     setCollaborationTableAlternateRowColoring(true)
     setCollaborationTableMetricHighlights(true)
@@ -2264,7 +3114,7 @@ export function ProfileCollaborationPage() {
     if (cleanQuery) {
       next.set('query', cleanQuery)
     }
-    if (sort !== 'name') {
+    if (sort !== 'strength') {
       next.set('sort', sort)
     }
     if (page > 1) {
@@ -2327,12 +3177,11 @@ export function ProfileCollaborationPage() {
       if (!selectedStillPresent && listPayload.items.length > 0) {
         const first = listPayload.items[0]
         setSelectedId(first.id)
-        setForm(toFormState(first))
+        applyCollaboratorFormState(first)
       }
       if (listPayload.items.length === 0) {
         setSelectedId(null)
-        setForm(EMPTY_FORM)
-        setDuplicateWarnings([])
+        clearCollaboratorFormState()
       }
     } catch (loadError) {
       if (!background) {
@@ -2358,7 +3207,7 @@ export function ProfileCollaborationPage() {
     }
     void load(token, { background: Boolean(cached) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate, sort])
+  }, [applyCollaboratorFormState, clearCollaboratorFormState, navigate, sort])
 
   useEffect(() => {
     if (!summary || summary.status !== 'RUNNING') {
@@ -2385,12 +3234,71 @@ export function ProfileCollaborationPage() {
       return
     }
     void getCollaborator(token, selectedId)
-      .then((item) => {
-        setForm(toFormState(item))
-        setDuplicateWarnings(item.duplicate_warnings || [])
+      .then(async (item) => {
+        applyCollaboratorFormState(item)
+        await bootstrapCollaboratorAffiliations(token, item)
       })
       .catch(() => undefined)
-  }, [selectedId])
+  }, [applyCollaboratorFormState, bootstrapCollaboratorAffiliations, selectedId])
+
+  useEffect(() => {
+    if (!institutionInputFocused) {
+      setInstitutionSuggestionsLoading(false)
+      setInstitutionSuggestionsError('')
+      setInstitutionSuggestions([])
+      return
+    }
+    const query = sanitizeAffiliation(institutionInputFocused === 'secondary' ? secondaryInstitutionDraft : institutionDraft)
+    if (query.length < 2) {
+      setInstitutionSuggestionsLoading(false)
+      setInstitutionSuggestionsError('')
+      setInstitutionSuggestions([])
+      return
+    }
+    const token = getAuthSessionToken()
+    if (!token) {
+      setInstitutionSuggestionsLoading(false)
+      setInstitutionSuggestionsError('')
+      setInstitutionSuggestions([])
+      return
+    }
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      setInstitutionSuggestionsLoading(true)
+      setInstitutionSuggestionsError('')
+      void fetchAffiliationSuggestionsForMe(token, { query, limit: 8 })
+        .then((payload) => {
+          if (cancelled) {
+            return
+          }
+          setInstitutionSuggestions(
+            payload.items
+              .map(mapAffiliationSuggestionItem)
+              .filter((item): item is AffiliationSuggestionItem => Boolean(item)),
+          )
+        })
+        .catch((lookupError) => {
+          if (cancelled) {
+            return
+          }
+          setInstitutionSuggestions([])
+          setInstitutionSuggestionsError(
+            lookupError instanceof Error
+              ? lookupError.message
+              : 'Institution suggestions lookup failed.',
+          )
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setInstitutionSuggestionsLoading(false)
+          }
+        })
+    }, AFFILIATION_LOOKUP_DEBOUNCE_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [institutionDraft, institutionInputFocused, secondaryInstitutionDraft])
 
   const onSearch = async () => {
     const token = getAuthSessionToken()
@@ -2436,11 +3344,178 @@ export function ProfileCollaborationPage() {
 
   const onSelectCollaborator = (collaborator: CollaboratorPayload) => {
     setSelectedId(collaborator.id)
-    setForm(toFormState(collaborator))
-    setDuplicateWarnings(collaborator.duplicate_warnings || [])
+    setActiveCollaboratorDrilldownTab('details')
+    applyCollaboratorFormState(collaborator)
     setStatus('')
     setError('')
     setCollaboratorDrilldownOpen(true)
+  }
+
+  const onStartPrimaryEmailEdit = () => {
+    setPrimaryEmailDraft(form.email || '')
+    setEditingPrimaryEmail(true)
+  }
+
+  const onStartInstitutionEdit = () => {
+    setInstitutionDraft(form.primary_institution || '')
+    setEditingInstitution(true)
+  }
+
+  const onOpenSecondaryInstitutionDraft = () => {
+    setShowSecondaryInstitutionInput(true)
+    setSecondaryInstitutionDraft(form.secondary_institution || '')
+    setEditingSecondaryInstitution(true)
+  }
+
+  const onOpenSecondaryEmailDraft = () => {
+    setShowSecondaryEmailInput(true)
+    setSecondaryEmailDraft(form.secondary_email || '')
+    setEditingSecondaryEmail(true)
+  }
+
+  const onCommitPrimaryEmailDraft = () => {
+    const clean = primaryEmailDraft.trim()
+    setForm((current) => ({ ...current, email: clean }))
+    setPrimaryEmailDraft(clean)
+    setEditingPrimaryEmail(false)
+  }
+
+  const onCancelPrimaryEmailDraft = () => {
+    setPrimaryEmailDraft(form.email || '')
+    setEditingPrimaryEmail(false)
+  }
+
+  const onCommitInstitutionDraft = async () => {
+    const clean = sanitizeAffiliation(institutionDraft)
+    setInstitutionDraft(clean)
+    setEditingInstitution(false)
+    resetInstitutionSuggestionState()
+    setPendingInstitutionReview((current) => ({ ...current, primary: false }))
+    setForm((current) => ({
+      ...current,
+      primary_institution: clean,
+    }))
+    const token = getAuthSessionToken()
+    if (!token) {
+      return
+    }
+    await syncInstitutionSlotFromSuggestion(token, 'primary', clean, {
+      clearInstitutionOnFailure: false,
+      markPending: false,
+    })
+  }
+
+  const onCancelInstitutionDraft = () => {
+    setInstitutionDraft(form.primary_institution || '')
+    setEditingInstitution(false)
+    resetInstitutionSuggestionState()
+  }
+
+  const onStartSecondaryInstitutionEdit = () => {
+    setShowSecondaryInstitutionInput(true)
+    setSecondaryInstitutionDraft(form.secondary_institution || '')
+    setEditingSecondaryInstitution(true)
+  }
+
+  const onCommitSecondaryInstitutionDraft = async () => {
+    const clean = sanitizeAffiliation(secondaryInstitutionDraft)
+    setSecondaryInstitutionDraft(clean)
+    setShowSecondaryInstitutionInput(Boolean(clean))
+    setEditingSecondaryInstitution(false)
+    resetInstitutionSuggestionState()
+    setPendingInstitutionReview((current) => ({ ...current, secondary: false }))
+    setForm((current) => ({
+      ...current,
+      secondary_institution: clean,
+    }))
+    const token = getAuthSessionToken()
+    if (!token) {
+      return
+    }
+    await syncInstitutionSlotFromSuggestion(token, 'secondary', clean, {
+      clearInstitutionOnFailure: false,
+      markPending: false,
+    })
+  }
+
+  const onCancelSecondaryInstitutionDraft = () => {
+    const committed = form.secondary_institution || ''
+    setSecondaryInstitutionDraft(committed)
+    setShowSecondaryInstitutionInput(Boolean(committed))
+    setEditingSecondaryInstitution(false)
+    resetInstitutionSuggestionState()
+  }
+
+  const onStartSecondaryEmailEdit = () => {
+    setShowSecondaryEmailInput(true)
+    setSecondaryEmailDraft(form.secondary_email || '')
+    setEditingSecondaryEmail(true)
+  }
+
+  const onSelectInstitutionSuggestion = (suggestion: AffiliationSuggestionItem) => {
+    if (institutionInputFocused === 'secondary') {
+      setSecondaryInstitutionDraft(suggestion.name)
+    } else {
+      setInstitutionDraft(suggestion.name)
+    }
+    setInstitutionSuggestions([])
+    setInstitutionSuggestionsError('')
+  }
+
+  const onSetPrimaryInstitution = (value: string) => {
+    const clean = sanitizeAffiliation(value)
+    const currentPrimary = sanitizeAffiliation(form.primary_institution)
+    const currentSecondary = sanitizeAffiliation(form.secondary_institution)
+    if (!clean || clean.toLowerCase() === currentPrimary.toLowerCase() || clean.toLowerCase() !== currentSecondary.toLowerCase()) {
+      return
+    }
+    const nextForm: CollaboratorFormState = {
+      ...form,
+      primary_institution: form.secondary_institution,
+      secondary_institution: form.primary_institution,
+      primary_institution_openalex_id: form.secondary_institution_openalex_id,
+      secondary_institution_openalex_id: form.primary_institution_openalex_id,
+      primary_affiliation_department: form.secondary_affiliation_department,
+      primary_affiliation_address_line_1: form.secondary_affiliation_address_line_1,
+      primary_affiliation_city: form.secondary_affiliation_city,
+      primary_affiliation_region: form.secondary_affiliation_region,
+      primary_affiliation_postal_code: form.secondary_affiliation_postal_code,
+      primary_affiliation_country: form.secondary_affiliation_country,
+      secondary_affiliation_department: form.primary_affiliation_department,
+      secondary_affiliation_address_line_1: form.primary_affiliation_address_line_1,
+      secondary_affiliation_city: form.primary_affiliation_city,
+      secondary_affiliation_region: form.primary_affiliation_region,
+      secondary_affiliation_postal_code: form.primary_affiliation_postal_code,
+      secondary_affiliation_country: form.primary_affiliation_country,
+    }
+    setForm(nextForm)
+    syncAffiliationBylineDraftsFromForm(nextForm)
+    setPendingInstitutionReview({
+      primary: pendingInstitutionReview.secondary,
+      secondary: pendingInstitutionReview.primary,
+    })
+    setEditingAffiliationBylineSlot(null)
+    setInstitutionDraft(nextForm.primary_institution)
+    setSecondaryInstitutionDraft(nextForm.secondary_institution)
+    setShowSecondaryInstitutionInput(Boolean(nextForm.secondary_institution))
+    setEditingInstitution(false)
+    setEditingSecondaryInstitution(false)
+    resetInstitutionSuggestionState()
+  }
+
+  const onCommitSecondaryEmailDraft = () => {
+    const clean = secondaryEmailDraft.trim()
+    setForm((current) => ({ ...current, secondary_email: clean }))
+    setSecondaryEmailDraft(clean)
+    setShowSecondaryEmailInput(Boolean(clean))
+    setEditingSecondaryEmail(false)
+  }
+
+  const onCancelSecondaryEmailDraft = () => {
+    const committed = form.secondary_email || ''
+    setSecondaryEmailDraft(committed)
+    setShowSecondaryEmailInput(Boolean(committed))
+    setEditingSecondaryEmail(false)
   }
 
   const onSave = async () => {
@@ -2458,22 +3533,33 @@ export function ProfileCollaborationPage() {
     setStatus('')
     try {
       const payload = {
-        full_name: form.full_name,
-        preferred_name: form.preferred_name || null,
-        email: form.email || null,
-        orcid_id: form.orcid_id || null,
-        openalex_author_id: form.openalex_author_id || null,
-        primary_institution: form.primary_institution || null,
-        department: form.department || null,
-        country: form.country || null,
-        current_position: form.current_position || null,
-        research_domains: parseDomains(form.research_domains),
-        notes: form.notes || null,
+        contact_salutation: form.salutation || null,
+        contact_first_name: form.first_name || null,
+        contact_middle_initial: form.middle_initial || null,
+        contact_surname: form.surname || null,
+        contact_email: form.email || null,
+        contact_secondary_email: form.secondary_email || null,
+        contact_primary_institution: form.primary_institution || null,
+        contact_secondary_institution: form.secondary_institution || null,
+        contact_primary_institution_openalex_id: form.primary_institution_openalex_id || null,
+        contact_secondary_institution_openalex_id: form.secondary_institution_openalex_id || null,
+        contact_primary_affiliation_department: form.primary_affiliation_department || null,
+        contact_primary_affiliation_address_line_1: form.primary_affiliation_address_line_1 || null,
+        contact_primary_affiliation_city: form.primary_affiliation_city || null,
+        contact_primary_affiliation_region: form.primary_affiliation_region || null,
+        contact_primary_affiliation_postal_code: form.primary_affiliation_postal_code || null,
+        contact_primary_affiliation_country: form.primary_affiliation_country || null,
+        contact_secondary_affiliation_department: form.secondary_affiliation_department || null,
+        contact_secondary_affiliation_address_line_1: form.secondary_affiliation_address_line_1 || null,
+        contact_secondary_affiliation_city: form.secondary_affiliation_city || null,
+        contact_secondary_affiliation_region: form.secondary_affiliation_region || null,
+        contact_secondary_affiliation_postal_code: form.secondary_affiliation_postal_code || null,
+        contact_secondary_affiliation_country: form.secondary_affiliation_country || null,
+        contact_country: form.country || null,
       }
       const saved = await updateCollaborator(token, selectedId, payload)
       setSelectedId(saved.id)
-      setForm(toFormState(saved))
-      setDuplicateWarnings(saved.duplicate_warnings || [])
+      applyCollaboratorFormState(saved)
       setStatus('Collaborator updated.')
       await load(token)
     } catch (saveError) {
@@ -2499,8 +3585,7 @@ export function ProfileCollaborationPage() {
       setStatus('Collaborator deleted.')
       setSelectedId(null)
       setCollaboratorDrilldownOpen(false)
-      setForm(EMPTY_FORM)
-      setDuplicateWarnings([])
+      clearCollaboratorFormState()
       await load(token)
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Could not delete collaborator.')
@@ -2583,7 +3668,7 @@ export function ProfileCollaborationPage() {
     try {
       const payload = await generateCollaborationAiContributionStatement(token, {
         authors: aiAuthorDraftSeed.map((item, index) => ({
-          full_name: item.full_name,
+          full_name: collaboratorDisplayName(item),
           roles: [],
           is_corresponding: index === 0,
           equal_contribution: false,
@@ -2617,8 +3702,8 @@ export function ProfileCollaborationPage() {
     try {
       const payload = await generateCollaborationAiAffiliationsNormaliser(token, {
         authors: aiAuthorDraftSeed.map((item) => ({
-          full_name: item.full_name,
-          institution: item.primary_institution,
+          full_name: collaboratorDisplayName(item),
+          institution: collaboratorDisplayInstitution(item),
           orcid_id: item.orcid_id,
         })),
       })
@@ -2779,28 +3864,134 @@ export function ProfileCollaborationPage() {
                   {collaborationFilterVisible ? createPortal(
                     <div
                       ref={collaborationLibraryFilterPopoverRef}
-                      className="house-publications-filter-popover fixed z-50 w-[17.5rem]"
+                      className="house-publications-filter-popover fixed z-50 w-[18.75rem]"
                       style={{
                         top: `${collaborationLibraryFilterPopoverPosition.top}px`,
                         right: `${collaborationLibraryFilterPopoverPosition.right}px`,
                       }}
                     >
                       <div className="house-publications-filter-header">
-                        <p className="house-publications-filter-title">Filter library</p>
+                        <p className="house-publications-filter-title">Filter table</p>
                         <button
                           type="button"
                           className="house-publications-filter-clear"
                           onClick={() => {
-                            setHeatmapSelection(null)
+                            onResetCollaborationTableFilters()
                             setCollaborationFilterVisible(false)
                           }}
                         >
                           Clear
                         </button>
                       </div>
-                      <p className="house-publications-filter-empty">
-                        {heatmapSelection ? 'Heat map filter currently applied.' : 'No active collaborator filters.'}
-                      </p>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Sort</span>
+                          <span className="house-publications-filter-count">
+                            {collaborationSortLabel(sort)}
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          {(['name', 'relationship_tier', 'activity_status', 'works', 'last_collaboration_year', 'strength'] as const).map((sortOption) => (
+                            <label key={`collaboration-filter-sort-${sortOption}`} className="house-publications-filter-option">
+                              <input
+                                type="radio"
+                                name="collaboration-filter-sort"
+                                className="house-publications-filter-checkbox"
+                                checked={sort === sortOption}
+                                onChange={() => onSortChange(sortOption)}
+                              />
+                              <span className="house-publications-filter-option-label">{collaborationSortLabel(sortOption)}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Visuals</span>
+                          <span className="house-publications-filter-count">
+                            {(collaborationTableAlternateRowColoring ? 1 : 0) + (collaborationTableMetricHighlights ? 1 : 0)}/2
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          <label className="house-publications-filter-option">
+                            <input
+                              type="checkbox"
+                              className="house-publications-filter-checkbox"
+                              checked={collaborationTableAlternateRowColoring}
+                              onChange={() => setCollaborationTableAlternateRowColoring((current) => !current)}
+                            />
+                            <span className="house-publications-filter-option-label">Alternate row shading</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input
+                              type="checkbox"
+                              className="house-publications-filter-checkbox"
+                              checked={collaborationTableMetricHighlights}
+                              onChange={() => setCollaborationTableMetricHighlights((current) => !current)}
+                            />
+                            <span className="house-publications-filter-option-label">Metric highlights (score)</span>
+                          </label>
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Density</span>
+                          <span className="house-publications-filter-count">
+                            {collaborationTableDensity === 'default'
+                              ? 'Default'
+                              : collaborationTableDensity === 'compact'
+                                ? 'Compact'
+                                : 'Comfortable'}
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          {(['compact', 'default', 'comfortable'] as CollaborationTableDensity[]).map((densityOption) => (
+                            <label key={`collaboration-filter-density-${densityOption}`} className="house-publications-filter-option">
+                              <input
+                                type="radio"
+                                name="collaboration-filter-density"
+                                className="house-publications-filter-checkbox"
+                                checked={collaborationTableDensity === densityOption}
+                                onChange={() => setCollaborationTableDensity(densityOption)}
+                              />
+                              <span className="house-publications-filter-option-label">
+                                {densityOption === 'default'
+                                  ? 'Default'
+                                  : densityOption === 'compact'
+                                    ? 'Compact'
+                                    : 'Comfortable'}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Rows per page</span>
+                          <span className="house-publications-filter-count">
+                            {collaborationLibraryPageSize === 'all' ? 'All' : collaborationLibraryPageSize}
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          {([25, 50, 100, 'all'] as CollaborationTablePageSize[]).map((pageSizeOption) => (
+                            <label key={`collaboration-filter-page-size-${pageSizeOption}`} className="house-publications-filter-option">
+                              <input
+                                type="radio"
+                                name="collaboration-filter-page-size"
+                                className="house-publications-filter-checkbox"
+                                checked={collaborationLibraryPageSize === pageSizeOption}
+                                onChange={() => {
+                                  setCollaborationLibraryPageSize(pageSizeOption)
+                                  setPage(1)
+                                }}
+                              />
+                              <span className="house-publications-filter-option-label">
+                                {pageSizeOption === 'all' ? 'All collaborators' : `${pageSizeOption} collaborators`}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </details>
                     </div>,
                     document.body
                   ) : null}
@@ -2980,33 +4171,11 @@ export function ProfileCollaborationPage() {
                           <button type="button" className="house-publications-filter-clear" onClick={onAutoAdjustCollaborationTableWidths}>
                             Auto fit
                           </button>
-                          <button type="button" className="house-publications-filter-clear" onClick={onResetCollaborationTableSettings}>
+                          <button type="button" className="house-publications-filter-clear" onClick={onResetCollaborationTableLayout}>
                             Reset
                           </button>
                         </div>
                       </div>
-                      <details className="house-publications-filter-group" open>
-                        <summary className="house-publications-filter-summary">
-                          <span>Sort</span>
-                          <span className="house-publications-filter-count">
-                            {collaborationSortLabel(sort)}
-                          </span>
-                        </summary>
-                        <div className="house-publications-filter-options">
-                          {(['name', 'relationship_tier', 'activity_status', 'works', 'last_collaboration_year', 'strength'] as const).map((sortOption) => (
-                            <label key={`collaboration-sort-${sortOption}`} className="house-publications-filter-option">
-                              <input
-                                type="radio"
-                                name="collaboration-sort"
-                                className="house-publications-filter-checkbox"
-                                checked={sort === sortOption}
-                                onChange={() => onSortChange(sortOption)}
-                              />
-                              <span className="house-publications-filter-option-label">{collaborationSortLabel(sortOption)}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </details>
                       <details className="house-publications-filter-group" open>
                         <summary className="house-publications-filter-summary">
                           <span>Columns</span>
@@ -3036,93 +4205,6 @@ export function ProfileCollaborationPage() {
                               </label>
                             )
                           })}
-                        </div>
-                      </details>
-                      <details className="house-publications-filter-group" open>
-                        <summary className="house-publications-filter-summary">
-                          <span>Visuals</span>
-                          <span className="house-publications-filter-count">
-                            {(collaborationTableAlternateRowColoring ? 1 : 0) + (collaborationTableMetricHighlights ? 1 : 0)}/2
-                          </span>
-                        </summary>
-                        <div className="house-publications-filter-options">
-                          <label className="house-publications-filter-option">
-                            <input
-                              type="checkbox"
-                              className="house-publications-filter-checkbox"
-                              checked={collaborationTableAlternateRowColoring}
-                              onChange={() => setCollaborationTableAlternateRowColoring((current) => !current)}
-                            />
-                            <span className="house-publications-filter-option-label">Alternate row shading</span>
-                          </label>
-                          <label className="house-publications-filter-option">
-                            <input
-                              type="checkbox"
-                              className="house-publications-filter-checkbox"
-                              checked={collaborationTableMetricHighlights}
-                              onChange={() => setCollaborationTableMetricHighlights((current) => !current)}
-                            />
-                            <span className="house-publications-filter-option-label">Metric highlights (score)</span>
-                          </label>
-                        </div>
-                      </details>
-                      <details className="house-publications-filter-group" open>
-                        <summary className="house-publications-filter-summary">
-                          <span>Density</span>
-                          <span className="house-publications-filter-count">
-                            {collaborationTableDensity === 'default'
-                              ? 'Default'
-                              : collaborationTableDensity === 'compact'
-                                ? 'Compact'
-                                : 'Comfortable'}
-                          </span>
-                        </summary>
-                        <div className="house-publications-filter-options">
-                          {(['compact', 'default', 'comfortable'] as CollaborationTableDensity[]).map((densityOption) => (
-                            <label key={`collaboration-density-${densityOption}`} className="house-publications-filter-option">
-                              <input
-                                type="radio"
-                                name="collaboration-table-density"
-                                className="house-publications-filter-checkbox"
-                                checked={collaborationTableDensity === densityOption}
-                                onChange={() => setCollaborationTableDensity(densityOption)}
-                              />
-                              <span className="house-publications-filter-option-label">
-                                {densityOption === 'default'
-                                  ? 'Default'
-                                  : densityOption === 'compact'
-                                    ? 'Compact'
-                                    : 'Comfortable'}
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      </details>
-                      <details className="house-publications-filter-group" open>
-                        <summary className="house-publications-filter-summary">
-                          <span>Rows per page</span>
-                          <span className="house-publications-filter-count">
-                            {collaborationLibraryPageSize === 'all' ? 'All' : collaborationLibraryPageSize}
-                          </span>
-                        </summary>
-                        <div className="house-publications-filter-options">
-                          {([25, 50, 100, 'all'] as CollaborationTablePageSize[]).map((pageSizeOption) => (
-                            <label key={`collaboration-page-size-${pageSizeOption}`} className="house-publications-filter-option">
-                              <input
-                                type="radio"
-                                name="collaboration-table-page-size"
-                                className="house-publications-filter-checkbox"
-                                checked={collaborationLibraryPageSize === pageSizeOption}
-                                onChange={() => {
-                                  setCollaborationLibraryPageSize(pageSizeOption)
-                                  setPage(1)
-                                }}
-                              />
-                              <span className="house-publications-filter-option-label">
-                                {pageSizeOption === 'all' ? 'All collaborators' : `${pageSizeOption} collaborators`}
-                              </span>
-                            </label>
-                          ))}
                         </div>
                       </details>
                     </div>,
@@ -3302,11 +4384,18 @@ export function ProfileCollaborationPage() {
                           if (columnKey === 'name') {
                             return (
                               <TableCell key={`${item.id}-name`} className="house-table-cell-text align-top font-medium whitespace-normal break-words leading-tight">
-                                {item.full_name}
+                                {collaboratorDisplayName(item)}
                               </TableCell>
                             )
                           }
                           if (columnKey === 'institution') {
+                            return (
+                              <TableCell key={`${item.id}-institution`} className="house-table-cell-text align-top whitespace-normal break-words leading-tight">
+                                {collaboratorDisplayInstitution(item) || '-'}
+                              </TableCell>
+                            )
+                          }
+                          if (false && columnKey === 'institution') {
                             return (
                               <TableCell key={`${item.id}-institution`} className="house-table-cell-text align-top whitespace-normal break-words leading-tight">
                                 {item.institution_labels.join(' • ') || item.primary_institution || '-'}
@@ -3361,12 +4450,16 @@ export function ProfileCollaborationPage() {
                           return (
                             <TableCell
                               key={`${item.id}-collaboration-score`}
-                              className={cn(
-                                'house-table-cell-text align-top text-center whitespace-nowrap tabular-nums',
-                                collaborationTableMetricHighlights && 'font-semibold text-[hsl(var(--tone-accent-800))]',
-                              )}
+                              className="house-table-cell-text align-top text-center whitespace-nowrap tabular-nums"
                             >
-                              {Number(item.metrics.collaboration_strength_score || 0).toFixed(2)}
+                              <span
+                                className={cn(
+                                  'inline-flex min-w-[4.75rem] items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
+                                  collaborationStrengthToneById.get(item.id) || collaborationStrengthTone(0, 0),
+                                )}
+                              >
+                                {Number(item.metrics.collaboration_strength_score || 0).toFixed(2)}
+                              </span>
                             </TableCell>
                           )
                         })}
@@ -3386,7 +4479,7 @@ export function ProfileCollaborationPage() {
                   onClick={() => onSelectCollaborator(item)}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium">{item.full_name}</p>
+                    <p className="font-medium">{collaboratorDisplayName(item)}</p>
                     <div className="flex items-center gap-1">
                       <Badge size="sm" variant={relationshipTone(resolveRelationshipTier(item.metrics))}>
                         {resolveRelationshipTier(item.metrics)}
@@ -3396,14 +4489,24 @@ export function ProfileCollaborationPage() {
                       </Badge>
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">{item.primary_institution || 'No institution'}</p>
-                  {item.institution_labels.length > 1 ? (
+                  <p className="text-xs text-muted-foreground">{collaboratorDisplayInstitution(item) || 'No institution'}</p>
+                  {item.institution_labels.length > 1 && !item.contact_primary_institution ? (
                     <p className="text-xs text-muted-foreground">Institutions: {item.institution_labels.join(' • ')}</p>
                   ) : null}
-                  <p className="text-xs text-muted-foreground">
-                    Works: {item.metrics.coauthored_works_count} | Last year:{' '}
-                    {item.metrics.last_collaboration_year ?? '-'}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>
+                      Works: {item.metrics.coauthored_works_count} | Last year:{' '}
+                      {item.metrics.last_collaboration_year ?? '-'}
+                    </span>
+                    <span
+                      className={cn(
+                        'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums',
+                        collaborationStrengthToneById.get(item.id) || collaborationStrengthTone(0, 0),
+                      )}
+                    >
+                      Score {Number(item.metrics.collaboration_strength_score || 0).toFixed(2)}
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -3745,132 +4848,758 @@ export function ProfileCollaborationPage() {
         {selectedCollaborator ? (
           <>
             <DrilldownSheet.Header
-              title={selectedCollaborator.full_name || 'Collaborator details'}
-              subtitle={selectedCollaborator.primary_institution
-                ? `${selectedCollaborator.primary_institution}${selectedCollaborator.country ? `, ${selectedCollaborator.country}` : ''}`
+              title={collaboratorDisplayName(selectedCollaborator) || 'Collaborator details'}
+              subtitle={collaboratorDisplayInstitution(selectedCollaborator)
+                ? collaboratorDisplayInstitution(selectedCollaborator)
                 : 'Review and update collaborator details.'}
               variant="profile"
-            />
+            >
+              <DrilldownSheet.Tabs
+                activeTab={activeCollaboratorDrilldownTab}
+                onTabChange={(tabId) => setActiveCollaboratorDrilldownTab(tabId as CollaboratorDrilldownTab)}
+                panelIdPrefix="collaborator-drilldown-panel-"
+                tabIdPrefix="collaborator-drilldown-tab-"
+                aria-label="Collaborator drilldown sections"
+                className="house-drilldown-tabs"
+              >
+                {COLLABORATOR_DRILLDOWN_TABS.map((tab) => (
+                  <DrilldownSheet.Tab key={tab.id} id={tab.id}>
+                    {tab.label}
+                  </DrilldownSheet.Tab>
+                ))}
+              </DrilldownSheet.Tabs>
+            </DrilldownSheet.Header>
             <DrilldownSheet.Content className="house-drilldown-stack-3">
-              <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title">Collaborator details</p>
-              </div>
-              <div className="house-drilldown-content-block">
-                <div className="space-y-3 rounded border border-border bg-card p-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      value={form.full_name}
-                      onChange={(event) => setForm((current) => ({ ...current, full_name: event.target.value }))}
-                      placeholder="Full name"
-                    />
-                    <Input
-                      value={form.preferred_name}
-                      onChange={(event) => setForm((current) => ({ ...current, preferred_name: event.target.value }))}
-                      placeholder="Preferred name"
-                    />
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      value={form.email}
-                      onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                      placeholder="Email"
-                    />
-                    <Input
-                      value={form.orcid_id}
-                      onChange={(event) => setForm((current) => ({ ...current, orcid_id: event.target.value }))}
-                      placeholder="ORCID (0000-0000-0000-0000)"
-                    />
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      value={form.openalex_author_id}
-                      onChange={(event) => setForm((current) => ({ ...current, openalex_author_id: event.target.value }))}
-                      placeholder="OpenAlex author id"
-                    />
-                    <Input
-                      value={form.primary_institution}
-                      onChange={(event) => setForm((current) => ({ ...current, primary_institution: event.target.value }))}
-                      placeholder="Primary institution"
-                    />
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      value={form.department}
-                      onChange={(event) => setForm((current) => ({ ...current, department: event.target.value }))}
-                      placeholder="Department"
-                    />
-                    <Input
-                      value={form.current_position}
-                      onChange={(event) => setForm((current) => ({ ...current, current_position: event.target.value }))}
-                      placeholder="Current position"
-                    />
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      value={form.country}
-                      onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))}
-                      placeholder="Country"
-                    />
-                    <Input
-                      value={form.research_domains}
-                      onChange={(event) => setForm((current) => ({ ...current, research_domains: event.target.value }))}
-                      placeholder="Domains (comma-separated)"
-                    />
-                  </div>
-                  <Textarea
-                    value={form.notes}
-                    onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                    placeholder="Notes"
-                    className="min-h-24 px-3 py-2 text-sm"
-                  />
-                  {duplicateWarnings.length > 0 ? (
-                    <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                      {duplicateWarnings.map((warning) => (
-                        <p key={warning}>{warning}</p>
-                      ))}
+              <DrilldownSheet.TabPanel
+                id={activeCollaboratorDrilldownTab}
+                isActive={true}
+                tabIdPrefix="collaborator-drilldown-tab-"
+                panelIdPrefix="collaborator-drilldown-panel-"
+              >
+                {activeCollaboratorDrilldownTab === 'details' ? (
+                  <div className="house-section-panel house-drilldown-panel-no-pad">
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Collaborator details</p>
                     </div>
-                  ) : null}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button type="button" size="sm" onClick={onSave} disabled={saving}>
-                      Save changes
-                    </Button>
-                    {selectedId ? (
-                      <Button type="button" size="sm" variant="secondary" onClick={onDelete} disabled={saving}>
-                        Delete
-                      </Button>
-                    ) : null}
-                    {selectedId ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          if (selectedCollaborator) {
-                            setForm(toFormState(selectedCollaborator))
-                          }
-                        }}
-                      >
-                        Reset
-                      </Button>
-                    ) : null}
+                    <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                      <div className="space-y-3">
+                        <div className="grid gap-3 sm:grid-cols-[5.1rem_minmax(0,1fr)_4.5rem_minmax(0,1fr)]">
+                          <label className="space-y-1">
+                            <span className="house-field-label">Title</span>
+                            <SelectPrimitive
+                              value={form.salutation || '__none__'}
+                              onValueChange={(value) => setForm((current) => ({ ...current, salutation: value === '__none__' ? '' : value }))}
+                            >
+                              <SelectTrigger aria-label="Title">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Select title</SelectItem>
+                                {COLLABORATOR_SALUTATION_OPTIONS.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </SelectPrimitive>
+                          </label>
+                          <label className="space-y-1">
+                            <span className="house-field-label">First name</span>
+                            <Input
+                              value={form.first_name}
+                              onChange={(event) => setForm((current) => ({ ...current, first_name: event.target.value }))}
+                              autoComplete="given-name"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="house-field-label">Initial</span>
+                            <Input
+                              value={form.middle_initial}
+                              onChange={(event) => setForm((current) => ({ ...current, middle_initial: event.target.value.toUpperCase() }))}
+                              maxLength={4}
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="house-field-label">Surname</span>
+                            <Input
+                              value={form.surname}
+                              onChange={(event) => setForm((current) => ({ ...current, surname: event.target.value }))}
+                              autoComplete="family-name"
+                            />
+                          </label>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem_2rem]">
+                          <label className="space-y-1 sm:col-span-2">
+                            <span className="house-field-label">Email</span>
+                            <Input
+                              value={primaryEmailDraft}
+                              onChange={(event) => setPrimaryEmailDraft(event.target.value)}
+                              readOnly={!editingPrimaryEmail}
+                            />
+                          </label>
+                          {editingPrimaryEmail ? (
+                            <>
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-save shrink-0"
+                                  aria-label="Save email draft"
+                                  title="Save email draft"
+                                  onClick={onCommitPrimaryEmailDraft}
+                                  disabled={primaryEmailDraft.trim() === (form.email || '').trim()}
+                                >
+                                  <Check className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-discard shrink-0"
+                                  aria-label="Discard email draft"
+                                  title="Discard email draft"
+                                  onClick={onCancelPrimaryEmailDraft}
+                                >
+                                  <X className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-add shrink-0"
+                                  aria-label="Add second email"
+                                  title="Add second email"
+                                  onClick={onOpenSecondaryEmailDraft}
+                                  disabled={showSecondaryEmailInput}
+                                >
+                                  <Plus className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-edit shrink-0"
+                                  aria-label="Edit email"
+                                  title="Edit email"
+                                  onClick={onStartPrimaryEmailEdit}
+                                >
+                                  <Pencil className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                            </>
+                          )}
+                          {showSecondaryEmailInput ? (
+                            <>
+                              <label className="space-y-1 sm:col-span-2">
+                                <span className="house-field-label">Second email</span>
+                                <Input
+                                  value={secondaryEmailDraft}
+                                  onChange={(event) => setSecondaryEmailDraft(event.target.value)}
+                                  readOnly={!editingSecondaryEmail}
+                                />
+                              </label>
+                              {editingSecondaryEmail ? (
+                                <>
+                                  <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                    <button
+                                      type="button"
+                                      className="house-collaborator-action-icon house-collaborator-action-icon-save shrink-0"
+                                      aria-label="Save second email"
+                                      title="Save second email"
+                                      onClick={onCommitSecondaryEmailDraft}
+                                      disabled={secondaryEmailDraft.trim() === (form.secondary_email || '').trim()}
+                                    >
+                                      <Check className="h-4 w-4" strokeWidth={2.2} />
+                                    </button>
+                                  </div>
+                                  <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                    <button
+                                      type="button"
+                                      className="house-collaborator-action-icon house-collaborator-action-icon-discard shrink-0"
+                                      aria-label="Discard second email"
+                                      title="Discard second email"
+                                      onClick={onCancelSecondaryEmailDraft}
+                                    >
+                                      <X className="h-4 w-4" strokeWidth={2.2} />
+                                    </button>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                    <button
+                                      type="button"
+                                      className="house-collaborator-action-icon house-collaborator-action-icon-edit shrink-0"
+                                      aria-label="Edit second email"
+                                      title="Edit second email"
+                                      onClick={onStartSecondaryEmailEdit}
+                                    >
+                                      <Pencil className="h-4 w-4" strokeWidth={2.2} />
+                                    </button>
+                                  </div>
+                                  <div className="hidden sm:block" aria-hidden="true" />
+                                </>
+                              )}
+                            </>
+                          ) : null}
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem_2rem]">
+                          <label className="space-y-1 sm:col-span-2">
+                            <span className="house-field-label">Primary institution</span>
+                            <div className="relative">
+                              <Input
+                                value={institutionDraft}
+                                onChange={(event) => setInstitutionDraft(event.target.value)}
+                                onFocus={() => {
+                                  if (editingInstitution) {
+                                    setInstitutionInputFocused('primary')
+                                  }
+                                }}
+                                onBlur={() => setInstitutionInputFocused(null)}
+                                autoComplete="organization"
+                                readOnly={!editingInstitution}
+                                aria-expanded={
+                                  editingInstitution &&
+                                  institutionInputFocused === 'primary' &&
+                                  (institutionSuggestionsLoading || institutionSuggestions.length > 0 || Boolean(institutionSuggestionsError))
+                                }
+                                aria-controls="collaborator-institution-suggestion-panel"
+                              />
+                              {editingInstitution &&
+                              institutionInputFocused === 'primary' &&
+                              (institutionSuggestionsLoading ||
+                                institutionSuggestions.length > 0 ||
+                                Boolean(institutionSuggestionsError)) ? (
+                                <div
+                                  id="collaborator-institution-suggestion-panel"
+                                  role="listbox"
+                                  className="absolute left-0 top-[calc(100%+0.35rem)] z-20 w-full overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card shadow-[var(--elevation-2)]"
+                                >
+                                  {institutionSuggestionsLoading ? (
+                                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-[hsl(var(--tone-neutral-700))]">
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                                      <span>Looking up affiliations...</span>
+                                    </div>
+                                  ) : null}
+                                  {!institutionSuggestionsLoading && institutionSuggestions.length > 0 ? (
+                                    <div className="max-h-56 divide-y divide-[hsl(var(--tone-neutral-200))] overflow-auto">
+                                      {institutionSuggestions.map((suggestion) => (
+                                        <button
+                                          key={`collaborator-institution:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
+                                          type="button"
+                                          onMouseDown={(event) => {
+                                            event.preventDefault()
+                                          }}
+                                          onClick={() => onSelectInstitutionSuggestion(suggestion)}
+                                          className="w-full px-3 py-2 text-left transition-colors hover:bg-[hsl(var(--tone-neutral-100))] focus-visible:bg-[hsl(var(--tone-neutral-100))]"
+                                          title={suggestion.label}
+                                        >
+                                          <span className="flex items-start gap-2">
+                                            <Building2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--tone-neutral-500))]" aria-hidden />
+                                            <span className="min-w-0">
+                                              <span className="block truncate text-sm text-[hsl(var(--tone-neutral-900))]">{suggestion.name}</span>
+                                              <span className="block truncate text-xs text-[hsl(var(--tone-neutral-600))]">{suggestion.label}</span>
+                                            </span>
+                                          </span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                  {!institutionSuggestionsLoading &&
+                                  institutionSuggestions.length === 0 &&
+                                  !institutionSuggestionsError &&
+                                  sanitizeAffiliation(institutionDraft).length >= 2 ? (
+                                    <p className="px-3 py-2 text-xs text-[hsl(var(--tone-neutral-600))]">No institution matches found.</p>
+                                  ) : null}
+                                  {!institutionSuggestionsLoading && institutionSuggestionsError ? (
+                                    <p className="px-3 py-2 text-micro text-[hsl(var(--tone-warning-700))]">{institutionSuggestionsError}</p>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          </label>
+                          {editingInstitution ? (
+                            <>
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-save shrink-0"
+                                  aria-label="Save institution draft"
+                                  title="Save institution draft"
+                                  onClick={onCommitInstitutionDraft}
+                                  disabled={sanitizeAffiliation(institutionDraft) === sanitizeAffiliation(form.primary_institution)}
+                                >
+                                  <Check className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-discard shrink-0"
+                                  aria-label="Discard institution draft"
+                                  title="Discard institution draft"
+                                  onClick={onCancelInstitutionDraft}
+                                >
+                                  <X className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-add shrink-0"
+                                  aria-label="Add second institution"
+                                  title="Add second institution"
+                                  onClick={onOpenSecondaryInstitutionDraft}
+                                  disabled={showSecondaryInstitutionInput}
+                                >
+                                  <Plus className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-edit shrink-0"
+                                  aria-label="Edit institution"
+                                  title="Edit institution"
+                                  onClick={onStartInstitutionEdit}
+                                >
+                                  <Pencil className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                            </>
+                          )}
+                          {showSecondaryInstitutionInput ? (
+                            <>
+                              <label className="space-y-1 sm:col-span-2">
+                                <span className="house-field-label">Second institution</span>
+                                <div className="relative">
+                                  <Input
+                                    value={secondaryInstitutionDraft}
+                                    onChange={(event) => setSecondaryInstitutionDraft(event.target.value)}
+                                    onFocus={() => {
+                                      if (editingSecondaryInstitution) {
+                                        setInstitutionInputFocused('secondary')
+                                      }
+                                    }}
+                                    onBlur={() => setInstitutionInputFocused(null)}
+                                    autoComplete="organization"
+                                    readOnly={!editingSecondaryInstitution}
+                                    aria-expanded={
+                                      editingSecondaryInstitution &&
+                                      institutionInputFocused === 'secondary' &&
+                                      (institutionSuggestionsLoading || institutionSuggestions.length > 0 || Boolean(institutionSuggestionsError))
+                                    }
+                                    aria-controls="collaborator-institution-suggestion-panel"
+                                  />
+                                  {editingSecondaryInstitution &&
+                                  institutionInputFocused === 'secondary' &&
+                                  (institutionSuggestionsLoading ||
+                                    institutionSuggestions.length > 0 ||
+                                    Boolean(institutionSuggestionsError)) ? (
+                                    <div
+                                      id="collaborator-institution-suggestion-panel"
+                                      role="listbox"
+                                      className="absolute left-0 top-[calc(100%+0.35rem)] z-20 w-full overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card shadow-[var(--elevation-2)]"
+                                    >
+                                      {institutionSuggestionsLoading ? (
+                                        <div className="flex items-center gap-2 px-3 py-2 text-xs text-[hsl(var(--tone-neutral-700))]">
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                                          <span>Looking up affiliations...</span>
+                                        </div>
+                                      ) : null}
+                                      {!institutionSuggestionsLoading && institutionSuggestions.length > 0 ? (
+                                        <div className="max-h-56 divide-y divide-[hsl(var(--tone-neutral-200))] overflow-auto">
+                                          {institutionSuggestions.map((suggestion) => (
+                                            <button
+                                              key={`collaborator-secondary-institution:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
+                                              type="button"
+                                              onMouseDown={(event) => {
+                                                event.preventDefault()
+                                              }}
+                                              onClick={() => onSelectInstitutionSuggestion(suggestion)}
+                                              className="w-full px-3 py-2 text-left transition-colors hover:bg-[hsl(var(--tone-neutral-100))] focus-visible:bg-[hsl(var(--tone-neutral-100))]"
+                                              title={suggestion.label}
+                                            >
+                                              <span className="flex items-start gap-2">
+                                                <Building2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--tone-neutral-500))]" aria-hidden />
+                                                <span className="min-w-0">
+                                                  <span className="block truncate text-sm text-[hsl(var(--tone-neutral-900))]">{suggestion.name}</span>
+                                                  <span className="block truncate text-xs text-[hsl(var(--tone-neutral-600))]">{suggestion.label}</span>
+                                                </span>
+                                              </span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      {!institutionSuggestionsLoading &&
+                                      institutionSuggestions.length === 0 &&
+                                      !institutionSuggestionsError &&
+                                      sanitizeAffiliation(secondaryInstitutionDraft).length >= 2 ? (
+                                        <p className="px-3 py-2 text-xs text-[hsl(var(--tone-neutral-600))]">No institution matches found.</p>
+                                      ) : null}
+                                      {!institutionSuggestionsLoading && institutionSuggestionsError ? (
+                                        <p className="px-3 py-2 text-micro text-[hsl(var(--tone-warning-700))]">{institutionSuggestionsError}</p>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </label>
+                              {editingSecondaryInstitution ? (
+                                <>
+                                  <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                    <button
+                                      type="button"
+                                      className="house-collaborator-action-icon house-collaborator-action-icon-save shrink-0"
+                                      aria-label="Save second institution draft"
+                                      title="Save second institution draft"
+                                      onClick={onCommitSecondaryInstitutionDraft}
+                                      disabled={sanitizeAffiliation(secondaryInstitutionDraft) === sanitizeAffiliation(form.secondary_institution)}
+                                    >
+                                      <Check className="h-4 w-4" strokeWidth={2.2} />
+                                    </button>
+                                  </div>
+                                  <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                    <button
+                                      type="button"
+                                      className="house-collaborator-action-icon house-collaborator-action-icon-discard shrink-0"
+                                      aria-label="Discard second institution draft"
+                                      title="Discard second institution draft"
+                                      onClick={onCancelSecondaryInstitutionDraft}
+                                    >
+                                      <X className="h-4 w-4" strokeWidth={2.2} />
+                                    </button>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                    <button
+                                      type="button"
+                                      className="house-collaborator-action-icon house-collaborator-action-icon-edit shrink-0"
+                                      aria-label="Edit second institution"
+                                      title="Edit second institution"
+                                      onClick={onStartSecondaryInstitutionEdit}
+                                    >
+                                      <Pencil className="h-4 w-4" strokeWidth={2.2} />
+                                    </button>
+                                  </div>
+                                  <div className="hidden sm:block" aria-hidden="true" />
+                                </>
+                              )}
+                            </>
+                          ) : null}
+                        </div>
+                        {collaboratorAffiliations.length > 0 ? (
+                          <div className="space-y-2">
+                            <span className="house-field-label">Author affiliations</span>
+                            <div className="space-y-2">
+                              {collaboratorAffiliations.map((institution, index) => (
+                                <div
+                                  key={`author-affiliation-${institution.slot}-${institution.label}`}
+                                  className="flex flex-wrap items-center gap-2 rounded-[var(--radius-sm)] border border-[hsl(var(--tone-neutral-200))] bg-white px-2.5 py-2 shadow-[var(--elevation-1)]"
+                                >
+                                  <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>
+                                  <div className="min-w-[10rem] flex-1">
+                                    <span className="block text-xs font-medium text-[hsl(var(--tone-neutral-800))]">{institution.label}</span>
+                                    {pendingInstitutionReview[institution.slot] ? (
+                                      <span className="block pt-0.5 text-micro text-[hsl(var(--tone-warning-700))]">
+                                        Auto-mapped from the source record. Save if correct.
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  {institution.isPrimary ? (
+                                    <Badge variant="positive" className="w-[6.75rem] justify-center">
+                                      Primary
+                                    </Badge>
+                                  ) : (
+                                    <Button
+                                      type="button"
+                                      onClick={() => onSetPrimaryInstitution(institution.label)}
+                                      variant="default"
+                                      size="sm"
+                                      className="w-[6.75rem] min-h-0 h-auto justify-center px-2 py-1 text-micro font-medium leading-tight hover:border-[hsl(var(--tone-neutral-900))] hover:bg-white hover:text-[hsl(var(--tone-neutral-900))] active:border-[hsl(var(--tone-neutral-900))] active:bg-white active:text-[hsl(var(--tone-neutral-900))]"
+                                    >
+                                      Set primary
+                                    </Button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {collaboratorAffiliations.length > 0 ? (
+                          <div className="space-y-2">
+                            <span className="house-field-label">Author publication byline</span>
+                            <div className="space-y-2">
+                              {collaboratorAffiliations.map((institution, index) => {
+                                const committedDraft = collaboratorBylineDraftFromForm(form, institution.slot)
+                                const draft = institution.slot === 'secondary'
+                                  ? secondaryAffiliationBylineDraft
+                                  : primaryAffiliationBylineDraft
+                                const isEditingByline = editingAffiliationBylineSlot === institution.slot
+                                const preview = formatCollaboratorAffiliationByline({
+                                  institution: institution.label,
+                                  draft: committedDraft,
+                                }) || institution.label
+                                return (
+                                  <div
+                                    key={`author-byline-${institution.slot}-${institution.label}`}
+                                    className="space-y-2 rounded-[var(--radius-sm)] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5"
+                                  >
+                                    <div className="flex flex-wrap items-start gap-2">
+                                      <div className="min-w-0 flex-1 space-y-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>
+                                          <span className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">{institution.label}</span>
+                                          {institution.openalexId ? (
+                                            <Badge variant="outline" className="text-micro">
+                                              OpenAlex mapped
+                                            </Badge>
+                                          ) : null}
+                                        </div>
+                                        <p className="text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))]">{preview}</p>
+                                      </div>
+                                      {isEditingByline ? (
+                                        <>
+                                          <div className="flex h-9 items-center justify-start sm:justify-center">
+                                            <button
+                                              type="button"
+                                              className="house-collaborator-action-icon house-collaborator-action-icon-save shrink-0"
+                                              aria-label={`Save ${institution.label} byline`}
+                                              title={`Save ${institution.label} byline`}
+                                              onClick={() => applyAffiliationBylineDraft(institution.slot)}
+                                            >
+                                              <Check className="h-4 w-4" strokeWidth={2.2} />
+                                            </button>
+                                          </div>
+                                          <div className="flex h-9 items-center justify-start sm:justify-center">
+                                            <button
+                                              type="button"
+                                              className="house-collaborator-action-icon house-collaborator-action-icon-discard shrink-0"
+                                              aria-label={`Discard ${institution.label} byline edits`}
+                                              title={`Discard ${institution.label} byline edits`}
+                                              onClick={() => cancelAffiliationBylineDraft(institution.slot)}
+                                            >
+                                              <X className="h-4 w-4" strokeWidth={2.2} />
+                                            </button>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div className="flex h-9 items-center justify-start sm:justify-center">
+                                          <button
+                                            type="button"
+                                            className="house-collaborator-action-icon house-collaborator-action-icon-edit shrink-0"
+                                            aria-label={`Edit ${institution.label} byline`}
+                                            title={`Edit ${institution.label} byline`}
+                                            onClick={() => setEditingAffiliationBylineSlot(institution.slot)}
+                                          >
+                                            <Pencil className="h-4 w-4" strokeWidth={2.2} />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {isEditingByline ? (
+                                      <div className="grid gap-3 sm:grid-cols-2">
+                                        <label className="space-y-1">
+                                          <span className="house-field-label">Department</span>
+                                          <Input
+                                            value={draft.department}
+                                            onChange={(event) => onAffiliationBylineDraftChange(institution.slot, 'department', event.target.value)}
+                                          />
+                                        </label>
+                                        <label className="space-y-1 sm:col-span-2">
+                                          <span className="house-field-label">Address line 1</span>
+                                          <Input
+                                            value={draft.address_line_1}
+                                            onChange={(event) => onAffiliationBylineDraftChange(institution.slot, 'address_line_1', event.target.value)}
+                                          />
+                                        </label>
+                                        <label className="space-y-1">
+                                          <span className="house-field-label">City</span>
+                                          <Input
+                                            value={draft.city}
+                                            onChange={(event) => onAffiliationBylineDraftChange(institution.slot, 'city', event.target.value)}
+                                          />
+                                        </label>
+                                        <label className="space-y-1">
+                                          <span className="house-field-label">Region / state</span>
+                                          <Input
+                                            value={draft.region}
+                                            onChange={(event) => onAffiliationBylineDraftChange(institution.slot, 'region', event.target.value)}
+                                          />
+                                        </label>
+                                        <label className="space-y-1">
+                                          <span className="house-field-label">Postal code</span>
+                                          <Input
+                                            value={draft.postal_code}
+                                            onChange={(event) => onAffiliationBylineDraftChange(institution.slot, 'postal_code', event.target.value)}
+                                          />
+                                        </label>
+                                        <label className="space-y-1">
+                                          <span className="house-field-label">Country</span>
+                                          <Input
+                                            value={draft.country}
+                                            onChange={(event) => onAffiliationBylineDraftChange(institution.slot, 'country', event.target.value)}
+                                          />
+                                        </label>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+                        {duplicateWarnings.length > 0 ? (
+                          <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                            {duplicateWarnings.map((warning) => (
+                              <p key={warning}>{warning}</p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                  {status ? <p className="text-xs text-emerald-700">{status}</p> : null}
-                  {error ? <p className="text-xs text-destructive">{error}</p> : null}
-                  {importResult ? (
-                    <p className="text-xs text-muted-foreground">
-                      OpenAlex author: {importResult.openalex_author_id || 'n/a'} | Imported:{' '}
-                      {importResult.imported_candidates}
-                    </p>
-                  ) : null}
-                  {enrichmentResult ? (
-                    <p className="text-xs text-muted-foreground">
-                      Enriched: {enrichmentResult.updated_count} updated | Resolved authors:{' '}
-                      {enrichmentResult.resolved_author_count} | Missing IDs:{' '}
-                      {enrichmentResult.skipped_without_identifier}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
+                ) : null}
+
+                {activeCollaboratorDrilldownTab === 'history' ? (
+                  <div className="house-drilldown-content-block w-full">
+                    <div className="space-y-4">
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Relationship</p>
+                          <div className="mt-2">
+                            <Badge size="sm" variant={relationshipTone(selectedCollaboratorRelationship)}>
+                              {selectedCollaboratorRelationship}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Activity</p>
+                          <div className="mt-2">
+                            <Badge size="sm" variant={activityTone(selectedCollaboratorActivity)}>
+                              {selectedCollaboratorActivity}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Collaboration score</p>
+                          <p className="mt-2 text-base font-semibold tabular-nums text-[hsl(var(--tone-neutral-900))]">
+                            {Number(selectedCollaborator.metrics.collaboration_strength_score || 0).toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Coauthored works</p>
+                          <p className="mt-2 text-base font-semibold tabular-nums text-[hsl(var(--tone-neutral-900))]">
+                            {selectedCollaborator.metrics.coauthored_works_count}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">First collaboration year</p>
+                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                            {selectedCollaborator.metrics.first_collaboration_year ?? 'Not available'}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Last collaboration year</p>
+                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                            {selectedCollaborator.metrics.last_collaboration_year ?? 'Not available'}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Shared citations</p>
+                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                            {selectedCollaborator.metrics.shared_citations_total.toLocaleString('en-GB')}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Citations (12m)</p>
+                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                            {selectedCollaborator.metrics.citations_last_12m.toLocaleString('en-GB')}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Metrics status</p>
+                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                            {selectedCollaborator.metrics.status}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Metrics computed</p>
+                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                            {formatCollaboratorDate(selectedCollaborator.metrics.computed_at)}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Created</p>
+                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                            {formatCollaboratorDate(selectedCollaborator.created_at)}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border bg-card px-3 py-2">
+                          <p className="house-field-label">Last updated</p>
+                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                            {formatCollaboratorDate(selectedCollaborator.updated_at)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeCollaboratorDrilldownTab === 'actions' ? (
+                  <div className="house-drilldown-content-block w-full">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button type="button" size="sm" onClick={onSave} disabled={saving}>
+                          Save changes
+                        </Button>
+                        {selectedId ? (
+                          <Button type="button" size="sm" variant="secondary" onClick={onDelete} disabled={saving}>
+                            Delete
+                          </Button>
+                        ) : null}
+                        {selectedId ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (selectedCollaborator) {
+                                applyCollaboratorFormState(selectedCollaborator)
+                              }
+                            }}
+                          >
+                            Reset
+                          </Button>
+                        ) : null}
+                      </div>
+                      {status ? <p className="text-xs text-emerald-700">{status}</p> : null}
+                      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+                      {importResult ? (
+                        <p className="text-xs text-muted-foreground">
+                          OpenAlex author: {importResult.openalex_author_id || 'n/a'} | Imported:{' '}
+                          {importResult.imported_candidates}
+                        </p>
+                      ) : null}
+                      {enrichmentResult ? (
+                        <p className="text-xs text-muted-foreground">
+                          Enriched: {enrichmentResult.updated_count} updated | Resolved authors:{' '}
+                          {enrichmentResult.resolved_author_count} | Missing IDs:{' '}
+                          {enrichmentResult.skipped_without_identifier}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </DrilldownSheet.TabPanel>
             </DrilldownSheet.Content>
           </>
         ) : (

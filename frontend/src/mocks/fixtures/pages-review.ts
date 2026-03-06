@@ -29,6 +29,33 @@ export const pagesReviewToken = 'storybook-pages-review-token'
 export const pagesReviewUserId = 'storybook-user-1'
 export const pagesReviewTimestamp = '2026-02-27T09:00:00Z'
 
+const pagesReviewEmptyCollaboratorContactFields = {
+  secondary_email: null,
+  contact_salutation: null,
+  contact_first_name: null,
+  contact_middle_initial: null,
+  contact_surname: null,
+  contact_email: null,
+  contact_secondary_email: null,
+  contact_primary_institution: null,
+  contact_secondary_institution: null,
+  contact_primary_institution_openalex_id: null,
+  contact_secondary_institution_openalex_id: null,
+  contact_primary_affiliation_department: null,
+  contact_primary_affiliation_address_line_1: null,
+  contact_primary_affiliation_city: null,
+  contact_primary_affiliation_region: null,
+  contact_primary_affiliation_postal_code: null,
+  contact_primary_affiliation_country: null,
+  contact_secondary_affiliation_department: null,
+  contact_secondary_affiliation_address_line_1: null,
+  contact_secondary_affiliation_city: null,
+  contact_secondary_affiliation_region: null,
+  contact_secondary_affiliation_postal_code: null,
+  contact_secondary_affiliation_country: null,
+  contact_country: null,
+} satisfies Partial<CollaboratorPayload>
+
 export const pagesReviewUser: AuthUser = {
   id: pagesReviewUserId,
   account_key: 'acct_storybook',
@@ -253,6 +280,7 @@ export const pagesReviewCollaborators: CollaboratorPayload[] = [
     id: 'collab-1',
     owner_user_id: pagesReviewUserId,
     full_name: 'A. Patel',
+    ...pagesReviewEmptyCollaboratorContactFields,
     preferred_name: 'Asha Patel',
     email: 'apatel@example.org',
     orcid_id: '0000-0003-1234-0001',
@@ -282,6 +310,7 @@ export const pagesReviewCollaborators: CollaboratorPayload[] = [
     id: 'collab-2',
     owner_user_id: pagesReviewUserId,
     full_name: 'L. Santos',
+    ...pagesReviewEmptyCollaboratorContactFields,
     preferred_name: null,
     email: 'lsantos@example.org',
     orcid_id: '0000-0003-1234-0002',
@@ -311,6 +340,7 @@ export const pagesReviewCollaborators: CollaboratorPayload[] = [
     id: 'collab-3',
     owner_user_id: pagesReviewUserId,
     full_name: 'S. Roy',
+    ...pagesReviewEmptyCollaboratorContactFields,
     preferred_name: null,
     email: null,
     orcid_id: null,

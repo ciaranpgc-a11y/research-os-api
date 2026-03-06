@@ -5,7 +5,7 @@ import type { CollaboratorsListPayload, CollaborationMetricsSummaryPayload } fro
 const COLLABORATION_PAGE_CACHE_KEY = 'aawe_collaboration_page_cache_v1'
 const COLLABORATION_PAGE_CACHE_MAX_AGE_MS = 1000 * 60 * 5
 const DEFAULT_COLLABORATION_QUERY = ''
-const DEFAULT_COLLABORATION_SORT = 'name'
+const DEFAULT_COLLABORATION_SORT = 'strength'
 const DEFAULT_COLLABORATORS_FETCH_PAGE_SIZE = 200
 const DEFAULT_MAX_COLLABORATOR_FETCH_PAGES = 250
 

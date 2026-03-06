@@ -1134,11 +1134,67 @@ class Collaborator(Base):
     full_name_lower: Mapped[str] = mapped_column(String(255), default="", index=True)
     preferred_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    secondary_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    contact_salutation: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    contact_first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_middle_initial: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    contact_surname: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    contact_secondary_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     orcid_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     openalex_author_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     primary_institution: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_primary_institution: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    contact_secondary_institution: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    contact_primary_institution_openalex_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    contact_secondary_institution_openalex_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    contact_primary_affiliation_department: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    contact_primary_affiliation_address_line_1: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    contact_primary_affiliation_city: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    contact_primary_affiliation_region: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    contact_primary_affiliation_postal_code: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    contact_primary_affiliation_country: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    contact_secondary_affiliation_department: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    contact_secondary_affiliation_address_line_1: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    contact_secondary_affiliation_city: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    contact_secondary_affiliation_region: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    contact_secondary_affiliation_postal_code: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    contact_secondary_affiliation_country: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
     department: Mapped[str | None] = mapped_column(String(255), nullable=True)
     country: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    contact_country: Mapped[str | None] = mapped_column(String(64), nullable=True)
     current_position: Mapped[str | None] = mapped_column(String(255), nullable=True)
     research_domains: Mapped[list[str]] = mapped_column(JSON, default=list)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

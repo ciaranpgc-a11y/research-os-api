@@ -555,6 +555,7 @@ export type AdminAuditEventsListPayload = {
 export type AffiliationSuggestionItemPayload = {
   name: string
   label: string
+  openalex_id: string | null
   country_code: string | null
   country_name: string | null
   city: string | null
@@ -899,6 +900,26 @@ export type PublicationAiInsightsResponsePayload = {
   last_error: string | null
 }
 
+export type PublicationInsightsAgentSectionPayload = {
+  key: 'uncited_works' | 'citation_drivers' | 'citation_activation'
+  title: string
+  headline: string
+  body: string
+  consideration_label?: string | null
+  consideration?: string | null
+  evidence: Record<string, unknown>
+}
+
+export type PublicationInsightsAgentPayload = {
+  agent_name: string
+  status: 'draft'
+  window_id: '1y' | '3y' | '5y' | 'all'
+  window_label: string
+  overall_summary: string
+  sections: PublicationInsightsAgentSectionPayload[]
+  provenance: Record<string, unknown>
+}
+
 export type PublicationFilePayload = {
   id: string
   file_name: string
@@ -940,11 +961,35 @@ export type CollaboratorPayload = {
   full_name: string
   preferred_name: string | null
   email: string | null
+  secondary_email: string | null
+  contact_salutation: string | null
+  contact_first_name: string | null
+  contact_middle_initial: string | null
+  contact_surname: string | null
+  contact_email: string | null
+  contact_secondary_email: string | null
   orcid_id: string | null
   openalex_author_id: string | null
   primary_institution: string | null
+  contact_primary_institution: string | null
+  contact_secondary_institution: string | null
+  contact_primary_institution_openalex_id: string | null
+  contact_secondary_institution_openalex_id: string | null
+  contact_primary_affiliation_department: string | null
+  contact_primary_affiliation_address_line_1: string | null
+  contact_primary_affiliation_city: string | null
+  contact_primary_affiliation_region: string | null
+  contact_primary_affiliation_postal_code: string | null
+  contact_primary_affiliation_country: string | null
+  contact_secondary_affiliation_department: string | null
+  contact_secondary_affiliation_address_line_1: string | null
+  contact_secondary_affiliation_city: string | null
+  contact_secondary_affiliation_region: string | null
+  contact_secondary_affiliation_postal_code: string | null
+  contact_secondary_affiliation_country: string | null
   department: string | null
   country: string | null
+  contact_country: string | null
   current_position: string | null
   research_domains: string[]
   notes: string | null

@@ -220,6 +220,7 @@ from research_os.api.schemas import (
     PersonaMetricsSyncRequest,
     PersonaMetricsSyncResponse,
     PersonaWorkResponse,
+    PublicationInsightsAgentResponse,
     ProjectCreateRequest,
     ProjectResponse,
     QCGatedExportRequest,
@@ -431,6 +432,10 @@ from research_os.services.publication_metrics_service import (
     get_publication_metric_detail,
     get_publication_top_metrics,
     trigger_publication_top_metrics_refresh,
+)
+from research_os.services.publication_insights_agent_service import (
+    PublicationInsightsAgentValidationError,
+    generate_publication_insights_agent_draft,
 )
 from research_os.services.publication_console_service import (
     PublicationConsoleNotFoundError,
@@ -2616,6 +2621,43 @@ def v1_publications_metric_detail(
     except (PersonaNotFoundError, PublicationMetricsNotFoundError) as exc:
         return _build_not_found_response(str(exc))
     except (PublicationMetricsValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/ai/insights",
+    response_model=PublicationInsightsAgentResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publications_ai_insights(
+    request: Request,
+    window_id: Literal["1y", "3y", "5y", "all"] = Query("1y"),
+    scope: Literal["window", "section"] = Query("window"),
+    section_key: Literal["uncited_works", "citation_drivers", "citation_activation"]
+    | None = Query(None),
+) -> PublicationInsightsAgentResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = generate_publication_insights_agent_draft(
+            user_id=str(user["id"]),
+            window_id=window_id,
+            section_key=section_key,
+            scope=scope,
+        )
+        return PublicationInsightsAgentResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationMetricsNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except (
+        PublicationInsightsAgentValidationError,
+        PublicationMetricsValidationError,
+        ValueError,
+    ) as exc:
         return _build_bad_request_response(str(exc))
 
 
