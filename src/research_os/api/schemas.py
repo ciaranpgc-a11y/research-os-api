@@ -2119,7 +2119,7 @@ class PublicationAiInsightsResponse(BaseModel):
 
 
 class PublicationInsightsAgentSectionResponse(BaseModel):
-    key: Literal["uncited_works", "citation_drivers", "citation_activation"]
+    key: Literal["uncited_works", "citation_drivers", "citation_activation", "citation_activation_history"]
     title: str
     headline: str
     body: str
@@ -2232,6 +2232,18 @@ class CollaboratorResponse(BaseModel):
     duplicate_warnings: list[str] = Field(default_factory=list)
     institution_labels: list[str] = Field(default_factory=list)
     duplicate_count: int = 1
+
+
+class CollaboratorSharedWorkResponse(BaseModel):
+    work_id: str
+    title: str
+    year: int | None = None
+    venue_name: str | None = None
+    publication_type: str | None = None
+
+
+class CollaboratorSharedWorksListResponse(BaseModel):
+    items: list[CollaboratorSharedWorkResponse] = Field(default_factory=list)
 
 
 class CollaboratorCreateRequest(BaseModel):

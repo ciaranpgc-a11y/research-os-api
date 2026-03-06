@@ -318,7 +318,7 @@ def _build_evidence(
     user_id: str,
     window_id: str,
     section_key: Literal[
-        "uncited_works", "citation_drivers", "citation_activation"
+        "uncited_works", "citation_drivers", "citation_activation", "citation_activation_history"
     ]
     | None = None,
     scope: Literal["window", "section"] = "window",
@@ -330,6 +330,11 @@ def _build_evidence(
     intermediate = (
         metadata.get("intermediate_values")
         if isinstance(metadata.get("intermediate_values"), dict)
+        else {}
+    )
+    activation_history = (
+        metadata.get("activation_history")
+        if isinstance(metadata.get("activation_history"), dict)
         else {}
     )
     publications = [
@@ -446,6 +451,90 @@ def _build_evidence(
         else:
             uncited_pattern = "mixed_ages"
 
+    activation_history_years = [
+        int(value)
+        for value in (activation_history.get("years") or [])
+        if _safe_int(value) is not None
+    ]
+    activation_history_newly_active = [
+        max(0, int(_safe_int(value) or 0))
+        for value in (activation_history.get("newly_active") or [])
+    ]
+    activation_history_still_active = [
+        max(0, int(_safe_int(value) or 0))
+        for value in (activation_history.get("still_active") or [])
+    ]
+    activation_history_inactive = [
+        max(0, int(_safe_int(value) or 0))
+        for value in (activation_history.get("inactive") or [])
+    ]
+    activation_history_published = [
+        max(0, int(_safe_int(value) or 0))
+        for value in (activation_history.get("published_total") or [])
+    ]
+    activation_history_points: list[dict[str, Any]] = []
+    for index in range(
+        min(
+            len(activation_history_years),
+            len(activation_history_newly_active),
+            len(activation_history_still_active),
+            len(activation_history_inactive),
+            len(activation_history_published),
+        )
+    ):
+        published_total = activation_history_published[index]
+        active_total = (
+            activation_history_newly_active[index]
+            + activation_history_still_active[index]
+        )
+        activation_history_points.append(
+            {
+                "year": activation_history_years[index],
+                "newly_active": activation_history_newly_active[index],
+                "still_active": activation_history_still_active[index],
+                "inactive": activation_history_inactive[index],
+                "published_total": published_total,
+                "active_total": active_total,
+                "active_share_pct": round(
+                    (float(active_total) / float(published_total)) * 100.0, 1
+                )
+                if published_total > 0
+                else 0.0,
+            }
+        )
+    activation_history_last_complete_year = _safe_int(
+        activation_history.get("last_complete_year")
+    )
+    activation_history_recent_points = activation_history_points[-5:]
+    activation_history_pattern = "limited_history"
+    if len(activation_history_recent_points) >= 2:
+        first_recent = activation_history_recent_points[0]
+        last_recent = activation_history_recent_points[-1]
+        first_active_share = float(first_recent.get("active_share_pct") or 0.0)
+        last_active_share = float(last_recent.get("active_share_pct") or 0.0)
+        if last_active_share >= first_active_share + 10.0:
+            activation_history_pattern = "broadening"
+        elif last_active_share <= max(0.0, first_active_share - 10.0):
+            activation_history_pattern = "narrowing"
+        elif any(
+            int(point.get("newly_active") or 0) > 0
+            for point in activation_history_recent_points[-3:]
+        ):
+            activation_history_pattern = "renewing"
+        else:
+            activation_history_pattern = "stable"
+    peak_newly_active_point = (
+        max(
+            activation_history_points,
+            key=lambda item: (
+                int(item.get("newly_active") or 0),
+                int(item.get("year") or 0),
+            ),
+        )
+        if activation_history_points
+        else None
+    )
+
     return {
         "window_id": str(selected_snapshot.get("window_id") or window_id),
         "window_label": str(selected_snapshot.get("window_label") or window_id),
@@ -496,6 +585,19 @@ def _build_evidence(
             }
             for item in newly_active_publications[:5]
         ],
+        "activation_history_points": activation_history_points,
+        "activation_history_last_complete_year": activation_history_last_complete_year,
+        "activation_history_pattern": activation_history_pattern,
+        "activation_history_peak_newly_active_year": (
+            _safe_int(peak_newly_active_point.get("year"))
+            if peak_newly_active_point
+            else None
+        ),
+        "activation_history_peak_newly_active_count": (
+            int(peak_newly_active_point.get("newly_active") or 0)
+            if peak_newly_active_point
+            else 0
+        ),
         "portfolio_context": portfolio_context,
         "data_sources": [
             str(item).strip()
@@ -542,6 +644,19 @@ def _build_fallback_sections(evidence: dict[str, Any]) -> list[dict[str, Any]]:
     activation_top_publications = list(evidence.get("activation_top_publications") or [])
     activation_newly_active_publications = list(
         evidence.get("activation_newly_active_publications") or []
+    )
+    activation_history_points = list(evidence.get("activation_history_points") or [])
+    activation_history_last_complete_year = _safe_int(
+        evidence.get("activation_history_last_complete_year")
+    )
+    activation_history_pattern = str(
+        evidence.get("activation_history_pattern") or "limited_history"
+    )
+    activation_history_peak_newly_active_year = _safe_int(
+        evidence.get("activation_history_peak_newly_active_year")
+    )
+    activation_history_peak_newly_active_count = max(
+        0, int(evidence.get("activation_history_peak_newly_active_count") or 0)
     )
     portfolio_context = (
         evidence.get("portfolio_context")
@@ -795,6 +910,58 @@ def _build_fallback_sections(evidence: dict[str, Any]) -> list[dict[str, Any]]:
                 "You may want to check whether recent citations are starting to spread beyond the same already active papers."
             )
 
+    if not activation_history_points:
+        activation_history_body = (
+            "There is not yet enough complete-year citation history to describe activation over time."
+        )
+        activation_history_consideration_label = None
+        activation_history_consideration = None
+    else:
+        latest_history_point = activation_history_points[-1]
+        latest_year = _safe_int(latest_history_point.get("year"))
+        latest_newly_active = max(0, int(latest_history_point.get("newly_active") or 0))
+        latest_still_active = max(0, int(latest_history_point.get("still_active") or 0))
+        resolved_latest_year = latest_year or activation_history_last_complete_year
+        if activation_history_pattern == "broadening":
+            activation_history_body = (
+                f"Across complete years through {resolved_latest_year}, a larger share of your published portfolio is staying citation-active rather than inactive."
+            )
+            activation_history_consideration_label = "What this suggests"
+            activation_history_consideration = (
+                "You may want to see whether that broadening comes from genuinely new papers activating or from the same established papers staying active."
+            )
+        elif activation_history_pattern == "narrowing":
+            activation_history_body = (
+                f"Across complete years through {resolved_latest_year}, citation activity is narrowing into a smaller share of your published portfolio."
+            )
+            activation_history_consideration_label = "What to watch"
+            activation_history_consideration = (
+                "You may want to check whether newer papers are activating more slowly or whether older papers are dropping out of the active set."
+            )
+        elif activation_history_pattern == "renewing":
+            activation_history_body = (
+                f"Through {resolved_latest_year}, citation activity keeps adding newly active papers rather than relying only on an already active set."
+            )
+            activation_history_consideration_label = "How to read this"
+            activation_history_consideration = (
+                "You may want to compare the pace of newly active papers with how much of the portfolio still remains inactive."
+            )
+        else:
+            activation_history_body = (
+                f"Through {resolved_latest_year}, citation activity has stayed fairly steady, with {latest_newly_active} newly active and {latest_still_active} still-active papers in the latest complete year."
+            )
+            activation_history_consideration_label = None
+            activation_history_consideration = None
+        if (
+            activation_history_peak_newly_active_year is not None
+            and activation_history_peak_newly_active_count > 0
+            and activation_history_pattern in {"renewing", "stable"}
+        ):
+            activation_history_consideration_label = "Peak year"
+            activation_history_consideration = (
+                f"The strongest year for newly active papers was {activation_history_peak_newly_active_year}, when {activation_history_peak_newly_active_count} papers activated for the first time."
+            )
+
     return [
         {
             "key": "uncited_works",
@@ -852,6 +1019,21 @@ def _build_fallback_sections(evidence: dict[str, Any]) -> list[dict[str, Any]]:
                 "pattern": activation_pattern,
                 "publications": activation_top_publications,
                 "newly_active_publications": activation_newly_active_publications,
+            },
+        },
+        {
+            "key": "citation_activation_history",
+            "title": "Activation over time",
+            "headline": "Activation over time",
+            "body": activation_history_body,
+            "consideration_label": activation_history_consideration_label,
+            "consideration": activation_history_consideration,
+            "evidence": {
+                "last_complete_year": activation_history_last_complete_year,
+                "pattern": activation_history_pattern,
+                "peak_newly_active_year": activation_history_peak_newly_active_year,
+                "peak_newly_active_count": activation_history_peak_newly_active_count,
+                "points": activation_history_points[-7:],
             },
         },
     ]
@@ -929,6 +1111,17 @@ def _build_prompt(evidence: dict[str, Any]) -> str:
             "activation_newly_active_publications"
         )
         or [],
+        "activation_history_points": evidence.get("activation_history_points") or [],
+        "activation_history_last_complete_year": evidence.get(
+            "activation_history_last_complete_year"
+        ),
+        "activation_history_pattern": evidence.get("activation_history_pattern"),
+        "activation_history_peak_newly_active_year": evidence.get(
+            "activation_history_peak_newly_active_year"
+        ),
+        "activation_history_peak_newly_active_count": evidence.get(
+            "activation_history_peak_newly_active_count"
+        ),
         "portfolio_context": evidence.get("portfolio_context") or {},
     }
     evidence_json = json.dumps(compact_evidence, ensure_ascii=True)
@@ -949,6 +1142,7 @@ def _build_prompt(evidence: dict[str, Any]) -> str:
         "For uncited_works, comment on whether the uncited set is mostly recent, mostly older, or mixed.\n"
         "For citation_drivers, comment on whether citations are driven by one standout paper, a small cluster, or a broader spread.\n"
         "For citation_activation, distinguish newly active papers from papers that stayed active, and comment on how much of the portfolio remains inactive.\n"
+        "For citation_activation_history, interpret whether yearly activity is broadening, narrowing, renewing, or staying steady across complete years.\n"
         "If the evidence includes 1y, 3y, and 5y citation windows together, write one section-level interpretation across the whole section, not separate per-window summaries.\n"
         "Only include a follow-on note when there is a genuinely useful next angle for the user to think about.\n"
         "If you include a follow-on note, choose a short label that fits the content, for example 'Why this matters', 'What to watch', or 'How to read this'. Do not default to one stock label.\n"
@@ -958,7 +1152,7 @@ def _build_prompt(evidence: dict[str, Any]) -> str:
         '  "overall_summary": "string",\n'
         '  "sections": [\n'
         "    {\n"
-        '      "key": "uncited_works" | "citation_drivers" | "citation_activation",\n'
+        '      "key": "uncited_works" | "citation_drivers" | "citation_activation" | "citation_activation_history",\n'
         '      "headline": "max 4 words",\n'
         '      "body": "max 45 words",\n'
         '      "consideration_label": "optional, max 4 words, only when a follow-on note is genuinely useful",\n'
@@ -966,7 +1160,7 @@ def _build_prompt(evidence: dict[str, Any]) -> str:
         "    }\n"
         "  ]\n"
         "}\n"
-        "Return exactly three sections: uncited_works, citation_drivers, and citation_activation.\n"
+        "Return exactly four sections: uncited_works, citation_drivers, citation_activation, and citation_activation_history.\n"
         f"Evidence: {evidence_json}\n"
     )
 
@@ -1017,6 +1211,16 @@ def _body_is_too_generic(*, key: str, body: str, fallback_body: str) -> bool:
             char.isdigit() for char in normalized
         ):
             return True
+    if key == "citation_activation_history":
+        generic_phrases = (
+            "over time",
+            "citation activity changed",
+            "history is present",
+        )
+        if any(phrase in normalized for phrase in generic_phrases) and not any(
+            char.isdigit() for char in normalized
+        ):
+            return True
     return False
 
 
@@ -1029,14 +1233,14 @@ def _coerce_model_payload(payload: dict[str, Any], evidence: dict[str, Any]) -> 
             if not isinstance(item, dict):
                 continue
             key = str(item.get("key") or "").strip()
-            if key in {"uncited_works", "citation_drivers", "citation_activation"}:
+            if key in {"uncited_works", "citation_drivers", "citation_activation", "citation_activation_history"}:
                 by_key[key] = item
 
     output_sections: list[dict[str, Any]] = []
     fallback_by_key = {
         str(item["key"]): item for item in fallback["sections"] if isinstance(item, dict)
     }
-    for key in ("uncited_works", "citation_drivers", "citation_activation"):
+    for key in ("uncited_works", "citation_drivers", "citation_activation", "citation_activation_history"):
         fallback_section = dict(fallback_by_key[key])
         model_section = by_key.get(key) or {}
         headline = str(model_section.get("headline") or "").strip() or fallback_section["headline"]
@@ -1085,7 +1289,7 @@ def generate_publication_insights_agent_draft(
     user_id: str,
     window_id: Literal["1y", "3y", "5y", "all"] = "1y",
     section_key: Literal[
-        "uncited_works", "citation_drivers", "citation_activation"
+        "uncited_works", "citation_drivers", "citation_activation", "citation_activation_history"
     ]
     | None = None,
     scope: Literal["window", "section"] = "window",

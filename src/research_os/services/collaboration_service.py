@@ -1265,6 +1265,85 @@ def get_collaborator_for_user(*, user_id: str, collaborator_id: str) -> dict[str
         return _serialize_collaborator(collaborator, metric=metric)
 
 
+def list_collaborator_shared_works_for_user(
+    *,
+    user_id: str,
+    collaborator_id: str,
+) -> dict[str, Any]:
+    create_all_tables()
+    with session_scope() as session:
+        collaborator = _resolve_collaborator_or_raise(
+            session,
+            user_id=user_id,
+            collaborator_id=collaborator_id,
+        )
+        collaborators = session.scalars(
+            select(Collaborator).where(Collaborator.owner_user_id == user_id)
+        ).all()
+        if not collaborators:
+            return {"items": []}
+        collaborator_groups, collaborator_to_key = _collaborator_groups(collaborators)
+        target_group_key = collaborator_to_key.get(
+            str(collaborator.id), str(collaborator.id)
+        )
+        target_group = collaborator_groups.get(target_group_key, [collaborator])
+        works = session.scalars(select(Work).where(Work.user_id == user_id)).all()
+        if not works:
+            return {"items": []}
+        work_by_id = {str(work.id): work for work in works}
+        work_ids = list(work_by_id.keys())
+        authorships = session.scalars(
+            select(WorkAuthorship).where(
+                WorkAuthorship.work_id.in_(work_ids or [""]),
+                WorkAuthorship.is_user.is_(False),
+            )
+        ).all()
+        author_ids = [str(item.author_id) for item in authorships]
+        authors = session.scalars(
+            select(Author).where(Author.id.in_(author_ids or [""]))
+        ).all()
+        authors_by_id = {str(author.id): author for author in authors}
+        shared_by_collaborator = _build_collaboration_work_index(
+            collaborators=collaborators,
+            works=works,
+            authorships=authorships,
+            authors_by_id=authors_by_id,
+        )
+        shared_work_ids: set[str] = set()
+        for member in target_group:
+            shared_work_ids.update(shared_by_collaborator.get(str(member.id), set()))
+        items: list[dict[str, Any]] = []
+        for work_id in shared_work_ids:
+            work = work_by_id.get(work_id)
+            if work is None:
+                continue
+            items.append(
+                {
+                    "work_id": str(work.id),
+                    "title": re.sub(r"\s+", " ", str(work.title or "").strip())
+                    or "Untitled publication",
+                    "year": work.year,
+                    "venue_name": re.sub(
+                        r"\s+", " ", str(work.venue_name or work.journal or "").strip()
+                    )
+                    or None,
+                    "publication_type": re.sub(
+                        r"\s+",
+                        " ",
+                        str(work.publication_type or work.work_type or "").strip(),
+                    )
+                    or None,
+                }
+            )
+        items.sort(
+            key=lambda item: (
+                -(int(item["year"]) if isinstance(item.get("year"), int) else -1),
+                str(item.get("title") or "").lower(),
+            )
+        )
+        return {"items": items}
+
+
 def update_collaborator_for_user(
     *,
     user_id: str,

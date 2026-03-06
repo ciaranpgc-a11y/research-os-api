@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Loader2, Paperclip, Search, Settings, Share2 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
 import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
@@ -2224,6 +2224,17 @@ type ProfilePublicationsPageProps = {
 
 export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProps = {}) {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedWorkIdFromQuery = String(searchParams.get('work') || '').trim()
+  const requestedDetailTabFromQuery = String(searchParams.get('tab') || '').trim()
+  const requestedPublicationDetailTab: PublicationDetailTab = (
+    requestedDetailTabFromQuery === 'content'
+    || requestedDetailTabFromQuery === 'impact'
+    || requestedDetailTabFromQuery === 'files'
+    || requestedDetailTabFromQuery === 'ai'
+  )
+    ? requestedDetailTabFromQuery
+    : 'overview'
   const isLocalRuntime = useMemo(() => {
     if (typeof window === 'undefined') {
       return false
@@ -4443,6 +4454,27 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setActiveDetailTab(tab)
   }, [activeDetailTab, loadPublicationDetailData, loadPublicationFilesData])
 
+  useEffect(() => {
+    if (!requestedWorkIdFromQuery) {
+      return
+    }
+    if (!(personaState?.works || []).some((work) => work.id === requestedWorkIdFromQuery)) {
+      return
+    }
+    openPublicationInDetailPanel(requestedWorkIdFromQuery, requestedPublicationDetailTab)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('work')
+    nextParams.delete('tab')
+    setSearchParams(nextParams, { replace: true })
+  }, [
+    openPublicationInDetailPanel,
+    personaState?.works,
+    requestedPublicationDetailTab,
+    requestedWorkIdFromQuery,
+    searchParams,
+    setSearchParams,
+  ])
+
   const onToggleAbstractExpanded = () => {
     if (!selectedWorkId) {
       return
@@ -5520,6 +5552,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             onTabChange={(tabId) => onDetailTabChange(tabId as PublicationDetailTab)}
                             panelIdPrefix="publication-drilldown-panel-"
                             tabIdPrefix="publication-drilldown-tab-"
+                            tone="profile"
                             flexGrow={drilldownTabFlexGrow}
                             aria-label="Publication drilldown sections"
                             className="house-drilldown-tabs"

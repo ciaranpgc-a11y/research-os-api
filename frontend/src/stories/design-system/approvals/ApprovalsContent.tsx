@@ -547,7 +547,7 @@ function DrilldownSheetDemo() {
           variant="publications"
           alert={activeTab === 'summary' ? <p className="text-sm text-amber-700">Showing 2024 data</p> : undefined}
         >
-          <DrilldownSheet.Tabs activeTab={activeTab} onTabChange={setActiveTab}>
+          <DrilldownSheet.Tabs activeTab={activeTab} onTabChange={setActiveTab} tone="profile">
             <DrilldownSheet.Tab id="summary">Summary</DrilldownSheet.Tab>
             <DrilldownSheet.Tab id="breakdown">Breakdown</DrilldownSheet.Tab>
             <DrilldownSheet.Tab id="trajectory">Trajectory</DrilldownSheet.Tab>

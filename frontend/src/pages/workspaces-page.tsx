@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -7,21 +16,29 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronsUpDown,
+  Download,
+  Filter,
+  GripVertical,
+  Hammer,
   PanelRightClose,
-  PanelRightOpen,
   Pencil,
   Pin,
+  Plus,
   RotateCcw,
+  Search,
   Save,
+  Settings,
+  Share2,
   UserMinus,
   UserPlus,
   X,
 } from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
-import { PageHeader, Row, Section, Stack, Toolbar } from '@/components/primitives'
-import { SectionMarker } from '@/components/patterns'
+import { DrilldownSheet, PageHeader, Row, Section, SectionHeader, Stack, Toolbar } from '@/components/primitives'
+import { SectionMarker, SectionToolIconButton, SectionTools } from '@/components/patterns'
 import {
+  Badge,
   Button,
   Input,
   SelectPrimitive,
@@ -36,12 +53,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
   ScrollArea,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui'
 import { WorkspacesDataLibraryView } from '@/pages/workspaces-data-library-view'
 import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
 } from '@/lib/workspace-owner'
+import { drilldownTabFlexGrow } from '@/components/publications/house-drilldown-header-utils'
 import { houseActions, houseCollaborators, houseDrilldown, houseForms, houseLayout, houseNavigation, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass, getSectionMarkerTone } from '@/lib/section-tone'
 import { matchesScopedStorageEventKey } from '@/lib/user-scoped-storage'
@@ -65,6 +89,13 @@ type CenterView = 'workspaces' | 'invitations' | 'data-library'
 type FilterKey = 'all' | 'active' | 'pinned' | 'archived' | 'recent'
 type SortColumn = 'name' | 'stage' | 'updatedAt' | 'status'
 type SortDirection = 'asc' | 'desc'
+type WorkspaceTableDensity = 'compact' | 'default' | 'comfortable'
+type WorkspaceDrilldownTab = 'overview' | 'data' | 'actions' | 'logs'
+type WorkspaceTableColumnKey = 'workspace' | 'owner' | 'collaborators' | 'stage' | 'status' | 'unread'
+type WorkspaceTableColumnPreference = {
+  visible: boolean
+  width: number
+}
 
 type CollaboratorChipState = 'active' | 'removed' | 'pending'
 
@@ -108,6 +139,13 @@ const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
   { key: 'archived', label: 'Archived' },
 ]
 
+const WORKSPACE_DRILLDOWN_TABS: Array<{ id: WorkspaceDrilldownTab; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'data', label: 'Data' },
+  { id: 'actions', label: 'Actions' },
+  { id: 'logs', label: 'Logs' },
+]
+
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
@@ -127,8 +165,6 @@ const HOUSE_TABLE_HEAD_CLASS = houseSurfaces.tableHead
 const HOUSE_TABLE_ROW_CLASS = houseSurfaces.tableRow
 const HOUSE_TABLE_HEAD_TEXT_CLASS = houseTypography.tableHead
 const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
-const HOUSE_TABLE_FILTER_INPUT_CLASS = houseTables.filterInput
-const HOUSE_TABLE_FILTER_SELECT_CLASS = houseTables.filterSelect
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
 const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
@@ -166,22 +202,81 @@ const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = houseDrilldown.tabTrigger
 const HOUSE_DRILLDOWN_COLLAPSIBLE_SECTION_CLASS = houseDrilldown.collapsibleSection
 const HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS = houseDrilldown.collapsibleEntity
 const WORKSPACE_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
-const HOUSE_SECTION_TOOLS_CLASS = houseActions.sectionTools
-const HOUSE_SECTION_TOOLS_WORKSPACE_CLASS = houseActions.sectionToolsWorkspace
-const HOUSE_SECTION_TOOL_BUTTON_CLASS = houseActions.sectionToolButton
-const HOUSE_SECTION_TOOL_TOGGLE_CLASS = houseActions.sectionToolToggle
-const HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS = houseActions.sectionToolToggleOn
-const HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS = houseActions.sectionToolToggleOff
-const HOUSE_ACTIONS_PILL_CLASS = houseActions.actionPill
-const HOUSE_ACTIONS_PILL_PRIMARY_CLASS = houseActions.actionPillPrimary
 const HOUSE_ACTIONS_PILL_TABLE_BODY_TEXT_CLASS = houseActions.actionPillTableBodyText
-const HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS = houseActions.actionPillIconGroup
-const HOUSE_ACTIONS_PILL_ICON_CLASS = houseActions.actionPillIcon
-const HOUSE_WORKSPACE_TABLE_SHELL_CLASS = 'house-workspaces-table-shell'
-const HOUSE_WORKSPACE_FILTER_SELECT_CLASS = cn(
-  'h-9 w-auto rounded-md px-2',
-  HOUSE_TABLE_FILTER_SELECT_CLASS,
-)
+const WORKSPACE_TABLE_COLUMN_ORDER: WorkspaceTableColumnKey[] = [
+  'workspace',
+  'owner',
+  'collaborators',
+  'stage',
+  'status',
+  'unread',
+]
+const WORKSPACE_TABLE_COLUMN_DEFINITIONS: Record<
+  WorkspaceTableColumnKey,
+  { label: string; headerClassName?: string; cellClassName?: string }
+> = {
+  workspace: {
+    label: 'Workspace',
+    headerClassName: 'text-left',
+    cellClassName: 'align-top font-medium whitespace-normal break-words leading-tight',
+  },
+  owner: {
+    label: 'Owner',
+    headerClassName: 'text-center',
+    cellClassName: 'align-top text-center whitespace-normal break-words leading-tight text-muted-foreground',
+  },
+  collaborators: {
+    label: 'Collaborators',
+    headerClassName: 'text-center',
+    cellClassName: 'align-top text-center whitespace-nowrap text-muted-foreground',
+  },
+  stage: {
+    label: 'Stage',
+    headerClassName: 'text-center',
+    cellClassName: 'align-top text-center whitespace-nowrap',
+  },
+  status: {
+    label: 'Status',
+    headerClassName: 'text-center',
+    cellClassName: 'align-top text-center whitespace-nowrap',
+  },
+  unread: {
+    label: 'Unread',
+    headerClassName: 'text-center',
+    cellClassName: 'align-top text-center whitespace-nowrap',
+  },
+}
+const WORKSPACE_TABLE_COLUMN_SORT_COLUMN: Partial<Record<WorkspaceTableColumnKey, SortColumn>> = {
+  workspace: 'name',
+  stage: 'stage',
+  status: 'status',
+}
+const WORKSPACE_TABLE_COLUMN_DEFAULTS: Record<WorkspaceTableColumnKey, WorkspaceTableColumnPreference> = {
+  workspace: { visible: true, width: 280 },
+  owner: { visible: true, width: 180 },
+  collaborators: { visible: true, width: 220 },
+  stage: { visible: true, width: 120 },
+  status: { visible: true, width: 150 },
+  unread: { visible: true, width: 110 },
+}
+const WORKSPACE_TABLE_COLUMN_MIN_WIDTH: Record<WorkspaceTableColumnKey, number> = {
+  workspace: 220,
+  owner: 140,
+  collaborators: 180,
+  stage: 96,
+  status: 120,
+  unread: 96,
+}
+const WORKSPACE_TABLE_COLUMN_MAX_WIDTH: Record<WorkspaceTableColumnKey, number> = {
+  workspace: 520,
+  owner: 300,
+  collaborators: 340,
+  stage: 180,
+  status: 220,
+  unread: 160,
+}
+const WORKSPACE_TABLE_COLUMN_HARD_MIN = 56
+const WORKSPACE_TABLE_LAYOUT_FALLBACK_WIDTH = 1080
 
 type WorkspaceInboxSignal = {
   unreadCount: number
@@ -244,6 +339,263 @@ function workspaceStage(workspace: WorkspaceRecord): string {
 
 function workspaceStatus(workspace: WorkspaceRecord): 'Active' | 'Archived' {
   return workspace.archived ? 'Archived' : 'Active'
+}
+
+function clampWorkspaceTableColumnWidth(
+  column: WorkspaceTableColumnKey,
+  value: number,
+): number {
+  const min = WORKSPACE_TABLE_COLUMN_HARD_MIN
+  const max = WORKSPACE_TABLE_COLUMN_MAX_WIDTH[column]
+  return Math.max(min, Math.min(max, Math.round(Number(value) || WORKSPACE_TABLE_COLUMN_DEFAULTS[column].width)))
+}
+
+function workspaceTableColumnsEqual(
+  left: Record<WorkspaceTableColumnKey, WorkspaceTableColumnPreference>,
+  right: Record<WorkspaceTableColumnKey, WorkspaceTableColumnPreference>,
+): boolean {
+  return WORKSPACE_TABLE_COLUMN_ORDER.every((column) => (
+    left[column].visible === right[column].visible &&
+    left[column].width === right[column].width
+  ))
+}
+
+function clampWorkspaceTableColumnsToAvailableWidth(input: {
+  columns: Record<WorkspaceTableColumnKey, WorkspaceTableColumnPreference>
+  columnOrder: WorkspaceTableColumnKey[]
+  availableWidth: number
+}): Record<WorkspaceTableColumnKey, WorkspaceTableColumnPreference> {
+  const next: Record<WorkspaceTableColumnKey, WorkspaceTableColumnPreference> = {
+    workspace: { ...input.columns.workspace },
+    owner: { ...input.columns.owner },
+    collaborators: { ...input.columns.collaborators },
+    stage: { ...input.columns.stage },
+    status: { ...input.columns.status },
+    unread: { ...input.columns.unread },
+  }
+  const visibleColumns = input.columnOrder.filter((column) => next[column].visible)
+  if (visibleColumns.length === 0) {
+    return next
+  }
+
+  const containerBudget = Math.max(
+    visibleColumns.length * WORKSPACE_TABLE_COLUMN_HARD_MIN,
+    Math.round(Number(input.availableWidth) || 0),
+  )
+  const preferredWidths = visibleColumns.reduce<Record<WorkspaceTableColumnKey, number>>((accumulator, column) => {
+    accumulator[column] = clampWorkspaceTableColumnWidth(
+      column,
+      Number(next[column].width || WORKSPACE_TABLE_COLUMN_DEFAULTS[column].width),
+    )
+    return accumulator
+  }, {
+    workspace: WORKSPACE_TABLE_COLUMN_DEFAULTS.workspace.width,
+    owner: WORKSPACE_TABLE_COLUMN_DEFAULTS.owner.width,
+    collaborators: WORKSPACE_TABLE_COLUMN_DEFAULTS.collaborators.width,
+    stage: WORKSPACE_TABLE_COLUMN_DEFAULTS.stage.width,
+    status: WORKSPACE_TABLE_COLUMN_DEFAULTS.status.width,
+    unread: WORKSPACE_TABLE_COLUMN_DEFAULTS.unread.width,
+  })
+
+  let totalWidth = visibleColumns.reduce((sum, column) => sum + preferredWidths[column], 0)
+  if (totalWidth > containerBudget) {
+    let overflow = totalWidth - containerBudget
+    const shrinkOrder: WorkspaceTableColumnKey[] = [
+      'collaborators',
+      'workspace',
+      'owner',
+      'status',
+      'stage',
+      'unread',
+    ]
+
+    for (const column of shrinkOrder) {
+      if (overflow <= 0) {
+        break
+      }
+      const reducible = Math.max(0, preferredWidths[column] - WORKSPACE_TABLE_COLUMN_MIN_WIDTH[column])
+      if (reducible <= 0) {
+        continue
+      }
+      const deduction = Math.min(reducible, overflow)
+      preferredWidths[column] -= deduction
+      overflow -= deduction
+    }
+
+    if (overflow > 0) {
+      for (const column of shrinkOrder) {
+        if (overflow <= 0) {
+          break
+        }
+        const reducible = Math.max(0, preferredWidths[column] - WORKSPACE_TABLE_COLUMN_HARD_MIN)
+        if (reducible <= 0) {
+          continue
+        }
+        const deduction = Math.min(reducible, overflow)
+        preferredWidths[column] -= deduction
+        overflow -= deduction
+      }
+    }
+    totalWidth = visibleColumns.reduce((sum, column) => sum + preferredWidths[column], 0)
+  }
+
+  if (totalWidth < containerBudget) {
+    let remaining = containerBudget - totalWidth
+    const growOrder: WorkspaceTableColumnKey[] = ([
+      'workspace',
+      'collaborators',
+      'owner',
+      'status',
+      'stage',
+      'unread',
+    ] as WorkspaceTableColumnKey[]).filter((column) => visibleColumns.includes(column))
+
+    while (remaining > 0) {
+      const growColumns = growOrder.filter(
+        (column) => preferredWidths[column] < WORKSPACE_TABLE_COLUMN_MAX_WIDTH[column],
+      )
+      if (growColumns.length === 0) {
+        break
+      }
+      const perColumn = Math.max(1, Math.floor(remaining / growColumns.length))
+      let grew = 0
+      for (const column of growColumns) {
+        if (remaining <= 0) {
+          break
+        }
+        const growable = Math.max(0, WORKSPACE_TABLE_COLUMN_MAX_WIDTH[column] - preferredWidths[column])
+        if (growable <= 0) {
+          continue
+        }
+        const step = Math.min(growable, perColumn, remaining)
+        if (step <= 0) {
+          continue
+        }
+        preferredWidths[column] += step
+        remaining -= step
+        grew += step
+      }
+      if (grew <= 0) {
+        break
+      }
+    }
+  }
+
+  for (const column of visibleColumns) {
+    next[column] = {
+      ...next[column],
+      width: Math.round(preferredWidths[column]),
+    }
+  }
+  return next
+}
+
+function createDefaultWorkspaceTableColumns(
+  availableWidth: number,
+): Record<WorkspaceTableColumnKey, WorkspaceTableColumnPreference> {
+  return clampWorkspaceTableColumnsToAvailableWidth({
+    columns: {
+      workspace: { ...WORKSPACE_TABLE_COLUMN_DEFAULTS.workspace },
+      owner: { ...WORKSPACE_TABLE_COLUMN_DEFAULTS.owner },
+      collaborators: { ...WORKSPACE_TABLE_COLUMN_DEFAULTS.collaborators },
+      stage: { ...WORKSPACE_TABLE_COLUMN_DEFAULTS.stage },
+      status: { ...WORKSPACE_TABLE_COLUMN_DEFAULTS.status },
+      unread: { ...WORKSPACE_TABLE_COLUMN_DEFAULTS.unread },
+    },
+    columnOrder: WORKSPACE_TABLE_COLUMN_ORDER,
+    availableWidth,
+  })
+}
+
+function clampWorkspaceTableDistributedResize(input: {
+  column: WorkspaceTableColumnKey
+  visibleColumns: WorkspaceTableColumnKey[]
+  startWidths: Partial<Record<WorkspaceTableColumnKey, number>>
+  deltaPx: number
+}): Partial<Record<WorkspaceTableColumnKey, number>> {
+  const primaryIndex = input.visibleColumns.indexOf(input.column)
+  if (primaryIndex < 0 || input.visibleColumns.length <= 1) {
+    return input.startWidths
+  }
+
+  const normalizedWidths: Partial<Record<WorkspaceTableColumnKey, number>> = {}
+  for (const key of input.visibleColumns) {
+    normalizedWidths[key] = clampWorkspaceTableColumnWidth(
+      key,
+      Number(input.startWidths[key] ?? WORKSPACE_TABLE_COLUMN_DEFAULTS[key].width),
+    )
+  }
+
+  const requestedDelta = Math.round(input.deltaPx)
+  if (!requestedDelta) {
+    return normalizedWidths
+  }
+
+  const primaryStart = Number(
+    normalizedWidths[input.column] ?? WORKSPACE_TABLE_COLUMN_DEFAULTS[input.column].width,
+  )
+  const rightColumns = input.visibleColumns.slice(primaryIndex + 1)
+  const leftColumns = input.visibleColumns.slice(0, primaryIndex).reverse()
+  const compensationOrder = [...rightColumns, ...leftColumns]
+  if (compensationOrder.length === 0) {
+    return normalizedWidths
+  }
+
+  let allowedGrow = WORKSPACE_TABLE_COLUMN_MAX_WIDTH[input.column] - primaryStart
+  if (requestedDelta > 0) {
+    const availableCompensation = compensationOrder.reduce((sum, key) => (
+      sum + Math.max(
+        0,
+        Number(normalizedWidths[key] ?? WORKSPACE_TABLE_COLUMN_DEFAULTS[key].width) - WORKSPACE_TABLE_COLUMN_MIN_WIDTH[key],
+      )
+    ), 0)
+    allowedGrow = Math.max(0, Math.min(allowedGrow, availableCompensation))
+  }
+  let allowedShrink = primaryStart - WORKSPACE_TABLE_COLUMN_MIN_WIDTH[input.column]
+  if (requestedDelta < 0) {
+    const availableCompensation = compensationOrder.reduce((sum, key) => (
+      sum + Math.max(
+        0,
+        WORKSPACE_TABLE_COLUMN_MAX_WIDTH[key] - Number(normalizedWidths[key] ?? WORKSPACE_TABLE_COLUMN_DEFAULTS[key].width),
+      )
+    ), 0)
+    allowedShrink = Math.max(0, Math.min(allowedShrink, availableCompensation))
+  }
+
+  const appliedDelta = requestedDelta > 0
+    ? Math.min(requestedDelta, allowedGrow)
+    : Math.max(requestedDelta, -allowedShrink)
+  if (!appliedDelta) {
+    return normalizedWidths
+  }
+
+  normalizedWidths[input.column] = primaryStart + appliedDelta
+
+  let remainingCompensation = Math.abs(appliedDelta)
+  for (const key of compensationOrder) {
+    if (remainingCompensation <= 0) {
+      break
+    }
+    const currentWidth = Number(normalizedWidths[key] ?? WORKSPACE_TABLE_COLUMN_DEFAULTS[key].width)
+    const capacity = appliedDelta > 0
+      ? Math.max(0, currentWidth - WORKSPACE_TABLE_COLUMN_MIN_WIDTH[key])
+      : Math.max(0, WORKSPACE_TABLE_COLUMN_MAX_WIDTH[key] - currentWidth)
+    if (capacity <= 0) {
+      continue
+    }
+    const step = Math.min(capacity, remainingCompensation)
+    normalizedWidths[key] = currentWidth + (appliedDelta > 0 ? -step : step)
+    remainingCompensation -= step
+  }
+
+  return normalizedWidths
+}
+
+function resolveInitialWorkspaceTableLayoutWidth(): number {
+  if (typeof window === 'undefined') {
+    return WORKSPACE_TABLE_LAYOUT_FALLBACK_WIDTH
+  }
+  return Math.max(320, Math.round(window.innerWidth || WORKSPACE_TABLE_LAYOUT_FALLBACK_WIDTH))
 }
 
 function normalizePerson(value: string | null | undefined): string {
@@ -336,6 +688,11 @@ function workspaceOwnerLabel(workspace: WorkspaceRecord, _currentUserName: strin
   void _currentUserName
   const ownerName = normalizeCollaboratorName(workspace.ownerName) || 'Unknown'
   return `${ownerName} (Owner)`
+}
+
+function workspaceOwnerBadgeLabel(workspace: WorkspaceRecord, currentUserName: string | null): string {
+  const ownerName = normalizeCollaboratorName(workspace.ownerName) || 'Unknown'
+  return isWorkspaceOwner(workspace, currentUserName) ? `${ownerName} (you)` : ownerName
 }
 
 function isWorkspaceReadOnlyForCurrentUser(workspace: WorkspaceRecord, currentUserName: string | null): boolean {
@@ -955,6 +1312,14 @@ function WorkspacesDrilldownPanel({
   const ownerDisplayName = selectedWorkspace
     ? workspaceOwnerLabel(selectedWorkspace, currentWorkspaceUserName)
     : 'Unknown owner (Owner)'
+  const ownerBadgeLabel = selectedWorkspace
+    ? workspaceOwnerBadgeLabel(selectedWorkspace, currentWorkspaceUserName)
+    : 'Unknown owner'
+  const ownerBadgeVariant =
+    selectedWorkspace && isWorkspaceOwner(selectedWorkspace, currentWorkspaceUserName)
+      ? 'positive'
+      : 'outline'
+  const [activeTab, setActiveTab] = useState<WorkspaceDrilldownTab>('overview')
   const [roleEditorKey, setRoleEditorKey] = useState<string | null>(null)
   const [roleEditorDraftRole, setRoleEditorDraftRole] = useState<WorkspaceCollaboratorRole | null>(null)
   const [restoreEditorKey, setRestoreEditorKey] = useState<string | null>(null)
@@ -1044,6 +1409,24 @@ function WorkspacesDrilldownPanel({
   const showConversationActorHeaders = conversationActivityGroups.length > 1
   const clampCollaboratorActivityList = collaboratorActivityEntries.length > 6
   const clampConversationActivityList = conversationActivityEntries.length > 6
+  const activeCollaboratorCount = collaboratorChips.filter((chip) => chip.state === 'active').length
+  const pendingCollaboratorCount = collaboratorChips.filter((chip) => chip.state === 'pending').length
+  const removedCollaboratorCount = collaboratorChips.filter((chip) => chip.state === 'removed').length
+  const workspaceSubtitle = selectedWorkspace
+    ? [
+        ownerDisplayName,
+        workspaceStage(selectedWorkspace),
+        selectedWorkspaceReadOnly ? 'Read-only' : workspaceStatus(selectedWorkspace),
+      ].join(' | ')
+    : 'Select a workspace from the library'
+
+  const resetCollaboratorEditors = () => {
+    setRoleEditorKey(null)
+    setRoleEditorDraftRole(null)
+    setRestoreEditorKey(null)
+    setRestoreEditorRole(null)
+    setRemovalConfirmKey(null)
+  }
 
   useEffect(() => {
     setRoleEditorKey(null)
@@ -1055,6 +1438,7 @@ function WorkspacesDrilldownPanel({
     setConversationActivityCollapsed(true)
     setRemovalConfirmKey(null)
     setCollaboratorActorExpanded({})
+    setActiveTab('overview')
   }, [selectedWorkspaceId])
 
   const onToggleCollaboratorActivitySection = () => {
@@ -1074,6 +1458,842 @@ function WorkspacesDrilldownPanel({
     }
     setConversationActivityCollapsed(true)
   }
+
+  const overviewContent = (
+    <>
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Workspace overview</p>
+        </div>
+        {!selectedWorkspace ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Select a workspace to view its overview.</p>
+          </div>
+        ) : (
+          <div
+            className="house-drilldown-content-block house-drilldown-summary-stats-grid"
+            style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}
+          >
+            <div className="rounded-md border border-border/60 bg-background/80 p-3">
+              <p className={HOUSE_FIELD_HELPER_CLASS}>Owner</p>
+              <div className="mt-1">
+                <Badge variant={ownerBadgeVariant}>{ownerBadgeLabel}</Badge>
+              </div>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background/80 p-3">
+              <p className={HOUSE_FIELD_HELPER_CLASS}>Stage</p>
+              <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+                {workspaceStage(selectedWorkspace)}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background/80 p-3">
+              <p className={HOUSE_FIELD_HELPER_CLASS}>Status</p>
+              <div className="mt-1">
+                <Badge variant={selectedWorkspace.archived ? 'outline' : 'positive'}>
+                  {workspaceStatus(selectedWorkspace)}
+                </Badge>
+              </div>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background/80 p-3">
+              <p className={HOUSE_FIELD_HELPER_CLASS}>Last updated</p>
+              <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+                {formatTimestamp(selectedWorkspace.updatedAt)}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background/80 p-3">
+              <p className={HOUSE_FIELD_HELPER_CLASS}>Active collaborators</p>
+              <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+                {activeCollaboratorCount}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background/80 p-3">
+              <p className={HOUSE_FIELD_HELPER_CLASS}>Audit entries</p>
+              <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+                {workspaceAuditEntries.length}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Access summary</p>
+        </div>
+        {!selectedWorkspace ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Select a workspace to review access state.</p>
+          </div>
+        ) : (
+          <div className="house-drilldown-content-block space-y-2">
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background/70 px-3 py-2">
+              <p className={houseTypography.text}>Access mode</p>
+              <p className={HOUSE_FIELD_HELPER_CLASS}>
+                {selectedWorkspaceReadOnly ? 'Read-only' : 'Editable'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background/70 px-3 py-2">
+              <p className={houseTypography.text}>Pending invites</p>
+              <p className={HOUSE_FIELD_HELPER_CLASS}>{pendingCollaboratorCount}</p>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background/70 px-3 py-2">
+              <p className={houseTypography.text}>Removed collaborators</p>
+              <p className={HOUSE_FIELD_HELPER_CLASS}>{removedCollaboratorCount}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  )
+
+  const dataContent = (
+    <>
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Workspace data</p>
+        </div>
+        {!selectedWorkspace ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Select a workspace to inspect its data.</p>
+          </div>
+        ) : (
+          <div className="house-drilldown-content-block">
+            {[
+              ['Workspace ID', selectedWorkspace.id],
+              ['Version', selectedWorkspace.version],
+              ['Owner', ownerDisplayName],
+              ['Pinned', selectedWorkspace.pinned ? 'Yes' : 'No'],
+              ['Archived', selectedWorkspace.archived ? 'Yes' : 'No'],
+              ['Updated', formatTimestamp(selectedWorkspace.updatedAt)],
+            ].map(([label, value], index) => (
+              <div
+                key={label}
+                className={cn(
+                  'flex items-center justify-between gap-3 px-1 py-2',
+                  index > 0 ? 'border-t border-border/50' : '',
+                )}
+              >
+                <p className={HOUSE_FIELD_HELPER_CLASS}>{label}</p>
+                <p className={cn(houseTypography.text, 'text-right font-medium')}>{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Membership</p>
+        </div>
+        {!selectedWorkspace ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>
+              Select a workspace to inspect membership counts.
+            </p>
+          </div>
+        ) : (
+          <div
+            className="house-drilldown-content-block house-drilldown-summary-stats-grid"
+            style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
+          >
+            <div className="rounded-md border border-border/60 bg-background/80 p-3">
+              <p className={HOUSE_FIELD_HELPER_CLASS}>Active</p>
+              <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+                {activeCollaboratorCount}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background/80 p-3">
+              <p className={HOUSE_FIELD_HELPER_CLASS}>Pending</p>
+              <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+                {pendingCollaboratorCount}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/60 bg-background/80 p-3">
+              <p className={HOUSE_FIELD_HELPER_CLASS}>Removed</p>
+              <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+                {removedCollaboratorCount}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  )
+
+  const actionsContent = (
+    <>
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Workspace actions</p>
+        </div>
+        <div className="house-drilldown-content-block space-y-2">
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => {
+              if (!selectedWorkspaceId || !canOpenSelectedWorkspace) {
+                return
+              }
+              onOpenSelectedWorkspace(selectedWorkspaceId)
+            }}
+            className={cn(
+              'w-full justify-center px-3',
+              HOUSE_PRIMARY_ACTION_BUTTON_CLASS,
+              HOUSE_BUTTON_TEXT_CLASS,
+              HOUSE_ACTIONS_PILL_TABLE_BODY_TEXT_CLASS,
+            )}
+            disabled={!canOpenSelectedWorkspace}
+          >
+            <span className="truncate">
+              {canOpenSelectedWorkspace
+                ? `Open ${selectedLabel} Workspace`
+                : selectedWorkspaceReadOnly
+                  ? 'Workspace is archived (read-only)'
+                  : 'Select workspace'}
+            </span>
+          </Button>
+          <p className={HOUSE_FIELD_HELPER_CLASS}>
+            {selectedWorkspaceReadOnly
+              ? 'Archived workspaces can be reviewed here but cannot be opened for editing.'
+              : 'Open the workspace to continue working in the main workspace view.'}
+          </p>
+        </div>
+      </div>
+
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Collaborators</p>
+        </div>
+        {!selectedWorkspace ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Select a workspace to manage collaborators.</p>
+          </div>
+        ) : (
+          <div className="house-drilldown-content-block space-y-2">
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background/70 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Badge variant={ownerBadgeVariant}>{ownerBadgeLabel}</Badge>
+              </div>
+              <span className={HOUSE_FIELD_HELPER_CLASS}>Owner</span>
+            </div>
+            {collaboratorChips.map((chip) => {
+              const isRoleEditorOpen =
+                canManageSelectedWorkspace &&
+                roleEditorKey === chip.key &&
+                chip.state !== 'removed'
+              const isRestoreEditorOpen =
+                canManageSelectedWorkspace &&
+                chip.state === 'removed' &&
+                restoreEditorKey === chip.key
+              const roleEditorCurrentRole = roleEditorDraftRole || chip.role
+              const hasRoleEditorChanges =
+                isRoleEditorOpen && roleEditorCurrentRole !== chip.role
+              const isRemovalAwaitingConfirm =
+                canManageSelectedWorkspace &&
+                chip.state === 'active' &&
+                removalConfirmKey === chip.key
+
+              return (
+                <div
+                  key={chip.key}
+                  className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background/70 px-3 py-2"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={cn(
+                        HOUSE_COLLABORATOR_CHIP_CLASS,
+                        chip.state === 'pending'
+                          ? HOUSE_COLLABORATOR_CHIP_PENDING_CLASS
+                          : chip.state === 'removed'
+                            ? HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS
+                            : HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
+                        HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
+                      )}
+                    >
+                      {chip.state === 'pending' ? `${chip.name} (pending)` : chip.name}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {isRoleEditorOpen ? (
+                      <div className="flex items-center gap-1">
+                        <SelectPrimitive
+                          value={roleEditorCurrentRole}
+                          onValueChange={(value) => {
+                            const nextRole = normalizeCollaboratorRoleValue(value)
+                            if (!nextRole) {
+                              return
+                            }
+                            setRoleEditorDraftRole(nextRole)
+                          }}
+                        >
+                          <SelectTrigger className="h-8 w-auto min-w-sz-110 px-2 text-xs">
+                            <SelectValue placeholder="Select role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </SelectPrimitive>
+                        <button
+                          type="button"
+                          className={cn(
+                            HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                            hasRoleEditorChanges
+                              ? HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS
+                              : HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                          )}
+                          onClick={() => {
+                            if (hasRoleEditorChanges) {
+                              onChangeCollaboratorRole(
+                                chip.name,
+                                chip.state,
+                                roleEditorCurrentRole,
+                              )
+                            }
+                            resetCollaboratorEditors()
+                          }}
+                          aria-label={
+                            hasRoleEditorChanges
+                              ? `Apply role change for ${chip.name}`
+                              : `Cancel role change for ${chip.name}`
+                          }
+                          title={hasRoleEditorChanges ? 'Apply role change' : 'Cancel role change'}
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className={cn(
+                            HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                            HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                          )}
+                          onClick={resetCollaboratorEditors}
+                          aria-label={`Cancel role change for ${chip.name}`}
+                          title="Cancel role change"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : isRestoreEditorOpen ? (
+                      <div className="flex items-center gap-1">
+                        <SelectPrimitive
+                          value={restoreEditorRole || '__none__'}
+                          onValueChange={(value) => {
+                            const nextRole = normalizeCollaboratorRoleValue(value)
+                            setRestoreEditorRole(nextRole)
+                          }}
+                        >
+                          <SelectTrigger className="h-8 w-auto min-w-sz-110 px-2 text-xs">
+                            <SelectValue placeholder="Select role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Select role</SelectItem>
+                            {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </SelectPrimitive>
+                        <button
+                          type="button"
+                          className={cn(
+                            HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                            restoreEditorRole
+                              ? HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS
+                              : HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                          )}
+                          onClick={() => {
+                            if (!selectedWorkspace || !restoreEditorRole) {
+                              return
+                            }
+                            onToggleCollaboratorRemoved(selectedWorkspace, chip.name, {
+                              restoreRole: restoreEditorRole,
+                            })
+                            resetCollaboratorEditors()
+                          }}
+                          disabled={!restoreEditorRole}
+                          aria-label={`Restore ${chip.name} with selected role`}
+                          title={
+                            restoreEditorRole
+                              ? `Restore as ${collaboratorRoleLabel(restoreEditorRole)}`
+                              : 'Select role before restoring'
+                          }
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className={cn(
+                            HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                            HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                          )}
+                          onClick={resetCollaboratorEditors}
+                          aria-label={`Cancel restore for ${chip.name}`}
+                          title="Cancel restore"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className={HOUSE_FIELD_HELPER_CLASS}>{collaboratorRoleLabel(chip.role)}</span>
+                    )}
+                    {canManageSelectedWorkspace ? (
+                      isRemovalAwaitingConfirm ? (
+                        <>
+                          <button
+                            type="button"
+                            className={cn(
+                              HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                              HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS,
+                            )}
+                            onClick={() => {
+                              if (!selectedWorkspace) {
+                                return
+                              }
+                              onToggleCollaboratorRemoved(selectedWorkspace, chip.name, {
+                                skipRemoveConfirmation: true,
+                              })
+                              resetCollaboratorEditors()
+                            }}
+                            aria-label={`Confirm remove ${chip.name}`}
+                            title="Confirm remove collaborator"
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            className={cn(
+                              HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                              HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                            )}
+                            onClick={() => setRemovalConfirmKey(null)}
+                            aria-label={`Cancel remove ${chip.name}`}
+                            title="Cancel remove collaborator"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className={cn(
+                              HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                              HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                            )}
+                            onClick={() => {
+                              if (chip.state === 'removed') {
+                                return
+                              }
+                              if (roleEditorKey === chip.key) {
+                                setRoleEditorKey(null)
+                                setRoleEditorDraftRole(null)
+                                setRestoreEditorKey(null)
+                                setRestoreEditorRole(null)
+                                return
+                              }
+                              setRoleEditorKey(chip.key)
+                              setRoleEditorDraftRole(chip.role)
+                              setRestoreEditorKey(null)
+                              setRestoreEditorRole(null)
+                              setRemovalConfirmKey(null)
+                            }}
+                            disabled={chip.state === 'removed'}
+                            aria-label={`Edit role for ${chip.name}`}
+                            title={chip.state === 'removed' ? 'Restore collaborator to edit role.' : 'Edit role'}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            className={cn(
+                              HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                              chip.state === 'pending'
+                                ? HOUSE_COLLABORATOR_ACTION_ICON_REMOVE_CLASS
+                                : chip.state === 'removed'
+                                  ? HOUSE_COLLABORATOR_ACTION_ICON_RESTORE_CLASS
+                                  : HOUSE_COLLABORATOR_ACTION_ICON_REMOVE_CLASS,
+                            )}
+                            onClick={() => {
+                              if (!selectedWorkspace) {
+                                return
+                              }
+                              if (chip.state === 'pending') {
+                                onCancelPendingCollaboratorInvitation(chip.name)
+                                resetCollaboratorEditors()
+                                return
+                              }
+                              if (chip.state === 'active') {
+                                setRemovalConfirmKey(chip.key)
+                                setRoleEditorKey(null)
+                                setRoleEditorDraftRole(null)
+                                setRestoreEditorKey(null)
+                                setRestoreEditorRole(null)
+                                return
+                              }
+                              if (restoreEditorKey === chip.key) {
+                                setRestoreEditorKey(null)
+                                setRestoreEditorRole(null)
+                                return
+                              }
+                              setRestoreEditorKey(chip.key)
+                              setRestoreEditorRole(chip.role)
+                              setRoleEditorKey(null)
+                              setRoleEditorDraftRole(null)
+                              setRemovalConfirmKey(null)
+                            }}
+                            aria-label={chip.state === 'removed' ? `Restore ${chip.name}` : `Remove ${chip.name}`}
+                            title={
+                              chip.state === 'pending'
+                                ? 'Cancel pending invitation'
+                                : chip.state === 'removed'
+                                  ? 'Restore collaborator'
+                                  : 'Remove collaborator'
+                            }
+                          >
+                            {chip.state === 'pending' ? (
+                              <X className="h-4 w-4" />
+                            ) : chip.state === 'removed' ? (
+                              <RotateCcw className="h-4 w-4" />
+                            ) : (
+                              <UserMinus className="h-4 w-4" />
+                            )}
+                          </button>
+                        </>
+                      )
+                    ) : null}
+                  </div>
+                </div>
+              )
+            })}
+            {!canManageSelectedWorkspace ? (
+              <p className={HOUSE_FIELD_HELPER_CLASS}>
+                Only the workspace owner can add collaborators.
+              </p>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Invite collaborator</p>
+        </div>
+        {!selectedWorkspace ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Select a workspace to send invitations.</p>
+          </div>
+        ) : !canManageSelectedWorkspace ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Only the workspace owner can send invitations.</p>
+          </div>
+        ) : (
+          <div className="house-drilldown-content-block space-y-3">
+            <div>
+              <Button
+                type="button"
+                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+                onClick={onOpenCollaboratorComposer}
+                disabled={!canAddCollaborator}
+              >
+                {collaboratorComposerOpen ? 'Cancel invite' : 'Add collaborator'}
+              </Button>
+            </div>
+            {collaboratorComposerOpen ? (
+              <>
+                <div className="space-y-1">
+                  <Input
+                    value={collaboratorQuery}
+                    onChange={(event) => onCollaboratorQueryChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && canConfirmAddCollaborator) {
+                        event.preventDefault()
+                        onConfirmAddCollaborator()
+                      }
+                    }}
+                    placeholder="Search by name"
+                    className={HOUSE_INPUT_CLASS}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Role</p>
+                  <SelectPrimitive
+                    value={collaboratorInviteRole}
+                    onValueChange={(value) => {
+                      const nextRole = normalizeCollaboratorRoleValue(value)
+                      if (!nextRole) {
+                        return
+                      }
+                      onCollaboratorInviteRoleChange(nextRole)
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-auto min-w-sz-120 px-2 text-xs">
+                      <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </SelectPrimitive>
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    className={cn(HOUSE_PRIMARY_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+                    onClick={onConfirmAddCollaborator}
+                    disabled={!canConfirmAddCollaborator}
+                  >
+                    Send invite
+                  </Button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </>
+  )
+
+  const logsContent = (
+    <>
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Collaborator activity</p>
+        </div>
+        {!selectedWorkspace ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>
+              Select a workspace to view collaborator activity.
+            </p>
+          </div>
+        ) : collaboratorActivityEntries.length === 0 ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>
+              No collaborator access or role events logged yet.
+            </p>
+          </div>
+        ) : (
+          <div className="house-drilldown-content-block space-y-2">
+            {collaboratorActivityGroups.map((group, groupIndex) => (
+              <div
+                key={`${auditActorKey(group.actorName)}-${groupIndex}`}
+                className="rounded-md border border-border/60 bg-background/70"
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2">
+                  <p className={cn(houseTypography.text, 'font-medium')}>
+                    {formatAuditActorHeaderName(group.actorName)}
+                  </p>
+                  <span className={HOUSE_FIELD_HELPER_CLASS}>{group.entries.length}</span>
+                </div>
+                {group.entries.map((item, entryIndex) => {
+                  const { entry, parsedTransition } = item
+                  if (!parsedTransition) {
+                    return (
+                      <div
+                        key={entry.id}
+                        className={cn(
+                          'px-3 py-2',
+                          entryIndex > 0 ? 'border-t border-border/50' : '',
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={houseTypography.text}>{entry.message}</p>
+                          <span className={HOUSE_FIELD_HELPER_CLASS}>
+                            {formatAuditCompactTimestamp(entry.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  }
+                  const transitionPills = buildAuditTransitionPillPresentation(parsedTransition)
+                  const fromValueClass =
+                    transitionPills.fromRawValue && transitionPills.fromLabel
+                      ? auditTransitionStatePillClassName(
+                          parsedTransition,
+                          transitionPills.fromRawValue,
+                        )
+                      : ''
+                  const toValueClass = auditTransitionStatePillClassName(
+                    parsedTransition,
+                    transitionPills.toRawValue,
+                  )
+
+                  return (
+                    <div
+                      key={entry.id}
+                      className={cn(
+                        'px-3 py-2',
+                        entryIndex > 0 ? 'border-t border-border/50' : '',
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                          {transitionPills.fromLabel && transitionPills.fromRawValue ? (
+                            <span className={fromValueClass}>{transitionPills.fromLabel}</span>
+                          ) : null}
+                          {transitionPills.showArrow && transitionPills.fromLabel ? (
+                            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                          ) : null}
+                          <span className={toValueClass}>{transitionPills.toLabel}</span>
+                        </div>
+                        <span className={HOUSE_FIELD_HELPER_CLASS}>
+                          {formatAuditCompactTimestamp(entry.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Conversation log</p>
+        </div>
+        {!selectedWorkspace ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>
+              Select a workspace to view conversation logs.
+            </p>
+          </div>
+        ) : conversationActivityEntries.length === 0 ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>No conversation events logged yet.</p>
+          </div>
+        ) : (
+          <div className="house-drilldown-content-block space-y-2">
+            {conversationActivityGroups.map((group, groupIndex) => (
+              <div
+                key={`${normalizeCollaboratorName(group.actorName).toLowerCase()}-${groupIndex}`}
+                className="rounded-md border border-border/60 bg-background/70"
+              >
+                {showConversationActorHeaders ? (
+                  <div className="border-b border-border/50 px-3 py-2">
+                    <p className={cn(houseTypography.text, 'font-medium')}>
+                      {formatAuditActorHeaderName(group.actorName)}
+                    </p>
+                  </div>
+                ) : null}
+                {group.entries.map((item, entryIndex) => {
+                  const { entry, parsedEvent } = item
+                  if (!parsedEvent) {
+                    return (
+                      <div
+                        key={entry.id}
+                        className={cn(
+                          'px-3 py-2',
+                          entryIndex > 0 ? 'border-t border-border/50' : '',
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-tiny text-muted-foreground">
+                            Other
+                          </span>
+                          <span className={HOUSE_FIELD_HELPER_CLASS}>
+                            {formatTimestamp(entry.createdAt)}
+                          </span>
+                        </div>
+                        <p className={cn(houseTypography.text, 'mt-1')}>{entry.message}</p>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div
+                      key={entry.id}
+                      className={cn(
+                        'px-3 py-2',
+                        entryIndex > 0 ? 'border-t border-border/50' : '',
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-tiny text-muted-foreground">
+                          Message
+                        </span>
+                        <span className={HOUSE_FIELD_HELPER_CLASS}>
+                          Logged {formatTimestamp(entry.createdAt)}
+                        </span>
+                      </div>
+                      <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+                        Message ID {parsedEvent.messageId}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className="rounded border border-border/70 bg-background/80 px-1.5 py-0.5">
+                          Sent {formatTimestamp(parsedEvent.createdAtRaw)}
+                        </span>
+                        <span className="rounded border border-border/70 bg-background/80 px-1.5 py-0.5">
+                          Cipher {parsedEvent.ciphertextLength}
+                        </span>
+                        <span className="rounded border border-border/70 bg-background/80 px-1.5 py-0.5">
+                          IV {parsedEvent.ivLength}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )
+
+  return (
+    <div className={cn(HOUSE_DRILLDOWN_SHEET_BODY_CLASS, 'house-drilldown-panel-no-pad')}>
+      <DrilldownSheet.Header
+        title={selectedLabel || 'Workspace'}
+        subtitle={workspaceSubtitle}
+        variant="workspace"
+        alert={selectedWorkspaceReadOnly ? (
+          <p className={HOUSE_FIELD_HELPER_CLASS}>
+            Removed access detected. This workspace is archived and read-only.
+          </p>
+        ) : undefined}
+      >
+        <DrilldownSheet.Tabs
+          activeTab={activeTab}
+          onTabChange={(tabId) => setActiveTab(tabId as WorkspaceDrilldownTab)}
+          panelIdPrefix="workspace-drilldown-panel-"
+          tabIdPrefix="workspace-drilldown-tab-"
+          tone="workspace"
+          flexGrow={drilldownTabFlexGrow}
+          aria-label="Workspace drilldown sections"
+          className="house-drilldown-tabs"
+        >
+          {WORKSPACE_DRILLDOWN_TABS.map((tab) => (
+            <DrilldownSheet.Tab key={tab.id} id={tab.id}>
+              {tab.label}
+            </DrilldownSheet.Tab>
+          ))}
+        </DrilldownSheet.Tabs>
+      </DrilldownSheet.Header>
+
+      <DrilldownSheet.TabPanel
+        id={activeTab}
+        isActive={true}
+        panelIdPrefix="workspace-drilldown-panel-"
+        tabIdPrefix="workspace-drilldown-tab-"
+      >
+        <div className="house-drilldown-stack-3" data-metric-key="workspace-library-drilldown">
+          {activeTab === 'overview' ? overviewContent : null}
+          {activeTab === 'data' ? dataContent : null}
+          {activeTab === 'actions' ? actionsContent : null}
+          {activeTab === 'logs' ? logsContent : null}
+        </div>
+      </DrilldownSheet.TabPanel>
+    </div>
+  )
 
   return (
     <div className={cn(HOUSE_DRILLDOWN_SHEET_BODY_CLASS, HOUSE_WORKSPACE_TONE_CLASS)}>
@@ -1853,48 +3073,6 @@ function DataLibraryDrilldownPanel() {
   )
 }
 
-function SortableHeader({
-  label,
-  column,
-  activeColumn,
-  direction,
-  align = 'left',
-  onSort,
-}: {
-  label: string
-  column: SortColumn
-  activeColumn: SortColumn
-  direction: SortDirection
-  align?: 'left' | 'center' | 'right'
-  onSort: (column: SortColumn) => void
-}) {
-  const isActive = column === activeColumn
-  const alignClass =
-    align === 'right'
-      ? 'w-full justify-end text-right'
-      : align === 'center'
-        ? 'w-full justify-center text-center'
-        : 'w-full justify-start text-left'
-  return (
-    <button
-      type="button"
-      onClick={() => onSort(column)}
-      className={cn('inline-flex items-center gap-1 transition-colors hover:text-foreground', HOUSE_TABLE_SORT_TRIGGER_CLASS, alignClass)}
-    >
-      <span>{label}</span>
-      {isActive ? (
-        direction === 'desc' ? (
-          <ChevronDown className="h-3.5 w-3.5 text-foreground" />
-        ) : (
-          <ChevronUp className="h-3.5 w-3.5 text-foreground" />
-        )
-      ) : (
-        <ChevronsUpDown className="h-3.5 w-3.5" />
-      )}
-    </button>
-  )
-}
-
 function WorkspaceMenuTrigger({
   menuOpen,
   disabled = false,
@@ -2152,10 +3330,28 @@ export function WorkspacesPage() {
   const [filterKey, setFilterKey] = useState<FilterKey>(() => parseFilterKey(searchParams.get('filter')))
   const [sortColumn, setSortColumn] = useState<SortColumn>(() => parseSortColumn(searchParams.get('sort')))
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => parseSortDirection(searchParams.get('dir')))
-  const [workspaceDrilldownDesktopOpen, setWorkspaceDrilldownDesktopOpen] = useState(false)
-  const [workspaceDrilldownMobileOpen, setWorkspaceDrilldownMobileOpen] = useState(false)
   const [dataLibraryDrilldownDesktopOpen, setDataLibraryDrilldownDesktopOpen] = useState(false)
   const [dataLibraryDrilldownMobileOpen, setDataLibraryDrilldownMobileOpen] = useState(false)
+  const [workspaceTableVisible] = useState(true)
+  const [workspaceSearchVisible, setWorkspaceSearchVisible] = useState(false)
+  const [workspaceFilterVisible, setWorkspaceFilterVisible] = useState(false)
+  const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false)
+  const [workspaceSettingsVisible, setWorkspaceSettingsVisible] = useState(false)
+  const [workspaceTableDensity, setWorkspaceTableDensity] = useState<WorkspaceTableDensity>('default')
+  const [workspaceTableAlternateRowColoring, setWorkspaceTableAlternateRowColoring] = useState(true)
+  const [workspaceSearchPopoverPosition, setWorkspaceSearchPopoverPosition] = useState({ top: 0, right: 0 })
+  const [workspaceFilterPopoverPosition, setWorkspaceFilterPopoverPosition] = useState({ top: 0, right: 0 })
+  const [workspaceSettingsPopoverPosition, setWorkspaceSettingsPopoverPosition] = useState({ top: 0, right: 0 })
+  const initialWorkspaceTableLayoutWidth = useMemo(() => resolveInitialWorkspaceTableLayoutWidth(), [])
+  const [workspaceTableLayoutWidth] = useState(initialWorkspaceTableLayoutWidth)
+  const [workspaceTableColumnOrder, setWorkspaceTableColumnOrder] = useState<WorkspaceTableColumnKey[]>(
+    () => [...WORKSPACE_TABLE_COLUMN_ORDER],
+  )
+  const [workspaceTableColumns, setWorkspaceTableColumns] = useState<Record<WorkspaceTableColumnKey, WorkspaceTableColumnPreference>>(
+    () => createDefaultWorkspaceTableColumns(initialWorkspaceTableLayoutWidth),
+  )
+  const [workspaceTableResizingColumn, setWorkspaceTableResizingColumn] = useState<WorkspaceTableColumnKey | null>(null)
+  const [workspaceTableDraggingColumn, setWorkspaceTableDraggingColumn] = useState<WorkspaceTableColumnKey | null>(null)
   const [workspaceDrilldownSelectionId, setWorkspaceDrilldownSelectionId] = useState<string | null>(null)
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [createError, setCreateError] = useState('')
@@ -2173,6 +3369,30 @@ export function WorkspacesPage() {
   const [workspaceOwnerName, setWorkspaceOwnerName] = useState<string | null>(() =>
     readWorkspaceOwnerNameFromProfile(),
   )
+  const workspaceTableLayoutRef = useRef<HTMLDivElement | null>(null)
+  const workspaceSearchWrapperRef = useRef<HTMLDivElement | null>(null)
+  const workspaceSearchPopoverRef = useRef<HTMLDivElement | null>(null)
+  const workspaceFilterWrapperRef = useRef<HTMLDivElement | null>(null)
+  const workspaceFilterPopoverRef = useRef<HTMLDivElement | null>(null)
+  const workspaceSettingsWrapperRef = useRef<HTMLDivElement | null>(null)
+  const workspaceSettingsPopoverRef = useRef<HTMLDivElement | null>(null)
+  const workspaceTableResizeRef = useRef<{
+    column: WorkspaceTableColumnKey
+    visibleColumns: WorkspaceTableColumnKey[]
+    startX: number
+    startWidths: Partial<Record<WorkspaceTableColumnKey, number>>
+  } | null>(null)
+  const resolveWorkspaceTableAvailableWidth = useCallback(() => {
+    const measuredClient = workspaceTableLayoutRef.current?.clientWidth
+    if (Number.isFinite(measuredClient) && Number(measuredClient) > 0) {
+      return Math.max(320, Math.round(Number(measuredClient)))
+    }
+    const measuredRect = workspaceTableLayoutRef.current?.getBoundingClientRect().width
+    if (Number.isFinite(measuredRect) && Number(measuredRect) > 0) {
+      return Math.max(320, Math.round(Number(measuredRect)))
+    }
+    return Math.max(320, Math.round(Number(workspaceTableLayoutWidth) || 320))
+  }, [workspaceTableLayoutWidth])
   const currentReaderName = useMemo(
     () => (readWorkspaceOwnerNameFromProfile() || workspaceOwnerName || 'You').trim() || 'You',
     [workspaceOwnerName],
@@ -2245,6 +3465,10 @@ export function WorkspacesPage() {
     })
     return sortWorkspaces(next, sortColumn, sortDirection)
   }, [filterKey, query, sortColumn, sortDirection, workspaces])
+  const visibleWorkspaceTableColumns = useMemo(
+    () => workspaceTableColumnOrder.filter((column) => workspaceTableColumns[column].visible),
+    [workspaceTableColumnOrder, workspaceTableColumns],
+  )
   const workspaceDrilldownSelectionName = useMemo(() => {
     if (!workspaceDrilldownSelectionId) {
       return null
@@ -2361,11 +3585,240 @@ export function WorkspacesPage() {
   const canConfirmAddCollaborator = Boolean(
     canManageSelectedWorkspace && collaboratorComposerOpen && collaboratorTargetName,
   )
-
+  const onResetWorkspaceTableFilters = useCallback(() => {
+    setFilterKey('all')
+    setViewMode('table')
+    setSortColumn('updatedAt')
+    setSortDirection('desc')
+  }, [])
+  const onToggleWorkspaceTableColumnVisibility = useCallback((column: WorkspaceTableColumnKey) => {
+    setWorkspaceTableColumns((current) => {
+      const visibleCount = WORKSPACE_TABLE_COLUMN_ORDER.filter((key) => current[key].visible).length
+      if (current[column].visible && visibleCount <= 1) {
+        return current
+      }
+      const next = {
+        ...current,
+        [column]: {
+          ...current[column],
+          visible: !current[column].visible,
+        },
+      }
+      return clampWorkspaceTableColumnsToAvailableWidth({
+        columns: next,
+        columnOrder: workspaceTableColumnOrder,
+        availableWidth: resolveWorkspaceTableAvailableWidth(),
+      })
+    })
+  }, [resolveWorkspaceTableAvailableWidth, workspaceTableColumnOrder])
+  const onReorderWorkspaceTableColumn = useCallback((from: WorkspaceTableColumnKey, to: WorkspaceTableColumnKey) => {
+    if (from === to) {
+      return
+    }
+    setWorkspaceTableColumnOrder((current) => {
+      const visibleOrder = current.filter((column) => workspaceTableColumns[column].visible)
+      const fromIndex = visibleOrder.indexOf(from)
+      const toIndex = visibleOrder.indexOf(to)
+      if (fromIndex < 0 || toIndex < 0) {
+        return current
+      }
+      const queue = [...visibleOrder]
+      const [moved] = queue.splice(fromIndex, 1)
+      queue.splice(toIndex, 0, moved)
+      return current.map((columnKey) => (
+        workspaceTableColumns[columnKey].visible ? (queue.shift() || columnKey) : columnKey
+      ))
+    })
+  }, [workspaceTableColumns])
+  const onResetWorkspaceTableSettings = useCallback(() => {
+    const availableWidth = resolveWorkspaceTableAvailableWidth()
+    setWorkspaceTableColumns(createDefaultWorkspaceTableColumns(availableWidth))
+    setWorkspaceTableColumnOrder([...WORKSPACE_TABLE_COLUMN_ORDER])
+    setWorkspaceTableDensity('default')
+    setWorkspaceTableAlternateRowColoring(true)
+  }, [resolveWorkspaceTableAvailableWidth])
+  const onAutoAdjustWorkspaceTableWidths = useCallback(() => {
+    const availableWidth = resolveWorkspaceTableAvailableWidth()
+    const visibleColumns = workspaceTableColumnOrder.filter((column) => workspaceTableColumns[column].visible)
+    if (visibleColumns.length === 0) {
+      return
+    }
+    const perColumnWidth = Math.max(120, Math.floor(availableWidth / visibleColumns.length))
+    setWorkspaceTableColumns((current) => {
+      const next = { ...current }
+      for (const column of visibleColumns) {
+        next[column] = {
+          ...current[column],
+          width: clampWorkspaceTableColumnWidth(column, perColumnWidth),
+        }
+      }
+      return clampWorkspaceTableColumnsToAvailableWidth({
+        columns: next,
+        columnOrder: workspaceTableColumnOrder,
+        availableWidth,
+      })
+    })
+  }, [resolveWorkspaceTableAvailableWidth, workspaceTableColumnOrder, workspaceTableColumns])
+  const onStartWorkspaceHeadingResize = useCallback((
+    event: ReactPointerEvent<HTMLButtonElement>,
+    column: WorkspaceTableColumnKey,
+  ) => {
+    if (event.button !== 0) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const visibleColumns = workspaceTableColumnOrder.filter((key) => workspaceTableColumns[key].visible)
+    if (visibleColumns.length <= 1 || !visibleColumns.includes(column)) {
+      return
+    }
+    const startWidths = visibleColumns.reduce<Partial<Record<WorkspaceTableColumnKey, number>>>((accumulator, key) => {
+      accumulator[key] = Number(workspaceTableColumns[key].width || WORKSPACE_TABLE_COLUMN_DEFAULTS[key].width)
+      return accumulator
+    }, {})
+    workspaceTableResizeRef.current = {
+      column,
+      visibleColumns,
+      startX: event.clientX,
+      startWidths,
+    }
+    setWorkspaceTableResizingColumn(column)
+  }, [workspaceTableColumnOrder, workspaceTableColumns])
+  const onWorkspaceHeadingResizeHandleKeyDown = useCallback((
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    column: WorkspaceTableColumnKey,
+  ) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const deltaPx = event.key === 'ArrowLeft' ? -16 : 16
+    const availableWidth = resolveWorkspaceTableAvailableWidth()
+    setWorkspaceTableColumns((current) => {
+      const visibleColumns = workspaceTableColumnOrder.filter((key) => current[key].visible)
+      if (visibleColumns.length <= 1 || !visibleColumns.includes(column)) {
+        return current
+      }
+      const startWidths = visibleColumns.reduce<Partial<Record<WorkspaceTableColumnKey, number>>>((accumulator, key) => {
+        accumulator[key] = Number(current[key].width || WORKSPACE_TABLE_COLUMN_DEFAULTS[key].width)
+        return accumulator
+      }, {})
+      const resized = clampWorkspaceTableDistributedResize({
+        column,
+        visibleColumns,
+        startWidths,
+        deltaPx,
+      })
+      let changed = false
+      const next = { ...current }
+      for (const key of visibleColumns) {
+        const nextWidth = Number(resized[key] ?? current[key].width)
+        if (nextWidth === current[key].width) {
+          continue
+        }
+        changed = true
+        next[key] = {
+          ...current[key],
+          width: nextWidth,
+        }
+      }
+      if (!changed) {
+        return current
+      }
+      return clampWorkspaceTableColumnsToAvailableWidth({
+        columns: next,
+        columnOrder: workspaceTableColumnOrder,
+        availableWidth,
+      })
+    })
+  }, [resolveWorkspaceTableAvailableWidth, workspaceTableColumnOrder])
   useEffect(() => {
     void hydrateWorkspaceStoreFromRemote()
     void hydrateWorkspaceInboxFromRemote()
   }, [hydrateWorkspaceInboxFromRemote, hydrateWorkspaceStoreFromRemote])
+
+  useEffect(() => {
+    if (!workspaceTableResizingColumn) {
+      return
+    }
+    const onPointerMove = (event: PointerEvent) => {
+      const resizeState = workspaceTableResizeRef.current
+      if (!resizeState) {
+        return
+      }
+      const availableWidth = resolveWorkspaceTableAvailableWidth()
+      const resized = clampWorkspaceTableDistributedResize({
+        column: resizeState.column,
+        visibleColumns: resizeState.visibleColumns,
+        startWidths: resizeState.startWidths,
+        deltaPx: event.clientX - resizeState.startX,
+      })
+      setWorkspaceTableColumns((current) => {
+        let changed = false
+        const next = { ...current }
+        for (const key of resizeState.visibleColumns) {
+          const nextWidth = Number(resized[key] ?? current[key].width)
+          if (nextWidth === current[key].width) {
+            continue
+          }
+          changed = true
+          next[key] = {
+            ...current[key],
+            width: nextWidth,
+          }
+        }
+        if (!changed) {
+          return current
+        }
+        return clampWorkspaceTableColumnsToAvailableWidth({
+          columns: next,
+          columnOrder: workspaceTableColumnOrder,
+          availableWidth,
+        })
+      })
+    }
+    const stopResize = () => {
+      workspaceTableResizeRef.current = null
+      setWorkspaceTableResizingColumn(null)
+    }
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', stopResize)
+    window.addEventListener('pointercancel', stopResize)
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', stopResize)
+      window.removeEventListener('pointercancel', stopResize)
+    }
+  }, [resolveWorkspaceTableAvailableWidth, workspaceTableColumnOrder, workspaceTableResizingColumn])
+
+  useEffect(() => {
+    if (centerView !== 'workspaces' || viewMode !== 'table' || !workspaceTableVisible) {
+      return
+    }
+    const syncWorkspaceTableWidths = () => {
+      const availableWidth = resolveWorkspaceTableAvailableWidth()
+      setWorkspaceTableColumns((current) => {
+        const next = clampWorkspaceTableColumnsToAvailableWidth({
+          columns: current,
+          columnOrder: workspaceTableColumnOrder,
+          availableWidth,
+        })
+        return workspaceTableColumnsEqual(current, next) ? current : next
+      })
+    }
+    syncWorkspaceTableWidths()
+    window.addEventListener('resize', syncWorkspaceTableWidths)
+    return () => {
+      window.removeEventListener('resize', syncWorkspaceTableWidths)
+    }
+  }, [
+    centerView,
+    resolveWorkspaceTableAvailableWidth,
+    viewMode,
+    workspaceTableColumnOrder,
+    workspaceTableVisible,
+  ])
 
   useEffect(() => {
     if (!menuState) {
@@ -2439,12 +3892,6 @@ export function WorkspacesPage() {
   }, [centerView, filterKey, viewMode, sortColumn, sortDirection, query, searchParams, setSearchParams])
 
   useEffect(() => {
-    if (centerView !== 'workspaces') {
-      setWorkspaceDrilldownMobileOpen(false)
-    }
-  }, [centerView])
-
-  useEffect(() => {
     if (centerView !== 'data-library') {
       setDataLibraryDrilldownMobileOpen(false)
     }
@@ -2465,13 +3912,95 @@ export function WorkspacesPage() {
     }
   }, [refreshInboxMessagesFromStorage, refreshInboxReadsFromStorage])
 
+  useEffect(() => {
+    if (!workspaceSearchVisible || !workspaceSearchWrapperRef.current) {
+      return
+    }
+    const rect = workspaceSearchWrapperRef.current.getBoundingClientRect()
+    setWorkspaceSearchPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8,
+    })
+  }, [workspaceSearchVisible])
+
+  useEffect(() => {
+    if (!workspaceFilterVisible || !workspaceFilterWrapperRef.current) {
+      return
+    }
+    const rect = workspaceFilterWrapperRef.current.getBoundingClientRect()
+    setWorkspaceFilterPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8,
+    })
+  }, [workspaceFilterVisible])
+
+  useEffect(() => {
+    if (!workspaceSettingsVisible || !workspaceSettingsWrapperRef.current) {
+      return
+    }
+    const rect = workspaceSettingsWrapperRef.current.getBoundingClientRect()
+    setWorkspaceSettingsPopoverPosition({
+      top: rect.top,
+      right: window.innerWidth - rect.left + 8,
+    })
+  }, [workspaceSettingsVisible])
+
+  useEffect(() => {
+    if (!workspaceSearchVisible && !workspaceFilterVisible && !workspaceSettingsVisible) {
+      return
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (!target) {
+        return
+      }
+      if (
+        (workspaceSearchWrapperRef.current && workspaceSearchWrapperRef.current.contains(target)) ||
+        (workspaceSearchPopoverRef.current && workspaceSearchPopoverRef.current.contains(target)) ||
+        (workspaceFilterWrapperRef.current && workspaceFilterWrapperRef.current.contains(target)) ||
+        (workspaceFilterPopoverRef.current && workspaceFilterPopoverRef.current.contains(target)) ||
+        (workspaceSettingsWrapperRef.current && workspaceSettingsWrapperRef.current.contains(target)) ||
+        (workspaceSettingsPopoverRef.current && workspaceSettingsPopoverRef.current.contains(target))
+      ) {
+        return
+      }
+      setWorkspaceSearchVisible(false)
+      setWorkspaceFilterVisible(false)
+      setWorkspaceSettingsVisible(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return
+      }
+      setWorkspaceSearchVisible(false)
+      setWorkspaceFilterVisible(false)
+      setWorkspaceSettingsVisible(false)
+      setWorkspaceToolsOpen(false)
+    }
+    window.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [workspaceFilterVisible, workspaceSearchVisible, workspaceSettingsVisible])
+
+  useEffect(() => {
+    if (centerView !== 'workspaces') {
+      setWorkspaceSearchVisible(false)
+      setWorkspaceFilterVisible(false)
+      setWorkspaceSettingsVisible(false)
+      setWorkspaceToolsOpen(false)
+    }
+  }, [centerView])
+
   const canCreateWorkspace = Boolean(workspaceOwnerName)
 
-  const resetCollaboratorComposer = () => {
+  const resetCollaboratorComposer = useCallback(() => {
     setCollaboratorQuery('')
     setCollaboratorComposerOpen(false)
     setCollaboratorInviteRole('editor')
-  }
+  }, [])
 
   const toggleCollaboratorComposer = () => {
     if (!workspaceDrilldownSelection || !canManageSelectedWorkspace) {
@@ -2557,11 +4086,6 @@ export function WorkspacesPage() {
     setWorkspaceDrilldownSelectionId(workspace.id)
     resetCollaboratorComposer()
     setCollaboratorComposerOpen(true)
-    if (window.matchMedia('(min-width: 1280px)').matches) {
-      setWorkspaceDrilldownDesktopOpen(true)
-      return
-    }
-    setWorkspaceDrilldownMobileOpen(true)
   }
 
   const onConfirmAddCollaborator = () => {
@@ -2896,11 +4420,6 @@ export function WorkspacesPage() {
     setWorkspaceDrilldownSelectionId(workspaceId)
     resetCollaboratorComposer()
     setActiveWorkspaceId(workspaceId)
-    if (window.matchMedia('(min-width: 1280px)').matches) {
-      setWorkspaceDrilldownDesktopOpen(true)
-      return
-    }
-    navigate(`/w/${workspaceId}/overview`)
   }
 
   const buildWorkspacesReturnPath = () => {
@@ -3039,8 +4558,6 @@ export function WorkspacesPage() {
       <div
         className={cn(
           'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)]',
-          centerView === 'workspaces' && workspaceDrilldownDesktopOpen &&
-            'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_22rem]',
           centerView === 'data-library' && dataLibraryDrilldownDesktopOpen &&
             'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_22rem]',
         )}
@@ -3089,320 +4606,603 @@ export function WorkspacesPage() {
                 />
               </Row>
 
-              {centerView === 'workspaces' ? (
-                <Section
-                  className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}
-                  surface="transparent"
-                  inset="none"
-                  spaceY="none"
-                >
-                  <Toolbar>
-                    <Input
-                      value={newWorkspaceName}
-                      onChange={(event) => setNewWorkspaceName(event.target.value)}
-                      placeholder="New workspace name"
-                      className={cn('w-sz-220', HOUSE_INPUT_CLASS)}
-                    />
-                    <Button
-                      type="button"
-                      variant="primary"
-                      onClick={onCreateWorkspace}
-                      disabled={!canCreateWorkspace}
-                    >
-                      Create workspace
-                    </Button>
-                  </Toolbar>
-                  {!canCreateWorkspace ? (
-                    <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{WORKSPACE_OWNER_REQUIRED_MESSAGE}</p>
-                  ) : null}
-                  {createError ? (
-                    <p className="mt-3 text-sm text-red-700">{createError}</p>
-                  ) : null}
-                  {invitationStatus ? (
-                    <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{invitationStatus}</p>
-                  ) : null}
-                </Section>
-              ) : null}
-
               <Section
-                className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'rounded-lg border border-border', HOUSE_CARD_CLASS)}
+                className={cn(
+                  HOUSE_SECTION_ANCHOR_CLASS,
+                  centerView === 'workspaces' ? null : cn('rounded-lg border border-border', HOUSE_CARD_CLASS),
+                )}
                 surface="transparent"
                 inset="none"
                 spaceY="none"
               >
                 {centerView === 'workspaces' ? (
                   <>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Filter workspaces"
-                      className={cn('w-sz-260', HOUSE_INPUT_CLASS, HOUSE_TABLE_FILTER_INPUT_CLASS)}
-                    />
-                    <SelectPrimitive value={filterKey} onValueChange={(value) => setFilterKey(value as FilterKey)}>
-                      <SelectTrigger className={HOUSE_WORKSPACE_FILTER_SELECT_CLASS}>
-                        <SelectValue placeholder="Filter" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {FILTER_OPTIONS.map((option) => (
-                          <SelectItem key={option.key} value={option.key}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </SelectPrimitive>
-                    {viewMode === 'cards' ? (
-                      <SelectPrimitive value={sortColumn} onValueChange={(value) => onSort(value as SortColumn)}>
-                        <SelectTrigger className={HOUSE_WORKSPACE_FILTER_SELECT_CLASS}>
-                          <SelectValue placeholder="Sort" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="updatedAt">Sort: Updated</SelectItem>
-                          <SelectItem value="name">Sort: Name</SelectItem>
-                          <SelectItem value="stage">Sort: Stage</SelectItem>
-                          <SelectItem value="status">Sort: Status</SelectItem>
-                        </SelectContent>
-                      </SelectPrimitive>
-                    ) : null}
-                    {viewMode === 'cards' ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-                        onClick={() => setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))}
-                      >
-                        {sortDirection === 'desc' ? 'Descending' : 'Ascending'}
-                      </Button>
-                    ) : null}
-                  </div>
-                  <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_WORKSPACE_CLASS, HOUSE_ACTIONS_PILL_CLASS)}>
-                    <Button
-                      type="button"
-                      size="sm"
+                <SectionHeader
+                  heading="Workspace library"
+                  className="house-publications-toolbar-header house-publications-library-toolbar-header"
+                  actions={(
+                    <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
+                    <SectionTools tone="workspace" framed={false} className="order-1">
+                      {workspaceTableVisible ? (
+                        <div ref={workspaceSearchWrapperRef} className="relative">
+                          <SectionToolIconButton
+                            icon={<Search className="h-4 w-4" strokeWidth={2.1} />}
+                            aria-label={workspaceSearchVisible ? 'Hide workspace search' : 'Show workspace search'}
+                            tooltip="Search"
+                            active={workspaceSearchVisible}
+                            onClick={() => {
+                              setWorkspaceSearchVisible((current) => {
+                                const nextVisible = !current
+                                if (nextVisible) {
+                                  setWorkspaceFilterVisible(false)
+                                  setWorkspaceSettingsVisible(false)
+                                }
+                                return nextVisible
+                              })
+                            }}
+                          />
+                          {workspaceSearchVisible ? (
+                            createPortal(
+                            <div
+                              ref={workspaceSearchPopoverRef}
+                              className="house-publications-search-popover house-workspace-search-popover fixed z-50 w-[22.5rem]"
+                              style={{
+                                top: `${workspaceSearchPopoverPosition.top}px`,
+                                right: `${workspaceSearchPopoverPosition.right}px`,
+                              }}
+                            >
+                              <label className="house-publications-search-label" htmlFor="workspace-library-search-input">
+                                Search workspaces
+                              </label>
+                              <input
+                                id="workspace-library-search-input"
+                                type="text"
+                                autoFocus
+                                value={query}
+                                onChange={(event) => setQuery(event.target.value)}
+                                placeholder="Search by workspace name or ID..."
+                                className="house-publications-search-input"
+                              />
+                            </div>,
+                            document.body
+                            )
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {workspaceTableVisible ? (
+                        <div ref={workspaceFilterWrapperRef} className="relative">
+                          <SectionToolIconButton
+                            icon={<Filter className="h-4 w-4" strokeWidth={2.1} />}
+                            aria-label={workspaceFilterVisible ? 'Hide workspace filters' : 'Show workspace filters'}
+                            tooltip="Filters"
+                            active={workspaceFilterVisible}
+                            onClick={() => {
+                              setWorkspaceFilterVisible((current) => {
+                                const nextVisible = !current
+                                if (nextVisible) {
+                                  setWorkspaceSearchVisible(false)
+                                  setWorkspaceSettingsVisible(false)
+                                }
+                                return nextVisible
+                              })
+                            }}
+                          />
+                          {workspaceFilterVisible ? (
+                            createPortal(
+                            <div
+                              ref={workspaceFilterPopoverRef}
+                              className="house-publications-filter-popover house-workspace-filter-popover fixed z-50 w-[18.75rem]"
+                              style={{
+                                top: `${workspaceFilterPopoverPosition.top}px`,
+                                right: `${workspaceFilterPopoverPosition.right}px`,
+                              }}
+                            >
+                              <div className="house-publications-filter-header">
+                                <p className="house-publications-filter-title">Filter table</p>
+                                <button
+                                  type="button"
+                                  className="house-publications-filter-clear"
+                                  onClick={() => {
+                                    onResetWorkspaceTableFilters()
+                                    setWorkspaceFilterVisible(false)
+                                  }}
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                              <details className="house-publications-filter-group" open>
+                                <summary className="house-publications-filter-summary">
+                                  <span>View</span>
+                                  <span className="house-publications-filter-count">{viewMode === 'table' ? 'Table' : 'Cards'}</span>
+                                </summary>
+                                <div className="house-publications-filter-options">
+                                  {(['table', 'cards'] as ViewMode[]).map((mode) => (
+                                    <label key={`workspace-view-${mode}`} className="house-publications-filter-option">
+                                      <input
+                                        type="radio"
+                                        name="workspace-view-mode"
+                                        className="house-publications-filter-checkbox"
+                                        checked={viewMode === mode}
+                                        onChange={() => setViewMode(mode)}
+                                      />
+                                      <span className="house-publications-filter-option-label">{mode === 'table' ? 'Table' : 'Cards'}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </details>
+                              <details className="house-publications-filter-group" open>
+                                <summary className="house-publications-filter-summary">
+                                  <span>Workspace filter</span>
+                                  <span className="house-publications-filter-count">
+                                    {FILTER_OPTIONS.find((option) => option.key === filterKey)?.label || 'All'}
+                                  </span>
+                                </summary>
+                                <div className="house-publications-filter-options">
+                                  {FILTER_OPTIONS.map((option) => (
+                                    <label key={`workspace-filter-${option.key}`} className="house-publications-filter-option">
+                                      <input
+                                        type="radio"
+                                        name="workspace-filter-key"
+                                        className="house-publications-filter-checkbox"
+                                        checked={filterKey === option.key}
+                                        onChange={() => setFilterKey(option.key)}
+                                      />
+                                      <span className="house-publications-filter-option-label">{option.label}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </details>
+                            </div>,
+                            document.body
+                            )
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </SectionTools>
+                    <div
                       className={cn(
-                        HOUSE_ACTIONS_PILL_PRIMARY_CLASS,
-                        HOUSE_BUTTON_TEXT_CLASS,
-                        HOUSE_SECTION_TOOL_BUTTON_CLASS,
-                        'h-8 gap-1.5 px-3',
+                        'relative order-2 overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
+                        workspaceTableVisible && workspaceToolsOpen
+                          ? 'z-30 max-w-[20rem] translate-x-0 opacity-100'
+                          : 'pointer-events-none z-0 max-w-0 translate-x-1 opacity-0',
                       )}
-                      onClick={() => {
-                        setWorkspaceDrilldownSelectionId(null)
-                        resetCollaboratorComposer()
-                        setWorkspaceDrilldownMobileOpen(true)
-                      }}
+                      aria-hidden={!workspaceTableVisible || !workspaceToolsOpen}
                     >
-                      <PanelRightOpen className="mr-1 h-3.5 w-3.5" />
-                      Drilldown
-                    </Button>
-                    <div className={HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS}>
-                      <button
-                        type="button"
-                        onClick={() => setViewMode('table')}
-                        className={cn(
-                          'h-8 px-3 text-sm',
-                          HOUSE_ACTIONS_PILL_ICON_CLASS,
-                          HOUSE_BUTTON_TEXT_CLASS,
-                          HOUSE_SECTION_TOOL_BUTTON_CLASS,
-                          HOUSE_SECTION_TOOL_TOGGLE_CLASS,
-                          viewMode === 'table' ? HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS : HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS,
-                        )}
-                      >
-                        Table
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setViewMode('cards')}
-                        className={cn(
-                          'h-8 px-3 text-sm',
-                          HOUSE_ACTIONS_PILL_ICON_CLASS,
-                          HOUSE_BUTTON_TEXT_CLASS,
-                          HOUSE_SECTION_TOOL_BUTTON_CLASS,
-                          HOUSE_SECTION_TOOL_TOGGLE_CLASS,
-                          viewMode === 'cards' ? HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS : HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS,
-                        )}
-                      >
-                        Cards
-                      </button>
+                      <SectionTools tone="workspace" framed={false}>
+                        <SectionToolIconButton
+                          icon={(viewMode === 'table'
+                            ? <Share2 className="h-4 w-4" strokeWidth={2.1} />
+                            : <Download className="h-4 w-4" strokeWidth={2.1} />)}
+                          aria-label={viewMode === 'table' ? 'Switch to cards view' : 'Switch to table view'}
+                          tooltip={viewMode === 'table' ? 'Cards' : 'Table'}
+                          onClick={() => setViewMode((current) => (current === 'table' ? 'cards' : 'table'))}
+                        />
+                      </SectionTools>
                     </div>
+                    <SectionTools tone="workspace" framed={false} className="order-3">
+                      {workspaceTableVisible ? (
+                        <SectionToolIconButton
+                          icon={<Hammer className="h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />}
+                          aria-label={workspaceToolsOpen ? 'Hide workspace tools' : 'Show workspace tools'}
+                          tooltip="Tools"
+                          active={workspaceToolsOpen}
+                          onClick={() => setWorkspaceToolsOpen((current) => !current)}
+                        />
+                      ) : null}
+                      {workspaceTableVisible && viewMode === 'table' ? (
+                        <div ref={workspaceSettingsWrapperRef} className="relative">
+                          <SectionToolIconButton
+                            icon={<Settings className="h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />}
+                            aria-label={workspaceSettingsVisible ? 'Hide workspace table settings' : 'Show workspace table settings'}
+                            tooltip="Settings"
+                            active={workspaceSettingsVisible}
+                            onClick={() => {
+                              setWorkspaceSettingsVisible((current) => {
+                                const nextVisible = !current
+                                if (nextVisible) {
+                                  setWorkspaceSearchVisible(false)
+                                  setWorkspaceFilterVisible(false)
+                                }
+                                return nextVisible
+                              })
+                            }}
+                          />
+                          {workspaceSettingsVisible ? (
+                            createPortal(
+                            <div
+                              ref={workspaceSettingsPopoverRef}
+                              className="house-publications-filter-popover house-workspace-filter-popover fixed z-50 w-[18.75rem]"
+                              style={{
+                                top: `${workspaceSettingsPopoverPosition.top}px`,
+                                right: `${workspaceSettingsPopoverPosition.right}px`,
+                              }}
+                            >
+                              <div className="house-publications-filter-header">
+                                <p className="house-publications-filter-title">Table settings</p>
+                                <div className="inline-flex items-center gap-2">
+                                  <button type="button" className="house-publications-filter-clear" onClick={onAutoAdjustWorkspaceTableWidths}>
+                                    Auto fit
+                                  </button>
+                                  <button type="button" className="house-publications-filter-clear" onClick={onResetWorkspaceTableSettings}>
+                                    Reset
+                                  </button>
+                                </div>
+                              </div>
+                              <details className="house-publications-filter-group" open>
+                                <summary className="house-publications-filter-summary">
+                                  <span>Columns</span>
+                                  <span className="house-publications-filter-count">
+                                    {visibleWorkspaceTableColumns.length}/{WORKSPACE_TABLE_COLUMN_ORDER.length}
+                                  </span>
+                                </summary>
+                                <div className="house-publications-filter-options">
+                                  {workspaceTableColumnOrder.map((columnKey) => {
+                                    const checked = workspaceTableColumns[columnKey].visible
+                                    const disableToggle = checked && visibleWorkspaceTableColumns.length <= 1
+                                    return (
+                                      <label
+                                        key={`workspace-column-${columnKey}`}
+                                        className={cn('house-publications-filter-option', disableToggle && 'opacity-60')}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          className="house-publications-filter-checkbox"
+                                          checked={checked}
+                                          disabled={disableToggle}
+                                          onChange={() => onToggleWorkspaceTableColumnVisibility(columnKey)}
+                                        />
+                                        <span className="house-publications-filter-option-label">
+                                          {WORKSPACE_TABLE_COLUMN_DEFINITIONS[columnKey].label}
+                                        </span>
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                              </details>
+                              <details className="house-publications-filter-group" open>
+                                <summary className="house-publications-filter-summary">
+                                  <span>Visuals</span>
+                                  <span className="house-publications-filter-count">{workspaceTableAlternateRowColoring ? '1/1' : '0/1'}</span>
+                                </summary>
+                                <div className="house-publications-filter-options">
+                                  <label className="house-publications-filter-option">
+                                    <input
+                                      type="checkbox"
+                                      className="house-publications-filter-checkbox"
+                                      checked={workspaceTableAlternateRowColoring}
+                                      onChange={() => setWorkspaceTableAlternateRowColoring((current) => !current)}
+                                    />
+                                    <span className="house-publications-filter-option-label">Alternate row shading</span>
+                                  </label>
+                                </div>
+                              </details>
+                              <details className="house-publications-filter-group" open>
+                                <summary className="house-publications-filter-summary">
+                                  <span>Density</span>
+                                  <span className="house-publications-filter-count">
+                                    {workspaceTableDensity === 'default'
+                                      ? 'Default'
+                                      : workspaceTableDensity === 'compact'
+                                        ? 'Compact'
+                                        : 'Comfortable'}
+                                  </span>
+                                </summary>
+                                <div className="house-publications-filter-options">
+                                  {(['compact', 'default', 'comfortable'] as WorkspaceTableDensity[]).map((densityOption) => (
+                                    <label key={`workspace-density-${densityOption}`} className="house-publications-filter-option">
+                                      <input
+                                        type="radio"
+                                        name="workspace-table-density"
+                                        className="house-publications-filter-checkbox"
+                                        checked={workspaceTableDensity === densityOption}
+                                        onChange={() => setWorkspaceTableDensity(densityOption)}
+                                      />
+                                      <span className="house-publications-filter-option-label">
+                                        {densityOption === 'default'
+                                          ? 'Default'
+                                          : densityOption === 'compact'
+                                            ? 'Compact'
+                                            : 'Comfortable'}
+                                      </span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </details>
+                            </div>,
+                            document.body
+                            )
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </SectionTools>
                   </div>
-                </div>
+                )}
+                />
 
                 {filteredWorkspaces.length === 0 ? (
                   <div className="p-6 text-sm text-muted-foreground">No workspaces match the current filter.</div>
+                ) : !workspaceTableVisible ? (
+                  <div className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-[var(--space-3)] text-body text-[hsl(var(--muted-foreground))]">
+                    Workspace table hidden by user.
+                  </div>
                 ) : viewMode === 'table' ? (
-                  <div className={cn(HOUSE_TABLE_SHELL_CLASS, HOUSE_WORKSPACE_TABLE_SHELL_CLASS)}>
-                    <table className="w-full min-w-sz-980 text-sm">
-                      <thead className={HOUSE_TABLE_HEAD_CLASS}>
-                        <tr>
-                          <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
-                            <SortableHeader
-                              label="Workspace"
-                              column="name"
-                              activeColumn={sortColumn}
-                              direction={sortDirection}
-                              onSort={onSort}
-                            />
-                          </th>
-                          <th className={cn('px-3 py-2 text-center', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Owner</th>
-                          <th className={cn('px-3 py-2 text-center', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Collaborators</th>
-                          <th className={cn('px-3 py-2 text-center', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
-                            <SortableHeader
-                              label="Stage"
-                              column="stage"
-                              activeColumn={sortColumn}
-                              direction={sortDirection}
-                              align="center"
-                              onSort={onSort}
-                            />
-                          </th>
-                          <th className={cn('px-3 py-2 text-center', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
-                            <SortableHeader
-                              label="Status"
-                              column="status"
-                              activeColumn={sortColumn}
-                              direction={sortDirection}
-                              align="center"
-                              onSort={onSort}
-                            />
-                          </th>
-                          <th className={cn('px-3 py-2 text-center', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Unread</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredWorkspaces.map((workspace) => {
-                          const signal = workspaceInboxSignals[workspace.id] || {
-                            unreadCount: 0,
-                            firstUnreadMessageId: null,
-                            lastActivityAt: workspace.updatedAt,
-                          }
-                          const ownerLabel = workspaceOwnerLabel(workspace, workspaceOwnerName)
-                          const workspaceReadOnly = isWorkspaceReadOnlyForCurrentUser(
-                            workspace,
-                            workspaceOwnerName,
-                          )
-                          return (
-                            <tr
-                              key={workspace.id}
-                              className={cn(
-                                HOUSE_TABLE_ROW_CLASS,
-                                workspaceReadOnly ? 'cursor-default opacity-90' : 'cursor-pointer',
-                              )}
-                              onClick={() => onSelectWorkspace(workspace.id)}
-                              onDoubleClick={() => {
-                                if (workspaceReadOnly) {
-                                  return
-                                }
-                                onOpenWorkspace(workspace.id)
-                              }}
-                            >
-                              <td className={cn('px-3 py-2 align-middle font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0 flex-1">
-                                    {renamingWorkspaceId === workspace.id ? (
-                                      <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
-                                        <Input
-                                          value={renameDraft}
-                                          onChange={(event) => setRenameDraft(event.target.value)}
-                                          onKeyDown={(event) => {
-                                            if (event.key === 'Enter') {
-                                              event.preventDefault()
-                                              onSaveRenameWorkspace(workspace)
-                                            } else if (event.key === 'Escape') {
-                                              event.preventDefault()
-                                              onCancelRenameWorkspace()
-                                            }
-                                          }}
-                                          className={cn('h-8 w-full', HOUSE_INPUT_CLASS)}
-                                          autoFocus
-                                        />
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          className={cn(HOUSE_SUCCESS_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
-                                          onClick={() => onSaveRenameWorkspace(workspace)}
-                                          disabled={!renameDraft.trim() || renameDraft.trim() === workspace.name.trim()}
-                                          aria-label={`Save rename for ${workspace.name}`}
-                                          title="Save rename"
-                                        >
-                                          <Save className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          className={cn(HOUSE_DANGER_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
-                                          onClick={onCancelRenameWorkspace}
-                                          aria-label="Cancel rename"
-                                          title="Cancel rename"
-                                        >
-                                          <X className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <>
-                                        <p className="flex min-w-0 items-center gap-1.5">
-                                          {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
-                                          <span className="truncate">{workspace.name}</span>
-                                        </p>
-                                      </>
-                                    )}
-                                  </div>
-
-                                  <WorkspaceMenuTrigger
-                                    menuOpen={menuState?.workspaceId === workspace.id}
-                                    disabled={workspaceReadOnly}
-                                    onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
-                                  />
-                                </div>
-                              </td>
-                              <td className={cn('px-3 py-2 align-middle text-center text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{ownerLabel}</td>
-                              <td className={cn('px-3 py-2 align-middle text-center text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                                <div className="flex justify-center">
-                                  <CollaboratorBanners
-                                    workspace={workspace}
-                                    canManage={isWorkspaceOwner(workspace, workspaceOwnerName)}
-                                    onAddCollaborator={onAddCollaborator}
-                                    onToggleRemoved={onToggleCollaboratorRemoved}
-                                  />
-                                </div>
-                              </td>
-                              <td className={cn('px-3 py-2 align-middle text-center', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspaceStage(workspace)}</td>
-                              <td className={cn('px-3 py-2 align-middle text-center', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                                <div className="flex items-center justify-center gap-2">
-                                  <span
-                                    className={cn(
-                                      'inline-block h-2.5 w-2.5 rounded-full',
-                                      workspace.archived ? 'bg-amber-500' : 'bg-emerald-500',
-                                    )}
-                                  />
-                                  <span>{workspaceStatus(workspace)}</span>
-                                </div>
-                              </td>
-                              <td className={cn('px-3 py-2 align-middle text-center', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                                <button
-                                  type="button"
-                                  className={cn(
-                                    'inline-flex min-w-8 items-center justify-center rounded border px-2 py-0.5 text-xs font-medium',
-                                    unreadToneClass(signal.unreadCount),
-                                  )}
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    if (workspaceReadOnly) {
+                  <div ref={workspaceTableLayoutRef} className="relative w-full house-table-context-profile">
+                      <Table
+                        className={cn(
+                          'w-full table-fixed house-table-resizable',
+                          workspaceTableDensity === 'compact' && 'house-publications-table-density-compact',
+                          workspaceTableDensity === 'comfortable' && 'house-publications-table-density-comfortable',
+                        )}
+                        data-house-no-column-resize="true"
+                        data-house-no-column-controls="true"
+                        data-house-table-id="workspaces-table"
+                      >
+                        <colgroup>
+                          {visibleWorkspaceTableColumns.map((columnKey) => {
+                            const width = clampWorkspaceTableColumnWidth(columnKey, workspaceTableColumns[columnKey].width)
+                            return (
+                              <col
+                                key={`workspace-col-${columnKey}`}
+                                style={{
+                                  width: `${width}px`,
+                                  minWidth: `${width}px`,
+                                }}
+                              />
+                            )
+                          })}
+                        </colgroup>
+                        <TableHeader className="house-table-head text-left">
+                          <TableRow style={{ backgroundColor: 'transparent' }}>
+                            {visibleWorkspaceTableColumns.map((columnKey, columnIndex) => {
+                              const definition = WORKSPACE_TABLE_COLUMN_DEFINITIONS[columnKey]
+                              const sortField = WORKSPACE_TABLE_COLUMN_SORT_COLUMN[columnKey] || null
+                              const headerClassName = definition.headerClassName || 'text-left'
+                              const alignClass = headerClassName.includes('text-center')
+                                ? 'justify-center text-center'
+                                : 'justify-start text-left'
+                              const isLastVisibleColumn = columnIndex >= visibleWorkspaceTableColumns.length - 1
+                              return (
+                                <TableHead
+                                  key={`workspace-head-${columnKey}`}
+                                  className={cn('house-table-head-text group relative', headerClassName)}
+                                  onDragOver={(event) => {
+                                    if (!workspaceTableDraggingColumn || workspaceTableDraggingColumn === columnKey) {
                                       return
                                     }
-                                    onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
+                                    event.preventDefault()
                                   }}
-                                  aria-label={`Open inbox for ${workspace.name}. ${signal.unreadCount} unread message${signal.unreadCount === 1 ? '' : 's'}.`}
-                                  disabled={workspaceReadOnly}
+                                  onDrop={(event) => {
+                                    event.preventDefault()
+                                    if (!workspaceTableDraggingColumn || workspaceTableDraggingColumn === columnKey) {
+                                      return
+                                    }
+                                    onReorderWorkspaceTableColumn(workspaceTableDraggingColumn, columnKey)
+                                    setWorkspaceTableDraggingColumn(null)
+                                  }}
                                 >
-                                  {signal.unreadCount}
-                                </button>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                                  {sortField ? (
+                                    <button
+                                      type="button"
+                                      className={cn(
+                                        'inline-flex w-full items-center gap-1 transition-colors hover:text-foreground',
+                                        HOUSE_TABLE_SORT_TRIGGER_CLASS,
+                                        alignClass,
+                                      )}
+                                      onClick={() => onSort(sortField)}
+                                    >
+                                      <span>{definition.label}</span>
+                                      {sortColumn === sortField ? (
+                                        sortDirection === 'desc' ? (
+                                          <ChevronDown className="h-3.5 w-3.5 text-foreground" />
+                                        ) : (
+                                          <ChevronUp className="h-3.5 w-3.5 text-foreground" />
+                                        )
+                                      ) : (
+                                        <ChevronsUpDown className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                  ) : (
+                                    <span className={cn('inline-flex w-full items-center', alignClass)}>{definition.label}</span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    draggable
+                                    className="house-table-reorder-handle"
+                                    data-house-dragging={workspaceTableDraggingColumn === columnKey ? 'true' : undefined}
+                                    onDragStart={(event) => {
+                                      event.dataTransfer.effectAllowed = 'move'
+                                      event.dataTransfer.setData('text/plain', columnKey)
+                                      setWorkspaceTableDraggingColumn(columnKey)
+                                    }}
+                                    onDragEnd={() => setWorkspaceTableDraggingColumn(null)}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                    }}
+                                    aria-label={`Reorder ${definition.label} column`}
+                                    title={`Drag to reorder ${definition.label} column`}
+                                  >
+                                    <GripVertical className="h-3 w-3" />
+                                  </button>
+                                  {!isLastVisibleColumn ? (
+                                    <button
+                                      type="button"
+                                      className="house-table-resize-handle"
+                                      data-house-dragging={workspaceTableResizingColumn === columnKey ? 'true' : undefined}
+                                      onPointerDown={(event) => onStartWorkspaceHeadingResize(event, columnKey)}
+                                      onKeyDown={(event) => onWorkspaceHeadingResizeHandleKeyDown(event, columnKey)}
+                                      onClick={(event) => {
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                      }}
+                                      aria-label={`Resize ${definition.label} column`}
+                                      title={`Resize ${definition.label} column`}
+                                    />
+                                  ) : null}
+                                </TableHead>
+                              )
+                            })}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredWorkspaces.map((workspace) => {
+                            const signal = workspaceInboxSignals[workspace.id] || {
+                              unreadCount: 0,
+                              firstUnreadMessageId: null,
+                              lastActivityAt: workspace.updatedAt,
+                            }
+                            const ownerBadgeLabel = workspaceOwnerBadgeLabel(workspace, workspaceOwnerName)
+                            const ownerIsCurrentUser = isWorkspaceOwner(workspace, workspaceOwnerName)
+                            const workspaceReadOnly = isWorkspaceReadOnlyForCurrentUser(workspace, workspaceOwnerName)
+                            return (
+                              <TableRow
+                                key={workspace.id}
+                                className={cn(
+                                  workspaceReadOnly ? 'cursor-default opacity-90' : 'cursor-pointer',
+                                  workspaceTableAlternateRowColoring && 'odd:bg-[hsl(var(--tone-neutral-50))] even:bg-[hsl(var(--tone-neutral-100))]',
+                                )}
+                                onClick={() => onSelectWorkspace(workspace.id)}
+                                onDoubleClick={() => {
+                                  if (!workspaceReadOnly) {
+                                    onOpenWorkspace(workspace.id)
+                                  }
+                                }}
+                              >
+                                {visibleWorkspaceTableColumns.map((columnKey) => {
+                                  if (columnKey === 'workspace') {
+                                    return (
+                                      <TableCell key={`${workspace.id}-${columnKey}`} className={cn('align-top font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="min-w-0 flex-1">
+                                            {renamingWorkspaceId === workspace.id ? (
+                                              <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
+                                                <Input
+                                                  value={renameDraft}
+                                                  onChange={(event) => setRenameDraft(event.target.value)}
+                                                  onKeyDown={(event) => {
+                                                    if (event.key === 'Enter') {
+                                                      event.preventDefault()
+                                                      onSaveRenameWorkspace(workspace)
+                                                    } else if (event.key === 'Escape') {
+                                                      event.preventDefault()
+                                                      onCancelRenameWorkspace()
+                                                    }
+                                                  }}
+                                                  className={cn('h-8 w-full', HOUSE_INPUT_CLASS)}
+                                                  autoFocus
+                                                />
+                                                <Button
+                                                  type="button"
+                                                  size="sm"
+                                                  className={cn(HOUSE_SUCCESS_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
+                                                  onClick={() => onSaveRenameWorkspace(workspace)}
+                                                  disabled={!renameDraft.trim() || renameDraft.trim() === workspace.name.trim()}
+                                                  aria-label={`Save rename for ${workspace.name}`}
+                                                  title="Save rename"
+                                                >
+                                                  <Save className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                  type="button"
+                                                  size="sm"
+                                                  className={cn(HOUSE_DANGER_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
+                                                  onClick={onCancelRenameWorkspace}
+                                                  aria-label="Cancel rename"
+                                                  title="Cancel rename"
+                                                >
+                                                  <X className="h-4 w-4" />
+                                                </Button>
+                                              </div>
+                                            ) : (
+                                              <p className="flex min-w-0 items-center gap-1.5">
+                                                {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
+                                                <span className="truncate">{workspace.name}</span>
+                                              </p>
+                                            )}
+                                          </div>
+                                          <WorkspaceMenuTrigger
+                                            menuOpen={menuState?.workspaceId === workspace.id}
+                                            disabled={workspaceReadOnly}
+                                            onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
+                                          />
+                                        </div>
+                                      </TableCell>
+                                    )
+                                  }
+                                  if (columnKey === 'owner') {
+                                    return (
+                                      <TableCell key={`${workspace.id}-${columnKey}`} className={cn(WORKSPACE_TABLE_COLUMN_DEFINITIONS.owner.cellClassName, HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                        <div className="flex justify-center">
+                                          <Badge size="sm" variant={ownerIsCurrentUser ? 'positive' : 'outline'}>
+                                            {ownerBadgeLabel}
+                                          </Badge>
+                                        </div>
+                                      </TableCell>
+                                    )
+                                  }
+                                  if (columnKey === 'collaborators') {
+                                    return (
+                                      <TableCell key={`${workspace.id}-${columnKey}`} className={cn(WORKSPACE_TABLE_COLUMN_DEFINITIONS.collaborators.cellClassName, HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                        <div className="flex justify-center">
+                                          <CollaboratorBanners
+                                            workspace={workspace}
+                                            canManage={isWorkspaceOwner(workspace, workspaceOwnerName)}
+                                            onAddCollaborator={onAddCollaborator}
+                                            onToggleRemoved={onToggleCollaboratorRemoved}
+                                          />
+                                        </div>
+                                      </TableCell>
+                                    )
+                                  }
+                                  if (columnKey === 'stage') {
+                                    return (
+                                      <TableCell key={`${workspace.id}-${columnKey}`} className={cn(WORKSPACE_TABLE_COLUMN_DEFINITIONS.stage.cellClassName, HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                        {workspaceStage(workspace)}
+                                      </TableCell>
+                                    )
+                                  }
+                                  if (columnKey === 'status') {
+                                    return (
+                                      <TableCell key={`${workspace.id}-${columnKey}`} className={cn(WORKSPACE_TABLE_COLUMN_DEFINITIONS.status.cellClassName, HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                        <div className="flex items-center justify-center gap-2">
+                                          <span
+                                            className={cn(
+                                              'inline-block h-2.5 w-2.5 rounded-full',
+                                              workspace.archived ? 'bg-amber-500' : 'bg-emerald-500',
+                                            )}
+                                          />
+                                          <span>{workspaceStatus(workspace)}</span>
+                                        </div>
+                                      </TableCell>
+                                    )
+                                  }
+                                  return (
+                                    <TableCell key={`${workspace.id}-${columnKey}`} className={cn(WORKSPACE_TABLE_COLUMN_DEFINITIONS.unread.cellClassName, HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                      <button
+                                        type="button"
+                                        className={cn(
+                                          'inline-flex min-w-8 items-center justify-center rounded border px-2 py-0.5 text-xs font-medium',
+                                          unreadToneClass(signal.unreadCount),
+                                        )}
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                          if (!workspaceReadOnly) {
+                                            onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
+                                          }
+                                        }}
+                                        aria-label={`Open inbox for ${workspace.name}. ${signal.unreadCount} unread message${signal.unreadCount === 1 ? '' : 's'}.`}
+                                        disabled={workspaceReadOnly}
+                                      >
+                                        {signal.unreadCount}
+                                      </button>
+                                    </TableCell>
+                                  )
+                                })}
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
                   </div>
                 ) : (
                   <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
@@ -3652,56 +5452,55 @@ export function WorkspacesPage() {
                   />
                 )}
               </Section>
+
+              {centerView === 'workspaces' ? (
+                <Section
+                  className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}
+                  surface="transparent"
+                  inset="none"
+                  spaceY="none"
+                >
+                  <Toolbar>
+                    <Input
+                      value={newWorkspaceName}
+                      onChange={(event) => setNewWorkspaceName(event.target.value)}
+                      placeholder="New workspace name"
+                      className={cn('w-sz-220', HOUSE_INPUT_CLASS)}
+                    />
+                    <div className="flex h-9 items-center justify-start self-end">
+                      <button
+                        type="button"
+                        className={cn(
+                          HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                          HOUSE_COLLABORATOR_ACTION_ICON_ADD_CLASS,
+                          'shrink-0',
+                        )}
+                        onClick={onCreateWorkspace}
+                        disabled={!canCreateWorkspace}
+                        aria-label="Create workspace"
+                        title={canCreateWorkspace ? 'Create workspace' : WORKSPACE_OWNER_REQUIRED_MESSAGE}
+                      >
+                        <Plus className="h-4 w-4" strokeWidth={2.2} />
+                      </button>
+                    </div>
+                  </Toolbar>
+                  {!canCreateWorkspace ? (
+                    <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{WORKSPACE_OWNER_REQUIRED_MESSAGE}</p>
+                  ) : null}
+                  {createError ? (
+                    <p className="mt-3 text-sm text-red-700">{createError}</p>
+                  ) : null}
+                  {invitationStatus ? (
+                    <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{invitationStatus}</p>
+                  ) : null}
+                </Section>
+              ) : null}
             </Stack>
             </div>
           </ScrollArea>
         </main>
 
-        {centerView === 'workspaces' && workspaceDrilldownDesktopOpen ? (
-          <aside className="hidden border-l border-border xl:block">
-              <ScrollArea className="h-full">
-                <div className="space-y-3 p-3">
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setWorkspaceDrilldownDesktopOpen(false)}
-                      className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'inline-flex h-8 w-8 items-center justify-center p-0')}
-                      aria-label="Collapse workspace drilldown panel"
-                      title="Collapse workspace drilldown panel"
-                    >
-                      <PanelRightClose className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <WorkspacesDrilldownPanel
-                    selectedWorkspaceId={workspaceDrilldownSelectionId}
-                    selectedWorkspaceName={workspaceDrilldownSelectionName}
-                    selectedWorkspace={workspaceDrilldownSelection}
-                    selectedWorkspaceReadOnly={selectedWorkspaceReadOnly}
-                    currentWorkspaceUserName={workspaceOwnerName}
-                    collaboratorChips={selectedWorkspaceCollaboratorChips}
-                    workspaceAuditEntries={selectedWorkspaceAuditEntries}
-                    canManageSelectedWorkspace={canManageSelectedWorkspace}
-                    collaboratorComposerOpen={collaboratorComposerOpen}
-                    collaboratorInviteRole={collaboratorInviteRole}
-                    collaboratorQuery={collaboratorQuery}
-                    canConfirmAddCollaborator={canConfirmAddCollaborator}
-                    onOpenCollaboratorComposer={toggleCollaboratorComposer}
-                    onCollaboratorInviteRoleChange={(role) => {
-                      setCollaboratorInviteRole(role)
-                    }}
-                    onChangeCollaboratorRole={onChangeCollaboratorRole}
-                    onCancelPendingCollaboratorInvitation={onCancelPendingCollaboratorInvitation}
-                    onToggleCollaboratorRemoved={onToggleCollaboratorRemoved}
-                    onCollaboratorQueryChange={(value) => {
-                      setCollaboratorQuery(value)
-                    }}
-                    onConfirmAddCollaborator={onConfirmAddCollaborator}
-                    onOpenSelectedWorkspace={onOpenWorkspace}
-                  />
-                </div>
-              </ScrollArea>
-          </aside>
-        ) : centerView === 'data-library' && dataLibraryDrilldownDesktopOpen ? (
+        {centerView === 'data-library' && dataLibraryDrilldownDesktopOpen ? (
           <aside className="hidden border-l border-border xl:block">
               <ScrollArea className="h-full">
                 <div className="space-y-3 p-3">
@@ -3723,7 +5522,15 @@ export function WorkspacesPage() {
         ) : null}
       </div>
 
-      <Sheet open={workspaceDrilldownMobileOpen} onOpenChange={setWorkspaceDrilldownMobileOpen}>
+      <Sheet
+        open={centerView === 'workspaces' && Boolean(workspaceDrilldownSelectionId)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setWorkspaceDrilldownSelectionId(null)
+            resetCollaboratorComposer()
+          }
+        }}
+      >
         <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
           <WorkspacesDrilldownPanel
             selectedWorkspaceId={workspaceDrilldownSelectionId}

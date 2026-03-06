@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { ArrowUpRight, Download, Eye, EyeOff, FileText, Hammer, Share2, X } from 'lucide-react'
 
-import { Card, CardContent } from '@/components/ui'
-import { Button } from '@/components/ui'
-import { DrilldownSheet } from '@/components/ui'
+import { Button, Card, CardContent, DrilldownSheet, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
 import { HelpTooltipIconButton, InsightsGlyph, SectionTools } from '@/components/patterns'
 import { Section, SectionHeader } from '@/components/primitives'
 import { readAccountSettings } from '@/lib/account-preferences'
@@ -65,7 +63,7 @@ type PublicationsTopStripProps = {
   forceInsightsVisible?: boolean
 }
 
-type PublicationInsightsSectionKey = 'uncited_works' | 'citation_drivers' | 'citation_activation'
+type PublicationInsightsSectionKey = 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history'
 type PublicationInsightAction = {
   key: string
   label: string
@@ -158,6 +156,10 @@ function formatCitationActivationStateTooltip({
 
 function formatCitationActivationTableTooltip(recordsCount: number): string {
   return `Your ${formatInt(recordsCount)} newly active publications are listed here with last-12-month and total citations. Select a title to open it in your library.`
+}
+
+function formatCitationActivationHistoryTooltip(lastCompleteYear: number | null, focusRangeLabel?: string | null): string {
+  return `${focusRangeLabel ? `Showing ${focusRangeLabel}. ` : ''}This chart shows citation activity over time, split into newly active, still active, and inactive publications. The line extends only through completed periods, while axis labels mark the broader time scale${lastCompleteYear ? ` through ${formatInt(lastCompleteYear)}` : ''}.`
 }
 
 function formatSignedPercentCompact(value: number): string {
@@ -1482,19 +1484,29 @@ function buildLineTicksFromRange(startMs: number, endMs: number, mode: Publicati
     const endDate = new Date(endMs)
     const startYear = startDate.getUTCFullYear()
     const endYear = endDate.getUTCFullYear()
-    const targetTickCount = endYear - startYear <= 5
+    const hasIncompleteTerminalYear = !(
+      endDate.getUTCMonth() === 11
+      && endDate.getUTCDate() >= 31
+      && endDate.getUTCHours() >= 23
+    )
+    const lastLabelYear = hasIncompleteTerminalYear && endYear > startYear
+      ? endYear - 1
+      : endYear
+    const targetTickCount = lastLabelYear - startYear <= 5
       ? 5
-      : endYear - startYear <= 12
+      : lastLabelYear - startYear <= 12
         ? 4
-        : endYear - startYear <= 25
+        : lastLabelYear - startYear <= 25
           ? 4
           : 3
-    const step = Math.max(1, Math.ceil((endYear - startYear + 1) / Math.max(1, targetTickCount)))
+    const step = Math.max(1, Math.ceil((lastLabelYear - startYear + 1) / Math.max(1, targetTickCount)))
     const tickYears = new Set<number>()
-    for (let year = startYear; year <= endYear; year += step) {
+    for (let year = startYear; year <= lastLabelYear; year += step) {
       tickYears.add(year)
     }
-    tickYears.add(endYear)
+    if (tickYears.size <= 1 && lastLabelYear !== startYear) {
+      tickYears.add(lastLabelYear)
+    }
 
     const yearBoundaryTicks = Array.from(tickYears)
       .sort((left, right) => left - right)
@@ -1602,6 +1614,14 @@ function formatPublicationYearLabel(startYear: number, endYear: number, fullYear
 
 function shortYearLabel(year: number): string {
   return String(year).slice(-2).padStart(2, '0')
+}
+
+function formatMonthYearLabel(timeMs: number): string {
+  const date = new Date(timeMs)
+  if (!Number.isFinite(date.getTime())) {
+    return '\u2014'
+  }
+  return `${MONTH_SHORT[date.getUTCMonth()]} ${date.getUTCFullYear()}`
 }
 
 function buildNiceAxis(maxObservedValue: number): { axisMax: number; ticks: number[] } {
@@ -7554,17 +7574,21 @@ function GenericMetricDrilldownWorkspace({
   const [uncitedBreakdownExpanded, setUncitedBreakdownExpanded] = useState(true)
   const [recentConcentrationExpanded, setRecentConcentrationExpanded] = useState(true)
   const [citationActivationExpanded, setCitationActivationExpanded] = useState(true)
+  const [citationActivationHistoryExpanded, setCitationActivationHistoryExpanded] = useState(true)
   const [fieldPercentileDrilldownThreshold, setFieldPercentileDrilldownThreshold] = useState<FieldPercentileThreshold>(75)
   const [uncitedBreakdownViewMode, setUncitedBreakdownViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [recentConcentrationViewMode, setRecentConcentrationViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [citationActivationViewMode, setCitationActivationViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [recentConcentrationWindowMode, setRecentConcentrationWindowMode] = useState<RecentConcentrationWindowMode>('1y')
+  const [citationActivationHistoryRangeStart, setCitationActivationHistoryRangeStart] = useState(0)
+  const [citationActivationHistoryRangeEnd, setCitationActivationHistoryRangeEnd] = useState(0)
   const [publicationInsightsByRequestKey, setPublicationInsightsByRequestKey] = useState<Record<string, PublicationInsightsAgentPayload>>({})
   const [publicationInsightsLoadingByRequestKey, setPublicationInsightsLoadingByRequestKey] = useState<Record<string, boolean>>({})
   const [publicationInsightsErrorByRequestKey, setPublicationInsightsErrorByRequestKey] = useState<Record<string, string>>({})
   const [uncitedInsightOpen, setUncitedInsightOpen] = useState(false)
   const [recentConcentrationInsightOpen, setRecentConcentrationInsightOpen] = useState(false)
   const [citationActivationInsightOpen, setCitationActivationInsightOpen] = useState(false)
+  const [citationActivationHistoryInsightOpen, setCitationActivationHistoryInsightOpen] = useState(false)
 
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
     breakdown: 'Breakdown results',
@@ -7613,16 +7637,20 @@ function GenericMetricDrilldownWorkspace({
     setUncitedBreakdownExpanded(true)
     setRecentConcentrationExpanded(true)
     setCitationActivationExpanded(true)
+    setCitationActivationHistoryExpanded(true)
     setUncitedBreakdownViewMode('bar')
     setRecentConcentrationViewMode('bar')
     setCitationActivationViewMode('bar')
     setRecentConcentrationWindowMode('1y')
+    setCitationActivationHistoryRangeStart(0)
+    setCitationActivationHistoryRangeEnd(0)
     setPublicationInsightsByRequestKey({})
     setPublicationInsightsLoadingByRequestKey({})
     setPublicationInsightsErrorByRequestKey({})
     setUncitedInsightOpen(false)
     setRecentConcentrationInsightOpen(false)
     setCitationActivationInsightOpen(false)
+    setCitationActivationHistoryInsightOpen(false)
   }, [tile.key])
 
   const requestPublicationInsights = useCallback(
@@ -7672,6 +7700,7 @@ function GenericMetricDrilldownWorkspace({
       if (next) {
         setRecentConcentrationInsightOpen(false)
         setCitationActivationInsightOpen(false)
+        setCitationActivationHistoryInsightOpen(false)
         void requestPublicationInsights({
           windowId: 'all',
           sectionKey: 'uncited_works',
@@ -7687,6 +7716,7 @@ function GenericMetricDrilldownWorkspace({
       if (next) {
         setUncitedInsightOpen(false)
         setCitationActivationInsightOpen(false)
+        setCitationActivationHistoryInsightOpen(false)
         void requestPublicationInsights({
           windowId: '1y',
           sectionKey: 'citation_drivers',
@@ -7703,9 +7733,27 @@ function GenericMetricDrilldownWorkspace({
       if (next) {
         setUncitedInsightOpen(false)
         setRecentConcentrationInsightOpen(false)
+        setCitationActivationHistoryInsightOpen(false)
         void requestPublicationInsights({
           windowId: '1y',
           sectionKey: 'citation_activation',
+          scope: 'section',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  const onToggleCitationActivationHistoryInsight = useCallback(() => {
+    setCitationActivationHistoryInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setUncitedInsightOpen(false)
+        setRecentConcentrationInsightOpen(false)
+        setCitationActivationInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: 'all',
+          sectionKey: 'citation_activation_history',
           scope: 'section',
         })
       }
@@ -7747,6 +7795,25 @@ function GenericMetricDrilldownWorkspace({
     })
   }, [
     citationActivationInsightOpen,
+    publicationInsightsByRequestKey,
+    requestPublicationInsights,
+  ])
+
+  useEffect(() => {
+    if (!citationActivationHistoryInsightOpen) {
+      return
+    }
+    const requestKey = 'citation_activation_history:section:all'
+    if (publicationInsightsByRequestKey[requestKey]) {
+      return
+    }
+    void requestPublicationInsights({
+      windowId: 'all',
+      sectionKey: 'citation_activation_history',
+      scope: 'section',
+    })
+  }, [
+    citationActivationHistoryInsightOpen,
     publicationInsightsByRequestKey,
     requestPublicationInsights,
   ])
@@ -7826,11 +7893,13 @@ function GenericMetricDrilldownWorkspace({
   )
   const citationActivationPublicationRecords = useMemo(
     () => publicationDrilldownRecords
-      .filter((record) => record.citations1yRolling > 0)
+      .filter((record) => (record.citations1yRolling || 0) > 0)
       .slice()
       .sort((left, right) => {
-        if (right.citations1yRolling !== left.citations1yRolling) {
-          return right.citations1yRolling - left.citations1yRolling
+        const rightCitations = right.citations1yRolling || 0
+        const leftCitations = left.citations1yRolling || 0
+        if (rightCitations !== leftCitations) {
+          return rightCitations - leftCitations
         }
         return left.title.localeCompare(right.title, 'en-GB')
       }),
@@ -7838,77 +7907,335 @@ function GenericMetricDrilldownWorkspace({
   )
   const newlyActivePublicationRecords = useMemo(
     () => citationActivationPublicationRecords
-      .filter((record) => Math.max(0, record.citations3yRolling - record.citations1yRolling) <= 0),
+      .filter((record) => Math.max(0, (record.citations3yRolling || 0) - (record.citations1yRolling || 0)) <= 0),
     [citationActivationPublicationRecords],
   )
   const stillActivePublicationRecords = useMemo(
     () => citationActivationPublicationRecords
-      .filter((record) => Math.max(0, record.citations3yRolling - record.citations1yRolling) > 0),
+      .filter((record) => Math.max(0, (record.citations3yRolling || 0) - (record.citations1yRolling || 0)) > 0),
     [citationActivationPublicationRecords],
   )
   const inactivePublicationCount = useMemo(
     () => Math.max(0, publicationDrilldownRecords.length - citationActivationPublicationRecords.length),
     [citationActivationPublicationRecords.length, publicationDrilldownRecords.length],
   )
-  const citationActivationCohortRows = useMemo(() => {
-    const rowsByYear = new Map<number, {
+  const citationActivationHistoryPoints = useMemo(() => {
+    const fallbackRowsByYear = new Map<number, {
       key: string
       label: string
+      timeMs: number
       newlyActiveCount: number
       stillActiveCount: number
       inactiveCount: number
       totalCount: number
-      year: number
     }>()
     publicationDrilldownRecords.forEach((record) => {
       if (!Number.isInteger(record.year)) {
         return
       }
       const year = Number(record.year)
-      const current = rowsByYear.get(year) || {
+      const current = fallbackRowsByYear.get(year) || {
         key: String(year),
         label: String(year),
+        timeMs: Date.UTC(year, 0, 1),
         newlyActiveCount: 0,
         stillActiveCount: 0,
         inactiveCount: 0,
         totalCount: 0,
-        year,
       }
-      const priorWindowCitations = Math.max(0, (record.citations3yRolling || 0) - (record.citations1yRolling || 0))
-      const recentWindowCitations = Math.max(0, record.citations1yRolling || 0)
+      const recentCitations = record.citations1yRolling || 0
+      const priorCitations = Math.max(0, (record.citations3yRolling || 0) - recentCitations)
       current.totalCount += 1
-      if (recentWindowCitations > 0 && priorWindowCitations <= 0) {
+      if (recentCitations > 0 && priorCitations <= 0) {
         current.newlyActiveCount += 1
-      } else if (recentWindowCitations > 0) {
+      } else if (recentCitations > 0) {
         current.stillActiveCount += 1
       } else {
         current.inactiveCount += 1
       }
-      rowsByYear.set(year, current)
+      fallbackRowsByYear.set(year, current)
     })
-    const orderedRows = Array.from(rowsByYear.values()).sort((left, right) => left.year - right.year)
-    if (orderedRows.length <= 8) {
-      return orderedRows
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const metadata = drilldown.metadata && typeof drilldown.metadata === 'object'
+      ? drilldown.metadata as Record<string, unknown>
+      : {}
+    const drilldownSeries = Array.isArray(drilldown.series)
+      ? drilldown.series
+      : []
+    const activationHistory = metadata.activation_history && typeof metadata.activation_history === 'object'
+      ? metadata.activation_history as Record<string, unknown>
+      : {}
+    const chartData = (tile.chart_data || {}) as Record<string, unknown>
+    const yearlyActivationYears = toNumberArray(
+      Array.isArray(activationHistory.years)
+        ? activationHistory.years
+        : chartData.activation_history_years,
+    )
+    const yearlyActivationNewly = toNumberArray(
+      Array.isArray(activationHistory.newly_active)
+        ? activationHistory.newly_active
+        : chartData.activation_history_newly_active,
+    )
+    const yearlyActivationStill = toNumberArray(
+      Array.isArray(activationHistory.still_active)
+        ? activationHistory.still_active
+        : chartData.activation_history_still_active,
+    )
+    const yearlyActivationInactive = toNumberArray(
+      Array.isArray(activationHistory.inactive)
+        ? activationHistory.inactive
+        : chartData.activation_history_inactive,
+    )
+    const yearlyActivationPublished = toNumberArray(
+      Array.isArray(activationHistory.published_total)
+        ? activationHistory.published_total
+        : chartData.activation_history_published,
+    )
+    const rollingNewlyActive = Array.isArray(activationHistory.rolling_newly_active)
+      ? activationHistory.rolling_newly_active
+      : Array.isArray(chartData.activation_history_rolling_newly_active)
+        ? chartData.activation_history_rolling_newly_active
+        : []
+    const rollingStillActive = Array.isArray(activationHistory.rolling_still_active)
+      ? activationHistory.rolling_still_active
+      : Array.isArray(chartData.activation_history_rolling_still_active)
+        ? chartData.activation_history_rolling_still_active
+        : []
+    const rollingInactive = Array.isArray(activationHistory.rolling_inactive)
+      ? activationHistory.rolling_inactive
+      : Array.isArray(chartData.activation_history_rolling_inactive)
+        ? chartData.activation_history_rolling_inactive
+        : []
+    const rollingPublished = Array.isArray(activationHistory.rolling_published_total)
+      ? activationHistory.rolling_published_total
+      : Array.isArray(chartData.activation_history_rolling_published)
+        ? chartData.activation_history_rolling_published
+        : []
+    const lifetimeLabels = toStringArray(chartData.month_labels_lifetime)
+    const lifetimeStart = parseIsoPublicationDate(String(chartData.lifetime_month_start || '').trim())
+    const rollingPoints: Array<{
+      key: string
+      label: string
+      timeMs: number
+      newlyActiveCount: number
+      stillActiveCount: number
+      inactiveCount: number
+      totalCount: number
+    }> = []
+    if (lifetimeStart instanceof Date) {
+      const pointCount = Math.min(
+        rollingNewlyActive.length,
+        rollingStillActive.length,
+        rollingInactive.length,
+        rollingPublished.length,
+      )
+      for (let index = 0; index < pointCount; index += 1) {
+        const pointDate = new Date(Date.UTC(
+          lifetimeStart.getUTCFullYear(),
+          lifetimeStart.getUTCMonth() + index,
+          1,
+        ))
+        rollingPoints.push({
+          key: `rolling-${pointDate.getUTCFullYear()}-${pointDate.getUTCMonth() + 1}`,
+          label: lifetimeLabels[index] || `${MONTH_SHORT[pointDate.getUTCMonth()]} ${pointDate.getUTCFullYear()}`,
+          timeMs: pointDate.getTime(),
+          newlyActiveCount: parsePublicationCitationCount(rollingNewlyActive[index]),
+          stillActiveCount: parsePublicationCitationCount(rollingStillActive[index]),
+          inactiveCount: parsePublicationCitationCount(rollingInactive[index]),
+          totalCount: parsePublicationCitationCount(rollingPublished[index]),
+        })
+      }
     }
-    const recentRows = orderedRows.slice(-7)
-    const olderRows = orderedRows.slice(0, -7)
-    const olderRow = olderRows.reduce((accumulator, row) => {
-      accumulator.newlyActiveCount += row.newlyActiveCount
-      accumulator.stillActiveCount += row.stillActiveCount
-      accumulator.inactiveCount += row.inactiveCount
-      accumulator.totalCount += row.totalCount
-      return accumulator
-    }, {
-      key: 'older',
-      label: 'Older',
-      newlyActiveCount: 0,
-      stillActiveCount: 0,
-      inactiveCount: 0,
-      totalCount: 0,
-      year: (olderRows[0]?.year ?? 0) - 1,
+    const yearlyFallbackPoints: Array<{
+      key: string
+      label: string
+      timeMs: number
+      newlyActiveCount: number
+      stillActiveCount: number
+      inactiveCount: number
+      totalCount: number
+    }> = []
+    const yearlyPointCount = Math.min(
+      yearlyActivationYears.length,
+      yearlyActivationNewly.length,
+      yearlyActivationStill.length,
+      yearlyActivationInactive.length,
+      yearlyActivationPublished.length,
+    )
+    for (let index = 0; index < yearlyPointCount; index += 1) {
+      const rawYear = yearlyActivationYears[index]
+      const year = Number.isInteger(rawYear) ? rawYear : null
+      if (year === null) {
+        continue
+      }
+      yearlyFallbackPoints.push({
+        key: `yearly-${year}`,
+        label: String(year),
+        timeMs: Date.UTC(year, 0, 1),
+        newlyActiveCount: parsePublicationCitationCount(yearlyActivationNewly[index]),
+        stillActiveCount: parsePublicationCitationCount(yearlyActivationStill[index]),
+        inactiveCount: parsePublicationCitationCount(yearlyActivationInactive[index]),
+        totalCount: parsePublicationCitationCount(yearlyActivationPublished[index]),
+      })
+    }
+    const drilldownSeriesById = new Map<string, Array<{ label: string; value: number }>>()
+    drilldownSeries.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return
+      }
+      const item = entry as Record<string, unknown>
+      const seriesId = String(item.series_id || '').trim()
+      if (!seriesId) {
+        return
+      }
+      const points = Array.isArray(item.points) ? item.points : []
+      const normalizedPoints = points
+        .map((point) => {
+          if (!point || typeof point !== 'object') {
+            return null
+          }
+          const record = point as Record<string, unknown>
+          const label = String(record.label || '').trim()
+          if (!label) {
+            return null
+          }
+          return {
+            label,
+            value: parsePublicationCitationCount(record.value),
+          }
+        })
+        .filter(isNonNullish)
+      if (normalizedPoints.length) {
+        drilldownSeriesById.set(seriesId, normalizedPoints)
+      }
     })
-    return [olderRow, ...recentRows]
-  }, [publicationDrilldownRecords])
+    const seriesNewly = drilldownSeriesById.get('activation_newly_active') || []
+    const seriesStill = drilldownSeriesById.get('activation_still_active') || []
+    const seriesInactive = drilldownSeriesById.get('activation_inactive') || []
+    const seriesPublished = drilldownSeriesById.get('activation_published_total') || []
+    const seriesFallbackPoints: Array<{
+      key: string
+      label: string
+      timeMs: number
+      newlyActiveCount: number
+      stillActiveCount: number
+      inactiveCount: number
+      totalCount: number
+    }> = []
+    const seriesPointCount = Math.min(
+      seriesNewly.length,
+      seriesStill.length,
+      seriesInactive.length,
+      seriesPublished.length,
+    )
+    for (let index = 0; index < seriesPointCount; index += 1) {
+      const label = seriesPublished[index]?.label || seriesNewly[index]?.label || seriesStill[index]?.label || seriesInactive[index]?.label || ''
+      const year = Number.parseInt(label, 10)
+      if (!Number.isInteger(year)) {
+        continue
+      }
+      seriesFallbackPoints.push({
+        key: `series-${year}`,
+        label: String(year),
+        timeMs: Date.UTC(year, 0, 1),
+        newlyActiveCount: seriesNewly[index]?.value || 0,
+        stillActiveCount: seriesStill[index]?.value || 0,
+        inactiveCount: seriesInactive[index]?.value || 0,
+        totalCount: seriesPublished[index]?.value || 0,
+      })
+    }
+    return rollingPoints.length
+      ? rollingPoints
+      : yearlyFallbackPoints.length
+        ? yearlyFallbackPoints
+        : seriesFallbackPoints.length
+          ? seriesFallbackPoints
+          : []
+  }, [publicationDrilldownRecords, tile.chart_data, tile.drilldown])
+  const citationActivationHistoryLastCompleteYear = useMemo(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const metadata = drilldown.metadata && typeof drilldown.metadata === 'object'
+      ? drilldown.metadata as Record<string, unknown>
+      : {}
+    const activationHistory = metadata.activation_history && typeof metadata.activation_history === 'object'
+      ? metadata.activation_history as Record<string, unknown>
+      : {}
+    const raw = Number(activationHistory.last_complete_year)
+    if (Number.isInteger(raw)) {
+      return raw
+    }
+    const years = publicationDrilldownRecords
+      .map((record) => record.year)
+      .filter((value): value is number => Number.isInteger(value))
+    return years.length ? Math.max(...years) : null
+  }, [publicationDrilldownRecords, tile.drilldown])
+  const citationActivationHistoryPointSpacingMonths = useMemo(() => {
+    if (citationActivationHistoryPoints.length < 2) {
+      return 1
+    }
+    const first = citationActivationHistoryPoints[0]?.timeMs
+    const second = citationActivationHistoryPoints[1]?.timeMs
+    if (!Number.isFinite(first) || !Number.isFinite(second)) {
+      return 1
+    }
+    const firstDate = new Date(first)
+    const secondDate = new Date(second)
+    return Math.max(
+      1,
+      (secondDate.getUTCFullYear() - firstDate.getUTCFullYear()) * 12
+        + (secondDate.getUTCMonth() - firstDate.getUTCMonth()),
+    )
+  }, [citationActivationHistoryPoints])
+  const citationActivationHistoryMinSpan = useMemo(
+    () => Math.min(
+      citationActivationHistoryPointSpacingMonths <= 2 ? 12 : 3,
+      Math.max(1, citationActivationHistoryPoints.length),
+    ),
+    [citationActivationHistoryPointSpacingMonths, citationActivationHistoryPoints.length],
+  )
+  useEffect(() => {
+    if (!citationActivationHistoryPoints.length) {
+      setCitationActivationHistoryRangeStart(0)
+      setCitationActivationHistoryRangeEnd(0)
+      return
+    }
+    setCitationActivationHistoryRangeStart(0)
+    setCitationActivationHistoryRangeEnd(citationActivationHistoryPoints.length - 1)
+  }, [tile.key, citationActivationHistoryPoints.length])
+  const citationActivationHistoryVisibleRange = useMemo(() => {
+    if (!citationActivationHistoryPoints.length) {
+      return { start: 0, end: 0 }
+    }
+    const maxIndex = citationActivationHistoryPoints.length - 1
+    const safeEnd = Math.max(0, Math.min(maxIndex, citationActivationHistoryRangeEnd))
+    const safeStart = Math.max(0, Math.min(safeEnd, citationActivationHistoryRangeStart))
+    const adjustedEnd = Math.max(safeEnd, Math.min(maxIndex, safeStart + citationActivationHistoryMinSpan - 1))
+    const adjustedStart = Math.max(0, Math.min(safeStart, adjustedEnd - citationActivationHistoryMinSpan + 1))
+    return {
+      start: adjustedStart,
+      end: adjustedEnd,
+    }
+  }, [
+    citationActivationHistoryMinSpan,
+    citationActivationHistoryPoints.length,
+    citationActivationHistoryRangeEnd,
+    citationActivationHistoryRangeStart,
+  ])
+  const citationActivationHistoryVisiblePoints = useMemo(
+    () => citationActivationHistoryPoints.slice(
+      citationActivationHistoryVisibleRange.start,
+      citationActivationHistoryVisibleRange.end + 1,
+    ),
+    [citationActivationHistoryPoints, citationActivationHistoryVisibleRange.end, citationActivationHistoryVisibleRange.start],
+  )
+  const citationActivationHistoryFocusRangeLabel = useMemo(() => {
+    if (!citationActivationHistoryVisiblePoints.length) {
+      return null
+    }
+    const startLabel = formatMonthYearLabel(citationActivationHistoryVisiblePoints[0].timeMs)
+    const endLabel = formatMonthYearLabel(citationActivationHistoryVisiblePoints[citationActivationHistoryVisiblePoints.length - 1].timeMs)
+    return `${startLabel} - ${endLabel}`
+  }, [citationActivationHistoryVisiblePoints])
   const recentConcentrationTopThreeCitations = useMemo(
     () => recentConcentrationPublicationRecords.reduce((sum, record) => sum + record.selectedWindowCitations, 0),
     [recentConcentrationPublicationRecords],
@@ -7936,23 +8263,29 @@ function GenericMetricDrilldownWorkspace({
   const uncitedInsightsRequestKey = 'uncited_works:window:all'
   const recentConcentrationInsightsRequestKey = 'citation_drivers:section:1y'
   const citationActivationInsightsRequestKey = 'citation_activation:section:1y'
+  const citationActivationHistoryInsightsRequestKey = 'citation_activation_history:section:all'
   const uncitedInsightsPayload = publicationInsightsByRequestKey[uncitedInsightsRequestKey] || null
   const recentConcentrationInsightsPayload = publicationInsightsByRequestKey[recentConcentrationInsightsRequestKey] || null
   const citationActivationInsightsPayload = publicationInsightsByRequestKey[citationActivationInsightsRequestKey] || null
+  const citationActivationHistoryInsightsPayload = publicationInsightsByRequestKey[citationActivationHistoryInsightsRequestKey] || null
   const uncitedInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[uncitedInsightsRequestKey])
   const recentConcentrationInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[recentConcentrationInsightsRequestKey])
   const citationActivationInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[citationActivationInsightsRequestKey])
+  const citationActivationHistoryInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[citationActivationHistoryInsightsRequestKey])
   const uncitedInsightsError = publicationInsightsErrorByRequestKey[uncitedInsightsRequestKey] || ''
   const recentConcentrationInsightsError = publicationInsightsErrorByRequestKey[recentConcentrationInsightsRequestKey] || ''
   const citationActivationInsightsError = publicationInsightsErrorByRequestKey[citationActivationInsightsRequestKey] || ''
+  const citationActivationHistoryInsightsError = publicationInsightsErrorByRequestKey[citationActivationHistoryInsightsRequestKey] || ''
   const closeUncitedInsight = useCallback(() => setUncitedInsightOpen(false), [])
   const closeRecentConcentrationInsight = useCallback(() => setRecentConcentrationInsightOpen(false), [])
   const closeCitationActivationInsight = useCallback(() => setCitationActivationInsightOpen(false), [])
+  const closeCitationActivationHistoryInsight = useCallback(() => setCitationActivationHistoryInsightOpen(false), [])
   const navigateToInsightTab = useCallback((tab: DrilldownTab) => {
     onDrilldownTabChange?.(tab)
     setUncitedInsightOpen(false)
     setRecentConcentrationInsightOpen(false)
     setCitationActivationInsightOpen(false)
+    setCitationActivationHistoryInsightOpen(false)
   }, [onDrilldownTabChange])
   const uncitedInsightActions = useMemo<PublicationInsightAction[]>(() => {
     const actions: PublicationInsightAction[] = []
@@ -8075,6 +8408,34 @@ function GenericMetricDrilldownWorkspace({
     citationActivationViewMode,
     navigateToInsightTab,
   ])
+  const citationActivationHistoryInsightActions = useMemo<PublicationInsightAction[]>(() => {
+    const actions: PublicationInsightAction[] = []
+    if (citationActivationViewMode !== 'table' && newlyActivePublicationRecords.length > 0) {
+      actions.push({
+        key: 'activation-history-open-list',
+        label: 'View newly active papers',
+        description: 'Open the current table of newly active publications.',
+        onSelect: () => {
+          setCitationActivationExpanded(true)
+          setCitationActivationViewMode('table')
+          setCitationActivationHistoryInsightOpen(false)
+        },
+      })
+    }
+    actions.push({
+      key: 'activation-history-breakdown',
+      label: 'Citation breakdown',
+      description: 'Compare activation with uncited work and citation drivers.',
+      onSelect: () => navigateToInsightTab('breakdown'),
+    })
+    actions.push({
+      key: 'activation-history-context',
+      label: 'Citation context',
+      description: 'Compare activity changes with broader citation performance.',
+      onSelect: () => navigateToInsightTab('context'),
+    })
+    return actions.slice(0, 3)
+  }, [citationActivationViewMode, navigateToInsightTab, newlyActivePublicationRecords.length])
 
   const headlineMetricTiles = useMemo(() => {
     if (tile.key !== 'total_citations') {
@@ -8845,44 +9206,41 @@ function GenericMetricDrilldownWorkspace({
                       <SplitBreakdownViewToggle value={citationActivationViewMode} onChange={setCitationActivationViewMode} />
                     </div>
                     {citationActivationViewMode === 'bar' ? (
-                      <div className="space-y-3">
-                        <CitationActivationStateBarCard
-                          bare
-                          segments={[
-                            {
-                              key: 'newly-active',
-                              label: 'Newly active',
-                              value: `${formatInt(newlyActivePublicationRecords.length)} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.round((newlyActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100) : 0}%)`,
-                              ratioPct: totalCitationsHeadlineStats.publicationCount > 0
-                                ? (newlyActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100
-                                : 0,
-                              toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
-                              align: 'left',
-                            },
-                            {
-                              key: 'still-active',
-                              label: 'Still active',
-                              value: `${formatInt(stillActivePublicationRecords.length)} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.round((stillActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100) : 0}%)`,
-                              ratioPct: totalCitationsHeadlineStats.publicationCount > 0
-                                ? (stillActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100
-                                : 0,
-                              toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
-                              align: 'center',
-                            },
-                            {
-                              key: 'inactive',
-                              label: 'Inactive',
-                              value: `${formatInt(inactivePublicationCount)} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.round((inactivePublicationCount / totalCitationsHeadlineStats.publicationCount) * 100) : 0}%)`,
-                              ratioPct: totalCitationsHeadlineStats.publicationCount > 0
-                                ? (inactivePublicationCount / totalCitationsHeadlineStats.publicationCount) * 100
-                                : 0,
-                              toneClass: HOUSE_CHART_BAR_DANGER_CLASS,
-                              align: 'right',
-                            },
-                          ]}
-                        />
-                        <CitationActivationYearCohortChart rows={citationActivationCohortRows} />
-                      </div>
+                      <CitationActivationStateBarCard
+                        bare
+                        segments={[
+                          {
+                            key: 'newly-active',
+                            label: 'Newly active',
+                            value: `${formatInt(newlyActivePublicationRecords.length)} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.round((newlyActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100) : 0}%)`,
+                            ratioPct: totalCitationsHeadlineStats.publicationCount > 0
+                              ? (newlyActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100
+                              : 0,
+                            toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
+                            align: 'left',
+                          },
+                          {
+                            key: 'still-active',
+                            label: 'Still active',
+                            value: `${formatInt(stillActivePublicationRecords.length)} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.round((stillActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100) : 0}%)`,
+                            ratioPct: totalCitationsHeadlineStats.publicationCount > 0
+                              ? (stillActivePublicationRecords.length / totalCitationsHeadlineStats.publicationCount) * 100
+                              : 0,
+                            toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
+                            align: 'center',
+                          },
+                          {
+                            key: 'inactive',
+                            label: 'Inactive',
+                            value: `${formatInt(inactivePublicationCount)} (${totalCitationsHeadlineStats.publicationCount > 0 ? Math.round((inactivePublicationCount / totalCitationsHeadlineStats.publicationCount) * 100) : 0}%)`,
+                            ratioPct: totalCitationsHeadlineStats.publicationCount > 0
+                              ? (inactivePublicationCount / totalCitationsHeadlineStats.publicationCount) * 100
+                              : 0,
+                            toneClass: HOUSE_CHART_BAR_DANGER_CLASS,
+                            align: 'right',
+                          },
+                        ]}
+                      />
                     ) : (
                       <PublicationLinkTable
                         nameColumnLabel="Newly active publication"
@@ -8892,7 +9250,7 @@ function GenericMetricDrilldownWorkspace({
                           key: record.workId,
                           label: record.title || 'Untitled publication',
                           year: record.year,
-                        metricValue: formatInt(record.citations1yRolling),
+                        metricValue: formatInt(record.citations1yRolling || 0),
                         secondaryMetricValue: formatInt(record.citations),
                         workId: record.workId,
                         }))}
@@ -8900,6 +9258,78 @@ function GenericMetricDrilldownWorkspace({
                         emptyMessage="No newly active publications available."
                       />
                     )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain citation activity over time"
+                  content={formatCitationActivationHistoryTooltip(citationActivationHistoryLastCompleteYear, citationActivationHistoryFocusRangeLabel)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open citation activity over time insight"
+                  active={citationActivationHistoryInsightOpen}
+                  onClick={onToggleCitationActivationHistoryInsight}
+                />
+              </div>
+              {citationActivationHistoryInsightOpen ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close citation activity over time insight"
+                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+                    onClick={closeCitationActivationHistoryInsight}
+                  />
+                  <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+                    <div className="pointer-events-auto w-full max-w-[26rem]">
+                      <PublicationInsightsCallout
+                        payload={citationActivationHistoryInsightsPayload}
+                        sectionKey="citation_activation_history"
+                        loading={citationActivationHistoryInsightsLoading}
+                        error={citationActivationHistoryInsightsError}
+                        actions={citationActivationHistoryInsightActions}
+                        onClose={closeCitationActivationHistoryInsight}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">How has citation activity changed over time?</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={citationActivationHistoryExpanded}
+                    expandedLabel="Collapse citation activity over time"
+                    collapsedLabel="Expand citation activity over time"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setCitationActivationHistoryExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {citationActivationHistoryExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className="space-y-3">
+                    <CompletedPeriodRangeSlider
+                      label="Focus period"
+                      minIndex={0}
+                      maxIndex={Math.max(0, citationActivationHistoryPoints.length - 1)}
+                      startIndex={citationActivationHistoryVisibleRange.start}
+                      endIndex={citationActivationHistoryVisibleRange.end}
+                      minSpan={citationActivationHistoryMinSpan}
+                      startLabel={citationActivationHistoryPoints[citationActivationHistoryVisibleRange.start] ? formatMonthYearLabel(citationActivationHistoryPoints[citationActivationHistoryVisibleRange.start].timeMs) : '\u2014'}
+                      endLabel={citationActivationHistoryPoints[citationActivationHistoryVisibleRange.end] ? formatMonthYearLabel(citationActivationHistoryPoints[citationActivationHistoryVisibleRange.end].timeMs) : '\u2014'}
+                      selectionLabel={citationActivationHistoryFocusRangeLabel || 'Completed periods'}
+                      onChange={(nextStart, nextEnd) => {
+                        setCitationActivationHistoryRangeStart(nextStart)
+                        setCitationActivationHistoryRangeEnd(nextEnd)
+                      }}
+                    />
+                    <CitationActivationHistoryChart points={citationActivationHistoryVisiblePoints} />
                   </div>
                 </div>
               ) : null}
@@ -10301,37 +10731,289 @@ function CitationActivationStateBarCard({
   )
 }
 
-function CitationActivationYearCohortChart({
-  rows,
+function CompletedPeriodRangeSlider({
+  label,
+  minIndex,
+  maxIndex,
+  startIndex,
+  endIndex,
+  minSpan,
+  startLabel,
+  endLabel,
+  selectionLabel,
+  onChange,
 }: {
-  rows: Array<{
+  label: string
+  minIndex: number
+  maxIndex: number
+  startIndex: number
+  endIndex: number
+  minSpan: number
+  startLabel: string
+  endLabel: string
+  selectionLabel: string
+  onChange: (nextStart: number, nextEnd: number) => void
+}) {
+  const totalPoints = Math.max(0, maxIndex - minIndex + 1)
+  if (totalPoints <= 1) {
+    return null
+  }
+
+  const safeStart = Math.max(minIndex, Math.min(maxIndex, startIndex))
+  const safeEnd = Math.max(
+    safeStart,
+    Math.min(maxIndex, Math.max(endIndex, Math.min(maxIndex, safeStart + minSpan - 1))),
+  )
+  const axisSpan = Math.max(1, maxIndex - minIndex)
+  const startPct = ((safeStart - minIndex) / axisSpan) * 100
+  const endPct = ((safeEnd - minIndex) / axisSpan) * 100
+  const isAdjustable = totalPoints > minSpan
+  const trackRef = useRef<HTMLDivElement | null>(null)
+
+  const getIndexFromClientX = useCallback((clientX: number) => {
+    const track = trackRef.current
+    if (!track) {
+      return minIndex
+    }
+    const rect = track.getBoundingClientRect()
+    if (!rect.width) {
+      return minIndex
+    }
+    const clamped = Math.max(0, Math.min(rect.width, clientX - rect.left))
+    const ratio = clamped / rect.width
+    return minIndex + Math.round(ratio * axisSpan)
+  }, [axisSpan, minIndex])
+
+  const updateRangeFromClientX = useCallback((handle: 'start' | 'end', clientX: number) => {
+    if (!isAdjustable) {
+      return
+    }
+    const proposedIndex = getIndexFromClientX(clientX)
+    if (handle === 'start') {
+      const nextStart = Math.max(minIndex, Math.min(proposedIndex, safeEnd - minSpan + 1))
+      onChange(nextStart, safeEnd)
+      return
+    }
+    const nextEnd = Math.min(maxIndex, Math.max(proposedIndex, safeStart + minSpan - 1))
+    onChange(safeStart, nextEnd)
+  }, [getIndexFromClientX, isAdjustable, maxIndex, minIndex, minSpan, onChange, safeEnd, safeStart])
+
+  const beginDrag = useCallback((handle: 'start' | 'end', clientX: number) => {
+    updateRangeFromClientX(handle, clientX)
+    const handlePointerMove = (event: PointerEvent) => {
+      updateRangeFromClientX(handle, event.clientX)
+    }
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+  }, [updateRangeFromClientX])
+
+  const handleTrackPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!isAdjustable) {
+      return
+    }
+    const proposedIndex = getIndexFromClientX(event.clientX)
+    const nearestHandle = Math.abs(proposedIndex - safeStart) <= Math.abs(proposedIndex - safeEnd) ? 'start' : 'end'
+    beginDrag(nearestHandle, event.clientX)
+  }
+
+  const handleStartPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    beginDrag('start', event.clientX)
+  }
+
+  const handleEndPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    beginDrag('end', event.clientX)
+  }
+
+  return (
+    <div className="rounded-[1rem] border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-0))] px-3 py-3 shadow-[0_10px_26px_hsl(var(--tone-neutral-950)/0.05)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-0.5">
+          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{label}</p>
+          <p className="text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
+            {isAdjustable ? 'Completed periods only.' : 'Full completed history shown.'}
+          </p>
+        </div>
+        <p className="text-right text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[hsl(var(--tone-neutral-700))]">
+          {selectionLabel}
+        </p>
+      </div>
+      <div className="mt-3 space-y-2">
+        <div
+          ref={trackRef}
+          className={cn('relative h-8 px-2', isAdjustable ? 'cursor-ew-resize' : 'cursor-default')}
+          onPointerDown={handleTrackPointerDown}
+        >
+          <div
+            className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[hsl(var(--tone-neutral-200))]"
+            aria-hidden="true"
+          />
+          <div
+            className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-[hsl(var(--tone-accent-500))]"
+            style={{
+              left: `${startPct}%`,
+              width: `${Math.max(0, endPct - startPct)}%`,
+            }}
+            aria-hidden="true"
+          />
+          <button
+            type="button"
+            aria-label={`${label} start`}
+            className={cn(
+              'absolute top-1/2 z-20 h-[0.95rem] w-[0.95rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-0))] shadow-[0_1px_4px_hsl(var(--tone-neutral-950)/0.14)]',
+              isAdjustable ? 'cursor-ew-resize' : 'cursor-default',
+            )}
+            style={{ left: `calc(${startPct}% + 0.5rem)` }}
+            disabled={!isAdjustable}
+            onPointerDown={handleStartPointerDown}
+          />
+          <button
+            type="button"
+            aria-label={`${label} end`}
+            className={cn(
+              'absolute top-1/2 z-30 h-[0.95rem] w-[0.95rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-0))] shadow-[0_1px_4px_hsl(var(--tone-neutral-950)/0.14)]',
+              isAdjustable ? 'cursor-ew-resize' : 'cursor-default',
+            )}
+            style={{ left: `calc(${endPct}% + 0.5rem)` }}
+            disabled={!isAdjustable}
+            onPointerDown={handleEndPointerDown}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3 text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
+          <span>{startLabel}</span>
+          <span>{endLabel}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CitationActivationHistoryChart({
+  points,
+}: {
+  points: Array<{
     key: string
     label: string
+    timeMs: number
     newlyActiveCount: number
     stillActiveCount: number
     inactiveCount: number
     totalCount: number
   }>
 }) {
-  const maxTotal = Math.max(1, ...rows.map((row) => row.totalCount))
-
-  if (!rows.length) {
+  if (!points.length) {
     return (
       <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-        <div className="space-y-1">
-          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Activation by publication year</p>
-          <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">No publication-year cohort data available.</p>
-        </div>
+        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">No activation history is available yet.</p>
       </div>
     )
   }
 
+  const orderedPoints = points.slice().sort((left, right) => left.timeMs - right.timeMs)
+  const startMs = orderedPoints[0]?.timeMs ?? Date.now()
+  const endMs = orderedPoints[orderedPoints.length - 1]?.timeMs ?? startMs
+  const yAxisTickValues = [0, 50, 100]
+  const yAxisTickRatios = yAxisTickValues.map((tick) => tick / 100)
+  const gridTickRatiosWithoutTop = yAxisTickRatios.filter((ratio) => ratio < 0.999)
+  const hasTopYAxisTick = yAxisTickRatios.some((ratio) => ratio >= 0.999)
+  const xAxisTicks = buildLineTicksFromRange(startMs, endMs, 'all')
+  const xAxisLabelLayout = buildChartAxisLayout({
+    axisLabels: xAxisTicks.map((tick) => tick.label),
+    axisSubLabels: xAxisTicks.map((tick) => tick.subLabel || null),
+    showXAxisName: true,
+    xAxisName: 'Publication year',
+    dense: false,
+    maxLabelLines: 2,
+    maxSubLabelLines: 2,
+    maxAxisNameLines: 2,
+  })
+  const yAxisPanelWidthRem = buildYAxisPanelWidthRem(yAxisTickValues, true, 1.2)
+  const yAxisTitleLeft = '36%'
+  const chartTopInsetRem = PUBLICATIONS_CHART_TOP_INSET_REM
+  const chartLeftInset = `${yAxisPanelWidthRem + PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM}rem`
+  const plotAreaStyle = {
+    left: chartLeftInset,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    top: `${chartTopInsetRem}rem`,
+    bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
+  }
+  const xAxisTicksStyle = {
+    left: chartLeftInset,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    bottom: `${xAxisLabelLayout.axisBottomRem}rem`,
+    minHeight: `${xAxisLabelLayout.axisMinHeightRem}rem`,
+  }
+  const yAxisPanelStyle = {
+    left: `${PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM}rem`,
+    top: `${chartTopInsetRem}rem`,
+    bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
+    width: `${yAxisPanelWidthRem}rem`,
+  }
+  const chartFrameStyle = {
+    paddingBottom: `${xAxisLabelLayout.framePaddingBottomRem}rem`,
+    minHeight: '20rem',
+  }
+  const yAxisTickOffsetRem = PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM
+  const lineModeVerticalGridPercents = xAxisTicks
+    .map((tick) => Math.max(0, Math.min(100, tick.leftPct)))
+    .sort((left, right) => left - right)
+    .filter((value, index, values) => index === 0 || Math.abs(value - values[index - 1]) > 0.5)
+  const buildSeriesPoints = (selector: (point: typeof orderedPoints[number]) => number) => orderedPoints.map((point) => {
+    const position = endMs <= startMs
+      ? 50
+      : Math.max(0, Math.min(100, ((point.timeMs - startMs) / Math.max(1, endMs - startMs)) * 100))
+    const value = Math.max(0, Math.min(100, selector(point)))
+    return {
+      key: point.key,
+      xPct: position,
+      yPct: value,
+      value,
+      label: point.label,
+      totalCount: point.totalCount,
+    }
+  })
+  const series = [
+    {
+      key: 'newly-active',
+      label: 'Newly active',
+      color: 'hsl(var(--tone-positive-500))',
+      points: buildSeriesPoints((point) => (point.totalCount > 0 ? (point.newlyActiveCount / point.totalCount) * 100 : 0)),
+    },
+    {
+      key: 'still-active',
+      label: 'Still active',
+      color: 'hsl(var(--tone-accent-500))',
+      points: buildSeriesPoints((point) => (point.totalCount > 0 ? (point.stillActiveCount / point.totalCount) * 100 : 0)),
+    },
+    {
+      key: 'inactive',
+      label: 'Inactive',
+      color: 'hsl(var(--tone-danger-500))',
+      points: buildSeriesPoints((point) => (point.totalCount > 0 ? (point.inactiveCount / point.totalCount) * 100 : 0)),
+    },
+  ] as const
+  const seriesPaths = series.map((item) => {
+    const points = item.points
+      .map((point) => ({
+        x: Math.max(0, Math.min(100, point.xPct)),
+        y: Math.max(0, Math.min(100, 100 - point.yPct)),
+      }))
+      .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    return {
+      ...item,
+      path: points.length ? monotonePathFromPoints(points) : '',
+    }
+  })
+
   return (
-    <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-      <div className="space-y-1">
-        <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Activation by publication year</p>
-        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">Shows which publication-year cohorts are newly active, still active, or inactive.</p>
-      </div>
+    <div className="flex h-full min-h-0 w-full flex-col px-2 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
         <span className="inline-flex items-center gap-1.5">
           <span className={cn('h-2.5 w-2.5 rounded-full', HOUSE_CHART_BAR_POSITIVE_CLASS)} aria-hidden="true" />
@@ -10346,49 +11028,174 @@ function CitationActivationYearCohortChart({
           Inactive
         </span>
       </div>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(3.25rem,1fr))] gap-2">
-        {rows.map((row) => {
-          const totalHeightPct = (row.totalCount / maxTotal) * 100
-          const newlyHeightPct = row.totalCount > 0 ? (row.newlyActiveCount / row.totalCount) * 100 : 0
-          const stillHeightPct = row.totalCount > 0 ? (row.stillActiveCount / row.totalCount) * 100 : 0
-          const inactiveHeightPct = row.totalCount > 0 ? (row.inactiveCount / row.totalCount) * 100 : 0
-          return (
-            <div key={row.key} className="space-y-1.5">
-              <p className="text-center text-[0.78rem] font-semibold leading-none text-[hsl(var(--tone-neutral-800))]">
-                {formatInt(row.totalCount)}
-              </p>
-              <div className="flex h-36 items-end justify-center">
-                <div
-                  className="flex w-full max-w-[2.5rem] flex-col justify-end overflow-hidden rounded-[0.8rem] border border-[hsl(var(--stroke-soft)/0.78)] bg-[hsl(var(--tone-neutral-100))]"
-                  style={{ height: `${Math.max(16, totalHeightPct)}%` }}
-                >
-                  {row.inactiveCount > 0 ? (
-                    <div
-                      className={cn('w-full', HOUSE_CHART_BAR_DANGER_CLASS)}
-                      style={{ height: `${inactiveHeightPct}%` }}
-                      aria-hidden="true"
+      <div
+        className={cn(
+          HOUSE_CHART_TRANSITION_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
+          'house-publications-trend-chart-frame-borderless',
+        )}
+        style={chartFrameStyle}
+      >
+        <div className="absolute overflow-visible" style={plotAreaStyle}>
+          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+            <div
+              className={cn('absolute inset-y-0 left-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={{ borderLeft: '1px solid hsl(var(--stroke-soft) / 0.7)' }}
+            />
+            {gridTickRatiosWithoutTop.map((ratio, index) => (
+              <div
+                key={`citation-activation-history-grid-y-${index}`}
+                className={cn('absolute inset-x-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{
+                  bottom: `${Math.max(0, Math.min(100, ratio * 100))}%`,
+                  borderTop: `1px solid hsl(var(--stroke-soft) / ${ratio <= 0.0001 ? 0.95 : 0.76})`,
+                }}
+              />
+            ))}
+            {hasTopYAxisTick ? (
+              <div
+                className={cn('absolute inset-x-0 top-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{ borderTop: '1px solid hsl(var(--stroke-soft) / 0.76)' }}
+              />
+            ) : null}
+            <div
+              className={cn('absolute inset-y-0 right-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={{ borderRight: '1px solid hsl(var(--stroke-soft) / 0.76)' }}
+              aria-hidden="true"
+            />
+            {lineModeVerticalGridPercents.length ? (
+              <svg className="absolute inset-0 z-[1]" viewBox="0 0 100 100" preserveAspectRatio="none" shapeRendering="crispEdges">
+                {lineModeVerticalGridPercents.map((leftPct, index) => (
+                  <line
+                    key={`citation-activation-history-grid-x-${index}`}
+                    x1={String(leftPct)}
+                    y1="0"
+                    x2={String(leftPct)}
+                    y2="100"
+                    stroke="hsl(var(--stroke-soft) / 0.76)"
+                    strokeWidth="1"
+                    shapeRendering="crispEdges"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
+            ) : null}
+          </div>
+          <div className="pointer-events-none absolute inset-0 z-[3] overflow-hidden" aria-hidden="true">
+            <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {seriesPaths.map((item) => item.path ? (
+                <path
+                  key={`${item.key}-path`}
+                  d={item.path}
+                  className={HOUSE_TOGGLE_CHART_LINE_CLASS}
+                  fill="none"
+                  stroke={item.color}
+                  strokeWidth="2.1"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ) : null)}
+            </svg>
+          </div>
+          <TooltipProvider delayDuration={120}>
+            <div className="absolute inset-0 z-[4]">
+              {seriesPaths.flatMap((item) => item.points.map((point) => (
+                <Tooltip key={`${item.key}-${point.key}`}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="absolute block rounded-full border border-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-200))]"
+                      style={{
+                        left: `${point.xPct}%`,
+                        bottom: `${point.yPct}%`,
+                        width: '0.5rem',
+                        height: '0.5rem',
+                        backgroundColor: item.color,
+                        transform: 'translate(-50%, 50%)',
+                        boxShadow: '0 0 0 1px hsl(var(--stroke-soft) / 0.14)',
+                      }}
+                      aria-label={`${item.label}: ${Math.round(point.value)}% in ${point.label}`}
                     />
-                  ) : null}
-                  {row.stillActiveCount > 0 ? (
-                    <div
-                      className={cn('w-full border-t border-white/70', HOUSE_CHART_BAR_ACCENT_CLASS)}
-                      style={{ height: `${stillHeightPct}%` }}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                  {row.newlyActiveCount > 0 ? (
-                    <div
-                      className={cn('w-full border-t border-white/70', HOUSE_CHART_BAR_POSITIVE_CLASS)}
-                      style={{ height: `${newlyHeightPct}%` }}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                </div>
-              </div>
-              <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'text-center leading-tight')}>{row.label}</p>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    align="center"
+                    sideOffset={8}
+                    className="house-approved-tooltip max-w-[18rem] whitespace-normal px-2 py-1.5 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                  >
+                    {`${item.label}: ${Math.round(point.value)}% in ${point.label} (${formatInt(point.totalCount)} papers)`}
+                  </TooltipContent>
+                </Tooltip>
+              )))}
             </div>
-          )
-        })}
+          </TooltipProvider>
+        </div>
+
+        <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
+          {yAxisTickValues.map((tickValue, index) => {
+            const pct = Math.max(0, Math.min(100, (yAxisTickRatios[index] || 0) * 100))
+            const tickRatioKey = Math.round((yAxisTickRatios[index] || 0) * 1000)
+            return (
+              <p
+                key={`citation-activation-history-y-axis-${tickRatioKey}`}
+                className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
+                style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
+              >
+                {tickValue}%
+              </p>
+            )
+          })}
+          <p
+            className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
+            style={{ left: yAxisTitleLeft }}
+          >
+            Share of cohort
+          </p>
+        </div>
+
+        <div
+          className={cn('pointer-events-none absolute', HOUSE_TOGGLE_CHART_LABEL_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+          style={xAxisTicksStyle}
+        >
+          {xAxisTicks.map((tick) => {
+            const isNearLeftEdge = tick.leftPct <= 2
+            const isNearRightEdge = tick.leftPct >= 98
+            return (
+              <div
+                key={tick.key}
+                className={cn(
+                  'house-chart-axis-period-item absolute top-0 leading-none text-center',
+                  HOUSE_CHART_SCALE_TICK_CLASS,
+                )}
+                style={{
+                  left: `${tick.leftPct}%`,
+                  transform: isNearLeftEdge
+                    ? 'translateX(0)'
+                    : isNearRightEdge
+                      ? 'translateX(-100%)'
+                      : 'translateX(-50%)',
+                }}
+              >
+                <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>{tick.label}</p>
+              </div>
+            )
+          })}
+        </div>
+
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            left: chartLeftInset,
+            right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+            bottom: `${xAxisLabelLayout.xAxisNameBottomRem}rem`,
+            minHeight: `${xAxisLabelLayout.xAxisNameMinHeightRem}rem`,
+          }}
+        >
+          <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
+            Publication year
+          </p>
+        </div>
       </div>
     </div>
   )
@@ -10561,7 +11368,7 @@ function PublicationInsightsCallout({
   onClose: () => void
 }) {
   const section = getPublicationInsightsSection(payload, sectionKey)
-  const usesPositiveTone = sectionKey === 'uncited_works' || sectionKey === 'citation_activation'
+  const usesPositiveTone = sectionKey === 'uncited_works' || sectionKey === 'citation_activation' || sectionKey === 'citation_activation_history'
   const title = String(
     section?.headline
     || section?.title
@@ -10569,6 +11376,8 @@ function PublicationInsightsCallout({
       ? 'Uncited publications'
       : sectionKey === 'citation_activation'
         ? 'Citation activation'
+        : sectionKey === 'citation_activation_history'
+          ? 'Activation over time'
         : 'Citation concentration'),
   ).trim()
   const considerationLabel = String(section?.consideration_label || '').trim() || 'Why this matters'
@@ -13199,6 +14008,7 @@ export function PublicationsTopStrip({
               <DrilldownSheet.Tabs
                 activeTab={activeDrilldownTab}
                 onTabChange={(tabId) => setActiveDrilldownTab(tabId as DrilldownTab)}
+                tone="profile"
                 className="house-drilldown-tabs"
                 aria-label="Metric drilldown sections"
                 tabIdPrefix="drilldown-tab-"

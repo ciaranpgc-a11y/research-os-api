@@ -35,6 +35,7 @@ import type {
   AuthTwoFactorStatePayload,
   AuthUser,
   CollaboratorPayload,
+  CollaboratorSharedWorksListPayload,
   CollaboratorsListPayload,
   CollaborationAiAffiliationsNormalisePayload,
   CollaborationAiAuthorSuggestionsPayload,
@@ -1316,7 +1317,7 @@ export async function fetchPublicationInsightsAgent(
   options?: {
     windowId?: '1y' | '3y' | '5y' | 'all'
     scope?: 'window' | 'section'
-    sectionKey?: 'uncited_works' | 'citation_drivers' | 'citation_activation'
+    sectionKey?: 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history'
   },
 ): Promise<PublicationInsightsAgentPayload> {
   const windowId = options?.windowId || '1y'
@@ -1547,6 +1548,20 @@ export async function getCollaborator(token: string, collaboratorId: string): Pr
       headers: authHeaders(token),
     },
     'Collaborator lookup failed',
+  )
+}
+
+export async function listCollaboratorSharedWorks(
+  token: string,
+  collaboratorId: string,
+): Promise<CollaboratorSharedWorksListPayload> {
+  return requestJson<CollaboratorSharedWorksListPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/collaborators/${encodeURIComponent(collaboratorId)}/shared-works`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Collaborator shared works lookup failed',
   )
 }
 

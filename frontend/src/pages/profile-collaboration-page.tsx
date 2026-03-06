@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { Building2, Check, ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Lightbulb, Loader2, Pencil, Plus, Search, Settings, Share2, Sparkles, X } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { Building2, Check, ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Loader2, Pencil, Plus, Search, Settings, Share2, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -9,17 +9,13 @@ import {
   Section,
   SectionHeader,
   Stack,
-  CardPrimitive as Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/primitives'
 import { SectionMarker, SectionToolDivider, SectionTools } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { houseLayout, houseTables } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { UKCollaborationMap } from '@/components/collaboration/UKCollaborationMap'
+import { publicationsHouseDrilldown, publicationsHouseMotion } from '@/components/publications/publications-house-style'
 import {
   Badge,
   Button,
@@ -44,28 +40,18 @@ import {
   writeCachedCollaborationLandingData,
 } from '@/lib/collaboration-preload'
 import {
-  deleteCollaborator,
   fetchAffiliationAddressForMe,
   exportCollaboratorsCsv,
   fetchAffiliationSuggestionsForMe,
   fetchCollaborationMetricsSummary,
-  generateCollaborationAiAffiliationsNormaliser,
-  generateCollaborationAiAuthorSuggestions,
-  generateCollaborationAiContributionStatement,
-  generateCollaborationAiInsights,
   getCollaborator,
-  updateCollaborator,
+  listCollaboratorSharedWorks,
 } from '@/lib/impact-api'
 import type {
   AffiliationSuggestionItemPayload,
-  CollaborationAiAffiliationsNormalisePayload,
-  CollaborationAiAuthorSuggestionsPayload,
-  CollaborationAiContributionDraftPayload,
-  CollaborationAiInsightsPayload,
-  CollaborationEnrichOpenAlexPayload,
   CollaboratorPayload,
+  CollaboratorSharedWorkPayload,
   CollaboratorsListPayload,
-  CollaborationImportOpenAlexPayload,
   CollaborationMetricsSummaryPayload,
 } from '@/types/impact'
 
@@ -170,6 +156,7 @@ type CollaborationSortField =
   | 'relationship_tier'
   | 'activity_status'
 type CollaboratorDrilldownTab = 'details' | 'history' | 'actions'
+type CollaboratorHistoryWindowMode = '1y' | '3y' | '5y' | 'all'
 type SortDirection = 'asc' | 'desc'
 type CollaborationTableColumnPreference = {
   visible: boolean
@@ -216,6 +203,11 @@ const EMPTY_FORM: CollaboratorFormState = {
 
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
+const HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS = publicationsHouseDrilldown.toggleButtonMuted
+const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
+const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
+const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
+const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
 const COLLABORATORS_PAGE_SIZE_DEFAULT: CollaborationTablePageSize = 50
 const AFFILIATION_LOOKUP_DEBOUNCE_MS = 60
 const HEATMAP_TOP_CELL_LIMIT = 24
@@ -248,6 +240,12 @@ const COLLABORATOR_SALUTATION_OPTIONS = [
   'Rev',
   'Hon',
 ] as const
+const COLLABORATOR_HISTORY_WINDOW_OPTIONS: Array<{ value: CollaboratorHistoryWindowMode; label: string }> = [
+  { value: '1y', label: '1' },
+  { value: '3y', label: '3' },
+  { value: '5y', label: '5' },
+  { value: 'all', label: 'Life' },
+]
 const COLLABORATION_TABLE_COLUMN_ORDER: CollaborationTableColumnKey[] = [
   'name',
   'institution',
@@ -482,7 +480,7 @@ function toFormState(value: CollaboratorPayload): CollaboratorFormState {
     secondary_email: value.contact_secondary_email || '',
     orcid_id: value.orcid_id || '',
     openalex_author_id: value.openalex_author_id || '',
-    primary_institution: value.contact_primary_institution || value.primary_institution || '',
+    primary_institution: value.contact_primary_institution || '',
     secondary_institution: value.contact_secondary_institution || '',
     primary_institution_openalex_id: value.contact_primary_institution_openalex_id || '',
     secondary_institution_openalex_id: value.contact_secondary_institution_openalex_id || '',
@@ -664,14 +662,6 @@ function pickClearOpenAlexInstitutionMatch(
   return exactOpenAlexMatches.length === 1 ? exactOpenAlexMatches[0] : null
 }
 
-function parseCommaSeparatedTokens(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 20)
-}
-
 function openAlexIdentityKey(value: string | null | undefined): string {
   const clean = String(value || '').trim()
   if (!clean) {
@@ -804,6 +794,35 @@ function activityTone(value: string): 'positive' | 'yellow' | 'intermediate' | '
     return 'intermediate'
   }
   return 'negative'
+}
+
+function collaboratorHistoryWindowThumbStyle(mode: CollaboratorHistoryWindowMode): CSSProperties {
+  if (mode === 'all') {
+    return {
+      width: '28%',
+      left: '72%',
+      willChange: 'left,width',
+    }
+  }
+  if (mode === '5y') {
+    return {
+      width: '24%',
+      left: '48%',
+      willChange: 'left,width',
+    }
+  }
+  if (mode === '3y') {
+    return {
+      width: '24%',
+      left: '24%',
+      willChange: 'left,width',
+    }
+  }
+  return {
+    width: '24%',
+    left: '0%',
+    willChange: 'left,width',
+  }
 }
 
 function collaborationStrengthTone(mixedScore: number, rawScore: number): string {
@@ -970,21 +989,6 @@ function formatHeatmapMetricValue(value: number, metric: HeatmapMetric): string 
     return value.toFixed(1)
   }
   return Math.round(value).toLocaleString('en-GB')
-}
-
-function formatCollaboratorDate(value: string | null | undefined): string {
-  if (!value) {
-    return 'Not available'
-  }
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) {
-    return 'Not available'
-  }
-  return parsed.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
 }
 
 function normalizeHeatmapBucket(value: string | null | undefined, fallback: string): string {
@@ -1471,20 +1475,13 @@ export function ProfileCollaborationPage() {
   const [institutionSuggestionsLoading, setInstitutionSuggestionsLoading] = useState(false)
   const [institutionSuggestionsError, setInstitutionSuggestionsError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
-  const [duplicateWarnings, setDuplicateWarnings] = useState<string[]>([])
-  const [importResult] = useState<CollaborationImportOpenAlexPayload | null>(null)
-  const [enrichmentResult] = useState<CollaborationEnrichOpenAlexPayload | null>(null)
-  const [aiTopicKeywords, setAiTopicKeywords] = useState('')
-  const [aiMethods, setAiMethods] = useState('')
-  const [aiInsights, setAiInsights] = useState<CollaborationAiInsightsPayload | null>(null)
-  const [aiAuthorSuggestions, setAiAuthorSuggestions] = useState<CollaborationAiAuthorSuggestionsPayload | null>(null)
-  const [aiContributionDraft, setAiContributionDraft] = useState<CollaborationAiContributionDraftPayload | null>(null)
-  const [aiAffiliationDraft, setAiAffiliationDraft] = useState<CollaborationAiAffiliationsNormalisePayload | null>(null)
-  const [aiLoading, setAiLoading] = useState<string | null>(null)
-  const [aiError, setAiError] = useState('')
+  const [, setDuplicateWarnings] = useState<string[]>([])
+  const [sharedWorksWindowMode, setSharedWorksWindowMode] = useState<CollaboratorHistoryWindowMode>('all')
+  const [sharedWorksByCollaboratorId, setSharedWorksByCollaboratorId] = useState<Record<string, CollaboratorSharedWorkPayload[]>>({})
+  const [sharedWorksLoadingByCollaboratorId, setSharedWorksLoadingByCollaboratorId] = useState<Record<string, boolean>>({})
+  const [sharedWorksErrorByCollaboratorId, setSharedWorksErrorByCollaboratorId] = useState<Record<string, string>>({})
   const collaboratorInstitutionLookupSequenceRef = useRef(0)
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>(() => normalizeHeatmapMode(searchParams.get('heatmap_mode')))
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>(
@@ -2203,10 +2200,36 @@ export function ProfileCollaborationPage() {
   }, [canonicalCollaborators, selectedId])
   const selectedCollaboratorRelationship = selectedCollaborator ? resolveRelationshipTier(selectedCollaborator.metrics) : 'UNCLASSIFIED'
   const selectedCollaboratorActivity = selectedCollaborator ? resolveActivityStatus(selectedCollaborator.metrics) : 'UNCLASSIFIED'
+  const selectedCollaboratorSharedWorks = useMemo(
+    () => (selectedId ? sharedWorksByCollaboratorId[selectedId] || [] : []),
+    [selectedId, sharedWorksByCollaboratorId],
+  )
+  const selectedCollaboratorSharedWorksLoading = selectedId ? Boolean(sharedWorksLoadingByCollaboratorId[selectedId]) : false
+  const selectedCollaboratorSharedWorksError = selectedId ? sharedWorksErrorByCollaboratorId[selectedId] || '' : ''
+  const filteredSelectedCollaboratorSharedWorks = useMemo(() => {
+    if (sharedWorksWindowMode === 'all') {
+      return selectedCollaboratorSharedWorks
+    }
+    const currentYear = new Date().getFullYear()
+    const yearFloor = sharedWorksWindowMode === '1y'
+      ? currentYear
+      : sharedWorksWindowMode === '3y'
+        ? currentYear - 2
+        : currentYear - 4
+    return selectedCollaboratorSharedWorks.filter((item) => (
+      typeof item.year === 'number' && item.year >= yearFloor
+    ))
+  }, [selectedCollaboratorSharedWorks, sharedWorksWindowMode])
+  const sharedWorksWindowThumbStyle = useMemo(
+    () => collaboratorHistoryWindowThumbStyle(sharedWorksWindowMode),
+    [sharedWorksWindowMode],
+  )
   const collaboratorAffiliations = useMemo(
     () => collaboratorAuthorAffiliations(form),
     [form],
   )
+  const hasCommittedPrimaryInstitution = Boolean(sanitizeAffiliation(form.primary_institution))
+  const primaryInstitutionEditingActive = editingInstitution || !hasCommittedPrimaryInstitution
 
   const resetInstitutionSuggestionState = useCallback(() => {
     setInstitutionInputFocused(null)
@@ -2660,23 +2683,6 @@ export function ProfileCollaborationPage() {
       return domains.some((domain) => normalizeHeatmapBucket(domain, 'General') === heatmapSelection.label)
     })
   }, [canonicalCollaborators, heatmapCells, heatmapMode, heatmapSelection])
-
-  const aiAuthorDraftSeed = useMemo(() => {
-    const seeds: CollaboratorPayload[] = []
-    if (selectedCollaborator) {
-      seeds.push(selectedCollaborator)
-    }
-    for (const item of filteredCollaborators) {
-      if (seeds.length >= 3) {
-        break
-      }
-      if (seeds.some((seed) => seed.id === item.id)) {
-        continue
-      }
-      seeds.push(item)
-    }
-    return seeds
-  }, [filteredCollaborators, selectedCollaborator])
 
   const visibleCollaborationTableColumns = useMemo(() => (
     collaborationTableColumnOrder.filter((column) => collaborationTableColumns[column].visible)
@@ -3242,6 +3248,44 @@ export function ProfileCollaborationPage() {
   }, [applyCollaboratorFormState, bootstrapCollaboratorAffiliations, selectedId])
 
   useEffect(() => {
+    if (!selectedId || sharedWorksByCollaboratorId[selectedId]) {
+      return
+    }
+    const token = getAuthSessionToken()
+    if (!token) {
+      return
+    }
+    let cancelled = false
+    setSharedWorksLoadingByCollaboratorId((current) => ({ ...current, [selectedId]: true }))
+    setSharedWorksErrorByCollaboratorId((current) => ({ ...current, [selectedId]: '' }))
+    void listCollaboratorSharedWorks(token, selectedId)
+      .then((payload) => {
+        if (cancelled) {
+          return
+        }
+        setSharedWorksByCollaboratorId((current) => ({ ...current, [selectedId]: payload.items || [] }))
+      })
+      .catch((loadError) => {
+        if (cancelled) {
+          return
+        }
+        setSharedWorksErrorByCollaboratorId((current) => ({
+          ...current,
+          [selectedId]: loadError instanceof Error ? loadError.message : 'Could not load co-authored publications.',
+        }))
+      })
+      .finally(() => {
+        if (cancelled) {
+          return
+        }
+        setSharedWorksLoadingByCollaboratorId((current) => ({ ...current, [selectedId]: false }))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedId, sharedWorksByCollaboratorId])
+
+  useEffect(() => {
     if (!institutionInputFocused) {
       setInstitutionSuggestionsLoading(false)
       setInstitutionSuggestionsError('')
@@ -3351,6 +3395,14 @@ export function ProfileCollaborationPage() {
     setCollaboratorDrilldownOpen(true)
   }
 
+  const onOpenSharedPublication = useCallback((workId: string) => {
+    const normalizedWorkId = String(workId || '').trim()
+    if (!normalizedWorkId) {
+      return
+    }
+    navigate(`/profile/publications?work=${encodeURIComponent(normalizedWorkId)}&tab=overview`)
+  }, [navigate])
+
   const onStartPrimaryEmailEdit = () => {
     setPrimaryEmailDraft(form.email || '')
     setEditingPrimaryEmail(true)
@@ -3407,7 +3459,7 @@ export function ProfileCollaborationPage() {
 
   const onCancelInstitutionDraft = () => {
     setInstitutionDraft(form.primary_institution || '')
-    setEditingInstitution(false)
+    setEditingInstitution(!hasCommittedPrimaryInstitution)
     resetInstitutionSuggestionState()
   }
 
@@ -3518,82 +3570,6 @@ export function ProfileCollaborationPage() {
     setEditingSecondaryEmail(false)
   }
 
-  const onSave = async () => {
-    if (!selectedId) {
-      setError('Select a collaborator first.')
-      return
-    }
-    const token = getAuthSessionToken()
-    if (!token) {
-      navigate('/auth', { replace: true })
-      return
-    }
-    setSaving(true)
-    setError('')
-    setStatus('')
-    try {
-      const payload = {
-        contact_salutation: form.salutation || null,
-        contact_first_name: form.first_name || null,
-        contact_middle_initial: form.middle_initial || null,
-        contact_surname: form.surname || null,
-        contact_email: form.email || null,
-        contact_secondary_email: form.secondary_email || null,
-        contact_primary_institution: form.primary_institution || null,
-        contact_secondary_institution: form.secondary_institution || null,
-        contact_primary_institution_openalex_id: form.primary_institution_openalex_id || null,
-        contact_secondary_institution_openalex_id: form.secondary_institution_openalex_id || null,
-        contact_primary_affiliation_department: form.primary_affiliation_department || null,
-        contact_primary_affiliation_address_line_1: form.primary_affiliation_address_line_1 || null,
-        contact_primary_affiliation_city: form.primary_affiliation_city || null,
-        contact_primary_affiliation_region: form.primary_affiliation_region || null,
-        contact_primary_affiliation_postal_code: form.primary_affiliation_postal_code || null,
-        contact_primary_affiliation_country: form.primary_affiliation_country || null,
-        contact_secondary_affiliation_department: form.secondary_affiliation_department || null,
-        contact_secondary_affiliation_address_line_1: form.secondary_affiliation_address_line_1 || null,
-        contact_secondary_affiliation_city: form.secondary_affiliation_city || null,
-        contact_secondary_affiliation_region: form.secondary_affiliation_region || null,
-        contact_secondary_affiliation_postal_code: form.secondary_affiliation_postal_code || null,
-        contact_secondary_affiliation_country: form.secondary_affiliation_country || null,
-        contact_country: form.country || null,
-      }
-      const saved = await updateCollaborator(token, selectedId, payload)
-      setSelectedId(saved.id)
-      applyCollaboratorFormState(saved)
-      setStatus('Collaborator updated.')
-      await load(token)
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Could not save collaborator.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const onDelete = async () => {
-    if (!selectedId) {
-      return
-    }
-    const token = getAuthSessionToken()
-    if (!token) {
-      navigate('/auth', { replace: true })
-      return
-    }
-    setSaving(true)
-    setError('')
-    try {
-      await deleteCollaborator(token, selectedId)
-      setStatus('Collaborator deleted.')
-      setSelectedId(null)
-      setCollaboratorDrilldownOpen(false)
-      clearCollaboratorFormState()
-      await load(token)
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete collaborator.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const onExport = async () => {
     const token = getAuthSessionToken()
     if (!token) {
@@ -3606,116 +3582,6 @@ export function ProfileCollaborationPage() {
       downloadTextFile(payload.filename, payload.content, 'text/csv;charset=utf-8')
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : 'Could not export collaborators.')
-    }
-  }
-
-  const onGenerateAiInsights = async () => {
-    const token = getAuthSessionToken()
-    if (!token) {
-      navigate('/auth', { replace: true })
-      return
-    }
-    setAiLoading('insights')
-    setAiError('')
-    try {
-      const payload = await generateCollaborationAiInsights(token)
-      setAiInsights(payload)
-    } catch (aiLoadError) {
-      setAiError(aiLoadError instanceof Error ? aiLoadError.message : 'Could not generate insights draft.')
-    } finally {
-      setAiLoading(null)
-    }
-  }
-
-  const onGenerateAiAuthorSuggestions = async () => {
-    const token = getAuthSessionToken()
-    if (!token) {
-      navigate('/auth', { replace: true })
-      return
-    }
-    setAiLoading('author-suggestions')
-    setAiError('')
-    try {
-      const payload = await generateCollaborationAiAuthorSuggestions(token, {
-        topicKeywords: parseCommaSeparatedTokens(aiTopicKeywords),
-        methods: parseCommaSeparatedTokens(aiMethods),
-        limit: 6,
-      })
-      setAiAuthorSuggestions(payload)
-    } catch (aiLoadError) {
-      setAiError(
-        aiLoadError instanceof Error
-          ? aiLoadError.message
-          : 'Could not generate author suggestion draft.',
-      )
-    } finally {
-      setAiLoading(null)
-    }
-  }
-
-  const onGenerateAiContributionDraft = async () => {
-    if (aiAuthorDraftSeed.length === 0) {
-      setAiError('Add or select collaborators first.')
-      return
-    }
-    const token = getAuthSessionToken()
-    if (!token) {
-      navigate('/auth', { replace: true })
-      return
-    }
-    setAiLoading('contribution')
-    setAiError('')
-    try {
-      const payload = await generateCollaborationAiContributionStatement(token, {
-        authors: aiAuthorDraftSeed.map((item, index) => ({
-          full_name: collaboratorDisplayName(item),
-          roles: [],
-          is_corresponding: index === 0,
-          equal_contribution: false,
-          is_external: false,
-        })),
-      })
-      setAiContributionDraft(payload)
-    } catch (aiLoadError) {
-      setAiError(
-        aiLoadError instanceof Error
-          ? aiLoadError.message
-          : 'Could not generate contribution statement draft.',
-      )
-    } finally {
-      setAiLoading(null)
-    }
-  }
-
-  const onGenerateAiAffiliationsDraft = async () => {
-    if (aiAuthorDraftSeed.length === 0) {
-      setAiError('Add or select collaborators first.')
-      return
-    }
-    const token = getAuthSessionToken()
-    if (!token) {
-      navigate('/auth', { replace: true })
-      return
-    }
-    setAiLoading('affiliations')
-    setAiError('')
-    try {
-      const payload = await generateCollaborationAiAffiliationsNormaliser(token, {
-        authors: aiAuthorDraftSeed.map((item) => ({
-          full_name: collaboratorDisplayName(item),
-          institution: collaboratorDisplayInstitution(item),
-          orcid_id: item.orcid_id,
-        })),
-      })
-      setAiAffiliationDraft(payload)
-    } catch (aiLoadError) {
-      setAiError(
-        aiLoadError instanceof Error
-          ? aiLoadError.message
-          : 'Could not generate affiliations draft.',
-      )
-    } finally {
-      setAiLoading(null)
     }
   }
 
@@ -4700,148 +4566,6 @@ export function ProfileCollaborationPage() {
             </div>
           </div>
         </div>
-
-      <Card>
-        <CardHeader className="space-y-2">
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4" />
-            AI tools
-          </CardTitle>
-          <CardDescription>
-            Draft-only helpers powered by your collaborator records. Outputs are editable and include provenance.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded border border-border p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">Collaboration insights</p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={onGenerateAiInsights}
-                  disabled={aiLoading !== null}
-                >
-                  <Lightbulb className="mr-1 h-3.5 w-3.5" />
-                  {aiLoading === 'insights' ? 'Generating...' : 'Generate draft'}
-                </Button>
-              </div>
-              {aiInsights ? (
-                <div className="space-y-2 text-xs">
-                  {aiInsights.insights.map((item) => (
-                    <p key={item}>- {item}</p>
-                  ))}
-                  {aiInsights.suggested_actions.length > 0 ? (
-                    <div>
-                      <p className="font-medium">Suggested actions</p>
-                      {aiInsights.suggested_actions.map((item) => (
-                        <p key={item}>- {item}</p>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">No draft generated yet.</p>
-              )}
-            </div>
-
-            <div className="rounded border border-border p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">Author suggestions for manuscript</p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={onGenerateAiAuthorSuggestions}
-                  disabled={aiLoading !== null}
-                >
-                  {aiLoading === 'author-suggestions' ? 'Generating...' : 'Generate draft'}
-                </Button>
-              </div>
-              <div className="mb-2 grid gap-2">
-                <Input
-                  value={aiTopicKeywords}
-                  onChange={(event) => setAiTopicKeywords(event.target.value)}
-                  placeholder="Topic keywords (comma-separated)"
-                />
-                <Input
-                  value={aiMethods}
-                  onChange={(event) => setAiMethods(event.target.value)}
-                  placeholder="Methods (comma-separated)"
-                />
-              </div>
-              {aiAuthorSuggestions ? (
-                <div className="space-y-2 text-xs">
-                  {aiAuthorSuggestions.suggestions.map((item) => (
-                    <div key={item.collaborator_id} className="rounded border border-border/70 p-2">
-                      <p className="font-medium">
-                        {item.full_name} ({item.score.toFixed(2)})
-                      </p>
-                      <p className="text-muted-foreground">{item.explanation}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">No draft generated yet.</p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded border border-border p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">Contribution statement drafter (CRediT)</p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={onGenerateAiContributionDraft}
-                  disabled={aiLoading !== null}
-                >
-                  {aiLoading === 'contribution' ? 'Generating...' : 'Generate draft'}
-                </Button>
-              </div>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Uses selected collaborator plus top collaborators from your list.
-              </p>
-              {aiContributionDraft ? (
-                <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-xs">
-                  {aiContributionDraft.draft_text}
-                </pre>
-              ) : (
-                <p className="text-xs text-muted-foreground">No draft generated yet.</p>
-              )}
-            </div>
-
-            <div className="rounded border border-border p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">Affiliation + COI normaliser</p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={onGenerateAiAffiliationsDraft}
-                  disabled={aiLoading !== null}
-                >
-                  {aiLoading === 'affiliations' ? 'Generating...' : 'Generate draft'}
-                </Button>
-              </div>
-              {aiAffiliationDraft ? (
-                <div className="space-y-2 text-xs">
-                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted p-2">
-                    {aiAffiliationDraft.affiliations_block}
-                  </pre>
-                  <p>{aiAffiliationDraft.coi_boilerplate}</p>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">No draft generated yet.</p>
-              )}
-            </div>
-          </div>
-          {aiError ? <p className="text-xs text-destructive">{aiError}</p> : null}
-        </CardContent>
-      </Card>
       </Section>
 
       <DrilldownSheet open={collaboratorDrilldownOpen} onOpenChange={setCollaboratorDrilldownOpen}>
@@ -4859,6 +4583,7 @@ export function ProfileCollaborationPage() {
                 onTabChange={(tabId) => setActiveCollaboratorDrilldownTab(tabId as CollaboratorDrilldownTab)}
                 panelIdPrefix="collaborator-drilldown-panel-"
                 tabIdPrefix="collaborator-drilldown-tab-"
+                tone="profile"
                 aria-label="Collaborator drilldown sections"
                 className="house-drilldown-tabs"
               >
@@ -5053,21 +4778,21 @@ export function ProfileCollaborationPage() {
                                 value={institutionDraft}
                                 onChange={(event) => setInstitutionDraft(event.target.value)}
                                 onFocus={() => {
-                                  if (editingInstitution) {
+                                  if (primaryInstitutionEditingActive) {
                                     setInstitutionInputFocused('primary')
                                   }
                                 }}
                                 onBlur={() => setInstitutionInputFocused(null)}
                                 autoComplete="organization"
-                                readOnly={!editingInstitution}
+                                readOnly={!primaryInstitutionEditingActive}
                                 aria-expanded={
-                                  editingInstitution &&
+                                  primaryInstitutionEditingActive &&
                                   institutionInputFocused === 'primary' &&
                                   (institutionSuggestionsLoading || institutionSuggestions.length > 0 || Boolean(institutionSuggestionsError))
                                 }
                                 aria-controls="collaborator-institution-suggestion-panel"
                               />
-                              {editingInstitution &&
+                              {primaryInstitutionEditingActive &&
                               institutionInputFocused === 'primary' &&
                               (institutionSuggestionsLoading ||
                                 institutionSuggestions.length > 0 ||
@@ -5120,7 +4845,7 @@ export function ProfileCollaborationPage() {
                               ) : null}
                             </div>
                           </label>
-                          {editingInstitution ? (
+                          {primaryInstitutionEditingActive ? (
                             <>
                               <div className="flex h-9 items-center justify-start self-end sm:justify-center">
                                 <button
@@ -5308,7 +5033,7 @@ export function ProfileCollaborationPage() {
                                     <span className="block text-xs font-medium text-[hsl(var(--tone-neutral-800))]">{institution.label}</span>
                                     {pendingInstitutionReview[institution.slot] ? (
                                       <span className="block pt-0.5 text-micro text-[hsl(var(--tone-warning-700))]">
-                                        Auto-mapped from the source record. Save if correct.
+                                        Is this correct? Save to approve this OpenAlex match.
                                       </span>
                                     ) : null}
                                   </div>
@@ -5455,147 +5180,191 @@ export function ProfileCollaborationPage() {
                             </div>
                           </div>
                         ) : null}
-                        {duplicateWarnings.length > 0 ? (
-                          <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                            {duplicateWarnings.map((warning) => (
-                              <p key={warning}>{warning}</p>
-                            ))}
-                          </div>
-                        ) : null}
                       </div>
                     </div>
                   </div>
                 ) : null}
 
                 {activeCollaboratorDrilldownTab === 'history' ? (
-                  <div className="house-drilldown-content-block w-full">
-                    <div className="space-y-4">
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Relationship</p>
-                          <div className="mt-2">
-                            <Badge size="sm" variant={relationshipTone(selectedCollaboratorRelationship)}>
-                              {selectedCollaboratorRelationship}
-                            </Badge>
+                  <>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Headline results</p>
+                    </div>
+                    <div className="house-drilldown-content-block house-publications-headline-content house-drilldown-heading-content-block w-full">
+                      <div
+                        className="house-drilldown-summary-stats-grid house-publications-headline-metric-grid mt-0"
+                        style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+                      >
+                        <div className="house-drilldown-summary-stat-card">
+                          <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Relationship</p>
+                          <div className="house-drilldown-summary-stat-value-wrap">
+                            <div className="flex w-full justify-center">
+                              <Badge size="sm" variant={relationshipTone(selectedCollaboratorRelationship)}>
+                                {selectedCollaboratorRelationship}
+                              </Badge>
+                            </div>
                           </div>
                         </div>
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Activity</p>
-                          <div className="mt-2">
-                            <Badge size="sm" variant={activityTone(selectedCollaboratorActivity)}>
-                              {selectedCollaboratorActivity}
-                            </Badge>
+                        <div className="house-drilldown-summary-stat-card">
+                          <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Activity</p>
+                          <div className="house-drilldown-summary-stat-value-wrap">
+                            <div className="flex w-full justify-center">
+                              <Badge size="sm" variant={activityTone(selectedCollaboratorActivity)}>
+                                {selectedCollaboratorActivity}
+                              </Badge>
+                            </div>
                           </div>
                         </div>
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Collaboration score</p>
-                          <p className="mt-2 text-base font-semibold tabular-nums text-[hsl(var(--tone-neutral-900))]">
-                            {Number(selectedCollaborator.metrics.collaboration_strength_score || 0).toFixed(2)}
-                          </p>
+                        <div className="house-drilldown-summary-stat-card">
+                          <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Score</p>
+                          <div className="house-drilldown-summary-stat-value-wrap">
+                            <div className="flex w-full justify-center">
+                              <span
+                                className={cn(
+                                  'inline-flex min-w-[4.75rem] items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
+                                  collaborationStrengthToneById.get(selectedCollaborator.id) || collaborationStrengthTone(0, 0),
+                                )}
+                              >
+                                {Number(selectedCollaborator.metrics.collaboration_strength_score || 0).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Coauthored works</p>
-                          <p className="mt-2 text-base font-semibold tabular-nums text-[hsl(var(--tone-neutral-900))]">
-                            {selectedCollaborator.metrics.coauthored_works_count}
-                          </p>
+                        <div className="house-drilldown-summary-stat-card">
+                          <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Co-authored works</p>
+                          <div className="house-drilldown-summary-stat-value-wrap">
+                            <p className="house-drilldown-summary-stat-value tabular-nums">
+                              {selectedCollaborator.metrics.coauthored_works_count}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">First collaboration year</p>
-                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                            {selectedCollaborator.metrics.first_collaboration_year ?? 'Not available'}
-                          </p>
+                        <div className="house-drilldown-summary-stat-card">
+                          <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">First year</p>
+                          <div className="house-drilldown-summary-stat-value-wrap">
+                            <p className="house-drilldown-summary-stat-value tabular-nums">
+                              {selectedCollaborator.metrics.first_collaboration_year ?? 'Not available'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Last collaboration year</p>
-                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                            {selectedCollaborator.metrics.last_collaboration_year ?? 'Not available'}
-                          </p>
+                        <div className="house-drilldown-summary-stat-card">
+                          <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Last year</p>
+                          <div className="house-drilldown-summary-stat-value-wrap">
+                            <p className="house-drilldown-summary-stat-value tabular-nums">
+                              {selectedCollaborator.metrics.last_collaboration_year ?? 'Not available'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Shared citations</p>
-                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                            {selectedCollaborator.metrics.shared_citations_total.toLocaleString('en-GB')}
-                          </p>
+                        <div className="house-drilldown-summary-stat-card">
+                          <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Shared citations</p>
+                          <div className="house-drilldown-summary-stat-value-wrap">
+                            <p className="house-drilldown-summary-stat-value tabular-nums">
+                              {selectedCollaborator.metrics.shared_citations_total.toLocaleString('en-GB')}
+                            </p>
+                          </div>
                         </div>
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Citations (12m)</p>
-                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                            {selectedCollaborator.metrics.citations_last_12m.toLocaleString('en-GB')}
-                          </p>
-                        </div>
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Metrics status</p>
-                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                            {selectedCollaborator.metrics.status}
-                          </p>
-                        </div>
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Metrics computed</p>
-                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                            {formatCollaboratorDate(selectedCollaborator.metrics.computed_at)}
-                          </p>
-                        </div>
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Created</p>
-                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                            {formatCollaboratorDate(selectedCollaborator.created_at)}
-                          </p>
-                        </div>
-                        <div className="rounded-md border border-border bg-card px-3 py-2">
-                          <p className="house-field-label">Last updated</p>
-                          <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                            {formatCollaboratorDate(selectedCollaborator.updated_at)}
-                          </p>
+                        <div className="house-drilldown-summary-stat-card">
+                          <p className="house-drilldown-summary-stat-title house-drilldown-stat-title">Citations (12m)</p>
+                          <div className="house-drilldown-summary-stat-value-wrap">
+                            <p className="house-drilldown-summary-stat-value tabular-nums">
+                              {selectedCollaborator.metrics.citations_last_12m.toLocaleString('en-GB')}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                    <div className="house-drilldown-heading-block">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="house-drilldown-heading-block-title">Co-authored publications</p>
+                        <div className="house-approved-toggle-context inline-flex items-center">
+                          <div
+                            className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
+                            data-house-role="chart-toggle"
+                            style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
+                          >
+                            <span
+                              className={HOUSE_TOGGLE_THUMB_CLASS}
+                              style={sharedWorksWindowThumbStyle}
+                              aria-hidden="true"
+                            />
+                            {COLLABORATOR_HISTORY_WINDOW_OPTIONS.map((option) => (
+                              <button
+                                key={`collaborator-history-window-${option.value}`}
+                                type="button"
+                                className={cn(
+                                  HOUSE_TOGGLE_BUTTON_CLASS,
+                                  sharedWorksWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                                )}
+                                onClick={() => {
+                                  if (sharedWorksWindowMode === option.value) {
+                                    return
+                                  }
+                                  setSharedWorksWindowMode(option.value)
+                                }}
+                                aria-pressed={sharedWorksWindowMode === option.value}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                      {selectedCollaboratorSharedWorksError ? (
+                        <div className="rounded-md border border-dashed border-[hsl(var(--tone-danger-300))] px-3 py-4 text-sm text-[hsl(var(--tone-danger-700))]">
+                          {selectedCollaboratorSharedWorksError}
+                        </div>
+                      ) : selectedCollaboratorSharedWorksLoading ? (
+                        <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] px-3 py-4 text-sm text-muted-foreground">
+                          Loading co-authored publications...
+                        </div>
+                      ) : filteredSelectedCollaboratorSharedWorks.length === 0 ? (
+                        <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] px-3 py-4 text-sm text-muted-foreground">
+                          No co-authored publications found for this window.
+                        </div>
+                      ) : (
+                        <div className="w-full overflow-visible">
+                          <div
+                            className="house-table-shell house-publications-trend-table-shell-plain h-auto w-full overflow-hidden rounded-md bg-background"
+                            style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
+                          >
+                            <table className="w-full border-collapse" data-house-no-column-resize="true" data-house-no-column-controls="true">
+                              <thead className="house-table-head">
+                                <tr>
+                                  <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Publication</th>
+                                  <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>Year</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filteredSelectedCollaboratorSharedWorks.map((work) => (
+                                  <tr key={work.work_id} className="house-table-row">
+                                    <td className="house-table-cell-text px-2 py-2">
+                                      <button
+                                        type="button"
+                                        className="block max-w-full break-words text-left leading-snug text-[hsl(var(--tone-accent-700))] underline decoration-transparent underline-offset-2 transition hover:decoration-current"
+                                        onClick={() => onOpenSharedPublication(work.work_id)}
+                                      >
+                                        {work.title}
+                                      </button>
+                                    </td>
+                                    <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">
+                                      {work.year ?? '-'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 ) : null}
 
                 {activeCollaboratorDrilldownTab === 'actions' ? (
                   <div className="house-drilldown-content-block w-full">
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button type="button" size="sm" onClick={onSave} disabled={saving}>
-                          Save changes
-                        </Button>
-                        {selectedId ? (
-                          <Button type="button" size="sm" variant="secondary" onClick={onDelete} disabled={saving}>
-                            Delete
-                          </Button>
-                        ) : null}
-                        {selectedId ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              if (selectedCollaborator) {
-                                applyCollaboratorFormState(selectedCollaborator)
-                              }
-                            }}
-                          >
-                            Reset
-                          </Button>
-                        ) : null}
-                      </div>
-                      {status ? <p className="text-xs text-emerald-700">{status}</p> : null}
-                      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-                      {importResult ? (
-                        <p className="text-xs text-muted-foreground">
-                          OpenAlex author: {importResult.openalex_author_id || 'n/a'} | Imported:{' '}
-                          {importResult.imported_candidates}
-                        </p>
-                      ) : null}
-                      {enrichmentResult ? (
-                        <p className="text-xs text-muted-foreground">
-                          Enriched: {enrichmentResult.updated_count} updated | Resolved authors:{' '}
-                          {enrichmentResult.resolved_author_count} | Missing IDs:{' '}
-                          {enrichmentResult.skipped_without_identifier}
-                        </p>
-                      ) : null}
+                    <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] px-3 py-4 text-sm text-muted-foreground">
+                      No standalone actions in this drilldown.
                     </div>
                   </div>
                 ) : null}

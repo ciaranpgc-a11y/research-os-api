@@ -901,7 +901,7 @@ export type PublicationAiInsightsResponsePayload = {
 }
 
 export type PublicationInsightsAgentSectionPayload = {
-  key: 'uncited_works' | 'citation_drivers' | 'citation_activation'
+  key: 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history'
   title: string
   headline: string
   body: string
@@ -999,6 +999,18 @@ export type CollaboratorPayload = {
   duplicate_warnings: string[]
   institution_labels?: string[]
   duplicate_count?: number
+}
+
+export type CollaboratorSharedWorkPayload = {
+  work_id: string
+  title: string
+  year: number | null
+  venue_name: string | null
+  publication_type: string | null
+}
+
+export type CollaboratorSharedWorksListPayload = {
+  items: CollaboratorSharedWorkPayload[]
 }
 
 export type CollaboratorsListPayload = {

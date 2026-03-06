@@ -27,7 +27,7 @@ const badgeVariants = cva(
         userGuest: 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]',
       },
       size: {
-        default: 'px-2 py-1 text-micro',
+        default: 'px-2 py-1 [font-size:var(--text-micro-size)] [line-height:var(--text-micro-line)]',
         sm: 'min-h-5 justify-center rounded-sm px-2 py-0.5 text-xs leading-none font-normal',
       },
     },

@@ -54,8 +54,8 @@ const legacyBadgePrimitiveVariants = cva(
           'border-[hsl(var(--border))] bg-transparent text-[hsl(var(--foreground))]',
       },
       size: {
-        sm: 'text-micro',
-        md: 'text-caption',
+        sm: '[font-size:var(--text-micro-size)] [line-height:var(--text-micro-line)]',
+        md: '[font-size:var(--text-caption-size)] [line-height:var(--text-caption-line)]',
       },
     },
     defaultVariants: {

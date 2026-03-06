@@ -95,6 +95,7 @@ from research_os.api.schemas import (
     CollaboratorCreateRequest,
     CollaboratorDeleteResponse,
     CollaboratorResponse,
+    CollaboratorSharedWorksListResponse,
     CollaboratorsListResponse,
     CollaboratorUpdateRequest,
     CollaborationAiAffiliationsNormaliseRequest,
@@ -462,6 +463,7 @@ from research_os.services.collaboration_service import (
     generate_collaboration_ai_insights_draft,
     get_collaboration_metrics_summary,
     get_collaborator_for_user,
+    list_collaborator_shared_works_for_user,
     get_manuscript_author_suggestions,
     get_manuscript_authors,
     import_collaborators_from_openalex,
@@ -2634,7 +2636,7 @@ def v1_publications_ai_insights(
     request: Request,
     window_id: Literal["1y", "3y", "5y", "all"] = Query("1y"),
     scope: Literal["window", "section"] = Query("window"),
-    section_key: Literal["uncited_works", "citation_drivers", "citation_activation"]
+    section_key: Literal["uncited_works", "citation_drivers", "citation_activation", "citation_activation_history"]
     | None = Query(None),
 ) -> PublicationInsightsAgentResponse | JSONResponse:
     token = _extract_session_token(request)
@@ -3218,6 +3220,32 @@ def v1_collaboration_get_collaborator(
             collaborator_id=collaborator_id,
         )
         return CollaboratorResponse(**item)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except CollaborationNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.get(
+    "/v1/account/collaboration/collaborators/{collaborator_id}/shared-works",
+    response_model=CollaboratorSharedWorksListResponse,
+    responses=NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_list_collaborator_shared_works(
+    request: Request,
+    collaborator_id: str,
+) -> CollaboratorSharedWorksListResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_collaborator_shared_works_for_user(
+            user_id=str(user["id"]),
+            collaborator_id=collaborator_id,
+        )
+        return CollaboratorSharedWorksListResponse(**payload)
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
     except CollaborationNotFoundError as exc:

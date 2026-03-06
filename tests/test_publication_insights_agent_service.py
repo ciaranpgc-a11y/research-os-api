@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import research_os.services.publication_insights_agent_service as publication_insights_agent_service
 from research_os.api.app import app
 from research_os.db import MetricsSnapshot, User, Work, create_all_tables, reset_database_state, session_scope
+from research_os.services.publication_metrics_service import compute_publication_top_metrics
 
 
 def _set_test_environment(monkeypatch, tmp_path) -> None:
@@ -175,7 +176,7 @@ def test_generate_publication_insights_agent_draft_uses_openai_response(
     assert payload["agent_name"] == "Publication insights agent"
     assert payload["status"] == "draft"
     assert payload["window_id"] == "3y"
-    assert len(payload["sections"]) == 3
+    assert len(payload["sections"]) == 4
     assert payload["provenance"]["generation_mode"] == "openai"
     assert payload["provenance"]["model"] in {"gpt-5.2", "gpt-4.1-mini"}
     uncited_section = next(
@@ -183,6 +184,7 @@ def test_generate_publication_insights_agent_draft_uses_openai_response(
     )
     assert "citations in the last 12 months" in uncited_section["body"]
     assert any(section["key"] == "citation_activation" for section in payload["sections"])
+    assert any(section["key"] == "citation_activation_history" for section in payload["sections"])
     assert payload["sections"][0]["consideration_label"]
     assert payload["sections"][0]["consideration"]
 
@@ -216,6 +218,7 @@ def test_generate_publication_insights_agent_draft_falls_back_when_openai_fails(
     assert any(section["key"] == "uncited_works" for section in payload["sections"])
     assert any(section["key"] == "citation_drivers" for section in payload["sections"])
     assert any(section["key"] == "citation_activation" for section in payload["sections"])
+    assert any(section["key"] == "citation_activation_history" for section in payload["sections"])
     assert any(section.get("consideration_label") for section in payload["sections"])
     assert any(section.get("consideration") for section in payload["sections"])
     uncited_section = next(
@@ -286,6 +289,7 @@ def test_publication_insights_agent_api_returns_payload(monkeypatch, tmp_path) -
         token = register_response.json()["session_token"]
         user_id = register_response.json()["user"]["id"]
         _seed_publications_for_user(user_id=user_id)
+        compute_publication_top_metrics(user_id=user_id)
 
         response = client.get(
             "/v1/publications/ai/insights?window_id=5y",
@@ -296,8 +300,9 @@ def test_publication_insights_agent_api_returns_payload(monkeypatch, tmp_path) -
     payload = response.json()
     assert payload["agent_name"] == "Publication insights agent"
     assert payload["window_id"] == "5y"
-    assert len(payload["sections"]) == 3
+    assert len(payload["sections"]) == 4
     assert "citations in the last 12 months" in payload["sections"][0]["body"]
     assert any(section["key"] == "citation_activation" for section in payload["sections"])
+    assert any(section["key"] == "citation_activation_history" for section in payload["sections"])
     assert payload["sections"][0]["consideration_label"]
     assert payload["sections"][0]["consideration"]

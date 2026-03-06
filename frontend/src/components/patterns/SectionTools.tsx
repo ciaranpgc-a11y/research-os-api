@@ -59,8 +59,8 @@ export function SectionToolIconButton({
         type="button"
         data-state={active ? 'open' : 'closed'}
         className={cn(
-          'house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center house-publications-action-icon house-publications-top-control transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out',
-          active && 'house-publications-tools-toggle-open',
+          'peer house-section-tool-button house-section-tool-toggle house-publications-top-control h-8 w-8 inline-flex items-center justify-center transition-[background-color,border-color,box-shadow,color] duration-[var(--motion-duration-ui)] ease-out',
+          active ? 'house-section-tool-toggle-on' : 'house-section-tool-toggle-off',
           buttonClassName,
           className,
         )}
@@ -70,7 +70,7 @@ export function SectionToolIconButton({
       </button>
       {tooltip ? (
         <span
-          className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-50 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-opacity duration-[var(--motion-duration-ui)] ease-out opacity-0 peer-hover:opacity-100 peer-focus-visible:opacity-100"
           aria-hidden="true"
         >
           {tooltip}

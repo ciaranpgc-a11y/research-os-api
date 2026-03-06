@@ -2,6 +2,7 @@ import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { Minus, Plus } from 'lucide-react'
 
+import { type HouseSectionTone } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
 import { houseDrilldown, houseTypography } from '@/lib/house-style'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -331,7 +332,7 @@ const DrilldownHeader = React.forwardRef<HTMLDivElement, DrilldownHeaderProps>(
       <div
         ref={ref}
         data-ui="drilldown-header"
-        className={cn('flex flex-col gap-[var(--space-3)]', className)}
+        className={cn('house-drilldown-header flex flex-col gap-[var(--space-3)]', className)}
         {...props}
       >
         <div 
@@ -386,6 +387,7 @@ interface DrilldownTabsProps extends React.HTMLAttributes<HTMLDivElement> {
   onTabChange: (tabId: string) => void
   tabIdPrefix?: string
   panelIdPrefix?: string
+  tone?: HouseSectionTone
   /** Optional: flex-grow function for responsive tab widths */
   flexGrow?: (label: string) => number
 }
@@ -398,6 +400,7 @@ const DrilldownTabs = React.forwardRef<HTMLDivElement, DrilldownTabsProps>(
       onTabChange,
       tabIdPrefix = 'drilldown-tab-',
       panelIdPrefix = 'drilldown-panel-',
+      tone = 'neutral',
       flexGrow = () => 1,
       children,
       ...props
@@ -410,6 +413,7 @@ const DrilldownTabs = React.forwardRef<HTMLDivElement, DrilldownTabsProps>(
           ref={ref}
           role="tablist"
           data-ui="drilldown-tabs"
+          data-tone={tone}
           className={cn('house-drilldown-navigation-block rounded-sm bg-card flex', className)}
           {...props}
         >

@@ -414,10 +414,32 @@ def test_counts_by_year_lifetime_months_reconcile_to_total(monkeypatch, tmp_path
     lifetime_values = [
         int(value or 0) for value in total_chart_data.get("monthly_values_lifetime") or []
     ]
+    total_drilldown = dict(total_tile.get("drilldown") or {})
+    total_metadata = dict(total_drilldown.get("metadata") or {})
+    activation_history = dict(total_metadata.get("activation_history") or {})
+    activation_years = [int(value or 0) for value in activation_history.get("years") or []]
+    activation_newly = [int(value or 0) for value in activation_history.get("newly_active") or []]
+    activation_still = [int(value or 0) for value in activation_history.get("still_active") or []]
+    activation_inactive = [int(value or 0) for value in activation_history.get("inactive") or []]
+    activation_series = {
+        str(series.get("series_id") or ""): series
+        for series in total_drilldown.get("series") or []
+        if isinstance(series, dict)
+    }
 
     assert total_value == 450
     assert sum(lifetime_values) == total_value
     assert len(lifetime_values) >= 12
+    assert activation_years
+    assert activation_years[-1] == now.year - 1
+    assert len(activation_years) == len(activation_newly) == len(activation_still) == len(activation_inactive)
+    assert sum(activation_newly) >= 1
+    assert sum(activation_still) >= 1
+    assert activation_newly[-1] == 0
+    assert activation_still[-1] >= 1
+    assert "activation_newly_active" in activation_series
+    assert "activation_still_active" in activation_series
+    assert "activation_inactive" in activation_series
 
 
 def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) -> None:

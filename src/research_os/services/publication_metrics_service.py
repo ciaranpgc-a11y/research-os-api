@@ -2303,6 +2303,7 @@ def _citation_drilldown_payload_incomplete(payload: dict[str, Any]) -> bool:
         else {}
     )
     has_activation_history = bool(activation_history.get("years"))
+    has_activation_history_rolling = bool(activation_history.get("rolling_published_total"))
 
     has_category_fields = False
     has_rolling_fields = False
@@ -2324,7 +2325,7 @@ def _citation_drilldown_payload_incomplete(payload: dict[str, Any]) -> bool:
             )
         ):
             has_rolling_fields = True
-        if has_category_fields and has_rolling_fields and has_activation_history:
+        if has_category_fields and has_rolling_fields and has_activation_history and has_activation_history_rolling:
             return False
     return True
 
@@ -3938,6 +3939,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             "published_total": 0,
         }
     )
+    citation_activation_history_rolling_newly_active = [0 for _ in range(len(lifetime_month_points))]
+    citation_activation_history_rolling_still_active = [0 for _ in range(len(lifetime_month_points))]
+    citation_activation_history_rolling_inactive = [0 for _ in range(len(lifetime_month_points))]
+    citation_activation_history_rolling_published = [0 for _ in range(len(lifetime_month_points))]
 
     for row in per_work_rows:
         row_total_citations = max(0, int(row.get("citations_lifetime") or 0))
@@ -4053,6 +4058,31 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         )
         for index, month_value in enumerate(row_monthly_values):
             monthly_citation_values_lifetime[index] += max(0, int(month_value or 0))
+        row_monthly_prefix = [0]
+        for month_value in row_monthly_values:
+            row_monthly_prefix.append(
+                row_monthly_prefix[-1] + max(0, int(month_value or 0))
+            )
+        first_eligible_index = (
+            eligible_lifetime_indexes[0] if eligible_lifetime_indexes else None
+        )
+        if first_eligible_index is not None:
+            for index in eligible_lifetime_indexes:
+                citation_activation_history_rolling_published[index] += 1
+                window_start_index = max(first_eligible_index, index - 11)
+                citations_in_window = (
+                    row_monthly_prefix[index + 1] - row_monthly_prefix[window_start_index]
+                )
+                citations_before_window = (
+                    row_monthly_prefix[window_start_index]
+                    - row_monthly_prefix[first_eligible_index]
+                )
+                if citations_in_window <= 0:
+                    citation_activation_history_rolling_inactive[index] += 1
+                elif citations_before_window > 0:
+                    citation_activation_history_rolling_still_active[index] += 1
+                else:
+                    citation_activation_history_rolling_newly_active[index] += 1
         if 1900 <= int(row_start_year) <= last_complete_year:
             row_yearly_citations: dict[int, int] = defaultdict(int)
             for index, month_value in enumerate(row_monthly_values):
@@ -4629,6 +4659,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "activation_history_still_active": citation_activation_history_still_active,
                 "activation_history_inactive": citation_activation_history_inactive,
                 "activation_history_published": citation_activation_history_published,
+                "activation_history_rolling_newly_active": citation_activation_history_rolling_newly_active,
+                "activation_history_rolling_still_active": citation_activation_history_rolling_still_active,
+                "activation_history_rolling_inactive": citation_activation_history_rolling_inactive,
+                "activation_history_rolling_published": citation_activation_history_rolling_published,
                 "activation_history_last_complete_year": last_complete_year,
                 "mean_value": round(five_year_mean, 2),
                 "projected_year": now.year,
@@ -4689,6 +4723,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "still_active": citation_activation_history_still_active,
                         "inactive": citation_activation_history_inactive,
                         "published_total": citation_activation_history_published,
+                        "rolling_newly_active": citation_activation_history_rolling_newly_active,
+                        "rolling_still_active": citation_activation_history_rolling_still_active,
+                        "rolling_inactive": citation_activation_history_rolling_inactive,
+                        "rolling_published_total": citation_activation_history_rolling_published,
                         "last_complete_year": last_complete_year,
                     },
                 },
