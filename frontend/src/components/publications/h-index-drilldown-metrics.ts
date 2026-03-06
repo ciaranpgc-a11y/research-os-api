@@ -41,6 +41,8 @@ export type HIndexDrilldownStats = {
   candidatePapers: HIndexDrilldownCandidate[]
 }
 
+type HIndexDrilldownMilestone = HIndexDrilldownStats['milestones'][number]
+
 type ParsedPublication = {
   workId: string
   title: string
@@ -303,9 +305,9 @@ export function buildHIndexDrilldownStats(tile: PublicationMetricTilePayload): H
   )
 
   const milestoneYearsRaw = intermediate.h_milestone_years
-  const milestones = typeof milestoneYearsRaw === 'object' && milestoneYearsRaw
+  const milestones: HIndexDrilldownMilestone[] = typeof milestoneYearsRaw === 'object' && milestoneYearsRaw
     ? Object.entries(milestoneYearsRaw as Record<string, unknown>)
-      .map(([target, year]) => {
+      .map<HIndexDrilldownMilestone | null>(([target, year]) => {
         const parsedTarget = Math.round(parseMetricNumber(target) ?? 0)
         const parsedYear = Math.round(parseMetricNumber(year) ?? 0)
         if (parsedTarget <= 0 || parsedYear <= 0) {
@@ -319,12 +321,15 @@ export function buildHIndexDrilldownStats(tile: PublicationMetricTilePayload): H
           yearsFromPrevious: null,
         }
       })
-      .filter((item): item is { milestone: number; label: string; value: string; year: number; yearsFromPrevious: number | null } => item !== null)
+      .filter((item): item is HIndexDrilldownMilestone => item !== null)
       .sort((left, right) => left.milestone - right.milestone)
-      .map((item, index, array) => ({
-        ...item,
-        yearsFromPrevious: index === 0 ? null : Math.max(0, item.year - array[index - 1].year),
-      }))
+      .map((item, index, array) => {
+        const previousItem = index > 0 ? array[index - 1] : null
+        return {
+          ...item,
+          yearsFromPrevious: previousItem ? Math.max(0, item.year - previousItem.year) : null,
+        }
+      })
     : []
 
   return {

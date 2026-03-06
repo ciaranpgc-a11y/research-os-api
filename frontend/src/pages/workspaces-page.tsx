@@ -1309,6 +1309,7 @@ function WorkspacesDrilldownPanel({
     selectedWorkspaceId && selectedLabel && !selectedWorkspaceReadOnly,
   )
   const canAddCollaborator = Boolean(selectedWorkspace && canManageSelectedWorkspace)
+  const collaboratorWorkspaceName = selectedWorkspace?.name ?? 'workspace'
   const ownerDisplayName = selectedWorkspace
     ? workspaceOwnerLabel(selectedWorkspace, currentWorkspaceUserName)
     : 'Unknown owner (Owner)'
@@ -2685,8 +2686,8 @@ function WorkspacesDrilldownPanel({
                   aria-label={
                     selectedWorkspace
                       ? collaboratorComposerOpen
-                        ? `Cancel add collaborator for ${selectedWorkspace.name}`
-                        : `Add collaborator to ${selectedWorkspace.name}`
+                        ? `Cancel add collaborator for ${collaboratorWorkspaceName}`
+                        : `Add collaborator to ${collaboratorWorkspaceName}`
                       : 'Select a workspace to add collaborators'
                   }
                   title={
