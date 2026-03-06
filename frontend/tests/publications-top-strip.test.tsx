@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildTotalCitationsHeadlineMetricTiles } from '@/components/publications/total-citations-headline-metrics'
+import {
+  buildTotalCitationsHeadlineMetricTiles,
+  buildTotalCitationsHeadlineStats,
+} from '@/components/publications/total-citations-headline-metrics'
 import type { PublicationMetricTilePayload } from '@/types/impact'
 
 function buildTotalCitationsTile(overrides: Partial<PublicationMetricTilePayload> = {}): PublicationMetricTilePayload {
@@ -36,18 +39,20 @@ function buildTotalCitationsTile(overrides: Partial<PublicationMetricTilePayload
     data_source: ['OpenAlex'],
     confidence_score: 0.92,
     stability: 'stable',
-    drilldown: {
-      title: 'Total citations',
-      definition: 'Lifetime citations across all publications.',
-      formula: 'sum(latest citations per publication)',
-      confidence_note: 'Provider-synced',
-      publications: [
-        { work_id: 'w-1', year: 2021, citations_lifetime: 5 },
-        { work_id: 'w-2', year: 2023, citations_lifetime: 10 },
-        { work_id: 'w-3', year: 2025, citations_lifetime: 40 },
-      ],
-      metadata: {},
-    },
+      drilldown: {
+        title: 'Total citations',
+        definition: 'Lifetime citations across all publications.',
+        formula: 'sum(latest citations per publication)',
+        confidence_note: 'Provider-synced',
+        publications: [
+          { work_id: 'w-1', year: 2018, citations_lifetime: 100, citations_1y_rolling: 20 },
+          { work_id: 'w-2', year: 2021, citations_lifetime: 5, citations_1y_rolling: 0 },
+          { work_id: 'w-3', year: 2023, citations_lifetime: 10, citations_1y_rolling: 15 },
+          { work_id: 'w-4', year: 2024, citations_lifetime: 40, citations_1y_rolling: 40 },
+          { work_id: 'w-5', year: 2025, citations_lifetime: 0, citations_1y_rolling: 5 },
+        ],
+        metadata: {},
+      },
     ...overrides,
   }
 }
@@ -58,22 +63,27 @@ describe('buildTotalCitationsHeadlineMetricTiles', () => {
     const labels = metrics.map((metric) => metric.label)
 
     expect(metrics.find((metric) => metric.label === 'Total citations')?.value).toBe('1,234')
-    expect(metrics.find((metric) => metric.label === 'Mean yearly citations')?.value).toBe('205.7')
+    expect(metrics.find((metric) => metric.label === 'Citations per paper')?.value).toBe('246.8')
     expect(metrics.find((metric) => metric.label === 'Best year (2025)')?.value).toBe('50')
-    expect(metrics.find((metric) => metric.label === 'Median citations')?.value).toBe('10')
-    expect(metrics.find((metric) => metric.label === 'Top cited paper')?.value).toBe('40')
+    expect(metrics.find((metric) => metric.label === 'Recent concentration')?.value).toBe('94%')
+    expect(metrics.find((metric) => metric.label === 'Top cited paper')?.value).toBe('100')
     expect(metrics.find((metric) => metric.label === 'Projected 2026')?.value).toBe('65')
     expect(labels).toEqual([
       'Total citations',
       'Projected 2026',
       'Last 1 year (rolling)',
       'Year-to-date',
-      'Mean yearly citations',
-      'Median citations',
+      'Citations per paper',
+      'Recent concentration',
       'Top cited paper',
       'Best year (2025)',
     ])
     expect(metrics.some((metric) => metric.label === 'Active years')).toBe(false)
+    expect(metrics.some((metric) => metric.label === 'Mean yearly citations')).toBe(false)
+    expect(metrics.some((metric) => metric.label === 'Median citations')).toBe(false)
+    expect(metrics.some((metric) => metric.label === 'Uncited papers')).toBe(false)
+    expect(metrics.some((metric) => metric.label === 'Newly cited papers (12m)')).toBe(false)
+    expect(metrics.some((metric) => metric.label === 'Citation half-life proxy')).toBe(false)
     expect(metrics.some((metric) => metric.label === 'Last 3 years (rolling)')).toBe(false)
     expect(metrics.some((metric) => metric.label === 'Last 5 years (rolling)')).toBe(false)
   })
@@ -92,7 +102,7 @@ describe('buildTotalCitationsHeadlineMetricTiles', () => {
   })
 
   it('uses publication history to derive the yearly mean when full-career years are available', () => {
-    const metrics = buildTotalCitationsHeadlineMetricTiles(
+    const stats = buildTotalCitationsHeadlineStats(
       buildTotalCitationsTile({
         drilldown: {
           title: 'Total citations',
@@ -108,6 +118,6 @@ describe('buildTotalCitationsHeadlineMetricTiles', () => {
       }),
     )
 
-    expect(metrics.find((metric) => metric.label === 'Mean yearly citations')?.value).toBe('137.1')
+    expect(stats.meanCitations).toBe('137')
   })
 })

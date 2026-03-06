@@ -1,5 +1,36 @@
 import type { PublicationMetricTilePayload } from '@/types/impact'
 
+export type TotalCitationsHeadlineStats = {
+  publicationCount: number
+  totalCitations: number
+  projectedYear: number
+  projectedCurrentYear: number
+  rolling1Year: number
+  resolvedCurrentYearYtd: number
+  citationsPerPaperValue: string
+  citationsPerPaperRaw: number | null
+  meanCitations: string
+  meanCitationsRaw: number | null
+  medianCitationsValue: string
+  medianCitationsRaw: number | null
+  uncitedPapersValue: string
+  uncitedPapersCount: number
+  uncitedPapersPct: number
+  recentConcentrationValue: string
+  recentConcentrationPct: number | null
+  recentConcentrationTopThreeCitations: number
+  recentConcentrationOtherCitations: number
+  newlyCitedPapersValue: string
+  newlyCitedPapersCount: number
+  citationHalfLifeProxyValue: string
+  citationHalfLifeOlderPct: number | null
+  citationHalfLifeOlderCitations: number
+  citationHalfLifeNewerCitations: number
+  topCitedPaperValue: string
+  topCitedPaperRaw: number | null
+  bestCitationYear: { year: number; value: number } | null
+}
+
 const MONTH_INDEX_BY_NAME: Record<string, number> = {
   jan: 0,
   january: 0,
@@ -69,6 +100,12 @@ function parseMetricNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function formatDecimal(value: number, decimals: number = 1): string {
+  const boundedValue = Number.isFinite(value) ? Math.max(0, value) : 0
+  const rounded = Math.round(boundedValue * (10 ** decimals)) / (10 ** decimals)
+  return rounded.toFixed(decimals)
+}
+
 function parseMonthIndex(value: string): number | null {
   const token = String(value || '').trim().toLowerCase()
   if (!token) {
@@ -83,7 +120,7 @@ function parseMonthIndex(value: string): number | null {
   return typeof fromFirstWord === 'number' ? fromFirstWord : null
 }
 
-export function buildTotalCitationsHeadlineMetricTiles(tile: PublicationMetricTilePayload): Array<{ label: string; value: string }> {
+export function buildTotalCitationsHeadlineStats(tile: PublicationMetricTilePayload): TotalCitationsHeadlineStats {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const drilldown = (tile.drilldown || {}) as Record<string, unknown>
   const yearsRaw = toNumberArray(chartData.years).map((item) => Math.round(item))
@@ -129,6 +166,22 @@ export function buildTotalCitationsHeadlineMetricTiles(tile: PublicationMetricTi
     : Math.round(sumNumbers(historyCitations.map((entry) => entry.value)))
 
   const publications = Array.isArray(drilldown.publications) ? drilldown.publications : []
+  const publicationRows = publications
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return null
+      }
+      const row = item as Record<string, unknown>
+      const year = Number(row.year)
+      const citationsLifetime = parseMetricNumber(row.citations_lifetime ?? row.citations ?? row.cited_by_count)
+      const citations1yRolling = parseMetricNumber(row.citations_1y_rolling)
+      return {
+        year: Number.isInteger(year) ? year : null,
+        citationsLifetime: citationsLifetime !== null ? Math.max(0, citationsLifetime) : 0,
+        citations1yRolling: citations1yRolling !== null ? Math.max(0, citations1yRolling) : 0,
+      }
+    })
+    .filter((row): row is { year: number | null; citationsLifetime: number; citations1yRolling: number } => row !== null)
   const publicationYears = publications
     .map((item) => {
       if (!item || typeof item !== 'object') {
@@ -173,16 +226,13 @@ export function buildTotalCitationsHeadlineMetricTiles(tile: PublicationMetricTi
       ? sumNumbers(sourceValuesWindow)
       : rollingWindowYearsSum(1),
   )
+  const publicationCount = publicationRows.length
+  const citationsPerPaperValue = publicationCount > 0
+    ? formatDecimal(totalCitations / publicationCount, 1)
+    : '\u2014'
   const medianCitationsValue = (() => {
-    const publicationCitationValues = publications
-      .map((item) => {
-        if (!item || typeof item !== 'object') {
-          return null
-        }
-        const row = item as Record<string, unknown>
-        const citations = Number(row.citations_lifetime ?? row.citations ?? row.cited_by_count)
-        return Number.isFinite(citations) ? Math.max(0, Math.round(citations)) : null
-      })
+    const publicationCitationValues = publicationRows
+      .map((row) => Math.max(0, Math.round(row.citationsLifetime)))
       .filter((value): value is number => value !== null)
       .sort((left, right) => left - right)
     if (!publicationCitationValues.length) {
@@ -197,17 +247,77 @@ export function buildTotalCitationsHeadlineMetricTiles(tile: PublicationMetricTi
       ? formatInt(Math.round(rounded))
       : rounded.toFixed(1)
   })()
+  const uncitedPapersValue = (() => {
+    if (!publicationCount) {
+      return '\u2014'
+    }
+    const uncitedCount = publicationRows.filter((row) => row.citationsLifetime <= 0).length
+    const uncitedShare = publicationCount > 0 ? (uncitedCount / publicationCount) * 100 : 0
+    return `${formatInt(uncitedCount)} (${Math.round(uncitedShare)}%)`
+  })()
+  const recentConcentrationValue = (() => {
+    const rollingValues = publicationRows
+      .map((row) => Math.max(0, row.citations1yRolling))
+      .filter((value) => value > 0)
+      .sort((left, right) => right - left)
+    if (!rollingValues.length) {
+      return '\u2014'
+    }
+    const totalRecentCitations = rollingValues.reduce((sum, value) => sum + value, 0)
+    if (totalRecentCitations <= 0) {
+      return '\u2014'
+    }
+    const topThreeRecentCitations = rollingValues.slice(0, 3).reduce((sum, value) => sum + value, 0)
+    return `${Math.round((topThreeRecentCitations / totalRecentCitations) * 100)}%`
+  })()
+  const recentConcentrationTopThreeCitations = (() => {
+    const rollingValues = publicationRows
+      .map((row) => Math.max(0, row.citations1yRolling))
+      .filter((value) => value > 0)
+      .sort((left, right) => right - left)
+    return rollingValues.slice(0, 3).reduce((sum, value) => sum + value, 0)
+  })()
+  const recentConcentrationOtherCitations = (() => {
+    const rollingValues = publicationRows
+      .map((row) => Math.max(0, row.citations1yRolling))
+      .filter((value) => value > 0)
+      .sort((left, right) => right - left)
+    return Math.max(0, rollingValues.slice(3).reduce((sum, value) => sum + value, 0))
+  })()
+  const recentConcentrationPctRaw = recentConcentrationTopThreeCitations + recentConcentrationOtherCitations > 0
+    ? (recentConcentrationTopThreeCitations / (recentConcentrationTopThreeCitations + recentConcentrationOtherCitations)) * 100
+    : null
+  const newlyCitedPapersValue = (() => {
+    if (!publicationCount) {
+      return '\u2014'
+    }
+    const citedRecentlyCount = publicationRows.filter((row) => row.citations1yRolling > 0).length
+    return formatInt(citedRecentlyCount)
+  })()
+  const citationHalfLifeProxyValue = (() => {
+    if (!publicationRows.length || totalCitations <= 0) {
+      return '\u2014'
+    }
+    const olderCitationCutoffYear = projectedYear - 5
+    const olderPaperCitations = publicationRows.reduce((sum, row) => (
+      row.year !== null && row.year <= olderCitationCutoffYear
+        ? sum + Math.max(0, row.citationsLifetime)
+        : sum
+    ), 0)
+    return `${Math.round((olderPaperCitations / totalCitations) * 100)}% older`
+  })()
+  const citationHalfLifeOlderCitations = publicationRows.reduce((sum, row) => (
+    row.year !== null && row.year <= projectedYear - 5
+      ? sum + Math.max(0, row.citationsLifetime)
+      : sum
+  ), 0)
+  const citationHalfLifeNewerCitations = Math.max(0, totalCitations - citationHalfLifeOlderCitations)
+  const citationHalfLifeOlderPctRaw = totalCitations > 0
+    ? (citationHalfLifeOlderCitations / totalCitations) * 100
+    : null
   const topCitedPaperValue = (() => {
-    const publicationCitationValues = publications
-      .map((item) => {
-        if (!item || typeof item !== 'object') {
-          return null
-        }
-        const row = item as Record<string, unknown>
-        const citations = Number(row.citations_lifetime ?? row.citations ?? row.cited_by_count)
-        return Number.isFinite(citations) ? Math.max(0, Math.round(citations)) : null
-      })
-      .filter((value): value is number => value !== null)
+    const publicationCitationValues = publicationRows
+      .map((row) => Math.max(0, Math.round(row.citationsLifetime)))
     if (!publicationCitationValues.length) {
       return '\u2014'
     }
@@ -221,17 +331,55 @@ export function buildTotalCitationsHeadlineMetricTiles(tile: PublicationMetricTi
     return completedYears.reduce((best, entry) => (entry.value > best.value ? entry : best), completedYears[0])
   })()
 
+  return {
+    publicationCount,
+    totalCitations,
+    projectedYear,
+    projectedCurrentYear,
+    rolling1Year,
+    resolvedCurrentYearYtd: Math.round(resolvedCurrentYearYtd),
+    citationsPerPaperValue,
+    citationsPerPaperRaw: publicationCount > 0 ? totalCitations / publicationCount : null,
+    meanCitations,
+    meanCitationsRaw: typeof computedMeanCitations === 'number' ? computedMeanCitations : null,
+    medianCitationsValue,
+    medianCitationsRaw: typeof medianCitationsValue === 'string' && medianCitationsValue !== '\u2014'
+      ? parseMetricNumber(medianCitationsValue)
+      : null,
+    uncitedPapersValue,
+    uncitedPapersCount: publicationCount > 0 ? publicationRows.filter((row) => row.citationsLifetime <= 0).length : 0,
+    uncitedPapersPct: publicationCount > 0
+      ? (publicationRows.filter((row) => row.citationsLifetime <= 0).length / publicationCount) * 100
+      : 0,
+    recentConcentrationValue,
+    recentConcentrationPct: recentConcentrationPctRaw,
+    recentConcentrationTopThreeCitations,
+    recentConcentrationOtherCitations,
+    newlyCitedPapersValue,
+    newlyCitedPapersCount: publicationCount > 0 ? publicationRows.filter((row) => row.citations1yRolling > 0).length : 0,
+    citationHalfLifeProxyValue,
+    citationHalfLifeOlderPct: citationHalfLifeOlderPctRaw,
+    citationHalfLifeOlderCitations,
+    citationHalfLifeNewerCitations,
+    topCitedPaperValue,
+    topCitedPaperRaw: topCitedPaperValue === '\u2014' ? null : parseMetricNumber(topCitedPaperValue),
+    bestCitationYear,
+  }
+}
+
+export function buildTotalCitationsHeadlineMetricTiles(tile: PublicationMetricTilePayload): Array<{ label: string; value: string }> {
+  const stats = buildTotalCitationsHeadlineStats(tile)
   return [
-    { label: 'Total citations', value: formatInt(totalCitations) },
-    { label: `Projected ${projectedYear}`, value: formatInt(projectedCurrentYear) },
-    { label: 'Last 1 year (rolling)', value: formatInt(rolling1Year) },
-    { label: 'Year-to-date', value: formatInt(Math.round(resolvedCurrentYearYtd)) },
-    { label: 'Mean yearly citations', value: meanCitations },
-    { label: 'Median citations', value: medianCitationsValue },
-    { label: 'Top cited paper', value: topCitedPaperValue },
+    { label: 'Total citations', value: formatInt(stats.totalCitations) },
+    { label: `Projected ${stats.projectedYear}`, value: formatInt(stats.projectedCurrentYear) },
+    { label: 'Last 1 year (rolling)', value: formatInt(stats.rolling1Year) },
+    { label: 'Year-to-date', value: formatInt(stats.resolvedCurrentYearYtd) },
+    { label: 'Citations per paper', value: stats.citationsPerPaperValue },
+    { label: 'Recent concentration', value: stats.recentConcentrationValue },
+    { label: 'Top cited paper', value: stats.topCitedPaperValue },
     {
-      label: bestCitationYear ? `Best year (${bestCitationYear.year})` : 'Best year',
-      value: bestCitationYear ? formatInt(Math.round(bestCitationYear.value)) : '\u2014',
+      label: stats.bestCitationYear ? `Best year (${stats.bestCitationYear.year})` : 'Best year',
+      value: stats.bestCitationYear ? formatInt(Math.round(stats.bestCitationYear.value)) : '\u2014',
     },
   ]
 }

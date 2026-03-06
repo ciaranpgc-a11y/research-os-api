@@ -24,6 +24,7 @@ from research_os.db import (
     Work,
     WorkAuthorship,
     create_all_tables,
+    get_session_factory,
     session_scope,
 )
 from research_os.services.api_telemetry_service import record_api_usage_event
@@ -552,10 +553,13 @@ def _openalex_primary_field_and_year_for_work(
     }
     if mailto:
         params["mailto"] = mailto
-    payload = _openalex_request_with_retry(
-        url=f"https://api.openalex.org/works/{work_id}",
-        params=params,
-    )
+    try:
+        payload = _openalex_request_with_retry(
+            url=f"https://api.openalex.org/works/{work_id}",
+            params=params,
+        )
+    except Exception:
+        return {}
     if not payload:
         return {}
     primary_topic = (
@@ -609,10 +613,13 @@ def _openalex_field_year_citation_cohort(
         }
         if mailto:
             params["mailto"] = mailto
-        payload = _openalex_request_with_retry(
-            url="https://api.openalex.org/works",
-            params=params,
-        )
+        try:
+            payload = _openalex_request_with_retry(
+                url="https://api.openalex.org/works",
+                params=params,
+            )
+        except Exception:
+            return {"citations": [], "total_results": 0}
         if not payload:
             continue
         results = payload.get("results")
@@ -654,10 +661,13 @@ def _openalex_field_year_total_count(
     }
     if mailto:
         params["mailto"] = mailto
-    payload = _openalex_request_with_retry(
-        url="https://api.openalex.org/works",
-        params=params,
-    )
+    try:
+        payload = _openalex_request_with_retry(
+            url="https://api.openalex.org/works",
+            params=params,
+        )
+    except Exception:
+        return None
     if not payload:
         return None
     meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
@@ -697,10 +707,13 @@ def _openalex_field_year_count_below_or_equal(
     }
     if mailto:
         params["mailto"] = mailto
-    payload = _openalex_request_with_retry(
-        url="https://api.openalex.org/works",
-        params=params,
-    )
+    try:
+        payload = _openalex_request_with_retry(
+            url="https://api.openalex.org/works",
+            params=params,
+        )
+    except Exception:
+        return None
     if not payload:
         return None
     meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
@@ -1054,6 +1067,19 @@ def compute_h_index(citations: list[int]) -> int:
         else:
             break
     return h_value
+
+
+def compute_g_index(citations: list[int]) -> int:
+    values = sorted([max(0, int(v or 0)) for v in citations], reverse=True)
+    cumulative = 0
+    g_value = 0
+    for index, value in enumerate(values, start=1):
+        cumulative += value
+        if cumulative >= (index * index):
+            g_value = index
+        else:
+            break
+    return g_value
 
 
 def compute_m_index(
@@ -2173,6 +2199,90 @@ def _read_bundle_payload(row: PublicationMetric | None) -> dict[str, Any]:
     return payload
 
 
+def _response_from_payload(
+    payload: dict[str, Any],
+    *,
+    computed_at: datetime | None,
+    status: str,
+    is_stale: bool,
+    is_updating: bool,
+    last_error: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "tiles": payload.get("tiles", []),
+        "data_sources": payload.get("data_sources", []),
+        "data_last_refreshed": payload.get("data_last_refreshed"),
+        "metadata": payload.get("metadata", {}),
+        "computed_at": computed_at,
+        "status": _normalize_status(status),
+        "is_stale": bool(is_stale),
+        "is_updating": bool(is_updating),
+        "last_error": str(last_error or "").strip() or None,
+    }
+
+
+def _citation_drilldown_payload_incomplete(payload: dict[str, Any]) -> bool:
+    tiles = payload.get("tiles")
+    if not isinstance(tiles, list):
+        return False
+    total_citations_tile = next(
+        (
+            tile
+            for tile in tiles
+            if isinstance(tile, dict) and str(tile.get("key") or "").strip() == "total_citations"
+        ),
+        None,
+    )
+    if not isinstance(total_citations_tile, dict):
+        return False
+    drilldown = (
+        total_citations_tile.get("drilldown")
+        if isinstance(total_citations_tile.get("drilldown"), dict)
+        else {}
+    )
+    publications = drilldown.get("publications")
+    if not isinstance(publications, list) or not publications:
+        return False
+
+    has_category_fields = False
+    has_rolling_fields = False
+    for row in publications:
+        if not isinstance(row, dict):
+            continue
+        if any(
+            str(row.get(field_name) or "").strip()
+            for field_name in ("article_type", "publication_type", "work_type")
+        ):
+            has_category_fields = True
+        if any(
+            _safe_int(row.get(field_name)) is not None
+            for field_name in (
+                "citations_1y_rolling",
+                "citations_3y_rolling",
+                "citations_5y_rolling",
+                "citations_life_rolling",
+            )
+        ):
+            has_rolling_fields = True
+        if has_category_fields and has_rolling_fields:
+            return False
+    return True
+
+
+def _build_payload_read_only(*, user_id: str, computed_at: datetime) -> dict[str, Any]:
+    create_all_tables()
+    session = get_session_factory()()
+    try:
+        payload = _build_payload(session, user_id=user_id, computed_at=_coerce_utc(computed_at))
+        session.rollback()
+        return payload
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def _upsert_source_cache(
     session,
     *,
@@ -2619,12 +2729,19 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     concentration_gini = compute_gini_coefficient(citation_values)
     concentration_classification = _concentration_profile_from_gini(concentration_gini)
     h_index = compute_h_index(citation_values)
+    g_index = compute_g_index(citation_values)
+    i10_index = int(sum(1 for value in citation_values if int(value or 0) >= 10))
     first_publication_year: int | None = None
     for row in per_work_rows:
         year = row.get("year")
         if isinstance(year, int):
             if first_publication_year is None or year < first_publication_year:
                 first_publication_year = year
+    m_index = compute_m_index(
+        h_index=h_index,
+        first_publication_year=first_publication_year,
+        current_year=now.year,
+    )
     h_index_series: list[int] = []
     for month_index in range(13, 25):
         month_citations = [
@@ -2740,30 +2857,6 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 },
             )
             data_sources.append("Dimensions Metrics")
-
-    total_citation_publications = [
-        _publication_item_with_links(
-            {
-                "work_id": row["work_id"],
-                "title": row["title"],
-                "doi": row["doi"],
-                "year": row["year"],
-                "journal": row["journal"],
-                "publication_date": row.get("publication_date"),
-                "publication_month_start": row.get("publication_month_start"),
-                "citations_lifetime": row["citations_lifetime"],
-                "citations_1y_rolling": row.get("citations_1y_rolling", 0),
-                "citations_3y_rolling": row.get("citations_3y_rolling", 0),
-                "citations_5y_rolling": row.get("citations_5y_rolling", 0),
-                "citations_life_rolling": row.get("citations_life_rolling", 0),
-                "confidence_score": row["confidence_score"],
-                "confidence_label": row["confidence_label"],
-                "match_source": row["match_source"],
-                "match_method": row["match_method"],
-            }
-        )
-        for row in per_work_rows[:100]
-    ]
 
     publication_volume_publications = sorted(
         [
@@ -2965,6 +3058,15 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
 
     h_projection = project_h_index(current_h_index=h_index, publications=per_work_rows)
 
+    h_full_years = (
+        list(range(first_publication_year, now.year + 1))
+        if first_publication_year is not None
+        else [now.year]
+    )
+    h_yearly_values_full = [
+        compute_h_index([_citations_at_year(row, year) for row in per_work_rows])
+        for year in h_full_years
+    ]
     h_yearly_values = [
         compute_h_index([_citations_at_year(row, year) for row in per_work_rows])
         for year in last5_complete_years
@@ -2976,12 +3078,33 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     h_progress_to_next = float(h_projection.get("progress_to_next_pct") or 0.0)
     h_next_target = int(h_index) + 1
     h_projection_probability = float(h_projection.get("projection_probability") or 0.0)
+    h_current_papers_meeting_next = int(
+        h_projection.get("current_papers_meeting_next_h") or 0
+    )
+    h_projected_papers_meeting_next = int(
+        h_projection.get("projected_papers_meeting_next_h") or 0
+    )
+    h_papers_needed_now = int(h_projection.get("papers_needed_now") or 0)
+    h_papers_needed_projected = int(h_projection.get("papers_needed_projected") or 0)
     h_confidence_label = (
         "High"
         if h_projection_probability >= 0.75
         else "Medium"
         if h_projection_probability >= 0.45
         else "Low"
+    )
+    h_gap_candidates_all = sorted(
+        [
+            max(0, h_next_target - int(row.get("citations_lifetime") or 0))
+            for row in per_work_rows
+            if int(row.get("citations_lifetime") or 0) < h_next_target
+        ]
+    )
+    h_total_citations_needed_for_next = int(
+        sum(h_gap_candidates_all[: max(0, h_papers_needed_now)])
+    )
+    h_nearest_gap = (
+        int(h_gap_candidates_all[0]) if h_gap_candidates_all else 0
     )
     h_candidate_gaps = sorted(
         [
@@ -2996,6 +3119,39 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         if h_candidate_gaps
         else "No near-threshold papers identified"
     )
+    h_core_rows = (
+        [row for row in per_work_rows if int(row.get("citations_lifetime") or 0) >= h_index]
+        if h_index > 0
+        else []
+    )
+    h_core_citations = int(
+        sum(int(row.get("citations_lifetime") or 0) for row in h_core_rows)
+    )
+    h_core_publication_count = int(len(h_core_rows))
+    h_core_share_total_citations_pct = (
+        round((float(h_core_citations) / float(total_citations)) * 100.0, 1)
+        if total_citations > 0
+        else 0.0
+    )
+    h_core_citation_density = (
+        round(float(h_core_citations) / float(h_core_publication_count), 3)
+        if h_core_publication_count > 0
+        else 0.0
+    )
+    h_milestone_targets = sorted(
+        {target for target in [5, 10, 15, h_index] if int(target or 0) > 0}
+    )
+    h_milestone_years = {
+        str(target): next(
+            (
+                year
+                for year, h_value in zip(h_full_years, h_yearly_values_full)
+                if int(h_value or 0) >= target
+            ),
+            None,
+        )
+        for target in h_milestone_targets
+    }
     h_subtext = f"Target h={h_next_target}"
     h_delta_display = (
         f"Projection: h{h_projected_current_year} ({h_confidence_label} confidence)"
@@ -3833,6 +3989,32 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     monthly_citation_values_12m = [
         0 for _ in range(max(0, 12 - len(monthly_citation_values_12m_raw)))
     ] + [int(value) for value in monthly_citation_values_12m_raw]
+    total_citation_publications = [
+        _publication_item_with_links(
+            {
+                "work_id": row["work_id"],
+                "title": row["title"],
+                "doi": row["doi"],
+                "year": row["year"],
+                "journal": row["journal"],
+                "publication_date": row.get("publication_date"),
+                "publication_month_start": row.get("publication_month_start"),
+                "publication_type": row.get("publication_type"),
+                "work_type": row.get("work_type"),
+                "article_type": row.get("article_type"),
+                "citations_lifetime": row["citations_lifetime"],
+                "citations_1y_rolling": row.get("citations_1y_rolling", 0),
+                "citations_3y_rolling": row.get("citations_3y_rolling", 0),
+                "citations_5y_rolling": row.get("citations_5y_rolling", 0),
+                "citations_life_rolling": row.get("citations_life_rolling", 0),
+                "confidence_score": row["confidence_score"],
+                "confidence_label": row["confidence_label"],
+                "match_source": row["match_source"],
+                "match_method": row["match_method"],
+            }
+        )
+        for row in per_work_rows[:100]
+    ]
     lifetime_month_start_iso = (
         f"{lifetime_month_start_point.year:04d}-{lifetime_month_start_point.month:02d}-01"
     )
@@ -4227,10 +4409,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         else 0.0
     )
 
-    h_projection_publications = [
+    h_projection_candidate_publications = [
         _publication_item_with_links(dict(item))
         for item in (h_projection.get("candidate_papers") or [])
         if isinstance(item, dict)
+    ]
+    h_projection_publications = [
+        _publication_item_with_links(dict(item)) for item in per_work_rows
     ]
 
     total_tooltip, total_tooltip_details = _build_tooltip(
@@ -4542,6 +4727,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "projection_confidence_label": h_confidence_label,
                 "candidate_gaps": h_candidate_gaps,
                 "gap_text": h_gap_text,
+                "m_index": m_index,
+                "g_index": g_index,
+                "i10_index": i10_index,
             },
             delta_value=None,
             delta_display=h_delta_display,
@@ -4565,12 +4753,38 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "metadata": {
                     "intermediate_values": {
                         **h_projection,
+                        "candidate_papers": h_projection_candidate_publications,
                         "h_yearly_values_last5_complete_years": h_yearly_values,
+                        "h_yearly_years_full": h_full_years,
+                        "h_yearly_values_full": h_yearly_values_full,
                         "h_projected_current_year": h_projected_current_year,
                         "progress_to_next_h_pct": h_progress_to_next,
                         "next_h_target": h_next_target,
                         "projection_confidence_label": h_confidence_label,
                         "candidate_gap_text": h_gap_text,
+                        "nearest_candidate_gap": h_nearest_gap,
+                        "citations_needed_for_next_h_total": h_total_citations_needed_for_next,
+                        "current_papers_meeting_next_h": h_current_papers_meeting_next,
+                        "projected_papers_meeting_next_h": h_projected_papers_meeting_next,
+                        "papers_needed_now": h_papers_needed_now,
+                        "papers_needed_projected": h_papers_needed_projected,
+                        "first_publication_year": first_publication_year,
+                        "career_years": max(
+                            1,
+                            (now.year - first_publication_year + 1)
+                            if first_publication_year is not None
+                            else 1,
+                        ),
+                        "m_index": m_index,
+                        "g_index": g_index,
+                        "i10_index": i10_index,
+                        "total_publications": len(per_work_rows),
+                        "total_citations": total_citations,
+                        "h_core_publication_count": h_core_publication_count,
+                        "h_core_citations": h_core_citations,
+                        "h_core_share_total_citations_pct": h_core_share_total_citations_pct,
+                        "h_core_citation_density": h_core_citation_density,
+                        "h_milestone_years": h_milestone_years,
                     },
                 },
             },
@@ -5166,31 +5380,31 @@ def _response_from_row(
         computed_at=_coerce_utc(computed_at) if computed_at else None,
         now=now,
     )
-    return {
-        "tiles": payload.get("tiles", []),
-        "data_sources": payload.get("data_sources", []),
-        "data_last_refreshed": payload.get("data_last_refreshed"),
-        "metadata": payload.get("metadata", {}),
-        "computed_at": computed_at,
-        "status": status,
-        "is_stale": stale,
-        "is_updating": status == RUNNING_STATUS,
-        "last_error": str(row.last_error or "").strip() or None
-        if row is not None
-        else None,
-    }
+    return _response_from_payload(
+        payload,
+        computed_at=computed_at,
+        status=status,
+        is_stale=stale,
+        is_updating=status == RUNNING_STATUS,
+        last_error=str(row.last_error or "").strip() if row is not None else None,
+    )
 
 
 def get_publication_top_metrics(*, user_id: str) -> dict[str, Any]:
     create_all_tables()
     enqueue = False
     response: dict[str, Any]
+    fallback_required = False
+    fallback_reason = "stale_read"
+    fallback_last_error: str | None = None
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
         row = _load_bundle_row(session, user_id=user_id)
         if row is None:
             response = _response_from_row(None, status_override=RUNNING_STATUS)
             enqueue = True
+            fallback_required = True
+            fallback_reason = "missing_bundle"
         else:
             status = _normalize_status(row.status)
             computed_at = (
@@ -5206,13 +5420,40 @@ def get_publication_top_metrics(*, user_id: str) -> dict[str, Any]:
             )
             schema_outdated = (schema_version or 0) < TOP_METRICS_SCHEMA_VERSION
             should_retry_failed = status == FAILED_STATUS
+            payload_incomplete = _citation_drilldown_payload_incomplete(payload)
             if (
-                stale or schema_outdated or should_retry_failed
+                stale or schema_outdated or should_retry_failed or payload_incomplete
             ) and status != RUNNING_STATUS:
                 enqueue = True
                 status = RUNNING_STATUS
+            if status == RUNNING_STATUS or payload_incomplete:
+                fallback_required = True
+                fallback_reason = (
+                    "incomplete_bundle" if payload_incomplete else "running_bundle"
+                )
+            fallback_last_error = str(row.last_error or "").strip() or None
             response = _response_from_row(row, status_override=status)
-            response["is_stale"] = bool(response.get("is_stale")) or schema_outdated
+            response["is_stale"] = (
+                bool(response.get("is_stale")) or schema_outdated or payload_incomplete
+            )
+    if fallback_required:
+        try:
+            computed_at = _utcnow()
+            payload = _build_payload_read_only(user_id=user_id, computed_at=computed_at)
+            response = _response_from_payload(
+                payload,
+                computed_at=computed_at,
+                status=READY_STATUS,
+                is_stale=False,
+                is_updating=False,
+                last_error=fallback_last_error,
+            )
+            enqueue = True
+        except Exception:
+            logger.exception(
+                "publication_top_metrics_fallback_failed",
+                extra={"user_id": user_id, "reason": fallback_reason},
+            )
     if enqueue:
         enqueue_publication_top_metrics_refresh(user_id=user_id, reason="stale_read")
     return response

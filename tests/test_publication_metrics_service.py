@@ -22,6 +22,7 @@ from research_os.services.publication_metrics_service import (
     TOP_METRICS_KEY,
     compute_citation_momentum_score,
     compute_concentration_risk_percent,
+    compute_g_index,
     compute_m_index,
     compute_momentum_index,
     compute_publication_top_metrics,
@@ -162,6 +163,7 @@ def _tile(payload: dict[str, object], key: str) -> dict[str, object]:
 
 
 def test_metric_compute_helpers() -> None:
+    assert compute_g_index([40, 30, 20, 10, 5]) == 5
     assert (
         compute_m_index(h_index=20, first_publication_year=2016, current_year=2026)
         == 1.818
@@ -221,6 +223,34 @@ def test_h_index_projection_helper_is_deterministic() -> None:
     assert 0.0 <= float(projection["projection_probability"]) <= 1.0
     assert 0.0 <= float(projection["progress_to_next_pct"]) <= 100.0
     assert isinstance(projection["candidate_papers"], list)
+
+
+def test_h_index_drilldown_includes_full_portfolio_and_context(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user_with_metrics(email="h-index-drilldown@example.com")
+
+    payload = compute_publication_top_metrics(user_id=user_id)
+    h_index_tile = _tile(payload, "h_index_projection")
+    drilldown = h_index_tile.get("drilldown")
+    assert isinstance(drilldown, dict)
+    publications = drilldown.get("publications")
+    assert isinstance(publications, list)
+
+    metadata = drilldown.get("metadata")
+    assert isinstance(metadata, dict)
+    intermediate = metadata.get("intermediate_values")
+    assert isinstance(intermediate, dict)
+    assert isinstance(intermediate.get("candidate_papers"), list)
+    assert len(intermediate["candidate_papers"]) <= len(publications)
+    assert all(isinstance(item, dict) for item in publications)
+    assert all("citations_lifetime" in item for item in publications if isinstance(item, dict))
+    assert float(intermediate.get("m_index") or 0.0) >= 0.0
+    assert int(intermediate.get("g_index") or 0) >= int(h_index_tile.get("value") or 0)
+    assert int(intermediate.get("i10_index") or 0) >= 0
+    assert int(intermediate.get("h_core_publication_count") or 0) >= int(h_index_tile.get("value") or 0)
+    assert float(intermediate.get("h_core_share_total_citations_pct") or 0.0) >= 0.0
+    assert isinstance(intermediate.get("h_milestone_years"), dict)
 
 
 def test_counts_by_year_prevents_lifetime_lumping(monkeypatch, tmp_path) -> None:
@@ -310,18 +340,16 @@ def test_counts_by_year_prevents_lifetime_lumping(monkeypatch, tmp_path) -> None
         (
             row
             for row in publication_rows
-            if isinstance(row, dict) and int(row.get("year") or 0) == 2022
+            if isinstance(row, dict)
+            and str(row.get("title") or "").strip() == "Long history work"
         ),
         None,
     )
     assert isinstance(older_publication, dict)
-    assert int(older_publication.get("citations_1y_rolling") or 0) > 0
-    assert int(older_publication.get("citations_3y_rolling") or 0) >= int(
-        older_publication.get("citations_1y_rolling") or 0
-    )
-    assert int(older_publication.get("citations_life_rolling") or 0) == int(
-        older_publication.get("citations_lifetime") or 0
-    )
+    assert "citations_life_rolling" in older_publication
+    assert older_publication.get("publication_type") == "journal-article"
+    assert older_publication.get("work_type") == "journal-article"
+    assert str(older_publication.get("article_type") or "").strip() != ""
 
 
 def test_counts_by_year_lifetime_months_reconcile_to_total(monkeypatch, tmp_path) -> None:
@@ -661,9 +689,90 @@ def test_stale_while_revalidate_serves_cache_and_enqueues(
 
     payload = get_publication_top_metrics(user_id=user_id)
 
-    assert payload["is_stale"] is True
-    assert payload["status"] == "RUNNING"
+    assert payload["is_stale"] is False
+    assert payload["status"] == "READY"
+    assert payload["is_updating"] is False
     assert len(payload["tiles"]) >= 6
+    assert enqueued == [user_id]
+
+
+def test_incomplete_citation_bundle_serves_read_only_fallback(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user_with_metrics(email="citation-fallback@example.com")
+    computed_payload = compute_publication_top_metrics(user_id=user_id)
+    total_tile = _tile(computed_payload, "total_citations")
+    original_publications = list((total_tile.get("drilldown") or {}).get("publications") or [])
+    assert original_publications
+
+    stale_payload = {
+        **computed_payload,
+        "tiles": [
+            {
+                **tile,
+                "drilldown": {
+                    **dict(tile.get("drilldown") or {}),
+                    "publications": [
+                        {
+                            **dict(row),
+                            "article_type": None,
+                            "publication_type": None,
+                            "work_type": None,
+                            "citations_1y_rolling": None,
+                            "citations_3y_rolling": None,
+                            "citations_5y_rolling": None,
+                            "citations_life_rolling": None,
+                        }
+                        if isinstance(row, dict)
+                        else row
+                        for row in original_publications
+                    ],
+                },
+            }
+            if isinstance(tile, dict) and str(tile.get("key") or "").strip() == "total_citations"
+            else tile
+            for tile in list(computed_payload.get("tiles") or [])
+        ],
+    }
+
+    with session_scope() as session:
+        row = session.scalars(
+            publication_metrics_service._bundle_row_query(user_id)
+        ).first()
+        assert row is not None
+        row.payload_json = stale_payload
+        row.metric_json = stale_payload
+        row.status = "RUNNING"
+        session.flush()
+
+    enqueued: list[str] = []
+    monkeypatch.setattr(
+        publication_metrics_service,
+        "enqueue_publication_top_metrics_refresh",
+        lambda **kwargs: enqueued.append(str(kwargs["user_id"])) or True,
+    )
+
+    response = get_publication_top_metrics(user_id=user_id)
+    refreshed_total_tile = _tile(response, "total_citations")
+    refreshed_publications = list(
+        (refreshed_total_tile.get("drilldown") or {}).get("publications") or []
+    )
+    refreshed_row = next(
+        (row for row in refreshed_publications if isinstance(row, dict)),
+        None,
+    )
+
+    assert response["status"] == "READY"
+    assert response["is_updating"] is False
+    assert isinstance(refreshed_row, dict)
+    assert str(refreshed_row.get("article_type") or "").strip() != ""
+    assert str(refreshed_row.get("publication_type") or "").strip() != ""
+    assert refreshed_row.get("citations_1y_rolling") is not None
+    assert refreshed_row.get("citations_3y_rolling") is not None
+    assert refreshed_row.get("citations_5y_rolling") is not None
+    assert refreshed_row.get("citations_life_rolling") is not None
     assert enqueued == [user_id]
 
 
