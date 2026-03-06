@@ -2147,11 +2147,13 @@ class PublicationFileResponse(BaseModel):
     id: str
     file_name: str
     file_type: Literal["PDF", "DOCX", "OTHER"] = "OTHER"
-    source: Literal["OA_LINK", "USER_UPLOAD"] = "USER_UPLOAD"
+    source: Literal["OA_LINK", "USER_UPLOAD", "SUPPLEMENTARY_LINK"] = "USER_UPLOAD"
     oa_url: str | None = None
     checksum: str | None = None
     created_at: datetime
     download_url: str | None = None
+    label: str = "File"
+    can_delete: bool = True
 
 
 class PublicationFilesListResponse(BaseModel):
@@ -2351,6 +2353,14 @@ class CollaborationMetricsSummaryResponse(BaseModel):
     is_stale: bool = False
     is_updating: bool = False
     last_update_failed: bool = False
+
+
+class CollaborationLandingResponse(BaseModel):
+    summary: CollaborationMetricsSummaryResponse
+    listing: CollaboratorsListResponse
+    items_by_collaborator_id: dict[str, list[CollaboratorSharedWorkResponse]] = Field(
+        default_factory=dict
+    )
 
 
 class CollaborationMetricsRecomputeResponse(BaseModel):

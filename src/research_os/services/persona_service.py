@@ -31,6 +31,7 @@ from research_os.db import (
 )
 from research_os.services.metrics_provider_service import get_metrics_provider
 from research_os.services.api_telemetry_service import record_api_usage_event
+from research_os.services.supplementary_work_service import primary_publication_records
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 FALLBACK_EMBEDDING_MODEL = "local-hash-1"
@@ -1077,6 +1078,7 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
             .where(Work.user_id == user_id)
             .order_by(Work.year.desc(), Work.updated_at.desc())
         ).all()
+        works = primary_publication_records(works)
         work_ids = [work.id for work in works]
         latest_metrics = _latest_metrics_by_work(session, work_ids)
         authorship_rows = session.scalars(
@@ -1159,6 +1161,7 @@ def recompute_collaborator_edges(*, user_id: str) -> dict[str, Any]:
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
         works = session.scalars(select(Work).where(Work.user_id == user.id)).all()
+        works = primary_publication_records(works)
         work_ids = [work.id for work in works]
         if not work_ids:
             session.scalars(

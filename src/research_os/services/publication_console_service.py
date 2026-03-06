@@ -31,6 +31,12 @@ from research_os.db import (
     session_scope,
 )
 from research_os.clients.openai_client import create_response
+from research_os.services.supplementary_work_service import (
+    extract_parent_publication_title,
+    is_supplementary_material_work,
+    normalized_text_key,
+    supplementary_link_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +56,7 @@ TRAJECTORY_VALUES = {
 }
 
 FILE_SOURCE_OA_LINK = "OA_LINK"
+FILE_SOURCE_SUPPLEMENTARY_LINK = "SUPPLEMENTARY_LINK"
 FILE_SOURCE_USER_UPLOAD = "USER_UPLOAD"
 FILE_TYPE_PDF = "PDF"
 FILE_TYPE_DOCX = "DOCX"
@@ -662,6 +669,24 @@ def _serialize_file(publication_id: str, row: PublicationFile) -> dict[str, Any]
         "checksum": str(row.checksum or "").strip() or None,
         "created_at": row.created_at,
         "download_url": download_url,
+        "label": "OA Manuscript Download" if source == FILE_SOURCE_OA_LINK else "Uploaded file",
+        "can_delete": True,
+    }
+
+
+def _serialize_supplementary_work_as_file(row: Work) -> dict[str, Any]:
+    download_url = supplementary_link_url(row)
+    return {
+        "id": f"supplementary-work:{row.id}",
+        "file_name": str(row.title or "").strip() or "Supplementary material",
+        "file_type": FILE_TYPE_OTHER,
+        "source": FILE_SOURCE_SUPPLEMENTARY_LINK,
+        "oa_url": download_url,
+        "checksum": None,
+        "created_at": row.created_at,
+        "download_url": download_url,
+        "label": "Supplementary material",
+        "can_delete": False,
     }
 
 
@@ -3120,7 +3145,9 @@ def get_publication_ai_insights(*, user_id: str, publication_id: str) -> dict[st
 def list_publication_files(*, user_id: str, publication_id: str) -> dict[str, Any]:
     create_all_tables()
     with session_scope() as session:
-        _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
+        publication = _resolve_work_or_raise(
+            session, user_id=user_id, publication_id=publication_id
+        )
         rows = session.scalars(
             select(PublicationFile)
             .where(
@@ -3129,7 +3156,24 @@ def list_publication_files(*, user_id: str, publication_id: str) -> dict[str, An
             )
             .order_by(PublicationFile.created_at.desc())
         ).all()
-        return {"items": [_serialize_file(publication_id, row) for row in rows]}
+        items = [_serialize_file(publication_id, row) for row in rows]
+
+        publication_title_key = normalized_text_key(publication.title)
+        supplementary_rows = session.scalars(
+            select(Work).where(Work.user_id == user_id)
+        ).all()
+        for candidate in supplementary_rows:
+            if str(candidate.id) == publication_id:
+                continue
+            if not is_supplementary_material_work(candidate):
+                continue
+            parent_title = extract_parent_publication_title(candidate.title)
+            if normalized_text_key(parent_title) != publication_title_key:
+                continue
+            items.append(_serialize_supplementary_work_as_file(candidate))
+
+        items.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+        return {"items": items}
 
 
 def upload_publication_file(

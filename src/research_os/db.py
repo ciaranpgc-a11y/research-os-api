@@ -351,6 +351,9 @@ class User(Base):
     collaboration_metrics: Mapped[list["CollaborationMetric"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
     )
+    collaboration_landing_caches: Mapped[list["CollaborationLandingCache"]] = relationship(
+        back_populates="owner_user", cascade="all, delete-orphan"
+    )
     manuscript_authors: Mapped[list["ManuscriptAuthor"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
     )
@@ -1286,6 +1289,35 @@ class CollaborationMetric(Base):
 
     owner_user: Mapped[User] = relationship(back_populates="collaboration_metrics")
     collaborator: Mapped[Collaborator] = relationship(back_populates="metrics")
+
+
+class CollaborationLandingCache(Base):
+    __tablename__ = "collaboration_landing_cache"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id"),
+        Index("ix_collaboration_landing_cache_owner", "owner_user_id"),
+        Index("ix_collaboration_landing_cache_computed", "computed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(16), default="READY")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    owner_user: Mapped[User] = relationship(
+        back_populates="collaboration_landing_caches"
+    )
 
 
 class ManuscriptAuthor(Base):

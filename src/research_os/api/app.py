@@ -109,6 +109,7 @@ from research_os.api.schemas import (
     CollaborationEnrichOpenAlexRequest,
     CollaborationEnrichOpenAlexResponse,
     CollaborationImportOpenAlexResponse,
+    CollaborationLandingResponse,
     CollaborationMetricsRecomputeResponse,
     CollaborationMetricsSummaryResponse,
     ClaimCitationStateResponse,
@@ -462,6 +463,7 @@ from research_os.services.collaboration_service import (
     enrich_collaborators_from_openalex,
     export_collaborators_csv,
     generate_collaboration_ai_insights_draft,
+    get_collaboration_landing_for_user,
     get_collaboration_metrics_summary,
     get_collaborator_for_user,
     list_collaborator_shared_works_for_user,
@@ -601,6 +603,13 @@ def _startup_timeout_seconds(env_name: str, default_seconds: float) -> float:
     return min(parsed, 120.0)
 
 
+def _background_schedulers_enabled() -> bool:
+    disabled = os.getenv("RO_DISABLE_BACKGROUND_SCHEDULERS", "").strip().lower()
+    if disabled in {"1", "true", "yes", "on"}:
+        return False
+    return not bool(os.getenv("PYTEST_CURRENT_TEST", "").strip())
+
+
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
     # In local development, allow API startup even if OPENAI_API_KEY is not set so
@@ -645,27 +654,28 @@ async def app_lifespan(_: FastAPI):
             "bootstrap_user_seed_failed",
             extra={"detail": str(exc)},
         )
-    try:
-        start_publications_analytics_scheduler()
-    except Exception as exc:
-        logger.warning(
-            "publications_scheduler_start_failed",
-            extra={"detail": str(exc)},
-        )
-    try:
-        start_collaboration_metrics_scheduler()
-    except Exception as exc:
-        logger.warning(
-            "collaboration_scheduler_start_failed",
-            extra={"detail": str(exc)},
-        )
-    try:
-        start_publications_auto_sync_scheduler()
-    except Exception as exc:
-        logger.warning(
-            "publications_auto_sync_scheduler_start_failed",
-            extra={"detail": str(exc)},
-        )
+    if _background_schedulers_enabled():
+        try:
+            start_publications_analytics_scheduler()
+        except Exception as exc:
+            logger.warning(
+                "publications_scheduler_start_failed",
+                extra={"detail": str(exc)},
+            )
+        try:
+            start_collaboration_metrics_scheduler()
+        except Exception as exc:
+            logger.warning(
+                "collaboration_scheduler_start_failed",
+                extra={"detail": str(exc)},
+            )
+        try:
+            start_publications_auto_sync_scheduler()
+        except Exception as exc:
+            logger.warning(
+                "publications_auto_sync_scheduler_start_failed",
+                extra={"detail": str(exc)},
+            )
     try:
         yield
     finally:
@@ -3117,6 +3127,44 @@ def v1_publication_files_download(
     except PublicationConsoleNotFoundError as exc:
         return _build_not_found_response(str(exc))
     except PublicationConsoleValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/account/collaboration/landing",
+    response_model=CollaborationLandingResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_landing(
+    request: Request,
+    query: str = Query(default=""),
+    sort: str = Query(default="name"),
+    page: int = Query(default=1, ge=1, le=100000),
+    page_size: int = Query(default=50, ge=1, le=200),
+    include_shared_works: bool = Query(default=False),
+) -> CollaborationLandingResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_collaboration_landing_for_user(
+            user_id=str(user["id"]),
+            query=query,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+            include_shared_works=include_shared_works,
+        )
+        return CollaborationLandingResponse(
+            summary=payload.get("summary") or {},
+            listing=payload.get("listing") or {},
+            items_by_collaborator_id=payload.get("sharedWorksByCollaboratorId") or {},
+        )
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
         return _build_bad_request_response(str(exc))
 
 

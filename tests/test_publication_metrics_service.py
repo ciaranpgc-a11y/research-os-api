@@ -965,6 +965,89 @@ def test_publications_metrics_api_response_contract(monkeypatch, tmp_path) -> No
     }.issubset(tile_keys)
 
 
+def test_publication_metrics_excludes_supplementary_figshare_rows(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    now = datetime.now(timezone.utc)
+
+    with session_scope() as session:
+        user = User(
+            email="metrics-supp@example.com",
+            password_hash="test-hash",
+            name="Metrics User",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        main_work = Work(
+            user_id=user_id,
+            title="Main publication",
+            title_lower="main publication",
+            year=2024,
+            doi="10.1000/main-publication",
+            venue_name="Journal A",
+            journal="Journal A",
+            publication_type="journal-article",
+            citations_total=0,
+            work_type="journal-article",
+            publisher="Publisher A",
+            abstract="Main abstract",
+            keywords=[],
+            url="https://example.org/main",
+            provenance="manual",
+        )
+        supplementary = Work(
+            user_id=user_id,
+            title="Additional file 1 of Main publication",
+            title_lower="additional file 1 of main publication",
+            year=2024,
+            doi="10.6084/m9.figshare.456",
+            venue_name="Figshare",
+            journal="Figshare",
+            publication_type="data-set",
+            citations_total=0,
+            work_type="data-set",
+            publisher="Figshare",
+            abstract="Supplementary abstract",
+            keywords=[],
+            url="https://figshare.com/articles/dataset/example/456",
+            provenance="manual",
+        )
+        session.add_all([main_work, supplementary])
+        session.flush()
+
+        session.add_all(
+            [
+                MetricsSnapshot(
+                    work_id=str(main_work.id),
+                    provider="openalex",
+                    citations_count=12,
+                    influential_citations=None,
+                    altmetric_score=None,
+                    metric_payload={"match_method": "doi"},
+                    captured_at=now - timedelta(days=5),
+                ),
+                MetricsSnapshot(
+                    work_id=str(supplementary.id),
+                    provider="openalex",
+                    citations_count=99,
+                    influential_citations=None,
+                    altmetric_score=None,
+                    metric_payload={"match_method": "doi"},
+                    captured_at=now - timedelta(days=5),
+                ),
+            ]
+        )
+
+    payload = compute_publication_top_metrics(user_id=user_id)
+    assert int(payload["metadata"]["works_count"]) == 1
+    total_tile = _tile(payload, "total_citations")
+    assert int(total_tile["value"] or 0) == 12
+
+
 def test_refresh_endpoint_returns_status(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()

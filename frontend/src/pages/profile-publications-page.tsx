@@ -4610,7 +4610,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }
 
   const publicationFileShareContext = (file: PublicationFilePayload): { label: string; url: string | null; body: string } => {
-    const label = 'OA Manuscript Download'
+    const label = (file.label || 'File').trim() || 'File'
     const publicationTitle = (selectedDetail?.title || selectedWork?.title || 'Publication').trim()
     const directUrl = String(file.download_url || file.oa_url || '').trim() || null
     const body = directUrl
@@ -5869,22 +5869,28 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             ) : (
                               <div className="space-y-3">
                                 {selectedFiles.map((file) => {
-                                  const fileLabel = 'OA Manuscript Download'
-                                  const sourceLabel = file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'
+                                  const fileLabel = (file.label || 'File').trim() || 'File'
+                                  const sourceLabel = file.source === 'OA_LINK'
+                                    ? 'OA link'
+                                    : file.source === 'SUPPLEMENTARY_LINK'
+                                      ? 'Supplementary link'
+                                      : 'Uploaded'
                                   return (
                                     <div key={file.id} className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS} space-y-2`}>
                                       <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>{fileLabel}</p>
                                       <p className={`truncate ${HOUSE_PUBLICATION_TEXT_CLASS}`} title={file.file_name}>{file.file_name}</p>
                                       <p className={HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
                                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                        {file.source === 'OA_LINK' && file.download_url ? (
+                                        {(file.source === 'OA_LINK' || file.source === 'SUPPLEMENTARY_LINK') && file.download_url ? (
                                           <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
                                         ) : (
                                           <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
                                         )}
                                         <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
                                         <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
-                                        <Button type="button" size="sm" variant="secondary" className={cn(HOUSE_PUBLICATION_NEGATIVE_BUTTON_CLASS, 'ml-auto')} disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
+                                        {file.can_delete ? (
+                                          <Button type="button" size="sm" variant="secondary" className={cn(HOUSE_PUBLICATION_NEGATIVE_BUTTON_CLASS, 'ml-auto')} disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
+                                        ) : null}
                                       </div>
                                     </div>
                                   )

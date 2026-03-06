@@ -44,6 +44,7 @@ import type {
   CollaborationAiInsightsPayload,
   CollaborationEnrichOpenAlexPayload,
   CollaborationImportOpenAlexPayload,
+  CollaborationLandingPayload,
   CollaborationMetricsSummaryPayload,
   ImpactAnalysePayload,
   ImpactCollaboratorsPayload,
@@ -1458,6 +1459,39 @@ export async function fetchCollaborationMetricsSummary(
       headers: authHeaders(token),
     },
     'Collaboration summary lookup failed',
+    { timeoutMs: 60_000, retryCount: 2 },
+  )
+}
+
+export async function fetchCollaborationLanding(
+  token: string,
+  options?: {
+    query?: string
+    sort?: string
+    page?: number
+    pageSize?: number
+    includeSharedWorks?: boolean
+  },
+): Promise<CollaborationLandingPayload> {
+  const params = new URLSearchParams()
+  if ((options?.query || '').trim()) {
+    params.set('query', String(options?.query || '').trim())
+  }
+  if ((options?.sort || '').trim()) {
+    params.set('sort', String(options?.sort || '').trim())
+  }
+  params.set('page', String(Math.max(1, Number(options?.page || 1))))
+  params.set('page_size', String(Math.max(1, Math.min(200, Number(options?.pageSize || 50)))))
+  if (options?.includeSharedWorks) {
+    params.set('include_shared_works', 'true')
+  }
+  return requestJson<CollaborationLandingPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/landing?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Collaboration landing lookup failed',
     { timeoutMs: 60_000, retryCount: 2 },
   )
 }

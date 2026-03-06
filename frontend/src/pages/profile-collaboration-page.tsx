@@ -35,7 +35,6 @@ import {
 } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import {
-  fetchCollaboratorsPageForCollaborationPage,
   fetchAllCollaboratorsForCollaborationPage,
   readCachedCollaborationLandingData,
   writeCachedCollaborationLandingData,
@@ -44,6 +43,7 @@ import {
   fetchAffiliationAddressForMe,
   exportCollaboratorsCsv,
   fetchAffiliationSuggestionsForMe,
+  fetchCollaborationLanding,
   fetchCollaborationMetricsSummary,
   getCollaborator,
   listCollaboratorSharedWorks,
@@ -3296,33 +3296,25 @@ export function ProfileCollaborationPage() {
     }
     try {
       const sharedWorksPromise = listCollaboratorsSharedWorks(token)
-      const [summaryPayload, listPayload] = await Promise.all([
-        fetchCollaborationMetricsSummary(token),
-        collaborationLibraryPageSize === 'all'
-          ? fetchAllCollaboratorsForCollaborationPage(token, {
-              query,
-              sort,
-            })
-          : fetchCollaboratorsPageForCollaborationPage(token, {
-              query,
-              sort,
-              page: requestedPage,
-              pageSize: requestedPageSize,
-            }),
-      ])
+      const landingPayload = await fetchCollaborationLanding(token, {
+        query,
+        sort,
+        page: requestedPage,
+        pageSize: requestedPageSize,
+      })
       if (requestId !== collaborationLoadSequenceRef.current) {
         return
       }
-      setSummary(summaryPayload)
-      applyLoadedListing(listPayload)
+      setSummary(landingPayload.summary)
+      applyLoadedListing(landingPayload.listing)
       if (collaborationLibraryPageSize !== 'all') {
         writeCachedCollaborationLandingData({
           query,
           sort,
           page: requestedPage,
           pageSize: requestedPageSize,
-          summary: summaryPayload,
-          listing: listPayload,
+          summary: landingPayload.summary,
+          listing: landingPayload.listing,
           sharedWorksByCollaboratorId,
         })
       }
@@ -3354,14 +3346,14 @@ export function ProfileCollaborationPage() {
               sort,
               page: requestedPage,
               pageSize: requestedPageSize,
-              summary: summaryPayload,
-              listing: listPayload,
+              summary: landingPayload.summary,
+              listing: landingPayload.listing,
               sharedWorksByCollaboratorId: itemsByCollaboratorId,
             })
           }
         })
         .catch(() => undefined)
-      if (shouldHydrateFull && !isCollaboratorsListComplete(listPayload)) {
+      if (shouldHydrateFull && !isCollaboratorsListComplete(landingPayload.listing)) {
         void fetchAllCollaboratorsForCollaborationPage(token, {
           query,
           sort,

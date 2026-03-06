@@ -172,6 +172,51 @@ function formatCitationActivationHistoryTooltip(lastCompleteYear: number | null,
   return `${focusRangeLabel ? `Showing ${focusRangeLabel}. ` : ''}This chart shows citation activity over time, split into newly active, still active, and inactive publications. The line extends only through completed periods, while axis labels mark the broader time scale${lastCompleteYear ? ` through ${formatInt(lastCompleteYear)}` : ''}.`
 }
 
+function formatCitationMomentumTooltip({
+  mode,
+  sleepingCount,
+  freshPickupCount,
+}: {
+  mode: CitationMomentumViewMode
+  sleepingCount: number
+  freshPickupCount: number
+}): string {
+  if (mode === 'sleeping') {
+    return `Sleeping papers are older titles with established lifetime citations but just 0-1 citations in the last 12 months. This view currently surfaces ${formatInt(sleepingCount)} papers.`
+  }
+  return `Fresh-pickup papers are older titles whose last 12 months outperformed their prior 24 months combined. This view currently surfaces ${formatInt(freshPickupCount)} papers.`
+}
+
+function formatHIndexSummaryTooltip(stats: HIndexDrilldownStats): string {
+  return `This view anchors the current h-index at h${formatInt(stats.currentH)} and shows the observed h-index path over time. The current projection points to h${formatInt(stats.projectedH)} by ${formatInt(stats.projectedYear)}, with ${formatInt(stats.citationsNeededForNextH)} citations still needed across the nearest candidate papers to secure h${formatInt(stats.targetH)}.`
+}
+
+function formatHIndexCoreTooltip(stats: HIndexDrilldownStats): string {
+  return `The h-core is the set of papers with at least h citations, where h is currently ${formatInt(stats.currentH)}. It currently contains ${formatInt(stats.hCorePublicationCount)} papers and accounts for ${stats.hCoreShareValue} of citations, with the mix panels showing which authorship roles and publication types appear most often inside that core.`
+}
+
+function formatHIndexTrajectoryTooltip(stats: HIndexDrilldownStats): string {
+  return `This chart traces the observed h-index by year, from the current h${formatInt(stats.currentH)} toward the present h${formatInt(stats.projectedH)} outlook. Because h-index only moves when another paper crosses the current threshold, the trajectory advances in milestone steps rather than as a smooth cumulative citation curve.`
+}
+
+function formatHIndexMilestonesTooltip(stats: HIndexDrilldownStats): string {
+  const milestoneCount = stats.milestones.length
+  return milestoneCount > 0
+    ? `Each row records when a new h threshold was first reached and how long it took to move from the previous one. ${formatInt(milestoneCount)} ${pluralize(milestoneCount, 'milestone')} ${milestoneCount === 1 ? 'is' : 'are'} currently available.`
+    : 'This table records when each h threshold was first reached and how long it took to move from the previous one once milestone data is available.'
+}
+
+function formatHIndexRunwayTooltip(stats: HIndexDrilldownStats): string {
+  return `The next milestone is h${formatInt(stats.targetH)}. Progress shows how much of that threshold is already covered, while the gap chart and candidate table track the nearest papers to qualification rather than the full portfolio.`
+}
+
+function formatHIndexContextTooltip(stats: HIndexDrilldownStats): string {
+  const careerSpanText = stats.yearsSinceFirstCitedPaper === null
+    ? 'the observed citation-active span'
+    : `${formatInt(stats.yearsSinceFirstCitedPaper)} citation-active years`
+  return `Companion indices contextualise scale, pace, and depth around the h-index. m-index normalises h across ${careerSpanText}, g-index captures citation depth beyond the h-core, and i10-index counts papers with at least ten citations.`
+}
+
 function formatSignedPercentCompact(value: number): string {
   const rounded = Math.round(Number.isFinite(value) ? value : 0)
   const normalized = Math.abs(rounded) < 1 ? 0 : rounded
@@ -406,11 +451,31 @@ type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
 type RecentConcentrationWindowMode = Exclude<PublicationsWindowMode, 'all'>
 type PublicationTrendsVisualMode = 'bars' | 'line'
 type CitationActivationHistorySeriesMode = 'default' | 'activeInactive'
+type CitationMomentumViewMode = 'sleeping' | 'freshPickup'
 type PublicationCategoryValueMode = 'absolute' | 'percentage' | 'perPaper'
 type PublicationCategoryDisplayMode = 'chart' | 'table'
 type JournalBreakdownViewMode = 'top-ten' | 'all-journals'
 type TopicBreakdownViewMode = 'top-ten' | 'all-topics'
 type HIndexViewMode = 'trajectory' | 'needed'
+type HIndexInsightKey =
+  | 'summary-trajectory'
+  | 'summary-readout'
+  | 'breakdown-core-papers'
+  | 'breakdown-core-citations'
+  | 'breakdown-structure-table'
+  | 'breakdown-authorship-mix'
+  | 'breakdown-authorship-table'
+  | 'breakdown-publication-type-mix'
+  | 'breakdown-publication-type-table'
+  | 'trajectory-chart'
+  | 'trajectory-milestones'
+  | 'trajectory-runway'
+  | 'trajectory-runway-table'
+  | 'trajectory-candidates'
+  | 'context-complementary-indices'
+  | 'context-index-reference'
+  | 'context-h-core-performance'
+  | 'context-h-core-table'
 type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
 type DrilldownTab = 'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'
 
@@ -1670,6 +1735,15 @@ type CitationHistogramBucketDefinition = {
   label: string
 }
 
+export type CitationConcentrationLadderStep = {
+  key: string
+  label: string
+  paperCount: number
+  paperSharePct: number
+  citationCount: number
+  citationSharePct: number
+}
+
 const CITATION_HISTOGRAM_BASE_BUCKETS: CitationHistogramBucketDefinition[] = [
   { minCitations: 0, maxCitations: 0, label: '0' },
   { minCitations: 1, maxCitations: 1, label: '1' },
@@ -1679,9 +1753,64 @@ const CITATION_HISTOGRAM_BASE_BUCKETS: CitationHistogramBucketDefinition[] = [
 ]
 
 const CITATION_HISTOGRAM_HIGH_BUCKET_STARTS = [25, 50, 100, 200, 500, 1000] as const
+const CITATION_CONCENTRATION_LADDER_COUNTS = [1, 3, 5, 10] as const
 
 function formatCitationHistogramBoundary(value: number): string {
   return String(Math.max(0, Math.round(Number.isFinite(value) ? value : 0)))
+}
+
+export function buildCitationConcentrationLadder(citationCounts: number[]): CitationConcentrationLadderStep[] {
+  const normalizedCounts = citationCounts
+    .map((value) => {
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed)) {
+        return 0
+      }
+      return Math.max(0, Math.round(parsed))
+    })
+  const totalPublications = normalizedCounts.length
+  if (!totalPublications) {
+    return []
+  }
+  const sortedCounts = normalizedCounts.slice().sort((left, right) => right - left)
+  const totalCitations = sortedCounts.reduce((sum, value) => sum + value, 0)
+  const quartileCount = Math.max(1, Math.ceil(totalPublications * 0.25))
+  const stepDefinitions: Array<{ count: number; label: string }> = []
+  const seenCounts = new Set<number>()
+  const addStep = (count: number, label: string) => {
+    if (count < 1 || count > totalPublications || seenCounts.has(count)) {
+      return
+    }
+    seenCounts.add(count)
+    stepDefinitions.push({ count, label })
+  }
+
+  CITATION_CONCENTRATION_LADDER_COUNTS.forEach((count) => {
+    addStep(count, `Top ${formatInt(count)} ${pluralize(count, 'paper')}`)
+  })
+  addStep(quartileCount, 'Top 25%')
+
+  if (!stepDefinitions.length) {
+    addStep(1, 'Top 1 paper')
+  }
+
+  const sortedDefinitions = stepDefinitions.slice().sort((left, right) => left.count - right.count)
+  const prefixSums = sortedCounts.reduce<number[]>((acc, value, index) => {
+    acc[index] = value + (acc[index - 1] || 0)
+    return acc
+  }, [])
+
+  return sortedDefinitions.map((definition) => {
+    const citationCount = prefixSums[definition.count - 1] || 0
+    return {
+      key: `citation-concentration-${definition.count}`,
+      label: definition.label,
+      paperCount: definition.count,
+      paperSharePct: (definition.count / totalPublications) * 100,
+      citationCount,
+      citationSharePct: totalCitations > 0 ? (citationCount / totalCitations) * 100 : 0,
+    }
+  })
 }
 
 export function buildCitationHistogramBuckets(citationCounts: number[]): CitationHistogramBucket[] {
@@ -5144,6 +5273,19 @@ type PublicationDrilldownRecord = {
   citationsLifeRolling?: number
 }
 
+export type CitationMomentumSourceRecord = Pick<
+  PublicationDrilldownRecord,
+  'workId' | 'year' | 'title' | 'citations' | 'citations1yRolling' | 'citations3yRolling'
+>
+
+export type CitationMomentumRecord = CitationMomentumSourceRecord & {
+  recentCitations: number
+  prior24MonthCitations: number
+  publicationAgeYears: number | null
+  recentShareOf3yPct: number
+  momentumDelta: number
+}
+
 function parsePublicationCitationCount(value: unknown): number {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0
@@ -5176,6 +5318,99 @@ function resolvePublicationCitationValueForWindow(
     return Math.max(0, Number(record.citationsLifeRolling) || 0)
   }
   return Math.max(0, Number(record.citations || 0))
+}
+
+const CITATION_MOMENTUM_MIN_PUBLICATION_AGE = 3
+const CITATION_MOMENTUM_DEFAULT_LIMIT = 5
+
+export function buildCitationMomentumLists(
+  publications: CitationMomentumSourceRecord[],
+  {
+    referenceYear = new Date().getUTCFullYear(),
+    limit = CITATION_MOMENTUM_DEFAULT_LIMIT,
+  }: {
+    referenceYear?: number
+    limit?: number
+  } = {},
+): {
+  sleeping: CitationMomentumRecord[]
+  freshPickup: CitationMomentumRecord[]
+} {
+  const safeReferenceYear = Number.isInteger(referenceYear) ? Number(referenceYear) : new Date().getUTCFullYear()
+  const safeLimit = Math.max(0, Math.round(Number.isFinite(limit) ? limit : CITATION_MOMENTUM_DEFAULT_LIMIT))
+  const normalizedRecords = publications.map<CitationMomentumRecord>((record) => {
+    const normalizedYear = Number.isInteger(record.year) ? Number(record.year) : null
+    const title = String(record.title || '').trim()
+    const lifetimeCitations = parsePublicationCitationCount(record.citations)
+    const recentCitations = parsePublicationCitationCount(record.citations1yRolling ?? 0)
+    const rolling3Citations = Math.max(recentCitations, parsePublicationCitationCount(record.citations3yRolling ?? 0))
+    const prior24MonthCitations = Math.max(0, rolling3Citations - recentCitations)
+    const publicationAgeYears = normalizedYear === null ? null : Math.max(0, safeReferenceYear - normalizedYear)
+    return {
+      workId: record.workId,
+      year: normalizedYear,
+      title,
+      citations: lifetimeCitations,
+      citations1yRolling: recentCitations,
+      citations3yRolling: rolling3Citations,
+      recentCitations,
+      prior24MonthCitations,
+      publicationAgeYears,
+      recentShareOf3yPct: rolling3Citations > 0 ? (recentCitations / rolling3Citations) * 100 : 0,
+      momentumDelta: recentCitations - prior24MonthCitations,
+    }
+  })
+  const isMatureEnough = (record: CitationMomentumRecord) => (
+    record.publicationAgeYears === null || record.publicationAgeYears >= CITATION_MOMENTUM_MIN_PUBLICATION_AGE
+  )
+  const compareByTitle = (left: CitationMomentumRecord, right: CitationMomentumRecord) => (
+    left.title.localeCompare(right.title, 'en-GB')
+  )
+  const sleeping = normalizedRecords
+    .filter((record) => (
+      isMatureEnough(record)
+      && record.citations >= 10
+      && record.recentCitations <= 1
+      && (record.prior24MonthCitations > 0 || record.citations >= 25)
+    ))
+    .slice()
+    .sort((left, right) => {
+      if (right.citations !== left.citations) {
+        return right.citations - left.citations
+      }
+      if (right.prior24MonthCitations !== left.prior24MonthCitations) {
+        return right.prior24MonthCitations - left.prior24MonthCitations
+      }
+      if (left.recentCitations !== right.recentCitations) {
+        return left.recentCitations - right.recentCitations
+      }
+      return compareByTitle(left, right)
+    })
+    .slice(0, safeLimit)
+  const freshPickup = normalizedRecords
+    .filter((record) => (
+      isMatureEnough(record)
+      && record.recentCitations >= 3
+      && record.recentCitations > record.prior24MonthCitations
+    ))
+    .slice()
+    .sort((left, right) => {
+      if (right.momentumDelta !== left.momentumDelta) {
+        return right.momentumDelta - left.momentumDelta
+      }
+      if (right.recentCitations !== left.recentCitations) {
+        return right.recentCitations - left.recentCitations
+      }
+      if (right.citations !== left.citations) {
+        return right.citations - left.citations
+      }
+      return compareByTitle(left, right)
+    })
+    .slice(0, safeLimit)
+  return {
+    sleeping,
+    freshPickup,
+  }
 }
 
 const PUBLICATION_TYPE_LABEL_OVERRIDES: Record<string, string> = {
@@ -6282,6 +6517,58 @@ function CitationActivationHistorySeriesToggle({
           onMouseDown={(event) => event.stopPropagation()}
         >
           Active/inactive
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function CitationMomentumViewToggle({
+  value,
+  onChange,
+}: {
+  value: CitationMomentumViewMode
+  onChange: (mode: CitationMomentumViewMode) => void
+}) {
+  const activeIndex = value === 'sleeping' ? 0 : 1
+
+  return (
+    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+      <div
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        data-stop-tile-open="true"
+        style={{ width: '13rem' }}
+      >
+        <span
+          className={HOUSE_TOGGLE_THUMB_CLASS}
+          style={buildTileToggleThumbStyle(activeIndex, 2, false)}
+          aria-hidden="true"
+        />
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'sleeping' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'sleeping'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('sleeping')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          Sleeping
+        </button>
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'freshPickup' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'freshPickup'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('freshPickup')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          Fresh pickup
         </button>
       </div>
     </div>
@@ -7722,6 +8009,8 @@ function GenericMetricDrilldownWorkspace({
   const [citationHistogramExpanded, setCitationHistogramExpanded] = useState(true)
   const [citationActivationExpanded, setCitationActivationExpanded] = useState(true)
   const [citationActivationHistoryExpanded, setCitationActivationHistoryExpanded] = useState(true)
+  const [citationMomentumExpanded, setCitationMomentumExpanded] = useState(true)
+  const [citationMomentumViewMode, setCitationMomentumViewMode] = useState<CitationMomentumViewMode>('sleeping')
   const [fieldPercentileDrilldownThreshold, setFieldPercentileDrilldownThreshold] = useState<FieldPercentileThreshold>(75)
   const [uncitedBreakdownViewMode, setUncitedBreakdownViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [recentConcentrationViewMode, setRecentConcentrationViewMode] = useState<SplitBreakdownViewMode>('bar')
@@ -7738,6 +8027,8 @@ function GenericMetricDrilldownWorkspace({
   const [citationHistogramInsightOpen, setCitationHistogramInsightOpen] = useState(false)
   const [citationActivationInsightOpen, setCitationActivationInsightOpen] = useState(false)
   const [citationActivationHistoryInsightOpen, setCitationActivationHistoryInsightOpen] = useState(false)
+  const [citationMomentumInsightOpen, setCitationMomentumInsightOpen] = useState(false)
+  const [hIndexInsightKey, setHIndexInsightKey] = useState<HIndexInsightKey | null>(null)
 
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
     breakdown: 'Breakdown results',
@@ -7787,6 +8078,8 @@ function GenericMetricDrilldownWorkspace({
     setRecentConcentrationExpanded(true)
     setCitationActivationExpanded(true)
     setCitationActivationHistoryExpanded(true)
+    setCitationMomentumExpanded(true)
+    setCitationMomentumViewMode('sleeping')
     setUncitedBreakdownViewMode('bar')
     setRecentConcentrationViewMode('bar')
     setCitationActivationViewMode('bar')
@@ -7802,6 +8095,8 @@ function GenericMetricDrilldownWorkspace({
     setCitationHistogramInsightOpen(false)
     setCitationActivationInsightOpen(false)
     setCitationActivationHistoryInsightOpen(false)
+    setCitationMomentumInsightOpen(false)
+    setHIndexInsightKey(null)
   }, [tile.key])
 
   const requestPublicationInsights = useCallback(
@@ -7852,6 +8147,7 @@ function GenericMetricDrilldownWorkspace({
         setRecentConcentrationInsightOpen(false)
         setCitationActivationInsightOpen(false)
         setCitationActivationHistoryInsightOpen(false)
+        setCitationMomentumInsightOpen(false)
         void requestPublicationInsights({
           windowId: 'all',
           sectionKey: 'uncited_works',
@@ -7868,6 +8164,7 @@ function GenericMetricDrilldownWorkspace({
         setUncitedInsightOpen(false)
         setCitationActivationInsightOpen(false)
         setCitationActivationHistoryInsightOpen(false)
+        setCitationMomentumInsightOpen(false)
         void requestPublicationInsights({
           windowId: '1y',
           sectionKey: 'citation_drivers',
@@ -7886,6 +8183,7 @@ function GenericMetricDrilldownWorkspace({
         setRecentConcentrationInsightOpen(false)
         setCitationHistogramInsightOpen(false)
         setCitationActivationHistoryInsightOpen(false)
+        setCitationMomentumInsightOpen(false)
         void requestPublicationInsights({
           windowId: '1y',
           sectionKey: 'citation_activation',
@@ -7904,6 +8202,7 @@ function GenericMetricDrilldownWorkspace({
         setRecentConcentrationInsightOpen(false)
         setCitationActivationInsightOpen(false)
         setCitationActivationHistoryInsightOpen(false)
+        setCitationMomentumInsightOpen(false)
         void requestPublicationInsights({
           windowId: 'all',
           sectionKey: 'citation_drivers',
@@ -7922,9 +8221,29 @@ function GenericMetricDrilldownWorkspace({
         setRecentConcentrationInsightOpen(false)
         setCitationHistogramInsightOpen(false)
         setCitationActivationInsightOpen(false)
+        setCitationMomentumInsightOpen(false)
         void requestPublicationInsights({
           windowId: 'all',
           sectionKey: 'citation_activation_history',
+          scope: 'section',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  const onToggleCitationMomentumInsight = useCallback(() => {
+    setCitationMomentumInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setUncitedInsightOpen(false)
+        setRecentConcentrationInsightOpen(false)
+        setCitationHistogramInsightOpen(false)
+        setCitationActivationInsightOpen(false)
+        setCitationActivationHistoryInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: 'all',
+          sectionKey: 'citation_drivers',
           scope: 'section',
         })
       }
@@ -8004,6 +8323,25 @@ function GenericMetricDrilldownWorkspace({
     })
   }, [
     citationActivationHistoryInsightOpen,
+    publicationInsightsByRequestKey,
+    requestPublicationInsights,
+  ])
+
+  useEffect(() => {
+    if (!citationMomentumInsightOpen) {
+      return
+    }
+    const requestKey = 'citation_drivers:section:all'
+    if (publicationInsightsByRequestKey[requestKey]) {
+      return
+    }
+    void requestPublicationInsights({
+      windowId: 'all',
+      sectionKey: 'citation_drivers',
+      scope: 'section',
+    })
+  }, [
+    citationMomentumInsightOpen,
     publicationInsightsByRequestKey,
     requestPublicationInsights,
   ])
@@ -8089,6 +8427,42 @@ function GenericMetricDrilldownWorkspace({
     () => Math.max(0, ...publicationDrilldownRecords.map((record) => Math.max(0, record.citations))),
     [publicationDrilldownRecords],
   )
+  const { sleeping: sleepingPublicationRecords, freshPickup: freshPickupPublicationRecords } = useMemo(
+    () => buildCitationMomentumLists(publicationDrilldownRecords),
+    [publicationDrilldownRecords],
+  )
+  const citationMomentumTableConfig = useMemo(() => {
+    if (citationMomentumViewMode === 'sleeping') {
+      return {
+        nameColumnLabel: 'Sleeping paper',
+        metricColumnLabel: 'Last 12m',
+        secondaryMetricColumnLabel: 'Total',
+        rows: sleepingPublicationRecords.map((record) => ({
+          key: record.workId,
+          label: record.title || 'Untitled publication',
+          year: record.year,
+          metricValue: formatInt(record.recentCitations),
+          secondaryMetricValue: formatInt(record.citations),
+          workId: record.workId,
+        })),
+        emptyMessage: 'No sleeping papers identified right now.',
+      }
+    }
+    return {
+      nameColumnLabel: 'Fresh-pickup paper',
+      metricColumnLabel: 'Last 12m',
+      secondaryMetricColumnLabel: 'Prior 24m',
+      rows: freshPickupPublicationRecords.map((record) => ({
+        key: record.workId,
+        label: record.title || 'Untitled publication',
+        year: record.year,
+        metricValue: formatInt(record.recentCitations),
+        secondaryMetricValue: formatInt(record.prior24MonthCitations),
+        workId: record.workId,
+      })),
+      emptyMessage: 'No fresh-pickup papers identified right now.',
+    }
+  }, [citationMomentumViewMode, freshPickupPublicationRecords, sleepingPublicationRecords])
   const citationActivationPublicationRecords = useMemo(
     () => publicationDrilldownRecords
       .filter((record) => (record.citations1yRolling || 0) > 0)
@@ -8503,6 +8877,11 @@ function GenericMetricDrilldownWorkspace({
   const closeCitationHistogramInsight = useCallback(() => setCitationHistogramInsightOpen(false), [])
   const closeCitationActivationInsight = useCallback(() => setCitationActivationInsightOpen(false), [])
   const closeCitationActivationHistoryInsight = useCallback(() => setCitationActivationHistoryInsightOpen(false), [])
+  const closeCitationMomentumInsight = useCallback(() => setCitationMomentumInsightOpen(false), [])
+  const closeHIndexInsight = useCallback(() => setHIndexInsightKey(null), [])
+  const toggleHIndexInsight = useCallback((key: HIndexInsightKey) => {
+    setHIndexInsightKey((current) => (current === key ? null : key))
+  }, [])
   const navigateToInsightTab = useCallback((tab: DrilldownTab) => {
     onDrilldownTabChange?.(tab)
     setUncitedInsightOpen(false)
@@ -8510,6 +8889,8 @@ function GenericMetricDrilldownWorkspace({
     setCitationHistogramInsightOpen(false)
     setCitationActivationInsightOpen(false)
     setCitationActivationHistoryInsightOpen(false)
+    setCitationMomentumInsightOpen(false)
+    setHIndexInsightKey(null)
   }, [onDrilldownTabChange])
   const uncitedInsightActions = useMemo<PublicationInsightAction[]>(() => {
     const actions: PublicationInsightAction[] = []
@@ -8693,6 +9074,60 @@ function GenericMetricDrilldownWorkspace({
     })
     return actions.slice(0, 3)
   }, [citationActivationViewMode, navigateToInsightTab, newlyActivePublicationRecords.length])
+  const citationMomentumInsightActions = useMemo<PublicationInsightAction[]>(() => {
+    const actions: PublicationInsightAction[] = []
+    const leadRecord = citationMomentumViewMode === 'sleeping'
+      ? sleepingPublicationRecords[0] || null
+      : freshPickupPublicationRecords[0] || null
+    if (citationMomentumViewMode !== 'sleeping' && sleepingPublicationRecords.length > 0) {
+      actions.push({
+        key: 'citation-momentum-view-sleeping',
+        label: 'View sleeping papers',
+        description: 'Switch to older papers that have gone quiet recently.',
+        onSelect: () => {
+          setCitationMomentumExpanded(true)
+          setCitationMomentumViewMode('sleeping')
+          setCitationMomentumInsightOpen(false)
+        },
+      })
+    }
+    if (citationMomentumViewMode !== 'freshPickup' && freshPickupPublicationRecords.length > 0) {
+      actions.push({
+        key: 'citation-momentum-view-fresh-pickup',
+        label: 'View fresh pickup',
+        description: 'Switch to older papers accelerating again in the last 12 months.',
+        onSelect: () => {
+          setCitationMomentumExpanded(true)
+          setCitationMomentumViewMode('freshPickup')
+          setCitationMomentumInsightOpen(false)
+        },
+      })
+    }
+    if (leadRecord && onOpenPublication) {
+      actions.push({
+        key: 'citation-momentum-open-lead-paper',
+        label: 'Open lead paper',
+        description: 'Open the top paper from the current view in your library.',
+        onSelect: () => {
+          onOpenPublication(leadRecord.workId)
+          setCitationMomentumInsightOpen(false)
+        },
+      })
+    }
+    actions.push({
+      key: 'citation-momentum-breakdown',
+      label: 'Citation breakdown',
+      description: 'Compare this with citation drivers and the lifetime distribution.',
+      onSelect: () => navigateToInsightTab('breakdown'),
+    })
+    return actions.slice(0, 3)
+  }, [
+    citationMomentumViewMode,
+    freshPickupPublicationRecords,
+    navigateToInsightTab,
+    onOpenPublication,
+    sleepingPublicationRecords,
+  ])
 
   const headlineMetricTiles = useMemo(() => {
     if (tile.key !== 'total_citations') {
@@ -8718,6 +9153,18 @@ function GenericMetricDrilldownWorkspace({
     }
     return buildHIndexDrilldownStats(tile)
   }, [tile])
+  const hIndexNearestCandidate = useMemo(
+    () => (hIndexDrilldownStats?.candidatePapers.length ? hIndexDrilldownStats.candidatePapers[0] : null),
+    [hIndexDrilldownStats],
+  )
+  const hIndexTopAuthorshipBucket = useMemo(
+    () => (hIndexDrilldownStats?.authorshipMix.length ? hIndexDrilldownStats.authorshipMix[0] : null),
+    [hIndexDrilldownStats],
+  )
+  const hIndexTopPublicationTypeBucket = useMemo(
+    () => (hIndexDrilldownStats?.publicationTypeMix.length ? hIndexDrilldownStats.publicationTypeMix[0] : null),
+    [hIndexDrilldownStats],
+  )
   const momentumDrilldownStats = useMemo<MomentumDrilldownStats | null>(() => {
     if (tile.key !== 'momentum') {
       return null
@@ -8973,66 +9420,118 @@ function GenericMetricDrilldownWorkspace({
 
         {tile.key === 'h_index_projection' && activeTab === 'summary' && hIndexDrilldownStats ? (
           <>
-            <div className="house-publications-drilldown-bounded-section">
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-index trajectory"
+                  content={formatHIndexSummaryTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-index trajectory insight"
+                  active={hIndexInsightKey === 'summary-trajectory'}
+                  onClick={() => toggleHIndexInsight('summary-trajectory')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'summary-trajectory'}
+                onClose={closeHIndexInsight}
+                title="H-index trajectory"
+                body={`Your portfolio currently supports h${formatInt(hIndexDrilldownStats.currentH)}. The observed h-index path is already backed by ${formatInt(hIndexDrilldownStats.hCorePublicationCount)} qualifying papers, and the near-threshold set currently points to h${formatInt(hIndexDrilldownStats.projectedH)} by ${formatInt(hIndexDrilldownStats.projectedYear)}.`}
+                considerationLabel="How to read this"
+                consideration={`H-index moves in thresholds, not increments of total citations. A flat stretch usually means the portfolio is waiting for one or more papers to clear the next qualifying line, rather than a lack of citation activity overall.`}
+                actions={[
+                  {
+                    key: 'h-index-summary-open-trajectory',
+                    label: 'Next h runway',
+                    description: 'Open the milestone and runway sections on the trajectory tab.',
+                    onSelect: () => navigateToInsightTab('trajectory'),
+                  },
+                ]}
+              />
               <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title">H-index trajectory</p>
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">H-index trajectory</p>
+                </div>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="space-y-3">
-                  <DrilldownNarrativeCard
-                    eyebrow="Approved story"
-                    title={`The portfolio currently supports h${formatInt(hIndexDrilldownStats.currentH)} and is ${Math.round(hIndexDrilldownStats.progressPct)}% of the way to h${formatInt(hIndexDrilldownStats.targetH)}.`}
-                    body={`The current h-core contains ${formatInt(hIndexDrilldownStats.hCorePublicationCount)} papers and accounts for ${hIndexDrilldownStats.hCoreShareValue} of citations. The current projection points to h${formatInt(hIndexDrilldownStats.projectedH)} by ${hIndexDrilldownStats.projectedYear}, with ${formatInt(hIndexDrilldownStats.citationsNeededForNextH)} citations still needed across the nearest candidate papers.`}
-                  />
-                  <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
-                    <HIndexTrajectoryPanel tile={tile} mode="trajectory" />
-                  </div>
-                  <CanonicalTablePanel
-                    title="Canonical readout"
-                    subtitle="Headline h-index measures in approved summary format."
-                    columns={[
-                      { key: 'measure', label: 'Measure' },
-                      { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                      { key: 'interpretation', label: 'Interpretation' },
-                    ]}
-                    rows={[
-                      {
-                        key: 'current-h',
-                        cells: {
-                          measure: 'Current h-index',
-                          value: formatInt(hIndexDrilldownStats.currentH),
-                          interpretation: `${formatInt(hIndexDrilldownStats.hCorePublicationCount)} papers already meet the current h threshold.`,
-                        },
-                      },
-                      {
-                        key: 'projected-h',
-                        cells: {
-                          measure: `Projected ${hIndexDrilldownStats.projectedYear}`,
-                          value: formatInt(hIndexDrilldownStats.projectedH),
-                          interpretation: 'Twelve-month outlook using near-threshold candidate papers.',
-                        },
-                      },
-                      {
-                        key: 'next-target',
-                        cells: {
-                          measure: `Progress to h${formatInt(hIndexDrilldownStats.targetH)}`,
-                          value: `${Math.round(hIndexDrilldownStats.progressPct)}%`,
-                          interpretation: `${formatInt(hIndexDrilldownStats.citationsNeededForNextH)} citations still needed to secure the next threshold.`,
-                        },
-                      },
-                      {
-                        key: 'career-pace',
-                        cells: {
-                          measure: 'Career pace',
-                          value: hIndexDrilldownStats.mIndexValue,
-                          interpretation: hIndexDrilldownStats.yearsSinceFirstCitedPaper === null
-                            ? 'Career span not available.'
-                            : `Normalised across ${formatInt(hIndexDrilldownStats.yearsSinceFirstCitedPaper)} citation-active years.`,
-                        },
-                      },
-                    ]}
-                  />
+                <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
+                  <HIndexTrajectoryPanel tile={tile} mode="trajectory" />
                 </div>
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-index readout"
+                  content={formatHIndexSummaryTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-index readout insight"
+                  active={hIndexInsightKey === 'summary-readout'}
+                  onClick={() => toggleHIndexInsight('summary-readout')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'summary-readout'}
+                onClose={closeHIndexInsight}
+                title="Canonical readout"
+                body={`This readout keeps the four summary checks together: current h-index, projected h-index, progress to h${formatInt(hIndexDrilldownStats.targetH)}, and career pace via m-index. Taken together, they show present scale, near-term movement, and how quickly the portfolio has accumulated durable citation depth.`}
+                considerationLabel="Why it matters"
+                consideration={hIndexDrilldownStats.yearsSinceFirstCitedPaper === null
+                  ? 'Without a reliable first cited year, the pace view is less precise. In that case, current h-index and next-target runway should carry more weight.'
+                  : `Because m-index normalises across ${formatInt(hIndexDrilldownStats.yearsSinceFirstCitedPaper)} citation-active years, it helps separate a large mature portfolio from a fast-rising one.`}
+              />
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">Canonical readout</p>
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CanonicalTablePanel
+                  bare
+                  columns={[
+                    { key: 'measure', label: 'Measure' },
+                    { key: 'value', label: 'Value', align: 'center', width: '1%' },
+                    { key: 'interpretation', label: 'Interpretation' },
+                  ]}
+                  rows={[
+                    {
+                      key: 'current-h',
+                      cells: {
+                        measure: 'Current h-index',
+                        value: formatInt(hIndexDrilldownStats.currentH),
+                        interpretation: `${formatInt(hIndexDrilldownStats.hCorePublicationCount)} papers already meet the current h threshold.`,
+                      },
+                    },
+                    {
+                      key: 'projected-h',
+                      cells: {
+                        measure: `Projected ${hIndexDrilldownStats.projectedYear}`,
+                        value: formatInt(hIndexDrilldownStats.projectedH),
+                        interpretation: 'Twelve-month outlook using near-threshold candidate papers.',
+                      },
+                    },
+                    {
+                      key: 'next-target',
+                      cells: {
+                        measure: `Progress to h${formatInt(hIndexDrilldownStats.targetH)}`,
+                        value: `${Math.round(hIndexDrilldownStats.progressPct)}%`,
+                        interpretation: `${formatInt(hIndexDrilldownStats.citationsNeededForNextH)} citations still needed to secure the next threshold.`,
+                      },
+                    },
+                    {
+                      key: 'career-pace',
+                      cells: {
+                        measure: 'Career pace',
+                        value: hIndexDrilldownStats.mIndexValue,
+                        interpretation: hIndexDrilldownStats.yearsSinceFirstCitedPaper === null
+                          ? 'Career span not available.'
+                          : `Normalised across ${formatInt(hIndexDrilldownStats.yearsSinceFirstCitedPaper)} citation-active years.`,
+                      },
+                    },
+                  ]}
+                />
               </div>
             </div>
           </>
@@ -9298,155 +9797,340 @@ function GenericMetricDrilldownWorkspace({
 
         {tile.key === 'h_index_projection' && activeTab === 'breakdown' && hIndexDrilldownStats ? (
           <>
-            <div className="house-publications-drilldown-bounded-section">
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-core papers"
+                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-core papers insight"
+                  active={hIndexInsightKey === 'breakdown-core-papers'}
+                  onClick={() => toggleHIndexInsight('breakdown-core-papers')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'breakdown-core-papers'}
+                onClose={closeHIndexInsight}
+                title="h-core papers"
+                body={`The h-core currently contains ${formatInt(hIndexDrilldownStats.hCorePublicationCount)} of ${formatInt(hIndexDrilldownStats.totalPublications)} papers. This tells you how much of the portfolio already clears the h${formatInt(hIndexDrilldownStats.currentH)} threshold, which is the structural base of the current h-index.`}
+                considerationLabel="How to read this"
+                consideration={`A smaller h-core share can still support a strong h-index if the qualifying papers are deep enough. What matters is not just how many papers sit inside the core, but whether the next group is close enough to push the threshold higher.`}
+              />
               <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title">h-core structure</p>
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">h-core papers</p>
+                </div>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="space-y-3">
-                  <DrilldownNarrativeCard
-                    eyebrow="Approved story"
-                    title={`The h-core currently covers ${Math.round(hIndexDrilldownStats.hCorePublicationSharePct)}% of papers and ${Math.round(hIndexDrilldownStats.hCoreSharePct)}% of citations.`}
-                    body="This section separates the h-defining papers from the rest of the portfolio, then shows which authorship positions and publication formats appear most often inside that h-core."
-                  />
-                  <CitationSplitBarCard
-                    title="h-core papers"
-                    subtitle="Shows how much of the portfolio currently sits inside the h-core threshold."
-                    left={{
-                      label: 'h-core',
-                      value: `${formatInt(hIndexDrilldownStats.hCorePublicationCount)} (${Math.round(hIndexDrilldownStats.hCorePublicationSharePct)}%)`,
-                      ratioPct: hIndexDrilldownStats.hCorePublicationSharePct,
-                      toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
-                    }}
-                    right={{
-                      label: 'Outside h-core',
-                      value: `${formatInt(hIndexDrilldownStats.nonHCorePublicationCount)} (${hIndexDrilldownStats.totalPublications > 0 ? Math.round((hIndexDrilldownStats.nonHCorePublicationCount / hIndexDrilldownStats.totalPublications) * 100) : 0}%)`,
-                      ratioPct: hIndexDrilldownStats.totalPublications > 0
-                        ? (hIndexDrilldownStats.nonHCorePublicationCount / hIndexDrilldownStats.totalPublications) * 100
-                        : 0,
-                      toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
-                    }}
-                  />
-                  <CitationSplitBarCard
-                    title="h-core citations"
-                    subtitle="Shows how much of total citation volume is concentrated inside the h-core."
-                    left={{
-                      label: 'h-core',
-                      value: `${formatInt(hIndexDrilldownStats.hCoreCitations)} (${Math.round(hIndexDrilldownStats.hCoreSharePct)}%)`,
-                      ratioPct: hIndexDrilldownStats.hCoreSharePct,
-                      toneClass: HOUSE_CHART_BAR_WARNING_CLASS,
-                    }}
-                    right={{
-                      label: 'Outside h-core',
-                      value: `${formatInt(hIndexDrilldownStats.nonHCoreCitations)} (${Math.max(0, 100 - Math.round(hIndexDrilldownStats.hCoreSharePct))}%)`,
-                      ratioPct: Math.max(0, 100 - hIndexDrilldownStats.hCoreSharePct),
-                      toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
-                    }}
-                  />
-                  <CanonicalTablePanel
-                    title="Canonical structure table"
-                    subtitle="Approved portfolio split between h-core and non-h-core papers."
-                    columns={[
-                      { key: 'segment', label: 'Segment' },
-                      { key: 'papers', label: 'Papers', align: 'center', width: '1%' },
-                      { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
-                      { key: 'density', label: 'Cites / paper', align: 'center', width: '1%' },
-                    ]}
-                    rows={[
-                      {
-                        key: 'h-core',
-                        cells: {
-                          segment: 'h-core',
-                          papers: `${formatInt(hIndexDrilldownStats.hCorePublicationCount)} (${Math.round(hIndexDrilldownStats.hCorePublicationSharePct)}%)`,
-                          citations: `${formatInt(hIndexDrilldownStats.hCoreCitations)} (${Math.round(hIndexDrilldownStats.hCoreSharePct)}%)`,
-                          density: hIndexDrilldownStats.hCoreCitationDensityValue,
-                        },
-                      },
-                      {
-                        key: 'non-h-core',
-                        cells: {
-                          segment: 'Outside h-core',
-                          papers: `${formatInt(hIndexDrilldownStats.nonHCorePublicationCount)} (${Math.max(0, 100 - Math.round(hIndexDrilldownStats.hCorePublicationSharePct))}%)`,
-                          citations: `${formatInt(hIndexDrilldownStats.nonHCoreCitations)} (${Math.max(0, 100 - Math.round(hIndexDrilldownStats.hCoreSharePct))}%)`,
-                          density: hIndexDrilldownStats.nonHCorePublicationCount > 0
-                            ? (hIndexDrilldownStats.nonHCoreCitations / hIndexDrilldownStats.nonHCorePublicationCount).toFixed(1)
-                            : '\u2014',
-                        },
-                      },
-                      {
-                        key: 'total',
-                        cells: {
-                          segment: 'Total portfolio',
-                          papers: formatInt(hIndexDrilldownStats.totalPublications),
-                          citations: formatInt(hIndexDrilldownStats.totalCitations),
-                          density: hIndexDrilldownStats.totalPublications > 0
-                            ? (hIndexDrilldownStats.totalCitations / hIndexDrilldownStats.totalPublications).toFixed(1)
-                            : '\u2014',
-                        },
-                      },
-                    ]}
-                  />
-                  <CitationEfficiencyComparisonPanel
-                    title="h-core authorship mix"
-                    subtitle="Highlights which contribution positions are most represented inside the h-core."
-                    metrics={hIndexDrilldownStats.authorshipMix.map((metric) => ({
-                      label: metric.label,
-                      value: metric.value,
-                      raw: metric.raw,
-                    }))}
-                  />
-                  <CanonicalTablePanel
-                    title="Authorship mix table"
-                    subtitle="Canonical h-core authorship distribution."
-                    columns={[
-                      { key: 'bucket', label: 'Authorship bucket' },
-                      { key: 'count', label: 'Count', align: 'center', width: '1%' },
-                      { key: 'share', label: 'Share', align: 'center', width: '1%' },
-                    ]}
-                    rows={hIndexDrilldownStats.authorshipMix.map((metric) => {
-                      const shareMatch = metric.value.match(/\((\d+)%\)$/)
-                      return {
-                        key: metric.label,
-                        cells: {
-                          bucket: metric.label,
-                          count: formatInt(metric.raw),
-                          share: shareMatch ? `${shareMatch[1]}%` : metric.value,
-                        },
-                      }
-                    })}
-                    emptyMessage="No h-core authorship mix available."
-                  />
-                  <CitationEfficiencyComparisonPanel
-                    title="h-core publication type mix"
-                    subtitle="Shows which publication formats contribute most often to the h-core."
-                    metrics={hIndexDrilldownStats.publicationTypeMix.map((metric) => ({
-                      label: metric.label,
-                      value: metric.value,
-                      raw: metric.raw,
-                    }))}
-                  />
-                  <CanonicalTablePanel
-                    title="Publication type mix table"
-                    subtitle="Canonical h-core publication-format distribution."
-                    columns={[
-                      { key: 'bucket', label: 'Publication type' },
-                      { key: 'count', label: 'Count', align: 'center', width: '1%' },
-                      { key: 'share', label: 'Share', align: 'center', width: '1%' },
-                    ]}
-                    rows={hIndexDrilldownStats.publicationTypeMix.map((metric) => {
-                      const shareMatch = metric.value.match(/\((\d+)%\)$/)
-                      return {
-                        key: metric.label,
-                        cells: {
-                          bucket: metric.label,
-                          count: formatInt(metric.raw),
-                          share: shareMatch ? `${shareMatch[1]}%` : metric.value,
-                        },
-                      }
-                    })}
-                    emptyMessage="No h-core publication-type mix available."
-                  />
+                <CitationSplitBarCard
+                  bare
+                  left={{
+                    label: 'h-core',
+                    value: `${formatInt(hIndexDrilldownStats.hCorePublicationCount)} (${Math.round(hIndexDrilldownStats.hCorePublicationSharePct)}%)`,
+                    ratioPct: hIndexDrilldownStats.hCorePublicationSharePct,
+                    toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
+                  }}
+                  right={{
+                    label: 'Outside h-core',
+                    value: `${formatInt(hIndexDrilldownStats.nonHCorePublicationCount)} (${hIndexDrilldownStats.totalPublications > 0 ? Math.round((hIndexDrilldownStats.nonHCorePublicationCount / hIndexDrilldownStats.totalPublications) * 100) : 0}%)`,
+                    ratioPct: hIndexDrilldownStats.totalPublications > 0
+                      ? (hIndexDrilldownStats.nonHCorePublicationCount / hIndexDrilldownStats.totalPublications) * 100
+                      : 0,
+                    toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-core citations"
+                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-core citations insight"
+                  active={hIndexInsightKey === 'breakdown-core-citations'}
+                  onClick={() => toggleHIndexInsight('breakdown-core-citations')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'breakdown-core-citations'}
+                onClose={closeHIndexInsight}
+                title="h-core citations"
+                body={`The h-core accounts for ${hIndexDrilldownStats.hCoreShareValue} of total citations. That shows how much of the citation portfolio is concentrated in the papers that already define the current h-index, versus the rest of the catalogue.`}
+                considerationLabel="Why it matters"
+                consideration={`If citation volume is heavily concentrated inside the h-core, future h-index growth depends on whether papers just outside the core can join it. If concentration is lower, the portfolio may have broader support for later threshold gains.`}
+              />
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">h-core citations</p>
                 </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CitationSplitBarCard
+                  bare
+                  left={{
+                    label: 'h-core',
+                    value: `${formatInt(hIndexDrilldownStats.hCoreCitations)} (${Math.round(hIndexDrilldownStats.hCoreSharePct)}%)`,
+                    ratioPct: hIndexDrilldownStats.hCoreSharePct,
+                    toneClass: HOUSE_CHART_BAR_WARNING_CLASS,
+                  }}
+                  right={{
+                    label: 'Outside h-core',
+                    value: `${formatInt(hIndexDrilldownStats.nonHCoreCitations)} (${Math.max(0, 100 - Math.round(hIndexDrilldownStats.hCoreSharePct))}%)`,
+                    ratioPct: Math.max(0, 100 - hIndexDrilldownStats.hCoreSharePct),
+                    toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-core structure table"
+                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-core structure table insight"
+                  active={hIndexInsightKey === 'breakdown-structure-table'}
+                  onClick={() => toggleHIndexInsight('breakdown-structure-table')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'breakdown-structure-table'}
+                onClose={closeHIndexInsight}
+                title="h-core structure table"
+                body="This table compares papers, citations, and citation density inside and outside the h-core. It gives the exact structural split behind the simpler bar views."
+                considerationLabel="How to use it"
+                consideration="Read density beside share. A compact h-core with very high density means the current h-index is being carried by a smaller elite set; a broader split suggests deeper support across the wider portfolio."
+              />
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">h-core structure table</p>
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CanonicalTablePanel
+                  bare
+                  columns={[
+                    { key: 'segment', label: 'Segment' },
+                    { key: 'papers', label: 'Papers', align: 'center', width: '1%' },
+                    { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
+                    { key: 'density', label: 'Cites / paper', align: 'center', width: '1%' },
+                  ]}
+                  rows={[
+                    {
+                      key: 'h-core',
+                      cells: {
+                        segment: 'h-core',
+                        papers: `${formatInt(hIndexDrilldownStats.hCorePublicationCount)} (${Math.round(hIndexDrilldownStats.hCorePublicationSharePct)}%)`,
+                        citations: `${formatInt(hIndexDrilldownStats.hCoreCitations)} (${Math.round(hIndexDrilldownStats.hCoreSharePct)}%)`,
+                        density: hIndexDrilldownStats.hCoreCitationDensityValue,
+                      },
+                    },
+                    {
+                      key: 'non-h-core',
+                      cells: {
+                        segment: 'Outside h-core',
+                        papers: `${formatInt(hIndexDrilldownStats.nonHCorePublicationCount)} (${Math.max(0, 100 - Math.round(hIndexDrilldownStats.hCorePublicationSharePct))}%)`,
+                        citations: `${formatInt(hIndexDrilldownStats.nonHCoreCitations)} (${Math.max(0, 100 - Math.round(hIndexDrilldownStats.hCoreSharePct))}%)`,
+                        density: hIndexDrilldownStats.nonHCorePublicationCount > 0
+                          ? (hIndexDrilldownStats.nonHCoreCitations / hIndexDrilldownStats.nonHCorePublicationCount).toFixed(1)
+                          : '\u2014',
+                      },
+                    },
+                    {
+                      key: 'total',
+                      cells: {
+                        segment: 'Total portfolio',
+                        papers: formatInt(hIndexDrilldownStats.totalPublications),
+                        citations: formatInt(hIndexDrilldownStats.totalCitations),
+                        density: hIndexDrilldownStats.totalPublications > 0
+                          ? (hIndexDrilldownStats.totalCitations / hIndexDrilldownStats.totalPublications).toFixed(1)
+                          : '\u2014',
+                      },
+                    },
+                  ]}
+                />
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-core authorship mix"
+                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-core authorship mix insight"
+                  active={hIndexInsightKey === 'breakdown-authorship-mix'}
+                  onClick={() => toggleHIndexInsight('breakdown-authorship-mix')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'breakdown-authorship-mix'}
+                onClose={closeHIndexInsight}
+                title="h-core authorship mix"
+                body={hIndexTopAuthorshipBucket
+                  ? `${hIndexTopAuthorshipBucket.label} is the most common role inside the h-core, appearing in ${hIndexTopAuthorshipBucket.value}. This highlights which contribution position most often sits on the papers already strong enough to support the current h-index.`
+                  : 'This mix shows which authorship positions appear most often inside the h-core once authorship-role data is available.'}
+                considerationLabel="How to read this"
+                consideration="This is descriptive of the current h-defining set, not a causal statement about authorship position. It is most useful for checking whether durable citation depth tends to cluster in specific contribution roles."
+              />
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">h-core authorship mix</p>
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CitationEfficiencyComparisonPanel
+                  bare
+                  metrics={hIndexDrilldownStats.authorshipMix.map((metric) => ({
+                    label: metric.label,
+                    value: metric.value,
+                    raw: metric.raw,
+                  }))}
+                />
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-core authorship table"
+                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-core authorship table insight"
+                  active={hIndexInsightKey === 'breakdown-authorship-table'}
+                  onClick={() => toggleHIndexInsight('breakdown-authorship-table')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'breakdown-authorship-table'}
+                onClose={closeHIndexInsight}
+                title="h-core authorship table"
+                body="This table gives the exact authorship counts and shares inside the h-core. Use it when the bar view suggests a skew and you want the precise split by role."
+                considerationLabel="Why it matters"
+                consideration="A mixed authorship profile can indicate that h-defining papers are being supported across multiple contribution positions, while a dominant role suggests a narrower structural pattern."
+              />
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">h-core authorship table</p>
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CanonicalTablePanel
+                  bare
+                  columns={[
+                    { key: 'bucket', label: 'Authorship bucket' },
+                    { key: 'count', label: 'Count', align: 'center', width: '1%' },
+                    { key: 'share', label: 'Share', align: 'center', width: '1%' },
+                  ]}
+                  rows={hIndexDrilldownStats.authorshipMix.map((metric) => {
+                    const shareMatch = metric.value.match(/\((\d+)%\)$/)
+                    return {
+                      key: metric.label,
+                      cells: {
+                        bucket: metric.label,
+                        count: formatInt(metric.raw),
+                        share: shareMatch ? `${shareMatch[1]}%` : metric.value,
+                      },
+                    }
+                  })}
+                  emptyMessage="No h-core authorship mix available."
+                />
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-core publication type mix"
+                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-core publication type mix insight"
+                  active={hIndexInsightKey === 'breakdown-publication-type-mix'}
+                  onClick={() => toggleHIndexInsight('breakdown-publication-type-mix')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'breakdown-publication-type-mix'}
+                onClose={closeHIndexInsight}
+                title="h-core publication type mix"
+                body={hIndexTopPublicationTypeBucket
+                  ? `${hIndexTopPublicationTypeBucket.label} is the most represented publication format inside the h-core, accounting for ${hIndexTopPublicationTypeBucket.value}. This shows which formats currently contribute most often to durable h-defining citation depth.`
+                  : 'This mix shows which publication formats appear most often inside the h-core once publication-type data is available.'}
+                considerationLabel="How to use it"
+                consideration="This view is useful for structure rather than value judgement. It tells you which formats are most common in the h-core, not which format is inherently stronger in all contexts."
+              />
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">h-core publication type mix</p>
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CitationEfficiencyComparisonPanel
+                  bare
+                  metrics={hIndexDrilldownStats.publicationTypeMix.map((metric) => ({
+                    label: metric.label,
+                    value: metric.value,
+                    raw: metric.raw,
+                  }))}
+                />
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-core publication type table"
+                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-core publication type table insight"
+                  active={hIndexInsightKey === 'breakdown-publication-type-table'}
+                  onClick={() => toggleHIndexInsight('breakdown-publication-type-table')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'breakdown-publication-type-table'}
+                onClose={closeHIndexInsight}
+                title="h-core publication type table"
+                body="This table gives the exact publication-format counts and shares inside the h-core. It complements the mix view when you want the precise composition of the h-defining paper set."
+                considerationLabel="Why it matters"
+                consideration="If one format dominates this table, then h-index strength may be structurally concentrated in that publication type. A broader spread suggests the h-core is supported across multiple output formats."
+              />
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">h-core publication type table</p>
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CanonicalTablePanel
+                  bare
+                  columns={[
+                    { key: 'bucket', label: 'Publication type' },
+                    { key: 'count', label: 'Count', align: 'center', width: '1%' },
+                    { key: 'share', label: 'Share', align: 'center', width: '1%' },
+                  ]}
+                  rows={hIndexDrilldownStats.publicationTypeMix.map((metric) => {
+                    const shareMatch = metric.value.match(/\((\d+)%\)$/)
+                    return {
+                      key: metric.label,
+                      cells: {
+                        bucket: metric.label,
+                        count: formatInt(metric.raw),
+                        share: shareMatch ? `${shareMatch[1]}%` : metric.value,
+                      },
+                    }
+                  })}
+                  emptyMessage="No h-core publication-type mix available."
+                />
               </div>
             </div>
           </>
@@ -9653,22 +10337,97 @@ function GenericMetricDrilldownWorkspace({
                 </div>
               ) : null}
             </div>
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain sleeping and fresh pickup papers"
+                  content={formatCitationMomentumTooltip({
+                    mode: citationMomentumViewMode,
+                    sleepingCount: sleepingPublicationRecords.length,
+                    freshPickupCount: freshPickupPublicationRecords.length,
+                  })}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open sleeping and fresh pickup insight"
+                  active={citationMomentumInsightOpen}
+                  onClick={onToggleCitationMomentumInsight}
+                />
+              </div>
+              {citationMomentumInsightOpen ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close sleeping and fresh pickup insight"
+                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+                    onClick={closeCitationMomentumInsight}
+                  />
+                  <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+                    <div className="pointer-events-auto w-full max-w-[26rem]">
+                      <PublicationInsightsCallout
+                        payload={citationHistogramInsightsPayload}
+                        sectionKey="citation_drivers"
+                        loading={citationHistogramInsightsLoading}
+                        error={citationHistogramInsightsError}
+                        actions={citationMomentumInsightActions}
+                        onClose={closeCitationMomentumInsight}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">Which papers are sleeping or seeing fresh pickup?</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={citationMomentumExpanded}
+                    expandedLabel="Collapse sleeping and fresh pickup papers"
+                    collapsedLabel="Expand sleeping and fresh pickup papers"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setCitationMomentumExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
+                </div>
+              </div>
+              {citationMomentumExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className="space-y-3">
+                    <div className="flex justify-center">
+                      <CitationMomentumViewToggle
+                        value={citationMomentumViewMode}
+                        onChange={setCitationMomentumViewMode}
+                      />
+                    </div>
+                    <PublicationLinkTable
+                      nameColumnLabel={citationMomentumTableConfig.nameColumnLabel}
+                      metricColumnLabel={citationMomentumTableConfig.metricColumnLabel}
+                      secondaryMetricColumnLabel={citationMomentumTableConfig.secondaryMetricColumnLabel}
+                      rows={citationMomentumTableConfig.rows}
+                      onOpenPublication={onOpenPublication}
+                      emptyMessage={citationMomentumTableConfig.emptyMessage}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </>
         ) : null}
 
         {tile.key === 'h_index_projection' && activeTab === 'trajectory' && hIndexDrilldownStats ? (
           <>
-            <div className="house-publications-drilldown-bounded-section">
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-index trajectory over time"
+                  content={formatHIndexTrajectoryTooltip(hIndexDrilldownStats)}
+                />
+              </div>
               <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title">H-index trajectory</p>
+                <p className="house-drilldown-heading-block-title pr-10">H-index trajectory</p>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                 <div className="space-y-3">
-                  <DrilldownNarrativeCard
-                    eyebrow="Approved story"
-                    title={`The h-index trend has reached h${formatInt(hIndexDrilldownStats.currentH)} and is tracking toward h${formatInt(hIndexDrilldownStats.projectedH)}.`}
-                    body={`Trajectory focuses on two questions: when each h milestone was achieved, and how much runway remains to reach h${formatInt(hIndexDrilldownStats.targetH)}. Candidate-paper tables show the nearest papers to the next threshold rather than the entire portfolio.`}
-                  />
                   <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
                     <HIndexTrajectoryPanel tile={tile} mode="trajectory" />
                   </div>
@@ -9676,12 +10435,19 @@ function GenericMetricDrilldownWorkspace({
               </div>
             </div>
 
-            <div className="house-publications-drilldown-bounded-section">
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-index milestones"
+                  content={formatHIndexMilestonesTooltip(hIndexDrilldownStats)}
+                />
+              </div>
               <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title">Milestone progression</p>
+                <p className="house-drilldown-heading-block-title pr-10">Milestone progression</p>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                 <CanonicalTablePanel
+                  bare
                   title="Milestone table"
                   subtitle="Canonical record of when each h threshold was first reached."
                   columns={[
@@ -9702,23 +10468,30 @@ function GenericMetricDrilldownWorkspace({
               </div>
             </div>
 
-            <div className="house-publications-drilldown-bounded-section">
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain next h runway"
+                  content={formatHIndexRunwayTooltip(hIndexDrilldownStats)}
+                />
+              </div>
               <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title">Next h runway</p>
+                <p className="house-drilldown-heading-block-title pr-10">Next h runway</p>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                 <div className="space-y-3">
-                  <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+                  <div className="space-y-2.5">
                     <div className="space-y-1">
                       <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{`Progress to h${hIndexDrilldownStats.targetH}`}</p>
                       <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">Shows the remaining runway to the next h-threshold and the current candidate-gap distribution.</p>
                     </div>
-                    <HIndexProgressInline tile={tile} progressLabel={`Progress to h${hIndexDrilldownStats.targetH}`} />
-                    <div className="mt-2 min-h-[10rem]">
+                    <HIndexProgressInline tile={tile} progressLabel={`Progress to h${hIndexDrilldownStats.targetH}`} compact />
+                    <div className="min-h-[10rem]">
                       <HIndexToggleBarsChart tile={tile} mode="needed" />
                     </div>
                   </div>
                   <CanonicalTablePanel
+                    bare
                     title="Runway table"
                     subtitle="Canonical runway readout for the next h milestone."
                     columns={[
@@ -9754,6 +10527,7 @@ function GenericMetricDrilldownWorkspace({
                     ]}
                   />
                   <HIndexCandidateTablePanel
+                    bare
                     title="Closest candidate papers"
                     subtitle="Nearest papers to the next h-threshold, with projected 12-month citation totals."
                     candidates={hIndexDrilldownStats.candidatePapers}
@@ -9768,48 +10542,52 @@ function GenericMetricDrilldownWorkspace({
           <>
             <div className="house-publications-drilldown-bounded-section">
               <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title">Citation context</p>
+                <p className="house-drilldown-heading-block-title">Citation half-life proxy</p>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <CitationSplitBarCard
-                    title="Citation half-life proxy"
-                    subtitle="Splits lifetime citations between papers older than five years and the newer portfolio."
-                    left={{
-                      label: 'Older papers',
-                      value: `${formatInt(totalCitationsHeadlineStats.citationHalfLifeOlderCitations)} (${Math.round(totalCitationsHeadlineStats.citationHalfLifeOlderPct || 0)}%)`,
-                      ratioPct: totalCitationsHeadlineStats.citationHalfLifeOlderPct || 0,
-                      toneClass: HOUSE_CHART_BAR_WARNING_CLASS,
-                    }}
-                    right={{
-                      label: 'Newer papers',
-                      value: `${formatInt(totalCitationsHeadlineStats.citationHalfLifeNewerCitations)} (${Math.max(0, 100 - Math.round(totalCitationsHeadlineStats.citationHalfLifeOlderPct || 0))}%)`,
-                      ratioPct: Math.max(0, 100 - (totalCitationsHeadlineStats.citationHalfLifeOlderPct || 0)),
-                      toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
-                    }}
-                  />
-                  <CitationEfficiencyComparisonPanel
-                    title="Portfolio efficiency"
-                    subtitle="Compares average citation yield and central tendency across the publication set."
-                    metrics={[
-                      {
-                        label: 'Citations per paper',
-                        value: totalCitationsHeadlineStats.citationsPerPaperValue,
-                        raw: totalCitationsHeadlineStats.citationsPerPaperRaw,
-                      },
-                      {
-                        label: 'Mean yearly citations',
-                        value: totalCitationsHeadlineStats.meanCitations,
-                        raw: totalCitationsHeadlineStats.meanCitationsRaw,
-                      },
-                      {
-                        label: 'Median citations',
-                        value: totalCitationsHeadlineStats.medianCitationsValue,
-                        raw: totalCitationsHeadlineStats.medianCitationsRaw,
-                      },
-                    ]}
-                  />
-                </div>
+                <CitationSplitBarCard
+                  bare
+                  left={{
+                    label: 'Older papers',
+                    value: `${formatInt(totalCitationsHeadlineStats.citationHalfLifeOlderCitations)} (${Math.round(totalCitationsHeadlineStats.citationHalfLifeOlderPct || 0)}%)`,
+                    ratioPct: totalCitationsHeadlineStats.citationHalfLifeOlderPct || 0,
+                    toneClass: HOUSE_CHART_BAR_WARNING_CLASS,
+                  }}
+                  right={{
+                    label: 'Newer papers',
+                    value: `${formatInt(totalCitationsHeadlineStats.citationHalfLifeNewerCitations)} (${Math.max(0, 100 - Math.round(totalCitationsHeadlineStats.citationHalfLifeOlderPct || 0))}%)`,
+                    ratioPct: Math.max(0, 100 - (totalCitationsHeadlineStats.citationHalfLifeOlderPct || 0)),
+                    toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <p className="house-drilldown-heading-block-title">Portfolio efficiency</p>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CitationEfficiencyComparisonPanel
+                  bare
+                  metrics={[
+                    {
+                      label: 'Citations per paper',
+                      value: totalCitationsHeadlineStats.citationsPerPaperValue,
+                      raw: totalCitationsHeadlineStats.citationsPerPaperRaw,
+                    },
+                    {
+                      label: 'Mean yearly citations',
+                      value: totalCitationsHeadlineStats.meanCitations,
+                      raw: totalCitationsHeadlineStats.meanCitationsRaw,
+                    },
+                    {
+                      label: 'Median citations',
+                      value: totalCitationsHeadlineStats.medianCitationsValue,
+                      raw: totalCitationsHeadlineStats.medianCitationsRaw,
+                    },
+                  ]}
+                />
               </div>
             </div>
           </>
@@ -9817,18 +10595,20 @@ function GenericMetricDrilldownWorkspace({
 
         {tile.key === 'h_index_projection' && activeTab === 'context' && hIndexDrilldownStats ? (
           <>
-            <div className="house-publications-drilldown-bounded-section">
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-index scholarly context"
+                  content={formatHIndexContextTooltip(hIndexDrilldownStats)}
+                />
+              </div>
               <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title">Scholarly context</p>
+                <p className="house-drilldown-heading-block-title pr-10">Scholarly context</p>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                 <div className="space-y-3">
-                  <DrilldownNarrativeCard
-                    eyebrow="Approved story"
-                    title="Companion indices explain pace, depth, and concentration around the h-index."
-                    body={`m-index shows pace over ${hIndexDrilldownStats.yearsSinceFirstCitedPaper === null ? 'the observed career span' : `${formatInt(hIndexDrilldownStats.yearsSinceFirstCitedPaper)} citation-active years`}, g-index shows whether a few highly cited papers extend beyond the h-core, and i10-index gives a simpler count of consistently cited papers.`}
-                  />
                   <CitationEfficiencyComparisonPanel
+                    bare
                     title="Complementary indices"
                     subtitle="Companion bibliometric measures that contextualise h-index breadth, pace, and depth."
                     metrics={[
@@ -9850,6 +10630,7 @@ function GenericMetricDrilldownWorkspace({
                     ]}
                   />
                   <CanonicalTablePanel
+                    bare
                     title="Index reference table"
                     subtitle="Canonical interpretation of the companion bibliometric measures."
                     columns={[
@@ -9885,6 +10666,7 @@ function GenericMetricDrilldownWorkspace({
                     ]}
                   />
                   <CitationEfficiencyComparisonPanel
+                    bare
                     title="h-core performance"
                     subtitle="Puts h-core efficiency, concentration, and career span beside each other."
                     metrics={[
@@ -9908,6 +10690,7 @@ function GenericMetricDrilldownWorkspace({
                     ]}
                   />
                   <CanonicalTablePanel
+                    bare
                     title="h-core context table"
                     subtitle="Canonical context for concentration, efficiency, and career span."
                     columns={[
@@ -10455,9 +11238,11 @@ function HIndexTrajectoryPanel({
 function HIndexProgressInline({
   tile,
   progressLabel,
+  compact = false,
 }: {
   tile: PublicationMetricTilePayload
   progressLabel?: string
+  compact?: boolean
 }) {
   const progressMeta = buildHIndexProgressMeta(tile)
   const progressAnimationKey = useMemo(
@@ -10468,7 +11253,7 @@ function HIndexProgressInline({
   const isEntryCycle = useIsFirstChartEntry(progressAnimationKey, true)
   const progressTransitionDuration = tileChartDurationVar(isEntryCycle)
   return (
-    <div className="mt-6 w-full max-w-[11.7rem] space-y-1.5">
+    <div className={cn('w-full max-w-[11.7rem] space-y-1.5', compact ? '' : 'mt-6')}>
       {progressLabel ? (
         <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'house-metric-support-text leading-tight')}>{progressLabel}</p>
       ) : null}
@@ -10986,6 +11771,69 @@ function CitationSplitBarCard({
   )
 }
 
+function CitationConcentrationLadderCard({
+  steps,
+  bare = false,
+}: {
+  steps: CitationConcentrationLadderStep[]
+  bare?: boolean
+}) {
+  const hasSteps = steps.length > 0
+  const animationKey = useMemo(
+    () => steps.map((step) => `${step.key}:${Math.round(step.citationSharePct)}`).join('|') || 'empty',
+    [steps],
+  )
+  const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|citation-concentration`, hasSteps)
+
+  const toneClassForStep = (step: CitationConcentrationLadderStep, index: number) => {
+    if (index === 0) {
+      return HOUSE_CHART_BAR_POSITIVE_CLASS
+    }
+    if (step.label === 'Top 25%') {
+      return HOUSE_CHART_BAR_WARNING_CLASS
+    }
+    if (index === 1) {
+      return HOUSE_CHART_BAR_ACCENT_CLASS
+    }
+    return HOUSE_CHART_BAR_NEUTRAL_CLASS
+  }
+
+  return (
+    <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+      {hasSteps ? (
+        steps.map((step, index) => (
+          <div key={step.key} className="space-y-1.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-0.5">
+                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{step.label}</p>
+                <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'leading-tight')}>
+                  {`${formatInt(step.paperCount)} ${pluralize(step.paperCount, 'paper')} • ${formatPercentWhole(step.paperSharePct)} of papers`}
+                </p>
+              </div>
+              <div className="space-y-0.5 text-right">
+                <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')}>{formatPercentWhole(step.citationSharePct)}</p>
+                <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'leading-tight')}>{`${formatInt(step.citationCount)} citations`}</p>
+              </div>
+            </div>
+            <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.72rem]')}>
+              <div
+                className={cn('h-full rounded-full house-progress-fill-motion', toneClassForStep(step, index))}
+                style={{
+                  width: `${barsExpanded ? Math.max(0, Math.min(100, step.citationSharePct)) : 0}%`,
+                  transitionDuration: 'var(--motion-duration-chart-toggle)',
+                }}
+                aria-hidden="true"
+              />
+            </div>
+          </div>
+        ))
+      ) : (
+        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">No citation concentration data is available yet.</p>
+      )}
+    </div>
+  )
+}
+
 function CitationActivationStateBarCard({
   bare = false,
   segments,
@@ -11158,7 +12006,7 @@ function CitationHistogramChart({
   }
 
   return (
-    <div className="relative h-[26rem]">
+    <div className="relative h-[20rem]">
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
@@ -11867,10 +12715,12 @@ function CitationActivationHistoryChart({
 function CitationEfficiencyComparisonPanel({
   title,
   subtitle,
+  bare = false,
   metrics,
 }: {
-  title: string
-  subtitle: string
+  title?: string
+  subtitle?: string
+  bare?: boolean
   metrics: Array<{ label: string; value: string; raw: number | null }>
 }) {
   const maxRaw = Math.max(
@@ -11878,11 +12728,13 @@ function CitationEfficiencyComparisonPanel({
     ...metrics.map((metric) => Math.max(0, Number(metric.raw || 0))),
   )
   return (
-    <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-      <div className="space-y-1">
-        <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p>
-        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p>
-      </div>
+    <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+      {title || subtitle ? (
+        <div className="space-y-1">
+          {title ? <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p> : null}
+          {subtitle ? <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p> : null}
+        </div>
+      ) : null}
       <div className="space-y-3">
         {metrics.map((metric, index) => {
           const ratioPct = Math.max(0, Math.min(100, ((metric.raw || 0) / maxRaw) * 100))
@@ -12191,6 +13043,196 @@ function PublicationInsightsCallout({
   )
 }
 
+function StaticPublicationInsightsCallout({
+  title,
+  body,
+  considerationLabel = 'Why this matters',
+  consideration = '',
+  actions = [],
+  onClose,
+  usesPositiveTone = false,
+}: {
+  title: string
+  body: string
+  considerationLabel?: string
+  consideration?: string
+  actions?: PublicationInsightAction[]
+  onClose: () => void
+  usesPositiveTone?: boolean
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return
+      }
+      event.preventDefault()
+      onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  return (
+    <div
+      className={cn(
+        'relative w-full overflow-hidden rounded-[1.1rem] border px-4 py-4',
+        'border-[hsl(var(--tone-neutral-250))] bg-white',
+        'shadow-[0_30px_70px_-34px_rgba(15,23,42,0.42)]',
+      )}
+      role="dialog"
+      aria-label="Deeper insights"
+    >
+      <div
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none absolute inset-x-0 top-0 h-1',
+          usesPositiveTone ? 'bg-[hsl(var(--tone-positive-400))]' : 'bg-[hsl(var(--tone-accent-400))]',
+        )}
+      />
+      <div className="space-y-3.5">
+        <div className="flex items-start justify-between gap-3 border-b border-[hsl(var(--tone-neutral-200))] pb-2.5">
+          <div className="space-y-1">
+            <p className="text-[1rem] font-semibold leading-6 text-[hsl(var(--tone-neutral-950))]">{title}</p>
+            <p className="max-w-[20rem] text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
+              Based on your current h-index metrics.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onClose()
+              }}
+              className={cn(
+                'inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-700))] transition-colors focus-visible:outline-none focus-visible:ring-2',
+                usesPositiveTone
+                  ? 'hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-50))] hover:text-[hsl(var(--tone-positive-700))] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+                  : 'hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-700))] focus-visible:ring-[hsl(var(--tone-accent-200))]',
+              )}
+              aria-label="Close deeper insights"
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+            </button>
+          </div>
+        </div>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <p className={cn(HOUSE_METRIC_NARRATIVE_CLASS, 'text-[0.94rem] leading-7 text-[hsl(var(--tone-neutral-800))]')}>{body}</p>
+          </div>
+          {consideration ? (
+            <div
+              className={cn(
+                'rounded-[0.95rem] border px-3.5 py-3',
+                usesPositiveTone
+                  ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))]'
+                  : 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]',
+              )}
+            >
+              <div
+                className={cn(
+                  'space-y-1 border-l-2 pl-3',
+                  usesPositiveTone ? 'border-[hsl(var(--tone-positive-400))]' : 'border-[hsl(var(--tone-accent-400))]',
+                )}
+              >
+                <p className={cn(HOUSE_DRILLDOWN_STAT_TITLE_CLASS, usesPositiveTone ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-accent-700))]')}>{considerationLabel}</p>
+                <p className={cn(HOUSE_METRIC_NARRATIVE_CLASS, 'text-sm leading-6 text-[hsl(var(--tone-neutral-700))]')}>{consideration}</p>
+              </div>
+            </div>
+          ) : null}
+          {actions.length ? (
+            <div className="space-y-1.5 border-t border-[hsl(var(--tone-neutral-200))] pt-3.5">
+              <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[hsl(var(--tone-neutral-500))]">Explore next</p>
+              <div className="grid gap-2">
+                {actions.map((action) => (
+                  <button
+                    key={action.key}
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      action.onSelect()
+                    }}
+                    className={cn(
+                      'group flex items-center justify-between gap-3 rounded-[0.95rem] border px-3 py-2.5 text-left transition-colors',
+                      'border-[hsl(var(--tone-neutral-200))] bg-white',
+                      usesPositiveTone
+                        ? 'hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-50))] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+                        : 'hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] focus-visible:ring-[hsl(var(--tone-accent-200))]',
+                      'focus-visible:outline-none focus-visible:ring-2',
+                    )}
+                  >
+                    <div className="space-y-0.5 pr-2">
+                      <p className="text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))]">{action.label}</p>
+                      <p className="text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">{action.description}</p>
+                    </div>
+                    <span
+                      className={cn(
+                        'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors',
+                        usesPositiveTone
+                          ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))] group-hover:border-[hsl(var(--tone-positive-300))] group-hover:bg-[hsl(var(--tone-positive-100))]'
+                          : 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-700))] group-hover:border-[hsl(var(--tone-accent-300))] group-hover:bg-[hsl(var(--tone-accent-100))]',
+                      )}
+                    >
+                      <ArrowUpRight className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StaticPublicationInsightsOverlay({
+  open,
+  title,
+  body,
+  considerationLabel,
+  consideration,
+  actions = [],
+  onClose,
+  usesPositiveTone = false,
+}: {
+  open: boolean
+  title: string
+  body: string
+  considerationLabel?: string
+  consideration?: string
+  actions?: PublicationInsightAction[]
+  onClose: () => void
+  usesPositiveTone?: boolean
+}) {
+  if (!open) {
+    return null
+  }
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Close deeper insights"
+        className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+        onClick={onClose}
+      />
+      <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+        <div className="pointer-events-auto w-full max-w-[26rem]">
+          <StaticPublicationInsightsCallout
+            title={title}
+            body={body}
+            considerationLabel={considerationLabel}
+            consideration={consideration}
+            actions={actions}
+            onClose={onClose}
+            usesPositiveTone={usesPositiveTone}
+          />
+        </div>
+      </div>
+    </>
+  )
+}
+
 function PublicationLinkTable({
   nameColumnLabel,
   metricColumnLabel,
@@ -12327,7 +13369,7 @@ function CanonicalTablePanel({
 
   return (
     <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-      {!bare && (title || subtitle) ? (
+      {title || subtitle ? (
         <div className="space-y-1">
           {title ? <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p> : null}
           {subtitle ? <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p> : null}
@@ -12406,7 +13448,7 @@ function renderMomentumDrilldownSection({
 }): ReactNode {
   if (activeTab === 'summary') {
     return (
-      <div className="house-publications-drilldown-bounded-section">
+        <div className="house-publications-drilldown-bounded-section">
         <div className="house-drilldown-heading-block">
           <p className="house-drilldown-heading-block-title">Momentum overview</p>
         </div>
@@ -13412,6 +14454,15 @@ function renderImpactConcentrationDrilldownSection({
   stats: ImpactConcentrationDrilldownStats
   tile: PublicationMetricTilePayload
 }): ReactNode {
+  const concentrationLadderSteps = buildCitationConcentrationLadder(
+    (Array.isArray((tile.drilldown as Record<string, unknown> | undefined)?.publications)
+      ? (tile.drilldown as Record<string, unknown>).publications as Array<Record<string, unknown>>
+      : []
+    ).map((publication) => parsePublicationCitationCount(
+      publication.citations_lifetime ?? publication.citations ?? publication.cited_by_count ?? 0,
+    )),
+  )
+
   if (activeTab === 'summary') {
     return (
       <div className="house-publications-drilldown-bounded-section">
@@ -13485,6 +14536,23 @@ function renderImpactConcentrationDrilldownSection({
 
   if (activeTab === 'breakdown') {
     return (
+      <>
+        <div className="house-publications-drilldown-bounded-section">
+          <div className="house-drilldown-heading-block">
+            <p className="house-drilldown-heading-block-title">Concentration ladder</p>
+          </div>
+          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+            <div className="space-y-3">
+              <DrilldownNarrativeCard
+                eyebrow="Approved story"
+                title="The portfolio concentration is driven by a very small citation core."
+                body="Each rung shows the cumulative share of lifetime citations captured by progressively larger slices of the portfolio, so you can see whether concentration falls away quickly after the first few papers or stays steep deeper into the list."
+              />
+              <CitationConcentrationLadderCard steps={concentrationLadderSteps} bare />
+            </div>
+          </div>
+        </div>
+
       <div className="house-publications-drilldown-bounded-section">
         <div className="house-drilldown-heading-block">
           <p className="house-drilldown-heading-block-title">Top cited papers</p>
@@ -13521,6 +14589,7 @@ function renderImpactConcentrationDrilldownSection({
           </div>
         </div>
       </div>
+      </>
     )
   }
 
@@ -13860,17 +14929,21 @@ function HIndexCandidateTablePanel({
   title,
   subtitle,
   candidates,
+  bare = false,
 }: {
-  title: string
-  subtitle: string
+  title?: string
+  subtitle?: string
   candidates: HIndexDrilldownStats['candidatePapers']
+  bare?: boolean
 }) {
   return (
-    <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-      <div className="space-y-1">
-        <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p>
-        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p>
-      </div>
+    <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+      {title || subtitle ? (
+        <div className="space-y-1">
+          {title ? <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p> : null}
+          {subtitle ? <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p> : null}
+        </div>
+      ) : null}
       {candidates.length ? (
         <div className="overflow-hidden rounded-[1rem] border border-[hsl(var(--stroke-soft)/0.78)]">
           <table className="w-full border-collapse">

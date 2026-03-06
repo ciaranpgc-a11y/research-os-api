@@ -519,6 +519,67 @@ def test_publication_file_download_restores_extension_for_legacy_filename(
         assert "filename*=UTF-8''legacy-final.pdf" in disposition
 
 
+def test_parent_publication_files_include_supplementary_figshare_links(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with session_scope() as session:
+        user = User(
+            email="supp-files@example.com",
+            password_hash="test-hash",
+            name="supp-files",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        parent = Work(
+            user_id=user_id,
+            title="Validation of aortic valve pressure gradient quantification using semi-automated 4D flow CMR pipeline",
+            title_lower="validation of aortic valve pressure gradient quantification using semi-automated 4d flow cmr pipeline",
+            year=2022,
+            doi="10.1000/parent-work",
+            work_type="journal-article",
+            venue_name="Medical Teacher",
+            publisher="Taylor & Francis",
+            abstract="Parent abstract",
+            keywords=[],
+            url="https://example.org/parent",
+            provenance="manual",
+        )
+        supplementary = Work(
+            user_id=user_id,
+            title="Additional file 1 of Validation of aortic valve pressure gradient quantification using semi-automated 4D flow CMR pipeline",
+            title_lower="additional file 1 of validation of aortic valve pressure gradient quantification using semi-automated 4d flow cmr pipeline",
+            year=2022,
+            doi="10.6084/m9.figshare.123",
+            work_type="data-set",
+            venue_name="Figshare",
+            publisher="Figshare",
+            abstract="Supplementary file",
+            keywords=[],
+            url="https://figshare.com/articles/dataset/example/123",
+            provenance="manual",
+        )
+        session.add_all([parent, supplementary])
+        session.flush()
+        parent_id = str(parent.id)
+
+    payload = publication_console_service.list_publication_files(
+        user_id=user_id,
+        publication_id=parent_id,
+    )
+
+    assert len(payload["items"]) == 1
+    item = payload["items"][0]
+    assert item["source"] == "SUPPLEMENTARY_LINK"
+    assert item["label"] == "Supplementary material"
+    assert item["can_delete"] is False
+    assert item["download_url"] == "https://figshare.com/articles/dataset/example/123"
+
+
 def test_structured_abstract_payload_uses_model_when_quality_guard_passes(
     monkeypatch, tmp_path
 ) -> None:

@@ -23,6 +23,7 @@ from research_os.db import (
     create_all_tables,
     session_scope,
 )
+from research_os.services.supplementary_work_service import primary_publication_records
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -662,6 +663,7 @@ def _resolve_openalex_author_id(
 def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[str, Any]:
     _resolve_user_or_raise(session, user_id)
     works = session.scalars(select(Work).where(Work.user_id == user_id)).all()
+    works = primary_publication_records(works)
     work_ids = [str(work.id) for work in works]
     now = _coerce_utc(computed_at)
     now_iso = _to_iso_utc(now)

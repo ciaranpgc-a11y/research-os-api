@@ -1,4 +1,4 @@
-import { fetchCollaborationMetricsSummary, listCollaborators, listCollaboratorsSharedWorks } from '@/lib/impact-api'
+import { fetchCollaborationLanding, listCollaborators, listCollaboratorsSharedWorks } from '@/lib/impact-api'
 import { readScopedStorageItem, removeScopedStorageItem, writeScopedStorageItem } from '@/lib/user-scoped-storage'
 import type { CollaboratorSharedWorkPayload, CollaboratorsListPayload, CollaborationMetricsSummaryPayload } from '@/types/impact'
 
@@ -205,9 +205,8 @@ export function writeCachedCollaborationLandingData(payload: CollaborationLandin
 }
 
 export async function prefetchCollaborationLandingData(token: string): Promise<void> {
-  const [summary, listing, sharedWorksPayload] = await Promise.all([
-    fetchCollaborationMetricsSummary(token),
-    fetchCollaboratorsPageForCollaborationPage(token, {
+  const [landing, sharedWorksPayload] = await Promise.all([
+    fetchCollaborationLanding(token, {
       query: DEFAULT_COLLABORATION_QUERY,
       sort: DEFAULT_COLLABORATION_SORT,
       page: DEFAULT_COLLABORATION_PAGE,
@@ -220,8 +219,8 @@ export async function prefetchCollaborationLandingData(token: string): Promise<v
     sort: DEFAULT_COLLABORATION_SORT,
     page: DEFAULT_COLLABORATION_PAGE,
     pageSize: DEFAULT_COLLABORATION_PAGE_SIZE,
-    summary,
-    listing,
+    summary: landing.summary,
+    listing: landing.listing,
     sharedWorksByCollaboratorId: sharedWorksPayload.items_by_collaborator_id || {},
   })
 }

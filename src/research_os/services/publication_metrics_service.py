@@ -28,6 +28,7 @@ from research_os.db import (
     session_scope,
 )
 from research_os.services.api_telemetry_service import record_api_usage_event
+from research_os.services.supplementary_work_service import primary_publication_records
 
 logger = logging.getLogger(__name__)
 
@@ -2378,6 +2379,7 @@ def _upsert_source_cache(
 def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str, Any]:
     user = _resolve_user_or_raise(session, user_id)
     works = session.scalars(select(Work).where(Work.user_id == user_id)).all()
+    works = primary_publication_records(works)
     now = _coerce_utc(computed_at)
     if not works:
         return {

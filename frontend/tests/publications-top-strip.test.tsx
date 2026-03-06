@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildCitationHistogramBuckets, buildLineTicksFromRange } from '@/components/publications/PublicationsTopStrip'
+import { buildCitationConcentrationLadder, buildCitationHistogramBuckets, buildCitationMomentumLists, buildLineTicksFromRange } from '@/components/publications/PublicationsTopStrip'
 import {
   buildTotalCitationsHeadlineMetricTiles,
   buildTotalCitationsHeadlineStats,
@@ -170,5 +170,44 @@ describe('buildCitationHistogramBuckets', () => {
       '1000+',
     ])
     expect(buckets.map((bucket) => bucket.count)).toEqual([1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1])
+  })
+})
+
+describe('buildCitationConcentrationLadder', () => {
+  it('builds cumulative lifetime citation shares for the standard fixed ladder counts', () => {
+    const steps = buildCitationConcentrationLadder([100, 50, 25, 10, 5, 5, 0, 0, 0, 0, 0, 0])
+
+    expect(steps.map((step) => step.label)).toEqual(['Top 1 paper', 'Top 3 papers', 'Top 5 papers', 'Top 10 papers'])
+    expect(steps.map((step) => step.paperCount)).toEqual([1, 3, 5, 10])
+    expect(steps.map((step) => step.citationCount)).toEqual([100, 175, 190, 195])
+    expect(steps[0]?.citationSharePct).toBeCloseTo(51.28, 1)
+    expect(steps[1]?.citationSharePct).toBeCloseTo(89.74, 1)
+  })
+
+  it('adds a top-25-percent rung when it is distinct from the fixed ladder counts', () => {
+    const steps = buildCitationConcentrationLadder(Array.from({ length: 30 }, (_, index) => 30 - index))
+
+    expect(steps.map((step) => step.label)).toEqual(['Top 1 paper', 'Top 3 papers', 'Top 5 papers', 'Top 25%', 'Top 10 papers'])
+    expect(steps.map((step) => step.paperCount)).toEqual([1, 3, 5, 8, 10])
+    expect(steps.find((step) => step.label === 'Top 25%')?.citationCount).toBe(212)
+  })
+})
+
+describe('buildCitationMomentumLists', () => {
+  it('surfaces older sleeping papers and older fresh-pickup papers from rolling citation counts', () => {
+    const { sleeping, freshPickup } = buildCitationMomentumLists([
+      { workId: 'sleep-a', year: 2016, title: 'Sleep A', citations: 120, citations1yRolling: 0, citations3yRolling: 12 },
+      { workId: 'sleep-b', year: 2018, title: 'Sleep B', citations: 35, citations1yRolling: 1, citations3yRolling: 7 },
+      { workId: 'quiet-young', year: 2025, title: 'Quiet Young', citations: 50, citations1yRolling: 0, citations3yRolling: 0 },
+      { workId: 'fresh-a', year: 2017, title: 'Fresh A', citations: 28, citations1yRolling: 8, citations3yRolling: 10 },
+      { workId: 'fresh-b', year: 2015, title: 'Fresh B', citations: 70, citations1yRolling: 12, citations3yRolling: 15 },
+      { workId: 'steady', year: 2014, title: 'Steady', citations: 200, citations1yRolling: 10, citations3yRolling: 30 },
+      { workId: 'new-burst', year: 2024, title: 'New Burst', citations: 9, citations1yRolling: 6, citations3yRolling: 6 },
+    ], { referenceYear: 2026 })
+
+    expect(sleeping.map((record) => record.workId)).toEqual(['sleep-a', 'sleep-b'])
+    expect(freshPickup.map((record) => record.workId)).toEqual(['fresh-b', 'fresh-a'])
+    expect(sleeping.some((record) => record.workId === 'quiet-young')).toBe(false)
+    expect(freshPickup.some((record) => record.workId === 'new-burst')).toBe(false)
   })
 })

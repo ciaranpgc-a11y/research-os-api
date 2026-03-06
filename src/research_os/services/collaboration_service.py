@@ -23,6 +23,7 @@ from research_os.db import (
     Author,
     Collaborator,
     CollaboratorAffiliation,
+    CollaborationLandingCache,
     CollaborationMetric,
     Manuscript,
     ManuscriptAffiliation,
@@ -759,6 +760,260 @@ def _serialize_collaborator(
     }
 
 
+def _json_safe_data(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return _coerce_utc(value).isoformat()
+    if isinstance(value, dict):
+        return {str(key): _json_safe_data(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_data(item) for item in value]
+    return value
+
+
+def _serialize_shared_work_item(work: Work) -> dict[str, Any]:
+    return {
+        "work_id": str(work.id),
+        "title": re.sub(r"\s+", " ", str(work.title or "").strip())
+        or "Untitled publication",
+        "year": work.year,
+        "venue_name": re.sub(
+            r"\s+", " ", str(work.venue_name or work.journal or "").strip()
+        )
+        or None,
+        "publication_type": re.sub(
+            r"\s+",
+            " ",
+            str(work.publication_type or work.work_type or "").strip(),
+        )
+        or None,
+        "citations_total": max(0, int(work.citations_total or 0)),
+    }
+
+
+def _build_shared_work_items(
+    *, shared_work_ids: set[str], work_by_id: dict[str, Work]
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for work_id in shared_work_ids:
+        work = work_by_id.get(work_id)
+        if work is None:
+            continue
+        items.append(_serialize_shared_work_item(work))
+    items.sort(
+        key=lambda item: (
+            -(int(item["year"]) if isinstance(item.get("year"), int) else -1),
+            str(item.get("title") or "").lower(),
+        )
+    )
+    return items
+
+
+def _build_shared_work_items_by_collaborator(
+    *,
+    collaborators: list[Collaborator],
+    collaborator_groups: dict[str, list[Collaborator]],
+    collaborator_to_key: dict[str, str],
+    shared_by_collaborator: dict[str, set[str]],
+    work_by_id: dict[str, Work],
+) -> dict[str, list[dict[str, Any]]]:
+    items_by_group_key: dict[str, list[dict[str, Any]]] = {}
+    for group_key, members in collaborator_groups.items():
+        shared_work_ids: set[str] = set()
+        for member in members:
+            shared_work_ids.update(shared_by_collaborator.get(str(member.id), set()))
+        items_by_group_key[group_key] = _build_shared_work_items(
+            shared_work_ids=shared_work_ids,
+            work_by_id=work_by_id,
+        )
+    items_by_collaborator_id: dict[str, list[dict[str, Any]]] = {}
+    for collaborator in collaborators:
+        collaborator_id = str(collaborator.id)
+        group_key = collaborator_to_key.get(collaborator_id, collaborator_id)
+        items_by_collaborator_id[collaborator_id] = list(
+            items_by_group_key.get(group_key, [])
+        )
+    return items_by_collaborator_id
+
+
+def _load_collaboration_work_context(
+    *, session: Session, user_id: str
+) -> tuple[list[Work], dict[str, Work], list[WorkAuthorship], dict[str, Author]]:
+    works = session.scalars(select(Work).where(Work.user_id == user_id)).all()
+    work_by_id = {str(work.id): work for work in works}
+    work_ids = list(work_by_id.keys())
+    authorships = session.scalars(
+        select(WorkAuthorship).where(
+            WorkAuthorship.work_id.in_(work_ids or [""]),
+            WorkAuthorship.is_user.is_(False),
+        )
+    ).all()
+    author_ids = list({str(item.author_id) for item in authorships})
+    authors = session.scalars(select(Author).where(Author.id.in_(author_ids or [""]))).all()
+    authors_by_id = {str(author.id): author for author in authors}
+    return works, work_by_id, authorships, authors_by_id
+
+
+def _build_collaboration_landing_payload(
+    *,
+    session: Session,
+    user_id: str,
+    now: datetime | None = None,
+    collaborators: list[Collaborator] | None = None,
+    metrics_rows: dict[str, CollaborationMetric] | None = None,
+    work_by_id: dict[str, Work] | None = None,
+    shared_by_collaborator: dict[str, set[str]] | None = None,
+    collaborator_groups: dict[str, list[Collaborator]] | None = None,
+    collaborator_to_key: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    effective_now = _coerce_utc(now) if isinstance(now, datetime) else _utcnow()
+    if collaborators is None or metrics_rows is None:
+        collaborators, metrics_rows = _collaborator_rows_with_metrics(
+            session,
+            user_id=user_id,
+            for_update=False,
+        )
+    collaborator_groups = (
+        collaborator_groups
+        if collaborator_groups is not None and collaborator_to_key is not None
+        else _collaborator_groups(collaborators)
+    )
+    if isinstance(collaborator_groups, tuple):
+        collaborator_groups, collaborator_to_key = collaborator_groups
+    if collaborator_to_key is None:
+        _, collaborator_to_key = _collaborator_groups(collaborators)
+    listing_items = _canonicalize_collaborator_payloads(
+        session,
+        collaborators=collaborators,
+        metrics_by_collaborator=metrics_rows,
+    )
+    summary = _build_summary_response(
+        collaborators=collaborators,
+        metrics_rows=metrics_rows,
+        now=effective_now,
+    )
+    if work_by_id is None or shared_by_collaborator is None:
+        _, work_by_id, authorships, authors_by_id = _load_collaboration_work_context(
+            session=session,
+            user_id=user_id,
+        )
+        shared_by_collaborator = _build_collaboration_work_index(
+            collaborators=collaborators,
+            works=list(work_by_id.values()),
+            authorships=authorships,
+            authors_by_id=authors_by_id,
+        )
+    shared_works_by_collaborator_id = _build_shared_work_items_by_collaborator(
+        collaborators=collaborators,
+        collaborator_groups=collaborator_groups,
+        collaborator_to_key=collaborator_to_key,
+        shared_by_collaborator=shared_by_collaborator,
+        work_by_id=work_by_id,
+    )
+    return {
+        "summary": summary,
+        "listing": {
+            "items": listing_items,
+            "page": 1,
+            "page_size": max(1, len(listing_items)),
+            "total": len(listing_items),
+            "has_more": False,
+        },
+        "sharedWorksByCollaboratorId": shared_works_by_collaborator_id,
+    }
+
+
+def _upsert_collaboration_landing_cache(
+    *,
+    session: Session,
+    user_id: str,
+    payload: dict[str, Any],
+    computed_at: datetime | None = None,
+    status: str = READY_STATUS,
+    last_error: str | None = None,
+) -> None:
+    row = session.scalars(
+        select(CollaborationLandingCache).where(
+            CollaborationLandingCache.owner_user_id == user_id
+        )
+    ).first()
+    if row is None:
+        row = CollaborationLandingCache(owner_user_id=user_id)
+        session.add(row)
+    row.payload_json = _json_safe_data(payload)
+    row.computed_at = _coerce_utc_or_none(computed_at)
+    row.status = _normalize_status(status)
+    row.last_error = (
+        str(last_error or "").strip()[:2000] if str(last_error or "").strip() else None
+    )
+    session.flush()
+
+
+def _read_collaboration_landing_cache(
+    *, session: Session, user_id: str
+) -> dict[str, Any] | None:
+    row = session.scalars(
+        select(CollaborationLandingCache).where(
+            CollaborationLandingCache.owner_user_id == user_id
+        )
+    ).first()
+    payload = row.payload_json if row and isinstance(row.payload_json, dict) else None
+    if not isinstance(payload, dict):
+        return None
+    summary = payload.get("summary")
+    listing = payload.get("listing")
+    shared_works_by_collaborator_id = payload.get("sharedWorksByCollaboratorId")
+    if not isinstance(summary, dict) or not isinstance(listing, dict):
+        return None
+    if not isinstance(listing.get("items"), list):
+        return None
+    if not isinstance(shared_works_by_collaborator_id, dict):
+        shared_works_by_collaborator_id = {}
+    return {
+        "summary": summary,
+        "listing": listing,
+        "sharedWorksByCollaboratorId": shared_works_by_collaborator_id,
+    }
+
+
+def _collaborator_row_matches_query(row: dict[str, Any], clean_query: str) -> bool:
+    if not clean_query:
+        return True
+    haystack: list[str] = []
+    for key in (
+        "full_name",
+        "preferred_name",
+        "email",
+        "secondary_email",
+        "contact_first_name",
+        "contact_surname",
+        "contact_email",
+        "contact_secondary_email",
+        "orcid_id",
+        "openalex_author_id",
+        "primary_institution",
+        "country",
+        "contact_country",
+        "current_position",
+    ):
+        haystack.append(re.sub(r"\s+", " ", str(row.get(key) or "").strip().lower()))
+    for key in ("research_domains", "institution_labels"):
+        values = row.get(key)
+        if not isinstance(values, list):
+            continue
+        haystack.extend(
+            re.sub(r"\s+", " ", str(value or "").strip().lower()) for value in values
+        )
+    return any(clean_query in value for value in haystack if value)
+
+
+def _filter_collaborator_rows(
+    rows: list[dict[str, Any]], *, clean_query: str
+) -> list[dict[str, Any]]:
+    if not clean_query:
+        return list(rows)
+    return [row for row in rows if _collaborator_row_matches_query(row, clean_query)]
+
+
 def _affiliation_similarity(a: str | None, b: str | None) -> float:
     left = _normalize_name_lower(a or "")
     right = _normalize_name_lower(b or "")
@@ -1026,34 +1281,25 @@ def list_collaborators_for_user(
     page_size = max(1, min(int(page_size or 50), 200))
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
-        base_query = select(Collaborator).where(Collaborator.owner_user_id == user_id)
-        if clean_query:
-            search_like = f"%{clean_query}%"
-            base_query = base_query.where(
-                or_(
-                    func.lower(Collaborator.full_name).like(search_like),
-                    func.lower(Collaborator.contact_first_name).like(search_like),
-                    func.lower(Collaborator.contact_surname).like(search_like),
-                    func.lower(Collaborator.contact_email).like(search_like),
-                    func.lower(Collaborator.contact_secondary_email).like(search_like),
-                    func.lower(Collaborator.email).like(search_like),
-                    func.lower(Collaborator.secondary_email).like(search_like),
-                    func.lower(Collaborator.orcid_id).like(search_like),
-                    func.lower(Collaborator.contact_primary_institution).like(search_like),
-                    func.lower(Collaborator.primary_institution).like(search_like),
-                    func.lower(Collaborator.contact_country).like(search_like),
-                )
-            )
-        collaborators = session.scalars(base_query).all()
-        metrics_by_collaborator = _metric_by_collaborator(
-            session,
+        cached_payload = _read_collaboration_landing_cache(
+            session=session,
             user_id=user_id,
-            collaborator_ids=[str(item.id) for item in collaborators],
         )
-        rows = _canonicalize_collaborator_payloads(
-            session,
-            collaborators=collaborators,
-            metrics_by_collaborator=metrics_by_collaborator,
+        if cached_payload is None:
+            cached_payload = _build_collaboration_landing_payload(
+                session=session,
+                user_id=user_id,
+            )
+            _upsert_collaboration_landing_cache(
+                session=session,
+                user_id=user_id,
+                payload=cached_payload,
+                computed_at=_utcnow(),
+                status=str(cached_payload.get("summary", {}).get("status") or READY_STATUS),
+            )
+        rows = _filter_collaborator_rows(
+            list(cached_payload["listing"].get("items") or []),
+            clean_query=clean_query,
         )
         rows.sort(key=lambda item: _collab_sort_key(item, sort))
         total = len(rows)
@@ -1278,11 +1524,24 @@ def list_collaborator_shared_works_for_user(
             user_id=user_id,
             collaborator_id=collaborator_id,
         )
-        items_by_collaborator_id = _list_shared_works_by_collaborator_for_user(
+        cached_payload = _read_collaboration_landing_cache(
             session=session,
             user_id=user_id,
         )
-        return {"items": items_by_collaborator_id.get(str(collaborator.id), [])}
+        if cached_payload is None:
+            cached_payload = _build_collaboration_landing_payload(
+                session=session,
+                user_id=user_id,
+            )
+            _upsert_collaboration_landing_cache(
+                session=session,
+                user_id=user_id,
+                payload=cached_payload,
+                computed_at=_utcnow(),
+                status=str(cached_payload.get("summary", {}).get("status") or READY_STATUS),
+            )
+        items_by_collaborator_id = cached_payload["sharedWorksByCollaboratorId"]
+        return {"items": list(items_by_collaborator_id.get(str(collaborator.id), []))}
 
 
 def list_collaborators_shared_works_for_user(
@@ -1291,11 +1550,25 @@ def list_collaborators_shared_works_for_user(
 ) -> dict[str, Any]:
     create_all_tables()
     with session_scope() as session:
-        return {
-            "items_by_collaborator_id": _list_shared_works_by_collaborator_for_user(
+        _resolve_user_or_raise(session, user_id)
+        cached_payload = _read_collaboration_landing_cache(
+            session=session,
+            user_id=user_id,
+        )
+        if cached_payload is None:
+            cached_payload = _build_collaboration_landing_payload(
                 session=session,
                 user_id=user_id,
             )
+            _upsert_collaboration_landing_cache(
+                session=session,
+                user_id=user_id,
+                payload=cached_payload,
+                computed_at=_utcnow(),
+                status=str(cached_payload.get("summary", {}).get("status") or READY_STATUS),
+            )
+        return {
+            "items_by_collaborator_id": cached_payload["sharedWorksByCollaboratorId"]
         }
 
 
@@ -2216,6 +2489,28 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
             for_update=True,
         )
         if not collaborators:
+            empty_payload = {
+                "summary": _build_summary_response(
+                    collaborators=[],
+                    metrics_rows={},
+                    now=now,
+                ),
+                "listing": {
+                    "items": [],
+                    "page": 1,
+                    "page_size": 1,
+                    "total": 0,
+                    "has_more": False,
+                },
+                "sharedWorksByCollaboratorId": {},
+            }
+            _upsert_collaboration_landing_cache(
+                session=session,
+                user_id=user_id,
+                payload=empty_payload,
+                computed_at=now,
+                status=READY_STATUS,
+            )
             return {
                 "updated_collaborators": 0,
                 "computed_at": now,
@@ -2390,6 +2685,24 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
         for orphan in orphan_rows:
             session.delete(orphan)
         session.flush()
+        landing_payload = _build_collaboration_landing_payload(
+            session=session,
+            user_id=user_id,
+            now=now,
+            collaborators=collaborators,
+            metrics_rows=existing_rows,
+            work_by_id=work_by_id,
+            shared_by_collaborator=shared_by_collaborator,
+            collaborator_groups=collaborator_groups,
+            collaborator_to_key=collaborator_to_key,
+        )
+        _upsert_collaboration_landing_cache(
+            session=session,
+            user_id=user_id,
+            payload=landing_payload,
+            computed_at=now,
+            status=READY_STATUS,
+        )
         return {
             "updated_collaborators": len(collaborators),
             "computed_at": now,

@@ -924,11 +924,13 @@ export type PublicationFilePayload = {
   id: string
   file_name: string
   file_type: 'PDF' | 'DOCX' | 'OTHER'
-  source: 'OA_LINK' | 'USER_UPLOAD'
+  source: 'OA_LINK' | 'USER_UPLOAD' | 'SUPPLEMENTARY_LINK'
   oa_url: string | null
   checksum: string | null
   created_at: string
   download_url: string | null
+  label: string
+  can_delete: boolean
 }
 
 export type PublicationFilesListPayload = {
@@ -1036,6 +1038,12 @@ export type CollaborationMetricsSummaryPayload = {
   is_stale: boolean
   is_updating: boolean
   last_update_failed: boolean
+}
+
+export type CollaborationLandingPayload = {
+  summary: CollaborationMetricsSummaryPayload
+  listing: CollaboratorsListPayload
+  items_by_collaborator_id: Record<string, CollaboratorSharedWorkPayload[]>
 }
 
 export type CollaborationImportOpenAlexPayload = {

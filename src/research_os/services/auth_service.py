@@ -277,6 +277,13 @@ def _signin_reconcile_async_enabled() -> bool:
     }
 
 
+def _signin_reconcile_enabled() -> bool:
+    disabled = str(os.getenv("RO_DISABLE_SIGNIN_RECONCILE", "")).strip().lower()
+    if disabled in {"1", "true", "yes", "on"}:
+        return False
+    return not bool(os.getenv("PYTEST_CURRENT_TEST", "").strip())
+
+
 def _signin_reconcile_min_interval_seconds() -> int:
     raw = str(os.getenv("AUTH_SIGNIN_RECONCILE_MIN_INTERVAL_SECONDS", "900")).strip()
     try:
@@ -310,6 +317,8 @@ def _reconcile_data_library_sync(
 def _reconcile_data_library_after_sign_in(
     *, user_id: str, account_key_hint: str | None = None
 ) -> None:
+    if not _signin_reconcile_enabled():
+        return
     clean_user_id = str(user_id or "").strip()
     if not clean_user_id:
         return
