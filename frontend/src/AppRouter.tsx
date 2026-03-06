@@ -36,6 +36,26 @@ import { WorkspaceInboxPage } from '@/pages/workspace-inbox-page'
 import { WorkspaceExportsPage } from '@/pages/workspace-exports-page'
 import { useWorkspaceStore } from '@/store/use-workspace-store'
 
+const AUTH_ME_TIMEOUT_MS = 8000
+
+function fetchMeWithTimeout(token: string) {
+  return new Promise<Awaited<ReturnType<typeof fetchMe>>>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error('Auth session check timed out.'))
+    }, AUTH_ME_TIMEOUT_MS)
+
+    void fetchMe(token)
+      .then((user) => {
+        window.clearTimeout(timer)
+        resolve(user)
+      })
+      .catch((error) => {
+        window.clearTimeout(timer)
+        reject(error)
+      })
+  })
+}
+
 function WorkspaceRedirect({ suffix }: { suffix: string }) {
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
   const workspaceId = activeWorkspaceId || 'hf-registry'
@@ -81,7 +101,7 @@ function RequireSignIn() {
     }
     let cancelled = false
     setStatus('checking')
-    void fetchMe(token)
+    void fetchMeWithTimeout(token)
       .then((user) => {
         if (cancelled) {
           return
@@ -130,7 +150,7 @@ function RequireAdmin() {
     }
     let cancelled = false
     setStatus('checking')
-    void fetchMe(token)
+    void fetchMeWithTimeout(token)
       .then((user) => {
         if (cancelled) {
           return

@@ -209,7 +209,7 @@ const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
 const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
-const COLLABORATORS_PAGE_SIZE_DEFAULT: CollaborationTablePageSize = 50
+const COLLABORATORS_PAGE_SIZE_DEFAULT = 50
 const AFFILIATION_LOOKUP_DEBOUNCE_MS = 60
 const HEATMAP_TOP_CELL_LIMIT = 24
 const HEATMAP_OTHERS_KEY = '__others__'
@@ -4414,13 +4414,6 @@ export function ProfileCollaborationPage() {
                             return (
                               <TableCell key={`${item.id}-institution`} className="house-table-cell-text align-top whitespace-normal break-words leading-tight">
                                 {collaboratorDisplayInstitution(item) || '-'}
-                              </TableCell>
-                            )
-                          }
-                          if (columnKey === '__never__') {
-                            return (
-                              <TableCell key={`${item.id}-institution`} className="house-table-cell-text align-top whitespace-normal break-words leading-tight">
-                                {item.institution_labels.join(' • ') || item.primary_institution || '-'}
                               </TableCell>
                             )
                           }
