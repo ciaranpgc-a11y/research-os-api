@@ -1358,6 +1358,7 @@ def _list_shared_works_by_collaborator_for_user(
                         str(work.publication_type or work.work_type or "").strip(),
                     )
                     or None,
+                    "citations_total": max(0, int(work.citations_total or 0)),
                 }
             )
         items.sort(

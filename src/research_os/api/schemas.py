@@ -2240,6 +2240,7 @@ class CollaboratorSharedWorkResponse(BaseModel):
     year: int | None = None
     venue_name: str | None = None
     publication_type: str | None = None
+    citations_total: int = 0
 
 
 class CollaboratorSharedWorksListResponse(BaseModel):

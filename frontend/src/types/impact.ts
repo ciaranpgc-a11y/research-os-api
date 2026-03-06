@@ -1007,6 +1007,7 @@ export type CollaboratorSharedWorkPayload = {
   year: number | null
   venue_name: string | null
   publication_type: string | null
+  citations_total: number
 }
 
 export type CollaboratorSharedWorksListPayload = {

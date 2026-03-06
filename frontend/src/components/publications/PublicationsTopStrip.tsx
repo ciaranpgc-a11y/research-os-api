@@ -11201,20 +11201,13 @@ function CitationHistogramChart({
                 const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / scaledMax) * 100)
                 const isActive = hoveredIndex === index
                 return (
-                  <Tooltip key={bucket.key}>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="relative flex h-full min-h-0 flex-1 items-end rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
-                        onMouseEnter={() => setHoveredIndex(index)}
-                        onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                        onFocus={() => setHoveredIndex(index)}
-                        onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
-                        aria-label={`${bucket.label} citations: ${formatInt(bucket.count)} ${pluralize(bucket.count, 'paper')}, ${Math.round(bucket.sharePct)}% of papers`}
-                      >
-                        <span
+                  <div key={bucket.key} className="relative flex h-full min-h-0 flex-1 items-end">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
                           className={cn(
-                            'block w-full rounded',
+                            'relative block w-full rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
                             HOUSE_TOGGLE_CHART_BAR_CLASS,
                             toneClassForBucket(bucket),
                             isActive && 'brightness-[1.08] saturate-[1.14]',
@@ -11226,22 +11219,27 @@ function CitationHistogramChart({
                             transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
                             transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
                           }}
+                          onMouseEnter={() => setHoveredIndex(index)}
+                          onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                          onFocus={() => setHoveredIndex(index)}
+                          onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                          aria-label={`${bucket.label} citations: ${formatInt(bucket.count)} ${pluralize(bucket.count, 'paper')}, ${Math.round(bucket.sharePct)}% of papers`}
                         />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="top"
-                      align="center"
-                      sideOffset={8}
-                      className="house-approved-tooltip max-w-[16rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
-                    >
-                      <div className="space-y-1">
-                        <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{`${bucket.label} citations`}</p>
-                        <p>{`${formatInt(bucket.count)} ${pluralize(bucket.count, 'paper')}`}</p>
-                        <p>{`${Math.round(bucket.sharePct)}% of publication set`}</p>
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="top"
+                        align="center"
+                        sideOffset={3}
+                        className="house-approved-tooltip max-w-[16rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                      >
+                        <div className="space-y-1">
+                          <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{`${bucket.label} citations`}</p>
+                          <p>{`${formatInt(bucket.count)} ${pluralize(bucket.count, 'paper')}`}</p>
+                          <p>{`${Math.round(bucket.sharePct)}% of publication set`}</p>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 )
               })}
             </div>

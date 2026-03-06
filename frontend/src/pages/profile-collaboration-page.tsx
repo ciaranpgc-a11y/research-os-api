@@ -10,7 +10,7 @@ import {
   SectionHeader,
   Stack,
 } from '@/components/primitives'
-import { SectionMarker, SectionToolDivider, SectionTools } from '@/components/patterns'
+import { InsightsGlyph, SectionMarker, SectionToolDivider, SectionTools } from '@/components/patterns'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { houseLayout, houseTables } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
@@ -158,6 +158,7 @@ type CollaborationSortField =
   | 'activity_status'
 type CollaboratorDrilldownTab = 'details' | 'history' | 'actions'
 type CollaboratorHistoryWindowMode = '1y' | '3y' | '5y' | 'all'
+type CollaboratorSharedWorksSortField = 'title' | 'year' | 'citations_total'
 type SortDirection = 'asc' | 'desc'
 type CollaborationTableColumnPreference = {
   visible: boolean
@@ -242,9 +243,9 @@ const COLLABORATOR_SALUTATION_OPTIONS = [
   'Hon',
 ] as const
 const COLLABORATOR_HISTORY_WINDOW_OPTIONS: Array<{ value: CollaboratorHistoryWindowMode; label: string }> = [
-  { value: '1y', label: '1' },
-  { value: '3y', label: '3' },
-  { value: '5y', label: '5' },
+  { value: '1y', label: '1y' },
+  { value: '3y', label: '3y' },
+  { value: '5y', label: '5y' },
   { value: 'all', label: 'Life' },
 ]
 const COLLABORATION_TABLE_COLUMN_ORDER: CollaborationTableColumnKey[] = [
@@ -312,8 +313,7 @@ const COLLABORATION_TABLE_COLUMN_MAX_WIDTH: Record<CollaborationTableColumnKey, 
 }
 const COLLABORATION_TABLE_COLUMN_HARD_MIN = 56
 const COLLABORATION_TABLE_LAYOUT_FALLBACK_WIDTH = 1080
-const COLLABORATOR_SHARED_WORKS_PRELOAD_COUNT = 6
-const COLLABORATOR_SHARED_WORKS_PRELOAD_CONCURRENCY = 2
+const ENABLE_COLLABORATION_DEV_MOCKS = import.meta.env.DEV && import.meta.env.VITE_USE_COLLABORATION_MOCKS === 'true'
 
 function normalizeSalutationToken(value: string): string {
   return String(value || '').trim().replace(/\.+$/g, '').toLowerCase()
@@ -1491,12 +1491,15 @@ export function ProfileCollaborationPage() {
   const [error, setError] = useState('')
   const [, setDuplicateWarnings] = useState<string[]>([])
   const [sharedWorksWindowMode, setSharedWorksWindowMode] = useState<CollaboratorHistoryWindowMode>('all')
-  const [sharedWorksByCollaboratorId, setSharedWorksByCollaboratorId] = useState<Record<string, CollaboratorSharedWorkPayload[]>>({})
+  const [sharedWorksSortField, setSharedWorksSortField] = useState<CollaboratorSharedWorksSortField>('year')
+  const [sharedWorksSortDirection, setSharedWorksSortDirection] = useState<SortDirection>('desc')
+  const [sharedWorksByCollaboratorId, setSharedWorksByCollaboratorId] = useState<Record<string, CollaboratorSharedWorkPayload[]>>(
+    () => initialCachedLandingData?.sharedWorksByCollaboratorId || {},
+  )
   const [sharedWorksLoadingByCollaboratorId, setSharedWorksLoadingByCollaboratorId] = useState<Record<string, boolean>>({})
   const [sharedWorksErrorByCollaboratorId, setSharedWorksErrorByCollaboratorId] = useState<Record<string, string>>({})
   const collaboratorInstitutionLookupSequenceRef = useRef(0)
   const sharedWorksRequestInFlightRef = useRef<Set<string>>(new Set())
-  const sharedWorksBulkPreloadStartedRef = useRef(false)
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>(() => normalizeHeatmapMode(searchParams.get('heatmap_mode')))
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>(
     () => normalizeHeatmapMetric(searchParams.get('heatmap_metric')),
@@ -1568,7 +1571,7 @@ export function ProfileCollaborationPage() {
 
   // Mock data for dev visualization
   useEffect(() => {
-    if (import.meta.env.DEV && import.meta.env.VITE_AUTH_BYPASS === 'true' && !listing) {
+    if (ENABLE_COLLABORATION_DEV_MOCKS && !listing) {
       const mockCollaborators = [
         {
           id: '1',
@@ -2210,6 +2213,10 @@ export function ProfileCollaborationPage() {
 
   const duplicateRecordDelta = Math.max(0, (listing?.items?.length || 0) - canonicalCollaborators.length)
   const hasCompleteListing = useMemo(() => isCollaboratorsListComplete(listing), [listing])
+  const totalCollaboratorsMetric = summary?.total_collaborators ?? (hasCompleteListing ? canonicalCollaborators.length : null)
+  const coreCollaboratorsMetric = summary?.core_collaborators ?? null
+  const activeCollaborationsMetric = summary?.active_collaborations_12m ?? null
+  const newCollaboratorsMetric = summary?.new_collaborators_12m ?? null
 
   const selectedCollaborator = useMemo(() => {
     return canonicalCollaborators.find((item) => item.id === selectedId) || null
@@ -2236,10 +2243,54 @@ export function ProfileCollaborationPage() {
       typeof item.year === 'number' && item.year >= yearFloor
     ))
   }, [selectedCollaboratorSharedWorks, sharedWorksWindowMode])
+  const sortedSelectedCollaboratorSharedWorks = useMemo(() => {
+    const collator = new Intl.Collator('en-GB', { numeric: true, sensitivity: 'base' })
+    const items = [...filteredSelectedCollaboratorSharedWorks]
+    items.sort((left, right) => {
+      const titleCompare = collator.compare(left.title, right.title)
+      if (sharedWorksSortField === 'title') {
+        if (titleCompare !== 0) {
+          return sharedWorksSortDirection === 'asc' ? titleCompare : -titleCompare
+        }
+        return 0
+      }
+      if (sharedWorksSortField === 'year') {
+        if (left.year == null && right.year != null) {
+          return 1
+        }
+        if (left.year != null && right.year == null) {
+          return -1
+        }
+        if (left.year != null && right.year != null && left.year !== right.year) {
+          return sharedWorksSortDirection === 'asc'
+            ? left.year - right.year
+            : right.year - left.year
+        }
+        return titleCompare
+      }
+      const leftCitations = Math.max(0, Number(left.citations_total || 0))
+      const rightCitations = Math.max(0, Number(right.citations_total || 0))
+      if (leftCitations !== rightCitations) {
+        return sharedWorksSortDirection === 'asc'
+          ? leftCitations - rightCitations
+          : rightCitations - leftCitations
+      }
+      return titleCompare
+    })
+    return items
+  }, [filteredSelectedCollaboratorSharedWorks, sharedWorksSortDirection, sharedWorksSortField])
   const sharedWorksWindowThumbStyle = useMemo(
     () => collaboratorHistoryWindowThumbStyle(sharedWorksWindowMode),
     [sharedWorksWindowMode],
   )
+  const onSortSharedWorks = useCallback((field: CollaboratorSharedWorksSortField) => {
+    if (sharedWorksSortField === field) {
+      setSharedWorksSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))
+      return
+    }
+    setSharedWorksSortField(field)
+    setSharedWorksSortDirection(field === 'title' ? 'asc' : 'desc')
+  }, [sharedWorksSortField])
   const collaboratorAffiliations = useMemo(
     () => collaboratorAuthorAffiliations(form),
     [form],
@@ -3244,6 +3295,7 @@ export function ProfileCollaborationPage() {
       setError('')
     }
     try {
+      const sharedWorksPromise = listCollaboratorsSharedWorks(token)
       const [summaryPayload, listPayload] = await Promise.all([
         fetchCollaborationMetricsSummary(token),
         collaborationLibraryPageSize === 'all'
@@ -3271,8 +3323,44 @@ export function ProfileCollaborationPage() {
           pageSize: requestedPageSize,
           summary: summaryPayload,
           listing: listPayload,
+          sharedWorksByCollaboratorId,
         })
       }
+      void sharedWorksPromise
+        .then((sharedWorksPayload) => {
+          if (requestId !== collaborationLoadSequenceRef.current) {
+            return
+          }
+          const itemsByCollaboratorId = sharedWorksPayload.items_by_collaborator_id || {}
+          setSharedWorksByCollaboratorId(itemsByCollaboratorId)
+          setSharedWorksLoadingByCollaboratorId((current) => {
+            const next = { ...current }
+            for (const collaboratorId of Object.keys(itemsByCollaboratorId)) {
+              next[collaboratorId] = false
+              sharedWorksRequestInFlightRef.current.delete(collaboratorId)
+            }
+            return next
+          })
+          setSharedWorksErrorByCollaboratorId((current) => {
+            const next = { ...current }
+            for (const collaboratorId of Object.keys(itemsByCollaboratorId)) {
+              next[collaboratorId] = ''
+            }
+            return next
+          })
+          if (collaborationLibraryPageSize !== 'all') {
+            writeCachedCollaborationLandingData({
+              query,
+              sort,
+              page: requestedPage,
+              pageSize: requestedPageSize,
+              summary: summaryPayload,
+              listing: listPayload,
+              sharedWorksByCollaboratorId: itemsByCollaboratorId,
+            })
+          }
+        })
+        .catch(() => undefined)
       if (shouldHydrateFull && !isCollaboratorsListComplete(listPayload)) {
         void fetchAllCollaboratorsForCollaborationPage(token, {
           query,
@@ -3315,6 +3403,7 @@ export function ProfileCollaborationPage() {
     if (cached) {
       setSummary(cached.summary)
       setListing(cached.listing)
+      setSharedWorksByCollaboratorId(cached.sharedWorksByCollaboratorId || {})
     }
     void load(token, { background: Boolean(cached) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3362,76 +3451,6 @@ export function ProfileCollaborationPage() {
     }
     void ensureCollaboratorSharedWorksLoaded(token, selectedId)
   }, [ensureCollaboratorSharedWorksLoaded, selectedId])
-
-  useEffect(() => {
-    if (sharedWorksBulkPreloadStartedRef.current) {
-      return
-    }
-    const token = getAuthSessionToken()
-    if (!token) {
-      return
-    }
-    sharedWorksBulkPreloadStartedRef.current = true
-    void listCollaboratorsSharedWorks(token)
-      .then((payload) => {
-        const itemsByCollaboratorId = payload.items_by_collaborator_id || {}
-        setSharedWorksByCollaboratorId((current) => ({ ...itemsByCollaboratorId, ...current }))
-        setSharedWorksLoadingByCollaboratorId((current) => {
-          const next = { ...current }
-          for (const collaboratorId of Object.keys(itemsByCollaboratorId)) {
-            next[collaboratorId] = false
-            sharedWorksRequestInFlightRef.current.delete(collaboratorId)
-          }
-          return next
-        })
-        setSharedWorksErrorByCollaboratorId((current) => {
-          const next = { ...current }
-          for (const collaboratorId of Object.keys(itemsByCollaboratorId)) {
-            next[collaboratorId] = ''
-          }
-          return next
-        })
-      })
-      .catch(() => {
-        sharedWorksBulkPreloadStartedRef.current = false
-      })
-  }, [])
-
-  useEffect(() => {
-    if (pagedCollaborators.length === 0) {
-      return
-    }
-    const token = getAuthSessionToken()
-    if (!token) {
-      return
-    }
-    let cancelled = false
-    const collaboratorIdsToPreload = pagedCollaborators
-      .slice(0, COLLABORATOR_SHARED_WORKS_PRELOAD_COUNT)
-      .map((item) => item.id)
-      .filter((value, index, items) => Boolean(value) && items.indexOf(value) === index)
-
-    const run = async () => {
-      for (
-        let start = 0;
-        start < collaboratorIdsToPreload.length && !cancelled;
-        start += COLLABORATOR_SHARED_WORKS_PRELOAD_CONCURRENCY
-      ) {
-        const batch = collaboratorIdsToPreload.slice(start, start + COLLABORATOR_SHARED_WORKS_PRELOAD_CONCURRENCY)
-        await Promise.all(batch.map(async (collaboratorId) => {
-          if (cancelled) {
-            return
-          }
-          await ensureCollaboratorSharedWorksLoaded(token, collaboratorId)
-        }))
-      }
-    }
-
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [ensureCollaboratorSharedWorksLoaded, pagedCollaborators])
 
   useEffect(() => {
     if (!institutionInputFocused) {
@@ -3741,6 +3760,15 @@ export function ProfileCollaborationPage() {
     }
   }
 
+  const renderSharedWorksSortIcon = (field: CollaboratorSharedWorksSortField) => {
+    if (sharedWorksSortField === field) {
+      return sharedWorksSortDirection === 'desc'
+        ? <ChevronDown className="h-3.5 w-3.5 text-foreground" />
+        : <ChevronUp className="h-3.5 w-3.5 text-foreground" />
+    }
+    return <ChevronsUpDown className="h-3.5 w-3.5" />
+  }
+
   return (
     <Stack data-house-role="page" space="sm">
       <Row
@@ -3763,29 +3791,37 @@ export function ProfileCollaborationPage() {
           <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
             <p className="house-h2">Total collaborators</p>
             <div className="flex w-full items-center justify-center">
-              <p className="house-metric-tile-value !mt-0 text-center">{canonicalCollaborators.length}</p>
+              <p className="house-metric-tile-value !mt-0 text-center">
+                {totalCollaboratorsMetric === null ? '...' : totalCollaboratorsMetric.toLocaleString('en-GB')}
+              </p>
             </div>
           </div>
           <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
             <p className="house-h2">Core collaborators</p>
             <div className="flex w-full items-center justify-center">
-              <p className="house-metric-tile-value !mt-0 text-center">{summary?.core_collaborators ?? 0}</p>
+              <p className="house-metric-tile-value !mt-0 text-center">
+                {coreCollaboratorsMetric === null ? '...' : coreCollaboratorsMetric.toLocaleString('en-GB')}
+              </p>
             </div>
           </div>
           <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
             <p className="house-h2">Active collaborations (12m)</p>
             <div className="flex w-full items-center justify-center">
-              <p className="house-metric-tile-value !mt-0 text-center">{summary?.active_collaborations_12m ?? 0}</p>
+              <p className="house-metric-tile-value !mt-0 text-center">
+                {activeCollaborationsMetric === null ? '...' : activeCollaborationsMetric.toLocaleString('en-GB')}
+              </p>
             </div>
           </div>
           <div className="house-metric-tile-shell grid min-h-20 grid-rows-[auto_1fr] rounded-md border p-2">
             <p className="house-h2">New collaborators (12m)</p>
             <div className="flex w-full items-center justify-center">
-              <p className="house-metric-tile-value !mt-0 text-center">{summary?.new_collaborators_12m ?? 0}</p>
+              <p className="house-metric-tile-value !mt-0 text-center">
+                {newCollaboratorsMetric === null ? '...' : newCollaboratorsMetric.toLocaleString('en-GB')}
+              </p>
             </div>
           </div>
         </div>
-        {duplicateRecordDelta > 0 ? (
+        {hasCompleteListing && duplicateRecordDelta > 0 ? (
           <p className="mt-2 text-xs text-muted-foreground">
             Deduped {duplicateRecordDelta.toLocaleString('en-GB')} duplicate collaborator records across institutions for analytics and table accuracy.
           </p>
@@ -5411,37 +5447,48 @@ export function ProfileCollaborationPage() {
                     <div className="house-drilldown-heading-block">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <p className="house-drilldown-heading-block-title">Co-authored publications</p>
-                        <div className="house-approved-toggle-context inline-flex items-center">
-                          <div
-                            className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
-                            data-house-role="chart-toggle"
-                            style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
-                          >
-                            <span
-                              className={HOUSE_TOGGLE_THUMB_CLASS}
-                              style={sharedWorksWindowThumbStyle}
-                              aria-hidden="true"
-                            />
-                            {COLLABORATOR_HISTORY_WINDOW_OPTIONS.map((option) => (
-                              <button
-                                key={`collaborator-history-window-${option.value}`}
-                                type="button"
-                                className={cn(
-                                  HOUSE_TOGGLE_BUTTON_CLASS,
-                                  sharedWorksWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                                )}
-                                onClick={() => {
-                                  if (sharedWorksWindowMode === option.value) {
-                                    return
-                                  }
-                                  setSharedWorksWindowMode(option.value)
-                                }}
-                                aria-pressed={sharedWorksWindowMode === option.value}
-                              >
-                                {option.label}
-                              </button>
-                            ))}
+                        <div className="ml-auto flex items-center gap-1.5">
+                          <div className="house-approved-toggle-context inline-flex items-center">
+                            <div
+                              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
+                              data-house-role="chart-toggle"
+                              style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
+                            >
+                              <span
+                                className={HOUSE_TOGGLE_THUMB_CLASS}
+                                style={sharedWorksWindowThumbStyle}
+                                aria-hidden="true"
+                              />
+                              {COLLABORATOR_HISTORY_WINDOW_OPTIONS.map((option) => (
+                                <button
+                                  key={`collaborator-history-window-${option.value}`}
+                                  type="button"
+                                  className={cn(
+                                    HOUSE_TOGGLE_BUTTON_CLASS,
+                                    sharedWorksWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                                  )}
+                                  onClick={() => {
+                                    if (sharedWorksWindowMode === option.value) {
+                                      return
+                                    }
+                                    setSharedWorksWindowMode(option.value)
+                                  }}
+                                  aria-pressed={sharedWorksWindowMode === option.value}
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
                           </div>
+                          <span
+                            className={cn(
+                              'inline-flex h-7 w-7 items-center justify-center rounded-full border shadow-[var(--elevation-xs)]',
+                              'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-50)/0.96)]',
+                            )}
+                            aria-hidden="true"
+                          >
+                            <InsightsGlyph className="h-4 w-4" />
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -5454,30 +5501,68 @@ export function ProfileCollaborationPage() {
                         <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] px-3 py-4 text-sm text-muted-foreground">
                           Loading co-authored publications...
                         </div>
-                      ) : filteredSelectedCollaboratorSharedWorks.length === 0 ? (
+                      ) : sortedSelectedCollaboratorSharedWorks.length === 0 ? (
                         <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] px-3 py-4 text-sm text-muted-foreground">
                           No co-authored publications found for this window.
                         </div>
                       ) : (
                         <div className="w-full overflow-visible">
                           <div
-                            className="house-table-shell house-publications-trend-table-shell-plain h-auto w-full overflow-hidden rounded-md bg-background"
+                            className="house-table-shell h-auto w-full overflow-hidden rounded-md bg-background"
                             style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
                           >
                             <table className="w-full border-collapse" data-house-no-column-resize="true" data-house-no-column-controls="true">
                               <thead className="house-table-head">
                                 <tr>
-                                  <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">Publication</th>
-                                  <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>Year</th>
+                                  <th className="house-table-head-text h-10 px-2 text-left align-middle font-semibold whitespace-nowrap">
+                                    <button
+                                      type="button"
+                                      className={cn(
+                                        'inline-flex w-full items-center justify-start gap-1 text-left transition-colors hover:text-foreground',
+                                        HOUSE_TABLE_SORT_TRIGGER_CLASS,
+                                      )}
+                                      onClick={() => onSortSharedWorks('title')}
+                                    >
+                                      <span>Publication</span>
+                                      {renderSharedWorksSortIcon('title')}
+                                    </button>
+                                  </th>
+                                  <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>
+                                    <button
+                                      type="button"
+                                      className={cn(
+                                        'inline-flex w-full items-center justify-center gap-1 text-center transition-colors hover:text-foreground',
+                                        HOUSE_TABLE_SORT_TRIGGER_CLASS,
+                                      )}
+                                      onClick={() => onSortSharedWorks('year')}
+                                    >
+                                      <span>Year</span>
+                                      {renderSharedWorksSortIcon('year')}
+                                    </button>
+                                  </th>
+                                  <th className="house-table-head-text h-10 px-2 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>
+                                    <button
+                                      type="button"
+                                      className={cn(
+                                        'inline-flex w-full items-center justify-center gap-1 text-center transition-colors hover:text-foreground',
+                                        HOUSE_TABLE_SORT_TRIGGER_CLASS,
+                                      )}
+                                      onClick={() => onSortSharedWorks('citations_total')}
+                                    >
+                                      <span>Citations</span>
+                                      {renderSharedWorksSortIcon('citations_total')}
+                                    </button>
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {filteredSelectedCollaboratorSharedWorks.map((work) => (
+                                {sortedSelectedCollaboratorSharedWorks.map((work) => (
                                   <tr key={work.work_id} className="house-table-row">
                                     <td className="house-table-cell-text px-2 py-2">
                                       <button
                                         type="button"
-                                        className="block max-w-full break-words text-left leading-snug text-[hsl(var(--tone-accent-700))] underline decoration-transparent underline-offset-2 transition hover:decoration-current"
+                                        className="block max-w-full break-words text-left leading-snug underline decoration-transparent underline-offset-2 transition hover:decoration-current"
+                                        style={{ color: 'hsl(var(--foreground))', WebkitTextFillColor: 'hsl(var(--foreground))' }}
                                         onClick={() => onOpenSharedPublication(work.work_id)}
                                       >
                                         {work.title}
@@ -5485,6 +5570,9 @@ export function ProfileCollaborationPage() {
                                     </td>
                                     <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">
                                       {work.year ?? '-'}
+                                    </td>
+                                    <td className="house-table-cell-text px-2 py-2 text-center whitespace-nowrap tabular-nums">
+                                      {Math.max(0, Number(work.citations_total || 0)).toLocaleString('en-GB')}
                                     </td>
                                   </tr>
                                 ))}

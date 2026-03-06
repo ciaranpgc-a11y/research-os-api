@@ -1,8 +1,8 @@
-import { fetchCollaborationMetricsSummary, listCollaborators } from '@/lib/impact-api'
+import { fetchCollaborationMetricsSummary, listCollaborators, listCollaboratorsSharedWorks } from '@/lib/impact-api'
 import { readScopedStorageItem, removeScopedStorageItem, writeScopedStorageItem } from '@/lib/user-scoped-storage'
-import type { CollaboratorsListPayload, CollaborationMetricsSummaryPayload } from '@/types/impact'
+import type { CollaboratorSharedWorkPayload, CollaboratorsListPayload, CollaborationMetricsSummaryPayload } from '@/types/impact'
 
-const COLLABORATION_PAGE_CACHE_KEY = 'aawe_collaboration_page_cache_v2'
+const COLLABORATION_PAGE_CACHE_KEY = 'aawe_collaboration_page_cache_v3'
 const COLLABORATION_PAGE_CACHE_MAX_AGE_MS = 1000 * 60 * 5
 const DEFAULT_COLLABORATION_QUERY = ''
 const DEFAULT_COLLABORATION_SORT = 'strength'
@@ -19,6 +19,7 @@ export type CollaborationLandingData = {
   pageSize: number
   summary: CollaborationMetricsSummaryPayload
   listing: CollaboratorsListPayload
+  sharedWorksByCollaboratorId: Record<string, CollaboratorSharedWorkPayload[]>
 }
 
 type CollaborationLandingDataCacheSnapshot = CollaborationLandingData & {
@@ -174,6 +175,7 @@ export function readCachedCollaborationLandingData(options?: {
       pageSize,
       summary: parsed.summary,
       listing: parsed.listing,
+      sharedWorksByCollaboratorId: parsed.sharedWorksByCollaboratorId || {},
     }
   } catch {
     removeScopedStorageItem(COLLABORATION_PAGE_CACHE_KEY)
@@ -193,6 +195,7 @@ export function writeCachedCollaborationLandingData(payload: CollaborationLandin
     pageSize: normalizePageSize(payload.pageSize),
     summary: payload.summary,
     listing: payload.listing,
+    sharedWorksByCollaboratorId: payload.sharedWorksByCollaboratorId,
   }
   try {
     writeScopedStorageItem(COLLABORATION_PAGE_CACHE_KEY, JSON.stringify(cache))
@@ -202,7 +205,7 @@ export function writeCachedCollaborationLandingData(payload: CollaborationLandin
 }
 
 export async function prefetchCollaborationLandingData(token: string): Promise<void> {
-  const [summary, listing] = await Promise.all([
+  const [summary, listing, sharedWorksPayload] = await Promise.all([
     fetchCollaborationMetricsSummary(token),
     fetchCollaboratorsPageForCollaborationPage(token, {
       query: DEFAULT_COLLABORATION_QUERY,
@@ -210,6 +213,7 @@ export async function prefetchCollaborationLandingData(token: string): Promise<v
       page: DEFAULT_COLLABORATION_PAGE,
       pageSize: DEFAULT_COLLABORATION_PAGE_SIZE,
     }),
+    listCollaboratorsSharedWorks(token),
   ])
   writeCachedCollaborationLandingData({
     query: DEFAULT_COLLABORATION_QUERY,
@@ -218,5 +222,6 @@ export async function prefetchCollaborationLandingData(token: string): Promise<v
     pageSize: DEFAULT_COLLABORATION_PAGE_SIZE,
     summary,
     listing,
+    sharedWorksByCollaboratorId: sharedWorksPayload.items_by_collaborator_id || {},
   })
 }
