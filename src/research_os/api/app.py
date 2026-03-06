@@ -95,6 +95,7 @@ from research_os.api.schemas import (
     CollaboratorCreateRequest,
     CollaboratorDeleteResponse,
     CollaboratorResponse,
+    CollaboratorSharedWorksByCollaboratorResponse,
     CollaboratorSharedWorksListResponse,
     CollaboratorsListResponse,
     CollaboratorUpdateRequest,
@@ -464,6 +465,7 @@ from research_os.services.collaboration_service import (
     get_collaboration_metrics_summary,
     get_collaborator_for_user,
     list_collaborator_shared_works_for_user,
+    list_collaborators_shared_works_for_user,
     get_manuscript_author_suggestions,
     get_manuscript_authors,
     import_collaborators_from_openalex,
@@ -3224,6 +3226,28 @@ def v1_collaboration_get_collaborator(
         return _build_unauthorized_response(str(exc))
     except CollaborationNotFoundError as exc:
         return _build_not_found_response(str(exc))
+
+
+@app.get(
+    "/v1/account/collaboration/shared-works",
+    response_model=CollaboratorSharedWorksByCollaboratorResponse,
+    responses=UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_list_shared_works(
+    request: Request,
+) -> CollaboratorSharedWorksByCollaboratorResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_collaborators_shared_works_for_user(
+            user_id=str(user["id"]),
+        )
+        return CollaboratorSharedWorksByCollaboratorResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
 
 
 @app.get(

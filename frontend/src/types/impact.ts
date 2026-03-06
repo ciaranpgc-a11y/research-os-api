@@ -1013,6 +1013,10 @@ export type CollaboratorSharedWorksListPayload = {
   items: CollaboratorSharedWorkPayload[]
 }
 
+export type CollaboratorSharedWorksByCollaboratorPayload = {
+  items_by_collaborator_id: Record<string, CollaboratorSharedWorkPayload[]>
+}
+
 export type CollaboratorsListPayload = {
   items: CollaboratorPayload[]
   page: number

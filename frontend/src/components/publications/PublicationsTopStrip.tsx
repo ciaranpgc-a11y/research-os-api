@@ -395,6 +395,7 @@ type MomentumWindowMode = '12m' | '5y'
 type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
 type RecentConcentrationWindowMode = Exclude<PublicationsWindowMode, 'all'>
 type PublicationTrendsVisualMode = 'bars' | 'line'
+type CitationActivationHistorySeriesMode = 'default' | 'activeInactive'
 type PublicationCategoryValueMode = 'absolute' | 'percentage' | 'perPaper'
 type PublicationCategoryDisplayMode = 'chart' | 'table'
 type JournalBreakdownViewMode = 'top-ten' | 'all-journals'
@@ -1391,7 +1392,7 @@ function isNonNullish<T>(value: T | null | undefined): value is T {
   return value != null
 }
 
-function buildLineTicksFromRange(startMs: number, endMs: number, mode: PublicationsWindowMode): PublicationLineAxisTick[] {
+export function buildLineTicksFromRange(startMs: number, endMs: number, mode: PublicationsWindowMode): PublicationLineAxisTick[] {
   // For rolling window modes (3y, 5y), use only real year-boundary ticks.
   if (mode === '3y' || mode === '5y') {
     const spanMs = Math.max(1, endMs - startMs)
@@ -1484,14 +1485,7 @@ function buildLineTicksFromRange(startMs: number, endMs: number, mode: Publicati
     const endDate = new Date(endMs)
     const startYear = startDate.getUTCFullYear()
     const endYear = endDate.getUTCFullYear()
-    const hasIncompleteTerminalYear = !(
-      endDate.getUTCMonth() === 11
-      && endDate.getUTCDate() >= 31
-      && endDate.getUTCHours() >= 23
-    )
-    const lastLabelYear = hasIncompleteTerminalYear && endYear > startYear
-      ? endYear - 1
-      : endYear
+    const lastLabelYear = endYear
     const targetTickCount = lastLabelYear - startYear <= 5
       ? 5
       : lastLabelYear - startYear <= 12
@@ -1512,8 +1506,10 @@ function buildLineTicksFromRange(startMs: number, endMs: number, mode: Publicati
       .sort((left, right) => left - right)
       .map((year) => {
         const yearStartMs = new Date(Date.UTC(year, 0, 1)).getTime()
-        const clampedMs = Math.max(startMs, Math.min(endMs, yearStartMs))
-        const position = Math.max(0, Math.min(1, (clampedMs - startMs) / spanMs))
+        if (yearStartMs < startMs || yearStartMs > endMs) {
+          return null
+        }
+        const position = Math.max(0, Math.min(1, (yearStartMs - startMs) / spanMs))
         return {
           key: `line-axis-${mode}-${year}`,
           label: String(year),
@@ -1521,6 +1517,7 @@ function buildLineTicksFromRange(startMs: number, endMs: number, mode: Publicati
           leftPct: position * 100,
         }
       })
+      .filter(isNonNullish)
       .filter((tick, index, ticks) => index === 0 || Math.abs(tick.leftPct - ticks[index - 1].leftPct) > 0.5)
 
     const MIN_LABEL_SPACING_PCT = 12
@@ -6142,6 +6139,58 @@ function SplitBreakdownViewToggle({
   )
 }
 
+function CitationActivationHistorySeriesToggle({
+  value,
+  onChange,
+}: {
+  value: CitationActivationHistorySeriesMode
+  onChange: (mode: CitationActivationHistorySeriesMode) => void
+}) {
+  const activeIndex = value === 'default' ? 0 : 1
+
+  return (
+    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+      <div
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        data-stop-tile-open="true"
+        style={{ width: '10.5rem' }}
+      >
+        <span
+          className={HOUSE_TOGGLE_THUMB_CLASS}
+          style={buildTileToggleThumbStyle(activeIndex, 2, false)}
+          aria-hidden="true"
+        />
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'default' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'default'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('default')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          Default
+        </button>
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'activeInactive' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'activeInactive'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('activeInactive')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          Active/inactive
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function PublicationWindowToggle({
   value,
   onChange,
@@ -7579,6 +7628,7 @@ function GenericMetricDrilldownWorkspace({
   const [uncitedBreakdownViewMode, setUncitedBreakdownViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [recentConcentrationViewMode, setRecentConcentrationViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [citationActivationViewMode, setCitationActivationViewMode] = useState<SplitBreakdownViewMode>('bar')
+  const [citationActivationHistorySeriesMode, setCitationActivationHistorySeriesMode] = useState<CitationActivationHistorySeriesMode>('default')
   const [recentConcentrationWindowMode, setRecentConcentrationWindowMode] = useState<RecentConcentrationWindowMode>('1y')
   const [citationActivationHistoryRangeStart, setCitationActivationHistoryRangeStart] = useState(0)
   const [citationActivationHistoryRangeEnd, setCitationActivationHistoryRangeEnd] = useState(0)
@@ -7641,6 +7691,7 @@ function GenericMetricDrilldownWorkspace({
     setUncitedBreakdownViewMode('bar')
     setRecentConcentrationViewMode('bar')
     setCitationActivationViewMode('bar')
+    setCitationActivationHistorySeriesMode('default')
     setRecentConcentrationWindowMode('1y')
     setCitationActivationHistoryRangeStart(0)
     setCitationActivationHistoryRangeEnd(0)
@@ -8193,15 +8244,35 @@ function GenericMetricDrilldownWorkspace({
     ),
     [citationActivationHistoryPointSpacingMonths, citationActivationHistoryPoints.length],
   )
+  const citationActivationHistoryDefaultSpan = useMemo(() => {
+    const pointCount = citationActivationHistoryPoints.length
+    if (pointCount <= 0) {
+      return 1
+    }
+    if (citationActivationHistoryPointSpacingMonths <= 2) {
+      const recentWindowPoints = Math.max(
+        citationActivationHistoryMinSpan,
+        Math.ceil(60 / Math.max(1, citationActivationHistoryPointSpacingMonths)),
+      )
+      return Math.min(pointCount, recentWindowPoints)
+    }
+    return pointCount
+  }, [
+    citationActivationHistoryMinSpan,
+    citationActivationHistoryPointSpacingMonths,
+    citationActivationHistoryPoints.length,
+  ])
   useEffect(() => {
     if (!citationActivationHistoryPoints.length) {
       setCitationActivationHistoryRangeStart(0)
       setCitationActivationHistoryRangeEnd(0)
       return
     }
-    setCitationActivationHistoryRangeStart(0)
-    setCitationActivationHistoryRangeEnd(citationActivationHistoryPoints.length - 1)
-  }, [tile.key, citationActivationHistoryPoints.length])
+    const defaultEnd = citationActivationHistoryPoints.length - 1
+    const defaultStart = Math.max(0, defaultEnd - citationActivationHistoryDefaultSpan + 1)
+    setCitationActivationHistoryRangeStart(defaultStart)
+    setCitationActivationHistoryRangeEnd(defaultEnd)
+  }, [citationActivationHistoryDefaultSpan, citationActivationHistoryPoints.length, tile.key])
   const citationActivationHistoryVisibleRange = useMemo(() => {
     if (!citationActivationHistoryPoints.length) {
       return { start: 0, end: 0 }
@@ -9314,22 +9385,28 @@ function GenericMetricDrilldownWorkspace({
               {citationActivationHistoryExpanded ? (
                 <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                   <div className="space-y-3">
+                    <div className="flex justify-start">
+                      <CitationActivationHistorySeriesToggle
+                        value={citationActivationHistorySeriesMode}
+                        onChange={setCitationActivationHistorySeriesMode}
+                      />
+                    </div>
                     <CompletedPeriodRangeSlider
-                      label="Focus period"
                       minIndex={0}
                       maxIndex={Math.max(0, citationActivationHistoryPoints.length - 1)}
                       startIndex={citationActivationHistoryVisibleRange.start}
                       endIndex={citationActivationHistoryVisibleRange.end}
                       minSpan={citationActivationHistoryMinSpan}
-                      startLabel={citationActivationHistoryPoints[citationActivationHistoryVisibleRange.start] ? formatMonthYearLabel(citationActivationHistoryPoints[citationActivationHistoryVisibleRange.start].timeMs) : '\u2014'}
-                      endLabel={citationActivationHistoryPoints[citationActivationHistoryVisibleRange.end] ? formatMonthYearLabel(citationActivationHistoryPoints[citationActivationHistoryVisibleRange.end].timeMs) : '\u2014'}
                       selectionLabel={citationActivationHistoryFocusRangeLabel || 'Completed periods'}
                       onChange={(nextStart, nextEnd) => {
                         setCitationActivationHistoryRangeStart(nextStart)
                         setCitationActivationHistoryRangeEnd(nextEnd)
                       }}
                     />
-                    <CitationActivationHistoryChart points={citationActivationHistoryVisiblePoints} />
+                    <CitationActivationHistoryChart
+                      points={citationActivationHistoryVisiblePoints}
+                      seriesMode={citationActivationHistorySeriesMode}
+                    />
                   </div>
                 </div>
               ) : null}
@@ -10732,25 +10809,19 @@ function CitationActivationStateBarCard({
 }
 
 function CompletedPeriodRangeSlider({
-  label,
   minIndex,
   maxIndex,
   startIndex,
   endIndex,
   minSpan,
-  startLabel,
-  endLabel,
   selectionLabel,
   onChange,
 }: {
-  label: string
   minIndex: number
   maxIndex: number
   startIndex: number
   endIndex: number
   minSpan: number
-  startLabel: string
-  endLabel: string
   selectionLabel: string
   onChange: (nextStart: number, nextEnd: number) => void
 }) {
@@ -10833,22 +10904,11 @@ function CompletedPeriodRangeSlider({
   }
 
   return (
-    <div className="rounded-[1rem] border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-0))] px-3 py-3 shadow-[0_10px_26px_hsl(var(--tone-neutral-950)/0.05)]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-0.5">
-          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{label}</p>
-          <p className="text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
-            {isAdjustable ? 'Completed periods only.' : 'Full completed history shown.'}
-          </p>
-        </div>
-        <p className="text-right text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[hsl(var(--tone-neutral-700))]">
-          {selectionLabel}
-        </p>
-      </div>
-      <div className="mt-3 space-y-2">
+    <div className="px-3 py-3">
+      <div className="flex items-center gap-6">
         <div
           ref={trackRef}
-          className={cn('relative h-8 px-2', isAdjustable ? 'cursor-ew-resize' : 'cursor-default')}
+          className={cn('relative h-8 min-w-0 flex-1 px-2', isAdjustable ? 'cursor-ew-resize' : 'cursor-default')}
           onPointerDown={handleTrackPointerDown}
         >
           <div
@@ -10865,7 +10925,7 @@ function CompletedPeriodRangeSlider({
           />
           <button
             type="button"
-            aria-label={`${label} start`}
+            aria-label="Start of selected period"
             className={cn(
               'absolute top-1/2 z-20 h-[0.95rem] w-[0.95rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-0))] shadow-[0_1px_4px_hsl(var(--tone-neutral-950)/0.14)]',
               isAdjustable ? 'cursor-ew-resize' : 'cursor-default',
@@ -10876,7 +10936,7 @@ function CompletedPeriodRangeSlider({
           />
           <button
             type="button"
-            aria-label={`${label} end`}
+            aria-label="End of selected period"
             className={cn(
               'absolute top-1/2 z-30 h-[0.95rem] w-[0.95rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-0))] shadow-[0_1px_4px_hsl(var(--tone-neutral-950)/0.14)]',
               isAdjustable ? 'cursor-ew-resize' : 'cursor-default',
@@ -10886,10 +10946,9 @@ function CompletedPeriodRangeSlider({
             onPointerDown={handleEndPointerDown}
           />
         </div>
-        <div className="flex items-center justify-between gap-3 text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
-          <span>{startLabel}</span>
-          <span>{endLabel}</span>
-        </div>
+        <p className="w-[14rem] shrink-0 whitespace-nowrap text-right text-[0.72rem] font-semibold uppercase tracking-[0.18em] tabular-nums text-[hsl(var(--tone-neutral-700))]">
+          {selectionLabel}
+        </p>
       </div>
     </div>
   )
@@ -10897,6 +10956,7 @@ function CompletedPeriodRangeSlider({
 
 function CitationActivationHistoryChart({
   points,
+  seriesMode = 'default',
 }: {
   points: Array<{
     key: string
@@ -10907,6 +10967,7 @@ function CitationActivationHistoryChart({
     inactiveCount: number
     totalCount: number
   }>
+  seriesMode?: CitationActivationHistorySeriesMode
 }) {
   if (!points.length) {
     return (
@@ -10919,16 +10980,21 @@ function CitationActivationHistoryChart({
   const orderedPoints = points.slice().sort((left, right) => left.timeMs - right.timeMs)
   const startMs = orderedPoints[0]?.timeMs ?? Date.now()
   const endMs = orderedPoints[orderedPoints.length - 1]?.timeMs ?? startMs
+  const pointSpacingMonths = orderedPoints.length > 1
+    ? Math.max(1, getSpanMonths(orderedPoints[0].timeMs, orderedPoints[1].timeMs))
+    : 12
+  const usesMonthlyPoints = pointSpacingMonths <= 2
+  const visibleSpanMonths = Math.max(0, getSpanMonths(startMs, endMs))
   const yAxisTickValues = [0, 50, 100]
   const yAxisTickRatios = yAxisTickValues.map((tick) => tick / 100)
   const gridTickRatiosWithoutTop = yAxisTickRatios.filter((ratio) => ratio < 0.999)
   const hasTopYAxisTick = yAxisTickRatios.some((ratio) => ratio >= 0.999)
-  const xAxisTicks = buildLineTicksFromRange(startMs, endMs, 'all')
+  const xAxisTicks = buildLineTicksFromRange(startMs, endMs, usesMonthlyPoints && visibleSpanMonths <= 18 ? '1y' : 'all')
   const xAxisLabelLayout = buildChartAxisLayout({
     axisLabels: xAxisTicks.map((tick) => tick.label),
     axisSubLabels: xAxisTicks.map((tick) => tick.subLabel || null),
     showXAxisName: true,
-    xAxisName: 'Publication year',
+    xAxisName: usesMonthlyPoints ? 'Completed month' : 'Publication year',
     dense: false,
     maxLabelLines: 2,
     maxSubLabelLines: 2,
@@ -10965,69 +11031,146 @@ function CitationActivationHistoryChart({
     .map((tick) => Math.max(0, Math.min(100, tick.leftPct)))
     .sort((left, right) => left - right)
     .filter((value, index, values) => index === 0 || Math.abs(value - values[index - 1]) > 0.5)
-  const buildSeriesPoints = (selector: (point: typeof orderedPoints[number]) => number) => orderedPoints.map((point) => {
+  const seriesPoints = orderedPoints.map((point) => {
     const position = endMs <= startMs
       ? 50
       : Math.max(0, Math.min(100, ((point.timeMs - startMs) / Math.max(1, endMs - startMs)) * 100))
-    const value = Math.max(0, Math.min(100, selector(point)))
+    const totalCount = Math.max(0, point.totalCount)
+    const newlyActivePct = totalCount > 0 ? Math.max(0, Math.min(100, (point.newlyActiveCount / totalCount) * 100)) : 0
+    const stillActivePct = totalCount > 0 ? Math.max(0, Math.min(100, (point.stillActiveCount / totalCount) * 100)) : 0
+    const inactivePct = totalCount > 0 ? Math.max(0, Math.min(100, (point.inactiveCount / totalCount) * 100)) : 0
     return {
       key: point.key,
       xPct: position,
-      yPct: value,
-      value,
+      timeMs: point.timeMs,
       label: point.label,
-      totalCount: point.totalCount,
+      totalCount,
+      newlyActivePct,
+      stillActivePct,
+      activePct: Math.max(0, Math.min(100, newlyActivePct + stillActivePct)),
+      inactivePct,
+      newlyActiveCount: point.newlyActiveCount,
+      stillActiveCount: point.stillActiveCount,
+      activeCount: point.newlyActiveCount + point.stillActiveCount,
+      inactiveCount: point.inactiveCount,
     }
   })
-  const series = [
-    {
-      key: 'newly-active',
-      label: 'Newly active',
-      color: 'hsl(var(--tone-positive-500))',
-      points: buildSeriesPoints((point) => (point.totalCount > 0 ? (point.newlyActiveCount / point.totalCount) * 100 : 0)),
-    },
-    {
-      key: 'still-active',
-      label: 'Still active',
-      color: 'hsl(var(--tone-accent-500))',
-      points: buildSeriesPoints((point) => (point.totalCount > 0 ? (point.stillActiveCount / point.totalCount) * 100 : 0)),
-    },
-    {
-      key: 'inactive',
-      label: 'Inactive',
-      color: 'hsl(var(--tone-danger-500))',
-      points: buildSeriesPoints((point) => (point.totalCount > 0 ? (point.inactiveCount / point.totalCount) * 100 : 0)),
-    },
-  ] as const
+  const series = seriesMode === 'activeInactive'
+    ? [
+      {
+        key: 'active',
+        label: 'Active',
+        color: 'hsl(var(--tone-accent-500))',
+        strokeWidth: 2,
+        strokeDasharray: undefined,
+        opacity: 1,
+        selector: (point: typeof seriesPoints[number]) => point.activePct,
+      },
+      {
+        key: 'inactive',
+        label: 'Inactive',
+        color: 'hsl(var(--tone-danger-500))',
+        strokeWidth: 1.6,
+        strokeDasharray: '5 4',
+        opacity: 0.8,
+        selector: (point: typeof seriesPoints[number]) => point.inactivePct,
+      },
+    ] as const
+    : [
+      {
+        key: 'newly-active',
+        label: 'Newly active',
+        color: 'hsl(var(--tone-positive-500))',
+        strokeWidth: 1.9,
+        strokeDasharray: undefined,
+        opacity: 1,
+        selector: (point: typeof seriesPoints[number]) => point.newlyActivePct,
+      },
+      {
+        key: 'still-active',
+        label: 'Still active',
+        color: 'hsl(var(--tone-accent-500))',
+        strokeWidth: 1.9,
+        strokeDasharray: undefined,
+        opacity: 0.95,
+        selector: (point: typeof seriesPoints[number]) => point.stillActivePct,
+      },
+      {
+        key: 'inactive',
+        label: 'Inactive',
+        color: 'hsl(var(--tone-danger-500))',
+        strokeWidth: 1.6,
+        strokeDasharray: '5 4',
+        opacity: 0.8,
+        selector: (point: typeof seriesPoints[number]) => point.inactivePct,
+      },
+    ] as const
   const seriesPaths = series.map((item) => {
-    const points = item.points
+    const pathPoints = seriesPoints
       .map((point) => ({
         x: Math.max(0, Math.min(100, point.xPct)),
-        y: Math.max(0, Math.min(100, 100 - point.yPct)),
+        y: Math.max(0, Math.min(100, 100 - item.selector(point))),
       }))
       .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
     return {
       ...item,
-      path: points.length ? monotonePathFromPoints(points) : '',
+      path: pathPoints.length ? monotonePathFromPoints(pathPoints) : '',
     }
   })
+  const tooltipSlices = seriesPoints.map((point, index) => {
+    if (seriesPoints.length === 1) {
+      return {
+        ...point,
+        leftPct: 0,
+        widthPct: 100,
+      }
+    }
+    const previousX = index > 0 ? seriesPoints[index - 1]?.xPct ?? point.xPct : point.xPct
+    const nextX = index < seriesPoints.length - 1 ? seriesPoints[index + 1]?.xPct ?? point.xPct : point.xPct
+    const leftPct = index === 0 ? 0 : (previousX + point.xPct) / 2
+    const rightPct = index === seriesPoints.length - 1 ? 100 : (point.xPct + nextX) / 2
+    return {
+      ...point,
+      leftPct: Math.max(0, Math.min(100, leftPct)),
+      widthPct: Math.max(0.75, Math.min(100, rightPct - leftPct)),
+    }
+  })
+  const latestPoint = seriesPoints[seriesPoints.length - 1] || null
+  const latestSeriesPoints = latestPoint
+    ? seriesMode === 'activeInactive'
+      ? [
+        {
+          key: 'active',
+          color: 'hsl(var(--tone-accent-500))',
+          value: latestPoint.activePct,
+        },
+        {
+          key: 'inactive',
+          color: 'hsl(var(--tone-danger-500))',
+          value: latestPoint.inactivePct,
+        },
+      ]
+      : [
+        {
+          key: 'newly-active',
+          color: 'hsl(var(--tone-positive-500))',
+          value: latestPoint.newlyActivePct,
+        },
+        {
+          key: 'still-active',
+          color: 'hsl(var(--tone-accent-500))',
+          value: latestPoint.stillActivePct,
+        },
+        {
+          key: 'inactive',
+          color: 'hsl(var(--tone-danger-500))',
+          value: latestPoint.inactivePct,
+        },
+      ]
+    : []
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col px-2 py-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
-        <span className="inline-flex items-center gap-1.5">
-          <span className={cn('h-2.5 w-2.5 rounded-full', HOUSE_CHART_BAR_POSITIVE_CLASS)} aria-hidden="true" />
-          Newly active
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className={cn('h-2.5 w-2.5 rounded-full', HOUSE_CHART_BAR_ACCENT_CLASS)} aria-hidden="true" />
-          Still active
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className={cn('h-2.5 w-2.5 rounded-full', HOUSE_CHART_BAR_DANGER_CLASS)} aria-hidden="true" />
-          Inactive
-        </span>
-      </div>
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
@@ -11090,44 +11233,75 @@ function CitationActivationHistoryChart({
                   className={HOUSE_TOGGLE_CHART_LINE_CLASS}
                   fill="none"
                   stroke={item.color}
-                  strokeWidth="2.1"
+                  strokeWidth={String(item.strokeWidth)}
+                  strokeDasharray={item.strokeDasharray}
+                  opacity={String(item.opacity)}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                 />
               ) : null)}
+              {latestPoint ? latestSeriesPoints.map((item) => (
+                <circle
+                  key={`${item.key}-latest`}
+                  cx={String(Math.max(0, Math.min(100, latestPoint.xPct)))}
+                  cy={String(Math.max(0, Math.min(100, 100 - item.value)))}
+                  r="1.1"
+                  fill={item.color}
+                  stroke="white"
+                  strokeWidth="0.6"
+                  vectorEffect="non-scaling-stroke"
+                />
+              )) : null}
             </svg>
           </div>
           <TooltipProvider delayDuration={120}>
             <div className="absolute inset-0 z-[4]">
-              {seriesPaths.flatMap((item) => item.points.map((point) => (
-                <Tooltip key={`${item.key}-${point.key}`}>
+              {tooltipSlices.map((point) => (
+                <Tooltip key={point.key}>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      className="absolute block rounded-full border border-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-200))]"
+                      className="absolute inset-y-0 block rounded-[0.2rem] bg-transparent transition-colors hover:bg-[hsl(var(--tone-accent-500)/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-200))]"
                       style={{
-                        left: `${point.xPct}%`,
-                        bottom: `${point.yPct}%`,
-                        width: '0.5rem',
-                        height: '0.5rem',
-                        backgroundColor: item.color,
-                        transform: 'translate(-50%, 50%)',
-                        boxShadow: '0 0 0 1px hsl(var(--stroke-soft) / 0.14)',
+                        left: `${point.leftPct}%`,
+                        width: `${point.widthPct}%`,
                       }}
-                      aria-label={`${item.label}: ${Math.round(point.value)}% in ${point.label}`}
+                      aria-label={
+                        seriesMode === 'activeInactive'
+                          ? `Citation activity in ${usesMonthlyPoints ? formatMonthYearLabel(point.timeMs) : point.label}: ${Math.round(point.activePct)}% active and ${Math.round(point.inactivePct)}% inactive`
+                          : `Citation activity in ${usesMonthlyPoints ? formatMonthYearLabel(point.timeMs) : point.label}: ${Math.round(point.newlyActivePct)}% newly active, ${Math.round(point.stillActivePct)}% still active, ${Math.round(point.inactivePct)}% inactive`
+                      }
                     />
                   </TooltipTrigger>
                   <TooltipContent
                     side="top"
                     align="center"
                     sideOffset={8}
-                    className="house-approved-tooltip max-w-[18rem] whitespace-normal px-2 py-1.5 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                    className="house-approved-tooltip max-w-[18rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
                   >
-                    {`${item.label}: ${Math.round(point.value)}% in ${point.label} (${formatInt(point.totalCount)} papers)`}
+                    <div className="space-y-1">
+                      <p className="font-medium text-[hsl(var(--tone-neutral-900))]">
+                        {usesMonthlyPoints ? formatMonthYearLabel(point.timeMs) : point.label}
+                      </p>
+                      <p>{`${formatInt(point.totalCount)} papers in cohort`}</p>
+                      {seriesMode === 'activeInactive' ? (
+                        <div className="space-y-0.5">
+                          <p>{`Active: ${Math.round(point.activePct)}% (${formatInt(point.activeCount)} papers)`}</p>
+                          <p>{`Inactive: ${Math.round(point.inactivePct)}% (${formatInt(point.inactiveCount)} papers)`}</p>
+                          <p>{`Active split: ${formatInt(point.newlyActiveCount)} newly active, ${formatInt(point.stillActiveCount)} still active`}</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-0.5">
+                          <p>{`Newly active: ${Math.round(point.newlyActivePct)}% (${formatInt(point.newlyActiveCount)} papers)`}</p>
+                          <p>{`Still active: ${Math.round(point.stillActivePct)}% (${formatInt(point.stillActiveCount)} papers)`}</p>
+                          <p>{`Inactive: ${Math.round(point.inactivePct)}% (${formatInt(point.inactiveCount)} papers)`}</p>
+                        </div>
+                      )}
+                    </div>
                   </TooltipContent>
                 </Tooltip>
-              )))}
+              ))}
             </div>
           </TooltipProvider>
         </div>

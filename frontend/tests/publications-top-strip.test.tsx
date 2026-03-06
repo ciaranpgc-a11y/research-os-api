@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { buildLineTicksFromRange } from '@/components/publications/PublicationsTopStrip'
 import {
   buildTotalCitationsHeadlineMetricTiles,
   buildTotalCitationsHeadlineStats,
@@ -119,5 +120,27 @@ describe('buildTotalCitationsHeadlineMetricTiles', () => {
     )
 
     expect(stats.meanCitations).toBe('137')
+  })
+})
+
+describe('buildLineTicksFromRange', () => {
+  it('omits a lifetime start-year tick when the actual year boundary is outside the plotted range', () => {
+    const ticks = buildLineTicksFromRange(
+      Date.UTC(2016, 2, 1),
+      Date.UTC(2026, 1, 1),
+      'all',
+    )
+
+    expect(ticks.map((tick) => tick.label)).toEqual(['2019', '2022', '2025'])
+  })
+
+  it('keeps an in-range terminal year tick even when the visible range ends mid-year', () => {
+    const ticks = buildLineTicksFromRange(
+      Date.UTC(2021, 3, 1),
+      Date.UTC(2024, 7, 1),
+      'all',
+    )
+
+    expect(ticks.map((tick) => tick.label)).toEqual(['2022', '2023', '2024'])
   })
 })

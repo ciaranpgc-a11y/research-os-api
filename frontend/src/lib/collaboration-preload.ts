@@ -2,16 +2,21 @@ import { fetchCollaborationMetricsSummary, listCollaborators } from '@/lib/impac
 import { readScopedStorageItem, removeScopedStorageItem, writeScopedStorageItem } from '@/lib/user-scoped-storage'
 import type { CollaboratorsListPayload, CollaborationMetricsSummaryPayload } from '@/types/impact'
 
-const COLLABORATION_PAGE_CACHE_KEY = 'aawe_collaboration_page_cache_v1'
+const COLLABORATION_PAGE_CACHE_KEY = 'aawe_collaboration_page_cache_v2'
 const COLLABORATION_PAGE_CACHE_MAX_AGE_MS = 1000 * 60 * 5
 const DEFAULT_COLLABORATION_QUERY = ''
 const DEFAULT_COLLABORATION_SORT = 'strength'
+const DEFAULT_COLLABORATION_PAGE = 1
+const DEFAULT_COLLABORATION_PAGE_SIZE = 50
 const DEFAULT_COLLABORATORS_FETCH_PAGE_SIZE = 200
 const DEFAULT_MAX_COLLABORATOR_FETCH_PAGES = 250
+const DEFAULT_COLLABORATORS_FETCH_CONCURRENCY = 6
 
 export type CollaborationLandingData = {
   query: string
   sort: string
+  page: number
+  pageSize: number
   summary: CollaborationMetricsSummaryPayload
   listing: CollaboratorsListPayload
 }
@@ -29,6 +34,39 @@ function normalizeSort(value: string | null | undefined): string {
   return clean || DEFAULT_COLLABORATION_SORT
 }
 
+function normalizePage(value: number | string | null | undefined): number {
+  const parsed = Number(value || DEFAULT_COLLABORATION_PAGE)
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_COLLABORATION_PAGE
+  }
+  return Math.max(1, Math.round(parsed))
+}
+
+function normalizePageSize(value: number | string | null | undefined): number {
+  const parsed = Number(value || DEFAULT_COLLABORATION_PAGE_SIZE)
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_COLLABORATION_PAGE_SIZE
+  }
+  return Math.max(1, Math.min(200, Math.round(parsed)))
+}
+
+export async function fetchCollaboratorsPageForCollaborationPage(
+  token: string,
+  options?: {
+    query?: string
+    sort?: string
+    page?: number
+    pageSize?: number
+  },
+): Promise<CollaboratorsListPayload> {
+  return listCollaborators(token, {
+    query: normalizeQuery(options?.query),
+    sort: normalizeSort(options?.sort),
+    page: normalizePage(options?.page),
+    pageSize: normalizePageSize(options?.pageSize),
+  })
+}
+
 export async function fetchAllCollaboratorsForCollaborationPage(
   token: string,
   options?: {
@@ -43,7 +81,7 @@ export async function fetchAllCollaboratorsForCollaborationPage(
   const pageSize = Math.max(1, Math.min(200, Number(options?.pageSize || DEFAULT_COLLABORATORS_FETCH_PAGE_SIZE)))
   const maxPages = Math.max(1, Number(options?.maxPages || DEFAULT_MAX_COLLABORATOR_FETCH_PAGES))
 
-  const firstPage = await listCollaborators(token, {
+  const firstPage = await fetchCollaboratorsPageForCollaborationPage(token, {
     query,
     sort,
     page: 1,
@@ -51,19 +89,36 @@ export async function fetchAllCollaboratorsForCollaborationPage(
   })
 
   const items = [...firstPage.items]
-  let currentPage = 1
-  let hasMore = firstPage.has_more
+  const totalPages = Math.max(
+    1,
+    Math.min(
+      maxPages,
+      Math.ceil(Math.max(Number(firstPage.total || items.length), items.length) / pageSize),
+    ),
+  )
 
-  while (hasMore && currentPage < maxPages) {
-    currentPage += 1
-    const nextPage = await listCollaborators(token, {
-      query,
-      sort,
-      page: currentPage,
-      pageSize,
-    })
-    items.push(...nextPage.items)
-    hasMore = nextPage.has_more
+  for (let pageStart = 2; pageStart <= totalPages; pageStart += DEFAULT_COLLABORATORS_FETCH_CONCURRENCY) {
+    const pageNumbers: number[] = []
+    for (
+      let pageNumber = pageStart;
+      pageNumber < pageStart + DEFAULT_COLLABORATORS_FETCH_CONCURRENCY && pageNumber <= totalPages;
+      pageNumber += 1
+    ) {
+      pageNumbers.push(pageNumber)
+    }
+    const nextPages = await Promise.all(
+      pageNumbers.map((pageNumber) => (
+        fetchCollaboratorsPageForCollaborationPage(token, {
+          query,
+          sort,
+          page: pageNumber,
+          pageSize,
+        })
+      )),
+    )
+    for (const nextPage of nextPages) {
+      items.push(...nextPage.items)
+    }
   }
 
   return {
@@ -78,12 +133,16 @@ export async function fetchAllCollaboratorsForCollaborationPage(
 export function readCachedCollaborationLandingData(options?: {
   query?: string
   sort?: string
+  page?: number
+  pageSize?: number
 }): CollaborationLandingData | null {
   if (typeof window === 'undefined') {
     return null
   }
   const query = normalizeQuery(options?.query)
   const sort = normalizeSort(options?.sort)
+  const page = normalizePage(options?.page)
+  const pageSize = normalizePageSize(options?.pageSize)
   const raw = readScopedStorageItem(COLLABORATION_PAGE_CACHE_KEY)
   if (!raw) {
     return null
@@ -94,7 +153,9 @@ export function readCachedCollaborationLandingData(options?: {
       !parsed ||
       typeof parsed.cachedAt !== 'number' ||
       !parsed.summary ||
-      !parsed.listing
+      !parsed.listing ||
+      normalizePage(parsed.page) !== page ||
+      normalizePageSize(parsed.pageSize) !== pageSize
     ) {
       removeScopedStorageItem(COLLABORATION_PAGE_CACHE_KEY)
       return null
@@ -109,6 +170,8 @@ export function readCachedCollaborationLandingData(options?: {
     return {
       query,
       sort,
+      page,
+      pageSize,
       summary: parsed.summary,
       listing: parsed.listing,
     }
@@ -126,6 +189,8 @@ export function writeCachedCollaborationLandingData(payload: CollaborationLandin
     cachedAt: Date.now(),
     query: normalizeQuery(payload.query),
     sort: normalizeSort(payload.sort),
+    page: normalizePage(payload.page),
+    pageSize: normalizePageSize(payload.pageSize),
     summary: payload.summary,
     listing: payload.listing,
   }
@@ -139,16 +204,19 @@ export function writeCachedCollaborationLandingData(payload: CollaborationLandin
 export async function prefetchCollaborationLandingData(token: string): Promise<void> {
   const [summary, listing] = await Promise.all([
     fetchCollaborationMetricsSummary(token),
-    fetchAllCollaboratorsForCollaborationPage(token, {
+    fetchCollaboratorsPageForCollaborationPage(token, {
       query: DEFAULT_COLLABORATION_QUERY,
       sort: DEFAULT_COLLABORATION_SORT,
+      page: DEFAULT_COLLABORATION_PAGE,
+      pageSize: DEFAULT_COLLABORATION_PAGE_SIZE,
     }),
   ])
   writeCachedCollaborationLandingData({
     query: DEFAULT_COLLABORATION_QUERY,
     sort: DEFAULT_COLLABORATION_SORT,
+    page: DEFAULT_COLLABORATION_PAGE,
+    pageSize: DEFAULT_COLLABORATION_PAGE_SIZE,
     summary,
     listing,
   })
 }
-

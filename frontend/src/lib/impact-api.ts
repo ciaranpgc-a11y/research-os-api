@@ -35,6 +35,7 @@ import type {
   AuthTwoFactorStatePayload,
   AuthUser,
   CollaboratorPayload,
+  CollaboratorSharedWorksByCollaboratorPayload,
   CollaboratorSharedWorksListPayload,
   CollaboratorsListPayload,
   CollaborationAiAffiliationsNormalisePayload,
@@ -1562,6 +1563,19 @@ export async function listCollaboratorSharedWorks(
       headers: authHeaders(token),
     },
     'Collaborator shared works lookup failed',
+  )
+}
+
+export async function listCollaboratorsSharedWorks(
+  token: string,
+): Promise<CollaboratorSharedWorksByCollaboratorPayload> {
+  return requestJson<CollaboratorSharedWorksByCollaboratorPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/shared-works`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Collaborator shared works preload failed',
   )
 }
 

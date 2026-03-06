@@ -2246,6 +2246,12 @@ class CollaboratorSharedWorksListResponse(BaseModel):
     items: list[CollaboratorSharedWorkResponse] = Field(default_factory=list)
 
 
+class CollaboratorSharedWorksByCollaboratorResponse(BaseModel):
+    items_by_collaborator_id: dict[str, list[CollaboratorSharedWorkResponse]] = Field(
+        default_factory=dict
+    )
+
+
 class CollaboratorCreateRequest(BaseModel):
     full_name: str
     preferred_name: str | None = None

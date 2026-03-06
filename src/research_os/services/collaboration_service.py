@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import httpx
 from sqlalchemy import delete, func, or_, select
+from sqlalchemy.orm import Session
 
 from research_os.db import (
     AppRuntimeLock,
@@ -1277,40 +1278,64 @@ def list_collaborator_shared_works_for_user(
             user_id=user_id,
             collaborator_id=collaborator_id,
         )
-        collaborators = session.scalars(
-            select(Collaborator).where(Collaborator.owner_user_id == user_id)
-        ).all()
-        if not collaborators:
-            return {"items": []}
-        collaborator_groups, collaborator_to_key = _collaborator_groups(collaborators)
-        target_group_key = collaborator_to_key.get(
-            str(collaborator.id), str(collaborator.id)
+        items_by_collaborator_id = _list_shared_works_by_collaborator_for_user(
+            session=session,
+            user_id=user_id,
         )
-        target_group = collaborator_groups.get(target_group_key, [collaborator])
-        works = session.scalars(select(Work).where(Work.user_id == user_id)).all()
-        if not works:
-            return {"items": []}
-        work_by_id = {str(work.id): work for work in works}
-        work_ids = list(work_by_id.keys())
-        authorships = session.scalars(
-            select(WorkAuthorship).where(
-                WorkAuthorship.work_id.in_(work_ids or [""]),
-                WorkAuthorship.is_user.is_(False),
+        return {"items": items_by_collaborator_id.get(str(collaborator.id), [])}
+
+
+def list_collaborators_shared_works_for_user(
+    *,
+    user_id: str,
+) -> dict[str, Any]:
+    create_all_tables()
+    with session_scope() as session:
+        return {
+            "items_by_collaborator_id": _list_shared_works_by_collaborator_for_user(
+                session=session,
+                user_id=user_id,
             )
-        ).all()
-        author_ids = [str(item.author_id) for item in authorships]
-        authors = session.scalars(
-            select(Author).where(Author.id.in_(author_ids or [""]))
-        ).all()
-        authors_by_id = {str(author.id): author for author in authors}
-        shared_by_collaborator = _build_collaboration_work_index(
-            collaborators=collaborators,
-            works=works,
-            authorships=authorships,
-            authors_by_id=authors_by_id,
+        }
+
+
+def _list_shared_works_by_collaborator_for_user(
+    *,
+    session: Session,
+    user_id: str,
+) -> dict[str, list[dict[str, Any]]]:
+    collaborators = session.scalars(
+        select(Collaborator).where(Collaborator.owner_user_id == user_id)
+    ).all()
+    if not collaborators:
+        return {}
+    collaborator_groups, collaborator_to_key = _collaborator_groups(collaborators)
+    works = session.scalars(select(Work).where(Work.user_id == user_id)).all()
+    if not works:
+        return {str(collaborator.id): [] for collaborator in collaborators}
+    work_by_id = {str(work.id): work for work in works}
+    work_ids = list(work_by_id.keys())
+    authorships = session.scalars(
+        select(WorkAuthorship).where(
+            WorkAuthorship.work_id.in_(work_ids or [""]),
+            WorkAuthorship.is_user.is_(False),
         )
+    ).all()
+    author_ids = [str(item.author_id) for item in authorships]
+    authors = session.scalars(
+        select(Author).where(Author.id.in_(author_ids or [""]))
+    ).all()
+    authors_by_id = {str(author.id): author for author in authors}
+    shared_by_collaborator = _build_collaboration_work_index(
+        collaborators=collaborators,
+        works=works,
+        authorships=authorships,
+        authors_by_id=authors_by_id,
+    )
+    items_by_group_key: dict[str, list[dict[str, Any]]] = {}
+    for group_key, members in collaborator_groups.items():
         shared_work_ids: set[str] = set()
-        for member in target_group:
+        for member in members:
             shared_work_ids.update(shared_by_collaborator.get(str(member.id), set()))
         items: list[dict[str, Any]] = []
         for work_id in shared_work_ids:
@@ -1341,7 +1366,16 @@ def list_collaborator_shared_works_for_user(
                 str(item.get("title") or "").lower(),
             )
         )
-        return {"items": items}
+        items_by_group_key[group_key] = items
+
+    items_by_collaborator_id: dict[str, list[dict[str, Any]]] = {}
+    for collaborator in collaborators:
+        collaborator_id = str(collaborator.id)
+        group_key = collaborator_to_key.get(collaborator_id, collaborator_id)
+        items_by_collaborator_id[collaborator_id] = list(
+            items_by_group_key.get(group_key, [])
+        )
+    return items_by_collaborator_id
 
 
 def update_collaborator_for_user(

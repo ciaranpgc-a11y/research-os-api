@@ -35,6 +35,7 @@ import {
 } from '@/components/ui'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import {
+  fetchCollaboratorsPageForCollaborationPage,
   fetchAllCollaboratorsForCollaborationPage,
   readCachedCollaborationLandingData,
   writeCachedCollaborationLandingData,
@@ -46,6 +47,7 @@ import {
   fetchCollaborationMetricsSummary,
   getCollaborator,
   listCollaboratorSharedWorks,
+  listCollaboratorsSharedWorks,
 } from '@/lib/impact-api'
 import type {
   AffiliationSuggestionItemPayload,
@@ -140,7 +142,6 @@ type HeatmapQuantiles = {
 type CollaborationTableColumnKey =
   | 'name'
   | 'institution'
-  | 'domains'
   | 'relationship'
   | 'activity'
   | 'last_year'
@@ -249,7 +250,6 @@ const COLLABORATOR_HISTORY_WINDOW_OPTIONS: Array<{ value: CollaboratorHistoryWin
 const COLLABORATION_TABLE_COLUMN_ORDER: CollaborationTableColumnKey[] = [
   'name',
   'institution',
-  'domains',
   'relationship',
   'activity',
   'last_year',
@@ -266,7 +266,6 @@ const COLLABORATION_TABLE_COLUMN_DEFINITIONS: Record<
 > = {
   name: { label: 'Name', headerClassName: 'text-left', cellClassName: 'align-top font-medium whitespace-normal break-words leading-tight' },
   institution: { label: 'Institution', headerClassName: 'text-left', cellClassName: 'align-top whitespace-normal break-words leading-tight' },
-  domains: { label: 'Domains', headerClassName: 'text-left', cellClassName: 'align-top whitespace-normal break-words leading-tight' },
   relationship: { label: 'Relationship', headerClassName: 'text-center', cellClassName: 'align-top text-center whitespace-nowrap' },
   activity: { label: 'Activity', headerClassName: 'text-center', cellClassName: 'align-top text-center whitespace-nowrap' },
   last_year: { label: 'Last year', headerClassName: 'text-center', cellClassName: 'align-top text-center whitespace-nowrap' },
@@ -287,7 +286,6 @@ const COLLABORATION_TABLE_COLUMN_DEFAULTS: Record<
 > = {
   name: { visible: true, width: 260 },
   institution: { visible: true, width: 240 },
-  domains: { visible: true, width: 220 },
   relationship: { visible: true, width: 170 },
   activity: { visible: true, width: 150 },
   last_year: { visible: true, width: 120 },
@@ -297,7 +295,6 @@ const COLLABORATION_TABLE_COLUMN_DEFAULTS: Record<
 const COLLABORATION_TABLE_COLUMN_MIN_WIDTH: Record<CollaborationTableColumnKey, number> = {
   name: 180,
   institution: 180,
-  domains: 170,
   relationship: 130,
   activity: 120,
   last_year: 96,
@@ -307,7 +304,6 @@ const COLLABORATION_TABLE_COLUMN_MIN_WIDTH: Record<CollaborationTableColumnKey, 
 const COLLABORATION_TABLE_COLUMN_MAX_WIDTH: Record<CollaborationTableColumnKey, number> = {
   name: 520,
   institution: 460,
-  domains: 420,
   relationship: 260,
   activity: 240,
   last_year: 180,
@@ -316,6 +312,8 @@ const COLLABORATION_TABLE_COLUMN_MAX_WIDTH: Record<CollaborationTableColumnKey, 
 }
 const COLLABORATION_TABLE_COLUMN_HARD_MIN = 56
 const COLLABORATION_TABLE_LAYOUT_FALLBACK_WIDTH = 1080
+const COLLABORATOR_SHARED_WORKS_PRELOAD_COUNT = 6
+const COLLABORATOR_SHARED_WORKS_PRELOAD_CONCURRENCY = 2
 
 function normalizeSalutationToken(value: string): string {
   return String(value || '').trim().replace(/\.+$/g, '').toLowerCase()
@@ -1003,6 +1001,21 @@ function parsePositiveInteger(value: string | null | undefined, fallback: number
   return Math.max(1, Math.floor(parsed))
 }
 
+function resolveCollaborationFetchPageSize(pageSize: CollaborationTablePageSize): number {
+  return pageSize === 'all' ? COLLABORATORS_PAGE_SIZE_DEFAULT : pageSize
+}
+
+function isCollaboratorsListComplete(listing: CollaboratorsListPayload | null | undefined): boolean {
+  if (!listing) {
+    return false
+  }
+  if (listing.has_more) {
+    return false
+  }
+  const total = Math.max(0, Number(listing.total || 0))
+  return total === 0 || listing.items.length >= total
+}
+
 function normalizeSortValue(value: string | null | undefined): CollaborationSortField {
   const clean = String(value || '').trim()
   if (
@@ -1195,7 +1208,6 @@ function clampCollaborationTableColumnsToAvailableWidth(input: {
   const next: Record<CollaborationTableColumnKey, CollaborationTableColumnPreference> = {
     name: { ...input.columns.name },
     institution: { ...input.columns.institution },
-    domains: { ...input.columns.domains },
     relationship: { ...input.columns.relationship },
     activity: { ...input.columns.activity },
     last_year: { ...input.columns.last_year },
@@ -1220,7 +1232,6 @@ function clampCollaborationTableColumnsToAvailableWidth(input: {
   }, {
     name: COLLABORATION_TABLE_COLUMN_DEFAULTS.name.width,
     institution: COLLABORATION_TABLE_COLUMN_DEFAULTS.institution.width,
-    domains: COLLABORATION_TABLE_COLUMN_DEFAULTS.domains.width,
     relationship: COLLABORATION_TABLE_COLUMN_DEFAULTS.relationship.width,
     activity: COLLABORATION_TABLE_COLUMN_DEFAULTS.activity.width,
     last_year: COLLABORATION_TABLE_COLUMN_DEFAULTS.last_year.width,
@@ -1232,7 +1243,6 @@ function clampCollaborationTableColumnsToAvailableWidth(input: {
   if (totalWidth > containerBudget) {
     let overflow = totalWidth - containerBudget
     const shrinkOrder: CollaborationTableColumnKey[] = [
-      'domains',
       'institution',
       'name',
       'relationship',
@@ -1277,7 +1287,6 @@ function clampCollaborationTableColumnsToAvailableWidth(input: {
     const growOrder: CollaborationTableColumnKey[] = ([
       'name',
       'institution',
-      'domains',
       'relationship',
       'activity',
       'coauthored_works',
@@ -1419,13 +1428,16 @@ export function ProfileCollaborationPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialQuery = String(searchParams.get('query') || '').trim()
   const initialSort = normalizeSortValue(searchParams.get('sort'))
+  const initialPage = parsePositiveInteger(searchParams.get('page'), 1)
   const initialCachedLandingData = useMemo(
     () =>
       readCachedCollaborationLandingData({
         query: initialQuery,
         sort: initialSort,
+        page: initialPage,
+        pageSize: COLLABORATORS_PAGE_SIZE_DEFAULT,
       }),
-    [initialQuery, initialSort],
+    [initialPage, initialQuery, initialSort],
   )
   const [summary, setSummary] = useState<CollaborationMetricsSummaryPayload | null>(initialCachedLandingData?.summary || null)
   const [listing, setListing] = useState<CollaboratorsListPayload | null>(initialCachedLandingData?.listing || null)
@@ -1434,7 +1446,7 @@ export function ProfileCollaborationPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => (
     initialSort === 'name' ? 'asc' : 'desc'
   ))
-  const [page, setPage] = useState(() => parsePositiveInteger(searchParams.get('page'), 1))
+  const [page, setPage] = useState(() => initialPage)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [collaboratorDrilldownOpen, setCollaboratorDrilldownOpen] = useState(false)
   const [activeCollaboratorDrilldownTab, setActiveCollaboratorDrilldownTab] = useState<CollaboratorDrilldownTab>('details')
@@ -1483,6 +1495,8 @@ export function ProfileCollaborationPage() {
   const [sharedWorksLoadingByCollaboratorId, setSharedWorksLoadingByCollaboratorId] = useState<Record<string, boolean>>({})
   const [sharedWorksErrorByCollaboratorId, setSharedWorksErrorByCollaboratorId] = useState<Record<string, string>>({})
   const collaboratorInstitutionLookupSequenceRef = useRef(0)
+  const sharedWorksRequestInFlightRef = useRef<Set<string>>(new Set())
+  const sharedWorksBulkPreloadStartedRef = useRef(false)
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>(() => normalizeHeatmapMode(searchParams.get('heatmap_mode')))
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>(
     () => normalizeHeatmapMetric(searchParams.get('heatmap_metric')),
@@ -1533,6 +1547,7 @@ export function ProfileCollaborationPage() {
   const collaborationLibraryDownloadPopoverRef = useRef<HTMLDivElement | null>(null)
   const collaborationLibrarySettingsButtonRef = useRef<HTMLButtonElement | null>(null)
   const collaborationLibrarySettingsPopoverRef = useRef<HTMLDivElement | null>(null)
+  const collaborationLoadSequenceRef = useRef(0)
   const collaborationTableResizeRef = useRef<{
     column: CollaborationTableColumnKey
     visibleColumns: CollaborationTableColumnKey[]
@@ -2194,6 +2209,7 @@ export function ProfileCollaborationPage() {
   }, [listing?.items])
 
   const duplicateRecordDelta = Math.max(0, (listing?.items?.length || 0) - canonicalCollaborators.length)
+  const hasCompleteListing = useMemo(() => isCollaboratorsListComplete(listing), [listing])
 
   const selectedCollaborator = useMemo(() => {
     return canonicalCollaborators.find((item) => item.id === selectedId) || null
@@ -3078,23 +3094,64 @@ export function ProfileCollaborationPage() {
     return items
   }, [filteredCollaborators, sort, sortDirection])
 
+  const useServerVisiblePage = !hasCompleteListing && !heatmapSelection && collaborationLibraryPageSize !== 'all'
+
   const totalPages = useMemo(
     () => {
       if (collaborationLibraryPageSize === 'all') {
         return 1
       }
+      if (useServerVisiblePage) {
+        return Math.max(
+          1,
+          Math.ceil(Math.max(Number(listing?.total || 0), sortedCollaborators.length) / collaborationLibraryPageSize),
+        )
+      }
       return Math.max(1, Math.ceil(sortedCollaborators.length / collaborationLibraryPageSize))
     },
-    [collaborationLibraryPageSize, sortedCollaborators.length],
+    [collaborationLibraryPageSize, listing?.total, sortedCollaborators.length, useServerVisiblePage],
   )
 
   const pagedCollaborators = useMemo(() => {
     if (collaborationLibraryPageSize === 'all') {
       return sortedCollaborators
     }
+    if (useServerVisiblePage) {
+      return sortedCollaborators
+    }
     const start = (page - 1) * collaborationLibraryPageSize
     return sortedCollaborators.slice(start, start + collaborationLibraryPageSize)
-  }, [collaborationLibraryPageSize, page, sortedCollaborators])
+  }, [collaborationLibraryPageSize, page, sortedCollaborators, useServerVisiblePage])
+
+  const ensureCollaboratorSharedWorksLoaded = useCallback(async (token: string, collaboratorId: string) => {
+    const normalizedCollaboratorId = String(collaboratorId || '').trim()
+    if (!normalizedCollaboratorId) {
+      return
+    }
+    if (
+      sharedWorksByCollaboratorId[normalizedCollaboratorId] ||
+      sharedWorksLoadingByCollaboratorId[normalizedCollaboratorId] ||
+      sharedWorksRequestInFlightRef.current.has(normalizedCollaboratorId)
+    ) {
+      return
+    }
+
+    sharedWorksRequestInFlightRef.current.add(normalizedCollaboratorId)
+    setSharedWorksLoadingByCollaboratorId((current) => ({ ...current, [normalizedCollaboratorId]: true }))
+    setSharedWorksErrorByCollaboratorId((current) => ({ ...current, [normalizedCollaboratorId]: '' }))
+    try {
+      const payload = await listCollaboratorSharedWorks(token, normalizedCollaboratorId)
+      setSharedWorksByCollaboratorId((current) => ({ ...current, [normalizedCollaboratorId]: payload.items || [] }))
+    } catch (loadError) {
+      setSharedWorksErrorByCollaboratorId((current) => ({
+        ...current,
+        [normalizedCollaboratorId]: loadError instanceof Error ? loadError.message : 'Could not load co-authored publications.',
+      }))
+    } finally {
+      sharedWorksRequestInFlightRef.current.delete(normalizedCollaboratorId)
+      setSharedWorksLoadingByCollaboratorId((current) => ({ ...current, [normalizedCollaboratorId]: false }))
+    }
+  }, [sharedWorksByCollaboratorId, sharedWorksLoadingByCollaboratorId])
 
   useEffect(() => {
     if (!listing) {
@@ -3155,8 +3212,33 @@ export function ProfileCollaborationPage() {
     sort,
   ])
 
-  const load = async (token: string, options?: { background?: boolean }) => {
+  const applyLoadedListing = (listPayload: CollaboratorsListPayload) => {
+    setListing(listPayload)
+    const selectedStillPresent = selectedId
+      ? listPayload.items.some((item) => item.id === selectedId)
+      : false
+    if (!selectedStillPresent && listPayload.items.length > 0) {
+      const first = listPayload.items[0]
+      setSelectedId(first.id)
+      applyCollaboratorFormState(first)
+    }
+    if (listPayload.items.length === 0) {
+      setSelectedId(null)
+      clearCollaboratorFormState()
+    }
+  }
+
+  const load = async (
+    token: string,
+    options?: { background?: boolean; pageOverride?: number; hydrateFull?: boolean },
+  ) => {
     const background = Boolean(options?.background)
+    const requestedPage = Math.max(1, Math.floor(options?.pageOverride ?? page))
+    const requestedPageSize = resolveCollaborationFetchPageSize(collaborationLibraryPageSize)
+    const requestId = collaborationLoadSequenceRef.current + 1
+    const shouldHydrateFull = collaborationLibraryPageSize !== 'all'
+      && (Boolean(options?.hydrateFull) || requestedPage === 1)
+    collaborationLoadSequenceRef.current = requestId
     if (!background) {
       setLoading(true)
       setError('')
@@ -3164,37 +3246,52 @@ export function ProfileCollaborationPage() {
     try {
       const [summaryPayload, listPayload] = await Promise.all([
         fetchCollaborationMetricsSummary(token),
-        fetchAllCollaboratorsForCollaborationPage(token, {
+        collaborationLibraryPageSize === 'all'
+          ? fetchAllCollaboratorsForCollaborationPage(token, {
+              query,
+              sort,
+            })
+          : fetchCollaboratorsPageForCollaborationPage(token, {
+              query,
+              sort,
+              page: requestedPage,
+              pageSize: requestedPageSize,
+            }),
+      ])
+      if (requestId !== collaborationLoadSequenceRef.current) {
+        return
+      }
+      setSummary(summaryPayload)
+      applyLoadedListing(listPayload)
+      if (collaborationLibraryPageSize !== 'all') {
+        writeCachedCollaborationLandingData({
           query,
           sort,
-        }),
-      ])
-      setSummary(summaryPayload)
-      setListing(listPayload)
-      writeCachedCollaborationLandingData({
-        query,
-        sort,
-        summary: summaryPayload,
-        listing: listPayload,
-      })
-      const selectedStillPresent = selectedId
-        ? listPayload.items.some((item) => item.id === selectedId)
-        : false
-      if (!selectedStillPresent && listPayload.items.length > 0) {
-        const first = listPayload.items[0]
-        setSelectedId(first.id)
-        applyCollaboratorFormState(first)
+          page: requestedPage,
+          pageSize: requestedPageSize,
+          summary: summaryPayload,
+          listing: listPayload,
+        })
       }
-      if (listPayload.items.length === 0) {
-        setSelectedId(null)
-        clearCollaboratorFormState()
+      if (shouldHydrateFull && !isCollaboratorsListComplete(listPayload)) {
+        void fetchAllCollaboratorsForCollaborationPage(token, {
+          query,
+          sort,
+        })
+          .then((fullPayload) => {
+            if (requestId !== collaborationLoadSequenceRef.current) {
+              return
+            }
+            applyLoadedListing(fullPayload)
+          })
+          .catch(() => undefined)
       }
     } catch (loadError) {
-      if (!background) {
+      if (!background && requestId === collaborationLoadSequenceRef.current) {
         setError(loadError instanceof Error ? loadError.message : 'Could not load collaboration page.')
       }
     } finally {
-      if (!background) {
+      if (!background && requestId === collaborationLoadSequenceRef.current) {
         setLoading(false)
       }
     }
@@ -3206,14 +3303,22 @@ export function ProfileCollaborationPage() {
       navigate('/auth', { replace: true })
       return
     }
-    const cached = readCachedCollaborationLandingData({ query, sort })
+    if (hasCompleteListing) {
+      return
+    }
+    const cached = readCachedCollaborationLandingData({
+      query,
+      sort,
+      page,
+      pageSize: resolveCollaborationFetchPageSize(collaborationLibraryPageSize),
+    })
     if (cached) {
       setSummary(cached.summary)
       setListing(cached.listing)
     }
     void load(token, { background: Boolean(cached) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applyCollaboratorFormState, clearCollaboratorFormState, navigate, sort])
+  }, [applyCollaboratorFormState, clearCollaboratorFormState, collaborationLibraryPageSize, hasCompleteListing, navigate, page, sort])
 
   useEffect(() => {
     if (!summary || summary.status !== 'RUNNING') {
@@ -3248,7 +3353,52 @@ export function ProfileCollaborationPage() {
   }, [applyCollaboratorFormState, bootstrapCollaboratorAffiliations, selectedId])
 
   useEffect(() => {
-    if (!selectedId || sharedWorksByCollaboratorId[selectedId]) {
+    if (!selectedId) {
+      return
+    }
+    const token = getAuthSessionToken()
+    if (!token) {
+      return
+    }
+    void ensureCollaboratorSharedWorksLoaded(token, selectedId)
+  }, [ensureCollaboratorSharedWorksLoaded, selectedId])
+
+  useEffect(() => {
+    if (sharedWorksBulkPreloadStartedRef.current) {
+      return
+    }
+    const token = getAuthSessionToken()
+    if (!token) {
+      return
+    }
+    sharedWorksBulkPreloadStartedRef.current = true
+    void listCollaboratorsSharedWorks(token)
+      .then((payload) => {
+        const itemsByCollaboratorId = payload.items_by_collaborator_id || {}
+        setSharedWorksByCollaboratorId((current) => ({ ...itemsByCollaboratorId, ...current }))
+        setSharedWorksLoadingByCollaboratorId((current) => {
+          const next = { ...current }
+          for (const collaboratorId of Object.keys(itemsByCollaboratorId)) {
+            next[collaboratorId] = false
+            sharedWorksRequestInFlightRef.current.delete(collaboratorId)
+          }
+          return next
+        })
+        setSharedWorksErrorByCollaboratorId((current) => {
+          const next = { ...current }
+          for (const collaboratorId of Object.keys(itemsByCollaboratorId)) {
+            next[collaboratorId] = ''
+          }
+          return next
+        })
+      })
+      .catch(() => {
+        sharedWorksBulkPreloadStartedRef.current = false
+      })
+  }, [])
+
+  useEffect(() => {
+    if (pagedCollaborators.length === 0) {
       return
     }
     const token = getAuthSessionToken()
@@ -3256,34 +3406,32 @@ export function ProfileCollaborationPage() {
       return
     }
     let cancelled = false
-    setSharedWorksLoadingByCollaboratorId((current) => ({ ...current, [selectedId]: true }))
-    setSharedWorksErrorByCollaboratorId((current) => ({ ...current, [selectedId]: '' }))
-    void listCollaboratorSharedWorks(token, selectedId)
-      .then((payload) => {
-        if (cancelled) {
-          return
-        }
-        setSharedWorksByCollaboratorId((current) => ({ ...current, [selectedId]: payload.items || [] }))
-      })
-      .catch((loadError) => {
-        if (cancelled) {
-          return
-        }
-        setSharedWorksErrorByCollaboratorId((current) => ({
-          ...current,
-          [selectedId]: loadError instanceof Error ? loadError.message : 'Could not load co-authored publications.',
+    const collaboratorIdsToPreload = pagedCollaborators
+      .slice(0, COLLABORATOR_SHARED_WORKS_PRELOAD_COUNT)
+      .map((item) => item.id)
+      .filter((value, index, items) => Boolean(value) && items.indexOf(value) === index)
+
+    const run = async () => {
+      for (
+        let start = 0;
+        start < collaboratorIdsToPreload.length && !cancelled;
+        start += COLLABORATOR_SHARED_WORKS_PRELOAD_CONCURRENCY
+      ) {
+        const batch = collaboratorIdsToPreload.slice(start, start + COLLABORATOR_SHARED_WORKS_PRELOAD_CONCURRENCY)
+        await Promise.all(batch.map(async (collaboratorId) => {
+          if (cancelled) {
+            return
+          }
+          await ensureCollaboratorSharedWorksLoaded(token, collaboratorId)
         }))
-      })
-      .finally(() => {
-        if (cancelled) {
-          return
-        }
-        setSharedWorksLoadingByCollaboratorId((current) => ({ ...current, [selectedId]: false }))
-      })
+      }
+    }
+
+    void run()
     return () => {
       cancelled = true
     }
-  }, [selectedId, sharedWorksByCollaboratorId])
+  }, [ensureCollaboratorSharedWorksLoaded, pagedCollaborators])
 
   useEffect(() => {
     if (!institutionInputFocused) {
@@ -3352,14 +3500,22 @@ export function ProfileCollaborationPage() {
     }
     setPage(1)
     setHeatmapSelection(null)
-    const cached = readCachedCollaborationLandingData({ query, sort })
+    const requestedPageSize = resolveCollaborationFetchPageSize(collaborationLibraryPageSize)
+    const cached = collaborationLibraryPageSize === 'all'
+      ? null
+      : readCachedCollaborationLandingData({
+          query,
+          sort,
+          page: 1,
+          pageSize: requestedPageSize,
+        })
     if (cached) {
       setSummary(cached.summary)
       setListing(cached.listing)
-      await load(token, { background: true })
+      await load(token, { background: true, pageOverride: 1, hydrateFull: true })
       return
     }
-    await load(token)
+    await load(token, { pageOverride: 1, hydrateFull: true })
   }
 
   const onSortChange = (value: CollaborationSortField) => {
@@ -4261,23 +4417,10 @@ export function ProfileCollaborationPage() {
                               </TableCell>
                             )
                           }
-                          if (false && columnKey === 'institution') {
+                          if (columnKey === '__never__') {
                             return (
                               <TableCell key={`${item.id}-institution`} className="house-table-cell-text align-top whitespace-normal break-words leading-tight">
                                 {item.institution_labels.join(' • ') || item.primary_institution || '-'}
-                              </TableCell>
-                            )
-                          }
-                          if (columnKey === 'domains') {
-                            return (
-                              <TableCell key={`${item.id}-domains`} className="house-table-cell-text align-top whitespace-normal break-words leading-tight">
-                                <div className="flex flex-wrap gap-1">
-                                  {(item.research_domains || []).slice(0, 3).map((domain) => (
-                                    <Badge key={domain} variant="outline">
-                                      {domain}
-                                    </Badge>
-                                  ))}
-                                </div>
                               </TableCell>
                             )
                           }
