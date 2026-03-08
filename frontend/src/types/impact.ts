@@ -901,7 +901,7 @@ export type PublicationAiInsightsResponsePayload = {
 }
 
 export type PublicationInsightsAgentSectionPayload = {
-  key: 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history'
+  key: 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history' | 'publication_output_pattern' | 'publication_production_phase' | 'publication_volume_over_time' | 'publication_article_type_over_time' | 'publication_type_over_time'
   title: string
   headline: string
   body: string

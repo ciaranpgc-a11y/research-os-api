@@ -175,19 +175,21 @@ export function buildTotalPublicationsMethodsSections(tile: PublicationMetricTil
       description: 'How comparative context is sourced for this metric.',
       facts: [
         { label: 'Benchmark rows', value: benchmarks.length ? formatInt(benchmarks.length) : '0' },
-        { label: 'Context status', value: benchmarks.length ? 'Benchmark comparisons available' : 'No benchmark cohort yet' },
+        { label: 'Context status', value: benchmarks.length ? 'Benchmark and self-context available' : 'Self-context available' },
         { label: 'Sources', value: sourceLabel },
         { label: 'Refresh cadence', value: refreshCadence },
       ],
       bullets: benchmarks.length
         ? [
           'Context cards render benchmark rows returned in the canonical drilldown payload for this metric.',
+          'The tab also derives portfolio maturity, recent-versus-earlier output, and composition-shift views from the same publication record set.',
           'Benchmark values are displayed as comparison-only context and do not change the publication totals shown in Summary or Trajectory.',
-          'Venue, topic, and open-access patterns still live in Breakdown because they describe composition rather than external benchmarking.',
+          'Venue, topic, and open-access patterns still live in Breakdown because they describe composition in detail rather than high-level context.',
         ]
         : [
-          'Total publication insights currently has no external benchmark cohort in the canonical drilldown payload, so the Context tab remains empty until benchmark rows are available.',
-          'Venue, topic, and open-access patterns still provide descriptive context in Breakdown even when benchmark cards are unavailable.',
+          'Total publication insights currently has no external benchmark cohort in the canonical drilldown payload, so Context uses self-comparison rather than peer comparison.',
+          'Portfolio maturity, recent-versus-earlier output, and composition-shift views are derived from the same complete-year publication history used elsewhere in the drilldown.',
+          'Venue, topic, and open-access patterns still provide descriptive composition detail in Breakdown.',
           'Refresh cadence and timestamps follow the synced publication-metrics refresh cycle.',
         ],
     },

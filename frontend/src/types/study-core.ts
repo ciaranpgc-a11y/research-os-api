@@ -361,12 +361,28 @@ export type LibraryAssetAuditEventType =
   | 'asset_downloaded'
   | 'asset_locked'
   | 'asset_unlocked'
+  | 'asset_workspace_linked'
+  | 'asset_workspace_unlinked'
+  | 'access_invited'
+  | 'pending_access_role_changed'
+  | 'access_invitation_cancelled'
+  | 'access_invitation_accepted'
+  | 'access_invitation_declined'
   | 'access_granted'
   | 'access_role_changed'
   | 'access_revoked'
 
 export type LibraryAssetAccessRole = 'editor' | 'viewer'
 export type LibraryAssetCurrentRole = 'owner' | LibraryAssetAccessRole
+export type LibraryAssetAccessSource = 'owner' | 'direct_share' | 'workspace_member' | 'project_collaborator'
+export type LibraryAssetOwnershipScope = 'personal' | 'workspace_linked'
+export type LibraryAssetWorkspaceRole = 'owner' | 'editor' | 'reviewer' | 'viewer'
+export type LibraryAssetOrigin = 'library' | 'workspace'
+
+export type LibraryAssetWorkspacePlacement = {
+  workspace_id: string
+  workspace_name: string
+}
 
 export type LibraryAssetAuditEntry = {
   id: string
@@ -378,6 +394,7 @@ export type LibraryAssetAuditEntry = {
   subject_name?: string | null
   from_value?: string | null
   to_value?: string | null
+  role?: LibraryAssetAccessRole | null
   message: string
   created_at: string
 }
@@ -387,6 +404,14 @@ export type LibraryAssetRecord = {
   owner_user_id: string | null
   owner_name?: string | null
   project_id: string | null
+  workspace_id?: string | null
+  workspace_name?: string | null
+  workspace_ids?: string[]
+  workspace_names?: string[]
+  workspace_placements?: LibraryAssetWorkspacePlacement[]
+  origin?: LibraryAssetOrigin
+  origin_workspace_id?: string | null
+  origin_workspace_name?: string | null
   filename: string
   kind: string
   mime_type: string | null
@@ -394,8 +419,13 @@ export type LibraryAssetRecord = {
   uploaded_at: string
   shared_with_user_ids?: string[]
   shared_with?: Array<{ user_id: string; name: string; role: LibraryAssetAccessRole }>
+  pending_with?: Array<{ user_id: string; name: string; role: LibraryAssetAccessRole }>
   audit_log_entries?: LibraryAssetAuditEntry[]
   current_user_role?: LibraryAssetCurrentRole | null
+  current_user_access_source?: LibraryAssetAccessSource | null
+  current_user_access_sources?: LibraryAssetAccessSource[]
+  workspace_role?: LibraryAssetWorkspaceRole | null
+  ownership_scope?: LibraryAssetOwnershipScope
   can_manage_access?: boolean
   can_edit_metadata?: boolean
   can_download?: boolean
@@ -407,7 +437,7 @@ export type LibraryAssetRecord = {
 
 export type LibraryAssetSortBy = 'uploaded_at' | 'filename' | 'byte_size' | 'kind' | 'owner_name'
 export type LibraryAssetSortDirection = 'asc' | 'desc'
-export type LibraryAssetOwnership = 'all' | 'owned' | 'shared'
+export type LibraryAssetOwnership = 'all' | 'owned' | 'shared_by_me' | 'shared'
 export type LibraryAssetScope = 'all' | 'active' | 'archived'
 
 export type LibraryAssetListPayload = {

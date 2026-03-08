@@ -15,6 +15,7 @@ from research_os.db import (
     create_all_tables,
     session_scope,
 )
+from research_os.services.workspace_service import get_workspace_access_snapshot
 
 DEFAULT_SECTIONS = (
     "title",
@@ -82,6 +83,40 @@ def _assert_project_access(project: Project, requesting_user_id: str | None) -> 
     if _project_is_accessible(project, requesting_user_id):
         return
     raise ProjectNotFoundError(f"Project '{project.id}' was not found.")
+
+
+def _validate_workspace_collaborators(
+    *,
+    session,
+    workspace_id: str | None,
+    owner_user_id: str | None,
+    collaborator_user_ids: list[str],
+) -> None:
+    clean_workspace_id = _trim(workspace_id)
+    clean_owner_user_id = _trim(owner_user_id)
+    if not clean_workspace_id:
+        return
+    if not clean_owner_user_id:
+        raise ProjectNotFoundError(
+            "Workspace-linked projects require an authenticated owner."
+        )
+    snapshot = get_workspace_access_snapshot(
+        session=session,
+        workspace_id=clean_workspace_id,
+        user_id=clean_owner_user_id,
+    )
+    if snapshot is None:
+        raise ProjectNotFoundError(f"Workspace '{clean_workspace_id}' was not found.")
+    allowed_user_ids = set(snapshot.get("active_member_ids") or [])
+    disallowed = [
+        collaborator_user_id
+        for collaborator_user_id in collaborator_user_ids
+        if collaborator_user_id not in allowed_user_ids
+    ]
+    if disallowed:
+        raise ProjectNotFoundError(
+            "Project collaborators must already have access to the linked workspace."
+        )
 
 
 def _utc_timestamp_label() -> str:
@@ -156,6 +191,12 @@ def create_project_record(
             raise ProjectNotFoundError(
                 f"Project owner user '{clean_owner_user_id}' was not found."
             )
+        _validate_workspace_collaborators(
+            session=session,
+            workspace_id=workspace_id,
+            owner_user_id=clean_owner_user_id,
+            collaborator_user_ids=clean_collaborator_ids,
+        )
         project = Project(
             owner_user_id=clean_owner_user_id,
             collaborator_user_ids=clean_collaborator_ids,

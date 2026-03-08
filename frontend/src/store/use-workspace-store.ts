@@ -106,9 +106,17 @@ export type WorkspaceInvitationSent = {
   workspaceName: string
   inviteeName: string
   inviteeUserId: string | null
+  invitationType?: 'workspace' | 'data'
   role: WorkspaceCollaboratorRole
   invitedAt: string
   status: WorkspaceInvitationStatus
+}
+
+export type WorkspaceAuthorRequestAcceptResult = {
+  success: boolean
+  invitationType: 'workspace' | 'data' | null
+  workspaceId: string | null
+  acceptedAssetId: string | null
 }
 
 type WorkspaceInvitee = {
@@ -142,7 +150,9 @@ type WorkspaceStore = {
   activeWorkspaceId: string | null
   authorRequests: WorkspaceAuthorRequest[]
   invitationsSent: WorkspaceInvitationSent[]
+  remoteErrorMessage: string | null
   hydrateFromRemote: () => Promise<void>
+  clearRemoteError: () => void
   setActiveWorkspaceId: (workspaceId: string | null) => void
   ensureWorkspace: (workspaceId: string) => void
   createWorkspace: (name?: string) => WorkspaceRecord
@@ -153,7 +163,7 @@ type WorkspaceStore = {
     invitee: WorkspaceInvitee,
     role: WorkspaceCollaboratorRole,
   ) => WorkspaceInvitationSent | null
-  acceptAuthorRequest: (requestId: string) => WorkspaceRecord | null
+  acceptAuthorRequest: (requestId: string) => Promise<WorkspaceAuthorRequestAcceptResult>
   declineAuthorRequest: (requestId: string) => void
   cancelWorkspaceInvitation: (invitationId: string) => WorkspaceInvitationSent | null
 }
@@ -615,6 +625,11 @@ function normalizeInvitationSentRecords(values: Array<Partial<WorkspaceInvitatio
         invitation.status === 'accepted' || invitation.status === 'declined'
           ? invitation.status
           : 'pending'
+      const invitationType: WorkspaceInvitationSent['invitationType'] =
+        (invitation as { invitationType?: unknown }).invitationType === 'data'
+          || (invitation as { invitation_type?: unknown }).invitation_type === 'data'
+          ? 'data'
+          : 'workspace'
       return {
         id: trimValue(invitation.id) || buildId('invite'),
         workspaceId: trimValue(invitation.workspaceId) || buildId('workspace'),
@@ -623,6 +638,7 @@ function normalizeInvitationSentRecords(values: Array<Partial<WorkspaceInvitatio
         inviteeUserId: normalizeWorkspaceUserId((invitation as { inviteeUserId?: unknown }).inviteeUserId as string)
           || normalizeWorkspaceUserId((invitation as { invitee_user_id?: unknown }).invitee_user_id as string)
           || null,
+        invitationType,
         role: normalizeCollaboratorRole(invitation.role),
         invitedAt: trimValue(invitation.invitedAt) || nowIso(),
         status,
@@ -762,13 +778,68 @@ function runRemoteWorkspaceAction(
     .then(async () => {
       try {
         await action(token)
-      } catch {
-        // Keep local state when remote mutation fails.
+        useWorkspaceStore.setState((state) => ({
+          ...state,
+          remoteErrorMessage: null,
+        }))
+      } catch (error) {
+        useWorkspaceStore.setState((state) => ({
+          ...state,
+          remoteErrorMessage:
+            error instanceof Error
+              ? error.message
+              : 'Workspace changes could not be saved. Local state was refreshed.',
+        }))
+        try {
+          await useWorkspaceStore.getState().hydrateFromRemote()
+        } catch {
+          // Keep queue alive even if remote rehydration also fails.
+        }
       }
     })
     .catch(() => {
       // Keep queue alive even if a previous handler throws unexpectedly.
     })
+}
+
+function runRemoteWorkspaceActionWithResult<T>(
+  action: (token: string) => Promise<T>,
+): Promise<T | null> {
+  const token = getAuthSessionToken()
+  if (!token) {
+    return Promise.resolve(null)
+  }
+
+  let result: T | null = null
+  remoteWorkspaceActionQueue = remoteWorkspaceActionQueue
+    .then(async () => {
+      try {
+        result = await action(token)
+        useWorkspaceStore.setState((state) => ({
+          ...state,
+          remoteErrorMessage: null,
+        }))
+      } catch (error) {
+        useWorkspaceStore.setState((state) => ({
+          ...state,
+          remoteErrorMessage:
+            error instanceof Error
+              ? error.message
+              : 'Workspace changes could not be saved. Local state was refreshed.',
+        }))
+        result = null
+        try {
+          await useWorkspaceStore.getState().hydrateFromRemote()
+        } catch {
+          // Keep queue alive even if remote rehydration also fails.
+        }
+      }
+    })
+    .catch(() => {
+      result = null
+    })
+
+  return remoteWorkspaceActionQueue.then(() => result)
 }
 
 function slugifyWorkspaceName(value: string): string {
@@ -790,6 +861,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   activeWorkspaceId: initialActiveWorkspaceId,
   authorRequests: initialAuthorRequests,
   invitationsSent: initialInvitationsSent,
+  remoteErrorMessage: null,
   hydrateFromRemote: async () => {
     const token = getAuthSessionToken()
     if (!token) {
@@ -833,10 +905,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         invitationsSent: remoteInvitationsSent,
       }
       persistSnapshotLocal(snapshot)
-      set(snapshot)
+      set({
+        ...snapshot,
+        remoteErrorMessage: null,
+      })
     } catch {
       // Keep local state when remote hydration fails.
     }
+  },
+  clearRemoteError: () => {
+    set((state) => ({
+      ...state,
+      remoteErrorMessage: null,
+    }))
   },
   setActiveWorkspaceId: (workspaceId) => {
     persistActiveWorkspaceId(workspaceId)
@@ -1144,19 +1225,71 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     )
     return nextInvitation
   },
-  acceptAuthorRequest: (requestId) => {
+  acceptAuthorRequest: async (requestId) => {
     const cleanRequestId = trimValue(requestId)
     if (!cleanRequestId) {
-      return null
+      return {
+        success: false,
+        invitationType: null,
+        workspaceId: null,
+        acceptedAssetId: null,
+      }
     }
     const currentUserId = currentWorkspaceUserId()
     if (!currentUserId) {
-      return null
+      return {
+        success: false,
+        invitationType: null,
+        workspaceId: null,
+        acceptedAssetId: null,
+      }
+    }
+    if (!getAuthSessionToken()) {
+      return {
+        success: false,
+        invitationType: null,
+        workspaceId: null,
+        acceptedAssetId: null,
+      }
     }
     const state = get()
     const request = state.authorRequests.find((item) => item.id === cleanRequestId)
     if (!request) {
-      return null
+      return {
+        success: false,
+        invitationType: null,
+        workspaceId: null,
+        acceptedAssetId: null,
+      }
+    }
+    if (request.invitationType === 'data') {
+      const nextAuthorRequests = state.authorRequests.filter((item) => item.id !== cleanRequestId)
+      persistSnapshotLocal({
+        workspaces: state.workspaces,
+        activeWorkspaceId: state.activeWorkspaceId,
+        authorRequests: nextAuthorRequests,
+        invitationsSent: state.invitationsSent,
+      })
+      set({ authorRequests: nextAuthorRequests })
+      const remoteResult = await runRemoteWorkspaceActionWithResult(async (token) => {
+        const result = await acceptWorkspaceAuthorRequestApi(token, cleanRequestId)
+        await get().hydrateFromRemote()
+        return result
+      })
+      if (!remoteResult) {
+        return {
+          success: false,
+          invitationType: 'data',
+          workspaceId: null,
+          acceptedAssetId: null,
+        }
+      }
+      return {
+        success: true,
+        invitationType: 'data',
+        workspaceId: null,
+        acceptedAssetId: remoteResult.acceptedAssetId || request.workspaceId || null,
+      }
     }
 
     const requestedWorkspaceId = request.workspaceId
@@ -1236,8 +1369,25 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       activeWorkspaceId: nextWorkspace.id,
       authorRequests: nextAuthorRequests,
     })
-    runRemoteWorkspaceAction((token) => acceptWorkspaceAuthorRequestApi(token, cleanRequestId))
-    return nextWorkspace
+    const remoteResult = await runRemoteWorkspaceActionWithResult(async (token) => {
+      const result = await acceptWorkspaceAuthorRequestApi(token, cleanRequestId)
+      await get().hydrateFromRemote()
+      return result
+    })
+    if (!remoteResult) {
+      return {
+        success: false,
+        invitationType: 'workspace',
+        workspaceId: null,
+        acceptedAssetId: null,
+      }
+    }
+    return {
+      success: true,
+      invitationType: 'workspace',
+      workspaceId: remoteResult.workspace?.id || nextWorkspace.id,
+      acceptedAssetId: null,
+    }
   },
   declineAuthorRequest: (requestId) => {
     const cleanRequestId = trimValue(requestId)

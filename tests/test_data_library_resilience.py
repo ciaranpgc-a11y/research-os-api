@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from research_os.db import (
     DataLibraryAsset,
@@ -66,6 +69,67 @@ def _metadata_path(root: Path, asset_id: str) -> Path:
 
 def _metadata_index_path(root: Path) -> Path:
     return root / "metadata.index.json"
+
+
+def _insert_stale_owner_asset(
+    tmp_path,
+    *,
+    filename: str,
+    mime_type: str,
+    byte_size: int,
+    storage_path: Path,
+    owner_user_id: str = "missing-user-id",
+) -> str:
+    db_path = tmp_path / "research_os_test_data_library_resilience.db"
+    asset_id = str(uuid4())
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep=" ")
+    connection = sqlite3.connect(str(db_path))
+    try:
+        connection.execute("PRAGMA foreign_keys=OFF")
+        connection.execute(
+            """
+            INSERT INTO data_library_assets (
+                id,
+                owner_user_id,
+                project_id,
+                workspace_id,
+                shared_with_user_ids,
+                shared_with_roles_json,
+                locked_for_team_members,
+                archived_by_user_ids_json,
+                audit_log_json,
+                filename,
+                kind,
+                mime_type,
+                byte_size,
+                storage_path,
+                uploaded_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                asset_id,
+                owner_user_id,
+                None,
+                None,
+                "[]",
+                None,
+                0,
+                None,
+                None,
+                filename,
+                "csv",
+                mime_type,
+                byte_size,
+                str(storage_path),
+                now,
+                now,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return asset_id
 
 
 def test_list_library_assets_restores_missing_row_from_metadata(monkeypatch, tmp_path) -> None:
@@ -526,20 +590,13 @@ def test_list_library_assets_owned_repairs_stale_owner_rows_when_user_has_owned_
     stale_bytes = b"col_a,col_b\n3,4\n"
     stale_asset_path.write_bytes(stale_bytes)
 
-    with session_scope() as session:
-        stale_row = DataLibraryAsset(
-            owner_user_id="missing-user-id",
-            project_id=None,
-            shared_with_user_ids=[],
-            filename="stale-owner.csv",
-            kind="csv",
-            mime_type="text/csv",
-            byte_size=len(stale_bytes),
-            storage_path=str(stale_asset_path),
-        )
-        session.add(stale_row)
-        session.flush()
-        stale_asset_id = str(stale_row.id)
+    stale_asset_id = _insert_stale_owner_asset(
+        tmp_path,
+        filename="stale-owner.csv",
+        mime_type="text/csv",
+        byte_size=len(stale_bytes),
+        storage_path=stale_asset_path,
+    )
 
     payload = list_library_assets(
         project_id=None,
@@ -576,20 +633,13 @@ def test_list_library_assets_claims_stale_owner_rows_even_with_other_valid_owner
     stale_bytes = b"col_a,col_b\n3,4\n"
     stale_path.write_bytes(stale_bytes)
 
-    with session_scope() as session:
-        stale_row = DataLibraryAsset(
-            owner_user_id="missing-user-id",
-            project_id=None,
-            shared_with_user_ids=[],
-            filename="stale-owner-visible.csv",
-            kind="csv",
-            mime_type="text/csv",
-            byte_size=len(stale_bytes),
-            storage_path=str(stale_path),
-        )
-        session.add(stale_row)
-        session.flush()
-        stale_asset_id = str(stale_row.id)
+    stale_asset_id = _insert_stale_owner_asset(
+        tmp_path,
+        filename="stale-owner-visible.csv",
+        mime_type="text/csv",
+        byte_size=len(stale_bytes),
+        storage_path=stale_path,
+    )
 
     payload = list_library_assets(project_id=None, user_id=requesting_user_id)
     listed_ids = [str(item.get("id")) for item in payload.get("items", [])]

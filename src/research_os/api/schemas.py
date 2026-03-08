@@ -438,6 +438,13 @@ class LibraryAssetAuditEntryResponse(BaseModel):
         "asset_downloaded",
         "asset_locked",
         "asset_unlocked",
+        "asset_workspace_linked",
+        "asset_workspace_unlinked",
+        "access_invited",
+        "pending_access_role_changed",
+        "access_invitation_cancelled",
+        "access_invitation_accepted",
+        "access_invitation_declined",
         "access_granted",
         "access_role_changed",
         "access_revoked",
@@ -448,8 +455,14 @@ class LibraryAssetAuditEntryResponse(BaseModel):
     subject_name: str | None = None
     from_value: str | None = None
     to_value: str | None = None
+    role: Literal["editor", "viewer"] | None = None
     message: str = ""
     created_at: datetime
+
+
+class LibraryAssetWorkspacePlacementResponse(BaseModel):
+    workspace_id: str
+    workspace_name: str
 
 
 class LibraryAssetResponse(BaseModel):
@@ -457,6 +470,16 @@ class LibraryAssetResponse(BaseModel):
     owner_user_id: str | None = None
     owner_name: str | None = None
     project_id: str | None = None
+    workspace_id: str | None = None
+    workspace_name: str | None = None
+    workspace_ids: list[str] = Field(default_factory=list)
+    workspace_names: list[str] = Field(default_factory=list)
+    workspace_placements: list[LibraryAssetWorkspacePlacementResponse] = Field(
+        default_factory=list
+    )
+    origin: Literal["library", "workspace"] = "library"
+    origin_workspace_id: str | None = None
+    origin_workspace_name: str | None = None
     filename: str
     kind: str
     mime_type: str | None = None
@@ -464,8 +487,25 @@ class LibraryAssetResponse(BaseModel):
     uploaded_at: datetime
     shared_with_user_ids: list[str] = Field(default_factory=list)
     shared_with: list[LibraryAssetAccessMemberResponse] = Field(default_factory=list)
+    pending_with: list[LibraryAssetAccessMemberResponse] = Field(default_factory=list)
     audit_log_entries: list[LibraryAssetAuditEntryResponse] = Field(default_factory=list)
     current_user_role: Literal["owner", "editor", "viewer"] | None = None
+    current_user_access_source: Literal[
+        "owner",
+        "direct_share",
+        "workspace_member",
+        "project_collaborator",
+    ] | None = None
+    current_user_access_sources: list[
+        Literal[
+            "owner",
+            "direct_share",
+            "workspace_member",
+            "project_collaborator",
+        ]
+    ] = Field(default_factory=list)
+    workspace_role: Literal["owner", "editor", "reviewer", "viewer"] | None = None
+    ownership_scope: Literal["personal", "workspace_linked"] = "personal"
     can_manage_access: bool = False
     can_edit_metadata: bool = False
     can_download: bool = False
@@ -485,7 +525,7 @@ class LibraryAssetListResponse(BaseModel):
     )
     sort_direction: Literal["asc", "desc"] = "desc"
     query: str = ""
-    ownership: Literal["all", "owned", "shared"] = "all"
+    ownership: Literal["all", "owned", "shared_by_me", "shared"] = "all"
     scope: Literal["all", "active", "archived"] = "all"
 
 
@@ -499,6 +539,8 @@ class LibraryAssetMetadataUpdateRequest(BaseModel):
     filename: str | None = None
     locked_for_team_members: bool | None = None
     archived_for_current_user: bool | None = None
+    workspace_id: str | None = None
+    workspace_ids: list[str] | None = None
 
 
 class ManuscriptAttachAssetsRequest(BaseModel):
@@ -2159,7 +2201,7 @@ class PublicationAiInsightsResponse(BaseModel):
 
 
 class PublicationInsightsAgentSectionResponse(BaseModel):
-    key: Literal["uncited_works", "citation_drivers", "citation_activation", "citation_activation_history"]
+    key: Literal["uncited_works", "citation_drivers", "citation_activation", "citation_activation_history", "publication_output_pattern", "publication_production_phase", "publication_volume_over_time", "publication_article_type_over_time", "publication_type_over_time"]
     title: str
     headline: str
     body: str
@@ -2740,6 +2782,7 @@ class WorkspaceAuthorRequestResponse(BaseModel):
     workspace_name: str
     author_name: str
     author_user_id: str | None = None
+    invitation_type: Literal["workspace", "data"] = "workspace"
     collaborator_role: Literal["editor", "reviewer", "viewer"] = "editor"
     invited_at: str
     source_inviter_user_id: str | None = None
@@ -2755,8 +2798,10 @@ class WorkspaceAuthorRequestAcceptRequest(BaseModel):
 
 
 class WorkspaceAuthorRequestAcceptResponse(BaseModel):
-    workspace: WorkspaceRecordResponse
+    workspace: WorkspaceRecordResponse | None = None
     removed_request_id: str
+    invitation_type: Literal["workspace", "data"] = "workspace"
+    accepted_asset_id: str | None = None
 
 
 class WorkspaceAuthorRequestDeclineResponse(BaseModel):
@@ -2769,6 +2814,7 @@ class WorkspaceInvitationSentResponse(BaseModel):
     workspace_id: str
     workspace_name: str
     invitee_name: str
+    invitation_type: Literal["workspace", "data"] = "workspace"
     role: Literal["editor", "reviewer", "viewer"] = "editor"
     invited_at: str
     status: Literal["pending", "accepted", "declined"] = "pending"

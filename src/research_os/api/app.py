@@ -22,6 +22,11 @@ from fastapi.responses import JSONResponse
 from fastapi.responses import PlainTextResponse
 from fastapi.responses import RedirectResponse
 from fastapi.responses import Response
+
+from research_os.platform_compat import patch_windows_platform_machine
+
+patch_windows_platform_machine()
+
 from sqlalchemy import text
 
 from research_os.config import get_openai_api_key
@@ -2650,7 +2655,7 @@ def v1_publications_ai_insights(
     request: Request,
     window_id: Literal["1y", "3y", "5y", "all"] = Query("1y"),
     scope: Literal["window", "section"] = Query("window"),
-    section_key: Literal["uncited_works", "citation_drivers", "citation_activation", "citation_activation_history"]
+    section_key: Literal["uncited_works", "citation_drivers", "citation_activation", "citation_activation_history", "publication_output_pattern", "publication_production_phase", "publication_volume_over_time", "publication_article_type_over_time", "publication_type_over_time"]
     | None = Query(None),
 ) -> PublicationInsightsAgentResponse | JSONResponse:
     token = _extract_session_token(request)
@@ -4568,12 +4573,14 @@ def v1_list_journal_presets() -> list[JournalOptionResponse]:
 async def v1_upload_library_assets(
     request: Request,
     project_id: str | None = Query(default=None),
+    workspace_id: str | None = Query(default=None),
 ) -> LibraryAssetUploadResponse | JSONResponse:
     requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
     try:
         project_id_value = _normalize_optional_id(project_id)
+        workspace_id_value = _normalize_optional_id(workspace_id)
         account_key_hint = _extract_account_key_hint(request)
         file_payloads: list[tuple[str, str | None, bytes]] = []
         content_type = request.headers.get("content-type", "").lower()
@@ -4586,6 +4593,9 @@ async def v1_upload_library_assets(
             payload_project_id = _normalize_optional_id(payload.get("project_id"))
             if payload_project_id is not None:
                 project_id_value = payload_project_id
+            payload_workspace_id = _normalize_optional_id(payload.get("workspace_id"))
+            if payload_workspace_id is not None:
+                workspace_id_value = payload_workspace_id
 
             raw_files = payload.get("files", [])
             if not isinstance(raw_files, list):
@@ -4621,6 +4631,9 @@ async def v1_upload_library_assets(
             form_project_id = _normalize_optional_id(form.get("project_id"))
             if form_project_id is not None:
                 project_id_value = form_project_id
+            form_workspace_id = _normalize_optional_id(form.get("workspace_id"))
+            if form_workspace_id is not None:
+                workspace_id_value = form_workspace_id
 
             files = form.getlist("files")
             for file in files:
@@ -4637,6 +4650,7 @@ async def v1_upload_library_assets(
         asset_ids = upload_library_assets(
             files=file_payloads,
             project_id=project_id_value,
+            workspace_id=workspace_id_value,
             user_id=requesting_user_id,
             account_key_hint=account_key_hint,
         )
@@ -4653,8 +4667,9 @@ async def v1_upload_library_assets(
 def v1_list_library_assets(
     request: Request,
     project_id: str | None = Query(default=None),
+    workspace_id: str | None = Query(default=None),
     query: str = Query(default=""),
-    ownership: Literal["all", "owned", "shared"] = Query(default="all"),
+    ownership: Literal["all", "owned", "shared_by_me", "shared"] = Query(default="all"),
     scope: Literal["all", "active", "archived"] = Query(default="all"),
     page: int = Query(default=1, ge=1, le=100000),
     page_size: int = Query(default=50, ge=1, le=200),
@@ -4670,6 +4685,7 @@ def v1_list_library_assets(
         account_key_hint = _extract_account_key_hint(request)
         payload = list_library_assets(
             project_id=project_id,
+            workspace_id=workspace_id,
             user_id=requesting_user_id,
             account_key_hint=account_key_hint,
             query=query,
@@ -4719,6 +4735,10 @@ def v1_update_library_asset_metadata(
             filename=payload.filename,
             locked_for_team_members=payload.locked_for_team_members,
             archived_for_current_user=payload.archived_for_current_user,
+            workspace_id=payload.workspace_id,
+            workspace_id_set="workspace_id" in payload.model_fields_set,
+            workspace_ids=payload.workspace_ids,
+            workspace_ids_set="workspace_ids" in payload.model_fields_set,
         )
         return LibraryAssetResponse(**updated)
     except DataAssetNotFoundError as exc:
@@ -5609,22 +5629,25 @@ def v1_wizard_bootstrap(
     requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
-    project, manuscript, inference = bootstrap_project_from_wizard(
-        title=request.title,
-        target_journal=request.target_journal,
-        answers=request.answers,
-        journal_voice=request.journal_voice,
-        language=request.language,
-        branch_name=request.branch_name,
-        owner_user_id=requesting_user_id,
-        workspace_id=request.workspace_id,
-        collaborator_names=request.collaborator_names,
-    )
-    return WizardBootstrapResponse(
-        project=project,
-        manuscript=manuscript,
-        inference=WizardInferResponse(**inference),
-    )
+    try:
+        project, manuscript, inference = bootstrap_project_from_wizard(
+            title=request.title,
+            target_journal=request.target_journal,
+            answers=request.answers,
+            journal_voice=request.journal_voice,
+            language=request.language,
+            branch_name=request.branch_name,
+            owner_user_id=requesting_user_id,
+            workspace_id=request.workspace_id,
+            collaborator_names=request.collaborator_names,
+        )
+        return WizardBootstrapResponse(
+            project=project,
+            manuscript=manuscript,
+            inference=WizardInferResponse(**inference),
+        )
+    except ProjectNotFoundError as exc:
+        return _build_bad_request_response(str(exc))
 
 
 @app.get("/v1/projects", response_model=list[ProjectResponse], tags=["v1"])
@@ -5643,17 +5666,20 @@ def v1_create_project(
     requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
-    return create_project_record(
-        title=request.title,
-        target_journal=request.target_journal,
-        journal_voice=request.journal_voice,
-        language=request.language,
-        study_type=request.study_type,
-        study_brief=request.study_brief,
-        owner_user_id=requesting_user_id,
-        collaborator_user_ids=request.collaborator_user_ids,
-        workspace_id=request.workspace_id,
-    )
+    try:
+        return create_project_record(
+            title=request.title,
+            target_journal=request.target_journal,
+            journal_voice=request.journal_voice,
+            language=request.language,
+            study_type=request.study_type,
+            study_brief=request.study_brief,
+            owner_user_id=requesting_user_id,
+            collaborator_user_ids=request.collaborator_user_ids,
+            workspace_id=request.workspace_id,
+        )
+    except ProjectNotFoundError as exc:
+        return _build_bad_request_response(str(exc))
 
 
 @app.get(

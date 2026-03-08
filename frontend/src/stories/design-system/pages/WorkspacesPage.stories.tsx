@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { pagesReviewToken } from '@/mocks/fixtures/pages-review'
+import { pagesReviewToken, resetPagesReviewMockCollections } from '@/mocks/fixtures/pages-review'
 import { WorkspacesPage } from '@/pages/workspaces-page'
 import {
   type WorkspaceInboxMessageRecord,
@@ -32,38 +32,38 @@ export default meta
 
 type Story = StoryObj<typeof meta>
 type StoryPerspective = 'owner' | 'editor' | 'reviewer' | 'viewer' | 'removed'
-type StorySurface = 'library' | 'overview' | 'data' | 'members' | 'logs'
+type StorySurface = 'library' | 'invitations' | 'overview' | 'data' | 'members' | 'logs'
 
 const STORY_USERS = {
   owner: {
     id: 'storybook-owner-user',
-    name: 'Storybook User',
-    firstName: 'Storybook',
-    lastName: 'User',
+    name: 'Morgan Hale',
+    firstName: 'Morgan',
+    lastName: 'Hale',
   },
   editor: {
     id: 'storybook-editor-user',
-    name: 'Storybook User',
-    firstName: 'Storybook',
-    lastName: 'User',
+    name: 'Avery Cole',
+    firstName: 'Avery',
+    lastName: 'Cole',
   },
   reviewer: {
     id: 'storybook-reviewer-user',
-    name: 'Storybook User',
-    firstName: 'Storybook',
-    lastName: 'User',
+    name: 'Jordan Pike',
+    firstName: 'Jordan',
+    lastName: 'Pike',
   },
   viewer: {
     id: 'storybook-viewer-user',
-    name: 'Storybook User',
-    firstName: 'Storybook',
-    lastName: 'User',
+    name: 'Riley Hart',
+    firstName: 'Riley',
+    lastName: 'Hart',
   },
   removed: {
     id: 'storybook-removed-user',
-    name: 'Storybook User',
-    firstName: 'Storybook',
-    lastName: 'User',
+    name: 'Casey Moore',
+    firstName: 'Casey',
+    lastName: 'Moore',
   },
 } as const
 
@@ -148,7 +148,7 @@ const perspectiveWorkspaceIds: Record<StoryPerspective, string> = {
   removed: 'legacy-removed',
 }
 
-const surfaceTabLabels: Record<Exclude<StorySurface, 'library'>, string> = {
+const surfaceTabLabels: Record<Exclude<StorySurface, 'library' | 'invitations'>, string> = {
   overview: 'Overview',
   data: 'Data',
   members: 'Members',
@@ -157,7 +157,7 @@ const surfaceTabLabels: Record<Exclude<StorySurface, 'library'>, string> = {
 
 function storySurfaceLabel(
   perspective: StoryPerspective,
-  surface: Exclude<StorySurface, 'library'>,
+  surface: Exclude<StorySurface, 'library' | 'invitations'>,
 ): string {
   if (surface === 'logs' && perspective !== 'owner') {
     return 'History'
@@ -165,11 +165,25 @@ function storySurfaceLabel(
   return surfaceTabLabels[surface]
 }
 
-const STORY_INITIAL_ENTRY =
+const STORY_WORKSPACES_INITIAL_ENTRY =
   '/workspaces?view=workspaces&scope=all&filter=all&mode=table&sort=updatedAt&dir=desc'
+const STORY_LIBRARY_INITIAL_ENTRY =
+  '/workspaces?view=data-library&scope=all&filter=all&mode=table&sort=updatedAt&dir=desc'
+const STORY_INVITATIONS_INITIAL_ENTRY =
+  '/workspaces?view=invitations&scope=all&filter=all&mode=table&sort=updatedAt&dir=desc'
+
+function storyInitialEntry(surface: StorySurface): string {
+  if (surface === 'library') {
+    return STORY_LIBRARY_INITIAL_ENTRY
+  }
+  if (surface === 'invitations') {
+    return STORY_INVITATIONS_INITIAL_ENTRY
+  }
+  return STORY_WORKSPACES_INITIAL_ENTRY
+}
 
 function canViewStorySurface(perspective: StoryPerspective, surface: StorySurface): boolean {
-  if (surface === 'library') {
+  if (surface === 'library' || surface === 'invitations') {
     return true
   }
   if (surface === 'members') {
@@ -786,16 +800,16 @@ function buildStoryInboxMessages(): WorkspaceInboxMessageRecord[] {
 function buildStoryInboxReads(): WorkspaceInboxReadMap {
   return {
     'hf-registry-owner': {
-      'storybook user': '2026-03-05T09:45:00Z',
+      'morgan hale': '2026-03-05T09:45:00Z',
     },
     'echo-editor': {
-      'storybook user': '2026-03-04T12:25:00Z',
+      'avery cole': '2026-03-04T12:25:00Z',
     },
     'amyloid-reviewer': {
-      'storybook user': '2026-03-03T12:00:00Z',
+      'jordan pike': '2026-03-03T12:00:00Z',
     },
     'device-viewer': {
-      'storybook user': '2026-03-02T09:30:00Z',
+      'riley hart': '2026-03-02T09:30:00Z',
     },
   }
 }
@@ -804,6 +818,7 @@ function WorkspaceAccessModelCanvas() {
   const [perspective, setPerspective] = useState<StoryPerspective>('owner')
   const [surface, setSurface] = useState<StorySurface>('library')
   const [resetVersion, setResetVersion] = useState(0)
+  const [storyReady, setStoryReady] = useState(false)
   const currentStoryUser = STORY_USERS[perspective]
   const selectedWorkspaceId = perspectiveWorkspaceIds[perspective]
   const canViewSelectedSurface = canViewStorySurface(perspective, surface)
@@ -819,9 +834,17 @@ function WorkspaceAccessModelCanvas() {
     () => storyAccessSummary(selectedWorkspace),
     [selectedWorkspace],
   )
-  const shellKey = `${resetVersion}-${perspective}`
+  const shellKey = `${resetVersion}-${perspective}-${surface}`
+  const initialEntry = useMemo(() => storyInitialEntry(surface), [surface])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    resetPagesReviewMockCollections({
+      workspaceRecords: clone(buildWorkspacesAccessMatrix()),
+      workspaceAuthorRequests: clone(workspaceAuthorRequests),
+      workspaceInvitations: clone(workspaceInvitationsSent),
+      workspaceInboxMessages: clone(buildStoryInboxMessages()),
+      workspaceInboxReads: clone(buildStoryInboxReads()),
+    })
     seedPagesReviewState({
       workspaces: clone(buildWorkspacesAccessMatrix()),
       activeWorkspaceId: perspectiveWorkspaceIds.owner,
@@ -833,13 +856,10 @@ function WorkspaceAccessModelCanvas() {
       messages: clone(buildStoryInboxMessages()),
       reads: clone(buildStoryInboxReads()),
     }))
-    seedStoryAuthUser(STORY_USERS.owner)
-    disableStoryRemoteHydration()
-  }, [resetVersion])
-
-  useEffect(() => {
     seedStoryAuthUser(currentStoryUser)
-  }, [currentStoryUser])
+    disableStoryRemoteHydration()
+    setStoryReady(true)
+  }, [currentStoryUser, resetVersion])
 
   useEffect(() => {
     useWorkspaceStore.getState().setActiveWorkspaceId(selectedWorkspaceId)
@@ -852,7 +872,31 @@ function WorkspaceAccessModelCanvas() {
   }, [perspective, surface])
 
   useEffect(() => {
-    if (surface === 'library' || !canViewSelectedSurface) {
+    if (!storyReady || surface !== 'library') {
+      return
+    }
+
+    let attempts = 0
+    const retryInterval = window.setInterval(() => {
+      attempts += 1
+      const retryButton = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+        (button) => button.textContent?.trim() === 'Retry',
+      )
+      if (retryButton) {
+        retryButton.click()
+        window.clearInterval(retryInterval)
+        return
+      }
+      if (attempts >= 12) {
+        window.clearInterval(retryInterval)
+      }
+    }, 250)
+
+    return () => window.clearInterval(retryInterval)
+  }, [shellKey, storyReady, surface])
+
+  useEffect(() => {
+    if (surface === 'library' || surface === 'invitations' || !canViewSelectedSurface) {
       return
     }
 
@@ -881,18 +925,24 @@ function WorkspaceAccessModelCanvas() {
     }, 80)
 
     return () => window.clearTimeout(openTimer)
-  }, [canViewSelectedSurface, selectedWorkspaceName, surface, shellKey])
+  }, [canViewSelectedSurface, perspective, selectedWorkspaceName, shellKey, storyReady, surface])
 
   return (
     <div className="relative min-h-screen bg-background">
-      <StandaloneRouteShell
-        key={shellKey}
-        initialEntry={STORY_INITIAL_ENTRY}
-        path="/workspaces"
-        element={<WorkspacesPage />}
-      />
-      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
-        <div className="pointer-events-auto flex flex-wrap items-center gap-3 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-4 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.16)] backdrop-blur">
+      {storyReady ? (
+        <StandaloneRouteShell
+          key={shellKey}
+          initialEntry={initialEntry}
+          path="/workspaces"
+          element={<WorkspacesPage />}
+        />
+      ) : (
+        <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+          Preparing workspace scenario...
+        </div>
+      )}
+      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex max-w-[min(28rem,calc(100vw-2rem))] justify-end">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-4 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.16)] backdrop-blur">
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               Perspective
@@ -914,7 +964,13 @@ function WorkspaceAccessModelCanvas() {
                       ? 'bg-[hsl(var(--tone-accent-600))] text-white shadow-sm'
                       : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--background))]',
                   ].join(' ')}
-                  onClick={() => setPerspective(value)}
+                  onClick={() => {
+                    if (perspective === value) {
+                      return
+                    }
+                    seedStoryAuthUser(STORY_USERS[value])
+                    setPerspective(value)
+                  }}
                 >
                   {label}
                 </button>
@@ -928,6 +984,7 @@ function WorkspaceAccessModelCanvas() {
             <div className="inline-flex items-center gap-1 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/60 p-1">
               {([
                 ['library', 'Library'],
+                ['invitations', 'Invitations'],
                 ['overview', 'Overview'],
                 ['data', 'Data'],
                 ['members', 'Members'],
@@ -964,7 +1021,10 @@ function WorkspaceAccessModelCanvas() {
           <button
             type="button"
             className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-1.5 text-sm font-medium text-[hsl(var(--foreground))] transition hover:bg-[hsl(var(--muted))]"
-            onClick={() => setResetVersion((current) => current + 1)}
+            onClick={() => {
+              setStoryReady(false)
+              setResetVersion((current) => current + 1)
+            }}
           >
             Reset scenario
           </button>

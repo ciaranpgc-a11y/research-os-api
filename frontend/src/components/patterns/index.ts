@@ -11,6 +11,8 @@ export type { ChartMotion, ChartMotionPreset, ChartTheme } from './chart-frame.h
 
 export { HelpTooltipIconButton } from './HelpTooltipIconButton'
 export type { HelpTooltipIconButtonProps } from './HelpTooltipIconButton'
+export { InsightTooltipContent } from './InsightTooltipContent'
+export type { InsightTooltipContentProps, InsightTooltipFact, InsightTooltipSection } from './InsightTooltipContent'
 export { InsightsGlyph } from './InsightsGlyph'
 export type { InsightsGlyphProps } from './InsightsGlyph'
 export { SectionTools, SectionToolDivider, SectionToolIconButton } from './SectionTools'

@@ -30,10 +30,49 @@ from research_os.db import (
     create_all_tables,
     session_scope,
 )
+from research_os.services.workspace_service import (
+    _load_workspace_state_row,
+    _normalize_author_request,
+    _normalize_invitation_sent,
+    _remove_author_request_for_invitation,
+    _save_workspace_state_row,
+    get_workspace_access_snapshot,
+)
 
 SECTION_CONTEXTS = {"RESULTS", "TABLES", "FIGURES", "PLANNER"}
 LIBRARY_ASSET_SHARED_ACCESS_ROLES = {"editor", "viewer"}
 LIBRARY_ASSET_ROLE_PRIORITY = {"viewer": 1, "editor": 2, "owner": 3}
+LIBRARY_ASSET_ACCESS_SOURCE_PRIORITY = {
+    "owner": 4,
+    "direct_share": 3,
+    "workspace_member": 2,
+    "project_collaborator": 1,
+}
+LIBRARY_ASSET_WORKSPACE_ROLE_PRIORITY = {
+    "viewer": 1,
+    "reviewer": 2,
+    "editor": 3,
+    "owner": 4,
+}
+LIBRARY_ASSET_AUDIT_ACCESS_EVENT_TYPES = {
+    "access_invited",
+    "pending_access_role_changed",
+    "access_invitation_cancelled",
+    "access_invitation_accepted",
+    "access_invitation_declined",
+    "access_granted",
+    "access_role_changed",
+    "access_revoked",
+}
+LIBRARY_ASSET_AUDIT_EVENT_TYPES = {
+    "asset_uploaded",
+    "asset_renamed",
+    "asset_downloaded",
+    "asset_locked",
+    "asset_unlocked",
+    "asset_workspace_linked",
+    "asset_workspace_unlinked",
+}.union(LIBRARY_ASSET_AUDIT_ACCESS_EVENT_TYPES)
 TOOL_NAMES = {
     "improve",
     "critique",
@@ -81,6 +120,35 @@ def _normalize_user_ids(values: Any) -> list[str]:
         seen.add(user_id)
         deduped.append(user_id)
     return deduped
+
+
+def _normalize_workspace_ids(values: Any) -> list[str]:
+    raw_values = values if isinstance(values, list) else [values]
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in raw_values:
+        workspace_id = _normalize_optional_id(item)
+        if not workspace_id or workspace_id in seen:
+            continue
+        seen.add(workspace_id)
+        deduped.append(workspace_id)
+    return deduped
+
+
+def _set_asset_workspace_ids(
+    *, asset: DataLibraryAsset, workspace_ids: list[str] | None
+) -> None:
+    normalized = _normalize_workspace_ids(workspace_ids or [])
+    asset.workspace_ids_json = normalized or None
+    asset.workspace_id = normalized[0] if normalized else None
+
+
+def _asset_explicit_workspace_ids(asset: DataLibraryAsset) -> list[str]:
+    normalized = _normalize_workspace_ids(asset.workspace_ids_json)
+    legacy_workspace_id = _normalize_optional_id(asset.workspace_id)
+    if legacy_workspace_id and legacy_workspace_id not in normalized:
+        normalized.insert(0, legacy_workspace_id)
+    return normalized
 
 
 def _normalize_library_asset_access_role(
@@ -334,10 +402,235 @@ def _resolve_manuscript_for_user(
     return manuscript
 
 
+def _asset_workspace_ids(*, session, asset: DataLibraryAsset) -> list[str]:
+    workspace_ids = _asset_explicit_workspace_ids(asset)
+    clean_project_id = _trim(asset.project_id)
+    if clean_project_id:
+        project = session.get(Project, clean_project_id)
+        resolved_workspace_id = (
+            _normalize_optional_id(project.workspace_id) if project is not None else None
+        )
+        if resolved_workspace_id and resolved_workspace_id not in workspace_ids:
+            workspace_ids.append(resolved_workspace_id)
+        if resolved_workspace_id and _normalize_optional_id(asset.workspace_id) is None:
+            asset.workspace_id = resolved_workspace_id
+    return workspace_ids
+
+
+def _asset_workspace_id(*, session, asset: DataLibraryAsset) -> str | None:
+    workspace_ids = _asset_workspace_ids(session=session, asset=asset)
+    return workspace_ids[0] if workspace_ids else None
+
+
+def _asset_origin_workspace_id(
+    *, session, asset: DataLibraryAsset
+) -> str | None:
+    del session
+    return _normalize_optional_id(asset.origin_workspace_id)
+
+
+def _workspace_name_for_user(
+    *, session, workspace_id: str | None, user_id: str | None
+) -> str | None:
+    clean_workspace_id = _normalize_optional_id(workspace_id)
+    if not clean_workspace_id:
+        return None
+    clean_user_id = _trim(user_id)
+    if clean_user_id:
+        snapshot = get_workspace_access_snapshot(
+            session=session,
+            workspace_id=clean_workspace_id,
+            user_id=clean_user_id,
+        )
+        if snapshot is not None:
+            return _trim(snapshot.get("workspace_name")) or clean_workspace_id
+    return clean_workspace_id
+
+
+def _workspace_role_to_asset_role(
+    *,
+    membership_role: str | None,
+    collaborator_role: str | None,
+) -> str | None:
+    clean_membership_role = _trim(membership_role).lower()
+    clean_collaborator_role = _trim(collaborator_role).lower()
+    if clean_membership_role == "owner" or clean_collaborator_role == "owner":
+        return "editor"
+    if clean_collaborator_role == "editor":
+        return "editor"
+    if clean_collaborator_role in {"reviewer", "viewer"}:
+        return "viewer"
+    return None
+
+
+def _asset_access_details_for_user(
+    *,
+    session,
+    asset: DataLibraryAsset,
+    user_id: str | None,
+    related_user_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    clean_user_id = _trim(user_id)
+    resolved_workspace_ids = _asset_workspace_ids(session=session, asset=asset)
+    workspace_placements = [
+        {
+            "workspace_id": workspace_id,
+            "workspace_name": _workspace_name_for_user(
+                session=session,
+                workspace_id=workspace_id,
+                user_id=clean_user_id,
+            )
+            or workspace_id,
+        }
+        for workspace_id in resolved_workspace_ids
+    ]
+    primary_workspace_id = (
+        workspace_placements[0]["workspace_id"] if workspace_placements else None
+    )
+    primary_workspace_name = (
+        workspace_placements[0]["workspace_name"] if workspace_placements else None
+    )
+    if not clean_user_id:
+        return {
+            "role": None,
+            "primary_source": None,
+            "sources": [],
+            "workspace_id": primary_workspace_id,
+            "workspace_name": primary_workspace_name,
+            "workspace_ids": resolved_workspace_ids,
+            "workspace_placements": workspace_placements,
+            "workspace_role": None,
+        }
+
+    effective_user_ids = set(related_user_ids or set())
+    if not effective_user_ids:
+        effective_user_ids = _related_user_ids_for_user(
+            session=session,
+            user_id=clean_user_id,
+        )
+    if clean_user_id not in effective_user_ids:
+        effective_user_ids.add(clean_user_id)
+
+    resolved_role: str | None = None
+    primary_source: str | None = None
+    sources: list[str] = []
+
+    def apply_access(candidate_role: str | None, source: str) -> None:
+        nonlocal resolved_role, primary_source
+        clean_role = _trim(candidate_role).lower()
+        if clean_role not in LIBRARY_ASSET_ROLE_PRIORITY:
+            return
+        if source not in sources:
+            sources.append(source)
+        if (
+            resolved_role is None
+            or LIBRARY_ASSET_ROLE_PRIORITY[clean_role]
+            > LIBRARY_ASSET_ROLE_PRIORITY[resolved_role]
+            or (
+                LIBRARY_ASSET_ROLE_PRIORITY[clean_role]
+                == LIBRARY_ASSET_ROLE_PRIORITY[resolved_role]
+                and (
+                    primary_source is None
+                    or LIBRARY_ASSET_ACCESS_SOURCE_PRIORITY[source]
+                    > LIBRARY_ASSET_ACCESS_SOURCE_PRIORITY[primary_source]
+                )
+            )
+        ):
+            resolved_role = clean_role
+            primary_source = source
+
+    owner_user_id = _trim(asset.owner_user_id)
+    if owner_user_id and owner_user_id in effective_user_ids:
+        apply_access("owner", "owner")
+
+    shared_roles = _asset_shared_role_map(asset)
+    direct_shared_role: str | None = None
+    for candidate in effective_user_ids:
+        candidate_role = shared_roles.get(candidate)
+        if not candidate_role:
+            continue
+        if (
+            direct_shared_role is None
+            or LIBRARY_ASSET_ROLE_PRIORITY[candidate_role]
+            > LIBRARY_ASSET_ROLE_PRIORITY[direct_shared_role]
+        ):
+            direct_shared_role = candidate_role
+    apply_access(direct_shared_role, "direct_share")
+
+    workspace_role: str | None = None
+    highest_workspace_role_priority = 0
+    for workspace_id in resolved_workspace_ids:
+        snapshot = get_workspace_access_snapshot(
+            session=session,
+            workspace_id=workspace_id,
+            user_id=clean_user_id,
+        )
+        if snapshot is None:
+            continue
+        candidate_workspace_name = _trim(snapshot.get("workspace_name")) or workspace_id
+        for placement in workspace_placements:
+            if placement["workspace_id"] == workspace_id:
+                placement["workspace_name"] = candidate_workspace_name
+                break
+        candidate_workspace_role = (
+            _trim(snapshot.get("collaborator_role"))
+            or ("owner" if _trim(snapshot.get("membership_role")) == "owner" else "")
+            or None
+        )
+        apply_access(
+            _workspace_role_to_asset_role(
+                membership_role=snapshot.get("membership_role"),
+                collaborator_role=candidate_workspace_role,
+            ),
+            "workspace_member",
+        )
+        candidate_priority = LIBRARY_ASSET_WORKSPACE_ROLE_PRIORITY.get(
+            _trim(candidate_workspace_role).lower(),
+            0,
+        )
+        if candidate_priority > highest_workspace_role_priority:
+            highest_workspace_role_priority = candidate_priority
+            workspace_role = candidate_workspace_role
+    primary_workspace_name = (
+        workspace_placements[0]["workspace_name"] if workspace_placements else None
+    )
+
+    project_id = _trim(asset.project_id)
+    if project_id:
+        project = session.get(Project, project_id)
+        if project is not None and _project_allows_user(
+            project,
+            clean_user_id,
+            related_user_ids=effective_user_ids,
+        ):
+            if _trim(project.owner_user_id) in effective_user_ids:
+                apply_access("editor", "project_collaborator")
+            else:
+                apply_access("viewer", "project_collaborator")
+    elif not owner_user_id:
+        # Legacy rows may be ownerless/unshared with no project linkage.
+        apply_access("owner", "owner")
+
+    return {
+        "role": resolved_role,
+        "primary_source": primary_source,
+        "sources": sources,
+        "workspace_id": primary_workspace_id,
+        "workspace_name": primary_workspace_name,
+        "workspace_ids": resolved_workspace_ids,
+        "workspace_placements": workspace_placements,
+        "workspace_role": workspace_role,
+    }
+
+
 def _asset_accessible_for_user(
     *, session, asset: DataLibraryAsset, user_id: str | None
 ) -> bool:
-    return _asset_role_for_user(session=session, asset=asset, user_id=user_id) is not None
+    return _asset_access_details_for_user(
+        session=session,
+        asset=asset,
+        user_id=user_id,
+    ).get("role") is not None
 
 
 def _asset_shared_role_map(asset: DataLibraryAsset) -> dict[str, str]:
@@ -354,49 +647,13 @@ def _asset_role_for_user(
     asset: DataLibraryAsset,
     user_id: str | None,
 ) -> str | None:
-    clean_user_id = _trim(user_id)
-    if not clean_user_id:
-        return None
-    related_user_ids = _related_user_ids_for_user(
+    details = _asset_access_details_for_user(
         session=session,
-        user_id=clean_user_id,
+        asset=asset,
+        user_id=user_id,
     )
-    if clean_user_id not in related_user_ids:
-        related_user_ids.add(clean_user_id)
-    owner_user_id = _trim(asset.owner_user_id)
-    if owner_user_id and owner_user_id in related_user_ids:
-        return "owner"
-    shared_roles = _asset_shared_role_map(asset)
-    resolved_role: str | None = None
-    for candidate in related_user_ids:
-        candidate_role = shared_roles.get(candidate)
-        if not candidate_role:
-            continue
-        if (
-            resolved_role is None
-            or LIBRARY_ASSET_ROLE_PRIORITY[candidate_role]
-            > LIBRARY_ASSET_ROLE_PRIORITY[resolved_role]
-        ):
-            resolved_role = candidate_role
-    if resolved_role is not None:
-        return resolved_role
-    project_id = _trim(asset.project_id)
-    if not project_id:
-        # Legacy rows may be ownerless/unshared with no project linkage.
-        # These can be claimed by the first authenticated user during recovery/list flows.
-        return "owner" if not owner_user_id else None
-    project = session.get(Project, project_id)
-    if project is None:
-        return None
-    if _project_allows_user(
-        project,
-        clean_user_id,
-        related_user_ids=related_user_ids,
-    ):
-        if _trim(project.owner_user_id) in related_user_ids:
-            return "owner"
-        return "viewer"
-    return None
+    role = details.get("role")
+    return role if isinstance(role, str) else None
 
 
 def _asset_shared_user_ids(asset: DataLibraryAsset) -> list[str]:
@@ -433,6 +690,264 @@ def _asset_can_download(*, session, asset: DataLibraryAsset, user_id: str | None
     if role != "owner" and _asset_locked_for_team_members(asset):
         return False
     return True
+
+
+def _workspace_has_external_active_members(
+    *,
+    session,
+    workspace_id: str,
+    user_id: str,
+    related_user_ids: set[str],
+    cache: dict[str, bool],
+) -> bool:
+    clean_workspace_id = _normalize_optional_id(workspace_id)
+    if not clean_workspace_id:
+        return False
+    cached = cache.get(clean_workspace_id)
+    if cached is not None:
+        return cached
+
+    snapshot = get_workspace_access_snapshot(
+        session=session,
+        workspace_id=clean_workspace_id,
+        user_id=user_id,
+        include_removed_collaborator=True,
+    )
+    if snapshot is None:
+        cache[clean_workspace_id] = False
+        return False
+
+    active_member_ids = _normalize_user_ids(snapshot.get("active_member_ids"))
+    has_external_active_members = any(
+        member_id not in related_user_ids for member_id in active_member_ids
+    )
+    cache[clean_workspace_id] = has_external_active_members
+    return has_external_active_members
+
+
+def _asset_is_shared_by_owner(
+    *,
+    session,
+    asset: DataLibraryAsset,
+    user_id: str,
+    related_user_ids: set[str],
+    workspace_member_cache: dict[str, bool],
+    pending_invitation_asset_ids: set[str] | None = None,
+) -> bool:
+    owner_user_id = _trim(asset.owner_user_id)
+    if not owner_user_id or owner_user_id not in related_user_ids:
+        return False
+
+    if _trim(asset.id) in (pending_invitation_asset_ids or set()):
+        return True
+
+    shared_user_ids = _asset_shared_user_ids(asset)
+    if any(shared_user_id not in related_user_ids for shared_user_id in shared_user_ids):
+        return True
+
+    for workspace_id in _asset_workspace_ids(session=session, asset=asset):
+        if _workspace_has_external_active_members(
+            session=session,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            related_user_ids=related_user_ids,
+            cache=workspace_member_cache,
+        ):
+            return True
+    return False
+
+
+def _pending_data_asset_invitation_records_from_state(
+    *, state: dict[str, Any], asset_id: str | None = None
+) -> list[dict[str, str]]:
+    requested_asset_id = _trim(asset_id)
+    output: list[dict[str, str]] = []
+    seen_pairs: set[tuple[str, str]] = set()
+    for item in state.get("invitations_sent") or []:
+        if not isinstance(item, dict):
+            continue
+        if _trim(item.get("invitation_type")).lower() != "data":
+            continue
+        if _trim(item.get("status")).lower() != "pending":
+            continue
+        current_asset_id = _trim(item.get("workspace_id"))
+        invitee_user_id = _trim(item.get("invitee_user_id"))
+        if not current_asset_id or not invitee_user_id:
+            continue
+        if requested_asset_id and current_asset_id != requested_asset_id:
+            continue
+        pair_key = (current_asset_id, invitee_user_id)
+        if pair_key in seen_pairs:
+            continue
+        seen_pairs.add(pair_key)
+        output.append(
+            {
+                "id": _trim(item.get("id")),
+                "asset_id": current_asset_id,
+                "invitee_user_id": invitee_user_id,
+                "invitee_name": _trim(item.get("invitee_name")) or invitee_user_id,
+                "role": _normalize_library_asset_access_role(item.get("role")),
+                "linked_author_request_id": _trim(item.get("linked_author_request_id")),
+            }
+        )
+    return output
+
+
+def _pending_data_asset_members_by_asset_id(
+    *, session, owner_user_id: str
+) -> dict[str, list[dict[str, str]]]:
+    clean_owner_user_id = _trim(owner_user_id)
+    if not clean_owner_user_id:
+        return {}
+    _, owner_state = _load_workspace_state_row(
+        session=session, user_id=clean_owner_user_id
+    )
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for item in _pending_data_asset_invitation_records_from_state(state=owner_state):
+        asset_id = _trim(item.get("asset_id"))
+        if not asset_id:
+            continue
+        grouped.setdefault(asset_id, []).append(
+            {
+                "user_id": _trim(item.get("invitee_user_id")),
+                "name": _trim(item.get("invitee_name")) or _trim(item.get("invitee_user_id")),
+                "role": _normalize_library_asset_access_role(item.get("role")),
+            }
+        )
+    return grouped
+
+
+def _create_pending_data_asset_invitation(
+    *,
+    session,
+    owner_row,
+    owner_state: dict[str, Any],
+    owner_user_id: str,
+    owner_name: str,
+    asset: DataLibraryAsset,
+    invitee_user_id: str,
+    role: str,
+) -> None:
+    clean_owner_user_id = _trim(owner_user_id)
+    clean_invitee_user_id = _trim(invitee_user_id)
+    clean_asset_id = _trim(asset.id)
+    if not clean_owner_user_id or not clean_invitee_user_id or not clean_asset_id:
+        return
+
+    invitee = session.get(User, clean_invitee_user_id)
+    if invitee is None:
+        raise PlannerValidationError("Invitee account was not found.")
+    invitee_name = _display_name_for_user(
+        user=invitee, fallback_user_id=clean_invitee_user_id
+    )
+    normalized_role = _normalize_library_asset_access_role(role)
+    invited_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    invitation_id = f"invite-{uuid4().hex[:10]}"
+    request_id = f"author-request-{uuid4().hex[:10]}"
+
+    invitation = _normalize_invitation_sent(
+        {
+            "id": invitation_id,
+            "workspace_id": clean_asset_id,
+            "workspace_name": _trim(asset.filename) or "Untitled file",
+            "invitee_name": invitee_name,
+            "invitee_user_id": clean_invitee_user_id,
+            "invitation_type": "data",
+            "role": normalized_role,
+            "invited_at": invited_at,
+            "status": "pending",
+            "linked_author_request_id": request_id,
+        }
+    )
+    author_request = _normalize_author_request(
+        {
+            "id": request_id,
+            "workspace_id": clean_asset_id,
+            "workspace_name": _trim(asset.filename) or "Untitled file",
+            "author_name": owner_name or "Unknown author",
+            "author_user_id": clean_owner_user_id,
+            "invitation_type": "data",
+            "collaborator_role": normalized_role,
+            "invited_at": invited_at,
+            "source_inviter_user_id": clean_owner_user_id,
+            "source_invitation_id": invitation_id,
+        }
+    )
+
+    invitee_row, invitee_state = _load_workspace_state_row(
+        session=session, user_id=clean_invitee_user_id
+    )
+    invitee_requests = list(invitee_state.get("author_requests") or [])
+    invitee_requests.insert(0, author_request)
+    invitee_state["author_requests"] = invitee_requests
+    _save_workspace_state_row(row=invitee_row, state=invitee_state)
+
+    invitations = list(owner_state.get("invitations_sent") or [])
+    invitations.insert(0, invitation)
+    owner_state["invitations_sent"] = invitations
+    _save_workspace_state_row(row=owner_row, state=owner_state)
+
+
+def _cancel_pending_data_asset_invitation(
+    *,
+    session,
+    owner_row,
+    owner_state: dict[str, Any],
+    owner_user_id: str,
+    asset: DataLibraryAsset | None = None,
+    invitation_id: str,
+    actor_user_id: str | None = None,
+    actor_name: str | None = None,
+    append_audit: bool = False,
+) -> bool:
+    clean_invitation_id = _trim(invitation_id)
+    if not clean_invitation_id:
+        return False
+    invitations = list(owner_state.get("invitations_sent") or [])
+    target: dict[str, Any] | None = None
+    changed = False
+    for invitation in invitations:
+        if _trim(invitation.get("id")) != clean_invitation_id:
+            continue
+        target = dict(invitation)
+        if _trim(invitation.get("status")).lower() != "declined":
+            invitation["status"] = "declined"
+            target["status"] = "declined"
+            changed = True
+        break
+    if target is None:
+        return False
+    if changed:
+        owner_state["invitations_sent"] = invitations
+        _save_workspace_state_row(row=owner_row, state=owner_state)
+    request_removed = _remove_author_request_for_invitation(
+        session=session,
+        inviter_user_id=_trim(owner_user_id),
+        invitation_record=target,
+    )
+    if changed and append_audit and asset is not None:
+        collaborator_name = _trim(target.get("invitee_name")) or _trim(
+            target.get("invitee_user_id")
+        ) or "Collaborator"
+        role = _normalize_library_asset_access_role(target.get("role"))
+        _append_library_asset_audit_entry(
+            asset=asset,
+            entry=_create_library_asset_audit_entry(
+                event_type="access_invitation_cancelled",
+                actor_user_id=actor_user_id,
+                actor_name=actor_name,
+                subject_user_id=_trim(target.get("invitee_user_id")) or None,
+                subject_name=collaborator_name,
+                from_value="pending",
+                to_value="cancelled",
+                role=role,
+                message=(
+                    f"{collaborator_name} file invitation status switched from pending "
+                    f"to cancelled by {_trim(actor_name) or 'Unknown user'} as {role}."
+                ),
+            ),
+        )
+    return changed or request_removed
 
 
 def _legacy_storage_roots(primary_root: Path) -> list[Path]:
@@ -679,9 +1194,16 @@ def _display_name_for_user(*, user: User | None, fallback_user_id: str | None = 
 
 def _library_asset_audit_category_for_event(event_type: str) -> str:
     clean_event_type = _trim(event_type).lower()
-    if clean_event_type in {"access_granted", "access_role_changed", "access_revoked"}:
+    if clean_event_type in LIBRARY_ASSET_AUDIT_ACCESS_EVENT_TYPES:
         return "access"
     return "asset"
+
+
+def _normalize_library_asset_audit_role(value: Any) -> str | None:
+    clean = _trim(value)
+    if not clean:
+        return None
+    return _normalize_library_asset_access_role(clean)
 
 
 def _normalize_library_asset_audit_entries(value: Any) -> list[dict[str, Any]]:
@@ -692,16 +1214,7 @@ def _normalize_library_asset_audit_entries(value: Any) -> list[dict[str, Any]]:
         if not isinstance(raw_entry, dict):
             continue
         event_type = _trim(raw_entry.get("event_type")).lower()
-        if event_type not in {
-            "asset_uploaded",
-            "asset_renamed",
-            "asset_downloaded",
-            "asset_locked",
-            "asset_unlocked",
-            "access_granted",
-            "access_role_changed",
-            "access_revoked",
-        }:
+        if event_type not in LIBRARY_ASSET_AUDIT_EVENT_TYPES:
             continue
         category = _trim(raw_entry.get("category")).lower() or _library_asset_audit_category_for_event(event_type)
         if category not in {"access", "asset"}:
@@ -718,6 +1231,7 @@ def _normalize_library_asset_audit_entries(value: Any) -> list[dict[str, Any]]:
                 "subject_name": _trim(raw_entry.get("subject_name")) or None,
                 "from_value": _trim(raw_entry.get("from_value")) or None,
                 "to_value": _trim(raw_entry.get("to_value")) or None,
+                "role": _normalize_library_asset_audit_role(raw_entry.get("role")),
                 "message": _trim(raw_entry.get("message")),
                 "created_at": created_at,
             }
@@ -734,6 +1248,7 @@ def _create_library_asset_audit_entry(
     subject_name: str | None = None,
     from_value: str | None = None,
     to_value: str | None = None,
+    role: str | None = None,
     message: str,
     created_at: datetime | None = None,
 ) -> dict[str, Any]:
@@ -751,6 +1266,7 @@ def _create_library_asset_audit_entry(
         "subject_name": _trim(subject_name) or None,
         "from_value": _trim(from_value) or None,
         "to_value": _trim(to_value) or None,
+        "role": _normalize_library_asset_audit_role(role),
         "message": _trim(message),
         "created_at": timestamp.astimezone(timezone.utc).isoformat(),
     }
@@ -788,7 +1304,7 @@ def _visible_library_asset_audit_entries(
             visible.append(entry)
         elif event_type == "asset_downloaded" and actor_user_id == clean_requesting_user_id:
             visible.append(entry)
-        elif event_type in {"access_granted", "access_role_changed", "access_revoked"} and subject_user_id == clean_requesting_user_id:
+        elif event_type in LIBRARY_ASSET_AUDIT_ACCESS_EVENT_TYPES and subject_user_id == clean_requesting_user_id:
             visible.append(entry)
     return visible
 
@@ -800,6 +1316,7 @@ def _serialize_library_asset(
     requesting_user_id: str | None = None,
     related_user_ids: set[str] | None = None,
     is_available: bool = True,
+    pending_members_by_asset_id: dict[str, list[dict[str, str]]] | None = None,
 ) -> dict[str, object]:
     owner_id = _trim(asset.owner_user_id) or None
     owner_user = session.get(User, owner_id) if owner_id else None
@@ -818,17 +1335,80 @@ def _serialize_library_asset(
                 "role": shared_roles.get(shared_id, "viewer"),
             }
         )
-    current_user_role = _asset_role_for_user(
+    access_details = _asset_access_details_for_user(
+        session=session,
+        asset=asset,
+        user_id=requesting_user_id,
+        related_user_ids=related_user_ids,
+    )
+    current_user_role = access_details.get("role")
+    archive_user_ids = related_user_ids or ({_trim(requesting_user_id)} if _trim(requesting_user_id) else set())
+    resolved_workspace_id = access_details.get("workspace_id")
+    workspace_name = access_details.get("workspace_name")
+    resolved_workspace_ids = (
+        access_details.get("workspace_ids")
+        if isinstance(access_details.get("workspace_ids"), list)
+        else []
+    )
+    workspace_placements = (
+        access_details.get("workspace_placements")
+        if isinstance(access_details.get("workspace_placements"), list)
+        else []
+    )
+    workspace_names = [
+        _trim(item.get("workspace_name"))
+        for item in workspace_placements
+        if isinstance(item, dict) and _trim(item.get("workspace_name"))
+    ]
+    origin_workspace_id = _asset_origin_workspace_id(session=session, asset=asset)
+    origin_workspace_name = None
+    if origin_workspace_id:
+        for placement in workspace_placements:
+            if (
+                isinstance(placement, dict)
+                and _trim(placement.get("workspace_id")) == origin_workspace_id
+            ):
+                origin_workspace_name = (
+                    _trim(placement.get("workspace_name")) or origin_workspace_id
+                )
+                break
+        if origin_workspace_name is None:
+            origin_workspace_name = _workspace_name_for_user(
+                session=session,
+                workspace_id=origin_workspace_id,
+                user_id=requesting_user_id,
+            )
+    workspace_role = access_details.get("workspace_role")
+    primary_access_source = access_details.get("primary_source")
+    access_sources = access_details.get("sources")
+    can_manage_access = _asset_can_manage_access(
         session=session,
         asset=asset,
         user_id=requesting_user_id,
     )
-    archive_user_ids = related_user_ids or ({_trim(requesting_user_id)} if _trim(requesting_user_id) else set())
+    if pending_members_by_asset_id is None and can_manage_access and owner_id:
+        pending_members_by_asset_id = _pending_data_asset_members_by_asset_id(
+            session=session,
+            owner_user_id=owner_id,
+        )
+    pending_with = (
+        list((pending_members_by_asset_id or {}).get(_trim(asset.id), []))
+        if can_manage_access
+        else []
+    )
     return {
         "id": asset.id,
         "owner_user_id": asset.owner_user_id,
         "owner_name": owner_name,
         "project_id": asset.project_id,
+        "workspace_id": resolved_workspace_id,
+        "workspace_name": workspace_name,
+        "workspace_ids": resolved_workspace_ids,
+        "workspace_names": workspace_names,
+        "workspace_placements": workspace_placements,
+        "origin": "workspace" if origin_workspace_id else "library",
+        "origin_workspace_id": origin_workspace_id,
+        "origin_workspace_name": origin_workspace_name,
         "filename": asset.filename,
         "kind": asset.kind,
         "mime_type": asset.mime_type,
@@ -836,16 +1416,17 @@ def _serialize_library_asset(
         "uploaded_at": asset.uploaded_at,
         "shared_with_user_ids": shared_ids,
         "shared_with": shared_with,
+        "pending_with": pending_with,
         "audit_log_entries": _visible_library_asset_audit_entries(
             asset=asset,
             requesting_user_id=requesting_user_id,
         ),
         "current_user_role": current_user_role,
-        "can_manage_access": _asset_can_manage_access(
-            session=session,
-            asset=asset,
-            user_id=requesting_user_id,
-        ),
+        "current_user_access_source": primary_access_source,
+        "current_user_access_sources": access_sources if isinstance(access_sources, list) else [],
+        "workspace_role": workspace_role,
+        "ownership_scope": "workspace_linked" if resolved_workspace_ids else "personal",
+        "can_manage_access": can_manage_access,
         "can_edit_metadata": _asset_can_edit_metadata(
             session=session,
             asset=asset,
@@ -1204,6 +1785,25 @@ def _resolve_project_id_from_metadata(*, session, payload: dict[str, Any]) -> st
     return project_id if project is not None else None
 
 
+def _resolve_workspace_ids_from_metadata(*, payload: dict[str, Any]) -> list[str]:
+    explicit_ids = _normalize_workspace_ids(payload.get("workspace_ids"))
+    legacy_workspace_id = _normalize_optional_id(payload.get("workspace_id"))
+    if legacy_workspace_id and legacy_workspace_id not in explicit_ids:
+        explicit_ids.insert(0, legacy_workspace_id)
+    return explicit_ids
+
+
+def _resolve_workspace_id_from_metadata(*, payload: dict[str, Any]) -> str | None:
+    workspace_ids = _resolve_workspace_ids_from_metadata(payload=payload)
+    return workspace_ids[0] if workspace_ids else None
+
+
+def _resolve_origin_workspace_id_from_metadata(*, payload: dict[str, Any]) -> str | None:
+    if "origin_workspace_id" in payload:
+        return _normalize_optional_id(payload.get("origin_workspace_id"))
+    return _resolve_workspace_id_from_metadata(payload=payload)
+
+
 def _resolve_shared_ids_from_metadata(*, session, payload: dict[str, Any], owner_user_id: str | None) -> list[str]:
     raw_shared_ids = payload.get("shared_with_user_ids")
     normalized = _normalize_user_ids(raw_shared_ids if isinstance(raw_shared_ids, list) else [])
@@ -1324,12 +1924,17 @@ def _build_asset_metadata_payload(
     storage_path = str(resolved_storage_path) if resolved_storage_path is not None else _trim(asset.storage_path)
     shared_with_user_ids = _asset_shared_user_ids(asset)
     shared_with_roles_json = _asset_shared_role_map(asset)
+    workspace_ids = _asset_workspace_ids(session=session, asset=asset)
+    origin_workspace_id = _asset_origin_workspace_id(session=session, asset=asset)
     return {
         "id": asset.id,
         "owner_account_key": owner_account_key,
         "owner_user_id": owner_user_id,
         "owner_email": owner_email,
         "project_id": _trim(asset.project_id) or None,
+        "workspace_id": workspace_ids[0] if workspace_ids else None,
+        "workspace_ids": workspace_ids,
+        "origin_workspace_id": origin_workspace_id,
         "shared_with_user_ids": shared_with_user_ids,
         "shared_with_roles_json": shared_with_roles_json,
         "locked_for_team_members": _asset_locked_for_team_members(asset),
@@ -1391,6 +1996,9 @@ def _restore_asset_row_from_metadata(
         if not owner_user_id and clean_claimant_user_id:
             owner_user_id = clean_claimant_user_id
         project_id = _resolve_project_id_from_metadata(session=session, payload=payload)
+        workspace_ids = _resolve_workspace_ids_from_metadata(payload=payload)
+        workspace_id = workspace_ids[0] if workspace_ids else None
+        origin_workspace_id = _resolve_origin_workspace_id_from_metadata(payload=payload)
         shared_with_user_ids = _resolve_shared_ids_from_metadata(
             session=session,
             payload=payload,
@@ -1416,6 +2024,9 @@ def _restore_asset_row_from_metadata(
                 id=metadata_asset_id,
                 owner_user_id=owner_user_id,
                 project_id=project_id,
+                workspace_id=workspace_id,
+                workspace_ids_json=workspace_ids or None,
+                origin_workspace_id=origin_workspace_id,
                 shared_with_user_ids=shared_with_user_ids,
                 shared_with_roles_json=shared_with_roles_json,
                 locked_for_team_members=locked_for_team_members,
@@ -1457,6 +2068,21 @@ def _restore_asset_row_from_metadata(
             changed = True
         if existing.project_id is None and project_id is not None:
             existing.project_id = project_id
+            changed = True
+        if (
+            not _asset_explicit_workspace_ids(existing)
+            and workspace_ids
+        ):
+            _set_asset_workspace_ids(asset=existing, workspace_ids=workspace_ids)
+            changed = True
+        elif _trim(existing.workspace_id) == "" and workspace_id is not None:
+            existing.workspace_id = workspace_id
+            changed = True
+        if (
+            _normalize_optional_id(existing.origin_workspace_id) is None
+            and origin_workspace_id is not None
+        ):
+            existing.origin_workspace_id = origin_workspace_id
             changed = True
         existing_owner_user_id = _trim(existing.owner_user_id)
         if owner_user_id and existing_owner_user_id != owner_user_id:
@@ -1945,6 +2571,7 @@ def upload_library_assets(
     *,
     files: list[tuple[str, str | None, bytes]],
     project_id: str | None = None,
+    workspace_id: str | None = None,
     user_id: str | None = None,
     account_key_hint: str | None = None,
 ) -> list[str]:
@@ -1968,18 +2595,48 @@ def upload_library_assets(
             user=actor_user,
             fallback_user_id=clean_user_id,
         )
-        default_shared_with_ids: list[str] | None = []
+        explicit_workspace_id = _normalize_optional_id(workspace_id)
+        resolved_workspace_id: str | None = explicit_workspace_id
         if clean_project_id:
             project = _resolve_project_for_user(
                 session=session, project_id=clean_project_id, user_id=clean_user_id
             )
-            default_shared_with_ids = _normalize_user_ids(project.collaborator_user_ids)
+            project_workspace_id = _normalize_optional_id(project.workspace_id)
+            if (
+                explicit_workspace_id
+                and project_workspace_id
+                and explicit_workspace_id != project_workspace_id
+            ):
+                raise PlannerValidationError(
+                    "Workspace uploads tied to a project must use the project's workspace."
+                )
+            resolved_workspace_id = project_workspace_id or explicit_workspace_id
+        if resolved_workspace_id:
+            snapshot = get_workspace_access_snapshot(
+                session=session,
+                workspace_id=resolved_workspace_id,
+                user_id=clean_user_id,
+            )
+            if snapshot is None:
+                raise PlannerValidationError(
+                    "Only workspaces you can access can receive uploaded files."
+                )
+            resolved_workspace_name = (
+                _trim(snapshot.get("workspace_name")) or resolved_workspace_id
+            )
+        else:
+            resolved_workspace_name = None
         for raw_filename, mime_type, content in files:
             filename = _slugify_filename(raw_filename)
             asset = DataLibraryAsset(
                 owner_user_id=clean_user_id,
                 project_id=clean_project_id,
-                shared_with_user_ids=list(default_shared_with_ids or []),
+                workspace_id=resolved_workspace_id,
+                workspace_ids_json=[resolved_workspace_id]
+                if resolved_workspace_id
+                else None,
+                origin_workspace_id=resolved_workspace_id,
+                shared_with_user_ids=[],
                 filename=filename,
                 kind=_guess_kind(filename),
                 mime_type=(mime_type or "").strip() or None,
@@ -1998,23 +2655,16 @@ def upload_library_assets(
                     to_value="uploaded",
                 ),
             )
-            for shared_user_id in list(default_shared_with_ids or []):
-                shared_user = session.get(User, shared_user_id)
-                shared_name = _display_name_for_user(
-                    user=shared_user,
-                    fallback_user_id=shared_user_id,
-                )
+            if resolved_workspace_id:
                 _append_library_asset_audit_entry(
                     asset=asset,
                     entry=_create_library_asset_audit_entry(
-                        event_type="access_granted",
+                        event_type="asset_workspace_linked",
                         actor_user_id=clean_user_id,
                         actor_name=actor_name,
-                        subject_user_id=shared_user_id,
-                        subject_name=shared_name,
-                        from_value="no_access",
-                        to_value="granted",
-                        message=f"Access granted to {shared_name}.",
+                        from_value="personal_library",
+                        to_value=resolved_workspace_id,
+                        message=f"File added to workspace {resolved_workspace_name or resolved_workspace_id}.",
                     ),
                 )
             extension = Path(filename).suffix or ".bin"
@@ -2041,10 +2691,11 @@ def upload_library_assets(
 def list_library_assets(
     *,
     project_id: str | None = None,
+    workspace_id: str | None = None,
     user_id: str | None = None,
     account_key_hint: str | None = None,
     query: str | None = None,
-    ownership: Literal["all", "owned", "shared"] = "all",
+    ownership: Literal["all", "owned", "shared_by_me", "shared"] = "all",
     scope: Literal["all", "active", "archived"] = "all",
     page: int = 1,
     page_size: int = 50,
@@ -2055,8 +2706,10 @@ def list_library_assets(
 ) -> dict[str, object]:
     create_all_tables()
     clean_ownership = _trim(ownership).lower() or "all"
-    if clean_ownership not in {"all", "owned", "shared"}:
-        raise PlannerValidationError("ownership must be all, owned, or shared.")
+    if clean_ownership not in {"all", "owned", "shared_by_me", "shared"}:
+        raise PlannerValidationError(
+            "ownership must be all, owned, shared_by_me, or shared."
+        )
     clean_scope = _trim(scope).lower() or "all"
     if clean_scope not in {"all", "active", "archived"}:
         raise PlannerValidationError("scope must be all, active, or archived.")
@@ -2094,6 +2747,7 @@ def list_library_assets(
                 "scope": clean_scope,
             }
         clean_project_id = _normalize_optional_id(project_id)
+        clean_workspace_id = _normalize_optional_id(workspace_id)
         storage_root = _storage_root()
         related_user_ids = _related_user_ids_for_user(
             session=session,
@@ -2103,6 +2757,11 @@ def list_library_assets(
         if clean_user_id not in related_user_ids:
             related_user_ids.add(clean_user_id)
         related_user_id_list = sorted(related_user_ids)
+        pending_members_by_asset_id = _pending_data_asset_members_by_asset_id(
+            session=session,
+            owner_user_id=clean_user_id,
+        )
+        pending_invitation_asset_ids = set(pending_members_by_asset_id.keys())
         needs_metadata_repair = (
             _legacy_asset_owner_repair_candidates_count(session=session) > 0
         )
@@ -2126,47 +2785,17 @@ def list_library_assets(
             session=session,
             user_id=clean_user_id,
         )
-        owner_expr = DataLibraryAsset.owner_user_id.in_(related_user_id_list)
-        shared_hint_expr = _shared_access_hint_expression(related_user_id_list)
-        legacy_project_fallback_expr = DataLibraryAsset.shared_with_user_ids.is_(None)
-        legacy_ownerless_personal_expr = and_(
-            DataLibraryAsset.owner_user_id.is_(None),
-            DataLibraryAsset.project_id.is_(None),
-            or_(
-                DataLibraryAsset.shared_with_user_ids.is_(None),
-                cast(DataLibraryAsset.shared_with_user_ids, String) == "[]",
-            ),
-        )
-        stmt = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
         if clean_project_id:
             _resolve_project_for_user(
                 session=session, project_id=clean_project_id, user_id=clean_user_id
             )
-            stmt = stmt.where(DataLibraryAsset.project_id == clean_project_id)
 
-        if clean_ownership == "owned":
-            stmt = stmt.where(owner_expr)
-        elif clean_ownership == "shared":
-            stmt = stmt.where(
-                and_(
-                    or_(
-                        DataLibraryAsset.owner_user_id.is_(None),
-                        ~DataLibraryAsset.owner_user_id.in_(related_user_id_list),
-                    ),
-                    or_(shared_hint_expr, legacy_project_fallback_expr),
-                )
-            )
-        else:
-            stmt = stmt.where(
-                or_(
-                    owner_expr,
-                    shared_hint_expr,
-                    legacy_project_fallback_expr,
-                    legacy_ownerless_personal_expr,
-                )
-            )
+        def _all_rows() -> list[DataLibraryAsset]:
+            return session.scalars(
+                select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
+            ).all()
 
-        rows = session.scalars(stmt).all()
+        rows = _all_rows()
         if not rows:
             restored_any = _restore_asset_row_from_metadata(
                 session=session,
@@ -2174,38 +2803,7 @@ def list_library_assets(
                 claimant_user_id=clean_user_id,
             )
             if restored_any:
-                rows = session.scalars(stmt).all()
-        if not rows:
-            # Fail-safe recovery path: when filtered query returns no rows, scan all assets
-            # and re-evaluate access with identity-linked user IDs. This is intentionally
-            # heavier but only runs for empty-result scenarios to avoid "false empty" libraries.
-            broad_stmt = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
-            if clean_project_id:
-                broad_stmt = broad_stmt.where(DataLibraryAsset.project_id == clean_project_id)
-            broad_rows = session.scalars(broad_stmt).all()
-            broad_accessible_rows = [
-                row
-                for row in broad_rows
-                if _asset_accessible_for_user(
-                    session=session,
-                    asset=row,
-                    user_id=clean_user_id,
-                )
-            ]
-            if clean_ownership == "owned":
-                rows = [
-                    row
-                    for row in broad_accessible_rows
-                    if _trim(row.owner_user_id) in related_user_ids
-                ]
-            elif clean_ownership == "shared":
-                rows = [
-                    row
-                    for row in broad_accessible_rows
-                    if _trim(row.owner_user_id) not in related_user_ids
-                ]
-            else:
-                rows = broad_accessible_rows
+                rows = _all_rows()
         if not rows:
             recovered_by_identity = _recover_assets_for_user_from_identity_metadata(
                 session=session,
@@ -2214,24 +2812,7 @@ def list_library_assets(
                 account_key_hint=account_key_hint,
             )
             if recovered_by_identity > 0:
-                rows = session.scalars(stmt).all()
-                if not rows:
-                    broad_stmt = select(DataLibraryAsset).order_by(
-                        DataLibraryAsset.uploaded_at.desc()
-                    )
-                    if clean_project_id:
-                        broad_stmt = broad_stmt.where(
-                            DataLibraryAsset.project_id == clean_project_id
-                        )
-                    rows = [
-                        row
-                        for row in session.scalars(broad_stmt).all()
-                        if _asset_accessible_for_user(
-                            session=session,
-                            asset=row,
-                            user_id=clean_user_id,
-                        )
-                    ]
+                rows = _all_rows()
         fallback_single_owner_user_id = _single_user_owner_id(session=session)
         storage_available_by_asset_id: dict[str, bool] = {}
         for row in rows:
@@ -2294,6 +2875,42 @@ def list_library_assets(
             for row in rows
             if _asset_accessible_for_user(session=session, asset=row, user_id=clean_user_id)
         ]
+        if clean_project_id:
+            accessible_rows = [
+                row for row in accessible_rows if _trim(row.project_id) == clean_project_id
+            ]
+        if clean_workspace_id:
+            accessible_rows = [
+                row
+                for row in accessible_rows
+                if clean_workspace_id in _asset_workspace_ids(session=session, asset=row)
+            ]
+        if clean_ownership == "owned":
+            accessible_rows = [
+                row
+                for row in accessible_rows
+                if _trim(row.owner_user_id) in related_user_ids
+            ]
+        elif clean_ownership == "shared_by_me":
+            workspace_member_cache: dict[str, bool] = {}
+            accessible_rows = [
+                row
+                for row in accessible_rows
+                if _asset_is_shared_by_owner(
+                    session=session,
+                    asset=row,
+                    user_id=clean_user_id,
+                    related_user_ids=related_user_ids,
+                    workspace_member_cache=workspace_member_cache,
+                    pending_invitation_asset_ids=pending_invitation_asset_ids,
+                )
+            ]
+        elif clean_ownership == "shared":
+            accessible_rows = [
+                row
+                for row in accessible_rows
+                if _trim(row.owner_user_id) not in related_user_ids
+            ]
         payload_items = [
             _serialize_library_asset(
                 session=session,
@@ -2304,6 +2921,7 @@ def list_library_assets(
                     _trim(row.id),
                     _asset_storage_exists(row, storage_root, session=session),
                 ),
+                pending_members_by_asset_id=pending_members_by_asset_id,
             )
             for row in accessible_rows
         ]
@@ -2326,13 +2944,41 @@ def list_library_assets(
                         _trim(entry.get("name")) if isinstance(entry, dict) else ""
                         for entry in shared_with
                     )
+                pending_with = item.get("pending_with")
+                pending_names = ""
+                if isinstance(pending_with, list):
+                    pending_names = " ".join(
+                        _trim(entry.get("name")) if isinstance(entry, dict) else ""
+                        for entry in pending_with
+                    )
                 haystack = " ".join(
                     [
                         _trim(item.get("filename")),
                         _trim(item.get("kind")),
                         _trim(item.get("mime_type")),
                         _trim(item.get("owner_name")),
+                        _trim(item.get("workspace_name")),
+                        " ".join(
+                            _trim(name)
+                            for name in (
+                                item.get("workspace_names")
+                                if isinstance(item.get("workspace_names"), list)
+                                else []
+                            )
+                        ),
+                        _trim(item.get("origin")),
+                        _trim(item.get("origin_workspace_name")),
+                        _trim(item.get("ownership_scope")),
+                        " ".join(
+                            _trim(source)
+                            for source in (
+                                item.get("current_user_access_sources")
+                                if isinstance(item.get("current_user_access_sources"), list)
+                                else []
+                            )
+                        ),
                         shared_names,
+                        pending_names,
                     ]
                 ).lower()
                 return clean_query in haystack
@@ -2439,6 +3085,38 @@ def update_library_asset_access(
 
         previous_role_map = _asset_shared_role_map(asset)
         previous_ids = list(previous_role_map.keys())
+        owner_row, owner_state = _load_workspace_state_row(
+            session=session, user_id=clean_user_id
+        )
+        pending_invitation_records = _pending_data_asset_invitation_records_from_state(
+            state=owner_state,
+            asset_id=clean_asset_id,
+        )
+        pending_invitation_records_by_user_id: dict[str, list[dict[str, str]]] = {}
+        for record in pending_invitation_records:
+            pending_invitation_records_by_user_id.setdefault(
+                _trim(record.get("invitee_user_id")), []
+            ).append(record)
+        pending_user_ids = {
+            user_id
+            for user_id in pending_invitation_records_by_user_id
+            if _trim(user_id)
+        }
+        pending_role_map = {
+            collaborator_id: _normalize_library_asset_access_role(
+                next(
+                    (
+                        record.get("role")
+                        for record in pending_invitation_records_by_user_id.get(
+                            collaborator_id, []
+                        )
+                        if _trim(record.get("role"))
+                    ),
+                    "viewer",
+                )
+            )
+            for collaborator_id in pending_user_ids
+        }
         requested_members = [
             item for item in (collaborators or []) if isinstance(item, dict)
         ]
@@ -2476,59 +3154,119 @@ def update_library_asset_access(
         for collaborator_id in merged_ids:
             merged_role_map.setdefault(collaborator_id, "viewer")
 
-        clean_project_id = _trim(asset.project_id)
-        if clean_project_id:
-            project = session.get(Project, clean_project_id)
-            if project is not None:
-                project_collaborator_ids = set(
-                    _normalize_user_ids(project.collaborator_user_ids)
-                )
-                disallowed = [
-                    collaborator_id
-                    for collaborator_id in merged_ids
-                    if collaborator_id not in project_collaborator_ids
-                ]
-                if disallowed:
-                    raise PlannerValidationError(
-                        "Access can only be granted to workspace collaborators."
-                    )
-
         actor_user = session.get(User, clean_user_id)
         actor_name = _display_name_for_user(
             user=actor_user,
             fallback_user_id=clean_user_id,
         )
-        asset.shared_with_user_ids = merged_ids
-        asset.shared_with_roles_json = merged_role_map
-        added_ids = [collaborator_id for collaborator_id in merged_ids if collaborator_id not in previous_ids]
-        removed_ids = [collaborator_id for collaborator_id in previous_ids if collaborator_id not in merged_ids]
-        for collaborator_id in added_ids:
+        next_direct_share_ids = [
+            collaborator_id
+            for collaborator_id in merged_ids
+            if collaborator_id in previous_ids
+        ]
+        next_direct_role_map = {
+            collaborator_id: merged_role_map.get(collaborator_id, "viewer")
+            for collaborator_id in next_direct_share_ids
+        }
+        asset.shared_with_user_ids = next_direct_share_ids
+        asset.shared_with_roles_json = next_direct_role_map
+
+        desired_ids = set(merged_ids)
+        pending_ids_to_cancel = pending_user_ids - desired_ids
+        pending_ids_to_replace = {
+            collaborator_id
+            for collaborator_id in (pending_user_ids & desired_ids)
+            if pending_role_map.get(collaborator_id, "viewer")
+            != merged_role_map.get(collaborator_id, "viewer")
+        }
+        for collaborator_id in sorted(pending_ids_to_cancel | pending_ids_to_replace):
+            for record in pending_invitation_records_by_user_id.get(collaborator_id, []):
+                _cancel_pending_data_asset_invitation(
+                    session=session,
+                    owner_row=owner_row,
+                    owner_state=owner_state,
+                    owner_user_id=clean_user_id,
+                    asset=asset,
+                    invitation_id=_trim(record.get("id")),
+                    actor_user_id=clean_user_id,
+                    actor_name=actor_name,
+                    append_audit=collaborator_id in pending_ids_to_cancel,
+                )
+
+        pending_ids_to_add = [
+            collaborator_id
+            for collaborator_id in merged_ids
+            if collaborator_id not in previous_ids
+            and (
+                collaborator_id not in pending_user_ids
+                or collaborator_id in pending_ids_to_replace
+            )
+        ]
+        for collaborator_id in pending_ids_to_add:
+            _create_pending_data_asset_invitation(
+                session=session,
+                owner_row=owner_row,
+                owner_state=owner_state,
+                owner_user_id=clean_user_id,
+                owner_name=actor_name,
+                asset=asset,
+                invitee_user_id=collaborator_id,
+                role=merged_role_map.get(collaborator_id, "viewer"),
+            )
             collaborator_user = session.get(User, collaborator_id)
             collaborator_name = _display_name_for_user(
                 user=collaborator_user,
                 fallback_user_id=collaborator_id,
             )
+            next_role = merged_role_map.get(collaborator_id, "viewer")
+            if collaborator_id in pending_ids_to_replace:
+                _append_library_asset_audit_entry(
+                    asset=asset,
+                    entry=_create_library_asset_audit_entry(
+                        event_type="pending_access_role_changed",
+                        actor_user_id=clean_user_id,
+                        actor_name=actor_name,
+                        subject_user_id=collaborator_id,
+                        subject_name=collaborator_name,
+                        from_value=pending_role_map.get(collaborator_id, "viewer"),
+                        to_value=next_role,
+                        role=next_role,
+                        message=(
+                            f"{collaborator_name} pending file role switched from "
+                            f"{pending_role_map.get(collaborator_id, 'viewer')} to {next_role} "
+                            f"by {actor_name}."
+                        ),
+                    ),
+                )
+                continue
             _append_library_asset_audit_entry(
                 asset=asset,
                 entry=_create_library_asset_audit_entry(
-                    event_type="access_granted",
+                    event_type="access_invited",
                     actor_user_id=clean_user_id,
                     actor_name=actor_name,
                     subject_user_id=collaborator_id,
                     subject_name=collaborator_name,
-                    from_value="no_access",
-                    to_value=merged_role_map.get(collaborator_id, "viewer"),
+                    from_value="none",
+                    to_value="pending",
+                    role=next_role,
                     message=(
-                        f"{merged_role_map.get(collaborator_id, 'viewer').title()} access granted to "
-                        f"{collaborator_name}."
+                        f"{collaborator_name} file invitation status switched from none "
+                        f"to pending by {actor_name} as {next_role}."
                     ),
                 ),
             )
+        removed_ids = [
+            collaborator_id
+            for collaborator_id in previous_ids
+            if collaborator_id not in next_direct_share_ids
+        ]
         changed_role_ids = [
             collaborator_id
-            for collaborator_id in merged_ids
+            for collaborator_id in next_direct_share_ids
             if collaborator_id in previous_role_map
-            and previous_role_map.get(collaborator_id) != merged_role_map.get(collaborator_id)
+            and previous_role_map.get(collaborator_id)
+            != next_direct_role_map.get(collaborator_id)
         ]
         for collaborator_id in changed_role_ids:
             collaborator_user = session.get(User, collaborator_id)
@@ -2537,7 +3275,7 @@ def update_library_asset_access(
                 fallback_user_id=collaborator_id,
             )
             previous_role = previous_role_map.get(collaborator_id, "viewer")
-            next_role = merged_role_map.get(collaborator_id, "viewer")
+            next_role = next_direct_role_map.get(collaborator_id, "viewer")
             _append_library_asset_audit_entry(
                 asset=asset,
                 entry=_create_library_asset_audit_entry(
@@ -2548,6 +3286,7 @@ def update_library_asset_access(
                     subject_name=collaborator_name,
                     from_value=previous_role,
                     to_value=next_role,
+                    role=next_role,
                     message=(
                         f"Access for {collaborator_name} changed from "
                         f"{previous_role.title()} to {next_role.title()}."
@@ -2568,8 +3307,9 @@ def update_library_asset_access(
                     actor_name=actor_name,
                     subject_user_id=collaborator_id,
                     subject_name=collaborator_name,
-                    from_value=previous_role_map.get(collaborator_id, "viewer"),
+                    from_value="active",
                     to_value="revoked",
+                    role=previous_role_map.get(collaborator_id, "viewer"),
                     message=f"Access revoked for {collaborator_name}.",
                 ),
             )
@@ -2583,6 +3323,9 @@ def update_library_asset_access(
             session=session,
             asset=asset,
             requesting_user_id=clean_user_id,
+            pending_members_by_asset_id=_pending_data_asset_members_by_asset_id(
+                session=session, owner_user_id=clean_user_id
+            ),
         )
 
 
@@ -2594,6 +3337,10 @@ def update_library_asset_metadata(
     filename: str | None = None,
     locked_for_team_members: bool | None = None,
     archived_for_current_user: bool | None = None,
+    workspace_id: str | None = None,
+    workspace_id_set: bool = False,
+    workspace_ids: list[str] | None = None,
+    workspace_ids_set: bool = False,
 ) -> dict[str, object]:
     create_all_tables()
     clean_asset_id = _trim(asset_id)
@@ -2603,7 +3350,13 @@ def update_library_asset_metadata(
     if not clean_user_id:
         raise PlannerValidationError("Session token is required.")
     clean_filename = _trim(filename)
-    if not clean_filename and locked_for_team_members is None and archived_for_current_user is None:
+    if (
+        not clean_filename
+        and locked_for_team_members is None
+        and archived_for_current_user is None
+        and not workspace_id_set
+        and not workspace_ids_set
+    ):
         raise PlannerValidationError("At least one metadata field is required.")
 
     normalized_filename = _slugify_filename(clean_filename) if clean_filename else None
@@ -2644,7 +3397,10 @@ def update_library_asset_metadata(
                 )
 
         owner_only_change_requested = (
-            normalized_filename is not None or locked_for_team_members is not None
+            normalized_filename is not None
+            or locked_for_team_members is not None
+            or workspace_id_set
+            or workspace_ids_set
         )
         if owner_only_change_requested and not _asset_can_edit_metadata(
             session=session,
@@ -2659,6 +3415,7 @@ def update_library_asset_metadata(
         previous_filename = _trim(asset.filename) or "asset.bin"
         previous_locked_state = _asset_locked_for_team_members(asset)
         previous_archived_user_ids = set(_asset_archived_user_ids(asset))
+        previous_workspace_ids = _asset_workspace_ids(session=session, asset=asset)
         actor_user = session.get(User, clean_user_id)
         actor_name = _display_name_for_user(
             user=actor_user,
@@ -2698,6 +3455,98 @@ def update_library_asset_metadata(
                     ),
                 ),
             )
+        placement_change_requested = workspace_ids_set or workspace_id_set
+        if placement_change_requested:
+            next_workspace_ids = (
+                _normalize_workspace_ids(workspace_ids)
+                if workspace_ids_set
+                else _normalize_workspace_ids([workspace_id])
+            )
+            linked_project_id = _trim(asset.project_id)
+            project_workspace_id: str | None = None
+            if linked_project_id:
+                project = session.get(Project, linked_project_id)
+                project_workspace_id = (
+                    _normalize_optional_id(project.workspace_id)
+                    if project is not None
+                    else None
+                )
+                if project_workspace_id:
+                    if project_workspace_id not in next_workspace_ids:
+                        raise PlannerValidationError(
+                            "This file inherits placement from its linked project workspace."
+                        )
+                    next_workspace_ids = [project_workspace_id] + [
+                        item
+                        for item in next_workspace_ids
+                        if item != project_workspace_id
+                    ]
+            workspace_labels_by_id: dict[str, str] = {}
+            for next_workspace_id in next_workspace_ids:
+                snapshot = get_workspace_access_snapshot(
+                    session=session,
+                    workspace_id=next_workspace_id,
+                    user_id=clean_user_id,
+                )
+                if snapshot is None:
+                    raise PlannerValidationError(
+                        "Only workspaces you can access can contain this file."
+                    )
+                workspace_labels_by_id[next_workspace_id] = (
+                    _trim(snapshot.get("workspace_name")) or next_workspace_id
+                )
+            if set(previous_workspace_ids) != set(next_workspace_ids):
+                _set_asset_workspace_ids(
+                    asset=asset,
+                    workspace_ids=next_workspace_ids,
+                )
+                for added_workspace_id in [
+                    workspace_id
+                    for workspace_id in next_workspace_ids
+                    if workspace_id not in previous_workspace_ids
+                ]:
+                    _append_library_asset_audit_entry(
+                        asset=asset,
+                        entry=_create_library_asset_audit_entry(
+                            event_type="asset_workspace_linked",
+                            actor_user_id=clean_user_id,
+                            actor_name=actor_name,
+                            from_value=(
+                                previous_workspace_ids[0]
+                                if previous_workspace_ids
+                                else "personal_library"
+                            ),
+                            to_value=added_workspace_id,
+                            message=(
+                                f"File added to workspace "
+                                f"{workspace_labels_by_id.get(added_workspace_id, added_workspace_id)}."
+                            ),
+                        ),
+                    )
+                for removed_workspace_id in [
+                    workspace_id
+                    for workspace_id in previous_workspace_ids
+                    if workspace_id not in next_workspace_ids
+                ]:
+                    removed_workspace_label = _workspace_name_for_user(
+                        session=session,
+                        workspace_id=removed_workspace_id,
+                        user_id=clean_user_id,
+                    ) or removed_workspace_id
+                    _append_library_asset_audit_entry(
+                        asset=asset,
+                        entry=_create_library_asset_audit_entry(
+                            event_type="asset_workspace_unlinked",
+                            actor_user_id=clean_user_id,
+                            actor_name=actor_name,
+                            from_value=removed_workspace_id,
+                            to_value="personal_library",
+                            message=(
+                                f"File removed from workspace "
+                                f"{removed_workspace_label}."
+                            ),
+                        ),
+                    )
         if archived_for_current_user is not None:
             next_archived_user_ids = set(previous_archived_user_ids)
             if bool(archived_for_current_user):

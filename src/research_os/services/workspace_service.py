@@ -9,6 +9,7 @@ from uuid import uuid4
 from sqlalchemy import func, select
 
 from research_os.db import (
+    DataLibraryAsset,
     User,
     WorkspaceInboxStateCache,
     WorkspaceStateCache,
@@ -19,6 +20,7 @@ from research_os.db import (
 
 WORKSPACE_HEALTH_VALUES = {"green", "amber", "red"}
 INVITATION_STATUS_VALUES = {"pending", "accepted", "declined"}
+INVITATION_TYPE_VALUES = {"workspace", "data"}
 WORKSPACE_COLLABORATOR_ROLE_VALUES = {"editor", "reviewer", "viewer"}
 WORKSPACE_AUDIT_CATEGORY_VALUES = {
     "collaborator_changes",
@@ -110,6 +112,52 @@ def _normalize_collaborator_role(value: Any) -> str:
     if clean in WORKSPACE_COLLABORATOR_ROLE_VALUES:
         return clean
     return "editor"
+
+
+def _normalize_invitation_type(value: Any) -> str:
+    clean = _trim(value).lower()
+    if clean in INVITATION_TYPE_VALUES:
+        return clean
+    return "workspace"
+
+
+def _normalize_data_asset_access_role(value: Any) -> str:
+    clean = _trim(value).lower()
+    return "editor" if clean == "editor" else "viewer"
+
+
+def _append_data_asset_audit_entry(
+    *,
+    asset: DataLibraryAsset,
+    event_type: str,
+    actor_user_id: str | None = None,
+    actor_name: str | None = None,
+    subject_user_id: str | None = None,
+    subject_name: str | None = None,
+    from_value: str | None = None,
+    to_value: str | None = None,
+    role: str | None = None,
+    message: str,
+    created_at: str | None = None,
+) -> None:
+    audit_entries = list(asset.audit_log_json) if isinstance(asset.audit_log_json, list) else []
+    audit_entries.append(
+        {
+            "id": f"{_trim(asset.id) or 'asset'}-audit-{uuid4().hex[:10]}",
+            "category": "access",
+            "event_type": _trim(event_type).lower(),
+            "actor_user_id": _trim(actor_user_id) or None,
+            "actor_name": _normalize_name(actor_name) or None,
+            "subject_user_id": _trim(subject_user_id) or None,
+            "subject_name": _normalize_name(subject_name) or None,
+            "from_value": _trim(from_value) or None,
+            "to_value": _trim(to_value) or None,
+            "role": _normalize_data_asset_access_role(role) if _trim(role) else None,
+            "message": _normalize_name(message),
+            "created_at": created_at or _iso_timestamp(_utcnow()),
+        }
+    )
+    asset.audit_log_json = audit_entries
 
 
 def _normalize_role_map(
@@ -530,6 +578,7 @@ def _normalize_author_request(payload: Any) -> dict[str, Any]:
         or "Untitled workspace",
         "author_name": _normalize_name(source.get("author_name")) or "Unknown author",
         "author_user_id": _trim(source.get("author_user_id")) or None,
+        "invitation_type": _normalize_invitation_type(source.get("invitation_type")),
         "collaborator_role": _normalize_collaborator_role(
             source.get("collaborator_role")
         ),
@@ -558,6 +607,7 @@ def _normalize_invitation_sent(payload: Any) -> dict[str, Any]:
         "invitee_name": _normalize_name(source.get("invitee_name"))
         or "Unknown collaborator",
         "invitee_user_id": _trim(source.get("invitee_user_id")) or None,
+        "invitation_type": _normalize_invitation_type(source.get("invitation_type")),
         "role": _normalize_collaborator_role(source.get("role")),
         "invited_at": _normalize_timestamp(source.get("invited_at")),
         "status": status,
@@ -987,6 +1037,38 @@ def _workspace_membership_role(
     return None
 
 
+def _workspace_collaborator_role(
+    *, workspace: dict[str, Any], user_id: str
+) -> str | None:
+    clean_user_id = _trim(user_id)
+    if not clean_user_id:
+        return None
+    owner_user_id = _trim(workspace.get("owner_user_id"))
+    if owner_user_id and owner_user_id == clean_user_id:
+        return "owner"
+    participants = _normalize_participant_list(
+        workspace.get("collaborators"),
+        workspace_id=_trim(workspace.get("id")) or "workspace",
+    )
+    if clean_user_id not in set(_participant_ids(participants)):
+        return None
+    removed_ids = set(
+        _participant_ids(
+            _normalize_participant_list(
+                workspace.get("removed_collaborators"),
+                workspace_id=_trim(workspace.get("id")) or "workspace",
+            )
+        )
+    )
+    if clean_user_id in removed_ids:
+        return None
+    role_map = _normalize_role_map(
+        workspace.get("collaborator_roles"),
+        participants,
+    )
+    return role_map.get(clean_user_id, "editor")
+
+
 def _workspace_is_removed_collaborator(
     *, workspace: dict[str, Any], user_id: str
 ) -> bool:
@@ -1070,6 +1152,64 @@ def _workspace_participant_user_ids(
         seen_ids.add(row_user_id)
         participant_ids.append(row_user_id)
     return participant_ids
+
+
+def get_workspace_access_snapshot(
+    *,
+    session,
+    workspace_id: str,
+    user_id: str,
+    include_removed_collaborator: bool = False,
+) -> dict[str, Any] | None:
+    clean_workspace_id = _trim(workspace_id)
+    clean_user_id = _trim(user_id)
+    if not clean_workspace_id or not clean_user_id:
+        return None
+    try:
+        _, _, workspace = _resolve_workspace_access_context(
+            session=session,
+            user_id=clean_user_id,
+            workspace_id=clean_workspace_id,
+            include_removed_collaborator=include_removed_collaborator,
+        )
+    except (WorkspaceNotFoundError, WorkspaceValidationError):
+        return None
+
+    participants = _normalize_participant_list(
+        workspace.get("collaborators"),
+        workspace_id=clean_workspace_id,
+    )
+    removed_participants = _normalize_participant_list(
+        workspace.get("removed_collaborators"),
+        workspace_id=clean_workspace_id,
+    )
+    removed_ids = set(_participant_ids(removed_participants))
+    active_member_ids = [
+        participant_id
+        for participant_id in _participant_ids(participants)
+        if participant_id not in removed_ids
+    ]
+    owner_user_id = _trim(workspace.get("owner_user_id")) or None
+    if owner_user_id and owner_user_id not in active_member_ids:
+        active_member_ids.insert(0, owner_user_id)
+    membership_role = _workspace_membership_role(
+        workspace=workspace,
+        user_id=clean_user_id,
+    )
+    return {
+        "workspace_id": clean_workspace_id,
+        "workspace": workspace,
+        "workspace_name": _normalize_name(workspace.get("name")) or WORKSPACE_FALLBACK_NAME,
+        "owner_user_id": owner_user_id,
+        "owner_name": _normalize_name(workspace.get("owner_name")) or WORKSPACE_FALLBACK_OWNER_NAME,
+        "membership_role": membership_role,
+        "collaborator_role": _workspace_collaborator_role(
+            workspace=workspace,
+            user_id=clean_user_id,
+        ),
+        "active_member_ids": active_member_ids,
+        "removed_member_ids": list(removed_ids),
+    }
 
 
 def _sync_workspace_collaborator_states(
@@ -1534,38 +1674,66 @@ def _set_invitation_status_for_user(
     if invitation_record is None:
         return False
 
-    pending_changed = _sync_workspace_pending_collaborator(
-        state=state,
-        workspace_id=_trim(invitation_record.get("workspace_id")),
-        collaborator_user_id=_trim(invitation_record.get("invitee_user_id")),
-        collaborator_name=_normalize_name(invitation_record.get("invitee_name")),
-        pending=clean_status == "pending",
-        role=_normalize_collaborator_role(invitation_record.get("role")),
-    )
+    invitation_type = _normalize_invitation_type(invitation_record.get("invitation_type"))
+    pending_changed = False
+    if invitation_type == "workspace":
+        pending_changed = _sync_workspace_pending_collaborator(
+            state=state,
+            workspace_id=_trim(invitation_record.get("workspace_id")),
+            collaborator_user_id=_trim(invitation_record.get("invitee_user_id")),
+            collaborator_name=_normalize_name(invitation_record.get("invitee_name")),
+            pending=clean_status == "pending",
+            role=_normalize_collaborator_role(invitation_record.get("role")),
+        )
 
     audit_changed = False
     if clean_status in {"accepted", "declined"} and previous_status != clean_status:
         invitee_name = _normalize_name(invitation_record.get("invitee_name")) or "Collaborator"
-        role_label = _workspace_role_label(invitation_record.get("role"))
-        audit_changed = _append_workspace_audit_entry(
-            state=state,
-            workspace_id=_trim(invitation_record.get("workspace_id")),
-            category="invitation_decisions",
-            event_type=(
-                "invitation_accepted" if clean_status == "accepted" else "invitation_declined"
-            ),
-            actor_user_id=_trim(user_id) or None,
-            actor_name=invitee_name,
-            subject_user_id=_trim(invitation_record.get("invitee_user_id")) or None,
-            subject_name=invitee_name,
-            from_value=previous_status,
-            to_value=clean_status,
-            role=role_label,
-            message=(
-                f"{invitee_name} collaborator invitation status switched from "
-                f"{previous_status} to {clean_status} by {invitee_name} as {role_label}."
-            ),
-        )
+        if invitation_type == "data":
+            asset = session.get(DataLibraryAsset, _trim(invitation_record.get("workspace_id")))
+            if asset is not None:
+                role_label = _normalize_data_asset_access_role(invitation_record.get("role"))
+                _append_data_asset_audit_entry(
+                    asset=asset,
+                    event_type=(
+                        "access_invitation_accepted"
+                        if clean_status == "accepted"
+                        else "access_invitation_declined"
+                    ),
+                    actor_user_id=_trim(invitation_record.get("invitee_user_id")) or None,
+                    actor_name=invitee_name,
+                    subject_user_id=_trim(invitation_record.get("invitee_user_id")) or None,
+                    subject_name=invitee_name,
+                    from_value=previous_status,
+                    to_value=clean_status,
+                    role=role_label,
+                    message=(
+                        f"{invitee_name} file invitation status switched from "
+                        f"{previous_status} to {clean_status} by {invitee_name} as {role_label}."
+                    ),
+                )
+                audit_changed = True
+        else:
+            role_label = _workspace_role_label(invitation_record.get("role"))
+            audit_changed = _append_workspace_audit_entry(
+                state=state,
+                workspace_id=_trim(invitation_record.get("workspace_id")),
+                category="invitation_decisions",
+                event_type=(
+                    "invitation_accepted" if clean_status == "accepted" else "invitation_declined"
+                ),
+                actor_user_id=_trim(user_id) or None,
+                actor_name=invitee_name,
+                subject_user_id=_trim(invitation_record.get("invitee_user_id")) or None,
+                subject_name=invitee_name,
+                from_value=previous_status,
+                to_value=clean_status,
+                role=role_label,
+                message=(
+                    f"{invitee_name} collaborator invitation status switched from "
+                    f"{previous_status} to {clean_status} by {invitee_name} as {role_label}."
+                ),
+            )
 
     if not changed and not pending_changed and not audit_changed:
         return False
@@ -2224,6 +2392,7 @@ def create_workspace_invitation(*, user_id: str, payload: dict[str, Any]) -> dic
                 "workspace_name": _normalize_name(workspace.get("name")),
                 "invitee_name": invitee_name,
                 "invitee_user_id": invitee_user_id,
+                "invitation_type": "workspace",
                 "role": collaborator_role,
                 "invited_at": _normalize_timestamp(payload.get("invited_at")),
                 "status": _trim(payload.get("status")) or "pending",
@@ -2241,6 +2410,7 @@ def create_workspace_invitation(*, user_id: str, payload: dict[str, Any]) -> dic
                 "workspace_name": _normalize_name(workspace.get("name")),
                 "author_name": owner_name or "Unknown author",
                 "author_user_id": user_id,
+                "invitation_type": "workspace",
                 "collaborator_role": collaborator_role,
                 "invited_at": invitation.get("invited_at"),
                 "source_inviter_user_id": user_id,
@@ -2343,6 +2513,63 @@ def update_workspace_invitation_status(
         return updated
 
 
+def _accept_data_author_request(
+    *,
+    session,
+    user_id: str,
+    row: WorkspaceStateCache,
+    state: dict[str, Any],
+    request: dict[str, Any],
+    clean_request_id: str,
+) -> dict[str, Any]:
+    asset_id = _trim(request.get("workspace_id"))
+    if not asset_id:
+        raise WorkspaceValidationError("Data asset id is required.")
+
+    asset = session.get(DataLibraryAsset, asset_id)
+    if asset is None:
+        raise WorkspaceNotFoundError(f"Data asset '{asset_id}' was not found.")
+
+    collaborator_role = _normalize_data_asset_access_role(
+        request.get("collaborator_role")
+    )
+
+    shared_ids = [
+        item
+        for item in (_trim(value) for value in (asset.shared_with_user_ids or []))
+        if item
+    ]
+    if user_id not in shared_ids:
+        shared_ids.append(user_id)
+    shared_roles = dict(asset.shared_with_roles_json or {})
+    shared_roles[user_id] = collaborator_role
+    asset.shared_with_user_ids = shared_ids
+    asset.shared_with_roles_json = shared_roles
+
+    state["author_requests"] = [
+        item for item in (state.get("author_requests") or []) if _trim(item.get("id")) != clean_request_id
+    ]
+    _save_workspace_state_row(row=row, state=state)
+
+    inviter_user_id = _trim(request.get("source_inviter_user_id"))
+    invitation_id = _trim(request.get("source_invitation_id"))
+    if inviter_user_id and invitation_id:
+        _set_invitation_status_for_user(
+            session=session,
+            user_id=inviter_user_id,
+            invitation_id=invitation_id,
+            status="accepted",
+        )
+
+    session.flush()
+    return {
+        "workspace": None,
+        "removed_request_id": clean_request_id,
+        "invitation_type": "data",
+        "accepted_asset_id": asset_id,
+    }
+
+
 def accept_workspace_author_request(*, user_id: str, request_id: str) -> dict[str, Any]:
     clean_request_id = _trim(request_id)
     if not clean_request_id:
@@ -2363,6 +2590,16 @@ def accept_workspace_author_request(*, user_id: str, request_id: str) -> dict[st
         if request_index < 0 or request is None:
             raise WorkspaceNotFoundError(
                 f"Author request '{clean_request_id}' was not found."
+            )
+
+        if _normalize_invitation_type(request.get("invitation_type")) == "data":
+            return _accept_data_author_request(
+                session=session,
+                user_id=user_id,
+                row=row,
+                state=state,
+                request=request,
+                clean_request_id=clean_request_id,
             )
 
         workspaces = list(state.get("workspaces") or [])
@@ -2560,6 +2797,8 @@ def accept_workspace_author_request(*, user_id: str, request_id: str) -> dict[st
         return {
             "workspace": next_workspace,
             "removed_request_id": clean_request_id,
+            "invitation_type": "workspace",
+            "accepted_asset_id": None,
         }
 
 

@@ -1094,17 +1094,16 @@ def _name_initial_compatible(a: str, b: str) -> bool:
 
     Returns True when:
     - Surnames are identical (or very similar for hyphenated/accented names)
-    - First initials match
+    - Both sides expose the same full first name
     - Any overlapping middle parts do not conflict
 
     Examples that match:
-      "Gareth Matthews"      ↔ "G. Matthews"
       "Gareth Matthews"      ↔ "Gareth J. Matthews"
-      "Gareth James Matthews" ↔ "G. J. Matthews"
       "Matthews, Gareth"     ↔ "Gareth Matthews"
 
     Examples that do NOT match:
-      "Alice Matthews"  ↔ "Gareth Matthews"  (different first initial)
+      "Gareth Matthews" ↔ "G. Matthews"      (abbreviated first name is ambiguous)
+      "Alice Matthews"  ↔ "Gareth Matthews"  (different first name)
       "Gareth Matthews" ↔ "Gareth Smith"     (different surname)
     """
     surname_a, given_a = _parse_name_parts(a)
@@ -1120,6 +1119,20 @@ def _name_initial_compatible(a: str, b: str) -> bool:
         return False
     # First initials must match
     if given_a[0][0] != given_b[0][0]:
+        return False
+    first_a = given_a[0]
+    first_b = given_b[0]
+    # Abbreviated first names are too ambiguous to merge safely without
+    # stronger identity signals such as OpenAlex/ORCID/email, which are
+    # already handled earlier in the grouping pipeline.
+    if len(first_a) == 1 or len(first_b) == 1:
+        return False
+    first_name_similarity = SequenceMatcher(None, first_a, first_b).ratio()
+    if (
+        first_name_similarity < 0.8
+        and not first_a.startswith(first_b)
+        and not first_b.startswith(first_a)
+    ):
         return False
     # Remaining overlapping parts must not conflict
     shorter = min(len(given_a), len(given_b))

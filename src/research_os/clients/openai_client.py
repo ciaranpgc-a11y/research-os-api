@@ -30,6 +30,13 @@ def _usage_int(usage: Any, key: str) -> int:
 
 def create_response(*, model: str, input: Any, **kwargs: Any) -> Any:
     client = get_client()
+    request_timeout = kwargs.pop("timeout", None)
+    request_max_retries = kwargs.pop("max_retries", None)
+    if request_timeout is not None or request_max_retries is not None:
+        client = client.with_options(
+            timeout=request_timeout,
+            max_retries=0 if request_max_retries is None else int(request_max_retries),
+        )
     started = time.perf_counter()
     response = None
     success = False

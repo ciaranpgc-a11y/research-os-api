@@ -1,6 +1,6 @@
 import * as React from 'react'
 import * as RadixSelect from '@radix-ui/react-select'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
@@ -83,10 +83,16 @@ const LegacySelectTrigger = React.forwardRef<
 })
 LegacySelectTrigger.displayName = 'LegacySelectTrigger'
 
+type LegacySelectContentProps = React.ComponentPropsWithoutRef<typeof RadixSelect.Content> & {
+  viewportClassName?: string
+  viewportStyle?: React.CSSProperties
+  showScrollButtons?: boolean
+}
+
 const LegacySelectContent = React.forwardRef<
   React.ElementRef<typeof RadixSelect.Content>,
-  React.ComponentPropsWithoutRef<typeof RadixSelect.Content>
->(({ className, sideOffset = 4, position = 'popper', children, ...props }, ref) => (
+  LegacySelectContentProps
+>(({ className, sideOffset = 4, position = 'popper', children, viewportClassName, viewportStyle, showScrollButtons = true, ...props }, ref) => (
   <RadixSelect.Portal>
     <RadixSelect.Content
       ref={ref}
@@ -105,9 +111,40 @@ const LegacySelectContent = React.forwardRef<
       )}
       {...props}
     >
-      <RadixSelect.Viewport data-ui="select-primitive-viewport" className="max-h-60 p-1">
+      {showScrollButtons ? (
+        <RadixSelect.ScrollUpButton
+          className={cn(
+            'flex h-6 cursor-default items-center justify-center',
+            'bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))]',
+          )}
+        >
+          <ChevronUp className="h-4 w-4" />
+        </RadixSelect.ScrollUpButton>
+      ) : null}
+      <RadixSelect.Viewport
+        data-ui="select-primitive-viewport"
+        className={cn(
+          showScrollButtons ? 'overflow-y-auto overscroll-contain' : 'overflow-visible',
+          'p-1',
+          viewportClassName,
+        )}
+        style={{
+          ...(showScrollButtons ? { maxHeight: 'min(20rem, var(--radix-select-content-available-height))' } : {}),
+          ...viewportStyle,
+        }}
+      >
         {children}
       </RadixSelect.Viewport>
+      {showScrollButtons ? (
+        <RadixSelect.ScrollDownButton
+          className={cn(
+            'flex h-6 cursor-default items-center justify-center',
+            'bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))]',
+          )}
+        >
+          <ChevronDown className="h-4 w-4" />
+        </RadixSelect.ScrollDownButton>
+      ) : null}
     </RadixSelect.Content>
   </RadixSelect.Portal>
 ))

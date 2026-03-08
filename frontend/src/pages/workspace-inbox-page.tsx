@@ -1,18 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import {
+  ArrowUpRight,
+  List,
+  MessageSquare,
+  ScrollText,
+  Users,
+  type LucideIcon,
+} from 'lucide-react'
 
+import { WorkspacesHomeSidebar } from '@/components/layout/workspaces-home-sidebar'
 import { TopBar } from '@/components/layout/top-bar'
 import { PageHeader, Row, Section, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
-import { Button, Textarea } from '@/components/ui'
+import { Button, Sheet, SheetContent, Textarea } from '@/components/ui'
 import { API_BASE_URL } from '@/lib/api'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { decryptWorkspaceInboxText } from '@/lib/workspace-inbox-crypto'
 import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass, getSectionMarkerTone } from '@/lib/section-tone'
 import { matchesScopedStorageEventKey, readStorageScopeUserId } from '@/lib/user-scoped-storage'
-import { readWorkspaceOwnerNameFromProfile, WORKSPACE_OWNER_REQUIRED_MESSAGE } from '@/lib/workspace-owner'
+import { readWorkspaceOwnerNameFromProfile } from '@/lib/workspace-owner'
 import { cn } from '@/lib/utils'
+import { useAaweStore } from '@/store/use-aawe-store'
 import {
   INBOX_MESSAGES_STORAGE_KEY,
   INBOX_READS_STORAGE_KEY,
@@ -20,7 +30,6 @@ import {
 } from '@/store/use-workspace-inbox-store'
 import { type WorkspaceRecord, useWorkspaceStore } from '@/store/use-workspace-store'
 
-type FilterKey = 'all' | 'active' | 'pinned' | 'archived' | 'recent'
 type ParticipantFilterKey = 'all' | 'online'
 type InboxMainView = 'conversation' | 'all-conversations'
 
@@ -121,18 +130,83 @@ const REALTIME_FALLBACK_SYNC_MS = resolveRealtimeIntervalMs(
   5000,
   300000,
 )
-const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
-  { key: 'all', label: 'All' },
-  { key: 'active', label: 'Active' },
-  { key: 'pinned', label: 'Pinned' },
-  { key: 'recent', label: 'Recent (14 days)' },
-  { key: 'archived', label: 'Archived' },
-]
 const HOUSE_LEFT_BORDER_WORKSPACE_CLASS = getHouseLeftBorderToneClass('workspace')
 const HOUSE_NAV_ITEM_WORKSPACE_CLASS = getHouseNavToneClass('workspace')
-const HOUSE_NAV_ITEM_GOVERNANCE_CLASS = getHouseNavToneClass('governance')
-const HOUSE_NAV_ITEM_DATA_CLASS = getHouseNavToneClass('data')
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
+
+function InboxSidebarStatCard({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string
+  value: ReactNode
+  valueClassName?: string
+}) {
+  return (
+    <div className="min-w-0">
+      <p className={houseTypography.fieldHelper}>{label}</p>
+      <p className={cn('mt-1 text-base font-semibold text-foreground', valueClassName)}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function InboxSidebarSectionHeader({
+  icon: Icon,
+  label,
+  meta,
+  dataUi,
+}: {
+  icon: LucideIcon
+  label: string
+  meta?: ReactNode
+  dataUi?: string
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2" data-ui={dataUi}>
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <p className={houseNavigation.sectionLabel}>{label}</p>
+      </div>
+      {meta ? <div className={houseTypography.fieldHelper}>{meta}</div> : null}
+    </div>
+  )
+}
+
+function InboxSidebarActionButton({
+  icon: Icon,
+  label,
+  onClick,
+  disabled = false,
+  dataUi,
+}: {
+  icon: LucideIcon
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  dataUi?: string
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'group flex w-full items-center justify-between rounded-md px-2 py-2 text-left transition-colors',
+        'hover:bg-muted/45 disabled:cursor-not-allowed disabled:opacity-50',
+      )}
+      onClick={onClick}
+      disabled={disabled}
+      data-ui={dataUi}
+    >
+      <span className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <span>{label}</span>
+      </span>
+      <ArrowUpRight className="h-4 w-4 text-muted-foreground transition-transform duration-[var(--motion-duration-ui)] ease-out group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+    </button>
+  )
+}
 
 function buildWorkspaceInboxWsUrl(input: { workspaceId: string }): string {
   const base = API_BASE_URL.replace(/\/+$/, '')
@@ -165,15 +239,6 @@ function formatTimestamp(value: string): string {
   })
 }
 
-function isRecentWorkspace(value: string): boolean {
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return false
-  }
-  const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000
-  return Date.now() - parsed <= fourteenDaysMs
-}
-
 function normalizeName(value: string | null | undefined): string {
   return (value || '').trim().replace(/\s+/g, ' ')
 }
@@ -201,6 +266,9 @@ function hasWorkspaceInboxWriteAccess(
   const ownerKey = normalizeWorkspaceUserId(workspace.ownerUserId)
   if (ownerKey && ownerKey === currentUserKey) {
     return true
+  }
+  if (workspace.ownerArchived) {
+    return false
   }
   const collaboratorKeys = new Set((workspace.collaborators || []).map((value) => normalizeWorkspaceUserId(value.userId)))
   if (!collaboratorKeys.has(currentUserKey)) {
@@ -381,12 +449,11 @@ export function WorkspaceInboxPage() {
   const [searchParams] = useSearchParams()
   const params = useParams<{ workspaceId: string }>()
   const workspaceId = (params.workspaceId || '').trim()
+  const leftPanelOpen = useAaweStore((state) => state.leftPanelOpen)
+  const setLeftPanelOpen = useAaweStore((state) => state.setLeftPanelOpen)
   const ensureWorkspace = useWorkspaceStore((state) => state.ensureWorkspace)
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
-  const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
   const workspaces = useWorkspaceStore((state) => state.workspaces)
-  const authorRequests = useWorkspaceStore((state) => state.authorRequests)
-  const invitationsSent = useWorkspaceStore((state) => state.invitationsSent)
   const hydrateWorkspaceStoreFromRemote = useWorkspaceStore((state) => state.hydrateFromRemote)
   const sendWorkspaceMessage = useWorkspaceInboxStore((state) => state.sendWorkspaceMessage)
   const hydrateWorkspaceInboxFromRemote = useWorkspaceInboxStore((state) => state.hydrateFromRemote)
@@ -430,9 +497,6 @@ export function WorkspaceInboxPage() {
     return output
   }, [currentUserName, workspace])
 
-  const [workspaceOwnerName, setWorkspaceOwnerName] = useState<string | null>(() =>
-    readWorkspaceOwnerNameFromProfile(),
-  )
   const [draft, setDraft] = useState('')
   const [messages, setMessages] = useState<DecryptedInboxMessage[]>([])
   const [, setTypingMap] = useState<TypingMapRecord>(() => pruneTypingMap(readTypingMap()))
@@ -471,18 +535,6 @@ export function WorkspaceInboxPage() {
     ensureWorkspace(workspaceId)
     setActiveWorkspaceId(workspaceId)
   }, [ensureWorkspace, setActiveWorkspaceId, workspaceId])
-
-  useEffect(() => {
-    const refreshOwner = () => {
-      setWorkspaceOwnerName(readWorkspaceOwnerNameFromProfile())
-    }
-    window.addEventListener('storage', refreshOwner)
-    window.addEventListener('focus', refreshOwner)
-    return () => {
-      window.removeEventListener('storage', refreshOwner)
-      window.removeEventListener('focus', refreshOwner)
-    }
-  }, [])
 
   const returnToPath = useMemo(
     () => sanitizeReturnTo(searchParams.get('returnTo')),
@@ -1145,36 +1197,11 @@ export function WorkspaceInboxPage() {
     }
   }
 
-  const onOpenWorkspacesHome = () => {
-    navigate(returnToPath || '/workspaces')
-  }
-
-  const onOpenWorkspacesView = (view: 'workspaces' | 'invitations', filter?: FilterKey) => {
+  const onOpenWorkspacesView = (view: 'workspaces' | 'invitations' | 'data-library') => {
     const queryParams = new URLSearchParams()
     queryParams.set('view', view)
-    if (filter) {
-      queryParams.set('filter', filter)
-    }
     const query = queryParams.toString()
     navigate(query ? `/workspaces?${query}` : '/workspaces')
-  }
-
-  const onCreateWorkspaceFromSidebar = () => {
-    if (!workspaceOwnerName) {
-      setError(WORKSPACE_OWNER_REQUIRED_MESSAGE)
-      return
-    }
-    try {
-      const created = createWorkspace('New Workspace')
-      setActiveWorkspaceId(created.id)
-      navigate(`/w/${created.id}/overview`)
-    } catch (createWorkspaceError) {
-      setError(
-        createWorkspaceError instanceof Error
-          ? createWorkspaceError.message
-          : 'Workspace could not be created.',
-      )
-    }
   }
 
   const onOpenWorkspaceOverview = () => {
@@ -1182,6 +1209,13 @@ export function WorkspaceInboxPage() {
       return
     }
     navigate(`/w/${workspaceId}/overview`)
+  }
+
+  const onOpenWorkspaceLogs = () => {
+    if (!workspaceId) {
+      return
+    }
+    navigate(`/w/${workspaceId}/audit`)
   }
 
   const onOpenWorkspaceThread = useCallback((targetWorkspaceId: string) => {
@@ -1221,21 +1255,6 @@ export function WorkspaceInboxPage() {
       return nextIndex
     })
   }, [messageSearchMatchCount])
-
-  const filterCounts = useMemo<Record<FilterKey, number>>(
-    () => ({
-      all: workspaces.length,
-      active: workspaces.filter((item) => !item.archived).length,
-      pinned: workspaces.filter((item) => item.pinned).length,
-      archived: workspaces.filter((item) => item.archived).length,
-      recent: workspaces.filter((item) => isRecentWorkspace(item.updatedAt)).length,
-    }),
-    [workspaces],
-  )
-  const incomingInvitationCount = authorRequests.length
-  const outgoingInvitationCount = invitationsSent.length
-  const totalInvitationCount = incomingInvitationCount + outgoingInvitationCount
-  const canCreateWorkspace = Boolean(workspaceOwnerName)
 
   const conversationLastUpdated = useMemo(() => {
     if (messages.length === 0) {
@@ -1380,6 +1399,26 @@ export function WorkspaceInboxPage() {
     }
     return formatTimestamp(firstWithActivity.lastActivityAt)
   }, [workspaceThreads])
+  const unreadWorkspaceThreadCount = useMemo(
+    () => workspaceThreads.filter((thread) => thread.unreadCount > 0).length,
+    [workspaceThreads],
+  )
+  const sidebarWorkspaceThreads = useMemo(
+    () => {
+      const unreadFirst = workspaceThreads.filter((thread) => thread.unreadCount > 0)
+      return (unreadFirst.length > 0 ? unreadFirst : workspaceThreads).slice(0, 5)
+    },
+    [workspaceThreads],
+  )
+  const allConversationSummary = unreadWorkspaceThreadCount > 0
+    ? `${unreadWorkspaceThreadCount} conversation${unreadWorkspaceThreadCount === 1 ? '' : 's'} need attention.`
+    : 'Everything is read across your inbox.'
+  const currentConversationSummary = unreadCount > 0
+    ? `${unreadCount} unread message${unreadCount === 1 ? '' : 's'} waiting in this thread.`
+    : messages.length === 0
+      ? 'No messages yet.'
+      : `Last updated ${conversationLastUpdated}.`
+  const sidebarThreadSectionTitle = unreadWorkspaceThreadCount > 0 ? 'Needs attention' : 'Recent threads'
   const currentWorkspaceLabel = workspace?.name || workspaceId || 'Current workspace'
   const currentInboxLocationLabel = isAllConversationsView ? 'All conversations' : currentWorkspaceLabel
   const conversationTitle = `Conversation: ${currentWorkspaceLabel}`
@@ -1388,8 +1427,7 @@ export function WorkspaceInboxPage() {
     <div data-house-scope="workspace-inbox" className="flex h-screen flex-col bg-background text-foreground">
       <TopBar
         scope="workspace"
-        onOpenLeftNav={() => {}}
-        showLeftNavButton={false}
+        onOpenLeftNav={() => setLeftPanelOpen(true)}
       />
       <section
         className={cn(
@@ -1400,101 +1438,14 @@ export function WorkspaceInboxPage() {
         )}
       >
         <aside className="hidden border-r border-border nav:block">
-          <div className={cn('flex h-full flex-col', houseLayout.sidebar)} data-house-role="left-nav-shell">
-            <div className={houseLayout.sidebarHeader}>
-              <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_WORKSPACE_CLASS)}>
-                <h2 className={houseTypography.sectionTitle}>My Workspace</h2>
-                <p className={houseTypography.fieldHelper}>
-                  Library-level filters and actions for all workspaces.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex-1 space-y-4 overflow-y-auto p-3">
-              <section className={houseLayout.sidebarSection}>
-                <p className={houseNavigation.sectionLabel}>Views</p>
-                <div className="space-y-1">
-                  <button
-                    type="button"
-                    onClick={() => onOpenWorkspacesView('workspaces')}
-                    className={cn(houseNavigation.item, HOUSE_NAV_ITEM_WORKSPACE_CLASS)}
-                  >
-                    <span className="truncate pl-2">Workspaces</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenWorkspacesView('invitations')}
-                    className={cn(houseNavigation.item, HOUSE_NAV_ITEM_WORKSPACE_CLASS)}
-                  >
-                    <span className="truncate pl-2">Invitations</span>
-                    <div className={cn('ml-2 flex items-center gap-1.5', houseNavigation.itemMeta)}>
-                      <span className={cn(houseNavigation.itemCount, 'gap-1')}>
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                        {incomingInvitationCount}
-                      </span>
-                      <span className={cn(houseNavigation.itemCount, 'gap-1')}>
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" />
-                        {outgoingInvitationCount}
-                      </span>
-                      <span className={houseNavigation.itemCount}>{totalInvitationCount}</span>
-                    </div>
-                  </button>
-                  <div className={cn(houseNavigation.item, HOUSE_NAV_ITEM_WORKSPACE_CLASS, houseNavigation.itemActive)}>
-                    <span className="truncate pl-2">Inbox</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onOpenWorkspaceOverview}
-                    className={cn(houseNavigation.item, HOUSE_NAV_ITEM_WORKSPACE_CLASS)}
-                    disabled={!workspaceId}
-                  >
-                    <span className="truncate pl-2">Workspace overview</span>
-                  </button>
-                </div>
-              </section>
-
-              <section className={houseLayout.sidebarSection}>
-                <p className={houseNavigation.sectionLabel}>States</p>
-                <div className="space-y-1">
-                  {FILTER_OPTIONS.map((option) => (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => onOpenWorkspacesView('workspaces', option.key)}
-                      className={cn(houseNavigation.item, HOUSE_NAV_ITEM_GOVERNANCE_CLASS)}
-                    >
-                      <span className="truncate pl-2 text-left">{option.label}</span>
-                      <span className={cn(houseNavigation.itemCount, 'ml-2')}>
-                        {filterCounts[option.key]}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section className={houseLayout.sidebarSection}>
-                <p className={houseNavigation.sectionLabel}>Actions</p>
-                <Button
-                  type="button"
-                  className={cn('w-full justify-start', houseForms.actionButtonPrimary, houseTypography.buttonText)}
-                  onClick={onCreateWorkspaceFromSidebar}
-                  disabled={!canCreateWorkspace}
-                >
-                  Create workspace
-                </Button>
-                {!canCreateWorkspace ? (
-                  <p className={houseTypography.fieldHelper}>{WORKSPACE_OWNER_REQUIRED_MESSAGE}</p>
-                ) : null}
-                <Button
-                  type="button"
-                  className={cn('w-full justify-start', houseForms.actionButton, houseTypography.buttonText)}
-                  onClick={onOpenWorkspacesHome}
-                >
-                  Open workspaces home
-                </Button>
-              </section>
-            </div>
-          </div>
+          <WorkspacesHomeSidebar
+            activeItem="inbox"
+            onOpenWorkspaces={() => onOpenWorkspacesView('workspaces')}
+            onOpenInvitations={() => onOpenWorkspacesView('invitations')}
+            onOpenDataLibrary={() => onOpenWorkspacesView('data-library')}
+            onOpenInbox={() => {}}
+            canOpenInbox={Boolean(workspaceId)}
+          />
         </aside>
 
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
@@ -1794,152 +1745,232 @@ export function WorkspaceInboxPage() {
               </div>
 
               <div data-house-role="right-nav-content" className="flex-1 space-y-4 overflow-y-auto p-3">
-              <section className={houseLayout.sidebarSection} data-ui="inbox-right-views-section">
-                <p className={houseNavigation.sectionLabel} data-ui="inbox-right-views-label">Views</p>
-                <div className="space-y-1" data-ui="inbox-right-views-list">
-                  <button
-                    type="button"
-                    className={cn(
-                      houseNavigation.item,
-                      HOUSE_NAV_ITEM_WORKSPACE_CLASS,
-                      inboxMainView === 'all-conversations' && houseNavigation.itemActive,
-                    )}
-                    onClick={onOpenAllConversationsView}
-                    data-ui="inbox-right-view-all-conversations"
-                  >
-                    <span className="truncate pl-2" data-ui="inbox-right-view-all-conversations-label">All conversations</span>
-                  </button>
-                  {!isAllConversationsView ? (
-                    <div
-                      className={cn(houseNavigation.item, HOUSE_NAV_ITEM_WORKSPACE_CLASS, houseNavigation.itemActive)}
-                      data-ui="inbox-right-view-current-workspace"
-                    >
-                      <span className="truncate pl-2" data-ui="inbox-right-view-current-workspace-label">{currentWorkspaceLabel}</span>
-                    </div>
-                  ) : null}
-                </div>
-              </section>
-
-              <section className={houseLayout.sidebarSection} data-ui="inbox-right-conversation-section">
-                <p className={houseNavigation.sectionLabel} data-ui="inbox-right-conversation-label">
-                  {isAllConversationsView ? 'Inbox' : conversationTitle}
-                </p>
-                <div className="space-y-1" data-ui="inbox-right-conversation-list">
-                  <div className={cn(houseNavigation.item, HOUSE_NAV_ITEM_DATA_CLASS)} data-ui="inbox-right-stat-item">
-                    <span className="truncate pl-2" data-ui="inbox-right-stat-name">Messages</span>
-                    <span className={houseNavigation.itemCount} data-ui="inbox-right-stat-value">
-                      {isAllConversationsView ? allThreadsMessageCount : messages.length}
-                    </span>
-                  </div>
-                  <div className={cn(houseNavigation.item, HOUSE_NAV_ITEM_DATA_CLASS)} data-ui="inbox-right-stat-item">
-                    <span className="truncate pl-2" data-ui="inbox-right-stat-name">Unread</span>
-                    <span className={houseNavigation.itemCount} data-ui="inbox-right-stat-value">
-                      {isAllConversationsView ? allThreadsUnreadCount : unreadCount}
-                    </span>
-                  </div>
-                  <div className={cn(houseNavigation.item, HOUSE_NAV_ITEM_DATA_CLASS)} data-ui="inbox-right-stat-item">
-                    <span className="truncate pl-2" data-ui="inbox-right-stat-name">
-                      {isAllConversationsView ? 'Conversations' : 'Participants'}
-                    </span>
-                    <span className={houseNavigation.itemCount} data-ui="inbox-right-stat-value">
-                      {isAllConversationsView ? workspaceThreads.length : participants.length}
-                    </span>
-                  </div>
-                  <div className={cn(houseNavigation.item, HOUSE_NAV_ITEM_DATA_CLASS)} data-ui="inbox-right-stat-item">
-                    <span className="truncate pl-2" data-ui="inbox-right-stat-name">Last update</span>
-                    <span className={cn('max-w-sz-130 truncate', houseNavigation.itemMeta)} data-ui="inbox-right-stat-meta">
-                      {isAllConversationsView ? allThreadsLastUpdate : conversationLastUpdated}
-                    </span>
-                  </div>
-                  {!isAllConversationsView ? (
-                    <div className={cn(houseNavigation.item, HOUSE_NAV_ITEM_DATA_CLASS)} data-ui="inbox-right-stat-item">
-                      <span className="truncate pl-2" data-ui="inbox-right-stat-name">Online</span>
-                      <span className={houseNavigation.itemCount} data-ui="inbox-right-stat-value">{onlineParticipantCount}</span>
-                    </div>
-                  ) : null}
-                </div>
-              </section>
-
-              {!isAllConversationsView ? (
-                <section className={houseLayout.sidebarSection} data-ui="inbox-right-participants-section">
-                  <p className={houseNavigation.sectionLabel} data-ui="inbox-right-participants-label">Participants</p>
-                  <div className="flex items-center gap-2 px-2" data-ui="inbox-right-participants-filter">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={participantFilter === 'all' ? 'housePrimary' : 'house'}
-                      className="h-8 px-2"
-                      onClick={() => setParticipantFilter('all')}
-                      data-ui="inbox-right-participants-filter-all"
-                    >
-                      All
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={participantFilter === 'online' ? 'housePrimary' : 'house'}
-                      className="h-8 px-2"
-                      onClick={() => setParticipantFilter('online')}
-                      data-ui="inbox-right-participants-filter-online"
-                    >
-                      Online only
-                    </Button>
-                  </div>
-                  <div className="space-y-1" data-ui="inbox-right-participants-list">
-                    {visibleParticipants.length === 0 ? (
-                      <p className={houseTypography.fieldHelper} data-ui="inbox-right-participants-empty">
-                        {participantFilter === 'online' ? 'No participants are online.' : 'No participants'}
+                <section className={cn(houseLayout.sidebarSection, 'border-b border-border/60 pb-4')} data-ui="inbox-right-summary-section">
+                  <InboxSidebarSectionHeader
+                    icon={MessageSquare}
+                    label={isAllConversationsView ? 'Overview' : 'Thread'}
+                    dataUi="inbox-right-summary-label"
+                  />
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className={houseTypography.sectionTitle}>
+                        {isAllConversationsView ? 'Inbox overview' : currentWorkspaceLabel}
+                      </h3>
+                      <p className={houseTypography.fieldHelper}>
+                        {isAllConversationsView ? allConversationSummary : currentConversationSummary}
                       </p>
-                    ) : (
-                      visibleParticipants.map((participant) => {
-                        const isMe = isSamePerson(participant, currentUserName)
-                        const isOnline = isParticipantOnline(participant)
-                        const onlineLabel = isOnline ? 'online' : 'offline'
-                        return (
-                          <div key={participant} className={cn(houseNavigation.item, HOUSE_NAV_ITEM_WORKSPACE_CLASS)} data-ui="inbox-right-participant-item">
-                            <p className={cn('truncate', houseTypography.text)} data-ui="inbox-right-participant-name">
-                              {participant}
-                              {isMe ? ' (You)' : ''}
-                            </p>
-                            <div className={cn('ml-2 flex items-center gap-1.5', houseNavigation.itemMeta)} data-ui="inbox-right-participant-meta">
-                              <span
-                                className={cn(houseNavigation.itemCount, 'gap-1')}
-                                data-ui="inbox-right-participant-online"
-                                aria-label={`${participant} ${onlineLabel}`}
-                              >
-                                <span data-house-role="participant-online-dot" className={cn('inline-block h-1.5 w-1.5 rounded-full', isOnline ? 'bg-emerald-500' : 'bg-red-500')} />
-                                {onlineLabel}
-                              </span>
-                            </div>
-                          </div>
-                        )
-                      })
-                    )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border/60 pt-3" data-ui="inbox-right-summary-grid">
+                      <InboxSidebarStatCard
+                        label="Messages"
+                        value={isAllConversationsView ? allThreadsMessageCount : messages.length}
+                      />
+                      <InboxSidebarStatCard
+                        label="Unread"
+                        value={isAllConversationsView ? allThreadsUnreadCount : unreadCount}
+                        valueClassName={cn(
+                          (isAllConversationsView ? allThreadsUnreadCount : unreadCount) > 0
+                            ? 'text-[hsl(var(--tone-warning-800))]'
+                            : 'text-foreground',
+                        )}
+                      />
+                      <InboxSidebarStatCard
+                        label={isAllConversationsView ? 'Conversations' : 'Participants'}
+                        value={isAllConversationsView ? workspaceThreads.length : participants.length}
+                      />
+                      <InboxSidebarStatCard
+                        label="Last update"
+                        value={isAllConversationsView ? allThreadsLastUpdate : conversationLastUpdated}
+                      />
+                    </div>
+                    {!isAllConversationsView ? (
+                      <div className="flex items-center gap-2 border-t border-border/60 pt-3">
+                        <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <p className="text-sm font-medium text-foreground">
+                          {onlineParticipantCount} participant{onlineParticipantCount === 1 ? '' : 's'} online now
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                 </section>
-              ) : null}
 
-              {!isAllConversationsView ? (
-                <section className={houseLayout.sidebarSection} data-ui="inbox-right-workspace-section">
-                  <p className={houseNavigation.sectionLabel} data-ui="inbox-right-workspace-label">Workspace</p>
-                  <div className="space-y-1" data-ui="inbox-right-workspace-list">
-                    <button
-                      type="button"
-                      className={cn(houseNavigation.item, HOUSE_NAV_ITEM_WORKSPACE_CLASS)}
+                <section className={cn(houseLayout.sidebarSection, 'border-b border-border/60 pb-4')} data-ui="inbox-right-actions-section">
+                  <InboxSidebarSectionHeader
+                    icon={ArrowUpRight}
+                    label="Actions"
+                    dataUi="inbox-right-actions-label"
+                  />
+                  <div className="divide-y divide-border/60" data-ui="inbox-right-actions-list">
+                    {!isAllConversationsView ? (
+                      <InboxSidebarActionButton
+                        icon={List}
+                        label="All conversations"
+                        onClick={onOpenAllConversationsView}
+                        data-ui="inbox-right-open-all-conversations"
+                      />
+                    ) : null}
+                    {!isAllConversationsView ? (
+                      <InboxSidebarActionButton
+                        icon={ScrollText}
+                        label="Open logs"
+                        onClick={onOpenWorkspaceLogs}
+                        disabled={!workspaceId}
+                        data-ui="inbox-right-open-logs"
+                      />
+                    ) : null}
+                    <InboxSidebarActionButton
+                      icon={ArrowUpRight}
+                      label="Open workspace"
                       onClick={onOpenWorkspaceOverview}
                       disabled={!workspaceId}
                       data-ui="inbox-right-workspace-open"
-                    >
-                      <span className="truncate pl-2" data-ui="inbox-right-workspace-open-label">Open workspace</span>
-                    </button>
+                    />
                   </div>
                 </section>
-              ) : null}
+
+                {isAllConversationsView ? (
+                  <section className={houseLayout.sidebarSection} data-ui="inbox-right-threads-section">
+                    <InboxSidebarSectionHeader
+                      icon={List}
+                      label={sidebarThreadSectionTitle}
+                      meta={sidebarWorkspaceThreads.length}
+                      dataUi="inbox-right-threads-label"
+                    />
+                    <div className="divide-y divide-border/60" data-ui="inbox-right-threads-list">
+                      {sidebarWorkspaceThreads.length === 0 ? (
+                        <p className={houseTypography.fieldHelper} data-ui="inbox-right-threads-empty">
+                          No conversations yet.
+                        </p>
+                      ) : (
+                        sidebarWorkspaceThreads.map((thread) => (
+                          <button
+                            key={thread.workspaceId}
+                            type="button"
+                            className={cn(houseNavigation.item, HOUSE_NAV_ITEM_WORKSPACE_CLASS, 'w-full rounded-md border border-transparent px-2 py-2')}
+                            onClick={() => onOpenWorkspaceThread(thread.workspaceId)}
+                            data-ui="inbox-right-thread-item"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                {thread.unreadCount > 0 ? (
+                                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                                ) : null}
+                                <p className={cn('truncate', houseTypography.fieldLabel)}>
+                                  {thread.workspaceName}
+                                </p>
+                              </div>
+                              <p className={cn('truncate', houseTypography.fieldHelper)}>
+                                {thread.lastActivityAt ? formatTimestamp(thread.lastActivityAt) : 'No activity yet'}
+                              </p>
+                            </div>
+                            <span className={cn(houseNavigation.itemCount, thread.unreadCount > 0 && 'border-amber-300 bg-amber-50 text-amber-800')}>
+                              {thread.unreadCount > 0 ? thread.unreadCount : thread.messageCount}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </section>
+                ) : (
+                  <section className={houseLayout.sidebarSection} data-ui="inbox-right-participants-section">
+                    <InboxSidebarSectionHeader
+                      icon={Users}
+                      label="Participants"
+                      dataUi="inbox-right-participants-label"
+                      meta={(
+                        <div className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/80 p-1" data-ui="inbox-right-participants-filter">
+                          <button
+                            type="button"
+                            className={cn(
+                              'rounded-full px-2 py-1 text-xs font-medium',
+                              participantFilter === 'all'
+                                ? 'bg-foreground text-background'
+                                : 'text-muted-foreground',
+                            )}
+                            onClick={() => setParticipantFilter('all')}
+                            data-ui="inbox-right-participants-filter-all"
+                          >
+                            All
+                          </button>
+                          <button
+                            type="button"
+                            className={cn(
+                              'rounded-full px-2 py-1 text-xs font-medium',
+                              participantFilter === 'online'
+                                ? 'bg-foreground text-background'
+                                : 'text-muted-foreground',
+                            )}
+                            onClick={() => setParticipantFilter('online')}
+                            data-ui="inbox-right-participants-filter-online"
+                          >
+                            Online
+                          </button>
+                        </div>
+                      )}
+                    />
+                    <div className="divide-y divide-border/60" data-ui="inbox-right-participants-list">
+                      {visibleParticipants.length === 0 ? (
+                        <p className={houseTypography.fieldHelper} data-ui="inbox-right-participants-empty">
+                          {participantFilter === 'online' ? 'No participants are online.' : 'No participants'}
+                        </p>
+                      ) : (
+                        visibleParticipants.map((participant) => {
+                          const isMe = isSamePerson(participant, currentUserName)
+                          const isOnline = isParticipantOnline(participant)
+                          const onlineLabel = isOnline ? 'online' : 'offline'
+                          return (
+                            <div
+                              key={participant}
+                              className="px-1 py-2"
+                              data-ui="inbox-right-participant-item"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className={cn('truncate', houseTypography.text)} data-ui="inbox-right-participant-name">
+                                  {participant}
+                                  {isMe ? ' (You)' : ''}
+                                </p>
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium',
+                                    isOnline
+                                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                                      : 'border-border/70 bg-muted/50 text-muted-foreground',
+                                  )}
+                                  data-ui="inbox-right-participant-online"
+                                  aria-label={`${participant} ${onlineLabel}`}
+                                >
+                                  <span
+                                    data-house-role="participant-online-dot"
+                                    className={cn('inline-block h-1.5 w-1.5 rounded-full', isOnline ? 'bg-emerald-500' : 'bg-muted-foreground')}
+                                  />
+                                  {onlineLabel}
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </section>
+                )}
               </div>
             </div>
           )}
         </aside>
       </section>
+      <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
+        <SheetContent side="left" className="w-[var(--layout-left-nav-width-mobile)] p-0 nav:hidden">
+          <WorkspacesHomeSidebar
+            activeItem="inbox"
+            onOpenWorkspaces={() => onOpenWorkspacesView('workspaces')}
+            onOpenInvitations={() => onOpenWorkspacesView('invitations')}
+            onOpenDataLibrary={() => onOpenWorkspacesView('data-library')}
+            onOpenInbox={() => {}}
+            canOpenInbox={Boolean(workspaceId)}
+            onNavigate={() => setLeftPanelOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

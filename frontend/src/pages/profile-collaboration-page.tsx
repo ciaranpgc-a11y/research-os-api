@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { Building2, Check, ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Loader2, Pencil, Plus, Search, Settings, Share2, X } from 'lucide-react'
+import { Building2, ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Loader2, Pencil, Plus, Save, Search, Settings, Share2, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -48,6 +48,7 @@ import {
   getCollaborator,
   listCollaboratorSharedWorks,
   listCollaboratorsSharedWorks,
+  updateCollaborator,
 } from '@/lib/impact-api'
 import type {
   AffiliationSuggestionItemPayload,
@@ -117,6 +118,37 @@ type AffiliationSuggestionItem = {
   address: string | null
   postalCode: string | null
   source: 'openai' | 'openalex' | 'ror' | 'openstreetmap' | 'clearbit'
+}
+
+type CollaboratorContactUpdateInput = {
+  contact_salutation?: string | null
+  contact_first_name?: string | null
+  contact_middle_initial?: string | null
+  contact_surname?: string | null
+  contact_email?: string | null
+  contact_secondary_email?: string | null
+  contact_primary_institution?: string | null
+  contact_secondary_institution?: string | null
+  contact_primary_institution_openalex_id?: string | null
+  contact_secondary_institution_openalex_id?: string | null
+  contact_primary_affiliation_department?: string | null
+  contact_primary_affiliation_address_line_1?: string | null
+  contact_primary_affiliation_city?: string | null
+  contact_primary_affiliation_region?: string | null
+  contact_primary_affiliation_postal_code?: string | null
+  contact_primary_affiliation_country?: string | null
+  contact_secondary_affiliation_department?: string | null
+  contact_secondary_affiliation_address_line_1?: string | null
+  contact_secondary_affiliation_city?: string | null
+  contact_secondary_affiliation_region?: string | null
+  contact_secondary_affiliation_postal_code?: string | null
+  contact_secondary_affiliation_country?: string | null
+}
+
+type CollaboratorContactSaveQueueItem = {
+  collaboratorId: string
+  payload: CollaboratorContactUpdateInput
+  snapshot: string
 }
 
 type HeatmapMode = 'country' | 'institution' | 'domain'
@@ -220,21 +252,21 @@ const COLLABORATOR_DRILLDOWN_TABS: Array<{ id: CollaboratorDrilldownTab; label: 
   { id: 'actions', label: 'Actions' },
 ]
 const COLLABORATOR_SALUTATION_OPTIONS = [
-  'Professor',
-  'Professor Emeritus',
-  'Associate Professor',
-  'Assistant Professor',
-  'Reader',
-  'Senior Lecturer',
-  'Lecturer',
   'Dr',
-  'Research Fellow',
-  'Postdoctoral Researcher',
+  'Professor',
   'Mr',
   'Ms',
   'Mrs',
   'Miss',
   'Mx',
+  'Associate Professor',
+  'Assistant Professor',
+  'Reader',
+  'Senior Lecturer',
+  'Lecturer',
+  'Research Fellow',
+  'Postdoctoral Researcher',
+  'Professor Emeritus',
   'Sir',
   'Dame',
   'Lord',
@@ -500,6 +532,47 @@ function toFormState(value: CollaboratorPayload): CollaboratorFormState {
     research_domains: (value.research_domains || []).join(', '),
     notes: value.notes || '',
   }
+}
+
+function trimmedOrNull(value: string | null | undefined): string | null {
+  const clean = String(value || '').trim()
+  return clean || null
+}
+
+function sanitizedAffiliationOrNull(value: string | null | undefined): string | null {
+  const clean = sanitizeAffiliation(value)
+  return clean || null
+}
+
+function toCollaboratorContactUpdateInput(form: CollaboratorFormState): CollaboratorContactUpdateInput {
+  return {
+    contact_salutation: trimmedOrNull(form.salutation),
+    contact_first_name: trimmedOrNull(form.first_name),
+    contact_middle_initial: trimmedOrNull(form.middle_initial)?.toUpperCase() || null,
+    contact_surname: trimmedOrNull(form.surname),
+    contact_email: trimmedOrNull(form.email),
+    contact_secondary_email: trimmedOrNull(form.secondary_email),
+    contact_primary_institution: sanitizedAffiliationOrNull(form.primary_institution),
+    contact_secondary_institution: sanitizedAffiliationOrNull(form.secondary_institution),
+    contact_primary_institution_openalex_id: trimmedOrNull(form.primary_institution_openalex_id),
+    contact_secondary_institution_openalex_id: trimmedOrNull(form.secondary_institution_openalex_id),
+    contact_primary_affiliation_department: trimmedOrNull(form.primary_affiliation_department),
+    contact_primary_affiliation_address_line_1: trimmedOrNull(form.primary_affiliation_address_line_1),
+    contact_primary_affiliation_city: trimmedOrNull(form.primary_affiliation_city),
+    contact_primary_affiliation_region: trimmedOrNull(form.primary_affiliation_region),
+    contact_primary_affiliation_postal_code: trimmedOrNull(form.primary_affiliation_postal_code),
+    contact_primary_affiliation_country: trimmedOrNull(form.primary_affiliation_country),
+    contact_secondary_affiliation_department: trimmedOrNull(form.secondary_affiliation_department),
+    contact_secondary_affiliation_address_line_1: trimmedOrNull(form.secondary_affiliation_address_line_1),
+    contact_secondary_affiliation_city: trimmedOrNull(form.secondary_affiliation_city),
+    contact_secondary_affiliation_region: trimmedOrNull(form.secondary_affiliation_region),
+    contact_secondary_affiliation_postal_code: trimmedOrNull(form.secondary_affiliation_postal_code),
+    contact_secondary_affiliation_country: trimmedOrNull(form.secondary_affiliation_country),
+  }
+}
+
+function serializeCollaboratorContactUpdateInput(input: CollaboratorContactUpdateInput): string {
+  return JSON.stringify(input)
 }
 
 function composeCollaboratorContactName(value: {
@@ -1489,6 +1562,7 @@ export function ProfileCollaborationPage() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [collaboratorContactSaving, setCollaboratorContactSaving] = useState(false)
   const [, setDuplicateWarnings] = useState<string[]>([])
   const [sharedWorksWindowMode, setSharedWorksWindowMode] = useState<CollaboratorHistoryWindowMode>('all')
   const [sharedWorksSortField, setSharedWorksSortField] = useState<CollaboratorSharedWorksSortField>('year')
@@ -1499,6 +1573,13 @@ export function ProfileCollaborationPage() {
   const [sharedWorksLoadingByCollaboratorId, setSharedWorksLoadingByCollaboratorId] = useState<Record<string, boolean>>({})
   const [sharedWorksErrorByCollaboratorId, setSharedWorksErrorByCollaboratorId] = useState<Record<string, string>>({})
   const collaboratorInstitutionLookupSequenceRef = useRef(0)
+  const selectedCollaboratorIdRef = useRef<string | null>(null)
+  const collaboratorContactSnapshotByIdRef = useRef<Map<string, string>>(new Map())
+  const collaboratorContactQueuedSnapshotByIdRef = useRef<Map<string, string>>(new Map())
+  const collaboratorContactInFlightSnapshotByIdRef = useRef<Map<string, string>>(new Map())
+  const collaboratorContactFailedSnapshotByIdRef = useRef<Map<string, string>>(new Map())
+  const collaboratorContactSaveQueueRef = useRef<CollaboratorContactSaveQueueItem[]>([])
+  const collaboratorContactSaveInFlightRef = useRef(false)
   const sharedWorksRequestInFlightRef = useRef<Set<string>>(new Set())
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>(() => normalizeHeatmapMode(searchParams.get('heatmap_mode')))
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>(
@@ -2211,7 +2292,6 @@ export function ProfileCollaborationPage() {
     })
   }, [listing?.items])
 
-  const duplicateRecordDelta = Math.max(0, (listing?.items?.length || 0) - canonicalCollaborators.length)
   const hasCompleteListing = useMemo(() => isCollaboratorsListComplete(listing), [listing])
   const totalCollaboratorsMetric = summary?.total_collaborators ?? (hasCompleteListing ? canonicalCollaborators.length : null)
   const coreCollaboratorsMetric = summary?.core_collaborators ?? null
@@ -2309,6 +2389,131 @@ export function ProfileCollaborationPage() {
     setSecondaryAffiliationBylineDraft(collaboratorBylineDraftFromForm(nextForm, 'secondary'))
   }, [])
 
+  const markCollaboratorContactSnapshot = useCallback((collaboratorId: string, nextForm: CollaboratorFormState) => {
+    collaboratorContactSnapshotByIdRef.current.set(
+      collaboratorId,
+      serializeCollaboratorContactUpdateInput(toCollaboratorContactUpdateInput(nextForm)),
+    )
+    collaboratorContactFailedSnapshotByIdRef.current.delete(collaboratorId)
+  }, [])
+
+  const updateCollaboratorInListing = useCallback((nextCollaborator: CollaboratorPayload) => {
+    setListing((current) => {
+      if (!current) {
+        return current
+      }
+      return {
+        ...current,
+        items: current.items.map((item) => (item.id === nextCollaborator.id ? nextCollaborator : item)),
+      }
+    })
+  }, [])
+
+  const flushCollaboratorContactSaveQueue = useCallback(async () => {
+    if (collaboratorContactSaveInFlightRef.current) {
+      return
+    }
+    collaboratorContactSaveInFlightRef.current = true
+    try {
+      while (collaboratorContactSaveQueueRef.current.length > 0) {
+        const next = collaboratorContactSaveQueueRef.current.shift()
+        if (!next) {
+          continue
+        }
+        const queuedSnapshot = collaboratorContactQueuedSnapshotByIdRef.current.get(next.collaboratorId)
+        if (queuedSnapshot && queuedSnapshot !== next.snapshot) {
+          continue
+        }
+        collaboratorContactQueuedSnapshotByIdRef.current.delete(next.collaboratorId)
+        collaboratorContactInFlightSnapshotByIdRef.current.set(next.collaboratorId, next.snapshot)
+        const token = getAuthSessionToken()
+        if (!token) {
+          collaboratorContactInFlightSnapshotByIdRef.current.delete(next.collaboratorId)
+          if (selectedCollaboratorIdRef.current === next.collaboratorId) {
+            setCollaboratorContactSaving(false)
+            setStatus('')
+            setError('Could not save collaborator details because your session has expired.')
+          }
+          continue
+        }
+        if (selectedCollaboratorIdRef.current === next.collaboratorId) {
+          setCollaboratorContactSaving(true)
+          setStatus('Saving collaborator details...')
+          setError('')
+        }
+        try {
+          const saved = await updateCollaborator(token, next.collaboratorId, next.payload)
+          updateCollaboratorInListing(saved)
+          markCollaboratorContactSnapshot(saved.id, toFormState(saved))
+          if (selectedCollaboratorIdRef.current === saved.id) {
+            setStatus('Collaborator details saved.')
+            setError('')
+          }
+        } catch (saveError) {
+          collaboratorContactFailedSnapshotByIdRef.current.set(next.collaboratorId, next.snapshot)
+          if (selectedCollaboratorIdRef.current === next.collaboratorId) {
+            setStatus('')
+            setError(saveError instanceof Error ? saveError.message : 'Could not save collaborator details.')
+          }
+        } finally {
+          if (collaboratorContactInFlightSnapshotByIdRef.current.get(next.collaboratorId) === next.snapshot) {
+            collaboratorContactInFlightSnapshotByIdRef.current.delete(next.collaboratorId)
+          }
+          if (selectedCollaboratorIdRef.current === next.collaboratorId) {
+            const stillQueued = collaboratorContactSaveQueueRef.current.some((item) => item.collaboratorId === next.collaboratorId)
+              || collaboratorContactQueuedSnapshotByIdRef.current.has(next.collaboratorId)
+            setCollaboratorContactSaving(stillQueued)
+          }
+        }
+      }
+    } finally {
+      collaboratorContactSaveInFlightRef.current = false
+    }
+  }, [markCollaboratorContactSnapshot, updateCollaboratorInListing])
+
+  const queueCollaboratorContactSave = useCallback((
+    collaboratorId: string,
+    nextForm: CollaboratorFormState,
+    options?: { immediate?: boolean },
+  ) => {
+    const payload = toCollaboratorContactUpdateInput(nextForm)
+    const snapshot = serializeCollaboratorContactUpdateInput(payload)
+    if (snapshot === collaboratorContactSnapshotByIdRef.current.get(collaboratorId)) {
+      return
+    }
+    if (!options?.immediate && snapshot === collaboratorContactFailedSnapshotByIdRef.current.get(collaboratorId)) {
+      return
+    }
+    if (snapshot === collaboratorContactQueuedSnapshotByIdRef.current.get(collaboratorId)) {
+      return
+    }
+    if (snapshot === collaboratorContactInFlightSnapshotByIdRef.current.get(collaboratorId)) {
+      return
+    }
+    const queue = collaboratorContactSaveQueueRef.current
+    const existingIndex = queue.findIndex((item) => item.collaboratorId === collaboratorId)
+    const queueItem: CollaboratorContactSaveQueueItem = {
+      collaboratorId,
+      payload,
+      snapshot,
+    }
+    if (existingIndex >= 0) {
+      queue[existingIndex] = queueItem
+    } else {
+      queue.push(queueItem)
+    }
+    collaboratorContactQueuedSnapshotByIdRef.current.set(collaboratorId, snapshot)
+    if (selectedCollaboratorIdRef.current === collaboratorId) {
+      setError('')
+      if (options?.immediate) {
+        setStatus('Saving collaborator details...')
+      }
+    }
+    if (options?.immediate) {
+      void flushCollaboratorContactSaveQueue()
+    }
+  }, [flushCollaboratorContactSaveQueue])
+
   const applyCollaboratorFormState = useCallback((
     collaborator: CollaboratorPayload,
     options?: { pendingReview?: Partial<Record<CollaboratorAffiliationSlotKey, boolean>> },
@@ -2334,7 +2539,8 @@ export function ProfileCollaborationPage() {
       primary: Boolean(options?.pendingReview?.primary),
       secondary: Boolean(options?.pendingReview?.secondary),
     })
-  }, [resetInstitutionSuggestionState, syncAffiliationBylineDraftsFromForm])
+    markCollaboratorContactSnapshot(collaborator.id, nextForm)
+  }, [markCollaboratorContactSnapshot, resetInstitutionSuggestionState, syncAffiliationBylineDraftsFromForm])
 
   const clearCollaboratorFormState = useCallback(() => {
     collaboratorInstitutionLookupSequenceRef.current += 1
@@ -2354,6 +2560,7 @@ export function ProfileCollaborationPage() {
     setEditingSecondaryEmail(false)
     setDuplicateWarnings([])
     setPendingInstitutionReview({ primary: false, secondary: false })
+    setCollaboratorContactSaving(false)
   }, [resetInstitutionSuggestionState, syncAffiliationBylineDraftsFromForm])
 
   const onAffiliationBylineDraftChange = useCallback((
@@ -2370,10 +2577,9 @@ export function ProfileCollaborationPage() {
 
   const applyAffiliationBylineDraft = useCallback((slot: CollaboratorAffiliationSlotKey) => {
     const draft = slot === 'secondary' ? secondaryAffiliationBylineDraft : primaryAffiliationBylineDraft
-    setForm((current) => {
-      if (slot === 'secondary') {
-        return {
-          ...current,
+    const nextForm = slot === 'secondary'
+      ? {
+          ...form,
           secondary_affiliation_department: draft.department,
           secondary_affiliation_address_line_1: draft.address_line_1,
           secondary_affiliation_city: draft.city,
@@ -2381,19 +2587,21 @@ export function ProfileCollaborationPage() {
           secondary_affiliation_postal_code: draft.postal_code,
           secondary_affiliation_country: draft.country,
         }
-      }
-      return {
-        ...current,
-        primary_affiliation_department: draft.department,
-        primary_affiliation_address_line_1: draft.address_line_1,
-        primary_affiliation_city: draft.city,
-        primary_affiliation_region: draft.region,
-        primary_affiliation_postal_code: draft.postal_code,
-        primary_affiliation_country: draft.country,
-      }
-    })
+      : {
+          ...form,
+          primary_affiliation_department: draft.department,
+          primary_affiliation_address_line_1: draft.address_line_1,
+          primary_affiliation_city: draft.city,
+          primary_affiliation_region: draft.region,
+          primary_affiliation_postal_code: draft.postal_code,
+          primary_affiliation_country: draft.country,
+        }
+    setForm(nextForm)
+    if (selectedId) {
+      queueCollaboratorContactSave(selectedId, nextForm, { immediate: true })
+    }
     setEditingAffiliationBylineSlot(null)
-  }, [primaryAffiliationBylineDraft, secondaryAffiliationBylineDraft])
+  }, [form, primaryAffiliationBylineDraft, queueCollaboratorContactSave, secondaryAffiliationBylineDraft, selectedId])
 
   const cancelAffiliationBylineDraft = useCallback((slot: CollaboratorAffiliationSlotKey) => {
     setEditingAffiliationBylineSlot(null)
@@ -3445,6 +3653,28 @@ export function ProfileCollaborationPage() {
   }, [ensureCollaboratorSharedWorksLoaded, selectedId])
 
   useEffect(() => {
+    selectedCollaboratorIdRef.current = selectedId
+  }, [selectedId])
+
+  useEffect(() => {
+    if (!selectedId) {
+      return
+    }
+    const snapshot = serializeCollaboratorContactUpdateInput(toCollaboratorContactUpdateInput(form))
+    if (snapshot === collaboratorContactSnapshotByIdRef.current.get(selectedId)) {
+      return
+    }
+    if (snapshot === collaboratorContactQueuedSnapshotByIdRef.current.get(selectedId)) {
+      return
+    }
+    const timer = window.setTimeout(() => {
+      queueCollaboratorContactSave(selectedId, form)
+      void flushCollaboratorContactSaveQueue()
+    }, 700)
+    return () => window.clearTimeout(timer)
+  }, [flushCollaboratorContactSaveQueue, form, queueCollaboratorContactSave, selectedId])
+
+  useEffect(() => {
     if (!institutionInputFocused) {
       setInstitutionSuggestionsLoading(false)
       setInstitutionSuggestionsError('')
@@ -3570,6 +3800,13 @@ export function ProfileCollaborationPage() {
     navigate(`/profile/publications?work=${encodeURIComponent(normalizedWorkId)}&tab=overview`)
   }, [navigate])
 
+  const saveCurrentCollaboratorContactForm = useCallback((nextForm: CollaboratorFormState, options?: { immediate?: boolean }) => {
+    if (!selectedId) {
+      return
+    }
+    queueCollaboratorContactSave(selectedId, nextForm, options)
+  }, [queueCollaboratorContactSave, selectedId])
+
   const onStartPrimaryEmailEdit = () => {
     setPrimaryEmailDraft(form.email || '')
     setEditingPrimaryEmail(true)
@@ -3594,7 +3831,9 @@ export function ProfileCollaborationPage() {
 
   const onCommitPrimaryEmailDraft = () => {
     const clean = primaryEmailDraft.trim()
-    setForm((current) => ({ ...current, email: clean }))
+    const nextForm = { ...form, email: clean }
+    setForm(nextForm)
+    saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
     setPrimaryEmailDraft(clean)
     setEditingPrimaryEmail(false)
   }
@@ -3606,14 +3845,16 @@ export function ProfileCollaborationPage() {
 
   const onCommitInstitutionDraft = async () => {
     const clean = sanitizeAffiliation(institutionDraft)
+    const nextForm = {
+      ...form,
+      primary_institution: clean,
+    }
     setInstitutionDraft(clean)
     setEditingInstitution(false)
     resetInstitutionSuggestionState()
     setPendingInstitutionReview((current) => ({ ...current, primary: false }))
-    setForm((current) => ({
-      ...current,
-      primary_institution: clean,
-    }))
+    setForm(nextForm)
+    saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
     const token = getAuthSessionToken()
     if (!token) {
       return
@@ -3638,15 +3879,17 @@ export function ProfileCollaborationPage() {
 
   const onCommitSecondaryInstitutionDraft = async () => {
     const clean = sanitizeAffiliation(secondaryInstitutionDraft)
+    const nextForm = {
+      ...form,
+      secondary_institution: clean,
+    }
     setSecondaryInstitutionDraft(clean)
     setShowSecondaryInstitutionInput(Boolean(clean))
     setEditingSecondaryInstitution(false)
     resetInstitutionSuggestionState()
     setPendingInstitutionReview((current) => ({ ...current, secondary: false }))
-    setForm((current) => ({
-      ...current,
-      secondary_institution: clean,
-    }))
+    setForm(nextForm)
+    saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
     const token = getAuthSessionToken()
     if (!token) {
       return
@@ -3720,11 +3963,14 @@ export function ProfileCollaborationPage() {
     setEditingInstitution(false)
     setEditingSecondaryInstitution(false)
     resetInstitutionSuggestionState()
+    saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
   }
 
   const onCommitSecondaryEmailDraft = () => {
     const clean = secondaryEmailDraft.trim()
-    setForm((current) => ({ ...current, secondary_email: clean }))
+    const nextForm = { ...form, secondary_email: clean }
+    setForm(nextForm)
+    saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
     setSecondaryEmailDraft(clean)
     setShowSecondaryEmailInput(Boolean(clean))
     setEditingSecondaryEmail(false)
@@ -3813,12 +4059,6 @@ export function ProfileCollaborationPage() {
             </div>
           </div>
         </div>
-        {hasCompleteListing && duplicateRecordDelta > 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Deduped {duplicateRecordDelta.toLocaleString('en-GB')} duplicate collaborator records across institutions for analytics and table accuracy.
-          </p>
-        ) : null}
-
         <SectionHeader
           heading="Collaborators"
           className="house-publications-toolbar-header house-collaboration-toolbar-header mt-[var(--separator-section-content-to-section-header)]"
@@ -4772,18 +5012,31 @@ export function ProfileCollaborationPage() {
                     </div>
                     <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                       <div className="space-y-3">
+                        {status || error ? (
+                          <div className="space-y-1">
+                            {status ? (
+                              <p className="text-xs text-emerald-700">
+                                {collaboratorContactSaving ? 'Saving collaborator details...' : status}
+                              </p>
+                            ) : null}
+                            {error ? <p className="text-xs text-destructive">{error}</p> : null}
+                          </div>
+                        ) : null}
                         <div className="grid gap-3 sm:grid-cols-[5.1rem_minmax(0,1fr)_4.5rem_minmax(0,1fr)]">
                           <label className="space-y-1">
                             <span className="house-field-label">Title</span>
                             <SelectPrimitive
-                              value={form.salutation || '__none__'}
-                              onValueChange={(value) => setForm((current) => ({ ...current, salutation: value === '__none__' ? '' : value }))}
+                              value={form.salutation || undefined}
+                              onValueChange={(value) => {
+                                const nextForm = { ...form, salutation: value }
+                                setForm(nextForm)
+                                saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
+                              }}
                             >
                               <SelectTrigger aria-label="Title">
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__none__">Select title</SelectItem>
+                              <SelectContent showScrollButtons={false} viewportStyle={{ maxHeight: 'none' }}>
                                 {COLLABORATOR_SALUTATION_OPTIONS.map((option) => (
                                   <SelectItem key={option} value={option}>
                                     {option}
@@ -4797,6 +5050,9 @@ export function ProfileCollaborationPage() {
                             <Input
                               value={form.first_name}
                               onChange={(event) => setForm((current) => ({ ...current, first_name: event.target.value }))}
+                              onBlur={(event) => {
+                                saveCurrentCollaboratorContactForm({ ...form, first_name: event.target.value }, { immediate: true })
+                              }}
                               autoComplete="given-name"
                             />
                           </label>
@@ -4805,6 +5061,12 @@ export function ProfileCollaborationPage() {
                             <Input
                               value={form.middle_initial}
                               onChange={(event) => setForm((current) => ({ ...current, middle_initial: event.target.value.toUpperCase() }))}
+                              onBlur={(event) => {
+                                saveCurrentCollaboratorContactForm(
+                                  { ...form, middle_initial: event.target.value.toUpperCase() },
+                                  { immediate: true },
+                                )
+                              }}
                               maxLength={4}
                             />
                           </label>
@@ -4813,6 +5075,9 @@ export function ProfileCollaborationPage() {
                             <Input
                               value={form.surname}
                               onChange={(event) => setForm((current) => ({ ...current, surname: event.target.value }))}
+                              onBlur={(event) => {
+                                saveCurrentCollaboratorContactForm({ ...form, surname: event.target.value }, { immediate: true })
+                              }}
                               autoComplete="family-name"
                             />
                           </label>
@@ -4837,7 +5102,7 @@ export function ProfileCollaborationPage() {
                                   onClick={onCommitPrimaryEmailDraft}
                                   disabled={primaryEmailDraft.trim() === (form.email || '').trim()}
                                 >
-                                  <Check className="h-4 w-4" strokeWidth={2.2} />
+                                  <Save className="h-4 w-4" strokeWidth={2.2} />
                                 </button>
                               </div>
                               <div className="flex h-9 items-center justify-start self-end sm:justify-center">
@@ -4900,7 +5165,7 @@ export function ProfileCollaborationPage() {
                                       onClick={onCommitSecondaryEmailDraft}
                                       disabled={secondaryEmailDraft.trim() === (form.secondary_email || '').trim()}
                                     >
-                                      <Check className="h-4 w-4" strokeWidth={2.2} />
+                                      <Save className="h-4 w-4" strokeWidth={2.2} />
                                     </button>
                                   </div>
                                   <div className="flex h-9 items-center justify-start self-end sm:justify-center">
@@ -5020,7 +5285,7 @@ export function ProfileCollaborationPage() {
                                   onClick={onCommitInstitutionDraft}
                                   disabled={sanitizeAffiliation(institutionDraft) === sanitizeAffiliation(form.primary_institution)}
                                 >
-                                  <Check className="h-4 w-4" strokeWidth={2.2} />
+                                  <Save className="h-4 w-4" strokeWidth={2.2} />
                                 </button>
                               </div>
                               <div className="flex h-9 items-center justify-start self-end sm:justify-center">
@@ -5149,7 +5414,7 @@ export function ProfileCollaborationPage() {
                                       onClick={onCommitSecondaryInstitutionDraft}
                                       disabled={sanitizeAffiliation(secondaryInstitutionDraft) === sanitizeAffiliation(form.secondary_institution)}
                                     >
-                                      <Check className="h-4 w-4" strokeWidth={2.2} />
+                                      <Save className="h-4 w-4" strokeWidth={2.2} />
                                     </button>
                                   </div>
                                   <div className="flex h-9 items-center justify-start self-end sm:justify-center">
@@ -5263,7 +5528,7 @@ export function ProfileCollaborationPage() {
                                               title={`Save ${institution.label} byline`}
                                               onClick={() => applyAffiliationBylineDraft(institution.slot)}
                                             >
-                                              <Check className="h-4 w-4" strokeWidth={2.2} />
+                                              <Save className="h-4 w-4" strokeWidth={2.2} />
                                             </button>
                                           </div>
                                           <div className="flex h-9 items-center justify-start sm:justify-center">

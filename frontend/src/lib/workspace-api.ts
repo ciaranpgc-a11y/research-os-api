@@ -51,6 +51,7 @@ export type WorkspaceStatePayload = {
     workspaceName: string
     authorName: string
     authorUserId: string | null
+    invitationType?: 'workspace' | 'data'
     collaboratorRole: 'editor' | 'reviewer' | 'viewer'
     invitedAt: string
   }>
@@ -60,6 +61,7 @@ export type WorkspaceStatePayload = {
     workspaceName: string
     inviteeName: string
     inviteeUserId: string | null
+    invitationType?: 'workspace' | 'data'
     role: 'editor' | 'reviewer' | 'viewer'
     invitedAt: string
     status: 'pending' | 'accepted' | 'declined'
@@ -159,6 +161,7 @@ type WorkspaceStateApiPayload = {
     workspace_name: string
     author_name: string
     author_user_id: string | null
+    invitation_type?: 'workspace' | 'data'
     collaborator_role: 'editor' | 'reviewer' | 'viewer'
     invited_at: string
   }>
@@ -168,6 +171,7 @@ type WorkspaceStateApiPayload = {
     workspace_name: string
     invitee_name: string
     invitee_user_id: string | null
+    invitation_type?: 'workspace' | 'data'
     role: 'editor' | 'reviewer' | 'viewer'
     invited_at: string
     status: 'pending' | 'accepted' | 'declined'
@@ -210,8 +214,10 @@ type WorkspaceAuthorRequestsApiPayload = {
 }
 
 type WorkspaceAuthorRequestAcceptApiPayload = {
-  workspace: WorkspaceRecordApiPayload
+  workspace?: WorkspaceRecordApiPayload | null
   removed_request_id: string
+  invitation_type?: 'workspace' | 'data'
+  accepted_asset_id?: string | null
 }
 
 type WorkspaceAuthorRequestDeclineApiPayload = {
@@ -320,6 +326,7 @@ function workspaceAuthorRequestFromApi(
     workspaceName: item.workspace_name,
     authorName: item.author_name,
     authorUserId: item.author_user_id || null,
+    invitationType: item.invitation_type === 'data' ? 'data' : 'workspace',
     collaboratorRole: item.collaborator_role || 'editor',
     invitedAt: item.invited_at,
   }
@@ -334,6 +341,7 @@ function workspaceInvitationFromApi(
     workspaceName: item.workspace_name,
     inviteeName: item.invitee_name,
     inviteeUserId: item.invitee_user_id || null,
+    invitationType: item.invitation_type === 'data' ? 'data' : 'workspace',
     role: item.role || 'editor',
     invitedAt: item.invited_at,
     status: item.status,
@@ -404,6 +412,7 @@ function workspaceStateToApi(payload: WorkspaceStatePayload): WorkspaceStateApiP
       workspace_name: item.workspaceName,
       author_name: item.authorName,
       author_user_id: item.authorUserId,
+      invitation_type: item.invitationType === 'data' ? 'data' : 'workspace',
       collaborator_role: item.collaboratorRole || 'editor',
       invited_at: item.invitedAt,
     })),
@@ -413,6 +422,7 @@ function workspaceStateToApi(payload: WorkspaceStatePayload): WorkspaceStateApiP
       workspace_name: item.workspaceName,
       invitee_name: item.inviteeName,
       invitee_user_id: item.inviteeUserId,
+      invitation_type: item.invitationType === 'data' ? 'data' : 'workspace',
       role: item.role || 'editor',
       invited_at: item.invitedAt,
       status: item.status,
@@ -668,8 +678,10 @@ export async function acceptWorkspaceAuthorRequestApi(
   token: string,
   requestId: string,
 ): Promise<{
-  workspace: WorkspaceStatePayload['workspaces'][number]
+  workspace: WorkspaceStatePayload['workspaces'][number] | null
   removedRequestId: string
+  invitationType: 'workspace' | 'data'
+  acceptedAssetId: string | null
 }> {
   const payload = await requestJson<WorkspaceAuthorRequestAcceptApiPayload>(
     `${API_BASE_URL}/v1/workspaces/author-requests/${encodeURIComponent(requestId)}/accept`,
@@ -681,8 +693,10 @@ export async function acceptWorkspaceAuthorRequestApi(
     'Author request accept failed',
   )
   return {
-    workspace: workspaceRecordFromApi(payload.workspace),
+    workspace: payload.workspace ? workspaceRecordFromApi(payload.workspace) : null,
     removedRequestId: payload.removed_request_id,
+    invitationType: payload.invitation_type === 'data' ? 'data' : 'workspace',
+    acceptedAssetId: payload.accepted_asset_id || null,
   }
 }
 

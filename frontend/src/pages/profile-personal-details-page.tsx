@@ -99,21 +99,21 @@ const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PERSONAL_DETAILS_STORAGE_PREFIX = 'aawe_profile_personal_details:'
 
 const TITLE_OPTIONS = [
-  'Professor',
-  'Professor Emeritus',
-  'Associate Professor',
-  'Assistant Professor',
-  'Reader',
-  'Senior Lecturer',
-  'Lecturer',
   'Dr',
-  'Research Fellow',
-  'Postdoctoral Researcher',
+  'Professor',
   'Mr',
   'Ms',
   'Mrs',
   'Miss',
   'Mx',
+  'Associate Professor',
+  'Assistant Professor',
+  'Reader',
+  'Senior Lecturer',
+  'Lecturer',
+  'Research Fellow',
+  'Postdoctoral Researcher',
+  'Professor Emeritus',
   'Sir',
   'Dame',
   'Lord',
@@ -2349,14 +2349,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     <label className="space-y-1">
                       <span className="house-field-label">Title</span>
                       <SelectPrimitive
-                        value={draft.salutation || '__none__'}
-                        onValueChange={(value) => onFieldChange('salutation', value === '__none__' ? '' : value)}
+                        value={draft.salutation || undefined}
+                        onValueChange={(value) => onFieldChange('salutation', value)}
                       >
                         <SelectTrigger aria-label="Title">
-                          <SelectValue placeholder="Select title" />
+                          <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Select title</SelectItem>
+                        <SelectContent showScrollButtons={false} viewportStyle={{ maxHeight: 'none' }}>
                           {TITLE_OPTIONS.map((option) => (
                             <SelectItem key={option} value={option}>
                               {option}

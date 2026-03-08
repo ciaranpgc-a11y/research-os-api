@@ -10,6 +10,10 @@ from threading import Lock
 from typing import Any
 from uuid import uuid4
 
+from research_os.platform_compat import patch_windows_platform_machine
+
+patch_windows_platform_machine()
+
 from sqlalchemy import (
     Boolean,
     Date,
@@ -665,6 +669,11 @@ class DataLibraryAsset(Base):
     project_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
+    workspace_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    workspace_ids_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    origin_workspace_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     shared_with_user_ids: Mapped[list[str] | None] = mapped_column(
         JSON, nullable=True
     )
@@ -1904,6 +1913,24 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
             _sqlite_add_column_if_missing(
                 connection,
                 table_name="data_library_assets",
+                column_name="workspace_id",
+                column_sql="VARCHAR(128)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="data_library_assets",
+                column_name="workspace_ids_json",
+                column_sql="JSON",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="data_library_assets",
+                column_name="origin_workspace_id",
+                column_sql="VARCHAR(128)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="data_library_assets",
                 column_name="shared_with_roles_json",
                 column_sql="JSON",
             )
@@ -1923,6 +1950,12 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_data_library_assets_owner_user_id "
                     "ON data_library_assets (owner_user_id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_data_library_assets_workspace_id "
+                    "ON data_library_assets (workspace_id)"
                 )
             )
 
@@ -1949,7 +1982,7 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                         "      AND projects.owner_user_id IS NOT NULL"
                         "  )"
                     )
-                )
+                        )
 
             if _sqlite_table_exists(connection, "users"):
                 user_count_row = connection.execute(
@@ -1978,6 +2011,42 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                             ),
                             {"owner_user_id": only_user_id},
                         )
+            if (
+                "project_id" in asset_columns
+                and "workspace_id" in asset_columns
+                and "workspace_id" in project_columns
+            ):
+                connection.execute(
+                    text(
+                        "UPDATE data_library_assets "
+                        "SET workspace_id = ("
+                        "  SELECT projects.workspace_id "
+                        "  FROM projects "
+                        "  WHERE projects.id = data_library_assets.project_id"
+                        ") "
+                        "WHERE workspace_id IS NULL "
+                        "  AND project_id IS NOT NULL "
+                        "  AND EXISTS ("
+                        "    SELECT 1 FROM projects "
+                        "    WHERE projects.id = data_library_assets.project_id "
+                        "      AND projects.workspace_id IS NOT NULL "
+                        "      AND TRIM(projects.workspace_id) != ''"
+                        "  )"
+                    )
+                )
+            if (
+                "origin_workspace_id" in asset_columns
+                and "workspace_id" in asset_columns
+            ):
+                connection.execute(
+                    text(
+                        "UPDATE data_library_assets "
+                        "SET origin_workspace_id = workspace_id "
+                        "WHERE origin_workspace_id IS NULL "
+                        "  AND workspace_id IS NOT NULL "
+                        "  AND TRIM(workspace_id) != ''"
+                    )
+                )
 
         if _sqlite_table_exists(connection, "data_profiles"):
             _sqlite_add_column_if_missing(

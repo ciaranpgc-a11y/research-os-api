@@ -1,13 +1,14 @@
 /**
  * Data library view page
  *
- * Displays files, access controls, and permissions for the personal data library.
+ * Displays files, access controls, and workspace linkage for the data library.
  * Supports browsing, filtering, searching, and managing asset visibility and metadata.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Archive, ArrowRight, ChevronDown, ChevronUp, Download, Loader2, Lock, LockOpen, MoreHorizontal, Pencil, Plus, RotateCcw, Save, Search, Send, UserMinus, X } from 'lucide-react'
+import { Archive, ArrowRight, Building2, ChevronDown, ChevronUp, Download, HelpCircle, Loader2, Lock, LockOpen, Pencil, Plus, RotateCcw, Save, Search, Send, Share2, User, UserMinus, X, type LucideIcon } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 import {
   Badge,
@@ -31,12 +32,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui'
+import { AuditLogGroup, AuditLogMessageRow, AuditLogTransitionRow } from '@/components/patterns/AuditLog'
 import { DrilldownSheet, PageHeader, Row, SectionHeader, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
+import { formatAuditCompactTimestamp, parseLibraryAssetAuditTransition } from '@/lib/audit-log'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { drilldownTabFlexGrow } from '@/components/publications/house-drilldown-header-utils'
-import { houseCollaborators, houseDrilldown, houseForms, houseLayout, houseMotion, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import { houseCollaborators, houseDrilldown, houseForms, houseLayout, houseMotion, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { listCollaborators } from '@/lib/impact-api'
 import {
   downloadLibraryAsset,
@@ -45,6 +48,7 @@ import {
   updateLibraryAssetMetadata,
 } from '@/lib/study-core-api'
 import { cn } from '@/lib/utils'
+import { useWorkspaceStore, type WorkspaceCollaboratorRole, type WorkspaceRecord } from '@/store/use-workspace-store'
 import type { CollaboratorPayload } from '@/types/impact'
 import type {
   LibraryAssetAccessRole,
@@ -58,26 +62,30 @@ import type {
 
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
+const HOUSE_TABLE_HEAD_TEXT_CLASS = houseTypography.tableHead
 const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
 const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_TOGGLE_BUTTON_CLASS = houseMotion.toggleButton
 const HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS = houseDrilldown.toggleButtonMuted
-const HOUSE_COLLABORATOR_CHIP_CLASS = houseCollaborators.chip
-const HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS = houseCollaborators.chipActive
-const HOUSE_COLLABORATOR_CHIP_READONLY_CLASS = houseCollaborators.chipReadOnly
 const HOUSE_COLLABORATOR_ACTION_ICON_CLASS = houseCollaborators.actionIcon
+const HOUSE_COLLABORATOR_ACTION_ICON_ADD_CLASS = houseCollaborators.actionIconAdd
+const HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS = houseCollaborators.actionIconEdit
+const HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS = houseCollaborators.actionIconConfirm
+const HOUSE_COLLABORATOR_ACTION_ICON_DISCARD_CLASS = houseCollaborators.actionIconDiscard
 const HOUSE_DRILLDOWN_SHEET_CLASS = houseDrilldown.sheet
 const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = houseDrilldown.sheetBody
 const HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS = houseDrilldown.collapsibleEntity
-const HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS = houseCollaborators.chipRemoved
-const DATA_LIBRARY_OWNER_BADGE_CLASS = 'border-emerald-300 bg-emerald-50 text-emerald-800'
-const DATA_LIBRARY_EDITOR_CHIP_CLASS = 'border-sky-300 bg-sky-50 text-sky-800'
-const DATA_LIBRARY_VIEWER_CHIP_CLASS = 'border-slate-300 bg-slate-50 text-slate-700'
+const HOUSE_DRILLDOWN_TAB_LIST_CLASS = houseDrilldown.tabList
+const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = houseDrilldown.tabTrigger
+const DATA_LIBRARY_LOCK_INDICATOR_CLASS = 'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-800))]'
+const DATA_LIBRARY_SHARED_TARGET_DIRECT_BADGE_CLASS = 'border-[hsl(var(--border))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-800))]'
+const DATA_LIBRARY_SHARED_TARGET_WORKSPACE_BADGE_CLASS = 'border-amber-200 bg-amber-50 text-amber-900'
 
 const DATA_LIBRARY_SCOPE_OPTIONS: Array<{ value: LibraryAssetOwnership; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'owned', label: 'Owned' },
-  { value: 'shared', label: 'Shared' },
+  { value: 'all', label: 'All files' },
+  { value: 'owned', label: 'My files' },
+  { value: 'shared_by_me', label: 'Shared by me' },
+  { value: 'shared', label: 'Shared with me' },
 ]
 const DATA_LIBRARY_ARCHIVE_SCOPE_OPTIONS: Array<{ value: LibraryAssetScope; label: string }> = [
   { value: 'all', label: 'All' },
@@ -88,45 +96,79 @@ const DATA_LIBRARY_ACCESS_ROLE_OPTIONS: Array<{ value: LibraryAssetAccessRole; l
   { value: 'editor', label: 'Editor' },
   { value: 'viewer', label: 'Viewer' },
 ]
+const DATA_LIBRARY_ACCESS_ACTIVITY_FILTER_OPTIONS: Array<{ value: DataLibraryAccessActivityFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'access_status', label: 'Access' },
+  { value: 'role_changes', label: 'Roles' },
+  { value: 'invitation_status', label: 'Invites' },
+  { value: 'other', label: 'Other' },
+]
 
 type WorkspacesDataLibraryViewProps = {
   showPageHeader?: boolean
+  workspaceId?: string | null
+  workspaceName?: string | null
+  onOpenWorkspaceDrilldown?: ((workspaceId: string, initialTab?: 'overview' | 'actions') => void) | null
+  drilldownRequest?: DataLibraryDrilldownRequest | null
 }
 
 type DataLibraryDrilldownTab = 'overview' | 'access' | 'actions' | 'logs'
+type DataLibraryAccessActivityFilter =
+  | 'all'
+  | 'access_status'
+  | 'role_changes'
+  | 'invitation_status'
+  | 'other'
+type DataLibraryDrilldownRequest = {
+  requestKey: number
+  assetId: string
+  tab?: DataLibraryDrilldownTab
+  accessFilter?: DataLibraryAccessActivityFilter
+  actorName?: string | null
+}
 type DataLibraryMenuState = {
   assetId: string
   x: number
   y: number
 }
-type DataLibraryTableDensity = 'compact' | 'default' | 'comfortable'
-type DataLibraryTableColumnKey = 'filename' | 'access' | 'uploaded' | 'format' | 'size' | 'actions'
-type DataLibraryMemberMenuState = {
-  assetId: string
-  userId: string
+type WorkspaceAccessMenuState = {
+  workspaceId: string
   x: number
   y: number
 }
+type WorkspaceAccessMember = {
+  key: string
+  user_id: string
+  name: string
+  accessRole: LibraryAssetAccessRole
+  isWorkspaceOwner: boolean
+}
+type DataLibraryTableDensity = 'compact' | 'default' | 'comfortable'
+type DataLibraryTableColumnKey = 'filename' | 'workspaces' | 'origin' | 'access' | 'owner' | 'uploaded' | 'format' | 'size'
 
 const DATA_LIBRARY_TABLE_COLUMN_ORDER: DataLibraryTableColumnKey[] = [
   'filename',
+  'workspaces',
+  'origin',
   'access',
+  'owner',
   'uploaded',
   'format',
   'size',
-  'actions',
 ]
 
 const DATA_LIBRARY_TABLE_COLUMN_DEFINITIONS: Record<
   DataLibraryTableColumnKey,
   { label: string; width: string; sortBy?: LibraryAssetSortBy; hideable?: boolean; align?: 'left' | 'center' }
 > = {
-  filename: { label: 'File name', width: '34%', sortBy: 'filename' },
-  access: { label: 'Access', width: '40%', sortBy: 'owner_name', hideable: true },
-  uploaded: { label: 'Uploaded', width: '14%', sortBy: 'uploaded_at', hideable: true },
-  format: { label: 'Format', width: '8%', sortBy: 'kind', hideable: true },
-  size: { label: 'Size', width: '8%', sortBy: 'byte_size', hideable: true },
-  actions: { label: 'Actions', width: '7rem', align: 'center' },
+  filename: { label: 'File name', width: '18%', sortBy: 'filename' },
+  workspaces: { label: 'Workspaces', width: '15%', hideable: true },
+  origin: { label: 'Permissions', width: '11%', hideable: true },
+  access: { label: 'Access via', width: '15%', hideable: true },
+  owner: { label: 'Owner', width: '13%', sortBy: 'owner_name', hideable: true },
+  uploaded: { label: 'Uploaded', width: '11%', sortBy: 'uploaded_at', hideable: true },
+  format: { label: 'Format', width: '7%', sortBy: 'kind', hideable: true },
+  size: { label: 'Size', width: '7%', sortBy: 'byte_size', hideable: true },
 }
 
 function normalizeName(value: string | null | undefined): string {
@@ -135,6 +177,20 @@ function normalizeName(value: string | null | undefined): string {
 
 function normalizeUserId(value: string | null | undefined): string {
   return String(value || '').trim()
+}
+
+function normalizeWorkspaceIds(values: Array<string | null | undefined> | null | undefined): string[] {
+  const deduped: string[] = []
+  const seen = new Set<string>()
+  ;(values || []).forEach((value) => {
+    const clean = normalizeUserId(value)
+    if (!clean || seen.has(clean)) {
+      return
+    }
+    seen.add(clean)
+    deduped.push(clean)
+  })
+  return deduped
 }
 
 function resolveCollaboratorUserId(candidate: CollaboratorPayload): string {
@@ -239,48 +295,305 @@ function assetDownloadUnavailableMessage(asset: LibraryAssetRecord): string {
   return 'Only file owners and editors can download files.'
 }
 
-function formatAuditCompactTimestamp(value: string): string {
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 'Not available'
-  }
-  return new Date(parsed).toLocaleString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function humanizeAuditValue(value: string | null | undefined): string {
-  const clean = normalizeName(value || '')
-  if (!clean) {
-    return ''
-  }
-  return clean.replace(/_/g, ' ').replace(/\b\w/g, (match) => match.toUpperCase())
-}
-
-function assetAuditStatePillClassName(rawValue: string | null | undefined): string {
-  const clean = normalizeName(rawValue || '').toLowerCase()
-  if (clean === 'granted' || clean === 'uploaded' || clean === 'downloaded' || clean === 'editor' || clean === 'owner') {
-    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS)
-  }
-  if (clean === 'revoked') {
-    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS)
-  }
-  return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_READONLY_CLASS)
-}
-
 function humanizeLibraryAssetAccessRole(role: LibraryAssetAccessRole): string {
   return role === 'editor' ? 'Editor' : 'Viewer'
 }
 
-function libraryAssetAccessChipClassName(role: LibraryAssetAccessRole): string {
-  return cn(
-    HOUSE_COLLABORATOR_CHIP_CLASS,
-    role === 'editor' ? DATA_LIBRARY_EDITOR_CHIP_CLASS : DATA_LIBRARY_VIEWER_CHIP_CLASS,
+function isLibraryAccessStatusAuditEntry(entry: LibraryAssetAuditEntry): boolean {
+  return entry.event_type === 'access_granted' || entry.event_type === 'access_revoked'
+}
+
+function isLibraryRoleChangeAuditEntry(entry: LibraryAssetAuditEntry): boolean {
+  return entry.event_type === 'access_role_changed' || entry.event_type === 'pending_access_role_changed'
+}
+
+function isLibraryInvitationStatusAuditEntry(entry: LibraryAssetAuditEntry): boolean {
+  return (
+    entry.event_type === 'access_invited'
+    || entry.event_type === 'access_invitation_cancelled'
+    || entry.event_type === 'access_invitation_accepted'
+    || entry.event_type === 'access_invitation_declined'
   )
+}
+
+function matchesLibraryAccessActivityFilter(
+  entry: LibraryAssetAuditEntry,
+  filter: DataLibraryAccessActivityFilter,
+): boolean {
+  if (filter === 'all') {
+    return true
+  }
+  if (filter === 'access_status') {
+    return isLibraryAccessStatusAuditEntry(entry)
+  }
+  if (filter === 'role_changes') {
+    return isLibraryRoleChangeAuditEntry(entry)
+  }
+  if (filter === 'invitation_status') {
+    return isLibraryInvitationStatusAuditEntry(entry)
+  }
+  if (filter === 'other') {
+    return (
+      !isLibraryAccessStatusAuditEntry(entry)
+      && !isLibraryRoleChangeAuditEntry(entry)
+      && !isLibraryInvitationStatusAuditEntry(entry)
+    )
+  }
+  return true
+}
+
+function libraryAssetWorkspacePlacements(asset: LibraryAssetRecord): Array<{ workspace_id: string; workspace_name: string }> {
+  if (Array.isArray(asset.workspace_placements) && asset.workspace_placements.length > 0) {
+    return asset.workspace_placements
+      .map((placement) => ({
+        workspace_id: normalizeUserId(placement.workspace_id),
+        workspace_name: normalizeName(placement.workspace_name) || normalizeUserId(placement.workspace_id),
+      }))
+      .filter((placement) => placement.workspace_id)
+  }
+
+  const workspaceIds = normalizeWorkspaceIds(asset.workspace_ids)
+  const workspaceNames = Array.isArray(asset.workspace_names)
+    ? asset.workspace_names.map((value) => normalizeName(value))
+    : []
+  if (workspaceIds.length > 0) {
+    return workspaceIds.map((workspaceId, index) => ({
+      workspace_id: workspaceId,
+      workspace_name: workspaceNames[index] || workspaceId,
+    }))
+  }
+
+  const legacyWorkspaceId = normalizeUserId(asset.workspace_id)
+  if (!legacyWorkspaceId) {
+    return []
+  }
+  return [{
+    workspace_id: legacyWorkspaceId,
+    workspace_name: normalizeName(asset.workspace_name || '') || legacyWorkspaceId,
+  }]
+}
+
+function libraryAssetWorkspaceSummary(asset: LibraryAssetRecord): string {
+  const placements = libraryAssetWorkspacePlacements(asset)
+  if (placements.length === 0) {
+    return 'None'
+  }
+  if (placements.length === 1) {
+    return placements[0].workspace_name
+  }
+  return `${placements[0].workspace_name} + ${placements.length - 1}`
+}
+
+function libraryAssetPermissionsBadge(asset: LibraryAssetRecord): {
+  label: string
+  description: string
+  variant: 'positive' | 'outline'
+  className?: string
+} {
+  switch (asset.current_user_role) {
+    case 'owner':
+    case 'editor':
+      return {
+        label: 'Editor',
+        description: asset.current_user_access_source === 'owner'
+          ? 'You own this file and have full control.'
+          : 'You can download and work with this file.',
+        variant: 'positive',
+        className: 'font-semibold',
+      }
+    case 'viewer':
+    default:
+      return {
+        label: 'Read-only',
+        description: 'You can view this file, but not edit or download it.',
+        variant: 'outline',
+        className: 'font-medium',
+      }
+  }
+}
+
+function libraryAssetAccessViaDetail(asset: LibraryAssetRecord): {
+  label: string
+  description: string
+  variant: 'positive' | 'yellow' | 'outline'
+  icon: LucideIcon
+  className?: string
+} {
+  const ownerName = assetOwnerDisplayName(asset)
+  const workspaceSummary = libraryAssetWorkspaceSummary(asset)
+  switch (asset.current_user_access_source) {
+    case 'owner':
+      return {
+        label: 'Owned by you',
+        description: 'This file is in your library because you own it.',
+        variant: 'positive',
+        icon: User,
+        className: 'font-semibold',
+      }
+    case 'direct_share':
+      return {
+        label: `Direct share by ${ownerName}`,
+        description: `Shared with you directly by ${ownerName}.`,
+        variant: 'outline',
+        icon: Share2,
+        className: 'font-medium',
+      }
+    case 'workspace_member':
+    case 'project_collaborator':
+      return {
+        label: workspaceSummary === 'None' ? 'Workspace access' : `Workspace: ${workspaceSummary}`,
+        description: 'Available through workspace access.',
+        variant: 'yellow',
+        icon: Building2,
+        className: 'font-semibold',
+      }
+    default:
+      return {
+        label: 'Unknown',
+        description: 'Access source unavailable.',
+        variant: 'outline',
+        icon: HelpCircle,
+        className: 'font-medium',
+      }
+  }
+}
+
+function workspaceActiveCollaborators(workspace: WorkspaceRecord | null | undefined): Array<{ user_id: string; name: string }> {
+  if (!workspace) {
+    return []
+  }
+  const removedIds = new Set(
+    (workspace.removedCollaborators || [])
+      .map((participant) => normalizeUserId(participant.userId))
+      .filter(Boolean),
+  )
+  return (workspace.collaborators || [])
+    .map((participant) => ({
+      user_id: normalizeUserId(participant.userId),
+      name: normalizeName(participant.name) || normalizeUserId(participant.userId) || 'Workspace member',
+    }))
+    .filter((participant) => participant.name && !removedIds.has(participant.user_id))
+}
+
+function normalizeWorkspaceCollaboratorRole(value: WorkspaceCollaboratorRole | string | null | undefined): WorkspaceCollaboratorRole {
+  const clean = normalizeName(value || '').toLowerCase()
+  if (clean === 'reviewer' || clean === 'viewer') {
+    return clean
+  }
+  return 'editor'
+}
+
+function workspaceDerivedAssetAccessRole(
+  membership: 'owner' | 'collaborator',
+  collaboratorRole?: WorkspaceCollaboratorRole | null,
+): LibraryAssetAccessRole {
+  if (membership === 'owner') {
+    return 'editor'
+  }
+  return normalizeWorkspaceCollaboratorRole(collaboratorRole) === 'editor' ? 'editor' : 'viewer'
+}
+
+function workspaceAccessMembers(workspace: WorkspaceRecord | null | undefined): WorkspaceAccessMember[] {
+  if (!workspace) {
+    return []
+  }
+
+  const removedIds = new Set(
+    (workspace.removedCollaborators || [])
+      .map((participant) => normalizeUserId(participant.userId))
+      .filter(Boolean),
+  )
+  const members: WorkspaceAccessMember[] = []
+  const ownerUserId = normalizeUserId(workspace.ownerUserId)
+  const ownerName = normalizeName(workspace.ownerName) || ownerUserId || 'Workspace owner'
+
+  if (ownerName && (!ownerUserId || !removedIds.has(ownerUserId))) {
+    members.push({
+      key: `owner-${ownerUserId || ownerName.toLowerCase()}`,
+      user_id: ownerUserId,
+      name: ownerName,
+      accessRole: workspaceDerivedAssetAccessRole('owner'),
+      isWorkspaceOwner: true,
+    })
+  }
+
+  ;(workspace.collaborators || []).forEach((participant) => {
+    const userId = normalizeUserId(participant.userId)
+    if (!userId || removedIds.has(userId) || userId === ownerUserId) {
+      return
+    }
+
+    const collaboratorRole = normalizeWorkspaceCollaboratorRole(workspace.collaboratorRoles?.[userId])
+    members.push({
+      key: `member-${userId}`,
+      user_id: userId,
+      name: normalizeName(participant.name) || userId || 'Workspace member',
+      accessRole: workspaceDerivedAssetAccessRole('collaborator', collaboratorRole),
+      isWorkspaceOwner: false,
+    })
+  })
+
+  return members.sort((left, right) => {
+    if (left.isWorkspaceOwner !== right.isWorkspaceOwner) {
+      return left.isWorkspaceOwner ? -1 : 1
+    }
+    return left.name.localeCompare(right.name)
+  })
+}
+
+function libraryAssetSharedAudience(
+  asset: LibraryAssetRecord,
+  workspacePlacements: Array<{ workspace_id: string; workspace_name: string; canOpen: boolean }>,
+  workspaceRecordsById: Map<string, WorkspaceRecord>,
+): {
+  directTargets: Array<{ key: string; label: string }>
+  workspaceTargets: Array<{ key: string; label: string }>
+  allTargets: Array<{ key: string; label: string; kind: 'direct' | 'workspace' }>
+  summary: string
+} {
+  const ownerUserId = normalizeUserId(asset.owner_user_id)
+  const directTargets = libraryAssetAccessMembers(asset)
+    .filter((member) => {
+      const memberUserId = normalizeUserId(member.user_id)
+      return Boolean(memberUserId) && memberUserId !== ownerUserId
+    })
+    .map((member) => ({
+      key: `direct-${normalizeUserId(member.user_id)}`,
+      label: normalizeName(member.name) || normalizeUserId(member.user_id) || 'Direct share',
+    }))
+
+  const knownWorkspaceTargets = workspacePlacements
+    .filter((placement) => {
+      const workspaceRecord = workspaceRecordsById.get(placement.workspace_id)
+      return Boolean(workspaceRecord) && workspaceActiveCollaborators(workspaceRecord).length > 0
+    })
+    .map((placement) => ({
+      key: `workspace-${placement.workspace_id}`,
+      label: placement.workspace_name,
+    }))
+  const fallbackWorkspaceTargets = workspacePlacements
+    .filter((placement) => !workspaceRecordsById.has(placement.workspace_id))
+    .map((placement) => ({
+      key: `workspace-${placement.workspace_id}`,
+      label: placement.workspace_name,
+    }))
+  const workspaceTargets = knownWorkspaceTargets.length > 0 || directTargets.length > 0
+    ? knownWorkspaceTargets
+    : fallbackWorkspaceTargets
+
+  const allTargets = [
+    ...directTargets.map((target) => ({ ...target, kind: 'direct' as const })),
+    ...workspaceTargets.map((target) => ({ ...target, kind: 'workspace' as const })),
+  ]
+
+  const summaryParts: string[] = []
+
+  return {
+    directTargets,
+    workspaceTargets,
+    allTargets,
+    summary: summaryParts.length > 0 ? summaryParts.join(' · ') : 'No active access',
+  }
 }
 
 function nextSortDirection(
@@ -310,6 +623,38 @@ function libraryAssetAccessMembers(asset: LibraryAssetRecord): Array<{ user_id: 
     }))
   }
   return []
+}
+
+function libraryAssetPendingAccessMembers(asset: LibraryAssetRecord): Array<{ user_id: string; name: string; role: LibraryAssetAccessRole }> {
+  if (!Array.isArray(asset.pending_with) || asset.pending_with.length === 0) {
+    return []
+  }
+  return asset.pending_with.map((item) => ({
+    user_id: String(item.user_id || '').trim(),
+    name: normalizeName(String(item.name || '')) || 'Unknown user',
+    role: item.role === 'editor' ? 'editor' : 'viewer',
+  }))
+}
+
+function libraryAssetManageableAccessMembers(asset: LibraryAssetRecord): Array<{
+  user_id: string
+  name: string
+  role: LibraryAssetAccessRole
+  state: 'active' | 'pending'
+}> {
+  const members = [
+    ...libraryAssetAccessMembers(asset).map((member) => ({ ...member, state: 'active' as const })),
+    ...libraryAssetPendingAccessMembers(asset).map((member) => ({ ...member, state: 'pending' as const })),
+  ]
+  const seen = new Set<string>()
+  return members.filter((member) => {
+    const cleanUserId = normalizeUserId(member.user_id)
+    if (!cleanUserId || seen.has(cleanUserId)) {
+      return false
+    }
+    seen.add(cleanUserId)
+    return true
+  })
 }
 
 function selectedCandidateByAssetIdValue(
@@ -352,7 +697,7 @@ function dataLibraryDrilldownTabLabel(
     case 'access':
       return 'Access'
     case 'actions':
-      return 'Actions'
+      return 'Files'
     case 'logs':
     default:
       return 'Logs'
@@ -361,25 +706,58 @@ function dataLibraryDrilldownTabLabel(
 
 export function WorkspacesDataLibraryView({
   showPageHeader = true,
+  workspaceId = null,
+  workspaceName = null,
+  onOpenWorkspaceDrilldown = null,
+  drilldownRequest = null,
 }: WorkspacesDataLibraryViewProps = {}) {
+  const navigate = useNavigate()
+  const normalizedWorkspaceId = normalizeUserId(workspaceId)
+  const normalizedWorkspaceName = normalizeName(workspaceName || '')
+  const isWorkspaceScoped = Boolean(normalizedWorkspaceId)
+  const workspaceRecords = useWorkspaceStore((state) => state.workspaces)
+  const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
+  const availableWorkspaceOptions = useMemo(
+    () => workspaceRecords
+      .map((workspace) => ({
+        id: normalizeUserId(workspace.id),
+        name: normalizeName(workspace.name) || 'Workspace',
+      }))
+      .filter((workspace) => workspace.id),
+    [workspaceRecords],
+  )
+  const availableWorkspaceOptionsById = useMemo(
+    () => new Map(availableWorkspaceOptions.map((workspace) => [workspace.id, workspace])),
+    [availableWorkspaceOptions],
+  )
+  const workspaceRecordsById = useMemo(
+    () => new Map(
+      workspaceRecords
+        .map((workspace) => [normalizeUserId(workspace.id), workspace] as const)
+        .filter(([workspaceId]) => workspaceId),
+    ),
+    [workspaceRecords],
+  )
   const [assets, setAssets] = useState<LibraryAssetRecord[]>([])
   const [ownershipFilter, setOwnershipFilter] = useState<LibraryAssetOwnership>('all')
   const [archiveScope, setArchiveScope] = useState<LibraryAssetScope>('all')
   const [sortBy, setSortBy] = useState<LibraryAssetSortBy>('uploaded_at')
   const [sortDirection, setSortDirection] = useState<LibraryAssetSortDirection>('desc')
-  const [tableDensity, setTableDensity] = useState<DataLibraryTableDensity>('default')
-  const [visibleColumns, setVisibleColumns] = useState<Record<DataLibraryTableColumnKey, boolean>>({
+  const [tableDensity] = useState<DataLibraryTableDensity>('default')
+  const [visibleColumns] = useState<Record<DataLibraryTableColumnKey, boolean>>({
     filename: true,
+    workspaces: true,
+    origin: true,
     access: true,
+    owner: true,
     uploaded: true,
     format: true,
     size: true,
-    actions: true,
   })
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(25)
-  const [total, setTotal] = useState(0)
-  const [hasMore, setHasMore] = useState(false)
+  const [pageSize] = useState(25)
+  const [, setTotal] = useState(0)
+  const [, setHasMore] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
@@ -389,6 +767,7 @@ export function WorkspacesDataLibraryView({
   const [refreshTick, setRefreshTick] = useState(0)
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const [drilldownTab, setDrilldownTab] = useState<DataLibraryDrilldownTab>('overview')
+  const [accessActivityFilter, setAccessActivityFilter] = useState<DataLibraryAccessActivityFilter>('all')
   const [accessActivityCollapsed, setAccessActivityCollapsed] = useState(true)
   const [assetActivityCollapsed, setAssetActivityCollapsed] = useState(true)
   const [accessActivityActorExpanded, setAccessActivityActorExpanded] = useState<Record<string, boolean>>({})
@@ -405,8 +784,10 @@ export function WorkspacesDataLibraryView({
   const [lookupErrorByAssetId, setLookupErrorByAssetId] = useState<Record<string, string>>({})
   const [lookupBusyAssetId, setLookupBusyAssetId] = useState<string | null>(null)
   const [menuState, setMenuState] = useState<DataLibraryMenuState | null>(null)
-  const [memberMenuState, setMemberMenuState] = useState<DataLibraryMemberMenuState | null>(null)
+  const [workspaceAccessMenuState, setWorkspaceAccessMenuState] = useState<WorkspaceAccessMenuState | null>(null)
+  const [workspaceAccessExpandedById, setWorkspaceAccessExpandedById] = useState<Record<string, boolean>>({})
   const suppressAssetRowClickRef = useRef<string | null>(null)
+  const appliedDrilldownRequestKeyRef = useRef<number | null>(null)
 
   const hasSessionToken = Boolean(getAuthSessionToken())
 
@@ -444,6 +825,7 @@ export function WorkspacesDataLibraryView({
       try {
         const payload = await listLibraryAssets({
           token,
+          workspaceId: normalizedWorkspaceId || undefined,
           ownership: ownershipFilter,
           scope: archiveScope,
           page,
@@ -484,7 +866,11 @@ export function WorkspacesDataLibraryView({
     return () => {
       cancelled = true
     }
-  }, [archiveScope, hasSessionToken, ownershipFilter, page, pageSize, refreshTick, sortBy, sortDirection])
+  }, [archiveScope, hasSessionToken, normalizedWorkspaceId, ownershipFilter, page, pageSize, refreshTick, sortBy, sortDirection])
+
+  useEffect(() => {
+    setPage(1)
+  }, [normalizedWorkspaceId])
 
   useEffect(() => {
     if (renamingAssetId && !assets.some((asset) => asset.id === renamingAssetId)) {
@@ -500,6 +886,7 @@ export function WorkspacesDataLibraryView({
   }, [assets, menuState, renamingAssetId, selectedAssetId])
 
   useEffect(() => {
+    setAccessActivityFilter('all')
     setAccessActivityCollapsed(true)
     setAssetActivityCollapsed(true)
     setAccessActivityActorExpanded({})
@@ -509,8 +896,36 @@ export function WorkspacesDataLibraryView({
     setAccessEditingUserId(null)
     setAccessEditingRole('viewer')
     setAccessRemovalConfirmUserId(null)
-    setMemberMenuState(null)
+    setWorkspaceAccessMenuState(null)
+    setWorkspaceAccessExpandedById({})
   }, [selectedAssetId])
+
+  useEffect(() => {
+    if (!drilldownRequest?.assetId || appliedDrilldownRequestKeyRef.current === drilldownRequest.requestKey) {
+      return
+    }
+    appliedDrilldownRequestKeyRef.current = drilldownRequest.requestKey
+    setSelectedAssetId(drilldownRequest.assetId)
+    setDrilldownTab(drilldownRequest.tab || 'logs')
+    const timeoutId = window.setTimeout(() => {
+      if ((drilldownRequest.tab || 'logs') !== 'logs') {
+        return
+      }
+      setAccessActivityFilter(drilldownRequest.accessFilter || 'all')
+      setAccessActivityCollapsed(false)
+      setAssetActivityCollapsed(true)
+      setAssetActivityGroupExpanded({})
+      if (drilldownRequest.actorName) {
+        setAccessActivityActorExpanded({
+          you: true,
+          [normalizeName(drilldownRequest.actorName).toLowerCase()]: true,
+        })
+        return
+      }
+      setAccessActivityActorExpanded({})
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [drilldownRequest])
 
   const updateAssetInState = useCallback((nextAsset: LibraryAssetRecord) => {
     setAssets((current) => current.map((item) => (item.id === nextAsset.id ? nextAsset : item)))
@@ -519,6 +934,16 @@ export function WorkspacesDataLibraryView({
   const visibleTableColumns = useMemo(
     () => DATA_LIBRARY_TABLE_COLUMN_ORDER.filter((columnKey) => visibleColumns[columnKey]),
     [visibleColumns],
+  )
+  const showsSharedByMeAudienceColumn = ownershipFilter === 'shared_by_me'
+  const tableColumnDefinitions = useMemo(
+    () => ({
+      ...DATA_LIBRARY_TABLE_COLUMN_DEFINITIONS,
+      owner: showsSharedByMeAudienceColumn
+        ? { ...DATA_LIBRARY_TABLE_COLUMN_DEFINITIONS.owner, label: 'Shared with', sortBy: undefined }
+        : DATA_LIBRARY_TABLE_COLUMN_DEFINITIONS.owner,
+    }),
+    [showsSharedByMeAudienceColumn],
   )
 
   const onRefresh = useCallback(() => {
@@ -638,6 +1063,19 @@ export function WorkspacesDataLibraryView({
       })
       const objectUrl = window.URL.createObjectURL(payload.blob)
       const anchor = document.createElement('a')
+      anchor.href = objectUrl
+      anchor.download = payload.fileName || asset.filename
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.URL.revokeObjectURL(objectUrl)
+      setStatus(`Downloaded ${payload.fileName || asset.filename}.`)
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Could not download file.')
+    } finally {
+      setBusyAssetId((current) => (current === asset.id ? null : current))
+    }
+  }, [])
 
   const onToggleAssetLock = useCallback(
     async (asset: LibraryAssetRecord) => {
@@ -699,19 +1137,6 @@ export function WorkspacesDataLibraryView({
     },
     [onRefresh, updateAssetInState],
   )
-      anchor.href = objectUrl
-      anchor.download = payload.fileName || asset.filename
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      window.URL.revokeObjectURL(objectUrl)
-      setStatus(`Downloaded ${payload.fileName || asset.filename}.`)
-    } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : 'Could not download file.')
-    } finally {
-      setBusyAssetId((current) => (current === asset.id ? null : current))
-    }
-  }, [])
 
   const onSearchCollaborators = useCallback(
     async (asset: LibraryAssetRecord) => {
@@ -740,13 +1165,14 @@ export function WorkspacesDataLibraryView({
           page: 1,
           pageSize: 25,
         })
+        const existingManageableMembers = libraryAssetManageableAccessMembers(asset)
         const existingAccessUserIds = new Set(
-          libraryAssetAccessMembers(asset)
+          existingManageableMembers
             .map((member) => normalizeUserId(member.user_id))
             .filter(Boolean),
         )
         const existingAccessNames = new Set(
-          libraryAssetAccessMembers(asset).map((member) => normalizeName(member.name).toLowerCase()),
+          existingManageableMembers.map((member) => normalizeName(member.name).toLowerCase()),
         )
         const ownerName = normalizeName(asset.owner_name || '').toLowerCase()
         const ownerUserId = normalizeUserId(asset.owner_user_id)
@@ -836,23 +1262,24 @@ export function WorkspacesDataLibraryView({
       }
 
       const existingAccessUserIds = new Set(
-        libraryAssetAccessMembers(asset)
+        libraryAssetManageableAccessMembers(asset)
           .map((member) => normalizeUserId(member.user_id))
           .filter(Boolean),
       )
       const existingAccessNames = new Set(
-        libraryAssetAccessMembers(asset).map((member) => normalizeName(member.name).toLowerCase()),
+        libraryAssetManageableAccessMembers(asset).map((member) => normalizeName(member.name).toLowerCase()),
       )
       if (existingAccessUserIds.has(selectedUserId) || existingAccessNames.has(selectedName.toLowerCase())) {
-        setError(`${selectedName} already has access.`)
+        setError(`${selectedName} already has access or a pending invite.`)
         return
       }
       const nextMembers = [
-        ...libraryAssetAccessMembers(asset),
+        ...libraryAssetManageableAccessMembers(asset),
         {
           user_id: selectedUserId,
           name: selectedName,
           role: accessComposerRole,
+          state: 'pending' as const,
         },
       ]
 
@@ -867,7 +1294,7 @@ export function WorkspacesDataLibraryView({
         })
         updateAssetInState(updated)
         resetAccessComposerForAsset(asset.id)
-        setStatus(`${humanizeLibraryAssetAccessRole(accessComposerRole)} access granted to ${selectedName}.`)
+        setStatus(`${humanizeLibraryAssetAccessRole(accessComposerRole)} invitation sent to ${selectedName}.`)
       } catch (updateError) {
         setError(updateError instanceof Error ? updateError.message : 'Could not update permissions.')
       } finally {
@@ -886,6 +1313,19 @@ export function WorkspacesDataLibraryView({
     setAccessRemovalConfirmUserId(null)
     setAccessEditingUserId(cleanUserId)
     setAccessEditingRole(member.role)
+    setError('')
+    setStatus('')
+  }, [])
+
+  const onStartRemoveAccess = useCallback((collaboratorUserId: string) => {
+    const cleanCollaboratorUserId = String(collaboratorUserId || '').trim()
+    if (!cleanCollaboratorUserId) {
+      return
+    }
+    setAccessComposerOpen(false)
+    setAccessEditingUserId(null)
+    setAccessEditingRole('viewer')
+    setAccessRemovalConfirmUserId(cleanCollaboratorUserId)
     setError('')
     setStatus('')
   }, [])
@@ -912,10 +1352,10 @@ export function WorkspacesDataLibraryView({
         return
       }
 
-      const currentMembers = libraryAssetAccessMembers(asset)
+      const currentMembers = libraryAssetManageableAccessMembers(asset)
       const currentMember = currentMembers.find((member) => member.user_id === cleanCollaboratorUserId)
       if (!currentMember) {
-        setError('This collaborator no longer has access.')
+        setError('This user no longer has direct access or a pending invite.')
         return
       }
       if (currentMember.role === accessEditingRole) {
@@ -939,7 +1379,11 @@ export function WorkspacesDataLibraryView({
         updateAssetInState(updated)
         setAccessEditingUserId(null)
         setAccessEditingRole('viewer')
-        setStatus(`${currentMember.name} is now ${humanizeLibraryAssetAccessRole(accessEditingRole)}.`)
+        setStatus(
+          currentMember.state === 'pending'
+            ? `${currentMember.name}'s pending invite is now ${humanizeLibraryAssetAccessRole(accessEditingRole)}.`
+            : `${currentMember.name} is now ${humanizeLibraryAssetAccessRole(accessEditingRole)}.`,
+        )
       } catch (updateError) {
         setError(updateError instanceof Error ? updateError.message : 'Could not update permissions.')
       } finally {
@@ -970,7 +1414,11 @@ export function WorkspacesDataLibraryView({
       setStatus('')
       setBusyAssetId(asset.id)
       try {
-        const nextMembers = libraryAssetAccessMembers(asset).filter(
+        const currentMembers = libraryAssetManageableAccessMembers(asset)
+        const removedMember = currentMembers.find(
+          (member) => String(member.user_id || '').trim() === cleanCollaboratorUserId,
+        )
+        const nextMembers = currentMembers.filter(
           (member) => String(member.user_id || '').trim() !== cleanCollaboratorUserId,
         )
         const updated = await updateLibraryAssetAccess({
@@ -982,7 +1430,11 @@ export function WorkspacesDataLibraryView({
         setAccessRemovalConfirmUserId(null)
         setAccessEditingUserId(null)
         setAccessEditingRole('viewer')
-        setStatus('Access updated.')
+        setStatus(
+          removedMember?.state === 'pending'
+            ? 'Pending invitation cancelled.'
+            : 'Access updated.',
+        )
       } catch (updateError) {
         setError(updateError instanceof Error ? updateError.message : 'Could not update permissions.')
       } finally {
@@ -992,11 +1444,63 @@ export function WorkspacesDataLibraryView({
     [buildAccessCollaboratorsPayload, updateAssetInState],
   )
 
+  const onRemoveWorkspacePlacement = useCallback(
+    async (asset: LibraryAssetRecord, workspaceId: string, workspaceName: string) => {
+      const token = getAuthSessionToken()
+      if (!token) {
+        setError('Sign in to manage workspaces.')
+        return
+      }
+      if (!asset.can_edit_metadata) {
+        setError('Only the file owner can change workspaces.')
+        return
+      }
+
+      const cleanWorkspaceId = normalizeUserId(workspaceId)
+      if (!cleanWorkspaceId) {
+        setError('This workspace could not be removed.')
+        return
+      }
+
+      const currentWorkspaceIds = normalizeWorkspaceIds(
+        libraryAssetWorkspacePlacements(asset).map((placement) => placement.workspace_id),
+      )
+      const nextWorkspaceIds = currentWorkspaceIds.filter((value) => value !== cleanWorkspaceId)
+      if (nextWorkspaceIds.length === currentWorkspaceIds.length) {
+        setStatus(`${workspaceName} is already removed.`)
+        return
+      }
+
+      setError('')
+      setStatus('')
+      setBusyAssetId(asset.id)
+      try {
+        const updated = await updateLibraryAssetMetadata({
+          token,
+          assetId: asset.id,
+          workspaceIds: nextWorkspaceIds,
+        })
+        updateAssetInState(updated)
+        setStatus(
+          libraryAssetWorkspacePlacements(updated).length > 0
+            ? `Removed from ${workspaceName}.`
+            : 'Removed from all workspaces.',
+        )
+        onRefresh()
+      } catch (updateError) {
+        setError(updateError instanceof Error ? updateError.message : 'Could not update workspaces.')
+      } finally {
+        setBusyAssetId((current) => (current === asset.id ? null : current))
+      }
+    },
+    [onRefresh, updateAssetInState],
+  )
+
   const selectedAsset = useMemo(
     () => assets.find((asset) => asset.id === selectedAssetId) || null,
     [assets, selectedAssetId],
   )
-  const onOpenAssetDrilldown = useCallback((assetId: string, nextTab: 'overview' | 'access' | 'actions' = 'overview') => {
+  const onOpenAssetDrilldown = useCallback((assetId: string, nextTab: DataLibraryDrilldownTab = 'overview') => {
     setSelectedAssetId(assetId)
     setDrilldownTab(nextTab)
   }, [])
@@ -1012,6 +1516,7 @@ export function WorkspacesDataLibraryView({
   const onCloseAssetDrilldown = useCallback(() => {
     setSelectedAssetId(null)
     setMenuState(null)
+    setWorkspaceAccessMenuState(null)
     setRenamingAssetId(null)
     setRenameDraft('')
     setAccessComposerOpen(false)
@@ -1021,10 +1526,54 @@ export function WorkspacesDataLibraryView({
     setAccessRemovalConfirmUserId(null)
   }, [])
 
-  const selectedAssetAccessMembers = selectedAsset ? libraryAssetAccessMembers(selectedAsset) : []
+  const selectedAssetAccessMembers = useMemo(
+    () => (selectedAsset ? libraryAssetAccessMembers(selectedAsset) : []),
+    [selectedAsset],
+  )
+  const selectedAssetPendingAccessMembers = useMemo(
+    () => (selectedAsset ? libraryAssetPendingAccessMembers(selectedAsset) : []),
+    [selectedAsset],
+  )
+  const selectedAssetManageableAccessMembers = useMemo(
+    () => (selectedAsset ? libraryAssetManageableAccessMembers(selectedAsset) : []),
+    [selectedAsset],
+  )
   const selectedAssetOwnerName = selectedAsset
     ? normalizeName(selectedAsset.owner_name || '') || 'Unknown'
     : 'Unknown'
+  const selectedAssetWorkspacePlacements = useMemo(
+    () => (selectedAsset ? libraryAssetWorkspacePlacements(selectedAsset) : []),
+    [selectedAsset],
+  )
+  const selectedAssetWorkspaceAccessRows = useMemo(
+    () =>
+      selectedAssetWorkspacePlacements.map((placement) => {
+        const workspaceRecord = workspaceRecordsById.get(placement.workspace_id) || null
+        const members = workspaceAccessMembers(workspaceRecord)
+        return {
+          workspaceId: placement.workspace_id,
+          workspaceName:
+            normalizeName(workspaceRecord?.name || '') || placement.workspace_name || placement.workspace_id,
+          canOpen: Boolean(workspaceRecord),
+          members,
+        }
+      }),
+    [selectedAssetWorkspacePlacements, workspaceRecordsById],
+  )
+  const workspaceAccessMenuRow = useMemo(
+    () => (
+      workspaceAccessMenuState
+        ? selectedAssetWorkspaceAccessRows.find((row) => row.workspaceId === workspaceAccessMenuState.workspaceId) || null
+        : null
+    ),
+    [selectedAssetWorkspaceAccessRows, workspaceAccessMenuState],
+  )
+  const selectedAssetPermissionsBadge = selectedAsset
+    ? libraryAssetPermissionsBadge(selectedAsset)
+    : { label: 'Permissions unavailable', description: 'Access path unavailable.', variant: 'outline' as const }
+  const selectedAssetAccessVia = selectedAsset
+    ? libraryAssetAccessViaDetail(selectedAsset)
+    : { label: 'Unknown', description: 'Access source unavailable.', variant: 'outline' as const, icon: HelpCircle }
   const selectedAssetSearchQuery = selectedAsset ? collaboratorQueryByAssetId[selectedAsset.id] || '' : ''
   const selectedAssetMatches = selectedAsset ? collaboratorLookupByAssetId[selectedAsset.id] || [] : []
   const selectedAssetLookupError = selectedAsset ? lookupErrorByAssetId[selectedAsset.id] || '' : ''
@@ -1035,8 +1584,9 @@ export function WorkspacesDataLibraryView({
   const selectedAssetBusy = selectedAsset ? busyAssetId === selectedAsset.id : false
   const canManageSelectedAssetAccess = Boolean(selectedAsset?.can_manage_access)
   const canDownloadSelectedAsset = Boolean(selectedAsset?.can_download)
-  const canToggleSelectedAssetLock = Boolean(selectedAsset?.can_edit_metadata)
+  const selectedAssetLocked = Boolean(selectedAsset && isAssetLockedForTeamMembers(selectedAsset))
   const selectedAssetLockMessage = selectedAsset ? assetReadOnlyMessage(selectedAsset) : null
+  const selectedAssetReadOnlyBannerClassName = cn(houseSurfaces.banner, houseSurfaces.bannerInfo)
   const accessInlineStateActive = accessComposerOpen || Boolean(accessEditingUserId) || Boolean(accessRemovalConfirmUserId)
   const menuAsset = menuState ? assets.find((asset) => asset.id === menuState.assetId) || null : null
   const selectedAssetAuditEntries = useMemo(
@@ -1045,8 +1595,11 @@ export function WorkspacesDataLibraryView({
   )
   const showPersonalAssetLogs = Boolean(selectedAsset && !selectedAsset.can_manage_access)
   const accessActivityEntries = useMemo(
-    () => selectedAssetAuditEntries.filter((entry) => entry.category === 'access'),
-    [selectedAssetAuditEntries],
+    () =>
+      selectedAssetAuditEntries
+        .filter((entry) => entry.category === 'access')
+        .filter((entry) => matchesLibraryAccessActivityFilter(entry, accessActivityFilter)),
+    [accessActivityFilter, selectedAssetAuditEntries],
   )
   const assetActivityEntries = useMemo(
     () => selectedAssetAuditEntries.filter((entry) => entry.category === 'asset'),
@@ -1064,7 +1617,7 @@ export function WorkspacesDataLibraryView({
     }
 
     const groupMap = new Map<string, { key: string; title: string; entries: LibraryAssetAuditEntry[] }>()
-    selectedAssetAccessMembers.forEach((member) => {
+    selectedAssetManageableAccessMembers.forEach((member) => {
       const title = normalizeName(member.name) || 'Unknown user'
       const key = title.toLowerCase()
       groupMap.set(key, { key, title, entries: [] })
@@ -1080,7 +1633,7 @@ export function WorkspacesDataLibraryView({
       groupMap.set(key, { key, title, entries: [entry] })
     })
     return Array.from(groupMap.values()).sort((left, right) => left.title.localeCompare(right.title))
-  }, [accessActivityEntries, selectedAssetAccessMembers, showPersonalAssetLogs])
+  }, [accessActivityEntries, selectedAssetManageableAccessMembers, showPersonalAssetLogs])
   const assetActivityGroups = useMemo(
     () => [
       {
@@ -1145,24 +1698,6 @@ export function WorkspacesDataLibraryView({
     setPage(1)
   }, [sortBy, sortDirection])
 
-  const onToggleColumnVisibility = useCallback((columnKey: DataLibraryTableColumnKey) => {
-    if (!DATA_LIBRARY_TABLE_COLUMN_DEFINITIONS[columnKey].hideable) {
-      return
-    }
-    setVisibleColumns((current) => {
-      const visibleHideableCount = DATA_LIBRARY_TABLE_COLUMN_ORDER.filter(
-        (candidate) => DATA_LIBRARY_TABLE_COLUMN_DEFINITIONS[candidate].hideable && current[candidate],
-      ).length
-      if (current[columnKey] && visibleHideableCount <= 1) {
-        return current
-      }
-      return {
-        ...current,
-        [columnKey]: !current[columnKey],
-      }
-    })
-  }, [])
-
   const openAssetMenuAtPosition = useCallback((assetId: string, x: number, y: number) => {
     const menuWidth = 212
     const menuHeight = 196
@@ -1180,31 +1715,9 @@ export function WorkspacesDataLibraryView({
     openAssetMenuAtPosition(assetId, event.clientX, event.clientY)
   }, [openAssetMenuAtPosition])
 
-  const onToggleAssetMenu = useCallback((assetId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (menuState?.assetId === assetId) {
-      setMenuState(null)
-      return
-    }
-    const rect = event.currentTarget.getBoundingClientRect()
-    const menuWidth = 212
-    const menuHeight = 196
-    const gap = 6
-    const x = rect.right - menuWidth
-    const openUp = window.innerHeight - rect.bottom < menuHeight + gap
-    const y = openUp ? rect.top - menuHeight - gap : rect.bottom + gap
-    openAssetMenuAtPosition(assetId, x, y)
-  }, [menuState?.assetId, openAssetMenuAtPosition])
-
-  const onOpenAssetAccessFromCell = useCallback((asset: LibraryAssetRecord, event: ReactMouseEvent<HTMLElement>) => {
-    event.stopPropagation()
-    onOpenAssetDrilldown(asset.id, asset.can_manage_access ? 'access' : 'logs')
-  }, [onOpenAssetDrilldown])
-
   const onStartRenameAssetFromMenu = useCallback((asset: LibraryAssetRecord) => {
     setMenuState(null)
-    onOpenAssetDrilldown(asset.id, 'overview')
+    onOpenAssetDrilldown(asset.id, 'actions')
     onStartRenameAsset(asset)
   }, [onOpenAssetDrilldown, onStartRenameAsset])
 
@@ -1213,50 +1726,71 @@ export function WorkspacesDataLibraryView({
     void onDownloadAsset(asset)
   }, [onDownloadAsset])
 
-  const openMemberMenuAtPosition = useCallback((assetId: string, userId: string, x: number, y: number) => {
-    const menuWidth = 184
-    const menuHeight = 112
-    setMemberMenuState({
-      assetId,
-      userId,
+  const openWorkspaceAccessMenuAtPosition = useCallback((workspaceId: string, x: number, y: number) => {
+    const menuWidth = 240
+    const menuHeight = 132
+    setWorkspaceAccessMenuState({
+      workspaceId,
       x: Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8)),
       y: Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8)),
     })
   }, [])
 
-  const onOpenMemberMenu = useCallback((assetId: string, userId: string, event: ReactMouseEvent<HTMLElement>) => {
+  const onToggleWorkspaceAccessMenu = useCallback((workspaceId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
-    if (!assetId || !userId) {
+    const cleanWorkspaceId = normalizeUserId(workspaceId)
+    if (!cleanWorkspaceId) {
+      return
+    }
+    if (workspaceAccessMenuState?.workspaceId === cleanWorkspaceId) {
+      setWorkspaceAccessMenuState(null)
       return
     }
     const rect = event.currentTarget.getBoundingClientRect()
-    const x = rect.right - 184
-    const y = rect.bottom + 6
-    openMemberMenuAtPosition(assetId, userId, x, y)
-  }, [openMemberMenuAtPosition])
+    const menuHeight = 132
+    const gap = 6
+    const x = rect.left
+    const openUp = window.innerHeight - rect.bottom < menuHeight + gap
+    const y = openUp ? rect.top - menuHeight - gap : rect.bottom + gap
+    openWorkspaceAccessMenuAtPosition(cleanWorkspaceId, x, y)
+  }, [openWorkspaceAccessMenuAtPosition, workspaceAccessMenuState?.workspaceId])
 
-  const memberMenuAsset = useMemo(
-    () => assets.find((asset) => asset.id === memberMenuState?.assetId) || null,
-    [assets, memberMenuState?.assetId],
-  )
+  const onToggleWorkspaceAccessExpanded = useCallback((workspaceId: string) => {
+    const cleanWorkspaceId = normalizeUserId(workspaceId)
+    if (!cleanWorkspaceId) {
+      return
+    }
+    setWorkspaceAccessExpandedById((current) => ({
+      ...current,
+      [cleanWorkspaceId]: !current[cleanWorkspaceId],
+    }))
+  }, [])
 
-  const activeMember = useMemo(
-    () => (memberMenuAsset ? libraryAssetAccessMembers(memberMenuAsset).find((member) => member.user_id === memberMenuState?.userId) || null : null),
-    [memberMenuAsset, memberMenuState?.userId],
-  )
+  const onGoToWorkspace = useCallback((targetWorkspaceId: string, initialTab: 'overview' | 'actions' = 'overview') => {
+    const cleanWorkspaceId = normalizeUserId(targetWorkspaceId)
+    if (!cleanWorkspaceId) {
+      return
+    }
+    setActiveWorkspaceId(cleanWorkspaceId)
+    if (onOpenWorkspaceDrilldown) {
+      onOpenWorkspaceDrilldown(cleanWorkspaceId, initialTab)
+      return
+    }
+    const nextParams = new URLSearchParams()
+    nextParams.set('view', 'workspaces')
+    nextParams.set('workspace', cleanWorkspaceId)
+    nextParams.set('workspaceTab', initialTab)
+    navigate(`/workspaces?${nextParams.toString()}`)
+  }, [navigate, onOpenWorkspaceDrilldown, setActiveWorkspaceId])
+
+  const shouldKeepAssetDrilldownOpen = useCallback((target: EventTarget | null) => {
+    return target instanceof Element
+      && Boolean(target.closest('[data-ui="data-library-workspace-access-menu-overlay"]'))
+  }, [])
 
   const overviewContent = selectedAsset ? (
     <>
-      {selectedAssetLockMessage ? (
-        <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
-          <div className="house-drilldown-content-block">
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-sm text-[hsl(var(--tone-neutral-800))]">
-              {selectedAssetLockMessage}
-            </div>
-          </div>
-        </div>
-      ) : null}
       <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
         <div className="house-drilldown-heading-block">
           <p className="house-drilldown-heading-block-title">Asset overview</p>
@@ -1282,18 +1816,52 @@ export function WorkspacesDataLibraryView({
             <p className={cn(houseTypography.text, 'mt-1 font-medium')}>{formatBytes(selectedAsset.byte_size)}</p>
           </div>
           <div className="rounded-md border border-border/60 bg-background/80 p-3">
-            <p className={HOUSE_FIELD_HELPER_CLASS}>Access</p>
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Direct shares</p>
             <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
-              {selectedAssetAccessMembers.length === 0 ? 'Owner only' : `${selectedAssetAccessMembers.length} team member${selectedAssetAccessMembers.length === 1 ? '' : 's'}`}
+              {selectedAssetAccessMembers.length === 0 ? 'None' : `${selectedAssetAccessMembers.length} person${selectedAssetAccessMembers.length === 1 ? '' : 's'}`}
             </p>
+            {selectedAssetPendingAccessMembers.length > 0 ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {selectedAssetPendingAccessMembers.length} pending invite{selectedAssetPendingAccessMembers.length === 1 ? '' : 's'}
+              </p>
+            ) : null}
+          </div>
+          <div className="rounded-md border border-border/60 bg-background/80 p-3">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Permissions</p>
+            <Badge
+              size="sm"
+              variant={selectedAssetPermissionsBadge.variant}
+              className={cn('mt-1 max-w-full justify-start whitespace-normal text-left leading-snug', selectedAssetPermissionsBadge.className)}
+            >
+              {selectedAssetPermissionsBadge.label}
+            </Badge>
+            <p className="mt-1 text-xs text-muted-foreground">{selectedAssetPermissionsBadge.description}</p>
+          </div>
+          <div className="rounded-md border border-border/60 bg-background/80 p-3">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Access via</p>
+            <Badge
+              size="sm"
+              variant={selectedAssetAccessVia.variant}
+              className={cn('mt-1 max-w-full justify-start gap-1.5 whitespace-normal text-left leading-snug', selectedAssetAccessVia.className)}
+            >
+              <selectedAssetAccessVia.icon className="h-3.5 w-3.5 shrink-0" />
+              <span>{selectedAssetAccessVia.label}</span>
+            </Badge>
+            <p className="mt-1 text-xs text-muted-foreground">{selectedAssetAccessVia.description}</p>
           </div>
           <div className="rounded-md border border-border/60 bg-background/80 p-3">
             <p className={HOUSE_FIELD_HELPER_CLASS}>Lock</p>
             <p className={cn(houseTypography.text, 'mt-1 font-medium')}>{assetLockStateLabel(selectedAsset)}</p>
           </div>
           <div className="rounded-md border border-border/60 bg-background/80 p-3">
-            <p className={HOUSE_FIELD_HELPER_CLASS}>Archived for me</p>
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Archived</p>
             <p className={cn(houseTypography.text, 'mt-1 font-medium')}>{assetArchiveStateLabel(selectedAsset)}</p>
+          </div>
+          <div className="rounded-md border border-border/60 bg-background/80 p-3">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Workspaces</p>
+            <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+              {selectedAssetWorkspacePlacements.length > 0 ? libraryAssetWorkspaceSummary(selectedAsset) : 'None'}
+            </p>
           </div>
           <div className="rounded-md border border-border/60 bg-background/80 p-3">
             <p className={HOUSE_FIELD_HELPER_CLASS}>Availability</p>
@@ -1303,81 +1871,21 @@ export function WorkspacesDataLibraryView({
           </div>
         </div>
       </div>
-      {selectedAsset.can_edit_metadata ? (
-        <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
-          <div className="house-drilldown-heading-block">
-            <p className="house-drilldown-heading-block-title">File details</p>
-          </div>
-          <div className="house-drilldown-content-block space-y-2">
-            <p className={HOUSE_FIELD_HELPER_CLASS}>File name</p>
-            {renamingAssetId === selectedAsset.id ? (
-              <div className="flex items-center gap-1.5">
-                <Input
-                  value={renameDraft}
-                  onChange={(event) => setRenameDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      void onSaveRenameAsset(selectedAsset)
-                    } else if (event.key === 'Escape') {
-                      event.preventDefault()
-                      onCancelRenameAsset()
-                    }
-                  }}
-                  className={cn('h-9 w-full', HOUSE_INPUT_CLASS)}
-                  disabled={selectedAssetBusy}
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'house-collaborator-action-icon-save')}
-                  onClick={() => void onSaveRenameAsset(selectedAsset)}
-                  disabled={selectedAssetBusy || !String(renameDraft || '').trim() || String(renameDraft || '').trim() === selectedAsset.filename.trim()}
-                  aria-label={`Save rename for ${selectedAsset.filename}`}
-                >
-                  <Save className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'house-collaborator-action-icon-discard')}
-                  onClick={onCancelRenameAsset}
-                  disabled={selectedAssetBusy}
-                  aria-label="Cancel rename"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background/80 p-3">
-                <p className={cn(houseTypography.text, 'font-medium')}>{selectedAsset.filename}</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onStartRenameAsset(selectedAsset)}
-                  disabled={selectedAssetBusy}
-                >
-                  Rename
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
     </>
   ) : null
 
   const accessContent = selectedAsset ? (
-    <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
-      <div className="house-drilldown-heading-block">
-        <p className="house-drilldown-heading-block-title">File access</p>
-      </div>
-      {!canManageSelectedAssetAccess ? (
-        <div className="house-drilldown-content-block">
-          <p className={HOUSE_FIELD_HELPER_CLASS}>Only the file owner can edit file access.</p>
+    <>
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">File access</p>
         </div>
-      ) : (
-        <div className="house-drilldown-content-block space-y-2">
+        {!canManageSelectedAssetAccess ? (
+          <div className="house-drilldown-content-block">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>Only the file owner can edit file access.</p>
+          </div>
+        ) : (
+          <div className="house-drilldown-content-block space-y-2">
           <div className="w-full house-table-context-profile">
             <Table
               className="w-full table-fixed house-table-resizable"
@@ -1391,18 +1899,16 @@ export function WorkspacesDataLibraryView({
               </colgroup>
               <TableHeader className="house-table-head text-left">
                 <TableRow style={{ backgroundColor: 'transparent' }}>
-                  <TableHead className="house-table-head-text text-left">Team member</TableHead>
-                  <TableHead className="house-table-head-text text-left">Role</TableHead>
-                  <TableHead className="house-table-head-text text-center">Actions</TableHead>
+                  <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>User</TableHead>
+                  <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>Role</TableHead>
+                  <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-center`}>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 <TableRow className="h-14">
                   <TableCell className={cn('h-14 px-3 py-0 align-middle font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                     <div className="flex h-14 items-center">
-                      <span className={cn(HOUSE_COLLABORATOR_CHIP_CLASS, DATA_LIBRARY_OWNER_BADGE_CLASS)}>
-                        {selectedAssetOwnerName} (Owner)
-                      </span>
+                      <Badge variant="positive">{selectedAssetOwnerName} (Owner)</Badge>
                     </div>
                   </TableCell>
                   <TableCell className={cn('h-14 px-3 py-0 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
@@ -1412,48 +1918,34 @@ export function WorkspacesDataLibraryView({
                     <div className="flex h-14 items-center justify-end" />
                   </TableCell>
                 </TableRow>
-                {selectedAssetAccessMembers.map((member) => {
+                {selectedAssetManageableAccessMembers.map((member) => {
                   const cleanUserId = String(member.user_id || '').trim()
+                  const isPendingInvite = member.state === 'pending'
                   const isEditingRole = accessEditingUserId === cleanUserId && Boolean(cleanUserId)
                   const isRemovalAwaitingConfirm = accessRemovalConfirmUserId === cleanUserId && Boolean(cleanUserId)
+                  const hasOpenMemberEditState = accessInlineStateActive
                   const hideMemberActions = accessInlineStateActive && !isEditingRole && !isRemovalAwaitingConfirm
                   const roleChanged = accessEditingRole !== member.role
                   return (
                     <TableRow
                       key={`${selectedAsset.id}-${member.user_id || member.name}`}
-                      className="group h-14"
-                      onContextMenu={cleanUserId ? (event) => onOpenMemberMenu(selectedAsset.id, cleanUserId, event) : undefined}
+                      className={cn(
+                        'group h-14',
+                        cleanUserId && !hasOpenMemberEditState && 'hover:bg-[hsl(var(--tone-accent-50))]',
+                      )}
                     >
                       <TableCell className={cn('h-14 px-3 py-0 align-middle font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                         <div className="flex h-14 items-center">
-                          <button
-                            type="button"
-                            onClick={cleanUserId ? (event) => onOpenMemberMenu(selectedAsset.id, cleanUserId, event) : undefined}
-                            disabled={!cleanUserId || selectedAssetBusy}
+                          <Badge
+                            variant={isPendingInvite ? 'yellow' : 'positive'}
                             className={cn(
-                              'inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                              cleanUserId && !selectedAssetBusy && 'group/member-badge',
+                              cleanUserId &&
+                                !hasOpenMemberEditState &&
+                                'transition-[transform,box-shadow] duration-[var(--motion-duration-ui)] ease-out group-hover:-translate-y-px group-hover:shadow-[0_2px_8px_hsl(var(--foreground)/0.08)]',
                             )}
-                            aria-label={cleanUserId ? `Open access actions for ${member.name}` : undefined}
                           >
-                            <Badge
-                              size="sm"
-                              variant="outline"
-                              className={cn(
-                                libraryAssetAccessChipClassName(member.role),
-                                cleanUserId &&
-                                  !selectedAssetBusy &&
-                                  'transition-[transform,box-shadow] duration-[var(--motion-duration-ui)] ease-out hover:-translate-y-px hover:shadow-[0_2px_8px_hsl(var(--foreground)/0.08)]',
-                              )}
-                            >
-                              <span>{member.name}</span>
-                              {cleanUserId ? (
-                                <ChevronDown
-                                  className="ml-1 h-3 w-3 opacity-45 transition-[opacity,transform] duration-[var(--motion-duration-ui)] ease-out group-hover/member-badge:translate-y-px group-hover/member-badge:opacity-80"
-                                />
-                              ) : null}
-                            </Badge>
-                          </button>
+                            {isPendingInvite ? `${member.name} (pending)` : member.name}
+                          </Badge>
                         </div>
                       </TableCell>
                       <TableCell className={cn('h-14 px-3 py-0 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
@@ -1497,10 +1989,11 @@ export function WorkspacesDataLibraryView({
                               </Button>
                               <button
                                 type="button"
-                                className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'house-collaborator-action-icon-discard')}
+                                className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_DISCARD_CLASS)}
                                 onClick={() => setAccessRemovalConfirmUserId(null)}
                                 disabled={selectedAssetBusy}
-                                aria-label={`Cancel remove access for ${member.name}`}
+                                aria-label={isPendingInvite ? `Cancel pending invite cancellation for ${member.name}` : `Cancel remove access for ${member.name}`}
+                                title={isPendingInvite ? 'Cancel pending invite cancellation' : 'Cancel remove access'}
                               >
                                 <X className="h-4 w-4" />
                               </button>
@@ -1509,29 +2002,52 @@ export function WorkspacesDataLibraryView({
                             <div className="flex items-center justify-end gap-1.5">
                               {roleChanged ? (
                                 <button
-                                  type="button"
-                                  className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'house-collaborator-action-icon-save')}
-                                  onClick={() => void onSaveAccessRole(selectedAsset, cleanUserId)}
-                                  disabled={selectedAssetBusy}
-                                  aria-label={`Save access role for ${member.name}`}
-                                >
-                                  <Save className="h-4 w-4" />
-                                </button>
-                              ) : (
-                                <span className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'opacity-0')} aria-hidden="true" />
+                                type="button"
+                                className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS)}
+                                onClick={() => void onSaveAccessRole(selectedAsset, cleanUserId)}
+                                disabled={selectedAssetBusy}
+                                aria-label={isPendingInvite ? `Save pending invite role for ${member.name}` : `Save access role for ${member.name}`}
+                                title={isPendingInvite ? 'Apply pending invite role change' : 'Apply role change'}
+                              >
+                                <Save className="h-4 w-4" />
+                              </button>
+                            ) : (
+                              <span className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'opacity-0')} aria-hidden="true" />
                               )}
                               <button
                                 type="button"
-                                className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'house-collaborator-action-icon-discard')}
+                                className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_DISCARD_CLASS)}
                                 onClick={onCancelAccessRoleEdit}
                                 disabled={selectedAssetBusy}
-                                aria-label={`Cancel access role edit for ${member.name}`}
+                                aria-label={isPendingInvite ? `Cancel pending invite role edit for ${member.name}` : `Cancel access role edit for ${member.name}`}
+                                title={isPendingInvite ? 'Cancel pending invite role change' : 'Cancel role change'}
                               >
                                 <X className="h-4 w-4" />
                               </button>
                             </div>
                           ) : (
-                            <div className="flex items-center justify-end gap-1.5" />
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS)}
+                                onClick={() => onStartEditAccessRole(member)}
+                                disabled={selectedAssetBusy}
+                                aria-label={isPendingInvite ? `Edit pending invite for ${member.name}` : `Change role for ${member.name}`}
+                                title={isPendingInvite ? 'Edit pending invite' : 'Change role'}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_DISCARD_CLASS)}
+                                onClick={() => onStartRemoveAccess(cleanUserId)}
+                                disabled={selectedAssetBusy}
+                                aria-label={isPendingInvite ? `Cancel pending invite for ${member.name}` : `Remove ${member.name}`}
+                                title={isPendingInvite ? 'Cancel pending invite' : 'Remove access'}
+                              >
+                                {isPendingInvite ? <X className="h-4 w-4" /> : <UserMinus className="h-4 w-4" />}
+                              </button>
+                            </div>
                           )}
                         </div>
                       </TableCell>
@@ -1550,7 +2066,7 @@ export function WorkspacesDataLibraryView({
                       <div className="flex h-14 items-center justify-end">
                         <button
                           type="button"
-                          className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'house-collaborator-action-icon-add')}
+                          className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_ADD_CLASS)}
                           onClick={() => {
                             setAccessComposerOpen(true)
                             setAccessComposerRole('viewer')
@@ -1560,7 +2076,8 @@ export function WorkspacesDataLibraryView({
                             setStatus('')
                           }}
                           disabled={selectedAssetBusy}
-                          aria-label={`Grant file access for ${displayAssetFilename(selectedAsset.filename)}`}
+                          aria-label={`Invite user to ${displayAssetFilename(selectedAsset.filename)}`}
+                          title="Invite user to file"
                         >
                           <Plus className="h-4 w-4" />
                         </button>
@@ -1646,10 +2163,11 @@ export function WorkspacesDataLibraryView({
                         {selectedAssetCandidate ? (
                           <button
                             type="button"
-                            className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'house-collaborator-action-icon-save')}
+                            className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS)}
                             onClick={() => void onAddAccess(selectedAsset)}
                             disabled={selectedAssetBusy}
-                            aria-label={`Grant file access to ${selectedAssetCandidate.full_name}`}
+                            aria-label={`Send file invite to ${selectedAssetCandidate.full_name}`}
+                            title="Send file invite"
                           >
                             <Send className="h-4 w-4" />
                           </button>
@@ -1658,10 +2176,11 @@ export function WorkspacesDataLibraryView({
                         )}
                         <button
                           type="button"
-                          className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'house-collaborator-action-icon-discard')}
+                          className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_DISCARD_CLASS)}
                           onClick={() => resetAccessComposerForAsset(selectedAsset.id)}
                           disabled={selectedAssetBusy}
-                          aria-label={`Cancel grant access for ${displayAssetFilename(selectedAsset.filename)}`}
+                          aria-label={`Cancel invite flow for ${displayAssetFilename(selectedAsset.filename)}`}
+                          title="Cancel file invite"
                         >
                           <X className="h-4 w-4" />
                         </button>
@@ -1673,55 +2192,208 @@ export function WorkspacesDataLibraryView({
             </Table>
           </div>
           {selectedAssetLookupError ? <p className="text-xs text-amber-700">{selectedAssetLookupError}</p> : null}
-          {selectedAssetMatches.length > 0 ? (
-            <div className="space-y-1">
-              {selectedAssetMatches.map((candidate) => {
-                const isSelected = selectedAssetCandidate?.id === candidate.id
+            {selectedAssetMatches.length > 0 ? (
+              <div className="space-y-1">
+                {selectedAssetMatches.map((candidate) => {
+                  const isSelected = selectedAssetCandidate?.id === candidate.id
+                  return (
+                    <button
+                      key={`${selectedAsset.id}-${candidate.id}`}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCollaboratorByAssetId((current) => ({
+                          ...current,
+                          [selectedAsset.id]: candidate,
+                        }))
+                      }}
+                      className={cn(
+                        'flex w-full items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2 text-left',
+                        isSelected
+                          ? 'bg-[hsl(var(--tone-accent-50))] ring-1 ring-[hsl(var(--tone-accent-300))]'
+                          : 'bg-background/70 hover:bg-accent/30',
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <p className={cn(houseTypography.text, 'truncate font-medium')}>{candidate.full_name}</p>
+                        <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'truncate')}>
+                          {[candidate.email || '', candidate.primary_institution || ''].filter(Boolean).join(' | ') || 'Directory match'}
+                        </p>
+                      </div>
+                      {isSelected ? (
+                        <Badge variant="positive" size="sm">Selected</Badge>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Workspace access</p>
+        </div>
+        <div className="house-drilldown-content-block">
+          {selectedAssetWorkspaceAccessRows.length === 0 ? (
+            <p className={HOUSE_FIELD_HELPER_CLASS}>
+              This file is not currently exposed through any workspaces.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {selectedAssetWorkspaceAccessRows.map((workspaceRow) => {
+                const isExpanded = workspaceAccessExpandedById[workspaceRow.workspaceId] ?? false
+                const detailsId = `${selectedAsset.id}-workspace-access-${workspaceRow.workspaceId}`
+                const accessCount = workspaceRow.members.length
+
                 return (
-                  <button
-                    key={`${selectedAsset.id}-${candidate.id}`}
-                    type="button"
-                    onClick={() => {
-                      setSelectedCollaboratorByAssetId((current) => ({
-                        ...current,
-                        [selectedAsset.id]: candidate,
-                      }))
-                    }}
+                  <div
+                    key={`${selectedAsset.id}-workspace-${workspaceRow.workspaceId}`}
                     className={cn(
-                      'flex w-full items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2 text-left',
-                      isSelected
-                        ? 'bg-[hsl(var(--tone-accent-50))] ring-1 ring-[hsl(var(--tone-accent-300))]'
-                        : 'bg-background/70 hover:bg-accent/30',
+                      'rounded-md border border-border/60 bg-background/70',
+                      HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS,
                     )}
+                    data-state={isExpanded ? 'open' : 'closed'}
                   >
-                    <div className="min-w-0">
-                      <p className={cn(houseTypography.text, 'truncate font-medium')}>{candidate.full_name}</p>
-                      <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'truncate')}>
-                        {[candidate.email || '', candidate.primary_institution || ''].filter(Boolean).join(' | ') || 'Directory match'}
-                      </p>
+                    <div className="flex items-center justify-between gap-3 px-2 py-1.5">
+                      <button
+                        type="button"
+                        onClick={(event) => onToggleWorkspaceAccessMenu(workspaceRow.workspaceId, event)}
+                        className={cn(
+                          'group/workspace-access-menu min-w-0 flex-1 rounded-md px-1 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                          selectedAssetBusy && 'cursor-wait',
+                        )}
+                        aria-haspopup="menu"
+                        aria-expanded={workspaceAccessMenuState?.workspaceId === workspaceRow.workspaceId}
+                        aria-label={`Open workspace actions for ${workspaceRow.workspaceName}`}
+                      >
+                        <span
+                          className={cn(
+                            houseTypography.text,
+                            'inline-flex max-w-full items-center gap-1.5 font-medium transition-colors',
+                            workspaceRow.canOpen ? 'text-foreground' : 'text-muted-foreground',
+                          )}
+                        >
+                          <span className="truncate">{workspaceRow.workspaceName}</span>
+                          <ChevronDown
+                            className="h-3.5 w-3.5 shrink-0 opacity-45 transition-[opacity,transform] duration-[var(--motion-duration-ui)] ease-out group-hover/workspace-access-menu:translate-y-px group-hover/workspace-access-menu:opacity-80"
+                          />
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onToggleWorkspaceAccessExpanded(workspaceRow.workspaceId)}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md px-1 py-1 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        aria-expanded={isExpanded}
+                        aria-controls={detailsId}
+                        aria-label={`${isExpanded ? 'Hide' : 'Show'} ${workspaceRow.workspaceName} access members`}
+                      >
+                        <span className={HOUSE_FIELD_HELPER_CLASS}>{accessCount}</span>
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
                     </div>
-                    {isSelected ? (
-                      <Badge variant="positive" size="sm">Selected</Badge>
+                    {isExpanded ? (
+                      <div id={detailsId} role="region" aria-label={`${workspaceRow.workspaceName} access details`} className="border-t border-border/50">
+                        {workspaceRow.members.length === 0 ? (
+                          <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-3 py-2')}>
+                            {workspaceRow.canOpen ? 'Owner only.' : 'Membership unavailable.'}
+                          </p>
+                        ) : (
+                          workspaceRow.members.map((member, index) => (
+                            <div
+                              key={member.key}
+                              className={cn(
+                                'flex items-center justify-between gap-3 px-3 py-2',
+                                index > 0 ? 'border-t border-border/50' : '',
+                              )}
+                            >
+                              <div className="min-w-0">
+                                <p className={cn(houseTypography.text, 'truncate font-medium')}>
+                                  {member.name}
+                                </p>
+                              </div>
+                              <Badge size="sm" variant={member.accessRole === 'editor' ? 'positive' : 'outline'}>
+                                {humanizeLibraryAssetAccessRole(member.accessRole)}
+                              </Badge>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     ) : null}
-                  </button>
+                  </div>
                 )
               })}
             </div>
-          ) : null}
+          )}
         </div>
-      )}
-    </div>
+      </div>
+    </>
   ) : null
 
   const actionsContent = selectedAsset ? (
     <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
       <div className="house-drilldown-heading-block">
-        <p className="house-drilldown-heading-block-title">File actions</p>
+        <p className="house-drilldown-heading-block-title">Files</p>
       </div>
       <div className="house-drilldown-content-block space-y-4">
-        {selectedAssetLockMessage ? (
-          <div className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-sm text-[hsl(var(--tone-neutral-800))]">
-            {selectedAssetLockMessage}
+        {selectedAsset.can_edit_metadata ? (
+          <div className="space-y-2">
+            <p className={HOUSE_FIELD_HELPER_CLASS}>File name</p>
+            {renamingAssetId === selectedAsset.id ? (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={renameDraft}
+                  onChange={(event) => setRenameDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void onSaveRenameAsset(selectedAsset)
+                    } else if (event.key === 'Escape') {
+                      event.preventDefault()
+                      onCancelRenameAsset()
+                    }
+                  }}
+                  className={cn('h-9 w-full', HOUSE_INPUT_CLASS)}
+                  disabled={selectedAssetBusy}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'house-collaborator-action-icon-save')}
+                  onClick={() => void onSaveRenameAsset(selectedAsset)}
+                  disabled={selectedAssetBusy || !String(renameDraft || '').trim() || String(renameDraft || '').trim() === selectedAsset.filename.trim()}
+                  aria-label={`Save rename for ${selectedAsset.filename}`}
+                >
+                  <Save className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, 'house-collaborator-action-icon-discard')}
+                  onClick={onCancelRenameAsset}
+                  disabled={selectedAssetBusy}
+                  aria-label="Cancel rename"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background/80 p-3">
+                <p className={cn(houseTypography.text, 'font-medium')}>{selectedAsset.filename}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onStartRenameAsset(selectedAsset)}
+                  disabled={selectedAssetBusy}
+                >
+                  Rename
+                </Button>
+              </div>
+            )}
           </div>
         ) : null}
         <div className="space-y-2">
@@ -1744,58 +2416,10 @@ export function WorkspacesDataLibraryView({
           {!canDownloadSelectedAsset ? (
             <p className={HOUSE_FIELD_HELPER_CLASS}>
               {isAssetLockedForTeamMembers(selectedAsset) && selectedAsset.current_user_role !== 'owner'
-                ? `This file is locked by ${assetOwnerDisplayName(selectedAsset)} for team members.`
-                : 'Viewer access can inspect file history, but only owners and editors can download or analyse the file.'}
+                ? `Locked by ${assetOwnerDisplayName(selectedAsset)}.`
+                : 'Download requires editor or owner access.'}
             </p>
           ) : null}
-        </div>
-        <div className="space-y-2">
-          <p className={HOUSE_FIELD_HELPER_CLASS}>Lock</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="inline-flex items-center gap-1.5"
-            onClick={() => void onToggleAssetLock(selectedAsset)}
-            disabled={selectedAssetBusy || !canToggleSelectedAssetLock}
-          >
-            {selectedAssetBusy ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : isAssetLockedForTeamMembers(selectedAsset) ? (
-              <LockOpen className="h-3.5 w-3.5" />
-            ) : (
-              <Lock className="h-3.5 w-3.5" />
-            )}
-            {assetLockActionLabel(selectedAsset)}
-          </Button>
-          <p className={HOUSE_FIELD_HELPER_CLASS}>
-            {canToggleSelectedAssetLock
-              ? 'Locking keeps the file visible to collaborators but blocks team-member download and analysis until you unlock it.'
-              : assetReadOnlyMessage(selectedAsset) || 'Only the file owner can change the lock state.'}
-          </p>
-        </div>
-        <div className="space-y-2">
-          <p className={HOUSE_FIELD_HELPER_CLASS}>Archive</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="inline-flex items-center gap-1.5"
-            onClick={() => void onToggleAssetArchive(selectedAsset)}
-            disabled={selectedAssetBusy}
-          >
-            {selectedAssetBusy ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : isAssetArchivedForCurrentUser(selectedAsset) ? (
-              <RotateCcw className="h-3.5 w-3.5" />
-            ) : (
-              <Archive className="h-3.5 w-3.5" />
-            )}
-            {assetArchiveActionLabel(selectedAsset)}
-          </Button>
-          <p className={HOUSE_FIELD_HELPER_CLASS}>
-            Archiving is personal to your view. It keeps the file and its permissions intact, but moves it out of your active list until you unarchive it.
-          </p>
         </div>
       </div>
     </div>
@@ -1818,69 +2442,64 @@ export function WorkspacesDataLibraryView({
         </div>
         {accessActivityCollapsed ? null : (
           <div className="house-drilldown-content-block space-y-2">
+            <div
+              className={HOUSE_DRILLDOWN_TAB_LIST_CLASS}
+              style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}
+            >
+              {DATA_LIBRARY_ACCESS_ACTIVITY_FILTER_OPTIONS.map((option) => {
+                const isActive = accessActivityFilter === option.value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS}
+                    data-state={isActive ? 'active' : 'inactive'}
+                    onClick={() => setAccessActivityFilter(option.value)}
+                    aria-label={`Filter data access activity by ${option.label}`}
+                    title={`Show ${option.label.toLowerCase()} events`}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
             {accessActivityGroups.length === 0 ? (
               <p className={HOUSE_FIELD_HELPER_CLASS}>No access events logged yet.</p>
             ) : (
               accessActivityGroups.map((group) => {
                 const isExpanded = accessActivityActorExpanded[group.key] ?? false
                 return (
-                  <div
+                  <AuditLogGroup
                     key={group.key}
-                    className={cn(
-                      'rounded-md border border-border/60 bg-background/70',
-                      HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS,
-                    )}
-                    data-state={isExpanded ? 'open' : 'closed'}
+                    title={group.title}
+                    count={group.entries.length}
+                    expanded={isExpanded}
+                    onToggle={() => setAccessActivityActorExpanded((current) => ({ ...current, [group.key]: !isExpanded }))}
+                    ariaLabel={`Toggle ${group.title} asset access activity`}
                   >
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
-                      onClick={() => setAccessActivityActorExpanded((current) => ({ ...current, [group.key]: !isExpanded }))}
-                      aria-expanded={isExpanded}
-                      aria-label={`Toggle ${group.title} asset access activity`}
-                    >
-                      <p className={cn(houseTypography.text, 'font-medium')}>{group.title}</p>
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className={HOUSE_FIELD_HELPER_CLASS}>{group.entries.length}</span>
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    {group.entries.length === 0 ? (
+                      <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-3 py-2')}>No activity logged yet.</p>
+                    ) : (
+                      group.entries.map((entry, entryIndex) => {
+                        const parsedTransition = parseLibraryAssetAuditTransition(entry)
+                        return parsedTransition ? (
+                          <AuditLogTransitionRow
+                            key={entry.id}
+                            transition={parsedTransition}
+                            timestamp={formatAuditCompactTimestamp(entry.created_at)}
+                            className={entryIndex > 0 ? 'border-t border-border/50' : ''}
+                          />
                         ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </span>
-                    </button>
-                    {isExpanded ? (
-                      <div className="border-t border-border/50">
-                        {group.entries.length === 0 ? (
-                          <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-3 py-2')}>No activity logged yet.</p>
-                        ) : (
-                          group.entries.map((entry, entryIndex) => (
-                            <div
-                              key={entry.id}
-                              className={cn('px-3 py-2', entryIndex > 0 ? 'border-t border-border/50' : '')}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                                  {entry.from_value ? (
-                                    <span className={assetAuditStatePillClassName(entry.from_value)}>
-                                      {humanizeAuditValue(entry.from_value)}
-                                    </span>
-                                  ) : null}
-                                  {entry.from_value ? <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" /> : null}
-                                  <span className={assetAuditStatePillClassName(entry.to_value)}>
-                                    {humanizeAuditValue(entry.to_value) || humanizeAuditValue(entry.event_type)}
-                                  </span>
-                                </div>
-                                <span className={HOUSE_FIELD_HELPER_CLASS}>
-                                  {formatAuditCompactTimestamp(entry.created_at)}
-                                </span>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
+                          <AuditLogMessageRow
+                            key={entry.id}
+                            message={entry.message}
+                            timestamp={formatAuditCompactTimestamp(entry.created_at)}
+                            className={entryIndex > 0 ? 'border-t border-border/50' : ''}
+                          />
+                        )
+                      })
+                    )}
+                  </AuditLogGroup>
                 )
               })
             )}
@@ -1907,72 +2526,33 @@ export function WorkspacesDataLibraryView({
               assetActivityGroups.map((group) => {
                 const isExpanded = assetActivityGroupExpanded[group.key] ?? false
                 return (
-                  <div
+                  <AuditLogGroup
                     key={group.key}
-                    className={cn(
-                      'rounded-md border border-border/60 bg-background/70',
-                      HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS,
-                    )}
-                    data-state={isExpanded ? 'open' : 'closed'}
+                    title={group.title}
+                    count={group.entries.length}
+                    expanded={isExpanded}
+                    onToggle={() => setAssetActivityGroupExpanded((current) => ({ ...current, [group.key]: !isExpanded }))}
+                    ariaLabel={`Toggle ${group.title.toLowerCase()} asset activity`}
                   >
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
-                      onClick={() => setAssetActivityGroupExpanded((current) => ({ ...current, [group.key]: !isExpanded }))}
-                      aria-expanded={isExpanded}
-                      aria-label={`Toggle ${group.title.toLowerCase()} asset activity`}
-                    >
-                      <p className={cn(houseTypography.text, 'font-medium')}>{group.title}</p>
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className={HOUSE_FIELD_HELPER_CLASS}>{group.entries.length}</span>
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </span>
-                    </button>
-                    {isExpanded ? (
-                      <div className="border-t border-border/50">
-                        {group.entries.map((entry, entryIndex) => (
-                          <div
-                            key={entry.id}
-                            className={cn('px-3 py-2', entryIndex > 0 ? 'border-t border-border/50' : '')}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                {entry.event_type === 'asset_renamed' ? (
-                                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                                    {entry.from_value ? (
-                                      <span className={assetAuditStatePillClassName(entry.from_value)}>
-                                        {entry.from_value}
-                                      </span>
-                                    ) : null}
-                                    {entry.from_value ? <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" /> : null}
-                                    <span className={assetAuditStatePillClassName(entry.to_value)}>
-                                      {entry.to_value || entry.message}
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                                    <span className={assetAuditStatePillClassName(entry.to_value || entry.event_type)}>
-                                      {humanizeAuditValue(entry.to_value) || humanizeAuditValue(entry.event_type)}
-                                    </span>
-                                    {entry.actor_name ? (
-                                      <span className="text-muted-foreground">by {entry.actor_name}</span>
-                                    ) : null}
-                                  </div>
-                                )}
-                              </div>
-                              <span className={HOUSE_FIELD_HELPER_CLASS}>
-                                {formatAuditCompactTimestamp(entry.created_at)}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
+                    {group.entries.map((entry, entryIndex) => {
+                      const parsedTransition = parseLibraryAssetAuditTransition(entry)
+                      return parsedTransition ? (
+                        <AuditLogTransitionRow
+                          key={entry.id}
+                          transition={parsedTransition}
+                          timestamp={formatAuditCompactTimestamp(entry.created_at)}
+                          className={entryIndex > 0 ? 'border-t border-border/50' : ''}
+                        />
+                      ) : (
+                        <AuditLogMessageRow
+                          key={entry.id}
+                          message={entry.message}
+                          timestamp={formatAuditCompactTimestamp(entry.created_at)}
+                          className={entryIndex > 0 ? 'border-t border-border/50' : ''}
+                        />
+                      )
+                    })}
+                  </AuditLogGroup>
                 )
               })
             )}
@@ -1981,6 +2561,22 @@ export function WorkspacesDataLibraryView({
       </div>
     </>
   ) : null
+
+  const pageHeading = isWorkspaceScoped ? 'Workspace data library' : 'Data library'
+  const pageDescription = isWorkspaceScoped
+    ? `Files currently in ${normalizedWorkspaceName || 'this workspace'}.`
+    : 'Files, workspaces, and access.'
+  const sectionHeading = isWorkspaceScoped ? 'Workspace files' : 'Files'
+  const signedOutMessage = isWorkspaceScoped
+    ? `Sign in to view files in ${normalizedWorkspaceName || 'this workspace'}.`
+    : 'Sign in to view your personal data library.'
+  const emptyLibraryMessage = isWorkspaceScoped
+    ? `No files are currently in ${normalizedWorkspaceName || 'this workspace'}.`
+    : ownershipFilter === 'shared_by_me'
+      ? 'No files are currently shared by you.'
+      : ownershipFilter === 'shared'
+        ? 'No files are currently shared with you.'
+        : 'No files match the current filters.'
 
   const drilldownPanel = selectedAsset ? (
     <div className={cn(HOUSE_DRILLDOWN_SHEET_BODY_CLASS, 'house-drilldown-panel-no-pad')}>
@@ -2056,6 +2652,11 @@ export function WorkspacesDataLibraryView({
             {drilldownTab === 'access' ? accessContent : null}
             {drilldownTab === 'actions' ? actionsContent : null}
             {drilldownTab === 'logs' ? logsContent : null}
+            {selectedAssetLockMessage ? (
+              <div className="pt-2">
+                <div className={selectedAssetReadOnlyBannerClassName}>{selectedAssetLockMessage}</div>
+              </div>
+            ) : null}
           </div>
         </DrilldownSheet.TabPanel>
       </div>
@@ -2073,8 +2674,8 @@ export function WorkspacesDataLibraryView({
         >
           <SectionMarker tone={getSectionMarkerTone('workspace')} size="title" className="self-stretch h-auto" />
           <PageHeader
-            heading="Data library"
-            description="Display files, access, and permissions in your personal data library."
+            heading={pageHeading}
+            description={pageDescription}
             className="!ml-0 !mt-0"
           />
         </Row>
@@ -2082,11 +2683,14 @@ export function WorkspacesDataLibraryView({
 
       <div className={showPageHeader ? cn(HOUSE_SECTION_ANCHOR_CLASS) : undefined}>
         <SectionHeader
-          heading="Library files"
+          heading={sectionHeading}
           className="house-publications-toolbar-header house-publications-library-toolbar-header"
           actions={(
-            <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
-              <div className="house-approved-toggle-context order-0 inline-flex items-center">
+            <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-3 overflow-visible self-center md:w-auto">
+              <div className="house-approved-toggle-context order-0 inline-flex items-center gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  Status
+                </span>
                 <div
                   className="house-segmented-auto-toggle h-8"
                   data-house-role="horizontal-toggle"
@@ -2122,7 +2726,10 @@ export function WorkspacesDataLibraryView({
                   })}
                 </div>
               </div>
-              <div className="house-approved-toggle-context order-0 inline-flex items-center">
+              <div className="house-approved-toggle-context order-0 inline-flex items-center gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  Access
+                </span>
                 <div
                   className="house-segmented-auto-toggle h-8"
                   data-house-role="horizontal-toggle"
@@ -2138,7 +2745,15 @@ export function WorkspacesDataLibraryView({
                           HOUSE_TOGGLE_BUTTON_CLASS,
                           'house-segmented-fill-toggle-button relative z-[1] min-w-0 px-3 text-sm text-center',
                           '!rounded-none',
-                          isActive ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                          isActive
+                            ? option.value === 'owned'
+                              ? 'bg-[hsl(var(--tone-accent-600))] text-white'
+                              : option.value === 'shared_by_me'
+                                ? 'bg-[hsl(var(--tone-positive-600))] text-white'
+                              : option.value === 'shared'
+                                ? 'bg-[hsl(var(--tone-warning-600))] text-white'
+                                : 'bg-foreground text-background'
+                            : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
                         )}
                         aria-pressed={isActive}
                         onClick={() => {
@@ -2160,9 +2775,15 @@ export function WorkspacesDataLibraryView({
           <p className={cn('px-1 pb-3 text-sm text-emerald-700', HOUSE_FIELD_HELPER_CLASS)}>{status}</p>
         ) : null}
 
+        {isWorkspaceScoped ? (
+          <div className="mb-3 rounded-md border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] px-3 py-2 text-sm text-[hsl(var(--tone-accent-900))]">
+            Scope: <span className="font-medium">{normalizedWorkspaceName || normalizedWorkspaceId}</span>
+          </div>
+        ) : null}
+
         {!hasSessionToken ? (
           <div className={cn('p-6', HOUSE_FIELD_HELPER_CLASS)}>
-            Sign in to view your personal data library.
+            {signedOutMessage}
           </div>
         ) : isLoading ? (
           <div className={cn('p-6 text-sm text-muted-foreground', HOUSE_FIELD_HELPER_CLASS)}>
@@ -2180,7 +2801,7 @@ export function WorkspacesDataLibraryView({
           </div>
         ) : assets.length === 0 ? (
           <div className={cn('p-6', HOUSE_FIELD_HELPER_CLASS)}>
-            No files in your data library yet.
+            {emptyLibraryMessage}
           </div>
         ) : (
           <>
@@ -2197,13 +2818,13 @@ export function WorkspacesDataLibraryView({
               >
                 <colgroup>
                   {visibleTableColumns.map((columnKey) => (
-                    <col key={`data-library-col-${columnKey}`} style={{ width: DATA_LIBRARY_TABLE_COLUMN_DEFINITIONS[columnKey].width }} />
+                    <col key={`data-library-col-${columnKey}`} style={{ width: tableColumnDefinitions[columnKey].width }} />
                   ))}
                 </colgroup>
                 <TableHeader className="house-table-head text-left">
                   <TableRow style={{ backgroundColor: 'transparent' }}>
                     {visibleTableColumns.map((columnKey, columnIndex) => {
-                      const definition = DATA_LIBRARY_TABLE_COLUMN_DEFINITIONS[columnKey]
+                      const definition = tableColumnDefinitions[columnKey]
                       const isLastColumn = columnIndex >= visibleTableColumns.length - 1
                       const headClassName = cn(
                         'house-table-head-text px-4 py-3',
@@ -2242,21 +2863,39 @@ export function WorkspacesDataLibraryView({
                 </TableHeader>
                 <TableBody>
                   {assets.map((asset) => {
-                    const accessMembers = libraryAssetAccessMembers(asset)
                     const available = isAssetAvailable(asset)
                     const ownerName = normalizeName(asset.owner_name || '') || 'Unknown'
+                    const workspacePlacements = libraryAssetWorkspacePlacements(asset)
+                    const resolvedWorkspacePlacements = workspacePlacements.map((placement) => {
+                      const workspaceOption = availableWorkspaceOptionsById.get(placement.workspace_id)
+                      return {
+                        workspace_id: placement.workspace_id,
+                        workspace_name: workspaceOption?.name || placement.workspace_name,
+                        canOpen: Boolean(workspaceOption),
+                      }
+                    })
+                    const permissionsBadge = libraryAssetPermissionsBadge(asset)
+                    const accessVia = libraryAssetAccessViaDetail(asset)
                     const isSelected = selectedAssetId === asset.id
+                    const sharedAudience = libraryAssetSharedAudience(
+                      asset,
+                      resolvedWorkspacePlacements,
+                      workspaceRecordsById,
+                    )
 
                     return (
                       <TableRow
                         key={asset.id}
                         className={cn(
-                          'cursor-pointer',
-                          isAssetArchivedForCurrentUser(asset) && 'bg-[hsl(var(--tone-neutral-100))] hover:bg-[hsl(var(--tone-neutral-100))]',
+                          'cursor-pointer transition-colors',
+                          isAssetLockedForTeamMembers(asset)
+                            ? 'bg-[hsl(var(--tone-neutral-200))] hover:bg-[hsl(var(--tone-neutral-200))]'
+                            : isAssetArchivedForCurrentUser(asset)
+                              ? 'bg-[hsl(var(--tone-neutral-100))] hover:bg-[hsl(var(--tone-neutral-100))]'
+                            : 'hover:bg-[hsl(var(--tone-accent-50))]',
                           isSelected && 'bg-[hsl(var(--tone-accent-50))]',
                         )}
                         onClick={() => onAssetRowClick(asset.id)}
-                        onContextMenu={(event) => onOpenAssetContextMenu(asset.id, event)}
                       >
                         {visibleTableColumns.map((columnKey, columnIndex) => {
                           const isLastColumn = columnIndex >= visibleTableColumns.length - 1
@@ -2266,27 +2905,23 @@ export function WorkspacesDataLibraryView({
                           )
                           if (columnKey === 'filename') {
                             return (
-                              <TableCell key={`${asset.id}-${columnKey}`} className={cn('align-middle', cellClassName)}>
+                              <TableCell
+                                key={`${asset.id}-${columnKey}`}
+                                className={cn('align-middle', cellClassName)}
+                                onContextMenu={(event) => onOpenAssetContextMenu(asset.id, event)}
+                              >
                                 <div className="min-w-0 space-y-1">
                                   <div className="flex min-w-0 items-center gap-1.5">
                                     <p className="truncate font-medium text-foreground">{displayAssetFilename(asset.filename)}</p>
-                                    {isAssetArchivedForCurrentUser(asset) ? (
-                                      <Badge
-                                        size="sm"
-                                        variant="outline"
-                                        className="shrink-0 border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-800))]"
-                                      >
-                                        Archived
-                                      </Badge>
-                                    ) : null}
                                     {isAssetLockedForTeamMembers(asset) ? (
-                                      <Badge
-                                        size="sm"
-                                        variant="outline"
-                                        className="shrink-0 border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-800))]"
+                                      <span
+                                        role="img"
+                                        aria-label={assetLockedBadgeLabel(asset)}
+                                        title={assetLockedBadgeLabel(asset)}
+                                        className={DATA_LIBRARY_LOCK_INDICATOR_CLASS}
                                       >
-                                        {assetLockedBadgeLabel(asset)}
-                                      </Badge>
+                                        <Lock className="h-3 w-3" aria-hidden="true" />
+                                      </span>
                                     ) : null}
                                   </div>
                                   {!available ? <p className="text-xs text-[hsl(var(--tone-warning-900))]">Storage missing</p> : null}
@@ -2295,48 +2930,118 @@ export function WorkspacesDataLibraryView({
                             )
                           }
                           if (columnKey === 'access') {
+                            const AccessViaIcon = accessVia.icon
                             return (
                               <TableCell key={`${asset.id}-${columnKey}`} className={cn('align-middle', cellClassName)}>
-                                <div
-                                  className="space-y-1.5"
-                                  onClick={(event) => onOpenAssetAccessFromCell(asset, event)}
-                                >
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <Badge size="sm" variant="positive" className="font-semibold">
-                                      {ownerName} (Owner)
-                                    </Badge>
-                                  </div>
-                                  {accessMembers.length > 0 ? (
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                      {accessMembers.map((member) => {
-                                        const cleanUserId = String(member.user_id || '').trim()
-                                        const canManageAssetAccess = Boolean(asset.can_manage_access && cleanUserId)
-                                        return canManageAssetAccess ? (
-                                          <button
-                                            key={`${asset.id}-${member.user_id || member.name}`}
-                                            type="button"
-                                            onClick={(event) => onOpenMemberMenu(asset.id, cleanUserId, event)}
-                                            className="group/member-badge inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                            aria-label={`Open access actions for ${member.name}`}
-                                          >
-                                            <Badge
-                                              size="sm"
-                                              variant="positive"
-                                              className="transition-[transform,box-shadow] duration-[var(--motion-duration-ui)] ease-out hover:-translate-y-px hover:shadow-[0_2px_8px_hsl(var(--foreground)/0.08)]"
-                                            >
-                                              <span>{member.name}</span>
-                                              <ChevronDown className="ml-1 h-3 w-3 opacity-45 transition-[opacity,transform] duration-[var(--motion-duration-ui)] ease-out group-hover/member-badge:translate-y-px group-hover/member-badge:opacity-80" />
-                                            </Badge>
-                                          </button>
-                                        ) : (
-                                          <Badge key={`${asset.id}-${member.user_id || member.name}`} size="sm" variant="positive">
-                                            <span>{member.name}</span>
-                                          </Badge>
-                                        )
-                                      })}
-                                    </div>
-                                  ) : null}
+                                <div className="min-w-0">
+                                  <Badge
+                                    size="sm"
+                                    variant={accessVia.variant}
+                                    className={cn('max-w-full justify-start gap-1.5 overflow-hidden whitespace-nowrap', accessVia.className)}
+                                  >
+                                    <AccessViaIcon className="h-3 w-3 shrink-0" />
+                                    <span className="min-w-0 truncate">{accessVia.label}</span>
+                                  </Badge>
                                 </div>
+                              </TableCell>
+                            )
+                          }
+                          if (columnKey === 'workspaces') {
+                            return (
+                              <TableCell key={`${asset.id}-${columnKey}`} className={cn('align-middle', cellClassName)}>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {resolvedWorkspacePlacements.length > 0 ? (
+                                    resolvedWorkspacePlacements.map((placement) => (
+                                      placement.canOpen ? (
+                                        <button
+                                          key={`${asset.id}-${placement.workspace_id}`}
+                                          type="button"
+                                          className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            onGoToWorkspace(placement.workspace_id)
+                                          }}
+                                          aria-label={`Open ${placement.workspace_name}`}
+                                        >
+                                          <Badge size="sm" variant="outline" className="cursor-pointer">
+                                            {placement.workspace_name}
+                                          </Badge>
+                                        </button>
+                                      ) : (
+                                        <Badge
+                                          key={`${asset.id}-${placement.workspace_id}`}
+                                          size="sm"
+                                          variant="outline"
+                                          className="border-[hsl(var(--border))] bg-[hsl(var(--tone-neutral-50))] text-muted-foreground"
+                                        >
+                                          {placement.workspace_name}
+                                        </Badge>
+                                      )
+                                    ))
+                                  ) : (
+                                    <Badge
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-[hsl(var(--border))] bg-[hsl(var(--tone-neutral-50))] text-muted-foreground"
+                                    >
+                                      Library only
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                            )
+                          }
+                          if (columnKey === 'origin') {
+                            return (
+                              <TableCell key={`${asset.id}-${columnKey}`} className={cn('align-middle', cellClassName)}>
+                                <Badge
+                                  size="sm"
+                                  variant={permissionsBadge.variant}
+                                  className={cn('max-w-full justify-start whitespace-normal text-left leading-snug', permissionsBadge.className)}
+                                >
+                                  {permissionsBadge.label}
+                                </Badge>
+                              </TableCell>
+                            )
+                          }
+                          if (columnKey === 'owner') {
+                            if (showsSharedByMeAudienceColumn) {
+                              return (
+                                <TableCell key={`${asset.id}-${columnKey}`} className={cn('align-middle', cellClassName)}>
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {sharedAudience.allTargets.length > 0 ? (
+                                        sharedAudience.allTargets.map((target) => (
+                                          <Badge
+                                            key={`${asset.id}-${target.key}`}
+                                            size="sm"
+                                            variant="outline"
+                                            className={cn(
+                                              'max-w-full justify-start gap-1.5 overflow-hidden whitespace-nowrap',
+                                              target.kind === 'workspace'
+                                                ? DATA_LIBRARY_SHARED_TARGET_WORKSPACE_BADGE_CLASS
+                                                : DATA_LIBRARY_SHARED_TARGET_DIRECT_BADGE_CLASS,
+                                            )}
+                                          >
+                                            {target.kind === 'workspace' ? (
+                                              <Building2 className="h-3 w-3 shrink-0" />
+                                            ) : (
+                                              <User className="h-3 w-3 shrink-0" />
+                                            )}
+                                            <span className="min-w-0 truncate">{target.label}</span>
+                                          </Badge>
+                                        ))
+                                      ) : (
+                                        <span className="text-xs text-muted-foreground">No active access</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                              )
+                            }
+                            return (
+                              <TableCell key={`${asset.id}-${columnKey}`} className={cn('align-middle', cellClassName)}>
+                                <p className="truncate font-medium text-foreground">{ownerName}</p>
                               </TableCell>
                             )
                           }
@@ -2349,34 +3054,7 @@ export function WorkspacesDataLibraryView({
                           if (columnKey === 'size') {
                             return <TableCell key={`${asset.id}-${columnKey}`} className={cn('align-middle text-muted-foreground', cellClassName)}>{formatBytes(asset.byte_size)}</TableCell>
                           }
-                          return (
-                            <TableCell key={`${asset.id}-${columnKey}`} className="align-middle text-center">
-                              <div className="flex items-center justify-center gap-1.5">
-                                <Button
-                                  type="button"
-                                  variant="cta"
-                                  size="sm"
-                                  className="group h-8 w-8 p-0"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    onOpenAssetDrilldown(asset.id)
-                                  }}
-                                  aria-label={`Open ${displayAssetFilename(asset.filename)}`}
-                                >
-                                  <ArrowRight className="h-3.5 w-3.5 transition-transform duration-[var(--motion-duration-ui)] ease-out group-hover:translate-x-0.5 group-focus-visible:translate-x-0.5" />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  onClick={(event) => onToggleAssetMenu(asset.id, event)}
-                                  aria-label={`Open actions for ${displayAssetFilename(asset.filename)}`}
-                                >
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          )
+                          return null
                         })}
                       </TableRow>
                     )
@@ -2394,10 +3072,111 @@ export function WorkspacesDataLibraryView({
                 }
               }}
             >
-              <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
+              <SheetContent
+                side="right"
+                className={cn(
+                  HOUSE_DRILLDOWN_SHEET_CLASS,
+                  selectedAssetLocked && 'brightness-[0.85]',
+                )}
+                onInteractOutside={(event) => {
+                  if (shouldKeepAssetDrilldownOpen(event.target)) {
+                    event.preventDefault()
+                  }
+                }}
+                onPointerDownOutside={(event) => {
+                  if (shouldKeepAssetDrilldownOpen(event.target)) {
+                    event.preventDefault()
+                  }
+                }}
+              >
                 {drilldownPanel}
               </SheetContent>
             </Sheet>
+
+            {workspaceAccessMenuState && workspaceAccessMenuRow && selectedAsset
+              ? createPortal(
+                  <div
+                    className="pointer-events-auto fixed inset-0 z-[70]"
+                    data-ui="data-library-workspace-access-menu-overlay"
+                    onClick={() => setWorkspaceAccessMenuState(null)}
+                  >
+                    <div
+                      data-ui="data-library-workspace-access-menu-shell"
+                      className="pointer-events-auto fixed z-[71] w-60 rounded-md border border-border bg-card p-1 shadow-lg"
+                      role="menu"
+                      aria-label={`${workspaceAccessMenuRow.workspaceName} workspace actions`}
+                      style={{ left: workspaceAccessMenuState.x, top: workspaceAccessMenuState.y }}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={cn(
+                          'flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]',
+                          !workspaceAccessMenuRow.canOpen && 'cursor-not-allowed text-muted-foreground hover:bg-transparent hover:text-muted-foreground',
+                        )}
+                        onClick={() => {
+                          if (!workspaceAccessMenuRow.canOpen) {
+                            return
+                          }
+                          setWorkspaceAccessMenuState(null)
+                          onGoToWorkspace(workspaceAccessMenuRow.workspaceId)
+                        }}
+                        disabled={!workspaceAccessMenuRow.canOpen}
+                      >
+                        <ArrowRight className="h-4 w-4 shrink-0" />
+                        <span>Open workspace</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={cn(
+                          'flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]',
+                          !workspaceAccessMenuRow.canOpen && 'cursor-not-allowed text-muted-foreground hover:bg-transparent hover:text-muted-foreground',
+                        )}
+                        onClick={() => {
+                          if (!workspaceAccessMenuRow.canOpen) {
+                            return
+                          }
+                          setWorkspaceAccessMenuState(null)
+                          onGoToWorkspace(workspaceAccessMenuRow.workspaceId, 'actions')
+                        }}
+                        disabled={!workspaceAccessMenuRow.canOpen}
+                      >
+                        <Pencil className="h-4 w-4 shrink-0" />
+                        <span>Manage members</span>
+                      </button>
+                      {selectedAsset.can_edit_metadata ? <div className="my-1 border-t border-border/70" /> : null}
+                      {selectedAsset.can_edit_metadata ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={cn(
+                            'flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]',
+                            selectedAssetBusy && 'cursor-not-allowed text-muted-foreground hover:bg-transparent hover:text-muted-foreground',
+                          )}
+                          onClick={() => {
+                            if (selectedAssetBusy) {
+                              return
+                            }
+                            setWorkspaceAccessMenuState(null)
+                            void onRemoveWorkspacePlacement(
+                              selectedAsset,
+                              workspaceAccessMenuRow.workspaceId,
+                              workspaceAccessMenuRow.workspaceName,
+                            )
+                          }}
+                          disabled={selectedAssetBusy}
+                        >
+                          <X className="h-4 w-4 shrink-0" />
+                          <span>Remove from workspace</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>,
+                  document.body,
+                )
+              : null}
 
             {menuState && menuAsset
               ? createPortal(
@@ -2482,48 +3261,6 @@ export function WorkspacesDataLibraryView({
                           <span>Download file</span>
                         </button>
                       ) : null}
-                    </div>
-                  </div>,
-                  document.body,
-                )
-              : null}
-
-            {memberMenuState && activeMember && memberMenuAsset
-              ? createPortal(
-                  <div className="fixed inset-0 z-50" data-ui="data-library-member-menu-overlay" onClick={() => setMemberMenuState(null)}>
-                    <div
-                      data-ui="data-library-member-menu-shell"
-                      className="fixed w-[11.5rem] rounded-md border border-border bg-card p-1 shadow-lg"
-                      style={{ left: memberMenuState.x, top: memberMenuState.y }}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]"
-                        onClick={() => {
-                          setMemberMenuState(null)
-                          onOpenAssetDrilldown(memberMenuAsset.id, 'access')
-                          onStartEditAccessRole(activeMember)
-                        }}
-                      >
-                        <Pencil className="h-4 w-4 shrink-0" />
-                        <span>Change role</span>
-                      </button>
-                      <div className="my-1 border-t border-border/70" />
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]"
-                        onClick={() => {
-                          setMemberMenuState(null)
-                          onOpenAssetDrilldown(memberMenuAsset.id, 'access')
-                          setAccessEditingUserId(null)
-                          setAccessEditingRole('viewer')
-                          setAccessRemovalConfirmUserId(activeMember.user_id)
-                        }}
-                      >
-                        <UserMinus className="h-4 w-4 shrink-0" />
-                        <span>Remove access</span>
-                      </button>
                     </div>
                   </div>,
                   document.body,

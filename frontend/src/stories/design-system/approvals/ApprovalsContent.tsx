@@ -2208,6 +2208,45 @@ export function ApprovalsContent() {
             </MatrixCell>
 
             <MatrixCell
+              title="Explanatory help-tooltip format"
+              note="Approved inner-content pattern for metric and section help icons"
+              spec="Use Concept first, then What it shows here, inside the shared house-approved-tooltip shell"
+            >
+              <TooltipProvider>
+                <Stack space="sm">
+                  <div className="text-caption text-[hsl(var(--muted-foreground))]">Example: explanatory tooltip for Production Phase</div>
+                  <div className="flex items-center justify-start">
+                    <Tooltip defaultOpen>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="Show production phase explanation"
+                          className="group inline-flex h-7 w-7 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--background))] text-[hsl(var(--tone-neutral-700))]"
+                        >
+                          <span aria-hidden="true" className="text-[0.95rem] font-semibold leading-none">?</span>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="house-approved-tooltip max-w-[20rem] whitespace-normal px-3 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none">
+                        <div className="space-y-2.5">
+                          <div className="space-y-1">
+                            <p className="text-[hsl(var(--tone-neutral-600))]">Your publication-output stage is:</p>
+                            <p className="text-center text-sm font-semibold leading-tight text-[hsl(var(--tone-positive-700))]">Scaling</p>
+                            <p>This means your portfolio is in a growth phase, with annual output rising over time.</p>
+                          </div>
+                          <ul className="ml-4 list-disc space-y-1.5">
+                            <li><span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Trend slope:</span> your annual publication output increased by an average of 1.0 publications per year between 2016 and 2024.</li>
+                            <li><span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Recent share:</span> 37 of your 106 publications (35%) came between 2022 and 2024, within an 11-year publication span.</li>
+                            <li><span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Peak year:</span> your highest-output year was 2021, with 19 publications.</li>
+                          </ul>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </Stack>
+              </TooltipProvider>
+            </MatrixCell>
+
+            <MatrixCell
               title="Publication toggle variants (exact patterns)"
               note="Horizontal 2-state + vertical percentile toggles used in chart tiles"
               spec="Uses house-toggle-track/thumb/button + field-percentile button classes"

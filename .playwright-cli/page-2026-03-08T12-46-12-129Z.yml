@@ -1,0 +1,71 @@
+- generic [ref=e3]:
+  - banner "Storybook" [ref=e6]:
+    - heading "Storybook" [level=1] [ref=e7]
+    - img
+    - generic [ref=e11]:
+      - generic [ref=e13]:
+        - link "Skip to content" [ref=e14] [cursor=pointer]:
+          - /url: "#storybook-preview-wrapper"
+        - link "Storybook" [ref=e16] [cursor=pointer]:
+          - /url: ./
+          - img "Storybook" [ref=e17]
+        - switch "Settings" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+      - generic [ref=e26]: Search for components
+      - search [ref=e27]:
+        - combobox "Search for components" [ref=e28]:
+          - generic:
+            - img
+          - searchbox "Search for components" [ref=e29]
+          - code: ⌃ K
+      - navigation "Stories" [ref=e31]:
+        - heading "Stories" [level=2] [ref=e32]
+  - generic [ref=e53]:
+    - region "Toolbar" [ref=e54]:
+      - heading "Toolbar" [level=2] [ref=e55]
+      - toolbar [ref=e56]:
+        - generic [ref=e57]:
+          - button "Reload story" [ref=e58] [cursor=pointer]:
+            - img [ref=e59]
+          - switch "Measure tool" [ref=e61] [cursor=pointer]:
+            - img [ref=e62]
+          - switch "Outline tool" [ref=e65] [cursor=pointer]:
+            - img [ref=e66]
+          - button "Viewport size" [ref=e68] [cursor=pointer]:
+            - img [ref=e69]
+          - button "Vision filter" [ref=e73] [cursor=pointer]:
+            - img [ref=e74]
+        - generic [ref=e78]:
+          - switch "Change zoom level" [ref=e79] [cursor=pointer]: 100%
+          - button "Enter full screen" [ref=e80] [cursor=pointer]:
+            - img [ref=e81]
+          - button "Share" [ref=e83] [cursor=pointer]:
+            - img [ref=e84]
+    - main "Main preview area" [ref=e87]:
+      - heading "Main preview area" [level=2] [ref=e88]
+      - generic [ref=e89]:
+        - progressbar "Content is loading..." [ref=e91]
+        - generic [ref=e92]:
+          - link "Skip to sidebar" [ref=e93] [cursor=pointer]:
+            - /url: "#design-system-pages-workspaces--workspace-access-model"
+          - iframe [ref=e97]:
+            
+  - region "Addon panel" [ref=e100]:
+    - heading "Addon panel" [level=2] [ref=e101]
+    - generic [ref=e102]:
+      - generic [ref=e103]:
+        - generic [ref=e104]:
+          - button "Move addon panel to right" [ref=e105] [cursor=pointer]:
+            - img [ref=e106]
+          - button "Hide addon panel" [ref=e109] [cursor=pointer]:
+            - img [ref=e110]
+        - tablist "Available addons" [ref=e115]:
+          - tab "Controls" [selected] [ref=e116] [cursor=pointer]:
+            - generic [ref=e118]: Controls
+          - tab "Actions" [ref=e119] [cursor=pointer]:
+            - generic [ref=e121]: Actions
+          - tab "Interactions" [ref=e122] [cursor=pointer]:
+            - generic [ref=e124]: Interactions
+          - tab "Accessibility" [ref=e125] [cursor=pointer]:
+            - generic [ref=e127]: Accessibility
+      - tabpanel "Controls" [ref=e128]

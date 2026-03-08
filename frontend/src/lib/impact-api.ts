@@ -1319,7 +1319,7 @@ export async function fetchPublicationInsightsAgent(
   options?: {
     windowId?: '1y' | '3y' | '5y' | 'all'
     scope?: 'window' | 'section'
-    sectionKey?: 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history'
+    sectionKey?: 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history' | 'publication_output_pattern' | 'publication_production_phase' | 'publication_volume_over_time' | 'publication_article_type_over_time' | 'publication_type_over_time'
   },
 ): Promise<PublicationInsightsAgentPayload> {
   const windowId = options?.windowId || '1y'
@@ -1339,7 +1339,7 @@ export async function fetchPublicationInsightsAgent(
       headers: authHeaders(token),
     },
     'Publication insights agent lookup failed',
-    { timeoutMs: 120_000, retryCount: 2 },
+    { timeoutMs: 30_000, retryCount: 0 },
   )
 }
 

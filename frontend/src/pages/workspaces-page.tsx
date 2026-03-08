@@ -38,8 +38,10 @@ import {
   X,
 } from 'lucide-react'
 
+import { WorkspacesHomeSidebar } from '@/components/layout/workspaces-home-sidebar'
 import { TopBar } from '@/components/layout/top-bar'
 import { DrilldownSheet, PageHeader, Row, Section, SectionHeader, Stack, Toolbar } from '@/components/primitives'
+import { AuditLogGroup, AuditLogMessageRow, AuditLogTransitionRow } from '@/components/patterns/AuditLog'
 import { SectionMarker, SectionToolIconButton, SectionTools } from '@/components/patterns'
 import {
   Badge,
@@ -70,8 +72,19 @@ import {
   readWorkspaceOwnerNameFromProfile,
 } from '@/lib/workspace-owner'
 import { drilldownTabFlexGrow } from '@/components/publications/house-drilldown-header-utils'
-import { houseActions, houseCollaborators, houseDrilldown, houseForms, houseLayout, houseMotion, houseNavigation, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
-import { getHouseLeftBorderToneClass, getHouseNavToneClass, getSectionMarkerTone } from '@/lib/section-tone'
+import { houseActions, houseCollaborators, houseDrilldown, houseForms, houseLayout, houseMotion, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import {
+  auditActorKey,
+  auditTimestampMs,
+  compareAuditActorNames,
+  formatAuditActorHeaderName,
+  formatAuditCompactTimestamp,
+  formatAuditMessageForViewer,
+  parseWorkspaceAuditTransition as parseAuditTransition,
+  type ParsedAuditTransition,
+} from '@/lib/audit-log'
+import { getHouseLeftBorderToneClass, getSectionMarkerTone } from '@/lib/section-tone'
+import { listLibraryAssets } from '@/lib/study-core-api'
 import { matchesScopedStorageEventKey, readStorageScopeUserId } from '@/lib/user-scoped-storage'
 import { cn } from '@/lib/utils'
 import { getAuthSessionToken } from '@/lib/auth-session'
@@ -92,6 +105,7 @@ import {
   type WorkspaceParticipant,
   type WorkspaceRecord,
 } from '@/store/use-workspace-store'
+import type { LibraryAssetRecord } from '@/types/study-core'
 
 type ViewMode = 'table' | 'cards'
 type CenterView = 'workspaces' | 'invitations' | 'data-library'
@@ -102,7 +116,7 @@ type SortColumn = 'name' | 'stage' | 'updatedAt' | 'status'
 type SortDirection = 'asc' | 'desc'
 type WorkspaceTableDensity = 'compact' | 'default' | 'comfortable'
 type WorkspaceDrilldownTab = 'overview' | 'data' | 'actions' | 'logs'
-type WorkspaceTableColumnKey = 'workspace' | 'collaborators' | 'stage' | 'unread' | 'open'
+type WorkspaceTableColumnKey = 'workspace' | 'collaborators' | 'stage' | 'unread'
 type WorkspaceTableColumnPreference = {
   visible: boolean
   width: number
@@ -186,14 +200,7 @@ const WORKSPACE_DRILLDOWN_TABS: Array<{ id: WorkspaceDrilldownTab; label: string
 ]
 
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
-const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
-const HOUSE_SIDEBAR_FRAME_CLASS = houseLayout.sidebarFrame
-const HOUSE_SIDEBAR_CLASS = houseLayout.sidebar
-const HOUSE_SIDEBAR_SCROLL_CLASS = houseLayout.sidebarScroll
-const HOUSE_SIDEBAR_HEADER_CLASS = houseLayout.sidebarHeader
-const HOUSE_SIDEBAR_BODY_CLASS = houseLayout.sidebarBody
-const HOUSE_SIDEBAR_SECTION_CLASS = houseLayout.sidebarSection
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
 const HOUSE_BUTTON_TEXT_CLASS = houseTypography.buttonText
 const HOUSE_LEFT_BORDER_CLASS = cn(houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))
@@ -205,22 +212,13 @@ const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
 const HOUSE_SUCCESS_ACTION_BUTTON_CLASS = houseForms.actionButtonSuccess
 const HOUSE_DANGER_ACTION_BUTTON_CLASS = houseForms.actionButtonDanger
-const HOUSE_COLLABORATOR_CHIP_CLASS = houseCollaborators.chip
-const HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS = houseCollaborators.chipActive
-const HOUSE_COLLABORATOR_CHIP_PENDING_CLASS = houseCollaborators.chipPending
-const HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS = houseCollaborators.chipRemoved
 const HOUSE_COLLABORATOR_ACTION_ICON_CLASS = houseCollaborators.actionIcon
 const HOUSE_COLLABORATOR_ACTION_ICON_ADD_CLASS = houseCollaborators.actionIconAdd
 const HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS = houseCollaborators.actionIconEdit
 const HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS = houseCollaborators.actionIconConfirm
 const HOUSE_COLLABORATOR_ACTION_ICON_DISCARD_CLASS = houseCollaborators.actionIconDiscard
 const WORKSPACE_SELECT_TONE_CLASS = 'house-select-tone-workspace'
-const HOUSE_NAV_SECTION_LABEL_CLASS = houseNavigation.sectionLabel
-const HOUSE_NAV_LIST_CLASS = houseNavigation.list
-const HOUSE_NAV_ITEM_CLASS = houseNavigation.item
-const HOUSE_NAV_ITEM_ACTIVE_CLASS = houseNavigation.itemActive
-const HOUSE_NAV_ITEM_WORKSPACE_CLASS = getHouseNavToneClass('workspace')
-const HOUSE_NAV_ITEM_LABEL_CLASS = houseNavigation.itemLabel
+const WORKSPACE_LOCK_INDICATOR_CLASS = 'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-800))]'
 const HOUSE_DRILLDOWN_SHEET_CLASS = houseDrilldown.sheet
 const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = houseDrilldown.sheetBody
 const HOUSE_WORKSPACE_TONE_CLASS = getHouseLeftBorderToneClass('workspace')
@@ -238,7 +236,6 @@ const WORKSPACE_TABLE_COLUMN_ORDER: WorkspaceTableColumnKey[] = [
   'collaborators',
   'stage',
   'unread',
-  'open',
 ]
 const WORKSPACE_TABLE_COLUMN_DEFINITIONS: Record<
   WorkspaceTableColumnKey,
@@ -264,11 +261,6 @@ const WORKSPACE_TABLE_COLUMN_DEFINITIONS: Record<
     headerClassName: 'text-center',
     cellClassName: 'align-top text-center whitespace-nowrap',
   },
-  open: {
-    label: 'Open',
-    headerClassName: 'text-center',
-    cellClassName: 'align-top text-center whitespace-nowrap',
-  },
 }
 const WORKSPACE_TABLE_COLUMN_SORT_COLUMN: Partial<Record<WorkspaceTableColumnKey, SortColumn>> = {
   workspace: 'name',
@@ -279,21 +271,18 @@ const WORKSPACE_TABLE_COLUMN_DEFAULTS: Record<WorkspaceTableColumnKey, Workspace
   collaborators: { visible: true, width: 220 },
   stage: { visible: true, width: 120 },
   unread: { visible: true, width: 110 },
-  open: { visible: true, width: 92 },
 }
 const WORKSPACE_TABLE_COLUMN_MIN_WIDTH: Record<WorkspaceTableColumnKey, number> = {
   workspace: 220,
   collaborators: 180,
   stage: 96,
   unread: 96,
-  open: 84,
 }
 const WORKSPACE_TABLE_COLUMN_MAX_WIDTH: Record<WorkspaceTableColumnKey, number> = {
   workspace: 520,
   collaborators: 340,
   stage: 180,
   unread: 160,
-  open: 104,
 }
 const WORKSPACE_TABLE_COLUMN_HARD_MIN = 56
 const WORKSPACE_TABLE_LAYOUT_FALLBACK_WIDTH = 1080
@@ -316,23 +305,6 @@ function formatTimestamp(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
-}
-
-function formatAuditCompactTimestamp(value: string): string {
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 'Not available'
-  }
-  return new Date(parsed)
-    .toLocaleString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    })
-    .replace(',', '')
 }
 
 function isRecentWorkspace(value: string): boolean {
@@ -439,7 +411,6 @@ function clampWorkspaceTableColumnsToAvailableWidth(input: {
     collaborators: WORKSPACE_TABLE_COLUMN_DEFAULTS.collaborators.width,
     stage: WORKSPACE_TABLE_COLUMN_DEFAULTS.stage.width,
     unread: WORKSPACE_TABLE_COLUMN_DEFAULTS.unread.width,
-    open: WORKSPACE_TABLE_COLUMN_DEFAULTS.open.width,
   })
 
   let totalWidth = visibleColumns.reduce((sum, column) => sum + preferredWidths[column], 0)
@@ -450,7 +421,6 @@ function clampWorkspaceTableColumnsToAvailableWidth(input: {
       'workspace',
       'stage',
       'unread',
-      'open',
     ]
 
     for (const column of shrinkOrder) {
@@ -490,7 +460,6 @@ function clampWorkspaceTableColumnsToAvailableWidth(input: {
       'collaborators',
       'stage',
       'unread',
-      'open',
     ] as WorkspaceTableColumnKey[]).filter((column) => visibleColumns.includes(column))
 
     while (remaining > 0) {
@@ -542,7 +511,6 @@ function createDefaultWorkspaceTableColumns(
       collaborators: { ...WORKSPACE_TABLE_COLUMN_DEFAULTS.collaborators },
       stage: { ...WORKSPACE_TABLE_COLUMN_DEFAULTS.stage },
       unread: { ...WORKSPACE_TABLE_COLUMN_DEFAULTS.unread },
-      open: { ...WORKSPACE_TABLE_COLUMN_DEFAULTS.open },
     },
     columnOrder: WORKSPACE_TABLE_COLUMN_ORDER,
     availableWidth,
@@ -695,6 +663,18 @@ function parseViewMode(value: string | null): ViewMode {
   return value === 'cards' ? 'cards' : 'table'
 }
 
+function parseWorkspaceDrilldownSelectionId(value: string | null): string | null {
+  const clean = String(value || '').trim()
+  return clean || null
+}
+
+function parseWorkspaceDrilldownTab(value: string | null): WorkspaceDrilldownTab {
+  if (value === 'data' || value === 'actions' || value === 'logs') {
+    return value
+  }
+  return 'overview'
+}
+
 function normalizeCollaboratorName(value: string | null | undefined): string {
   return (value || '').trim().replace(/\s+/g, ' ')
 }
@@ -702,6 +682,22 @@ function normalizeCollaboratorName(value: string | null | undefined): string {
 function normalizeWorkspaceUserId(value: string | null | undefined): string {
   const clean = (value || '').trim()
   return clean === 'anonymous' ? '' : clean
+}
+
+function workspaceFileAccessViaLabel(value: LibraryAssetRecord['current_user_access_source']): string {
+  if (value === 'owner') {
+    return 'Owned'
+  }
+  if (value === 'direct_share') {
+    return 'Direct share'
+  }
+  if (value === 'workspace_member') {
+    return 'Workspace'
+  }
+  if (value === 'project_collaborator') {
+    return 'Project'
+  }
+  return 'Unknown'
 }
 
 function findWorkspaceParticipantByUserId(
@@ -1006,13 +1002,6 @@ function workspaceLockActionLabel(workspace: WorkspaceRecord, currentUserId: str
   return workspace.ownerArchived ? 'Unlock for team members' : 'Lock for team members'
 }
 
-function workspaceLockStateLabel(workspace: WorkspaceRecord, currentUserId: string | null): string {
-  if (!workspace.ownerArchived) {
-    return 'No'
-  }
-  return workspaceLockedBadgeLabel(workspace, currentUserId)
-}
-
 function workspaceReadOnlyMessage(workspace: WorkspaceRecord, currentUserId: string | null): string | null {
   if (isWorkspaceRemovedForCurrentUser(workspace, currentUserId)) {
     return 'Removed access detected. This workspace is no longer available for editing.'
@@ -1044,16 +1033,8 @@ function isWorkspaceReadOnlyForCurrentUser(workspace: WorkspaceRecord, currentUs
   )
 }
 
-type ParsedAuditTransition = {
-  subject: string
-  fromRawValue: string
-  toRawValue: string
-  fromValue: string
-  toValue: string
-  actorName: string
-  sectionLabel: string
-  transitionKind: 'access_status' | 'invitation_status' | 'role' | 'pending_role'
-  roleDetail: string | null
+function canAccessWorkspaceInbox(workspace: WorkspaceRecord, currentUserId: string | null): boolean {
+  return !isWorkspaceRemovedForCurrentUser(workspace, currentUserId)
 }
 
 type ParsedConversationAuditEvent = {
@@ -1101,6 +1082,12 @@ type CollaboratorAuditFilter =
   | 'invitation_status'
   | 'other'
 
+type WorkspaceLogContextRequest = {
+  requestKey: number
+  filter: CollaboratorAuditFilter
+  actorName?: string | null
+}
+
 const COLLABORATOR_AUDIT_FILTER_OPTIONS: Array<{ value: CollaboratorAuditFilter; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'access_status', label: 'Access' },
@@ -1108,26 +1095,6 @@ const COLLABORATOR_AUDIT_FILTER_OPTIONS: Array<{ value: CollaboratorAuditFilter;
   { value: 'invitation_status', label: 'Invites' },
   { value: 'other', label: 'Other' },
 ]
-
-function humanizeAuditValue(value: string): string {
-  const clean = (value || '').trim().replace(/_/g, ' ')
-  if (!clean) {
-    return 'Unknown'
-  }
-  return clean.replace(/\b\w/g, (char) => char.toUpperCase())
-}
-
-function auditTimestampMs(value: string): number {
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 0
-  }
-  return parsed
-}
-
-function compareAuditActorNames(left: string, right: string): number {
-  return left.localeCompare(right, undefined, { sensitivity: 'base' })
-}
 
 function parseCollaboratorNameFromAuditMessage(message: string): string | null {
   const cleanMessage = normalizeCollaboratorName(message)
@@ -1140,337 +1107,6 @@ function parseCollaboratorNameFromAuditMessage(message: string): string | null {
   }
   const collaboratorName = normalizeCollaboratorName(collaboratorMatch[1])
   return collaboratorName || null
-}
-
-function normalizeAuditActorDisplayName(actorName: string): string {
-  return normalizeCollaboratorName(actorName).replace(/\s+\(owner\)$/i, '')
-}
-
-function formatAuditActorHeaderName(actorName: string, currentViewerName?: string | null): string {
-  const clean = normalizeAuditActorDisplayName(actorName)
-  if (!clean) {
-    return 'System'
-  }
-  if (normalizePerson(clean) && normalizePerson(clean) === normalizePerson(currentViewerName || null)) {
-    return 'You'
-  }
-  return clean
-}
-
-function auditActorKey(actorName: string): string {
-  return normalizeCollaboratorName(actorName).toLowerCase() || 'system'
-}
-
-function formatAuditMessageForViewer(message: string, currentViewerName?: string | null): string {
-  const cleanMessage = normalizeCollaboratorName(message)
-  if (!cleanMessage) {
-    return message
-  }
-  const byMatch = cleanMessage.match(/\bby (.*?)\.(\s|$)/i)
-  if (!byMatch) {
-    return cleanMessage
-  }
-  const actorName = normalizeAuditActorDisplayName(byMatch[1] || '')
-  if (!actorName || normalizePerson(actorName) !== normalizePerson(currentViewerName || null)) {
-    return cleanMessage
-  }
-  return cleanMessage.replace(/\bby (.*?)\.(\s|$)/i, (_match, _actor, suffix) => `by you.${suffix || ''}`)
-}
-
-function formatAuditTransitionDisplayValue(
-  transition: ParsedAuditTransition,
-  rawValue: string,
-  displayValue: string,
-): string {
-  void transition
-  const raw = rawValue.trim().toLowerCase()
-  if (raw === 'accepted') {
-    return 'Active'
-  }
-  if (raw === 'cancelled') {
-    return 'Cancelled'
-  }
-  return displayValue
-}
-
-function roleAwareStatusLabel(
-  rawValue: string,
-  displayValue: string,
-  roleDetail: string | null,
-): string {
-  const raw = rawValue.trim().toLowerCase()
-  if (roleDetail && (raw === 'pending' || raw === 'active' || raw === 'accepted')) {
-    return roleDetail
-  }
-  return displayValue
-}
-
-type AuditTransitionPillPresentation = {
-  fromLabel: string | null
-  toLabel: string
-  fromRawValue: string | null
-  toRawValue: string
-  showArrow: boolean
-}
-
-function buildAuditTransitionPillPresentation(
-  transition: ParsedAuditTransition,
-): AuditTransitionPillPresentation {
-  if (transition.transitionKind === 'pending_role') {
-    return {
-      fromLabel: transition.fromValue,
-      toLabel: transition.toValue,
-      fromRawValue: 'pending',
-      toRawValue: 'pending',
-      showArrow: true,
-    }
-  }
-
-  if (transition.transitionKind === 'role') {
-    return {
-      fromLabel: transition.fromValue,
-      toLabel: transition.toValue,
-      fromRawValue: 'active',
-      toRawValue: 'active',
-      showArrow: true,
-    }
-  }
-
-  if (transition.roleDetail) {
-    const fromBaseLabel = formatAuditTransitionDisplayValue(
-      transition,
-      transition.fromRawValue,
-      transition.fromValue,
-    )
-    const toBaseLabel = formatAuditTransitionDisplayValue(
-      transition,
-      transition.toRawValue,
-      transition.toValue,
-    )
-    const fromLabel = roleAwareStatusLabel(
-      transition.fromRawValue,
-      fromBaseLabel,
-      transition.roleDetail,
-    )
-    const toLabel = roleAwareStatusLabel(
-      transition.toRawValue,
-      toBaseLabel,
-      transition.roleDetail,
-    )
-
-    if (transition.fromRawValue === 'none' && transition.toRawValue === 'pending') {
-      return {
-        fromLabel: null,
-        toLabel,
-        fromRawValue: null,
-        toRawValue: transition.toRawValue,
-        showArrow: false,
-      }
-    }
-
-    if (transition.fromRawValue === transition.toRawValue && fromLabel === toLabel) {
-      return {
-        fromLabel: null,
-        toLabel,
-        fromRawValue: null,
-        toRawValue: transition.toRawValue,
-        showArrow: false,
-      }
-    }
-
-    return {
-      fromLabel,
-      toLabel,
-      fromRawValue: transition.fromRawValue,
-      toRawValue: transition.toRawValue,
-      showArrow: true,
-    }
-  }
-
-  const fromLabel = formatAuditTransitionDisplayValue(
-    transition,
-    transition.fromRawValue,
-    transition.fromValue,
-  )
-  const toLabel = formatAuditTransitionDisplayValue(
-    transition,
-    transition.toRawValue,
-    transition.toValue,
-  )
-  if (transition.fromRawValue === transition.toRawValue) {
-    return {
-      fromLabel: null,
-      toLabel,
-      fromRawValue: null,
-      toRawValue: transition.toRawValue,
-      showArrow: false,
-    }
-  }
-  return {
-    fromLabel,
-    toLabel,
-    fromRawValue: transition.fromRawValue,
-    toRawValue: transition.toRawValue,
-    showArrow: true,
-  }
-}
-
-function auditTransitionStatePillClassName(
-  transition: ParsedAuditTransition,
-  rawValue: string,
-): string {
-  const raw = rawValue.trim().toLowerCase()
-  if (raw === 'pending') {
-    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_PENDING_CLASS)
-  }
-  if (raw === 'active' || raw === 'accepted') {
-    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS)
-  }
-  if (raw === 'unlocked') {
-    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS)
-  }
-  if (raw === 'removed' || raw === 'declined' || raw === 'cancelled') {
-    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS)
-  }
-  if (raw === 'locked') {
-    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS)
-  }
-  if (transition.transitionKind === 'invitation_status' && raw === 'accepted') {
-    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS)
-  }
-  return cn(HOUSE_COLLABORATOR_CHIP_CLASS, 'border-border/70 bg-background/80 text-foreground')
-}
-
-function parseAuditTransition(entry: WorkspaceAuditEntry | string): ParsedAuditTransition | null {
-  if (typeof entry !== 'string' && entry.eventType) {
-    const subject = normalizeCollaboratorName(entry.subjectName) || 'Workspace'
-    const actorName = normalizeCollaboratorName(entry.actorName) || 'Unknown user'
-    const fromRawValue = (entry.fromValue || '').trim().toLowerCase()
-    const toRawValue = (entry.toValue || '').trim().toLowerCase()
-    const fromValue = humanizeAuditValue(entry.fromValue || '')
-    const toValue = humanizeAuditValue(entry.toValue || '')
-
-    switch (entry.eventType) {
-      case 'member_invited':
-      case 'member_reinvited':
-      case 'member_removed':
-      case 'invitation_accepted':
-      case 'invitation_declined':
-      case 'invitation_cancelled':
-        return {
-          subject,
-          fromRawValue,
-          toRawValue,
-          fromValue,
-          toValue,
-          actorName,
-          sectionLabel:
-            entry.eventType === 'member_invited'
-            || entry.eventType === 'member_reinvited'
-            || entry.eventType === 'invitation_cancelled'
-            || entry.eventType === 'invitation_accepted'
-            || entry.eventType === 'invitation_declined'
-              ? 'Invitation status'
-              : 'Access status',
-          transitionKind:
-            entry.eventType === 'member_invited'
-            || entry.eventType === 'member_reinvited'
-            || entry.eventType === 'invitation_cancelled'
-            || entry.eventType === 'invitation_accepted'
-            || entry.eventType === 'invitation_declined'
-              ? 'invitation_status'
-              : 'access_status',
-          roleDetail: entry.role ? collaboratorRoleLabel(entry.role) : null,
-        }
-      case 'member_role_changed':
-      case 'pending_role_changed':
-        return {
-          subject,
-          fromRawValue,
-          toRawValue,
-          fromValue,
-          toValue,
-          actorName,
-          sectionLabel: entry.eventType === 'pending_role_changed' ? 'Pending role' : 'Role',
-          transitionKind: entry.eventType === 'pending_role_changed' ? 'pending_role' : 'role',
-          roleDetail: null,
-        }
-      case 'workspace_locked':
-      case 'workspace_unlocked':
-      case 'workspace_renamed':
-        return {
-          subject,
-          fromRawValue,
-          toRawValue,
-          fromValue,
-          toValue,
-          actorName,
-          sectionLabel: 'Workspace',
-          transitionKind: 'access_status',
-          roleDetail: null,
-        }
-      default:
-        break
-    }
-  }
-
-  const cleanMessage = normalizeCollaboratorName(typeof entry === 'string' ? entry : entry.message)
-  if (!cleanMessage) {
-    return null
-  }
-
-  const statusMatch = cleanMessage.match(
-    /^(.*?) collaborator(?: invitation)? status switched from ([a-z_]+) to ([a-z_]+) by (.*?)(?: as ([a-z_]+))?\.(?: Role set to ([a-z_]+)\.)?$/i,
-  )
-  if (statusMatch) {
-    const subject = normalizeCollaboratorName(statusMatch[1]) || 'Collaborator'
-    const fromRawValue = (statusMatch[2] || '').trim().toLowerCase()
-    const toRawValue = (statusMatch[3] || '').trim().toLowerCase()
-    const fromValue = humanizeAuditValue(fromRawValue)
-    const toValue = humanizeAuditValue(toRawValue)
-    const actorName = normalizeCollaboratorName(statusMatch[4]) || 'Unknown user'
-    const roleDetailSource = statusMatch[6] || statusMatch[5] || ''
-    const roleDetail = roleDetailSource ? humanizeAuditValue(roleDetailSource) : null
-    const isInvitationStatus = cleanMessage.toLowerCase().includes('invitation status')
-    const sectionLabel = isInvitationStatus ? 'Invitation status' : 'Access status'
-    return {
-      subject,
-      fromRawValue,
-      toRawValue,
-      fromValue,
-      toValue,
-      actorName,
-      sectionLabel,
-      transitionKind: isInvitationStatus ? 'invitation_status' : 'access_status',
-      roleDetail,
-    }
-  }
-
-  const roleMatch = cleanMessage.match(
-    /^(.*?) (pending )?collaborator role switched from ([a-z_]+) to ([a-z_]+) by (.*?)\.$/i,
-  )
-  if (roleMatch) {
-    const subject = normalizeCollaboratorName(roleMatch[1]) || 'Collaborator'
-    const isPendingRole = Boolean((roleMatch[2] || '').trim())
-    const fromRawValue = (roleMatch[3] || '').trim().toLowerCase()
-    const toRawValue = (roleMatch[4] || '').trim().toLowerCase()
-    const fromValue = humanizeAuditValue(fromRawValue)
-    const toValue = humanizeAuditValue(toRawValue)
-    const actorName = normalizeCollaboratorName(roleMatch[5]) || 'Unknown user'
-    return {
-      subject,
-      fromRawValue,
-      toRawValue,
-      fromValue,
-      toValue,
-      actorName,
-      sectionLabel: isPendingRole ? 'Pending role' : 'Role',
-      transitionKind: isPendingRole ? 'pending_role' : 'role',
-      roleDetail: null,
-    }
-  }
-
-  return null
 }
 
 function isConversationAuditEntry(entry: WorkspaceAuditEntry): boolean {
@@ -1768,6 +1404,228 @@ function sortWorkspaces(
   return next
 }
 
+function WorkspaceDataSummaryPanel({
+  workspaceId,
+  workspaceName,
+}: {
+  workspaceId: string
+  workspaceName: string
+}) {
+  const [assets, setAssets] = useState<LibraryAssetRecord[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [hasMoreAssets, setHasMoreAssets] = useState(false)
+  const hasSessionToken = Boolean(getAuthSessionToken())
+
+  const loadAssets = useCallback(async () => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      setAssets([])
+      setHasMoreAssets(false)
+      setError('')
+      setIsLoading(false)
+      return
+    }
+
+    setIsLoading(true)
+    setError('')
+    try {
+      const payload = await listLibraryAssets({
+        token,
+        workspaceId,
+        page: 1,
+        pageSize: 25,
+        sortBy: 'uploaded_at',
+        sortDirection: 'desc',
+      })
+      setAssets(payload.items || [])
+      setHasMoreAssets(Boolean(payload.has_more))
+    } catch (loadError) {
+      setAssets([])
+      setHasMoreAssets(false)
+      setError(loadError instanceof Error ? loadError.message : 'Could not load workspace data.')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
+    void loadAssets()
+  }, [loadAssets])
+
+  if (!hasSessionToken) {
+    return (
+      <div className="house-drilldown-content-block">
+        <p className={HOUSE_FIELD_HELPER_CLASS}>
+          Sign in to inspect files in {workspaceName}.
+        </p>
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="house-drilldown-content-block">
+        <p className={HOUSE_FIELD_HELPER_CLASS}>Loading workspace files...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="house-drilldown-content-block space-y-2">
+        <p className="text-sm text-red-700">{error}</p>
+        <Button type="button" variant="outline" size="sm" onClick={() => void loadAssets()}>
+          Retry
+        </Button>
+      </div>
+    )
+  }
+
+  if (assets.length === 0) {
+    return (
+      <div className="house-drilldown-content-block">
+        <p className={HOUSE_FIELD_HELPER_CLASS}>
+          No files are in {workspaceName} yet.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="house-drilldown-content-block space-y-3">
+      <div
+        className="house-table-shell h-auto w-full overflow-hidden rounded-md bg-background"
+        style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
+      >
+        <table className="w-full table-fixed border-collapse" data-house-no-column-resize="true" data-house-no-column-controls="true">
+          <colgroup>
+            <col style={{ width: '50%' }} />
+            <col style={{ width: '25%' }} />
+            <col style={{ width: '25%' }} />
+          </colgroup>
+          <thead className="house-table-head">
+            <tr>
+              <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">File</th>
+              <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">Owner</th>
+              <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">Access via</th>
+            </tr>
+          </thead>
+          <tbody>
+            {assets.map((asset) => {
+              const ownerName = normalizeCollaboratorName(asset.owner_name || '') || 'Unknown owner'
+              const accessSource = workspaceFileAccessViaLabel(asset.current_user_access_source)
+              const accessVariant = asset.current_user_access_source === 'owner'
+                ? 'positive'
+                : asset.current_user_access_source === 'workspace_member'
+                  ? 'yellow'
+                  : 'outline'
+
+              return (
+                <tr
+                  key={asset.id}
+                  className={cn(
+                    'border-b border-border/60 last:border-b-0',
+                    asset.locked_for_team_members && 'bg-[hsl(var(--tone-neutral-200))]',
+                  )}
+                >
+                  <td className={cn('h-14 px-3 py-0 align-middle font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                    <div className="flex h-14 min-w-0 flex-col justify-center">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        {asset.locked_for_team_members ? (
+                          <span
+                            role="img"
+                            aria-label="Locked for team members"
+                            title="Locked for team members"
+                            className={WORKSPACE_LOCK_INDICATOR_CLASS}
+                          >
+                            <Lock className="h-3 w-3" aria-hidden="true" />
+                          </span>
+                        ) : null}
+                        <span className="truncate">{asset.filename}</span>
+                      </div>
+                      {asset.is_available === false ? (
+                        <span className="text-xs text-[hsl(var(--tone-warning-900))]">Storage missing</span>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className={cn('h-14 px-3 py-0 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                    <div className="flex h-14 min-w-0 items-center truncate text-muted-foreground">{ownerName}</div>
+                  </td>
+                  <td className={cn('h-14 px-3 py-0 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                    <div className="flex h-14 items-center">
+                      <Badge size="sm" variant={accessVariant}>
+                        {accessSource}
+                      </Badge>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div
+        className="house-table-shell h-auto w-full overflow-hidden rounded-md bg-background"
+        style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
+      >
+        <table className="w-full table-fixed border-collapse" data-house-no-column-resize="true" data-house-no-column-controls="true">
+          <colgroup>
+            <col style={{ width: '72%' }} />
+            <col style={{ width: '28%' }} />
+          </colgroup>
+          <thead className="house-table-head">
+            <tr>
+              <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">File name</th>
+              <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {assets.map((asset) => (
+              <tr
+                key={`${asset.id}-workspace-actions`}
+                className={cn(
+                  'border-b border-border/60 last:border-b-0',
+                  asset.locked_for_team_members && 'bg-[hsl(var(--tone-neutral-200))]',
+                )}
+              >
+                <td className={cn('h-14 px-3 py-0 align-middle font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                  <div className="flex h-14 min-w-0 flex-col justify-center">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      {asset.locked_for_team_members ? (
+                        <span
+                          role="img"
+                          aria-label="Locked for team members"
+                          title="Locked for team members"
+                          className={WORKSPACE_LOCK_INDICATOR_CLASS}
+                        >
+                          <Lock className="h-3 w-3" aria-hidden="true" />
+                        </span>
+                      ) : null}
+                      <span className="truncate">{asset.filename}</span>
+                    </div>
+                    {asset.is_available === false ? (
+                      <span className="text-xs text-[hsl(var(--tone-warning-900))]">Storage missing</span>
+                    ) : null}
+                  </div>
+                </td>
+                <td className={cn('h-14 px-3 py-0 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                  <div className="flex h-14 items-center" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hasMoreAssets ? (
+        <div className="rounded-md border border-border/60 bg-background/60 px-3 py-2">
+          <p className={HOUSE_FIELD_HELPER_CLASS}>Open the data library to inspect the full file set for this workspace.</p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function WorkspacesDrilldownPanel({
   selectedWorkspaceId,
   selectedWorkspaceName,
@@ -1775,6 +1633,7 @@ function WorkspacesDrilldownPanel({
   initialTab,
   selectedWorkspaceReadOnly,
   selectedWorkspaceReadOnlyMessage,
+  initialLogContext,
   currentWorkspaceUserId,
   currentReaderName,
   memberActionIntent,
@@ -1806,6 +1665,7 @@ function WorkspacesDrilldownPanel({
   initialTab?: WorkspaceDrilldownTab
   selectedWorkspaceReadOnly: boolean
   selectedWorkspaceReadOnlyMessage: string | null
+  initialLogContext?: WorkspaceLogContextRequest | null
   currentWorkspaceUserId: string | null
   currentReaderName: string
   memberActionIntent: WorkspaceMemberActionIntent | null
@@ -1853,9 +1713,6 @@ function WorkspacesDrilldownPanel({
   const ownerOverviewName = selectedWorkspace
     ? normalizeCollaboratorName(selectedWorkspace.ownerName) || 'Unknown owner'
     : 'Unknown owner'
-  const ownerDisplayName = selectedWorkspace
-    ? workspaceOwnerLabel(selectedWorkspace)
-    : 'Unknown owner (Owner)'
   const ownerBadgeLabel = selectedWorkspace
     ? workspaceOwnerBadgeLabel(selectedWorkspace, currentWorkspaceUserId)
     : 'Unknown owner'
@@ -1882,6 +1739,7 @@ function WorkspacesDrilldownPanel({
     other: false,
   })
   const [conversationActorExpanded, setConversationActorExpanded] = useState<Record<string, boolean>>({})
+  const appliedInitialLogContextKeyRef = useRef<number | null>(null)
   const sortedAuditEntries = [...workspaceAuditEntries]
     .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
   const collaboratorActivityEntries = sortedAuditEntries
@@ -2029,9 +1887,6 @@ function WorkspacesDrilldownPanel({
       }))
       .sort((left, right) => compareAuditActorNames(left.actorName, right.actorName))
   }, [conversationActivityEntries])
-  const activeCollaboratorCount = collaboratorChips.filter((chip) => chip.state === 'active').length
-  const pendingCollaboratorCount = collaboratorChips.filter((chip) => chip.state === 'pending').length
-  const removedCollaboratorCount = collaboratorChips.filter((chip) => chip.state === 'removed').length
   const teamMemberCount = 1 + collaboratorChips.length
   const canAccessWorkspaceLogs = selectedWorkspace
     ? canViewWorkspaceLogs(selectedWorkspace, currentWorkspaceUserId)
@@ -2354,6 +2209,29 @@ function WorkspacesDrilldownPanel({
   }, [initialTab, selectedWorkspaceId])
 
   useEffect(() => {
+    if (
+      !initialLogContext
+      || !selectedWorkspaceId
+      || appliedInitialLogContextKeyRef.current === initialLogContext.requestKey
+    ) {
+      return
+    }
+    appliedInitialLogContextKeyRef.current = initialLogContext.requestKey
+    setActiveTab('logs')
+    setCollaboratorAuditFilter(initialLogContext.filter)
+    setCollaboratorActivityCollapsed(false)
+    setWorkspaceActivityCollapsed(true)
+    setConversationActivityCollapsed(true)
+    if (initialLogContext.actorName) {
+      setCollaboratorActorExpanded({
+        [auditActorKey(initialLogContext.actorName)]: true,
+      })
+      return
+    }
+    setCollaboratorActorExpanded({})
+  }, [initialLogContext, selectedWorkspaceId])
+
+  useEffect(() => {
     if (selectedWorkspace && !canViewWorkspaceDrilldownTab(selectedWorkspace, currentWorkspaceUserId, activeTab)) {
       setActiveTab('overview')
     }
@@ -2585,72 +2463,17 @@ function WorkspacesDrilldownPanel({
     <>
       <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
         <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Workspace data</p>
+          <p className="house-drilldown-heading-block-title">Workspace files</p>
         </div>
         {!selectedWorkspace ? (
           <div className="house-drilldown-content-block">
             <p className={HOUSE_FIELD_HELPER_CLASS}>Select a workspace to inspect its data.</p>
           </div>
         ) : (
-          <div className="house-drilldown-content-block">
-            {[
-              ['Workspace ID', selectedWorkspace.id],
-              ['Version', selectedWorkspace.version],
-              ['Owner', ownerDisplayName],
-              ['Pinned', selectedWorkspace.pinned ? 'Yes' : 'No'],
-              ['Archived for me', selectedWorkspace.archived ? 'Yes' : 'No'],
-              ['Locked', workspaceLockStateLabel(selectedWorkspace, currentWorkspaceUserId)],
-              ['Updated', formatTimestamp(selectedWorkspace.updatedAt)],
-            ].map(([label, value], index) => (
-              <div
-                key={label}
-                className={cn(
-                  'flex items-center justify-between gap-3 px-1 py-2',
-                  index > 0 ? 'border-t border-border/50' : '',
-                )}
-              >
-                <p className={HOUSE_FIELD_HELPER_CLASS}>{label}</p>
-                <p className={cn(houseTypography.text, 'text-right font-medium')}>{value}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
-        <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Membership</p>
-        </div>
-        {!selectedWorkspace ? (
-          <div className="house-drilldown-content-block">
-            <p className={HOUSE_FIELD_HELPER_CLASS}>
-              Select a workspace to inspect membership counts.
-            </p>
-          </div>
-        ) : (
-          <div
-            className="house-drilldown-content-block house-drilldown-summary-stats-grid"
-            style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
-          >
-            <div className="rounded-md border border-border/60 bg-background/80 p-3">
-              <p className={HOUSE_FIELD_HELPER_CLASS}>Active</p>
-              <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
-                {activeCollaboratorCount}
-              </p>
-            </div>
-            <div className="rounded-md border border-border/60 bg-background/80 p-3">
-              <p className={HOUSE_FIELD_HELPER_CLASS}>Pending</p>
-              <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
-                {pendingCollaboratorCount}
-              </p>
-            </div>
-            <div className="rounded-md border border-border/60 bg-background/80 p-3">
-              <p className={HOUSE_FIELD_HELPER_CLASS}>Removed</p>
-              <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
-                {removedCollaboratorCount}
-              </p>
-            </div>
-          </div>
+          <WorkspaceDataSummaryPanel
+            workspaceId={selectedWorkspace.id}
+            workspaceName={selectedWorkspace.name}
+          />
         )}
       </div>
     </>
@@ -2893,109 +2716,44 @@ function WorkspacesDrilldownPanel({
                 const actorKey = auditActorKey(group.actorName)
                 const isExpanded = collaboratorActorExpanded[actorKey] ?? false
                 return (
-                  <div
+                  <AuditLogGroup
                     key={`${actorKey}-${groupIndex}`}
-                    className={cn(
-                      'rounded-md border border-border/60 bg-background/70',
-                      HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS,
-                    )}
-                    data-state={isExpanded ? 'open' : 'closed'}
+                    title={formatAuditActorHeaderName(group.actorName, currentReaderName)}
+                    count={group.entries.length}
+                    expanded={isExpanded}
+                    onToggle={() =>
+                      setCollaboratorActorExpanded((current) => ({
+                        ...current,
+                        [actorKey]: !isExpanded,
+                      }))
+                    }
+                    ariaLabel={`Toggle ${formatAuditActorHeaderName(group.actorName, currentReaderName)} ${showPersonalWorkspaceLogs ? 'activity' : 'team member activity'}`}
                   >
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
-                      onClick={() =>
-                        setCollaboratorActorExpanded((current) => ({
-                          ...current,
-                          [actorKey]: !isExpanded,
-                        }))
-                      }
-                      aria-expanded={isExpanded}
-                      aria-label={`Toggle ${formatAuditActorHeaderName(group.actorName, currentReaderName)} ${showPersonalWorkspaceLogs ? 'activity' : 'team member activity'}`}
-                    >
-                      <p className={cn(houseTypography.text, 'font-medium')}>
-                        {formatAuditActorHeaderName(group.actorName, currentReaderName)}
+                    {group.entries.length === 0 ? (
+                      <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-3 py-2')}>
+                        No activity logged yet.
                       </p>
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className={HOUSE_FIELD_HELPER_CLASS}>{group.entries.length}</span>
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      group.entries.map((item, entryIndex) => {
+                        const { entry, parsedTransition } = item
+                        return parsedTransition ? (
+                          <AuditLogTransitionRow
+                            key={entry.id}
+                            transition={parsedTransition}
+                            timestamp={formatAuditCompactTimestamp(entry.createdAt)}
+                            className={entryIndex > 0 ? 'border-t border-border/50' : ''}
+                          />
                         ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </span>
-                    </button>
-                    {isExpanded ? (
-                      <div className="border-t border-border/50">
-                        {group.entries.length === 0 ? (
-                          <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-3 py-2')}>
-                            No activity logged yet.
-                          </p>
-                        ) : (
-                          group.entries.map((item, entryIndex) => {
-                            const { entry, parsedTransition } = item
-                            if (!parsedTransition) {
-                              return (
-                                <div
-                                  key={entry.id}
-                                  className={cn(
-                                    'px-3 py-2',
-                                    entryIndex > 0 ? 'border-t border-border/50' : '',
-                                  )}
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <p className={houseTypography.text}>
-                                      {formatAuditMessageForViewer(entry.message, currentReaderName)}
-                                    </p>
-                                    <span className={HOUSE_FIELD_HELPER_CLASS}>
-                                      {formatAuditCompactTimestamp(entry.createdAt)}
-                                    </span>
-                                  </div>
-                                </div>
-                              )
-                            }
-                            const transitionPills = buildAuditTransitionPillPresentation(parsedTransition)
-                            const fromValueClass =
-                              transitionPills.fromRawValue && transitionPills.fromLabel
-                                ? auditTransitionStatePillClassName(
-                                    parsedTransition,
-                                    transitionPills.fromRawValue,
-                                  )
-                                : ''
-                            const toValueClass = auditTransitionStatePillClassName(
-                              parsedTransition,
-                              transitionPills.toRawValue,
-                            )
-
-                            return (
-                              <div
-                                key={entry.id}
-                                className={cn(
-                                  'px-3 py-2',
-                                  entryIndex > 0 ? 'border-t border-border/50' : '',
-                                )}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                                    {transitionPills.fromLabel && transitionPills.fromRawValue ? (
-                                      <span className={fromValueClass}>{transitionPills.fromLabel}</span>
-                                    ) : null}
-                                    {transitionPills.showArrow && transitionPills.fromLabel ? (
-                                      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-                                    ) : null}
-                                    <span className={toValueClass}>{transitionPills.toLabel}</span>
-                                  </div>
-                                  <span className={HOUSE_FIELD_HELPER_CLASS}>
-                                    {formatAuditCompactTimestamp(entry.createdAt)}
-                                  </span>
-                                </div>
-                              </div>
-                            )
-                          })
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
+                          <AuditLogMessageRow
+                            key={entry.id}
+                            message={formatAuditMessageForViewer(entry.message, currentReaderName)}
+                            timestamp={formatAuditCompactTimestamp(entry.createdAt)}
+                            className={entryIndex > 0 ? 'border-t border-border/50' : ''}
+                          />
+                        )
+                      })
+                    )}
+                  </AuditLogGroup>
                 )
               })}
             </div>
@@ -3035,107 +2793,44 @@ function WorkspacesDrilldownPanel({
         ) : workspaceActivityCollapsed ? null : (
           <div className="house-drilldown-content-block space-y-2">
             {workspaceActivityGroups.map((group) => (
-              <div
+              <AuditLogGroup
                 key={group.key}
-                className={cn(
-                  'rounded-md border border-border/60 bg-background/70',
-                  HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS,
-                )}
-                data-state={workspaceActivityGroupExpanded[group.key] ? 'open' : 'closed'}
+                title={group.title}
+                count={group.entries.length}
+                expanded={workspaceActivityGroupExpanded[group.key]}
+                onToggle={() =>
+                  setWorkspaceActivityGroupExpanded((current) => ({
+                    ...current,
+                    [group.key]: !current[group.key],
+                  }))
+                }
+                ariaLabel={`Toggle ${group.title.toLowerCase()} workspace activity`}
               >
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
-                  onClick={() =>
-                    setWorkspaceActivityGroupExpanded((current) => ({
-                      ...current,
-                      [group.key]: !current[group.key],
-                    }))
-                  }
-                  aria-expanded={workspaceActivityGroupExpanded[group.key]}
-                  aria-label={`Toggle ${group.title.toLowerCase()} workspace activity`}
-                >
-                  <p className={cn(houseTypography.text, 'font-medium')}>{group.title}</p>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className={HOUSE_FIELD_HELPER_CLASS}>{group.entries.length}</span>
-                    {workspaceActivityGroupExpanded[group.key] ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                {group.entries.length === 0 ? (
+                  <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-3 py-2')}>
+                    No workspace events logged yet.
+                  </p>
+                ) : (
+                  group.entries.map((entry, entryIndex) => {
+                    const parsedTransition = parseAuditTransition(entry)
+                    return parsedTransition ? (
+                      <AuditLogTransitionRow
+                        key={entry.id}
+                        transition={parsedTransition}
+                        timestamp={formatAuditCompactTimestamp(entry.createdAt)}
+                        className={entryIndex > 0 ? 'border-t border-border/50' : ''}
+                      />
                     ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </span>
-                </button>
-                {workspaceActivityGroupExpanded[group.key] ? (
-                  <div className="border-t border-border/50">
-                    {group.entries.length === 0 ? (
-                      <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-3 py-2')}>
-                        No workspace events logged yet.
-                      </p>
-                    ) : (
-                      group.entries.map((entry, entryIndex) => {
-                        const parsedTransition = parseAuditTransition(entry)
-                        if (!parsedTransition) {
-                          return (
-                            <div
-                              key={entry.id}
-                              className={cn(
-                                'px-3 py-2',
-                                entryIndex > 0 ? 'border-t border-border/50' : '',
-                              )}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <p className={houseTypography.text}>
-                                  {formatAuditMessageForViewer(entry.message, currentReaderName)}
-                                </p>
-                                <span className={HOUSE_FIELD_HELPER_CLASS}>
-                                  {formatAuditCompactTimestamp(entry.createdAt)}
-                                </span>
-                              </div>
-                            </div>
-                          )
-                        }
-                        const transitionPills = buildAuditTransitionPillPresentation(parsedTransition)
-                        const fromValueClass =
-                          transitionPills.fromRawValue && transitionPills.fromLabel
-                            ? auditTransitionStatePillClassName(
-                                parsedTransition,
-                                transitionPills.fromRawValue,
-                              )
-                            : ''
-                        const toValueClass = auditTransitionStatePillClassName(
-                          parsedTransition,
-                          transitionPills.toRawValue,
-                        )
-
-                        return (
-                          <div
-                            key={entry.id}
-                            className={cn(
-                              'px-3 py-2',
-                              entryIndex > 0 ? 'border-t border-border/50' : '',
-                            )}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                                {transitionPills.fromLabel && transitionPills.fromRawValue ? (
-                                  <span className={fromValueClass}>{transitionPills.fromLabel}</span>
-                                ) : null}
-                                {transitionPills.showArrow && transitionPills.fromLabel ? (
-                                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-                                ) : null}
-                                <span className={toValueClass}>{transitionPills.toLabel}</span>
-                              </div>
-                              <span className={HOUSE_FIELD_HELPER_CLASS}>
-                                {formatAuditCompactTimestamp(entry.createdAt)}
-                              </span>
-                            </div>
-                          </div>
-                        )
-                      })
-                    )}
-                  </div>
-                ) : null}
-              </div>
+                      <AuditLogMessageRow
+                        key={entry.id}
+                        message={formatAuditMessageForViewer(entry.message, currentReaderName)}
+                        timestamp={formatAuditCompactTimestamp(entry.createdAt)}
+                        className={entryIndex > 0 ? 'border-t border-border/50' : ''}
+                      />
+                    )
+                  })
+                )}
+              </AuditLogGroup>
             ))}
           </div>
         )}
@@ -3429,65 +3124,26 @@ function WorkspacesDrilldownPanel({
                                 <div className="border-t border-border/50">
                                   {group.entries.map((item, entryIndex) => {
                                     const { entry, parsedTransition } = item
-                                    if (!parsedTransition) {
-                                      return (
-                                        <div
-                                          key={entry.id}
-                                          className={cn(
-                                            'px-2 py-1.5',
-                                            entryIndex > 0 ? 'border-t border-border/50' : '',
-                                          )}
-                                        >
-                                          <div className="flex items-center justify-between gap-2">
-                                            <p className={houseTypography.text}>
-                                              {formatAuditMessageForViewer(entry.message, currentReaderName)}
-                                            </p>
-                                            <span className={HOUSE_FIELD_HELPER_CLASS}>
-                                              {formatAuditCompactTimestamp(entry.createdAt)}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      )
-                                    }
-                                    const transitionPills = buildAuditTransitionPillPresentation(parsedTransition)
-                                    const fromValueClass =
-                                      transitionPills.fromRawValue && transitionPills.fromLabel
-                                        ? auditTransitionStatePillClassName(
-                                            parsedTransition,
-                                            transitionPills.fromRawValue,
-                                          )
-                                        : ''
-                                    const toValueClass = auditTransitionStatePillClassName(
-                                      parsedTransition,
-                                      transitionPills.toRawValue,
-                                    )
-                                    return (
-                                      <div
+                                    return parsedTransition ? (
+                                      <AuditLogTransitionRow
                                         key={entry.id}
+                                        transition={parsedTransition}
+                                        timestamp={formatAuditCompactTimestamp(entry.createdAt)}
                                         className={cn(
                                           'px-2 py-1.5',
                                           entryIndex > 0 ? 'border-t border-border/50' : '',
                                         )}
-                                      >
-                                        <div className="flex items-center justify-between gap-2">
-                                          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                                            {transitionPills.fromLabel && transitionPills.fromRawValue ? (
-                                              <span className={fromValueClass}>
-                                                {transitionPills.fromLabel}
-                                              </span>
-                                            ) : null}
-                                            {transitionPills.showArrow && transitionPills.fromLabel ? (
-                                              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-                                            ) : null}
-                                            <span className={toValueClass}>
-                                              {transitionPills.toLabel}
-                                            </span>
-                                          </div>
-                                          <span className={HOUSE_FIELD_HELPER_CLASS}>
-                                            {formatAuditCompactTimestamp(entry.createdAt)}
-                                          </span>
-                                        </div>
-                                      </div>
+                                      />
+                                    ) : (
+                                      <AuditLogMessageRow
+                                        key={entry.id}
+                                        message={formatAuditMessageForViewer(entry.message, currentReaderName)}
+                                        timestamp={formatAuditCompactTimestamp(entry.createdAt)}
+                                        className={cn(
+                                          'px-2 py-1.5',
+                                          entryIndex > 0 ? 'border-t border-border/50' : '',
+                                        )}
+                                      />
                                     )
                                   })}
                                 </div>
@@ -3573,98 +3229,6 @@ function WorkspaceMenuTrigger({
   )
 }
 
-function WorkspacesHomeSidebar({
-  centerView,
-  onSelectCenterView,
-  onOpenInbox,
-  canOpenInbox,
-  onNavigate,
-}: {
-  centerView: CenterView
-  onSelectCenterView: (next: CenterView) => void
-  onOpenInbox: () => void
-  canOpenInbox: boolean
-  onNavigate?: () => void
-}) {
-  return (
-    <aside className={cn(HOUSE_SIDEBAR_FRAME_CLASS, HOUSE_SIDEBAR_CLASS)} data-house-role="left-nav-shell">
-      <div className={HOUSE_SIDEBAR_HEADER_CLASS}>
-        <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
-          <h2 data-house-role="section-title" className={HOUSE_SECTION_TITLE_CLASS}>My Workspace</h2>
-        </div>
-      </div>
-      <ScrollArea className={HOUSE_SIDEBAR_SCROLL_CLASS}>
-        <div className={HOUSE_SIDEBAR_BODY_CLASS}>
-          <section className={HOUSE_SIDEBAR_SECTION_CLASS}>
-            <p className={HOUSE_NAV_SECTION_LABEL_CLASS}>
-              Workspace hub
-            </p>
-            <div className={HOUSE_NAV_LIST_CLASS}>
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectCenterView('workspaces')
-                  onNavigate?.()
-                }}
-                className={cn(
-                  HOUSE_NAV_ITEM_CLASS,
-                  HOUSE_NAV_ITEM_WORKSPACE_CLASS,
-                  centerView === 'workspaces' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
-                )}
-              >
-                <span className={HOUSE_NAV_ITEM_LABEL_CLASS}>My Workspaces</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectCenterView('invitations')
-                  onNavigate?.()
-                }}
-                className={cn(
-                  HOUSE_NAV_ITEM_CLASS,
-                  HOUSE_NAV_ITEM_WORKSPACE_CLASS,
-                  centerView === 'invitations' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
-                )}
-              >
-                <span className={HOUSE_NAV_ITEM_LABEL_CLASS}>Invitations</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectCenterView('data-library')
-                  onNavigate?.()
-                }}
-                className={cn(
-                  HOUSE_NAV_ITEM_CLASS,
-                  HOUSE_NAV_ITEM_WORKSPACE_CLASS,
-                  centerView === 'data-library' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
-                )}
-              >
-                <span className={HOUSE_NAV_ITEM_LABEL_CLASS}>Data library</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenInbox()
-                  onNavigate?.()
-                }}
-                className={cn(
-                  HOUSE_NAV_ITEM_CLASS,
-                  HOUSE_NAV_ITEM_WORKSPACE_CLASS,
-                  !canOpenInbox && 'cursor-not-allowed opacity-60',
-                )}
-                disabled={!canOpenInbox}
-              >
-                <span className={HOUSE_NAV_ITEM_LABEL_CLASS}>Inbox</span>
-              </button>
-            </div>
-          </section>
-        </div>
-      </ScrollArea>
-    </aside>
-  )
-}
-
 function CollaboratorBanners({
   workspace,
   currentUserId,
@@ -3684,7 +3248,6 @@ function CollaboratorBanners({
   const chips = workspaceCollaboratorChips(workspace)
   const ownerName = normalizeCollaboratorName(workspace.ownerName) || 'Unknown owner'
   const activeChips = chips.filter((chip) => chip.state === 'active')
-  const removedChips = chips.filter((chip) => chip.state === 'removed')
   const pendingCount = chips.filter((chip) => chip.state === 'pending').length
   const canManageWorkspaceMembers = isWorkspaceOwner(workspace, currentUserId)
   const visibleChips: Array<{
@@ -3719,13 +3282,6 @@ function CollaboratorBanners({
           variant: collaboratorBadgeVariant('pending'),
         }]
       : []),
-    ...removedChips.map((chip) => ({
-      key: chip.key,
-      itemKey: chip.key,
-      itemKind: 'member' as const,
-      label: chip.name,
-      variant: collaboratorBadgeVariant(chip.state),
-    })),
   ]
 
   return (
@@ -3788,7 +3344,9 @@ export function WorkspacesPage() {
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
   const authorRequests = useWorkspaceStore((state) => state.authorRequests)
   const invitationsSent = useWorkspaceStore((state) => state.invitationsSent)
+  const remoteWorkspaceError = useWorkspaceStore((state) => state.remoteErrorMessage)
   const hydrateWorkspaceStoreFromRemote = useWorkspaceStore((state) => state.hydrateFromRemote)
+  const clearRemoteWorkspaceError = useWorkspaceStore((state) => state.clearRemoteError)
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
   const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
   const updateWorkspace = useWorkspaceStore((state) => state.updateWorkspace)
@@ -3833,8 +3391,25 @@ export function WorkspacesPage() {
   )
   const [workspaceTableResizingColumn, setWorkspaceTableResizingColumn] = useState<WorkspaceTableColumnKey | null>(null)
   const [workspaceTableDraggingColumn, setWorkspaceTableDraggingColumn] = useState<WorkspaceTableColumnKey | null>(null)
-  const [workspaceDrilldownSelectionId, setWorkspaceDrilldownSelectionId] = useState<string | null>(null)
-  const [workspaceDrilldownInitialTab, setWorkspaceDrilldownInitialTab] = useState<WorkspaceDrilldownTab>('overview')
+  const [workspaceDrilldownSelectionId, setWorkspaceDrilldownSelectionId] = useState<string | null>(() =>
+    parseCenterView(searchParams.get('view')) === 'workspaces'
+      ? parseWorkspaceDrilldownSelectionId(searchParams.get('workspace'))
+      : null,
+  )
+  const [workspaceDrilldownInitialTab, setWorkspaceDrilldownInitialTab] = useState<WorkspaceDrilldownTab>(() =>
+    parseCenterView(searchParams.get('view')) === 'workspaces'
+      ? parseWorkspaceDrilldownTab(searchParams.get('workspaceTab'))
+      : 'overview',
+  )
+  const [workspaceLogContextRequest, setWorkspaceLogContextRequest] = useState<WorkspaceLogContextRequest | null>(null)
+  const [dataLibraryDrilldownRequest, setDataLibraryDrilldownRequest] = useState<{
+    requestKey: number
+    assetId: string
+    tab?: 'overview' | 'access' | 'actions' | 'logs'
+    accessFilter?: 'all' | 'access_status' | 'role_changes' | 'invitation_status' | 'other'
+    actorName?: string | null
+  } | null>(null)
+  const [invitationActionPendingId, setInvitationActionPendingId] = useState<string | null>(null)
   const [createWorkspaceRowOpen, setCreateWorkspaceRowOpen] = useState(false)
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [createError, setCreateError] = useState('')
@@ -3908,6 +3483,24 @@ export function WorkspacesPage() {
     () => normalizeWorkspaceUserId(workspaceCurrentUserId) || null,
     [workspaceCurrentUserId],
   )
+
+  useEffect(() => {
+    if (!workspaceDrilldownSelectionId) {
+      setWorkspaceLogContextRequest(null)
+    }
+  }, [workspaceDrilldownSelectionId])
+
+  useEffect(() => {
+    if (centerView !== 'workspaces') {
+      setWorkspaceLogContextRequest(null)
+    }
+  }, [centerView])
+
+  useEffect(() => {
+    if (centerView !== 'data') {
+      setDataLibraryDrilldownRequest(null)
+    }
+  }, [centerView])
 
   const appendWorkspaceAuditLog = (
     workspaceId: string,
@@ -4026,6 +3619,7 @@ export function WorkspacesPage() {
       authorRequests
         .map((request) => ({
           id: request.id,
+          entityId: request.workspaceId,
           invitationType: request.invitationType === 'data' ? 'data' as const : 'workspace' as const,
           invitationLabel: request.workspaceName,
           personName: request.authorName,
@@ -4048,16 +3642,12 @@ export function WorkspacesPage() {
       const activeWorkspace = activeWorkspaceId
         ? workspaces.find((workspace) => workspace.id === activeWorkspaceId) || null
         : null
-      if (
-        activeWorkspace &&
-        !isWorkspaceReadOnlyForCurrentUser(activeWorkspace, workspaceCurrentUserId)
-      ) {
+      if (activeWorkspace && canAccessWorkspaceInbox(activeWorkspace, workspaceCurrentUserId)) {
         return activeWorkspace
       }
       return (
         workspaces.find(
-          (workspace) =>
-            !isWorkspaceReadOnlyForCurrentUser(workspace, workspaceCurrentUserId),
+          (workspace) => canAccessWorkspaceInbox(workspace, workspaceCurrentUserId),
         ) || null
       )
     },
@@ -4489,12 +4079,28 @@ export function WorkspacesPage() {
     if (query.trim()) {
       nextParams.set('q', query.trim())
     }
+    if (centerView === 'workspaces' && workspaceDrilldownSelectionId) {
+      nextParams.set('workspace', workspaceDrilldownSelectionId)
+      nextParams.set('workspaceTab', workspaceDrilldownInitialTab)
+    }
     const current = searchParams.toString()
     const next = nextParams.toString()
     if (current !== next) {
       setSearchParams(nextParams, { replace: true })
     }
-  }, [centerView, filterKey, viewMode, sortColumn, sortDirection, query, searchParams, setSearchParams, workspaceScope])
+  }, [
+    centerView,
+    filterKey,
+    query,
+    searchParams,
+    setSearchParams,
+    sortColumn,
+    sortDirection,
+    viewMode,
+    workspaceDrilldownInitialTab,
+    workspaceDrilldownSelectionId,
+    workspaceScope,
+  ])
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -4832,7 +4438,10 @@ export function WorkspacesPage() {
     resetCollaboratorComposer()
   }
 
-  const onCancelPendingInvitation = (invitationId: string) => {
+  const onCancelPendingInvitation = (
+    invitationId: string,
+    options?: { openLogs?: boolean },
+  ) => {
     const invitation = invitationsSent.find((item) => item.id === invitationId) || null
     if (!invitation || invitation.status !== 'pending') {
       setInvitationStatus('Pending invitation could not be found.')
@@ -4856,6 +4465,13 @@ export function WorkspacesPage() {
         role: cancelled.role,
       }),
     )
+    if (options?.openLogs !== false) {
+      openWorkspaceLogsWithContext(
+        cancelled.workspaceId,
+        'invitation_status',
+        cancelled.inviteeName,
+      )
+    }
   }
 
   const onCancelPendingCollaboratorInvitation = (collaborator: CollaboratorChipEntry) => {
@@ -4896,8 +4512,9 @@ export function WorkspacesPage() {
       return
     }
     pendingInvitations.forEach((invitation) => {
-      onCancelPendingInvitation(invitation.id)
+      onCancelPendingInvitation(invitation.id, { openLogs: false })
     })
+    openWorkspaceLogsWithContext(workspace.id, 'invitation_status')
   }
 
   const onChangeCollaboratorRole = (
@@ -4941,6 +4558,11 @@ export function WorkspacesPage() {
           toRole: role,
           pending: true,
         }),
+      )
+      openWorkspaceLogsWithContext(
+        workspaceDrilldownSelection.id,
+        'role_changes',
+        collaborator.name,
       )
       return
     }
@@ -5026,6 +4648,7 @@ export function WorkspacesPage() {
           role: sent.role,
         }),
       )
+      openWorkspaceLogsWithContext(workspace.id, 'invitation_status', sent.inviteeName)
       return
     }
 
@@ -5063,13 +4686,37 @@ export function WorkspacesPage() {
     )
   }
 
-  const onAcceptAuthorRequest = (requestId: string) => {
-    const acceptedWorkspace = acceptAuthorRequest(requestId)
-    if (!acceptedWorkspace) {
+  const onAcceptAuthorRequest = async (invitation: (typeof invitationRows)[number]) => {
+    setInvitationActionPendingId(invitation.id)
+    const accepted = await acceptAuthorRequest(invitation.id)
+    if (!accepted.success) {
+      setInvitationActionPendingId(null)
       setInvitationStatus('Author request could not be accepted.')
       return
     }
     setInvitationStatus('')
+    setInvitationActionPendingId(null)
+    if (accepted.invitationType === 'workspace' && accepted.workspaceId) {
+      setWorkspaceLogContextRequest({
+        requestKey: Date.now(),
+        filter: 'invitation_status',
+        actorName: currentReaderName,
+      })
+      setCenterView('workspaces')
+      setViewMode('table')
+      onSelectWorkspace(accepted.workspaceId, 'logs')
+      return
+    }
+    if (accepted.invitationType === 'data' && accepted.acceptedAssetId) {
+      setDataLibraryDrilldownRequest({
+        requestKey: Date.now(),
+        assetId: accepted.acceptedAssetId,
+        tab: 'logs',
+        accessFilter: 'invitation_status',
+        actorName: currentReaderName,
+      })
+      setCenterView('data')
+    }
   }
 
   const onDeclineAuthorRequest = (requestId: string) => {
@@ -5087,11 +4734,34 @@ export function WorkspacesPage() {
     navigate(`/w/${workspaceId}/overview`)
   }
 
-  const onSelectWorkspace = (workspaceId: string) => {
-    setWorkspaceDrilldownInitialTab('overview')
+  const onSelectWorkspace = (workspaceId: string, initialTab: WorkspaceDrilldownTab = 'overview') => {
+    setWorkspaceDrilldownInitialTab(initialTab)
     setWorkspaceDrilldownSelectionId(workspaceId)
     resetCollaboratorComposer()
     setActiveWorkspaceId(workspaceId)
+  }
+
+  const openWorkspaceLogsWithContext = (
+    workspaceId: string,
+    filter: CollaboratorAuditFilter,
+    actorName?: string | null,
+  ) => {
+    const cleanActorName = normalizeCollaboratorName(actorName)
+    setWorkspaceLogContextRequest({
+      requestKey: Date.now(),
+      filter,
+      actorName: cleanActorName || null,
+    })
+    onSelectWorkspace(workspaceId, 'logs')
+  }
+
+  const onOpenWorkspaceDrilldownFromLibrary = (
+    workspaceId: string,
+    initialTab: WorkspaceDrilldownTab = 'overview',
+  ) => {
+    setCenterView('workspaces')
+    setViewMode('table')
+    onSelectWorkspace(workspaceId, initialTab)
   }
 
   const buildWorkspacesReturnPath = () => {
@@ -5111,8 +4781,8 @@ export function WorkspacesPage() {
 
   const onOpenWorkspaceInboxForWorkspace = (workspaceId: string, focusUnread = false) => {
     const workspace = workspaces.find((item) => item.id === workspaceId)
-    if (workspace && isWorkspaceReadOnlyForCurrentUser(workspace, workspaceCurrentUserId)) {
-      setInvitationStatus('Read-only workspaces do not allow inbox actions.')
+    if (workspace && !canAccessWorkspaceInbox(workspace, workspaceCurrentUserId)) {
+      setInvitationStatus('Removed workspaces do not allow inbox access.')
       return
     }
     const returnTo = buildWorkspacesReturnPath()
@@ -5319,8 +4989,10 @@ export function WorkspacesPage() {
       >
         <aside className="hidden border-r border-border nav:block">
           <WorkspacesHomeSidebar
-            centerView={centerView}
-            onSelectCenterView={setCenterView}
+            activeItem={centerView}
+            onOpenWorkspaces={() => setCenterView('workspaces')}
+            onOpenInvitations={() => setCenterView('invitations')}
+            onOpenDataLibrary={() => setCenterView('data-library')}
             onOpenInbox={onOpenWorkspaceInbox}
             canOpenInbox={canOpenInbox}
           />
@@ -5770,10 +5442,6 @@ export function WorkspacesPage() {
                                         <ChevronsUpDown className="h-3.5 w-3.5" />
                                       )}
                                     </button>
-                                  ) : columnKey === 'open' ? (
-                                    <span className={cn('inline-flex w-full items-center', alignClass)} aria-label={definition.label}>
-                                      <span className="sr-only">{definition.label}</span>
-                                    </span>
                                   ) : (
                                     <span className={cn('inline-flex w-full items-center', alignClass)}>{definition.label}</span>
                                   )}
@@ -5828,13 +5496,18 @@ export function WorkspacesPage() {
                               workspace,
                               workspaceCurrentUserId,
                             )
-                            const workspaceReadOnly = isWorkspaceReadOnlyForCurrentUser(workspace, workspaceCurrentUserId)
+                            const canOpenWorkspaceInbox = canAccessWorkspaceInbox(workspace, workspaceCurrentUserId)
+                            const isSelected = workspaceDrilldownSelectionId === workspace.id
                             return (
                               <TableRow
                                 key={workspace.id}
                                 className={cn(
+                                  'transition-colors',
                                   workspaceRemoved ? 'cursor-default opacity-90' : 'cursor-pointer',
-                                  workspace.ownerArchived && 'bg-[hsl(var(--tone-neutral-200))] hover:bg-[hsl(var(--tone-neutral-200))]',
+                                  workspace.ownerArchived
+                                    ? 'bg-[hsl(var(--tone-neutral-200))] hover:bg-[hsl(var(--tone-neutral-200))]'
+                                    : 'hover:bg-[hsl(var(--tone-accent-50))]',
+                                  isSelected && 'bg-[hsl(var(--tone-accent-50))]',
                                 )}
                                 onClick={() => onSelectWorkspace(workspace.id)}
                                 onDoubleClick={() => {
@@ -5897,19 +5570,20 @@ export function WorkspacesPage() {
                                                 </Button>
                                               </div>
                                             ) : (
-                                              <p className="flex min-w-0 items-center gap-1.5">
+                                              <div className="flex min-w-0 items-center gap-1.5">
                                                 {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
                                                 <span className="truncate">{workspace.name}</span>
                                                 {workspace.ownerArchived ? (
-                                                  <Badge
-                                                    size="sm"
-                                                    variant="outline"
-                                                    className="shrink-0 border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-800))]"
+                                                  <span
+                                                    role="img"
+                                                    aria-label={workspaceLockedBadgeLabel(workspace, workspaceCurrentUserId)}
+                                                    title={workspaceLockedBadgeLabel(workspace, workspaceCurrentUserId)}
+                                                    className={WORKSPACE_LOCK_INDICATOR_CLASS}
                                                   >
-                                                    {workspaceLockedBadgeLabel(workspace, workspaceCurrentUserId)}
-                                                  </Badge>
+                                                    <Lock className="h-3 w-3" aria-hidden="true" />
+                                                  </span>
                                                 ) : null}
-                                              </p>
+                                              </div>
                                             )}
                                           </div>
                                         </div>
@@ -5937,28 +5611,6 @@ export function WorkspacesPage() {
                                       </TableCell>
                                     )
                                   }
-                                  if (columnKey === 'open') {
-                                    return (
-                                      <TableCell key={`${workspace.id}-${columnKey}`} className={cn(WORKSPACE_TABLE_COLUMN_DEFINITIONS.open.cellClassName, HOUSE_TABLE_CELL_TEXT_CLASS, workspaceTableColumnDividerClass)}>
-                                        <div className="flex justify-center">
-                                          <Button
-                                            type="button"
-                                            variant="cta"
-                                            size="sm"
-                                            className="group h-8 w-8 p-0"
-                                            onClick={(event) => {
-                                              event.stopPropagation()
-                                              onOpenWorkspace(workspace.id)
-                                            }}
-                                            disabled={workspaceRemoved}
-                                            aria-label={`Open ${workspace.name}`}
-                                          >
-                                            <ArrowRight className="h-3.5 w-3.5 transition-transform duration-[var(--motion-duration-ui)] ease-out group-hover:translate-x-0.5 group-focus-visible:translate-x-0.5" />
-                                          </Button>
-                                        </div>
-                                      </TableCell>
-                                    )
-                                  }
                                   return (
                                     <TableCell key={`${workspace.id}-${columnKey}`} className={cn(WORKSPACE_TABLE_COLUMN_DEFINITIONS.unread.cellClassName, HOUSE_TABLE_CELL_TEXT_CLASS, workspaceTableColumnDividerClass)}>
                                       <button
@@ -5969,12 +5621,12 @@ export function WorkspacesPage() {
                                         )}
                                         onClick={(event) => {
                                           event.stopPropagation()
-                                          if (!workspaceReadOnly) {
+                                          if (canOpenWorkspaceInbox) {
                                             onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
                                           }
                                         }}
                                         aria-label={`Open inbox for ${workspace.name}. ${signal.unreadCount} unread message${signal.unreadCount === 1 ? '' : 's'}.`}
-                                        disabled={workspaceReadOnly}
+                                        disabled={!canOpenWorkspaceInbox}
                                       >
                                         {signal.unreadCount}
                                       </button>
@@ -5993,28 +5645,67 @@ export function WorkspacesPage() {
                               if (columnKey === 'workspace') {
                                 return (
                                   <TableCell key={`workspace-create-${columnKey}`} className={cn('align-top font-medium', HOUSE_TABLE_CELL_TEXT_CLASS, workspaceTableColumnDividerClass)}>
-                                    {createWorkspaceRowOpen ? (
-                                      <div className="flex items-center gap-2">
-                                        <Input
-                                          value={newWorkspaceName}
-                                          onChange={(event) => setNewWorkspaceName(event.target.value)}
-                                          onKeyDown={(event) => {
-                                            if (event.key === 'Enter') {
-                                              event.preventDefault()
+                                    <div className="flex min-h-8 items-center gap-2">
+                                      {createWorkspaceRowOpen ? (
+                                        <>
+                                          <Input
+                                            value={newWorkspaceName}
+                                            onChange={(event) => setNewWorkspaceName(event.target.value)}
+                                            onKeyDown={(event) => {
+                                              if (event.key === 'Enter') {
+                                                event.preventDefault()
+                                                onCreateWorkspace()
+                                              } else if (event.key === 'Escape') {
+                                                event.preventDefault()
+                                                onCancelCreateWorkspaceRow()
+                                              }
+                                            }}
+                                            placeholder="New workspace name"
+                                            className={cn('h-8 w-full', HOUSE_INPUT_CLASS)}
+                                            autoFocus
+                                          />
+                                          <button
+                                            type="button"
+                                            className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS)}
+                                            onClick={(event) => {
+                                              event.stopPropagation()
                                               onCreateWorkspace()
-                                            } else if (event.key === 'Escape') {
-                                              event.preventDefault()
+                                            }}
+                                            aria-label="Save workspace"
+                                            disabled={!canCreateWorkspace}
+                                          >
+                                            <Save className="h-4 w-4" strokeWidth={2.1} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_DISCARD_CLASS)}
+                                            onClick={(event) => {
+                                              event.stopPropagation()
                                               onCancelCreateWorkspaceRow()
-                                            }
-                                          }}
-                                          placeholder="New workspace name"
-                                          className={cn('h-8 w-full', HOUSE_INPUT_CLASS)}
-                                          autoFocus
-                                        />
-                                      </div>
-                                    ) : (
-                                      <div className="flex min-h-8 items-center" />
-                                    )}
+                                            }}
+                                            aria-label="Cancel create workspace"
+                                          >
+                                            <X className="h-4 w-4" strokeWidth={2.1} />
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_ADD_CLASS, 'shrink-0')}
+                                            onClick={(event) => {
+                                              event.stopPropagation()
+                                              onOpenCreateWorkspaceRow()
+                                            }}
+                                            disabled={!canCreateWorkspace}
+                                            aria-label="Create workspace"
+                                          >
+                                            <Plus className="h-4 w-4" strokeWidth={2.2} />
+                                          </button>
+                                          <span className="text-sm font-normal text-muted-foreground">Create workspace</span>
+                                        </>
+                                      )}
+                                    </div>
                                   </TableCell>
                                 )
                               }
@@ -6032,52 +5723,7 @@ export function WorkspacesPage() {
                                   </TableCell>
                                 )
                               }
-                              return (
-                                <TableCell key={`workspace-create-${columnKey}`} className={cn(WORKSPACE_TABLE_COLUMN_DEFINITIONS.open.cellClassName, HOUSE_TABLE_CELL_TEXT_CLASS, workspaceTableColumnDividerClass)}>
-                                  <div className="flex justify-center gap-1.5">
-                                    {createWorkspaceRowOpen ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS)}
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            onCreateWorkspace()
-                                          }}
-                                          aria-label="Save workspace"
-                                          disabled={!canCreateWorkspace}
-                                        >
-                                          <Save className="h-4 w-4" strokeWidth={2.1} />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_DISCARD_CLASS)}
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            onCancelCreateWorkspaceRow()
-                                          }}
-                                          aria-label="Cancel create workspace"
-                                        >
-                                          <X className="h-4 w-4" strokeWidth={2.1} />
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        className={cn(HOUSE_COLLABORATOR_ACTION_ICON_CLASS, HOUSE_COLLABORATOR_ACTION_ICON_ADD_CLASS, 'shrink-0')}
-                                        onClick={(event) => {
-                                          event.stopPropagation()
-                                          onOpenCreateWorkspaceRow()
-                                        }}
-                                        disabled={!canCreateWorkspace}
-                                        aria-label="Create workspace"
-                                      >
-                                        <Plus className="h-4 w-4" strokeWidth={2.2} />
-                                      </button>
-                                    )}
-                                  </div>
-                                </TableCell>
-                              )
+                              return null
                             })}
                           </TableRow>
                         </TableBody>
@@ -6096,10 +5742,7 @@ export function WorkspacesPage() {
                         workspace,
                         workspaceCurrentUserId,
                       )
-                      const workspaceReadOnly = isWorkspaceReadOnlyForCurrentUser(
-                        workspace,
-                        workspaceCurrentUserId,
-                      )
+                      const canOpenWorkspaceInbox = canAccessWorkspaceInbox(workspace, workspaceCurrentUserId)
                       return (
                         <button
                           key={workspace.id}
@@ -6164,13 +5807,14 @@ export function WorkspacesPage() {
                                   {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
                                   <span className="truncate">{workspace.name}</span>
                                   {workspace.ownerArchived ? (
-                                    <Badge
-                                      size="sm"
-                                      variant="outline"
-                                      className="shrink-0 border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-800))]"
+                                    <span
+                                      role="img"
+                                      aria-label={workspaceLockedBadgeLabel(workspace, workspaceCurrentUserId)}
+                                      title={workspaceLockedBadgeLabel(workspace, workspaceCurrentUserId)}
+                                      className={WORKSPACE_LOCK_INDICATOR_CLASS}
                                     >
-                                      {workspaceLockedBadgeLabel(workspace, workspaceCurrentUserId)}
-                                    </Badge>
+                                      <Lock className="h-3 w-3" aria-hidden="true" />
+                                    </span>
                                   ) : null}
                                 </p>
                                 <p className="mt-1 text-xs text-muted-foreground">{ownerLabel}</p>
@@ -6204,12 +5848,12 @@ export function WorkspacesPage() {
                             )}
                             onClick={(event) => {
                               event.stopPropagation()
-                              if (workspaceReadOnly) {
+                              if (!canOpenWorkspaceInbox) {
                                 return
                               }
                               onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
                             }}
-                            disabled={workspaceReadOnly}
+                            disabled={!canOpenWorkspaceInbox}
                           >
                             {signal.unreadCount}
                           </button>
@@ -6224,12 +5868,12 @@ export function WorkspacesPage() {
                             className="rounded border border-border bg-background px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
                             onClick={(event) => {
                               event.stopPropagation()
-                              if (workspaceReadOnly) {
+                              if (!canOpenWorkspaceInbox) {
                                 return
                               }
                               onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
                             }}
-                            disabled={workspaceReadOnly}
+                            disabled={!canOpenWorkspaceInbox}
                           >
                             Open inbox
                           </button>
@@ -6345,7 +5989,8 @@ export function WorkspacesPage() {
                                       variant="cta"
                                       size="sm"
                                       className="inline-flex items-center gap-1.5"
-                                      onClick={() => onAcceptAuthorRequest(invitation.id)}
+                                      onClick={() => void onAcceptAuthorRequest(invitation)}
+                                      disabled={invitationActionPendingId === invitation.id}
                                     >
                                       <Check className="h-3.5 w-3.5" strokeWidth={2.2} />
                                       Accept
@@ -6356,6 +6001,7 @@ export function WorkspacesPage() {
                                       size="sm"
                                       className="inline-flex items-center gap-1.5"
                                       onClick={() => onDeclineAuthorRequest(invitation.id)}
+                                      disabled={invitationActionPendingId === invitation.id}
                                     >
                                       <X className="h-3.5 w-3.5" strokeWidth={2.2} />
                                       Decline
@@ -6372,6 +6018,8 @@ export function WorkspacesPage() {
                 ) : (
                   <WorkspacesDataLibraryView
                     showPageHeader={false}
+                    onOpenWorkspaceDrilldown={onOpenWorkspaceDrilldownFromLibrary}
+                    drilldownRequest={dataLibraryDrilldownRequest}
                   />
                 )}
               </Section>
@@ -6383,6 +6031,14 @@ export function WorkspacesPage() {
                   ) : null}
                   {createError ? (
                     <p className="text-sm text-red-700">{createError}</p>
+                  ) : null}
+                  {remoteWorkspaceError ? (
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-red-700">{remoteWorkspaceError}</p>
+                      <Button type="button" variant="outline" size="sm" onClick={clearRemoteWorkspaceError}>
+                        Dismiss
+                      </Button>
+                    </div>
                   ) : null}
                   {invitationStatus ? (
                     <p className={HOUSE_FIELD_HELPER_CLASS}>{invitationStatus}</p>
@@ -6462,6 +6118,7 @@ export function WorkspacesPage() {
             initialTab={workspaceDrilldownInitialTab}
             selectedWorkspaceReadOnly={selectedWorkspaceReadOnly}
             selectedWorkspaceReadOnlyMessage={selectedWorkspaceReadOnlyMessage}
+            initialLogContext={workspaceLogContextRequest}
             currentWorkspaceUserId={workspaceCurrentUserId}
             currentReaderName={currentReaderName}
             memberActionIntent={workspaceMemberActionIntent}
@@ -6500,8 +6157,10 @@ export function WorkspacesPage() {
       <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
         <SheetContent side="left" className="w-[var(--layout-left-nav-width-mobile)] p-0 nav:hidden">
           <WorkspacesHomeSidebar
-            centerView={centerView}
-            onSelectCenterView={setCenterView}
+            activeItem={centerView}
+            onOpenWorkspaces={() => setCenterView('workspaces')}
+            onOpenInvitations={() => setCenterView('invitations')}
+            onOpenDataLibrary={() => setCenterView('data-library')}
             onOpenInbox={onOpenWorkspaceInbox}
             canOpenInbox={canOpenInbox}
             onNavigate={() => setLeftPanelOpen(false)}

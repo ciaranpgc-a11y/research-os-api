@@ -4,6 +4,10 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from research_os.platform_compat import patch_windows_platform_machine
+
+patch_windows_platform_machine()
+
 from sqlalchemy import select
 
 from research_os.db import ApiProviderUsageEvent, create_all_tables, session_scope

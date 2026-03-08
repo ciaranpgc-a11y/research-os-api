@@ -94,8 +94,10 @@ export async function uploadLibraryAssets(input: {
   token?: string
   files: File[]
   projectId?: string
+  workspaceId?: string
 }): Promise<LibraryAssetUploadPayload> {
   const projectId = normalizeOptionalId(input.projectId)
+  const workspaceId = normalizeOptionalId(input.workspaceId)
 
   const toBase64 = async (file: File): Promise<string> => {
     const buffer = await file.arrayBuffer()
@@ -113,6 +115,9 @@ export async function uploadLibraryAssets(input: {
   }
   if (projectId) {
     formData.append('project_id', projectId)
+  }
+  if (workspaceId) {
+    formData.append('workspace_id', workspaceId)
   }
   const response = await fetch(`${API_BASE_URL}/v1/library/assets/upload`, {
     method: 'POST',
@@ -140,6 +145,7 @@ export async function uploadLibraryAssets(input: {
     headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       project_id: projectId || null,
+      workspace_id: workspaceId || null,
       files: jsonFiles,
     }),
   })
@@ -152,6 +158,7 @@ export async function uploadLibraryAssets(input: {
 export async function listLibraryAssets(input: {
   token?: string
   projectId?: string
+  workspaceId?: string
   query?: string
   ownership?: LibraryAssetOwnership
   scope?: LibraryAssetScope
@@ -161,9 +168,13 @@ export async function listLibraryAssets(input: {
   sortDirection?: LibraryAssetSortDirection
 }): Promise<LibraryAssetListPayload> {
   const projectId = normalizeOptionalId(input.projectId)
+  const workspaceId = normalizeOptionalId(input.workspaceId)
   const search = new URLSearchParams()
   if (projectId) {
     search.set('project_id', projectId)
+  }
+  if (workspaceId) {
+    search.set('workspace_id', workspaceId)
   }
   if ((input.query || '').trim()) {
     search.set('query', input.query!.trim())
@@ -236,6 +247,8 @@ export async function updateLibraryAssetMetadata(input: {
   filename?: string
   lockedForTeamMembers?: boolean
   archivedForCurrentUser?: boolean
+  workspaceId?: string | null
+  workspaceIds?: string[]
 }): Promise<LibraryAssetRecord> {
   const response = await fetch(`${API_BASE_URL}/v1/library/assets/${encodeURIComponent(input.assetId)}`, {
     method: 'PATCH',
@@ -244,6 +257,8 @@ export async function updateLibraryAssetMetadata(input: {
       filename: input.filename,
       locked_for_team_members: input.lockedForTeamMembers,
       archived_for_current_user: input.archivedForCurrentUser,
+      workspace_id: input.workspaceId,
+      workspace_ids: input.workspaceIds,
     }),
   })
   if (!response.ok) {

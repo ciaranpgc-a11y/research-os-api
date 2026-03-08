@@ -88,6 +88,9 @@ function hasWorkspaceInboxWriteAccess(
   if (ownerKey && ownerKey === senderKey) {
     return true
   }
+  if (workspace.ownerArchived) {
+    return false
+  }
   const collaboratorKeys = new Set(
     (workspace.collaborators || []).map((value) => normalizeWorkspaceUserId(value.userId)),
   )

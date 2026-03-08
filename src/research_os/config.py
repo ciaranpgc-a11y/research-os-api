@@ -20,7 +20,12 @@ def get_openai_api_key() -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ConfigurationError("OPENAI_API_KEY is not set.")
-    return api_key
+    clean = str(api_key).strip()
+    if clean.startswith("PASTE_YOUR_REAL_KEY_HERE") and "sk-" in clean:
+        clean = clean[clean.index("sk-") :]
+    if not clean:
+        raise ConfigurationError("OPENAI_API_KEY is not set.")
+    return clean
 
 
 def get_data_library_root() -> Path:

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { ArrowUpRight, Download, Eye, EyeOff, FileText, Hammer, Share2, X } from 'lucide-react'
 
 import { Button, Card, CardContent, DrilldownSheet, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
@@ -71,7 +71,7 @@ type PublicationsTopStripProps = {
   forceInsightsVisible?: boolean
 }
 
-type PublicationInsightsSectionKey = 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history'
+type PublicationInsightsSectionKey = 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history' | 'publication_output_pattern' | 'publication_production_phase' | 'publication_volume_over_time' | 'publication_article_type_over_time' | 'publication_type_over_time'
 type PublicationInsightAction = {
   key: string
   label: string
@@ -297,6 +297,8 @@ export type PublicationProductionPatternStats = {
   firstPublicationYear: number | null
   lastPublicationYear: number | null
   activeSpan: number
+  years: number[]
+  series: number[]
   yearsWithOutput: number
   outputContinuity: number | null
   longestStreak: number
@@ -353,6 +355,65 @@ export type PublicationProductionPhaseStats = {
   historicalGapYearsPresent: boolean
   emptyReason: string | null
 }
+
+type PublicationVolumeOverTimeRollingBlock = {
+  label: string
+  count: number
+}
+
+type PublicationVolumeOverTimeInsightStats = {
+  totalPublications: number
+  spanLabel: string | null
+  firstPublicationYear: number | null
+  lastPublicationYear: number | null
+  peakYears: number[]
+  peakCount: number | null
+  lowYears: number[]
+  lowCount: number | null
+  recentWindowLabel: string | null
+  recentWindowEndLabel: string | null
+  recentWindowTotal: number
+  recentWindowActiveMonths: number
+  recentWindowPeakLabels: string[]
+  threeYearWindowLabel: string | null
+  threeYearBlocks: PublicationVolumeOverTimeRollingBlock[]
+  fiveYearWindowLabel: string | null
+  fiveYearBlocks: PublicationVolumeOverTimeRollingBlock[]
+  recentDetailCount: number
+  recentDetailRangeLabel: string | null
+  recentMostRecentDateLabel: string | null
+  recentMostRecentTitle: string | null
+}
+
+type PublicationArticleTypeWindowInsightSummary = {
+  windowId: PublicationsWindowMode
+  rangeLabel: string | null
+  totalCount: number
+  distinctTypeCount: number
+  topLabels: string[]
+  topCount: number
+  topSharePct: number | null
+  secondLabel: string | null
+  secondSharePct: number | null
+  orderedLabels: string[]
+}
+
+type PublicationArticleTypeOverTimeInsightStats = {
+  emptyReason: string | null
+  spanLabel: string | null
+  firstPublicationYear: number | null
+  lastPublicationYear: number | null
+  totalCount: number
+  allWindow: PublicationArticleTypeWindowInsightSummary | null
+  fiveYearWindow: PublicationArticleTypeWindowInsightSummary | null
+  threeYearWindow: PublicationArticleTypeWindowInsightSummary | null
+  oneYearWindow: PublicationArticleTypeWindowInsightSummary | null
+  latestYearIsPartial: boolean
+  latestPartialYearLabel: string | null
+}
+
+type PublicationPublicationTypeWindowInsightSummary = PublicationArticleTypeWindowInsightSummary
+type PublicationPublicationTypeOverTimeInsightStats = PublicationArticleTypeOverTimeInsightStats
 
 function parsePublicationProductionPatternAsOfDate(value: unknown): Date | null {
   const clean = String(value || '').trim()
@@ -534,6 +595,114 @@ function getPublicationConsistencySupportingText(value: number | null): string {
   return 'Publication output is concentrated into distinct spike years.'
 }
 
+function getPublicationProductionPatternGapYearCount(stats: PublicationProductionPatternStats): number {
+  if (stats.activeSpan <= 0) {
+    return 0
+  }
+  return Math.max(0, stats.activeSpan - stats.yearsWithOutput)
+}
+
+function formatPublicationProductionSpanPeriodText(stats: PublicationProductionPatternStats): string | null {
+  if (stats.firstPublicationYear === null || stats.lastPublicationYear === null) {
+    return null
+  }
+  return stats.firstPublicationYear === stats.lastPublicationYear
+    ? `in ${stats.firstPublicationYear}`
+    : `between ${stats.firstPublicationYear} and ${stats.lastPublicationYear}`
+}
+
+function getPublicationProductionPatternRangeDetails(stats: PublicationProductionPatternStats): {
+  maxCount: number
+  minCount: number
+  maxYears: number[]
+  minYears: number[]
+} | null {
+  if (!stats.years.length || stats.years.length !== stats.series.length) {
+    return null
+  }
+
+  const maxCount = Math.max(...stats.series)
+  const minCount = Math.min(...stats.series)
+  return {
+    maxCount,
+    minCount,
+    maxYears: stats.years.filter((year, index) => (stats.series[index] ?? Number.NEGATIVE_INFINITY) === maxCount),
+    minYears: stats.years.filter((year, index) => (stats.series[index] ?? Number.POSITIVE_INFINITY) === minCount),
+  }
+}
+
+function formatPublicationProductionCoverageSummary(stats: PublicationProductionPatternStats): string {
+  if (stats.activeSpan <= 0) {
+    return 'your active publication span is not available yet.'
+  }
+
+  const spanPeriodText = formatPublicationProductionSpanPeriodText(stats)
+  if (stats.yearsWithOutput >= stats.activeSpan) {
+    return spanPeriodText
+      ? `you published in every year ${spanPeriodText}.`
+      : 'you published in every year of this span.'
+  }
+
+  return spanPeriodText
+    ? `you published in ${formatInt(stats.yearsWithOutput)} of the ${formatInt(stats.activeSpan)} years ${spanPeriodText}.`
+    : `you published in ${formatInt(stats.yearsWithOutput)} of the ${formatInt(stats.activeSpan)} years in this span.`
+}
+
+function formatPublicationProductionGapYearSummary(stats: PublicationProductionPatternStats): string {
+  const gapYears = getPublicationProductionPatternGapYearCount(stats)
+  if (stats.activeSpan <= 0) {
+    return 'gap-year context is not available yet.'
+  }
+  if (gapYears <= 0) {
+    return 'there were no gap years without recorded publications.'
+  }
+  if (gapYears === 1) {
+    return 'there was 1 gap year without a recorded publication in this span.'
+  }
+  return `there were ${formatInt(gapYears)} gap years without recorded publications in this span.`
+}
+
+function formatPublicationProductionLongestStreakSummary(stats: PublicationProductionPatternStats): string {
+  if (stats.longestStreak <= 0) {
+    return 'a continuous publication streak is not available yet.'
+  }
+  if (stats.activeSpan > 0 && stats.longestStreak >= stats.activeSpan && stats.yearsWithOutput >= stats.activeSpan) {
+    return `your longest uninterrupted publication streak ran through the full ${formatInt(stats.activeSpan)} years.`
+  }
+  return `your longest uninterrupted publication streak lasted ${formatInt(stats.longestStreak)} ${pluralize(stats.longestStreak, 'year')}.`
+}
+
+function getPublicationConsistencyUserMeaning(value: number | null, stats: PublicationProductionPatternStats | null = null): string {
+  const gapYears = stats ? getPublicationProductionPatternGapYearCount(stats) : 0
+
+  if (value === null) {
+    return 'There is not enough publication history to estimate year-to-year consistency reliably.'
+  }
+  if (value >= 0.75) {
+    return gapYears === 0
+      ? 'This means your publication output is very evenly distributed from year to year.'
+      : 'This means your publication output is still broadly even overall, despite occasional quieter years.'
+  }
+  if (value >= 0.55) {
+    return gapYears === 0
+      ? 'This means your publication output is fairly even from year to year, with only modest variation.'
+      : 'This means your publication output is fairly even overall, although quieter years still pull it away from full consistency.'
+  }
+  if (value >= 0.35) {
+    return gapYears === 0
+      ? 'This means your publication output varies from year to year rather than staying tightly even.'
+      : 'This means your publication output varies from year to year and includes quieter years.'
+  }
+  if (value >= 0.2) {
+    return gapYears === 0
+      ? 'This means your publication output is clustered into stronger years rather than staying even across your active span.'
+      : 'This means your publication output is clustered into stronger years, with quieter gaps lowering overall consistency.'
+  }
+  return gapYears === 0
+    ? 'This means your publication output is concentrated into distinct spike years rather than being spread evenly across your active span.'
+    : 'This means your publication output is concentrated into distinct spike years, separated by quiet or zero-output years.'
+}
+
 function getPublicationBurstinessSupportingText(value: number | null): string {
   if (value === null) {
     return 'Need at least two active years to assess spike behaviour.'
@@ -553,6 +722,351 @@ function getPublicationBurstinessSupportingText(value: number | null): string {
   return 'Output is dominated by sharp publication surges rather than steady flow.'
 }
 
+function getPublicationBurstinessStandoutYears(stats: PublicationProductionPatternStats): Array<{ year: number; count: number }> {
+  const value = stats.burstinessScore
+  if (value === null || stats.years.length < 2 || stats.years.length !== stats.series.length || stats.activeSpan <= 0) {
+    return []
+  }
+
+  const averagePerActiveYear = stats.scopedPublicationCount / stats.activeSpan
+  if (!Number.isFinite(averagePerActiveYear) || averagePerActiveYear <= 0) {
+    return []
+  }
+
+  return stats.years
+    .map((year, index) => ({
+      year,
+      count: Math.max(0, Number(stats.series[index] ?? 0)),
+    }))
+    .filter((entry) => entry.count > averagePerActiveYear && (entry.count >= averagePerActiveYear * 1.35 || (entry.count - averagePerActiveYear) >= 2))
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count
+      }
+      return left.year - right.year
+    })
+}
+
+function getPublicationBurstinessUserMeaning(value: number | null, stats: PublicationProductionPatternStats | null = null): string {
+  const standoutYearCount = stats ? getPublicationBurstinessStandoutYears(stats).length : 0
+
+  if (value === null) {
+    return 'There is not enough publication history to estimate spike behaviour reliably.'
+  }
+  if (value <= 0.2) {
+    return 'This means your publication output follows a very steady annual cadence.'
+  }
+  if (value <= 0.4) {
+    return standoutYearCount <= 1
+      ? 'This means your publication output remains broadly balanced, with only limited signs of a stronger year.'
+      : 'This means your publication output remains broadly balanced, although a few stronger years stand above the rest.'
+  }
+  if (value <= 0.6) {
+    return standoutYearCount <= 1
+      ? 'This means your publication output mixes steadier years with one clear spike year.'
+      : 'This means your publication output mixes steadier years with a small set of noticeable spike years.'
+  }
+  if (value <= 0.8) {
+    return standoutYearCount <= 1
+      ? 'This means your publication output is concentrated into a pronounced surge year.'
+      : 'This means your publication output is concentrated into several pronounced surge years.'
+  }
+  return standoutYearCount <= 1
+    ? 'This means your publication output is dominated by a sharp publication surge rather than a steady annual flow.'
+    : 'This means your publication output is dominated by sharp publication surges rather than a steady annual flow.'
+}
+
+function formatPublicationPeakYearGroupLabel(count: number): string {
+  if (count <= 1) {
+    return 'a single peak year'
+  }
+  if (count === 2) {
+    return 'two peak years'
+  }
+  if (count === 3) {
+    return 'three peak years'
+  }
+  return 'a small set of peak years'
+}
+
+function getPublicationPeakYearShareUserMeaning(value: number | null, peakYearCount = 1): string {
+  const peakYearGroupLabel = formatPublicationPeakYearGroupLabel(peakYearCount)
+  const peakYearGroupPluralVerb = peakYearCount === 1 ? 'stands' : 'stand'
+
+  if (value === null) {
+    return 'There is not enough publication history to estimate peak-year concentration reliably.'
+  }
+  if (value < 0.12) {
+    return `This means your publication output is broadly distributed across your publication span, rather than being dominated by ${peakYearGroupLabel}.`
+  }
+  if (value < 0.2) {
+    return `This means your publication output is distributed overall, although ${peakYearGroupLabel} ${peakYearGroupPluralVerb} above the rest.`
+  }
+  if (value < 0.3) {
+    return `This means a moderate share of your publication output is concentrated in ${peakYearGroupLabel}.`
+  }
+  if (value < 0.4) {
+    return `This means ${peakYearGroupLabel} carr${peakYearCount === 1 ? 'ies' : 'y'} a substantial share of your publication output.`
+  }
+  return `This means your publication output is heavily concentrated in ${peakYearGroupLabel}.`
+}
+
+function formatPublicationProductionPatternYearList(years: number[]): string {
+  const labels = years
+    .filter((year) => Number.isInteger(year))
+    .map((year) => String(year))
+
+  if (labels.length <= 1) {
+    return labels[0] ?? ''
+  }
+  if (labels.length === 2) {
+    return `${labels[0]} and ${labels[1]}`
+  }
+  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`
+}
+
+function formatPublicationBurstinessSpikePatternExplanation(stats: PublicationProductionPatternStats): string {
+  const value = stats.burstinessScore
+  const fallback = getPublicationBurstinessSupportingText(value).replace(/^Output/i, 'your publication output')
+  const standoutYears = getPublicationBurstinessStandoutYears(stats)
+  const averagePerActiveYear = stats.activeSpan > 0 ? stats.scopedPublicationCount / stats.activeSpan : null
+
+  if (!standoutYears.length || averagePerActiveYear === null || averagePerActiveYear <= 0) {
+    return fallback
+  }
+
+  const typicalPaceText = `${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year`
+
+  if (standoutYears.length === 1) {
+    const standout = standoutYears[0]
+    const leadLabel = value <= 0.4 ? 'your main high-output year' : 'your clearest spike'
+    return `${leadLabel} was ${standout.year}, with ${formatInt(standout.count)} ${pluralize(standout.count, 'publication')} against a typical pace of ${typicalPaceText}.`
+  }
+
+  const first = standoutYears[0]
+  const second = standoutYears[1]
+  const leadLabel = value <= 0.4 ? 'your main high-output years were' : 'your clearest spikes came in'
+  return `${leadLabel} ${first.year} (${formatInt(first.count)} ${pluralize(first.count, 'publication')}) and ${second.year} (${formatInt(second.count)} ${pluralize(second.count, 'publication')}), against a typical pace of ${typicalPaceText}.`
+}
+
+function getPublicationProductionPatternPeakYearDetails(stats: PublicationProductionPatternStats): {
+  peakYear: number | null
+  peakCount: number | null
+  tiedPeakYears: number[]
+} {
+  if (stats.years.length === 0 || stats.years.length !== stats.series.length) {
+    return {
+      peakYear: null,
+      peakCount: null,
+      tiedPeakYears: [],
+    }
+  }
+
+  const peakCount = Math.max(...stats.series)
+  const tiedPeakYears = stats.years.filter((year, index) => (stats.series[index] ?? -1) === peakCount)
+
+  return {
+    peakYear: tiedPeakYears[0] ?? null,
+    peakCount,
+    tiedPeakYears,
+  }
+}
+
+function formatPublicationPeakYearSummary(details: {
+  peakYear: number | null
+  peakCount: number | null
+  tiedPeakYears: number[]
+}): string {
+  const { peakYear, peakCount, tiedPeakYears } = details
+
+  if (peakYear === null) {
+    return 'your highest-output year is not available yet.'
+  }
+
+  if (peakCount === null) {
+    return tiedPeakYears.length > 1
+      ? `your highest-output years were ${formatPublicationProductionPatternYearList(tiedPeakYears)}.`
+      : `your highest-output year was ${peakYear}.`
+  }
+
+  if (tiedPeakYears.length > 1) {
+    return `your highest-output years were ${formatPublicationProductionPatternYearList(tiedPeakYears)}, with ${formatInt(peakCount)} ${pluralize(peakCount, 'publication')} each.`
+  }
+
+  return `your highest-output year was ${peakYear}, with ${formatInt(peakCount)} ${pluralize(peakCount, 'publication')}.`
+}
+
+function formatPublicationPeakYearPortfolioShareSummary(
+  stats: PublicationProductionPatternStats,
+  details: {
+    peakYear: number | null
+    peakCount: number | null
+    tiedPeakYears: number[]
+  },
+  peakYearShare: number | null,
+): string {
+  const { peakYear, peakCount, tiedPeakYears } = details
+
+  if (peakYear === null || peakCount === null || peakYearShare === null || stats.scopedPublicationCount <= 0) {
+    return 'the share carried by your highest-output year is not available yet.'
+  }
+
+  const perYearShareLabel = formatPercentWhole(peakYearShare * 100)
+  if (tiedPeakYears.length > 1) {
+    const combinedCount = peakCount * tiedPeakYears.length
+    const combinedShareLabel = formatPercentWhole((combinedCount / stats.scopedPublicationCount) * 100)
+    return `each of those years contributed ${formatInt(peakCount)} of your ${formatInt(stats.scopedPublicationCount)} publications (${perYearShareLabel}). Together, those tied peak years contributed ${formatInt(combinedCount)} publications (${combinedShareLabel}).`
+  }
+
+  return `${formatInt(peakCount)} of your ${formatInt(stats.scopedPublicationCount)} publications (${perYearShareLabel}) came in ${peakYear}.`
+}
+
+function formatPublicationPeakYearEvenSpreadSummary(
+  stats: PublicationProductionPatternStats,
+  details: {
+    peakYear: number | null
+    peakCount: number | null
+    tiedPeakYears: number[]
+  },
+  peakYearShare: number | null,
+): string {
+  if (peakYearShare === null) {
+    return 'an even-spread comparison is not available yet.'
+  }
+
+  if (stats.activeSpan <= 1) {
+    return 'with only one active publication year, the full portfolio sits in that year.'
+  }
+
+  const evenSharePct = 100 / stats.activeSpan
+  const peakSharePct = peakYearShare * 100
+  const multiple = evenSharePct > 0 ? peakSharePct / evenSharePct : null
+  const perYearSubject = details.tiedPeakYears.length > 1 ? 'each of your tied peak years accounts for' : 'your peak year accounts for'
+  const multipleText = multiple !== null && Number.isFinite(multiple) && multiple >= 1.15
+    ? ` That is about ${formatRoundedOneDecimalTrimmed(multiple)}x an even annual share.`
+    : ''
+
+  return `across a ${formatPublicationProductionSpanLabel(stats.activeSpan)}, an even spread would be about ${formatRoundedOneDecimalTrimmed(evenSharePct)}% per year. ${perYearSubject} ${formatPercentWhole(peakSharePct)}.${multipleText}`
+}
+
+function formatPublicationConsistencyPatternExplanation(stats: PublicationProductionPatternStats): string {
+  const fallback = getPublicationConsistencySupportingText(stats.consistencyIndex).replace(/^Publication output/i, 'your publication output')
+  const details = getPublicationProductionPatternRangeDetails(stats)
+  const gapYears = getPublicationProductionPatternGapYearCount(stats)
+
+  if (!details) {
+    return fallback
+  }
+
+  if (details.maxCount === details.minCount) {
+    return `every active year recorded ${formatInt(details.maxCount)} ${pluralize(details.maxCount, 'publication')}.`
+  }
+
+  if (gapYears > 0 && details.minCount === 0) {
+    if (details.maxYears.length > 1) {
+      return `${formatInt(gapYears)} ${pluralize(gapYears, 'year')} had no recorded publications, while your strongest years were ${formatPublicationProductionPatternYearList(details.maxYears)} with ${formatInt(details.maxCount)} each.`
+    }
+    return `${formatInt(gapYears)} ${pluralize(gapYears, 'year')} had no recorded publications, while your strongest year was ${details.maxYears[0]} with ${formatInt(details.maxCount)} publications.`
+  }
+
+  if ((details.maxCount - details.minCount) <= 2) {
+    return `annual output stayed within a fairly tight range of ${formatInt(details.minCount)} to ${formatInt(details.maxCount)} publications.`
+  }
+
+  if (details.maxYears.length === 1 && details.minYears.length === 1) {
+    return `annual output ranged from ${formatInt(details.minCount)} publications in ${details.minYears[0]} to ${formatInt(details.maxCount)} in ${details.maxYears[0]}.`
+  }
+
+  return `annual output ranged from ${formatInt(details.minCount)} to ${formatInt(details.maxCount)} publications across your active years.`
+}
+
+function formatPublicationConsistencyAverageComparison(stats: PublicationProductionPatternStats, averagePerActiveYear: number | null): string {
+  if (averagePerActiveYear === null) {
+    return 'a comparison with your average annual pace is not available yet.'
+  }
+
+  const details = getPublicationProductionPatternRangeDetails(stats)
+  const gapYears = getPublicationProductionPatternGapYearCount(stats)
+  if (!details) {
+    return `your average pace was ${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year.`
+  }
+
+  if (details.maxCount === details.minCount) {
+    return `every active year sat right on your average pace of ${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year.`
+  }
+
+  const strongestYearText = details.maxYears.length > 1
+    ? `your strongest years reached ${formatInt(details.maxCount)} publications`
+    : `your strongest year reached ${formatInt(details.maxCount)} publications`
+
+  if (gapYears > 0 && details.minCount === 0) {
+    return `${strongestYearText}, while ${formatInt(gapYears)} gap ${gapYears === 1 ? 'year' : 'years'} pulled the overall average to ${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} per year.`
+  }
+
+  return `${strongestYearText}, against an average pace of ${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year.`
+}
+
+function formatPublicationConsistencyExtremesSummary(stats: PublicationProductionPatternStats): string {
+  const details = getPublicationProductionPatternRangeDetails(stats)
+  if (!details) {
+    return 'your strongest and quietest years are not available yet.'
+  }
+
+  if (details.maxCount === details.minCount) {
+    return `your strongest and quietest years sat at the same level, with ${formatInt(details.maxCount)} ${pluralize(details.maxCount, 'publication')} in every active year.`
+  }
+
+  const strongestYearsLabel = formatPublicationProductionPatternYearList(details.maxYears)
+  const quietestYearsLabel = formatPublicationProductionPatternYearList(details.minYears)
+  const quietestCountLabel = details.minCount === 0
+    ? 'no recorded publications'
+    : `${formatInt(details.minCount)} ${pluralize(details.minCount, 'publication')}`
+
+  return `your strongest ${details.maxYears.length === 1 ? 'year was' : 'years were'} ${strongestYearsLabel} with ${formatInt(details.maxCount)} ${pluralize(details.maxCount, 'publication')}, while your quietest ${details.minYears.length === 1 ? 'year was' : 'years were'} ${quietestYearsLabel} with ${quietestCountLabel}.`
+}
+
+function formatPublicationBurstinessTypicalYearSummary(stats: PublicationProductionPatternStats, averagePerActiveYear: number | null): string {
+  if (averagePerActiveYear === null || !stats.series.length) {
+    return 'your typical-year baseline is not available yet.'
+  }
+
+  const standoutYears = getPublicationBurstinessStandoutYears(stats)
+  const yearsAtOrBelowAverage = stats.series.filter((value) => value <= averagePerActiveYear).length
+  const yearsNearAverage = stats.series.filter((value) => Math.abs(value - averagePerActiveYear) <= 1).length
+  const typicalPaceText = `${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year`
+
+  if (!standoutYears.length) {
+    if (yearsNearAverage >= Math.max(1, Math.ceil(stats.series.length * 0.6))) {
+      return `most years stayed close to your typical pace of ${typicalPaceText}.`
+    }
+    return `your yearly output generally stayed around a typical pace of ${typicalPaceText}, without a major spike year standing apart.`
+  }
+
+  if (yearsAtOrBelowAverage >= stats.series.length - standoutYears.length) {
+    return `${formatInt(yearsAtOrBelowAverage)} of your ${formatInt(stats.series.length)} active years sat at or below your typical pace of ${typicalPaceText}, with the spikes doing the rest of the lifting.`
+  }
+
+  return `your spike years sat above a typical pace of ${typicalPaceText}, but several other years still ran close to that baseline.`
+}
+
+function formatPublicationBurstinessLowerTailSummary(stats: PublicationProductionPatternStats): string {
+  const details = getPublicationProductionPatternRangeDetails(stats)
+  if (!details) {
+    return 'your quieter years are not available yet.'
+  }
+
+  if (details.minCount === details.maxCount) {
+    return 'there is no lower-output tail here; every active year contributed at the same level.'
+  }
+
+  const quietestYearsLabel = formatPublicationProductionPatternYearList(details.minYears)
+  if (details.minCount === 0) {
+    return `the contrast is amplified by ${details.minYears.length === 1 ? `a zero-output year in ${quietestYearsLabel}` : `zero-output years in ${quietestYearsLabel}`}.`
+  }
+
+  return `outside the stronger years, output fell as low as ${formatInt(details.minCount)} ${pluralize(details.minCount, 'publication')} in ${quietestYearsLabel}.`
+}
+
 function getPublicationOutputContinuitySupportingText(value: number | null): string {
   if (value === null) {
     return 'Publication continuity is unavailable for the selected scope.'
@@ -570,6 +1084,31 @@ function getPublicationOutputContinuitySupportingText(value: number | null): str
     return 'Publication activity appears in scattered runs across the active span.'
   }
   return 'Publication activity appears only sporadically across the active span.'
+}
+
+function getPublicationOutputContinuityUserMeaning(value: number | null, stats: PublicationProductionPatternStats | null = null): string {
+  const gapYears = stats ? getPublicationProductionPatternGapYearCount(stats) : 0
+
+  if (value === null) {
+    return 'There is not enough publication history to estimate continuity reliably.'
+  }
+  if (value >= 0.85) {
+    return gapYears === 0
+      ? 'This means your publication activity is continuous across your publication span.'
+      : 'This means your publication activity is highly continuous, with only occasional gap years.'
+  }
+  if (value >= 0.7) {
+    return gapYears <= 2
+      ? 'This means your publication activity is present in most years, with only a few breaks.'
+      : 'This means your publication activity is present in most years, but not continuously.'
+  }
+  if (value >= 0.5) {
+    return 'This means your publication activity is intermittent rather than continuous across your publication span.'
+  }
+  if (value >= 0.3) {
+    return 'This means your publication activity is episodic, with substantial breaks between active years.'
+  }
+  return 'This means your publication activity is sporadic, with output appearing only in scattered years.'
 }
 
 type PublicationProductionPatternTone = 'accent' | 'positive' | 'neutral' | 'warning' | 'danger'
@@ -663,6 +1202,8 @@ export function buildPublicationProductionPatternStats(
       firstPublicationYear: null,
       lastPublicationYear: null,
       activeSpan: 0,
+      years: [],
+      series: [],
       yearsWithOutput: 0,
       outputContinuity: null,
       longestStreak: 0,
@@ -685,6 +1226,8 @@ export function buildPublicationProductionPatternStats(
     firstPublicationYear: yearSeries.firstPublicationYear,
     lastPublicationYear: yearSeries.lastPublicationYear,
     activeSpan: yearSeries.activeSpan,
+    years: yearSeries.years,
+    series,
     yearsWithOutput: series.filter((value) => value >= 1).length,
     outputContinuity,
     longestStreak: calculatePublicationLongestStreak(series),
@@ -735,6 +1278,573 @@ function getPublicationProductionPhaseInterpretation(phase: PublicationProductio
       return 'Publication activity is recovering after an earlier lull.'
     default:
       return 'Publication phase is not available.'
+  }
+}
+
+function getPublicationProductionPhaseUserMeaning(phase: PublicationProductionPhaseLabel | null): string {
+  switch (phase) {
+    case 'Emerging':
+      return 'This means your publication record is still in its early build-up phase.'
+    case 'Scaling':
+      return 'This means your portfolio is in a growth phase, with annual output rising over time.'
+    case 'Established':
+      return 'This means your publication record is mature, with annual output staying broadly stable.'
+    case 'Plateauing':
+      return 'This means earlier growth has levelled off and annual output is no longer rising strongly.'
+    case 'Contracting':
+      return 'This means annual output has fallen back from earlier levels.'
+    case 'Rebuilding':
+      return 'This means annual output is picking up again after an earlier lull.'
+    default:
+      return 'This means the current stage cannot yet be interpreted reliably.'
+  }
+}
+
+function formatPublicationProductionPhaseSlopeExplanation(
+  slope: number | null,
+  slopePeriodText: string | null,
+): string {
+  if (slope === null) {
+    return 'your trend slope is not available yet.'
+  }
+
+  const absSlope = Math.abs(slope)
+  const periodText = slopePeriodText ?? 'across the observed period'
+  const roundedSlope = absSlope.toFixed(1)
+
+  if (absSlope < 0.05) {
+    return `your annual publication output was broadly flat ${periodText}, changing by less than 0.1 publications per year on average.`
+  }
+
+  if (slope > 0) {
+    return `your annual publication output increased by an average of ${roundedSlope} publications per year ${periodText}.`
+  }
+
+  return `your annual publication output decreased by an average of ${roundedSlope} publications per year ${periodText}.`
+}
+
+function formatPublicationProductionSpanLabel(years: number): string {
+  return `${formatInt(years)}-year publication span`
+}
+
+function formatPublicationProductionPatternAsOfDateLabel(asOfDate: Date | null): string | null {
+  if (!asOfDate || Number.isNaN(asOfDate.getTime())) {
+    return null
+  }
+
+  return asOfDate.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+function resolvePublicationProductionPatternCurrentYearLabel(
+  stats: PublicationProductionPatternStats,
+  asOfDate: Date | null,
+): string {
+  const partialYear = stats.partialYear ?? (asOfDate && !Number.isNaN(asOfDate.getTime()) ? asOfDate.getUTCFullYear() : null)
+  return partialYear !== null ? String(partialYear) : 'the current year'
+}
+
+function formatPublicationProductionPatternPartialYearContext(
+  stats: PublicationProductionPatternStats,
+  asOfDate: Date | null,
+): string {
+  const cutoffLabel = formatPublicationProductionPatternAsOfDateLabel(asOfDate)
+  const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(stats, asOfDate)
+
+  if (cutoffLabel) {
+    return `Including your ${currentYearLabel} publications recorded through ${cutoffLabel}`
+  }
+
+  return `Including your ${currentYearLabel} publications recorded so far`
+}
+
+type PublicationProductionPatternYtdMetricSnapshot = {
+  interpretationLabel: string | null
+  valueLabel: string | null
+}
+
+function buildPublicationProductionPatternYtdChangeSummary({
+  metricLabel,
+  complete,
+  current,
+}: {
+  metricLabel: string
+  complete: PublicationProductionPatternYtdMetricSnapshot
+  current: PublicationProductionPatternYtdMetricSnapshot
+}): string | null {
+  const valueChanged = complete.valueLabel !== current.valueLabel
+  const interpretationChanged = complete.interpretationLabel !== current.interpretationLabel
+
+  if (!valueChanged && !interpretationChanged) {
+    return null
+  }
+
+  if (!complete.valueLabel && !complete.interpretationLabel) {
+    if (current.valueLabel && current.interpretationLabel) {
+      return `produces a provisional ${metricLabel} of ${current.valueLabel} (${current.interpretationLabel})`
+    }
+    if (current.valueLabel) {
+      return `produces a provisional ${metricLabel} of ${current.valueLabel}`
+    }
+    if (current.interpretationLabel) {
+      return `produces a provisional ${metricLabel} reading of ${current.interpretationLabel}`
+    }
+    return null
+  }
+
+  if (!current.valueLabel && !current.interpretationLabel) {
+    if (complete.valueLabel && complete.interpretationLabel) {
+      return `removes the provisional ${metricLabel} reading; completed years alone still read as ${complete.valueLabel} (${complete.interpretationLabel})`
+    }
+    if (complete.valueLabel) {
+      return `removes the provisional ${metricLabel} reading; completed years alone still read as ${complete.valueLabel}`
+    }
+    if (complete.interpretationLabel) {
+      return `removes the provisional ${metricLabel} reading; completed years alone still read as ${complete.interpretationLabel}`
+    }
+    return null
+  }
+
+  if (valueChanged && interpretationChanged && complete.valueLabel && current.valueLabel && complete.interpretationLabel && current.interpretationLabel) {
+    return `changes the displayed ${metricLabel} from ${complete.valueLabel} (${complete.interpretationLabel}) to ${current.valueLabel} (${current.interpretationLabel})`
+  }
+
+  if (!valueChanged && interpretationChanged && current.valueLabel && complete.interpretationLabel && current.interpretationLabel) {
+    return `keeps the displayed ${metricLabel} at ${current.valueLabel}, but shifts the reading from ${complete.interpretationLabel} to ${current.interpretationLabel}`
+  }
+
+  if (valueChanged && complete.valueLabel && current.valueLabel) {
+    if (current.interpretationLabel && complete.interpretationLabel && current.interpretationLabel === complete.interpretationLabel) {
+      return `changes the displayed ${metricLabel} from ${complete.valueLabel} to ${current.valueLabel}, while the overall reading stays ${current.interpretationLabel}`
+    }
+    return `changes the displayed ${metricLabel} from ${complete.valueLabel} to ${current.valueLabel}`
+  }
+
+  if (interpretationChanged && complete.interpretationLabel && current.interpretationLabel) {
+    return `shifts the ${metricLabel} reading from ${complete.interpretationLabel} to ${current.interpretationLabel}`
+  }
+
+  return null
+}
+
+function renderPublicationProductionPatternTooltipNote(note: string | null): ReactNode {
+  if (!note) {
+    return null
+  }
+
+  return (
+    <div className="border-t border-[hsl(var(--stroke-soft)/0.7)] pt-2">
+      <p>
+        <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Note:</span>
+        {' '}
+        {note}
+      </p>
+    </div>
+  )
+}
+
+function buildPublicationConsistencyYtdNote(
+  completeStats: PublicationProductionPatternStats,
+  currentStats: PublicationProductionPatternStats,
+  asOfDate: Date | null,
+): string | null {
+  if (!currentStats.includesPartialYear) {
+    return null
+  }
+
+  const changeSummary = buildPublicationProductionPatternYtdChangeSummary({
+    metricLabel: 'consistency index',
+    complete: {
+      valueLabel: completeStats.consistencyIndex === null ? null : completeStats.consistencyIndex.toFixed(2),
+      interpretationLabel: completeStats.consistencyIndex === null ? null : getPublicationConsistencyInterpretation(completeStats.consistencyIndex),
+    },
+    current: {
+      valueLabel: currentStats.consistencyIndex === null ? null : currentStats.consistencyIndex.toFixed(2),
+      interpretationLabel: currentStats.consistencyIndex === null ? null : getPublicationConsistencyInterpretation(currentStats.consistencyIndex),
+    },
+  })
+  if (!changeSummary) {
+    return null
+  }
+
+  const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(currentStats, asOfDate)
+  return `${formatPublicationProductionPatternPartialYearContext(currentStats, asOfDate)} ${changeSummary}. Because ${currentYearLabel} is still incomplete, the YTD view can make your year-to-year output look more or less even than it does across completed years.`
+}
+
+function buildPublicationBurstinessYtdNote(
+  completeStats: PublicationProductionPatternStats,
+  currentStats: PublicationProductionPatternStats,
+  asOfDate: Date | null,
+): string | null {
+  if (!currentStats.includesPartialYear) {
+    return null
+  }
+
+  const changeSummary = buildPublicationProductionPatternYtdChangeSummary({
+    metricLabel: 'burstiness score',
+    complete: {
+      valueLabel: completeStats.burstinessScore === null ? null : completeStats.burstinessScore.toFixed(2),
+      interpretationLabel: completeStats.burstinessScore === null ? null : getPublicationBurstinessInterpretation(completeStats.burstinessScore),
+    },
+    current: {
+      valueLabel: currentStats.burstinessScore === null ? null : currentStats.burstinessScore.toFixed(2),
+      interpretationLabel: currentStats.burstinessScore === null ? null : getPublicationBurstinessInterpretation(currentStats.burstinessScore),
+    },
+  })
+  if (!changeSummary) {
+    return null
+  }
+
+  const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(currentStats, asOfDate)
+  return `${formatPublicationProductionPatternPartialYearContext(currentStats, asOfDate)} ${changeSummary}. Because ${currentYearLabel} is still incomplete, the YTD view can temporarily exaggerate or soften how spiky your publication pattern looks.`
+}
+
+function buildPublicationPeakYearShareYtdNote(
+  completeStats: PublicationProductionPatternStats,
+  currentStats: PublicationProductionPatternStats,
+  asOfDate: Date | null,
+): string | null {
+  if (!currentStats.includesPartialYear) {
+    return null
+  }
+
+  const changeSummary = buildPublicationProductionPatternYtdChangeSummary({
+    metricLabel: 'peak-year share',
+    complete: {
+      valueLabel: completeStats.peakYearShare === null ? null : formatPercentWhole(completeStats.peakYearShare * 100),
+      interpretationLabel: completeStats.peakYearShare === null ? null : getPublicationPeakYearShareInterpretation(completeStats.peakYearShare),
+    },
+    current: {
+      valueLabel: currentStats.peakYearShare === null ? null : formatPercentWhole(currentStats.peakYearShare * 100),
+      interpretationLabel: currentStats.peakYearShare === null ? null : getPublicationPeakYearShareInterpretation(currentStats.peakYearShare),
+    },
+  })
+  if (!changeSummary) {
+    return null
+  }
+
+  const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(currentStats, asOfDate)
+  return `${formatPublicationProductionPatternPartialYearContext(currentStats, asOfDate)} ${changeSummary}. Because ${currentYearLabel} is still incomplete, its share of your whole publication portfolio is still provisional and can shift as the year fills out.`
+}
+
+function buildPublicationOutputContinuityYtdNote(
+  completeStats: PublicationProductionPatternStats,
+  currentStats: PublicationProductionPatternStats,
+  asOfDate: Date | null,
+): string | null {
+  if (!currentStats.includesPartialYear) {
+    return null
+  }
+
+  const changeSummary = buildPublicationProductionPatternYtdChangeSummary({
+    metricLabel: 'years-with-output ratio',
+    complete: {
+      valueLabel: `${formatInt(completeStats.yearsWithOutput)} / ${formatInt(completeStats.activeSpan)}`,
+      interpretationLabel: completeStats.outputContinuity === null ? null : getPublicationOutputContinuityInterpretation(completeStats.outputContinuity),
+    },
+    current: {
+      valueLabel: `${formatInt(currentStats.yearsWithOutput)} / ${formatInt(currentStats.activeSpan)}`,
+      interpretationLabel: currentStats.outputContinuity === null ? null : getPublicationOutputContinuityInterpretation(currentStats.outputContinuity),
+    },
+  })
+  if (!changeSummary) {
+    return null
+  }
+
+  const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(currentStats, asOfDate)
+  return `${formatPublicationProductionPatternPartialYearContext(currentStats, asOfDate)} ${changeSummary}. Because the YTD view already counts ${currentYearLabel} as an output year before it is finished, the visible continuity ratio can move ahead of the completed-years pattern.`
+}
+
+function formatPublicationProductionAveragePaceExplanation(stats: PublicationProductionPatternStats, averagePerActiveYear: number | null): string {
+  if (averagePerActiveYear === null) {
+    return 'your average annual output is not available yet.'
+  }
+
+  if (stats.activeSpan <= 0) {
+    return `you averaged ${averagePerActiveYear.toFixed(1)} publications per active year.`
+  }
+
+  if (stats.yearsWithOutput >= stats.activeSpan) {
+    return `you averaged ${averagePerActiveYear.toFixed(1)} publications per year and published in every year of that span.`
+  }
+
+  if (stats.yearsWithOutput <= 0) {
+    return `you averaged ${averagePerActiveYear.toFixed(1)} publications per active year, although no output years were identified in the selected span.`
+  }
+
+  return `you averaged ${averagePerActiveYear.toFixed(1)} publications per active year, publishing in ${formatInt(stats.yearsWithOutput)} of the ${formatInt(stats.activeSpan)} years in that span.`
+}
+
+function renderPublicationConsistencyTooltipContent(
+  stats: PublicationProductionPatternStats,
+  currentStats: PublicationProductionPatternStats = stats,
+  asOfDate: Date | null = null,
+) {
+  const value = stats.consistencyIndex
+  const averagePerActiveYear = stats.activeSpan > 0
+    ? stats.scopedPublicationCount / stats.activeSpan
+    : null
+  const lowVolumeNote = stats.lowVolume ? getPublicationProductionPatternLowVolumeNote(stats.totalPublications) : null
+  const ytdNote = buildPublicationConsistencyYtdNote(stats, currentStats, asOfDate)
+  const yearPatternExplanation = value === null
+    ? null
+    : formatPublicationConsistencyPatternExplanation(stats)
+
+  return (
+    <div className="space-y-2.5">
+      {value === null ? (
+        <>
+          <p>
+            <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+              Your consistency index cannot yet be estimated confidently.
+            </span>
+            {' '}
+            {getPublicationConsistencySupportingText(value)}
+          </p>
+          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
+          {renderPublicationProductionPatternTooltipNote(ytdNote)}
+        </>
+      ) : (
+        <>
+          <div className="space-y-1">
+            <p className="text-[hsl(var(--tone-neutral-600))]">Your consistency index is:</p>
+            <p
+              className="text-center text-sm font-semibold leading-tight"
+              style={{ color: resolvePublicationProductionPatternToneColor(getPublicationConsistencyTone(value)) }}
+            >
+              {value.toFixed(2)}
+            </p>
+            <p>{getPublicationConsistencyUserMeaning(value, stats)}</p>
+          </div>
+          <ul className="ml-4 list-disc space-y-1.5">
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Year-to-year pattern:</span>
+              {' '}
+              {yearPatternExplanation}
+            </li>
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Strongest vs quietest years:</span>
+              {' '}
+              {formatPublicationConsistencyExtremesSummary(stats)}
+            </li>
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Compared with your average:</span>
+              {' '}
+              {formatPublicationConsistencyAverageComparison(stats, averagePerActiveYear)}
+            </li>
+          </ul>
+          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
+          {renderPublicationProductionPatternTooltipNote(ytdNote)}
+        </>
+      )}
+    </div>
+  )
+}
+
+function renderPublicationBurstinessTooltipContent(
+  stats: PublicationProductionPatternStats,
+  currentStats: PublicationProductionPatternStats = stats,
+  asOfDate: Date | null = null,
+) {
+  const value = stats.burstinessScore
+  const averagePerActiveYear = stats.activeSpan > 0
+    ? stats.scopedPublicationCount / stats.activeSpan
+    : null
+  const lowVolumeNote = stats.lowVolume ? getPublicationProductionPatternLowVolumeNote(stats.totalPublications) : null
+  const ytdNote = buildPublicationBurstinessYtdNote(stats, currentStats, asOfDate)
+  const spikePatternExplanation = value === null
+    ? null
+    : formatPublicationBurstinessSpikePatternExplanation(stats)
+
+  return (
+    <div className="space-y-2.5">
+      {value === null ? (
+        <>
+          <p>
+            <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+              Your burstiness score cannot yet be estimated confidently.
+            </span>
+            {' '}
+            {getPublicationBurstinessSupportingText(value)}
+          </p>
+          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
+          {renderPublicationProductionPatternTooltipNote(ytdNote)}
+        </>
+      ) : (
+        <>
+          <div className="space-y-1">
+            <p className="text-[hsl(var(--tone-neutral-600))]">Your burstiness score is:</p>
+            <p
+              className="text-center text-sm font-semibold leading-tight"
+              style={{ color: resolvePublicationProductionPatternToneColor(getPublicationBurstinessTone(value)) }}
+            >
+              {value.toFixed(2)}
+            </p>
+            <p>{getPublicationBurstinessUserMeaning(value, stats)}</p>
+          </div>
+          <ul className="ml-4 list-disc space-y-1.5">
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Spike pattern:</span>
+              {' '}
+              {spikePatternExplanation}
+            </li>
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Typical years:</span>
+              {' '}
+              {formatPublicationBurstinessTypicalYearSummary(stats, averagePerActiveYear)}
+            </li>
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Lower tail:</span>
+              {' '}
+              {formatPublicationBurstinessLowerTailSummary(stats)}
+            </li>
+          </ul>
+          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
+          {renderPublicationProductionPatternTooltipNote(ytdNote)}
+        </>
+      )}
+    </div>
+  )
+}
+
+function renderPublicationPeakYearShareTooltipContent(
+  stats: PublicationProductionPatternStats,
+  currentStats: PublicationProductionPatternStats = stats,
+  asOfDate: Date | null = null,
+) {
+  const value = stats.peakYearShare
+  const lowVolumeNote = getPublicationPeakYearShareCaution(stats.scopedPublicationCount) ?? (
+    stats.lowVolume ? getPublicationProductionPatternLowVolumeNote(stats.totalPublications) : null
+  )
+  const ytdNote = buildPublicationPeakYearShareYtdNote(stats, currentStats, asOfDate)
+  const peakYearDetails = getPublicationProductionPatternPeakYearDetails(stats)
+
+  return (
+    <div className="space-y-2.5">
+      {value === null ? (
+        <>
+          <p>
+            <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+              Your peak-year share cannot yet be estimated confidently.
+            </span>
+            {' '}
+            Peak-year concentration is unavailable for the selected scope.
+          </p>
+          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
+          {renderPublicationProductionPatternTooltipNote(ytdNote)}
+        </>
+      ) : (
+        <>
+          <div className="space-y-1">
+            <p className="text-[hsl(var(--tone-neutral-600))]">Your peak-year share is:</p>
+            <p
+              className="text-center text-sm font-semibold leading-tight"
+              style={{ color: resolvePublicationProductionPatternToneColor(getPublicationPeakYearShareTone(value)) }}
+            >
+              {formatPercentWhole(value * 100)}
+            </p>
+            <p>{getPublicationPeakYearShareUserMeaning(value, Math.max(1, peakYearDetails.tiedPeakYears.length))}</p>
+          </div>
+          <ul className="ml-4 list-disc space-y-1.5">
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Peak year:</span>
+              {' '}
+              {formatPublicationPeakYearSummary(peakYearDetails)}
+            </li>
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Portfolio share:</span>
+              {' '}
+              {formatPublicationPeakYearPortfolioShareSummary(stats, peakYearDetails, value)}
+            </li>
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Compared with an even spread:</span>
+              {' '}
+              {formatPublicationPeakYearEvenSpreadSummary(stats, peakYearDetails, value)}
+            </li>
+          </ul>
+          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
+          {renderPublicationProductionPatternTooltipNote(ytdNote)}
+        </>
+      )}
+    </div>
+  )
+}
+
+function renderPublicationOutputContinuityTooltipContent(
+  stats: PublicationProductionPatternStats,
+  currentStats: PublicationProductionPatternStats = stats,
+  asOfDate: Date | null = null,
+) {
+  const value = stats.outputContinuity
+  const lowVolumeNote = stats.lowVolume ? getPublicationProductionPatternLowVolumeNote(stats.totalPublications) : null
+  const ytdNote = buildPublicationOutputContinuityYtdNote(stats, currentStats, asOfDate)
+  return (
+    <div className="space-y-2.5">
+      {value === null ? (
+        <>
+          <p>
+            <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+              Your years-with-output pattern cannot yet be estimated confidently.
+            </span>
+            {' '}
+            {getPublicationOutputContinuitySupportingText(value)}
+          </p>
+          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
+          {renderPublicationProductionPatternTooltipNote(ytdNote)}
+        </>
+      ) : (
+        <>
+          <div className="space-y-1">
+            <p className="text-[hsl(var(--tone-neutral-600))]">Your years with output are:</p>
+            <p
+              className="text-center text-sm font-semibold leading-tight tabular-nums"
+              style={{ color: resolvePublicationProductionPatternToneColor(getPublicationOutputContinuityTone(value)) }}
+            >
+              {`${formatInt(stats.yearsWithOutput)} / ${formatInt(stats.activeSpan)}`}
+            </p>
+            <p>{getPublicationOutputContinuityUserMeaning(value, stats)}</p>
+          </div>
+          <ul className="ml-4 list-disc space-y-1.5">
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Coverage across the span:</span>
+              {' '}
+              {formatPublicationProductionCoverageSummary(stats)}
+            </li>
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Longest streak:</span>
+              {' '}
+              {formatPublicationProductionLongestStreakSummary(stats)}
+            </li>
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Gap years:</span>
+              {' '}
+              {formatPublicationProductionGapYearSummary(stats)}
+            </li>
+          </ul>
+          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
+          {renderPublicationProductionPatternTooltipNote(ytdNote)}
+        </>
+      )}
+    </div>
+  )
+}
+
+function getPublicationProductionPhaseTooltipLabelClass(phase: PublicationProductionPhaseLabel | null): string {
+  switch (resolvePublicationProductionPhaseTone(phase)) {
+    case 'positive':
+      return 'text-[hsl(var(--tone-positive-700))]'
+    case 'accent':
+      return 'text-[hsl(var(--tone-accent-800))]'
+    case 'warning':
+      return 'text-[hsl(var(--tone-warning-700))]'
+    case 'danger':
+      return 'text-[hsl(var(--tone-danger-700))]'
+    default:
+      return 'text-[hsl(var(--tone-neutral-900))]'
   }
 }
 
@@ -1252,9 +2362,10 @@ function PublicationProductionPhaseChart({
   values: number[]
   tone: PublicationProductionPatternTone
 }) {
-  const pathRef = useRef<SVGPathElement>(null)
-  const [pathLength, setPathLength] = useState(0)
   const [lineRevealProgress, setLineRevealProgress] = useState(0)
+  const phaseRevealIdBase = useId().replace(/:/g, '')
+  const phaseRevealMaskId = `${phaseRevealIdBase}-mask`
+  const phaseRevealGradientId = `${phaseRevealIdBase}-gradient`
   const bars = useMemo(() => (
     years.map((year, index) => ({
       key: `publication-production-phase-${year}-${index}`,
@@ -1268,8 +2379,16 @@ function PublicationProductionPhaseChart({
     [bars],
   )
   const lineEntryCycle = useIsFirstChartEntry(`${animationKey}|phase-line`, hasBars)
-  const lineAnimationDelayMs = lineEntryCycle ? 120 : 48
-  const lineAnimationDurationMs = lineEntryCycle ? 940 : 720
+  const lineAnimationProfileRef = useRef<{ key: string, delayMs: number, durationMs: number } | null>(null)
+  if (!lineAnimationProfileRef.current || lineAnimationProfileRef.current.key !== animationKey) {
+    lineAnimationProfileRef.current = {
+      key: animationKey,
+      delayMs: lineEntryCycle ? 120 : 48,
+      durationMs: lineEntryCycle ? 940 : 720,
+    }
+  }
+  const lineAnimationDelayMs = lineAnimationProfileRef.current.delayMs
+  const lineAnimationDurationMs = lineAnimationProfileRef.current.durationMs
   const axisScale = useMemo(
     () => buildNiceAxis(Math.max(1, ...bars.map((bar) => bar.value))),
     [bars],
@@ -1370,26 +2489,14 @@ function PublicationProductionPhaseChart({
     }
     return `${linePath} L ${lastPoint.xPct} 100 L ${firstPoint.xPct} 100 Z`
   }, [linePath, points])
-  const fallbackPathLength = useMemo(
-    () => Math.max(1, estimatePolylineLength(points.map((point) => ({
-      x: point.xPct,
-      y: 100 - point.yPct,
-    })))),
-    [points],
-  )
-  const effectivePathLength = pathLength > 0 ? pathLength : fallbackPathLength
-
-  useEffect(() => {
-    setPathLength(0)
-    if (pathRef.current) {
-      try {
-        const length = pathRef.current.getTotalLength()
-        setPathLength(length)
-      } catch {
-        setPathLength(0)
-      }
-    }
-  }, [linePath])
+  const revealLeadPct = Math.max(0, Math.min(100, lineRevealProgress * 100))
+  const revealRemainingPct = Math.max(0, 100 - revealLeadPct)
+  const revealFeatherPct = lineRevealProgress >= 0.999
+    ? 0
+    : Math.min(8, Math.max(1.5, revealLeadPct * 0.22), revealRemainingPct + 0.75)
+  const revealSolidPct = lineRevealProgress >= 0.999
+    ? 100
+    : Math.max(0, revealLeadPct - revealFeatherPct)
 
   useEffect(() => {
     if (!hasBars || !linePath) {
@@ -1402,14 +2509,9 @@ function PublicationProductionPhaseChart({
     }
     let raf = 0
     const startedAt = performance.now()
-    const easePhaseLine = (progress: number) => {
+    const easePhaseWipe = (progress: number) => {
       const clamped = Math.max(0, Math.min(1, progress))
-      if (clamped <= 0.62) {
-        const frontLoaded = clamped / 0.62
-        return 0.8 * (1 - ((1 - frontLoaded) ** 3))
-      }
-      const settled = (clamped - 0.62) / 0.38
-      return 0.8 + (0.2 * (1 - ((1 - settled) ** 2)))
+      return clamped * clamped * (3 - (2 * clamped))
     }
     setLineRevealProgress(0)
     const step = (now: number) => {
@@ -1420,7 +2522,7 @@ function PublicationProductionPhaseChart({
         return
       }
       const progress = Math.min(1, (elapsed - lineAnimationDelayMs) / Math.max(1, lineAnimationDurationMs))
-      setLineRevealProgress(easePhaseLine(progress))
+      setLineRevealProgress(easePhaseWipe(progress))
       if (progress < 1) {
         raf = window.requestAnimationFrame(step)
       }
@@ -1490,17 +2592,37 @@ function PublicationProductionPhaseChart({
           role="img"
           aria-label="Publication production phase chart"
         >
+          <defs>
+            <linearGradient id={phaseRevealGradientId} x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+              <stop offset="0%" stopColor="white" />
+              <stop offset="72%" stopColor="white" />
+              <stop offset="100%" stopColor="black" />
+            </linearGradient>
+            <mask id={phaseRevealMaskId} maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+              <rect x="0" y="0" width="100" height="100" fill="black" />
+              <rect x="0" y="0" width={revealSolidPct} height="100" fill="white" />
+              {revealFeatherPct > 0 ? (
+                <rect
+                  x={revealSolidPct}
+                  y="0"
+                  width={revealFeatherPct}
+                  height="100"
+                  fill={`url(#${phaseRevealGradientId})`}
+                />
+              ) : null}
+            </mask>
+          </defs>
           {areaPath ? (
             <path
               d={areaPath}
               fill={toneColor}
               opacity={0.12 * Math.max(0, Math.min(1, (lineRevealProgress - 0.28) / 0.72))}
               vectorEffect="non-scaling-stroke"
+              mask={`url(#${phaseRevealMaskId})`}
             />
           ) : null}
           {linePath && points.length > 1 ? (
             <path
-              ref={pathRef}
               d={linePath}
               fill="none"
               stroke={toneColor}
@@ -1508,10 +2630,7 @@ function PublicationProductionPhaseChart({
               strokeLinecap="round"
               strokeLinejoin="round"
               vectorEffect="non-scaling-stroke"
-              style={{
-                strokeDasharray: effectivePathLength,
-                strokeDashoffset: Math.max(0, effectivePathLength * (1 - lineRevealProgress)),
-              } as React.CSSProperties}
+              mask={`url(#${phaseRevealMaskId})`}
             />
           ) : null}
         </svg>
@@ -1595,19 +2714,1011 @@ function PublicationProductionPhaseChart({
 }
 
 function renderPublicationProductionPhaseTooltipContent(stats: PublicationProductionPhaseStats) {
+  const recentWindowSize = Math.max(1, Math.min(3, stats.usableYears || stats.years.length || 1))
+  const firstYear = stats.years[0] ?? null
+  const lastYear = stats.years[stats.years.length - 1] ?? null
+  const recentYears = stats.years.slice(-recentWindowSize)
+  const recentSeries = stats.series.slice(-recentWindowSize)
+  const recentPublicationCount = recentSeries.reduce((sum, value) => sum + Math.max(0, value), 0)
+  const recentStartYear = recentYears[0] ?? null
+  const recentEndYear = recentYears[recentYears.length - 1] ?? null
+  const slopePeriodText = firstYear === null || lastYear === null
+    ? null
+    : firstYear === lastYear
+      ? `in ${firstYear}`
+      : `between ${firstYear} and ${lastYear}`
+  const recentPeriodText = recentStartYear === null || recentEndYear === null
+    ? null
+    : recentStartYear === recentEndYear
+      ? `in ${recentStartYear}`
+      : `between ${recentStartYear} and ${recentEndYear}`
+
   return (
-    <div className="house-publications-drilldown-stack-1">
-      <p>Classifies the current publication-output stage using publication counts by year only.</p>
-      <p>The phase estimate always uses complete publication years so an in-progress current year does not distort the slope or momentum classification.</p>
-      {stats.slope !== null ? <p>{`Trend slope: ${stats.slope >= 0 ? '+' : ''}${stats.slope.toFixed(2)} papers/year.`}</p> : null}
-      {stats.recentShare !== null ? <p>{`Recent share of output: ${Math.round(stats.recentShare * 100)}%.`}</p> : null}
-      {stats.peakYear !== null ? (
-        <p>{stats.peakCount !== null
-          ? `Peak year: ${formatInt(stats.peakCount)} publications in ${stats.peakYear}.`
-          : `Peak year: ${stats.peakYear}.`}</p>
-      ) : null}
-      {stats.interpretation ? <p>{stats.interpretation}</p> : null}
-      {stats.confidenceNote ? <p>{stats.confidenceNote}</p> : null}
+    <div className="space-y-2.5">
+      {stats.emptyReason ? (
+        <p>{stats.emptyReason}</p>
+      ) : stats.insufficientHistory ? (
+        <>
+          <p>
+            <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+              Your publication-output stage cannot yet be estimated confidently.
+            </span>
+            {' '}
+            There is not enough complete-year history to classify it reliably.
+          </p>
+          {stats.confidenceNote ? <p>{stats.confidenceNote}</p> : null}
+        </>
+      ) : (
+        <>
+          <div className="space-y-1">
+            <p className="text-[hsl(var(--tone-neutral-600))]">Your publication-output stage is:</p>
+            <p className={cn('text-center text-sm font-semibold leading-tight', getPublicationProductionPhaseTooltipLabelClass(stats.phase))}>
+              {stats.phaseLabel}
+            </p>
+            <p>{getPublicationProductionPhaseUserMeaning(stats.phase)}</p>
+          </div>
+          <ul className="ml-4 list-disc space-y-1.5">
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Trend slope:</span>
+              {' '}
+              {formatPublicationProductionPhaseSlopeExplanation(stats.slope, slopePeriodText)}
+            </li>
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Recent share:</span>
+              {' '}
+              {stats.recentShare !== null
+                ? `${formatInt(recentPublicationCount)} of your ${formatInt(stats.totalPublications)} publications (${Math.round(stats.recentShare * 100)}%) came ${recentPeriodText ?? 'in your recent complete years'}, within a ${formatPublicationProductionSpanLabel(stats.activeSpan)}.`
+                : 'your recent-share context is not available yet.'}
+            </li>
+            <li>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Peak year:</span>
+              {' '}
+              {stats.peakYear !== null
+                ? stats.peakCount !== null
+                  ? `your highest-output year was ${stats.peakYear}, with ${formatInt(stats.peakCount)} publications.`
+                  : `your highest-output year was ${stats.peakYear}.`
+                : 'your peak-year context is not available yet.'}
+            </li>
+          </ul>
+          {stats.confidenceNote ? <p>{stats.confidenceNote}</p> : null}
+        </>
+      )}
+    </div>
+  )
+}
+
+function formatPublicationInsightFullDate(value: Date | null): string | null {
+  if (!value) {
+    return null
+  }
+  return value.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+function formatPublicationInsightDayMonthYear(value: string | null | undefined): string | null {
+  const parsed = typeof value === 'string' && value.trim()
+    ? new Date(`${value.trim()}T00:00:00Z`)
+    : null
+  if (!parsed || Number.isNaN(parsed.getTime())) {
+    return null
+  }
+  return formatPublicationInsightFullDate(parsed)
+}
+
+function formatPublicationInsightMonthWindowLabel(start: Date | null, end: Date | null): string | null {
+  if (!start || !end) {
+    return null
+  }
+  const startLabel = formatPublicationMonthYear(start)
+  const endLabel = formatPublicationMonthYear(end)
+  return startLabel === endLabel ? startLabel : `${startLabel}-${endLabel}`
+}
+
+function resolvePublicationInsightRecordDateLabel(record: PublicationDrilldownRecord): string | null {
+  if (record.publicationDate) {
+    return formatPublicationInsightDayMonthYear(record.publicationDate)
+  }
+  if (record.publicationMonthStart) {
+    const parsedMonth = parseIsoMonthStart(record.publicationMonthStart)
+    return formatPublicationMonthYear(parsedMonth)
+  }
+  if (typeof record.year === 'number' && Number.isFinite(record.year)) {
+    return String(Math.round(record.year))
+  }
+  return null
+}
+
+function formatPublicationInsightYearList(years: number[]): string {
+  const cleanYears = years.filter((year) => Number.isInteger(year))
+  if (cleanYears.length <= 1) {
+    return `${cleanYears[0] ?? ''}`.trim()
+  }
+  if (cleanYears.length === 2) {
+    return `${cleanYears[0]} and ${cleanYears[1]}`
+  }
+  return `${cleanYears.slice(0, -1).join(', ')}, and ${cleanYears[cleanYears.length - 1]}`
+}
+
+function formatPublicationInsightPeriodLabel(label: string | null | undefined): string | null {
+  const clean = String(label || '').trim()
+  if (!clean) {
+    return null
+  }
+  const match = /^([A-Za-z]{3}) (\d{4})-([A-Za-z]{3}) (\d{4})$/.exec(clean)
+  if (!match) {
+    return clean
+  }
+  const startYear = Number(match[2])
+  const endYear = Number(match[4])
+  if (!Number.isFinite(startYear) || !Number.isFinite(endYear)) {
+    return clean
+  }
+  if (startYear === endYear) {
+    return `${startYear} period`
+  }
+  return `${startYear}-${String(endYear).slice(-2)} period`
+}
+
+function buildPublicationVolumeOverTimeRollingBlocks(
+  monthStarts: Date[],
+  counts: number[],
+  years: number,
+): { windowLabel: string | null; blocks: PublicationVolumeOverTimeRollingBlock[] } {
+  const monthCount = Math.max(0, years * 12)
+  if (monthStarts.length < monthCount || counts.length < monthCount) {
+    return { windowLabel: null, blocks: [] }
+  }
+  const sourceMonthStarts = monthStarts.slice(-monthCount)
+  const sourceCounts = counts.slice(-monthCount)
+  const blocks: PublicationVolumeOverTimeRollingBlock[] = []
+  for (let index = 0; index < sourceCounts.length; index += 12) {
+    const chunkCounts = sourceCounts.slice(index, index + 12)
+    const chunkMonthStarts = sourceMonthStarts.slice(index, index + 12)
+    if (!chunkCounts.length || !chunkMonthStarts.length) {
+      continue
+    }
+    blocks.push({
+      label: formatPublicationInsightMonthWindowLabel(
+        chunkMonthStarts[0] ?? null,
+        chunkMonthStarts[chunkMonthStarts.length - 1] ?? null,
+      ) ?? `Window ${blocks.length + 1}`,
+      count: chunkCounts.reduce((sum, value) => sum + Math.max(0, value), 0),
+    })
+  }
+  return {
+    windowLabel: formatPublicationInsightMonthWindowLabel(
+      sourceMonthStarts[0] ?? null,
+      sourceMonthStarts[sourceMonthStarts.length - 1] ?? null,
+    ),
+    blocks,
+  }
+}
+
+function buildPublicationVolumeOverTimeInsightStats(
+  tile: PublicationMetricTilePayload,
+  publicationRecords: PublicationDrilldownRecord[],
+): PublicationVolumeOverTimeInsightStats {
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+  const asOfDate = parsePublicationProductionPatternAsOfDate(drilldown.as_of_date) ?? new Date()
+  const currentMonthStart = new Date(Date.UTC(asOfDate.getUTCFullYear(), asOfDate.getUTCMonth(), 1))
+  const recentMonthStarts = Array.from({ length: 12 }, (_value, index) => (
+    shiftUtcMonth(currentMonthStart, index - 12)
+  ))
+  const recentRawValues = toNumberArray(chartData.monthly_values_12m).map((value) => Math.max(0, Math.round(value)))
+  const recentSourceLabels = toStringArray(chartData.month_labels_12m)
+  const recentLastMonthIndex = recentSourceLabels.length ? parseMonthIndex(recentSourceLabels[recentSourceLabels.length - 1]) : null
+  const recentIncludesCurrentMonth = recentLastMonthIndex !== null && recentLastMonthIndex === currentMonthStart.getUTCMonth()
+  const recentSourceWindow = recentRawValues.length >= 13 && recentIncludesCurrentMonth
+    ? recentRawValues.slice(-13, -1)
+    : recentRawValues.length >= 12
+      ? recentRawValues.slice(-12)
+      : recentRawValues
+  const recentCounts = recentSourceWindow.length >= 12
+    ? recentSourceWindow.slice(-12)
+    : recentSourceWindow.length > 0
+      ? [...Array.from({ length: 12 - recentSourceWindow.length }, () => 0), ...recentSourceWindow]
+      : Array.from({ length: 12 }, () => 0)
+  const recentWindowLabel = formatPublicationInsightMonthWindowLabel(
+    recentMonthStarts[0] ?? null,
+    recentMonthStarts[recentMonthStarts.length - 1] ?? null,
+  )
+  const recentWindowEndLabel = formatPublicationInsightFullDate(new Date(Date.UTC(asOfDate.getUTCFullYear(), asOfDate.getUTCMonth(), 0)))
+  const recentPeakCount = Math.max(...recentCounts, 0)
+  const recentWindowPeakLabels = recentPeakCount > 0
+    ? recentCounts.flatMap((count, index) => count === recentPeakCount ? [formatPublicationMonthYear(recentMonthStarts[index])] : []).slice(0, 3)
+    : []
+
+  const lifetimeCounts = toNumberArray(chartData.monthly_values_lifetime).map((value) => Math.max(0, Math.round(value)))
+  const lifetimeLabels = toStringArray(chartData.month_labels_lifetime)
+  const lifetimeMonthStarts = lifetimeCounts.map((_value, index) => {
+    const parsed = parseIsoMonthStart(lifetimeLabels[index] || '')
+    if (parsed) {
+      return parsed
+    }
+    const lifetimeStart = parseIsoPublicationDate(String(chartData.lifetime_month_start || '').trim())
+    return lifetimeStart ? shiftUtcMonth(lifetimeStart, index) : shiftUtcMonth(currentMonthStart, index - lifetimeCounts.length)
+  })
+  const rolling3y = buildPublicationVolumeOverTimeRollingBlocks(lifetimeMonthStarts, lifetimeCounts, 3)
+  const rolling5y = buildPublicationVolumeOverTimeRollingBlocks(lifetimeMonthStarts, lifetimeCounts, 5)
+
+  const yearSeries = buildPublicationProductionYearSeries(tile, 'complete')
+  const peakCount = yearSeries.series.length ? Math.max(...yearSeries.series) : null
+  const peakYears = peakCount === null
+    ? []
+    : yearSeries.years.filter((year, index) => yearSeries.series[index] === peakCount)
+  const lowCount = yearSeries.series.length ? Math.min(...yearSeries.series) : null
+  const lowYears = lowCount === null
+    ? []
+    : yearSeries.years.filter((year, index) => yearSeries.series[index] === lowCount)
+
+  const recentDetailedRecords = publicationRecords
+    .map((record) => ({
+      ...record,
+      parsedPublicationDate: parsePublicationRecordDate(record),
+      displayPublicationDateLabel: resolvePublicationInsightRecordDateLabel(record),
+    }))
+    .filter((record) => record.parsedPublicationDate && record.parsedPublicationDate.getTime() >= recentMonthStarts[0].getTime() && record.parsedPublicationDate.getTime() < currentMonthStart.getTime())
+    .sort((left, right) => (right.parsedPublicationDate?.getTime() ?? 0) - (left.parsedPublicationDate?.getTime() ?? 0))
+  const recentOldestRecord = recentDetailedRecords[recentDetailedRecords.length - 1] ?? null
+  const recentMostRecentRecord = recentDetailedRecords[0] ?? null
+  const recentRangeStartLabel = recentOldestRecord?.displayPublicationDateLabel || null
+  const recentRangeEndLabel = recentMostRecentRecord?.displayPublicationDateLabel || null
+
+  return {
+    totalPublications: yearSeries.totalPublications,
+    spanLabel: yearSeries.firstPublicationYear !== null && yearSeries.lastPublicationYear !== null
+      ? yearSeries.firstPublicationYear === yearSeries.lastPublicationYear
+        ? `${yearSeries.firstPublicationYear}`
+        : `${yearSeries.firstPublicationYear}-${yearSeries.lastPublicationYear}`
+      : null,
+    firstPublicationYear: yearSeries.firstPublicationYear,
+    lastPublicationYear: yearSeries.lastPublicationYear,
+    peakYears,
+    peakCount,
+    lowYears,
+    lowCount,
+    recentWindowLabel,
+    recentWindowEndLabel,
+    recentWindowTotal: recentCounts.reduce((sum, value) => sum + Math.max(0, value), 0),
+    recentWindowActiveMonths: recentCounts.filter((value) => value > 0).length,
+    recentWindowPeakLabels,
+    threeYearWindowLabel: rolling3y.windowLabel,
+    threeYearBlocks: rolling3y.blocks,
+    fiveYearWindowLabel: rolling5y.windowLabel,
+    fiveYearBlocks: rolling5y.blocks,
+    recentDetailCount: recentDetailedRecords.length,
+    recentDetailRangeLabel: recentRangeStartLabel && recentRangeEndLabel
+      ? recentRangeStartLabel === recentRangeEndLabel
+        ? recentRangeStartLabel
+        : `${recentRangeStartLabel} to ${recentRangeEndLabel}`
+      : null,
+    recentMostRecentDateLabel: recentRangeEndLabel,
+    recentMostRecentTitle: recentMostRecentRecord?.title?.trim() || null,
+  }
+}
+
+function formatPublicationInsightLabelList(labels: string[]): string {
+  const safeLabels = labels.map((label) => String(label || '').trim()).filter(Boolean)
+  if (!safeLabels.length) {
+    return 'Unspecified'
+  }
+  if (safeLabels.length === 1) {
+    return safeLabels[0]
+  }
+  if (safeLabels.length === 2) {
+    return `${safeLabels[0]} and ${safeLabels[1]}`
+  }
+  return `${safeLabels.slice(0, -1).join(', ')}, and ${safeLabels[safeLabels.length - 1]}`
+}
+
+function buildPublicationArticleTypeWindowInsightSummary({
+  publicationRecords,
+  fullYears,
+  windowId,
+}: {
+  publicationRecords: PublicationDrilldownRecord[]
+  fullYears: number[]
+  windowId: PublicationsWindowMode
+}): PublicationArticleTypeWindowInsightSummary | null {
+  if (!fullYears.length) {
+    return null
+  }
+  const windowSize = windowId === '1y'
+    ? 1
+    : windowId === '3y'
+      ? 3
+      : windowId === '5y'
+        ? 5
+        : null
+  const windowYears = windowSize === null ? fullYears : fullYears.slice(-windowSize)
+  if (!windowYears.length) {
+    return null
+  }
+  const yearSet = new Set(windowYears)
+  const counts = new Map<string, number>()
+  publicationRecords.forEach((record) => {
+    if (record.year === null || !yearSet.has(record.year)) {
+      return
+    }
+    const label = categoryLabelFromPublication(record, 'article')
+    counts.set(label, (counts.get(label) || 0) + 1)
+  })
+  const sortedEntries = Array.from(counts.entries())
+    .sort((left, right) => {
+      if (right[1] !== left[1]) {
+        return right[1] - left[1]
+      }
+      return left[0].localeCompare(right[0])
+    })
+  const totalCount = sortedEntries.reduce((sum, [, count]) => sum + Math.max(0, count), 0)
+  const topCount = sortedEntries.length ? Math.max(...sortedEntries.map(([, count]) => count)) : 0
+  const topLabels = topCount > 0
+    ? sortedEntries.filter(([, count]) => count === topCount).map(([label]) => label)
+    : []
+  const secondEntry = sortedEntries.find(([, count]) => count < topCount) || null
+  return {
+    windowId,
+    rangeLabel: windowYears[0] === windowYears[windowYears.length - 1]
+      ? String(windowYears[0])
+      : `${windowYears[0]}-${windowYears[windowYears.length - 1]}`,
+    totalCount,
+    distinctTypeCount: sortedEntries.length,
+    topLabels,
+    topCount,
+    topSharePct: totalCount > 0 && topCount > 0 ? (topCount / totalCount) * 100 : null,
+    secondLabel: secondEntry?.[0] || null,
+    secondSharePct: totalCount > 0 && secondEntry ? (secondEntry[1] / totalCount) * 100 : null,
+    orderedLabels: sortedEntries.slice(0, 4).map(([label]) => label),
+  }
+}
+
+function buildPublicationArticleTypeOverTimeInsightStats(
+  publicationRecords: PublicationDrilldownRecord[],
+  asOfDate: Date | null,
+): PublicationArticleTypeOverTimeInsightStats {
+  const yearsWithData = publicationRecords
+    .map((record) => record.year)
+    .filter((value): value is number => Number.isInteger(value))
+    .sort((left, right) => left - right)
+  if (!yearsWithData.length) {
+    return {
+      emptyReason: 'No article type data is available yet.',
+      spanLabel: null,
+      firstPublicationYear: null,
+      lastPublicationYear: null,
+      totalCount: 0,
+      allWindow: null,
+      fiveYearWindow: null,
+      threeYearWindow: null,
+      oneYearWindow: null,
+      latestYearIsPartial: false,
+      latestPartialYearLabel: null,
+    }
+  }
+  const firstPublicationYear = yearsWithData[0]
+  const lastPublicationYear = yearsWithData[yearsWithData.length - 1]
+  const fullYears: number[] = []
+  for (let year = firstPublicationYear; year <= lastPublicationYear; year += 1) {
+    fullYears.push(year)
+  }
+  const allWindow = buildPublicationArticleTypeWindowInsightSummary({
+    publicationRecords,
+    fullYears,
+    windowId: 'all',
+  })
+  const fiveYearWindow = buildPublicationArticleTypeWindowInsightSummary({
+    publicationRecords,
+    fullYears,
+    windowId: '5y',
+  })
+  const threeYearWindow = buildPublicationArticleTypeWindowInsightSummary({
+    publicationRecords,
+    fullYears,
+    windowId: '3y',
+  })
+  const oneYearWindow = buildPublicationArticleTypeWindowInsightSummary({
+    publicationRecords,
+    fullYears,
+    windowId: '1y',
+  })
+  const latestYearIsPartial = Boolean(
+    asOfDate
+    && lastPublicationYear === asOfDate.getUTCFullYear()
+    && (asOfDate.getUTCMonth() < 11 || asOfDate.getUTCDate() < 31),
+  )
+  return {
+    emptyReason: allWindow?.totalCount ? null : 'No article type data is available yet.',
+    spanLabel: firstPublicationYear === lastPublicationYear ? `${firstPublicationYear}` : `${firstPublicationYear}-${lastPublicationYear}`,
+    firstPublicationYear,
+    lastPublicationYear,
+    totalCount: allWindow?.totalCount || 0,
+    allWindow,
+    fiveYearWindow,
+    threeYearWindow,
+    oneYearWindow,
+    latestYearIsPartial,
+    latestPartialYearLabel: latestYearIsPartial && asOfDate
+      ? `${lastPublicationYear} (through ${formatPublicationInsightFullDate(asOfDate)})`
+      : null,
+  }
+}
+
+function buildPublicationPublicationTypeWindowInsightSummary({
+  publicationRecords,
+  fullYears,
+  windowId,
+}: {
+  publicationRecords: PublicationDrilldownRecord[]
+  fullYears: number[]
+  windowId: PublicationsWindowMode
+}): PublicationPublicationTypeWindowInsightSummary | null {
+  if (!fullYears.length) {
+    return null
+  }
+  const windowSize = windowId === '1y'
+    ? 1
+    : windowId === '3y'
+      ? 3
+      : windowId === '5y'
+        ? 5
+        : null
+  const windowYears = windowSize === null ? fullYears : fullYears.slice(-windowSize)
+  if (!windowYears.length) {
+    return null
+  }
+  const yearSet = new Set(windowYears)
+  const counts = new Map<string, number>()
+  publicationRecords.forEach((record) => {
+    if (record.year === null || !yearSet.has(record.year)) {
+      return
+    }
+    const label = categoryLabelFromPublication(record, 'publication')
+    counts.set(label, (counts.get(label) || 0) + 1)
+  })
+  const sortedEntries = Array.from(counts.entries())
+    .sort((left, right) => {
+      if (right[1] !== left[1]) {
+        return right[1] - left[1]
+      }
+      return left[0].localeCompare(right[0])
+    })
+  const totalCount = sortedEntries.reduce((sum, [, count]) => sum + Math.max(0, count), 0)
+  const topCount = sortedEntries.length ? Math.max(...sortedEntries.map(([, count]) => count)) : 0
+  const topLabels = topCount > 0
+    ? sortedEntries.filter(([, count]) => count === topCount).map(([label]) => label)
+    : []
+  const secondEntry = sortedEntries.find(([, count]) => count < topCount) || null
+  return {
+    windowId,
+    rangeLabel: windowYears[0] === windowYears[windowYears.length - 1]
+      ? String(windowYears[0])
+      : `${windowYears[0]}-${windowYears[windowYears.length - 1]}`,
+    totalCount,
+    distinctTypeCount: sortedEntries.length,
+    topLabels,
+    topCount,
+    topSharePct: totalCount > 0 && topCount > 0 ? (topCount / totalCount) * 100 : null,
+    secondLabel: secondEntry?.[0] || null,
+    secondSharePct: totalCount > 0 && secondEntry ? (secondEntry[1] / totalCount) * 100 : null,
+    orderedLabels: sortedEntries.slice(0, 4).map(([label]) => label),
+  }
+}
+
+function buildPublicationPublicationTypeOverTimeInsightStats(
+  publicationRecords: PublicationDrilldownRecord[],
+  asOfDate: Date | null,
+): PublicationPublicationTypeOverTimeInsightStats {
+  const yearsWithData = publicationRecords
+    .map((record) => record.year)
+    .filter((value): value is number => Number.isInteger(value))
+    .sort((left, right) => left - right)
+  if (!yearsWithData.length) {
+    return {
+      emptyReason: 'No publication type data is available yet.',
+      spanLabel: null,
+      firstPublicationYear: null,
+      lastPublicationYear: null,
+      totalCount: 0,
+      allWindow: null,
+      fiveYearWindow: null,
+      threeYearWindow: null,
+      oneYearWindow: null,
+      latestYearIsPartial: false,
+      latestPartialYearLabel: null,
+    }
+  }
+  const firstPublicationYear = yearsWithData[0]
+  const lastPublicationYear = yearsWithData[yearsWithData.length - 1]
+  const fullYears: number[] = []
+  for (let year = firstPublicationYear; year <= lastPublicationYear; year += 1) {
+    fullYears.push(year)
+  }
+  const allWindow = buildPublicationPublicationTypeWindowInsightSummary({
+    publicationRecords,
+    fullYears,
+    windowId: 'all',
+  })
+  const fiveYearWindow = buildPublicationPublicationTypeWindowInsightSummary({
+    publicationRecords,
+    fullYears,
+    windowId: '5y',
+  })
+  const threeYearWindow = buildPublicationPublicationTypeWindowInsightSummary({
+    publicationRecords,
+    fullYears,
+    windowId: '3y',
+  })
+  const oneYearWindow = buildPublicationPublicationTypeWindowInsightSummary({
+    publicationRecords,
+    fullYears,
+    windowId: '1y',
+  })
+  const latestYearIsPartial = Boolean(
+    asOfDate
+    && lastPublicationYear === asOfDate.getUTCFullYear()
+    && (asOfDate.getUTCMonth() < 11 || asOfDate.getUTCDate() < 31),
+  )
+  return {
+    emptyReason: allWindow?.totalCount ? null : 'No publication type data is available yet.',
+    spanLabel: firstPublicationYear === lastPublicationYear ? `${firstPublicationYear}` : `${firstPublicationYear}-${lastPublicationYear}`,
+    firstPublicationYear,
+    lastPublicationYear,
+    totalCount: allWindow?.totalCount || 0,
+    allWindow,
+    fiveYearWindow,
+    threeYearWindow,
+    oneYearWindow,
+    latestYearIsPartial,
+    latestPartialYearLabel: latestYearIsPartial && asOfDate
+      ? `${lastPublicationYear} (through ${formatPublicationInsightFullDate(asOfDate)})`
+      : null,
+  }
+}
+
+function renderPublicationVolumeOverTimeTooltipContent(stats: PublicationVolumeOverTimeInsightStats) {
+  const spanLabel = stats.spanLabel
+    ? stats.firstPublicationYear === stats.lastPublicationYear
+      ? `${stats.spanLabel}`
+      : `${stats.spanLabel}`
+    : 'your full publication record'
+  const earlyLowYears = stats.lowYears.filter((year) => (
+    stats.firstPublicationYear !== null
+      ? year <= stats.firstPublicationYear + 2
+      : false
+  ))
+  const peakAveragePosition = stats.peakYears.length
+    ? stats.peakYears.reduce((sum, year) => sum + year, 0) / stats.peakYears.length
+    : null
+  const spanMidpoint = stats.firstPublicationYear !== null && stats.lastPublicationYear !== null
+    ? (stats.firstPublicationYear + stats.lastPublicationYear) / 2
+    : null
+  const peakPosition = peakAveragePosition === null || spanMidpoint === null
+    ? 'mixed'
+    : peakAveragePosition > spanMidpoint + 0.5
+      ? 'later'
+      : peakAveragePosition < spanMidpoint - 0.5
+        ? 'earlier'
+        : 'mixed'
+  const allSummary = stats.peakYears.length === 0
+    ? `Across ${spanLabel}, the full record does not yet isolate a clear peak year.`
+    : peakPosition === 'later' && stats.lowCount !== null && earlyLowYears.length > 0 && stats.peakCount !== null
+      ? `Between ${spanLabel}, annual output rises from ${formatInt(stats.lowCount)} in the opening years to ${formatInt(stats.peakCount)} in ${formatPublicationInsightYearList(stats.peakYears)}.`
+      : peakPosition === 'earlier' && stats.peakCount !== null
+        ? `Between ${spanLabel}, the strongest publication years come earlier in the record, reaching ${formatInt(stats.peakCount)} in ${formatPublicationInsightYearList(stats.peakYears)}.`
+        : stats.peakCount !== null
+          ? `Between ${spanLabel}, the strongest years reach ${formatInt(stats.peakCount)} in ${formatPublicationInsightYearList(stats.peakYears)} rather than staying flat across the record.`
+          : `Between ${spanLabel}, the strongest publication years occur in ${formatPublicationInsightYearList(stats.peakYears)}.`
+
+  const firstFiveYearBlock = stats.fiveYearBlocks[0] ?? null
+  const lastFiveYearBlock = stats.fiveYearBlocks[stats.fiveYearBlocks.length - 1] ?? null
+  const firstFiveYearPeriod = formatPublicationInsightPeriodLabel(firstFiveYearBlock?.label ?? null)
+  const lastFiveYearPeriod = formatPublicationInsightPeriodLabel(lastFiveYearBlock?.label ?? null)
+  const fiveYearSummary = firstFiveYearBlock && lastFiveYearBlock && stats.fiveYearBlocks.length >= 2
+    ? lastFiveYearBlock.count > firstFiveYearBlock.count
+      ? `Across the latest rolling 5-year view, annual output rises from ${formatInt(firstFiveYearBlock.count)} in the ${firstFiveYearPeriod ?? 'earliest period'} to ${formatInt(lastFiveYearBlock.count)} in the ${lastFiveYearPeriod ?? 'latest period'}.`
+      : lastFiveYearBlock.count < firstFiveYearBlock.count
+        ? `Across the latest rolling 5-year view, annual output softens from ${formatInt(firstFiveYearBlock.count)} in the ${firstFiveYearPeriod ?? 'earliest period'} to ${formatInt(lastFiveYearBlock.count)} in the ${lastFiveYearPeriod ?? 'latest period'}.`
+        : `Across the latest rolling 5-year view, annual output is broadly level at around ${formatInt(lastFiveYearBlock.count)} publications per year-sized period.`
+    : 'The 5y view is not yet available.'
+
+  const previousThreeYearBlock = stats.threeYearBlocks.length >= 2 ? stats.threeYearBlocks[stats.threeYearBlocks.length - 2] : null
+  const latestThreeYearBlock = stats.threeYearBlocks.length >= 1 ? stats.threeYearBlocks[stats.threeYearBlocks.length - 1] : null
+  const previousThreeYearPeriod = formatPublicationInsightPeriodLabel(previousThreeYearBlock?.label ?? null)
+  const latestThreeYearPeriod = formatPublicationInsightPeriodLabel(latestThreeYearBlock?.label ?? null)
+  const threeYearSummary = previousThreeYearBlock && latestThreeYearBlock
+    ? latestThreeYearBlock.count > previousThreeYearBlock.count
+      ? `Within the latest rolling 3-year view, output steps up from ${formatInt(previousThreeYearBlock.count)} in the ${previousThreeYearPeriod ?? 'earlier period'} to ${formatInt(latestThreeYearBlock.count)} in the ${latestThreeYearPeriod ?? 'latest period'}, so recent volume is still strengthening.`
+      : latestThreeYearBlock.count < previousThreeYearBlock.count
+        ? `Within the latest rolling 3-year view, output softens from ${formatInt(previousThreeYearBlock.count)} in the ${previousThreeYearPeriod ?? 'earlier period'} to ${formatInt(latestThreeYearBlock.count)} in the ${latestThreeYearPeriod ?? 'latest period'}, so the newest period is lighter than the recent high point.`
+        : `Within the latest rolling 3-year view, output is broadly steady at ${formatInt(latestThreeYearBlock.count)} publications across its recent periods.`
+    : 'The 3y view is not yet available.'
+
+  const recentPeriodLabel = formatPublicationInsightPeriodLabel(stats.recentWindowLabel)
+  const recentWindowSummary = stats.recentWindowTotal > 0
+    ? stats.recentWindowActiveMonths <= 3
+      ? `The latest 12-month window${recentPeriodLabel ? ` (${recentPeriodLabel})` : ''} contains only ${formatInt(stats.recentWindowTotal)} publications, concentrated into ${formatInt(stats.recentWindowActiveMonths)} active months.`
+      : `The latest 12-month window${recentPeriodLabel ? ` (${recentPeriodLabel})` : ''} contains ${formatInt(stats.recentWindowTotal)} publications across ${formatInt(stats.recentWindowActiveMonths)} active months.`
+    : 'The latest 12-month period contains no publications.'
+
+  const tableSummary = stats.recentDetailCount > 0
+    ? stats.recentDetailCount <= 3
+      ? `Only ${formatInt(stats.recentDetailCount)} dated publication${stats.recentDetailCount === 1 ? '' : 's'} appear in that recent window${stats.recentDetailRangeLabel ? `, spanning ${stats.recentDetailRangeLabel}` : ''}.`
+      : `The table lists ${formatInt(stats.recentDetailCount)} dated publications in that recent window${stats.recentDetailRangeLabel ? `, spanning ${stats.recentDetailRangeLabel}` : ''}.`
+    : 'Dated-publication detail is limited for the most recent period.'
+
+  const openingSummary = previousThreeYearBlock && latestThreeYearBlock
+    ? latestThreeYearBlock.count < previousThreeYearBlock.count
+      ? 'Your publication volume rose to stronger years, but the latest 3-year and 12-month windows are now lighter.'
+      : latestThreeYearBlock.count > previousThreeYearBlock.count
+        ? 'Your publication volume rose to stronger years and is still holding up in the latest 3-year window.'
+        : 'Your publication volume rose over time and is now broadly holding in the latest windows.'
+    : 'This section shows how your publication volume changes across the full record and the latest windows.'
+
+  const recentComparisonSummary = (() => {
+    if (!firstFiveYearBlock || !lastFiveYearBlock || !previousThreeYearBlock || !latestThreeYearBlock) {
+      return `${fiveYearSummary} ${threeYearSummary}`.trim()
+    }
+    if (lastFiveYearBlock.count > firstFiveYearBlock.count && latestThreeYearBlock.count < previousThreeYearBlock.count) {
+      return `The latest 5-year window still sits above your earlier baseline, but the latest 3-year window has dropped below the recent high point. ${recentWindowSummary}`
+    }
+    if (lastFiveYearBlock.count > firstFiveYearBlock.count && latestThreeYearBlock.count >= previousThreeYearBlock.count) {
+      return `The latest 5-year and 3-year windows both remain stronger than the early part of the record. ${recentWindowSummary}`
+    }
+    if (lastFiveYearBlock.count < firstFiveYearBlock.count && latestThreeYearBlock.count < previousThreeYearBlock.count) {
+      return `Both the latest 5-year and 3-year windows are softer than earlier periods, so the recent part of the record is lighter than the longer-run pattern. ${recentWindowSummary}`
+    }
+    return `${threeYearSummary} ${recentWindowSummary}`.trim()
+  })()
+
+  const tableSupportSummary = stats.recentDetailCount > 0
+    ? stats.recentDetailCount <= 3
+      ? `The table supports that reading because recent output really is sparse, not just unevenly timed: ${tableSummary}`
+      : `The table supports that reading because recent output is spread across multiple dated publications: ${tableSummary}`
+    : tableSummary
+
+  return (
+    <div className="space-y-2.5">
+      <p>{openingSummary}</p>
+      <ul className="ml-4 list-disc space-y-1.5">
+        <li>
+          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Overall trajectory:</span>
+          {' '}
+          {allSummary}
+        </li>
+        <li>
+          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Recent position:</span>
+          {' '}
+          {recentComparisonSummary}
+        </li>
+        <li>
+          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Recent publication detail:</span>
+          {' '}
+          {tableSupportSummary}
+        </li>
+      </ul>
+    </div>
+  )
+}
+
+function renderPublicationArticleTypeOverTimeTooltipContent(stats: PublicationArticleTypeOverTimeInsightStats) {
+  if (stats.emptyReason || !stats.allWindow) {
+    return <p>{stats.emptyReason || 'No article type data is available yet.'}</p>
+  }
+  const allWindow = stats.allWindow
+  const fiveYearWindow = stats.fiveYearWindow
+  const threeYearWindow = stats.threeYearWindow
+  const oneYearWindow = stats.oneYearWindow
+  const allLeaderLabel = formatPublicationInsightLabelList(allWindow.topLabels)
+  const latestWindow = oneYearWindow || threeYearWindow || fiveYearWindow || allWindow
+  const latestLeaderLabel = formatPublicationInsightLabelList(latestWindow?.topLabels || [])
+  const sameLeaderSet = (
+    left: PublicationArticleTypeWindowInsightSummary | null,
+    right: PublicationArticleTypeWindowInsightSummary | null,
+  ) => {
+    if (!left || !right) {
+      return true
+    }
+    if (left.topLabels.length !== right.topLabels.length) {
+      return false
+    }
+    return left.topLabels.every((label) => right.topLabels.includes(label))
+  }
+  const distinctRecentWindows = [fiveYearWindow, threeYearWindow, oneYearWindow]
+    .filter((summary): summary is PublicationArticleTypeWindowInsightSummary => Boolean(summary))
+    .filter((summary, index, array) => (
+      summary.rangeLabel !== allWindow.rangeLabel
+      && array.findIndex((candidate) => candidate.rangeLabel === summary.rangeLabel) === index
+    ))
+  const allComparableWindowsKeepLeader = distinctRecentWindows.every((summary) => sameLeaderSet(summary, allWindow))
+  const recentWindowsShiftLeader = distinctRecentWindows.some((summary) => !sameLeaderSet(summary, allWindow))
+  const latestShareRounded = latestWindow?.topSharePct === null || latestWindow?.topSharePct === undefined
+    ? null
+    : Math.round(latestWindow.topSharePct)
+  const openingSummary = (() => {
+    if (!distinctRecentWindows.length) {
+      return `Your article-type mix is currently led by ${allLeaderLabel}, and the publication span is still short enough that the recent windows mostly collapse into the same record.`
+    }
+    if (recentWindowsShiftLeader && latestLeaderLabel !== allLeaderLabel) {
+      return `Your full record is led by ${allLeaderLabel}, but the latest windows tilt toward ${latestLeaderLabel}.`
+    }
+    if (
+      allComparableWindowsKeepLeader
+      && latestShareRounded !== null
+      && (allWindow.topSharePct || 0) > 0
+      && latestShareRounded >= Math.round((allWindow.topSharePct || 0) + 12)
+    ) {
+      return `Your article-type mix stays anchored in ${allLeaderLabel}, and the latest windows are even more concentrated there.`
+    }
+    if (
+      latestWindow
+      && latestWindow.distinctTypeCount > allWindow.distinctTypeCount
+      && latestWindow.rangeLabel !== allWindow.rangeLabel
+    ) {
+      return 'Your article-type mix is broader in the latest windows than it is across the full record.'
+    }
+    if ((allWindow.topSharePct || 0) < 45) {
+      return 'Your article-type mix stays fairly mixed across the publication span, rather than being dominated by one article type.'
+    }
+    return `Your article-type mix stays anchored in ${allLeaderLabel} across the full record and the recent windows.`
+  })()
+  const overallSummary = (() => {
+    if (allWindow.topLabels.length > 1) {
+      return `Across ${stats.spanLabel || 'the full record'}, the largest article types are ${allLeaderLabel}, with ${formatInt(allWindow.topCount)} publications each. The full record contains ${formatInt(allWindow.distinctTypeCount)} visible article ${pluralize(allWindow.distinctTypeCount, 'type')}.`
+    }
+    const shareLabel = allWindow.topSharePct === null ? '' : ` (${Math.round(allWindow.topSharePct)}%)`
+    const secondarySentence = allWindow.secondLabel && allWindow.secondSharePct !== null
+      ? ` The next largest type is ${allWindow.secondLabel} at ${Math.round(allWindow.secondSharePct)}%.`
+      : ''
+    return `Across ${stats.spanLabel || 'the full record'}, ${allLeaderLabel} is the main article type, with ${formatInt(allWindow.topCount)} of ${formatInt(allWindow.totalCount)} publications${shareLabel}.${secondarySentence}`
+  })()
+  const recentSummary = (() => {
+    if (!distinctRecentWindows.length) {
+      return 'Recent windows do not yet separate much from the full record, so this section is mainly showing the current article-type mix rather than a settled shift over time.'
+    }
+    const fiveLabel = fiveYearWindow?.rangeLabel ? `the latest 5-year period (${fiveYearWindow.rangeLabel})` : 'the latest 5-year period'
+    const threeLabel = threeYearWindow?.rangeLabel ? `the latest 3-year period (${threeYearWindow.rangeLabel})` : 'the latest 3-year period'
+    const oneLabel = oneYearWindow?.rangeLabel ? `the latest 1-year period (${oneYearWindow.rangeLabel})` : 'the latest 1-year period'
+    if (
+      fiveYearWindow
+      && threeYearWindow
+      && oneYearWindow
+      && sameLeaderSet(fiveYearWindow, allWindow)
+      && !sameLeaderSet(threeYearWindow, allWindow)
+      && !sameLeaderSet(oneYearWindow, allWindow)
+    ) {
+      return `${fiveLabel} still looks like the full record, but ${threeLabel} and ${oneLabel} shift toward ${formatPublicationInsightLabelList(oneYearWindow.topLabels)}.`
+    }
+    if (recentWindowsShiftLeader && latestLeaderLabel !== allLeaderLabel) {
+      return `${oneYearWindow ? oneLabel : 'The latest window'} moves toward ${latestLeaderLabel} rather than the full-record lead of ${allLeaderLabel}, so the recent mix is not just a smaller version of the whole portfolio.`
+    }
+    if (
+      oneYearWindow
+      && sameLeaderSet(oneYearWindow, allWindow)
+      && latestShareRounded !== null
+      && allWindow.topSharePct !== null
+      && latestShareRounded >= Math.round(allWindow.topSharePct + 12)
+    ) {
+      return `The same core type still leads in ${fiveYearWindow?.rangeLabel !== allWindow.rangeLabel ? fiveLabel : 'the longer recent periods'} and ${threeYearWindow?.rangeLabel !== allWindow.rangeLabel ? threeLabel : 'the shorter recent periods'}, and it rises to ${latestShareRounded}% of publications in ${oneLabel}.`
+    }
+    if (
+      oneYearWindow
+      && oneYearWindow.distinctTypeCount < allWindow.distinctTypeCount
+      && sameLeaderSet(oneYearWindow, allWindow)
+    ) {
+      return `${oneLabel} is narrower than the full record, with ${formatInt(oneYearWindow.distinctTypeCount)} visible article ${pluralize(oneYearWindow.distinctTypeCount, 'type')} rather than ${formatInt(allWindow.distinctTypeCount)}.`
+    }
+    if (
+      oneYearWindow
+      && oneYearWindow.distinctTypeCount > allWindow.distinctTypeCount
+    ) {
+      return `${oneLabel} brings more secondary types into view than the full record, so the recent mix looks broader rather than more concentrated.`
+    }
+    return `Across ${distinctRecentWindows.map((summary) => summary.rangeLabel).filter(Boolean).join(', ')}, the recent windows broadly preserve the same article-type centre of gravity as the full record.`
+  })()
+  const orderingSummary = (() => {
+    if (!oneYearWindow) {
+      return 'The ordering is still mainly being set by the full record because the latest 1-year view does not yet add much separate information.'
+    }
+    const oneLabel = oneYearWindow.rangeLabel ? `the latest 1-year period (${oneYearWindow.rangeLabel})` : 'the latest 1-year period'
+    const partialYearNote = stats.latestYearIsPartial && stats.latestPartialYearLabel
+      ? ` Because this latest 1-year view includes the current partial year (${stats.latestPartialYearLabel}), that newest ordering can still move.`
+      : ''
+    if (oneYearWindow.totalCount <= 3) {
+      return `Only ${formatInt(oneYearWindow.totalCount)} publication${oneYearWindow.totalCount === 1 ? '' : 's'} sit in ${oneLabel}, so the newest ordering is still thin rather than settled.${partialYearNote}`
+    }
+    if (!sameLeaderSet(oneYearWindow, allWindow)) {
+      return `In ${oneLabel}, ${formatPublicationInsightLabelList(oneYearWindow.topLabels)} moves ahead of the full-record lead of ${allLeaderLabel}.${partialYearNote}`
+    }
+    if (oneYearWindow.orderedLabels.length <= 2) {
+      return `${oneLabel} has narrowed to ${formatPublicationInsightLabelList(oneYearWindow.orderedLabels)} as the only visible article ${pluralize(oneYearWindow.orderedLabels.length, 'type')}.${partialYearNote}`
+    }
+    return `In ${oneLabel}, ${formatPublicationInsightLabelList(oneYearWindow.topLabels)} stays first, followed by ${oneYearWindow.secondLabel || oneYearWindow.orderedLabels[1] || 'other smaller types'}.${partialYearNote}`
+  })()
+
+  return (
+    <div className="space-y-2.5">
+      <p>{openingSummary}</p>
+      <ul className="ml-4 list-disc space-y-1.5">
+        <li>
+          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Overall mix:</span>
+          {' '}
+          {overallSummary}
+        </li>
+        <li>
+          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">How it changes:</span>
+          {' '}
+          {recentSummary}
+        </li>
+        <li>
+          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Ordering:</span>
+          {' '}
+          {orderingSummary}
+        </li>
+      </ul>
+    </div>
+  )
+}
+
+function renderPublicationPublicationTypeOverTimeTooltipContent(stats: PublicationPublicationTypeOverTimeInsightStats) {
+  if (stats.emptyReason || !stats.allWindow) {
+    return <p>{stats.emptyReason || 'No publication type data is available yet.'}</p>
+  }
+  const allWindow = stats.allWindow
+  const fiveYearWindow = stats.fiveYearWindow
+  const threeYearWindow = stats.threeYearWindow
+  const oneYearWindow = stats.oneYearWindow
+  const allLeaderLabel = formatPublicationInsightLabelList(allWindow.topLabels)
+  const latestWindow = oneYearWindow || threeYearWindow || fiveYearWindow || allWindow
+  const latestLeaderLabel = formatPublicationInsightLabelList(latestWindow?.topLabels || [])
+  const sameLeaderSet = (
+    left: PublicationPublicationTypeWindowInsightSummary | null,
+    right: PublicationPublicationTypeWindowInsightSummary | null,
+  ) => {
+    if (!left || !right) {
+      return true
+    }
+    if (left.topLabels.length !== right.topLabels.length) {
+      return false
+    }
+    return left.topLabels.every((label) => right.topLabels.includes(label))
+  }
+  const distinctRecentWindows = [fiveYearWindow, threeYearWindow, oneYearWindow]
+    .filter((summary): summary is PublicationPublicationTypeWindowInsightSummary => Boolean(summary))
+    .filter((summary, index, array) => (
+      summary.rangeLabel !== allWindow.rangeLabel
+      && array.findIndex((candidate) => candidate.rangeLabel === summary.rangeLabel) === index
+    ))
+  const allComparableWindowsKeepLeader = distinctRecentWindows.every((summary) => sameLeaderSet(summary, allWindow))
+  const recentWindowsShiftLeader = distinctRecentWindows.some((summary) => !sameLeaderSet(summary, allWindow))
+  const latestShareRounded = latestWindow?.topSharePct === null || latestWindow?.topSharePct === undefined
+    ? null
+    : Math.round(latestWindow.topSharePct)
+  const openingSummary = (() => {
+    if (!distinctRecentWindows.length) {
+      return `Your publication-type mix is currently led by ${allLeaderLabel}, and the publication span is still short enough that the recent windows mostly collapse into the same record.`
+    }
+    if (recentWindowsShiftLeader && latestLeaderLabel !== allLeaderLabel) {
+      return `Your full record is led by ${allLeaderLabel}, but the latest windows tilt toward ${latestLeaderLabel}.`
+    }
+    if (
+      allComparableWindowsKeepLeader
+      && latestShareRounded !== null
+      && (allWindow.topSharePct || 0) > 0
+      && latestShareRounded >= Math.round((allWindow.topSharePct || 0) + 12)
+    ) {
+      return `Your publication-type mix stays anchored in ${allLeaderLabel}, and the latest windows are even more concentrated there.`
+    }
+    if (
+      latestWindow
+      && latestWindow.distinctTypeCount > allWindow.distinctTypeCount
+      && latestWindow.rangeLabel !== allWindow.rangeLabel
+    ) {
+      return 'Your publication-type mix is broader in the latest windows than it is across the full record.'
+    }
+    if ((allWindow.topSharePct || 0) < 45) {
+      return 'Your publication-type mix stays fairly mixed across the publication span, rather than being dominated by one publication type.'
+    }
+    return `Your publication-type mix stays anchored in ${allLeaderLabel} across the full record and the recent windows.`
+  })()
+  const overallSummary = (() => {
+    if (allWindow.topLabels.length > 1) {
+      return `Across ${stats.spanLabel || 'the full record'}, the largest publication types are ${allLeaderLabel}, with ${formatInt(allWindow.topCount)} publications each. The full record contains ${formatInt(allWindow.distinctTypeCount)} visible publication ${pluralize(allWindow.distinctTypeCount, 'type')}.`
+    }
+    const shareLabel = allWindow.topSharePct === null ? '' : ` (${Math.round(allWindow.topSharePct)}%)`
+    const secondarySentence = allWindow.secondLabel && allWindow.secondSharePct !== null
+      ? ` The next largest type is ${allWindow.secondLabel} at ${Math.round(allWindow.secondSharePct)}%.`
+      : ''
+    return `Across ${stats.spanLabel || 'the full record'}, ${allLeaderLabel} is the main publication type, with ${formatInt(allWindow.topCount)} of ${formatInt(allWindow.totalCount)} publications${shareLabel}.${secondarySentence}`
+  })()
+  const recentSummary = (() => {
+    if (!distinctRecentWindows.length) {
+      return 'Recent windows do not yet separate much from the full record, so this section is mainly showing the current publication-type mix rather than a settled shift over time.'
+    }
+    const fiveLabel = fiveYearWindow?.rangeLabel ? `the latest 5-year period (${fiveYearWindow.rangeLabel})` : 'the latest 5-year period'
+    const threeLabel = threeYearWindow?.rangeLabel ? `the latest 3-year period (${threeYearWindow.rangeLabel})` : 'the latest 3-year period'
+    const oneLabel = oneYearWindow?.rangeLabel ? `the latest 1-year period (${oneYearWindow.rangeLabel})` : 'the latest 1-year period'
+    if (
+      fiveYearWindow
+      && threeYearWindow
+      && oneYearWindow
+      && sameLeaderSet(fiveYearWindow, allWindow)
+      && !sameLeaderSet(threeYearWindow, allWindow)
+      && !sameLeaderSet(oneYearWindow, allWindow)
+    ) {
+      return `${fiveLabel} still looks like the full record, but ${threeLabel} and ${oneLabel} shift toward ${formatPublicationInsightLabelList(oneYearWindow.topLabels)}.`
+    }
+    if (recentWindowsShiftLeader && latestLeaderLabel !== allLeaderLabel) {
+      return `${oneYearWindow ? oneLabel : 'The latest window'} moves toward ${latestLeaderLabel} rather than the full-record lead of ${allLeaderLabel}, so the recent mix is not just a smaller version of the whole portfolio.`
+    }
+    if (
+      oneYearWindow
+      && sameLeaderSet(oneYearWindow, allWindow)
+      && latestShareRounded !== null
+      && allWindow.topSharePct !== null
+      && latestShareRounded >= Math.round(allWindow.topSharePct + 12)
+    ) {
+      return `The same core type still leads in ${fiveYearWindow?.rangeLabel !== allWindow.rangeLabel ? fiveLabel : 'the longer recent periods'} and ${threeYearWindow?.rangeLabel !== allWindow.rangeLabel ? threeLabel : 'the shorter recent periods'}, and it rises to ${latestShareRounded}% of publications in ${oneLabel}.`
+    }
+    if (
+      oneYearWindow
+      && oneYearWindow.distinctTypeCount < allWindow.distinctTypeCount
+      && sameLeaderSet(oneYearWindow, allWindow)
+    ) {
+      return `${oneLabel} is narrower than the full record, with ${formatInt(oneYearWindow.distinctTypeCount)} visible publication ${pluralize(oneYearWindow.distinctTypeCount, 'type')} rather than ${formatInt(allWindow.distinctTypeCount)}.`
+    }
+    if (
+      oneYearWindow
+      && oneYearWindow.distinctTypeCount > allWindow.distinctTypeCount
+    ) {
+      return `${oneLabel} brings more secondary types into view than the full record, so the recent mix looks broader rather than more concentrated.`
+    }
+    return `Across ${distinctRecentWindows.map((summary) => summary.rangeLabel).filter(Boolean).join(', ')}, the recent windows broadly preserve the same publication-type centre of gravity as the full record.`
+  })()
+  const orderingSummary = (() => {
+    if (!oneYearWindow) {
+      return 'The ordering is still mainly being set by the full record because the latest 1-year view does not yet add much separate information.'
+    }
+    const oneLabel = oneYearWindow.rangeLabel ? `the latest 1-year period (${oneYearWindow.rangeLabel})` : 'the latest 1-year period'
+    const partialYearNote = stats.latestYearIsPartial && stats.latestPartialYearLabel
+      ? ` Because this latest 1-year view includes the current partial year (${stats.latestPartialYearLabel}), that newest ordering can still move.`
+      : ''
+    if (oneYearWindow.totalCount <= 3) {
+      return `Only ${formatInt(oneYearWindow.totalCount)} publication${oneYearWindow.totalCount === 1 ? '' : 's'} sit in ${oneLabel}, so the newest ordering is still thin rather than settled.${partialYearNote}`
+    }
+    if (!sameLeaderSet(oneYearWindow, allWindow)) {
+      return `In ${oneLabel}, ${formatPublicationInsightLabelList(oneYearWindow.topLabels)} moves ahead of the full-record lead of ${allLeaderLabel}.${partialYearNote}`
+    }
+    if (oneYearWindow.orderedLabels.length <= 2) {
+      return `${oneLabel} has narrowed to ${formatPublicationInsightLabelList(oneYearWindow.orderedLabels)} as the only visible publication ${pluralize(oneYearWindow.orderedLabels.length, 'type')}.${partialYearNote}`
+    }
+    return `In ${oneLabel}, ${formatPublicationInsightLabelList(oneYearWindow.topLabels)} stays first, followed by ${oneYearWindow.secondLabel || oneYearWindow.orderedLabels[1] || 'other smaller types'}.${partialYearNote}`
+  })()
+
+  return (
+    <div className="space-y-2.5">
+      <p>{openingSummary}</p>
+      <ul className="ml-4 list-disc space-y-1.5">
+        <li>
+          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Overall mix:</span>
+          {' '}
+          {overallSummary}
+        </li>
+        <li>
+          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">How it changes:</span>
+          {' '}
+          {recentSummary}
+        </li>
+        <li>
+          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Ordering:</span>
+          {' '}
+          {orderingSummary}
+        </li>
+      </ul>
     </div>
   )
 }
@@ -7713,6 +9824,272 @@ function categoryLabelFromPublication(
   return label
 }
 
+type TotalPublicationsContextMixShiftRow = {
+  key: string
+  dimensionLabel: string
+  lifetimeValue: string
+  recentValue: string
+  reading: string
+}
+
+type TotalPublicationsContextStats = {
+  emptyReason: string | null
+  firstPublicationValue: string
+  activeSpanValue: string
+  yearsWithOutputValue: string
+  longestStreakValue: string
+  maturityNarrative: string
+  maturityNote: string | null
+  recentWindowLabel: string
+  earlierWindowLabel: string
+  recentSharePct: number | null
+  earlierSharePct: number | null
+  recentMeanValue: string
+  baselineMeanValue: string
+  momentumValue: string
+  recentNarrative: string
+  recentNote: string | null
+  mixShiftRows: TotalPublicationsContextMixShiftRow[]
+  mixShiftNote: string | null
+}
+
+type TotalPublicationsContextLeader = {
+  label: string
+  count: number
+  sharePct: number
+}
+
+function buildTotalPublicationsContextLeader(
+  records: PublicationDrilldownRecord[],
+  labelResolver: (record: PublicationDrilldownRecord) => string,
+): TotalPublicationsContextLeader | null {
+  const counts = new Map<string, number>()
+  let total = 0
+
+  records.forEach((record) => {
+    const label = labelResolver(record).trim()
+    if (!label) {
+      return
+    }
+    total += 1
+    counts.set(label, (counts.get(label) || 0) + 1)
+  })
+
+  if (!counts.size || total <= 0) {
+    return null
+  }
+
+  const [label, count] = [...counts.entries()].sort((left, right) => {
+    if (right[1] !== left[1]) {
+      return right[1] - left[1]
+    }
+    return left[0].localeCompare(right[0])
+  })[0]
+
+  return {
+    label,
+    count,
+    sharePct: (count / total) * 100,
+  }
+}
+
+function buildTotalPublicationsMixShiftReading(
+  lifetimeLeader: TotalPublicationsContextLeader | null,
+  recentLeader: TotalPublicationsContextLeader | null,
+  recentWindowLabel: string,
+): string {
+  if (!lifetimeLeader || !recentLeader) {
+    return 'Not enough classified records in complete publication years.'
+  }
+
+  const normalizedRecentWindowLabel = recentWindowLabel.charAt(0).toLowerCase() + recentWindowLabel.slice(1)
+  if (lifetimeLeader.label !== recentLeader.label) {
+    return `Shifted from ${lifetimeLeader.label} to ${recentLeader.label} in ${normalizedRecentWindowLabel}.`
+  }
+
+  const shareDelta = recentLeader.sharePct - lifetimeLeader.sharePct
+  if (shareDelta >= 10) {
+    return `${recentLeader.label} is more concentrated in ${normalizedRecentWindowLabel}.`
+  }
+  if (shareDelta <= -10) {
+    return `Recent output is less concentrated in ${recentLeader.label} than the lifetime pattern.`
+  }
+  return 'Recent mix is broadly consistent with the lifetime portfolio.'
+}
+
+function formatTotalPublicationsContextWindowDisplayLabel(label: string): string {
+  return label
+    .replace(' complete years', ' years')
+    .replace(' complete year', ' year')
+}
+
+function buildTotalPublicationsMixShiftRow({
+  key,
+  dimensionLabel,
+  lifetimeRecords,
+  recentRecords,
+  recentWindowLabel,
+  labelResolver,
+}: {
+  key: string
+  dimensionLabel: string
+  lifetimeRecords: PublicationDrilldownRecord[]
+  recentRecords: PublicationDrilldownRecord[]
+  recentWindowLabel: string
+  labelResolver: (record: PublicationDrilldownRecord) => string
+}): TotalPublicationsContextMixShiftRow {
+  const lifetimeLeader = buildTotalPublicationsContextLeader(lifetimeRecords, labelResolver)
+  const recentLeader = buildTotalPublicationsContextLeader(recentRecords, labelResolver)
+  const lifetimeValue = lifetimeLeader
+    ? `${lifetimeLeader.label} (${formatPercentWhole(lifetimeLeader.sharePct)})`
+    : 'Not enough data'
+  const recentValue = recentLeader
+    ? `${recentLeader.label} (${formatPercentWhole(recentLeader.sharePct)})`
+    : 'Not enough data'
+
+  return {
+    key,
+    dimensionLabel,
+    lifetimeValue,
+    recentValue,
+    reading: buildTotalPublicationsMixShiftReading(lifetimeLeader, recentLeader, recentWindowLabel),
+  }
+}
+
+function buildTotalPublicationsContextStats({
+  publicationRecords,
+  patternStats,
+  phaseStats,
+}: {
+  publicationRecords: PublicationDrilldownRecord[]
+  patternStats: PublicationProductionPatternStats
+  phaseStats: PublicationProductionPhaseStats
+}): TotalPublicationsContextStats {
+  const firstPublicationValue = patternStats.firstPublicationYear === null
+    ? '\u2014'
+    : String(patternStats.firstPublicationYear)
+  const activeSpanValue = patternStats.activeSpan > 0
+    ? `${formatInt(patternStats.activeSpan)} years`
+    : '\u2014'
+  const yearsWithOutputValue = patternStats.activeSpan > 0
+    ? `${formatInt(patternStats.yearsWithOutput)} / ${formatInt(patternStats.activeSpan)}`
+    : '\u2014'
+  const longestStreakValue = patternStats.longestStreak > 0
+    ? `${formatInt(patternStats.longestStreak)} years`
+    : '\u2014'
+
+  let maturityNarrative = 'Portfolio maturity context is not available yet.'
+  if (phaseStats.emptyReason) {
+    maturityNarrative = phaseStats.emptyReason
+  } else if (phaseStats.insufficientHistory) {
+    maturityNarrative = `Complete-year history is still limited. ${phaseStats.interpretation}`
+  } else {
+    const continuityPhrase = patternStats.outputContinuity === null
+      ? 'limited continuity context'
+      : `${getPublicationOutputContinuityInterpretation(patternStats.outputContinuity).toLowerCase()} continuity`
+    maturityNarrative = `The portfolio is currently ${phaseStats.phaseLabel.toLowerCase()}, spanning ${formatInt(patternStats.activeSpan)} active years with ${continuityPhrase} and a longest streak of ${formatInt(patternStats.longestStreak)} consecutive years.`
+  }
+
+  const maturityNote = phaseStats.confidenceNote
+    ?? (patternStats.lowVolume ? getPublicationProductionPatternLowVolumeNote(patternStats.totalPublications) : null)
+
+  const recentWindowSize = Math.max(1, Math.min(3, phaseStats.years.length || 1))
+  const recentWindowLabel = recentWindowSize === 1
+    ? 'Last complete year'
+    : `Last ${formatInt(recentWindowSize)} complete years`
+  const earlierYearCount = Math.max(0, phaseStats.years.length - recentWindowSize)
+  const earlierWindowLabel = earlierYearCount > 0
+    ? `Earlier ${formatInt(earlierYearCount)} years`
+    : 'Earlier years'
+  const recentSharePct = phaseStats.recentShare === null ? null : phaseStats.recentShare * 100
+  const earlierSharePct = recentSharePct === null ? null : Math.max(0, 100 - recentSharePct)
+  const recentMeanValue = phaseStats.recentMean === null ? '\u2014' : phaseStats.recentMean.toFixed(1)
+  const baselineMeanValue = phaseStats.baselineMean === null ? '\u2014' : phaseStats.baselineMean.toFixed(1)
+  const momentumValue = phaseStats.momentum === null
+    ? '\u2014'
+    : `${phaseStats.momentum >= 0 ? '+' : ''}${phaseStats.momentum.toFixed(1)}`
+
+  let recentNarrative = 'Recent-versus-earlier comparison is not available yet.'
+  if (phaseStats.emptyReason) {
+    recentNarrative = phaseStats.emptyReason
+  } else if (phaseStats.usableYears <= 1 || phaseStats.recentMean === null) {
+    recentNarrative = 'More complete publication years are needed to compare recent output with an earlier baseline.'
+  } else if (phaseStats.baselineMean === null || earlierYearCount <= 0) {
+    recentNarrative = `${recentWindowLabel} currently account for most of the observed complete-year history.`
+  } else if ((phaseStats.momentum ?? 0) > 0.5) {
+    recentNarrative = `${recentWindowLabel} account for ${formatPercentWhole(recentSharePct ?? 0)} of complete-year output and are running above the earlier baseline.`
+  } else if ((phaseStats.momentum ?? 0) < -0.5) {
+    recentNarrative = `${recentWindowLabel} account for ${formatPercentWhole(recentSharePct ?? 0)} of complete-year output and sit below the earlier baseline.`
+  } else {
+    recentNarrative = `${recentWindowLabel} are broadly in line with the earlier output baseline.`
+  }
+
+  const recentNoteParts: string[] = []
+  if (patternStats.totalPublications > patternStats.scopedPublicationCount) {
+    recentNoteParts.push('Comparisons exclude the current partial year.')
+  }
+  if (phaseStats.confidenceNote) {
+    recentNoteParts.push(phaseStats.confidenceNote)
+  }
+
+  const completeYears = new Set(phaseStats.years)
+  const recentYears = new Set(phaseStats.years.slice(-recentWindowSize))
+  const completeScopeRecords = publicationRecords.filter((record) => record.year !== null && completeYears.has(record.year))
+  const recentRecords = completeScopeRecords.filter((record) => record.year !== null && recentYears.has(record.year))
+  const mixShiftRows = completeScopeRecords.length > 0
+    ? [
+      buildTotalPublicationsMixShiftRow({
+        key: 'publication-type',
+        dimensionLabel: 'Publication type',
+        lifetimeRecords: completeScopeRecords,
+        recentRecords,
+        recentWindowLabel,
+        labelResolver: (record) => categoryLabelFromPublication(record, 'publication'),
+      }),
+      buildTotalPublicationsMixShiftRow({
+        key: 'article-type',
+        dimensionLabel: 'Article type',
+        lifetimeRecords: completeScopeRecords,
+        recentRecords,
+        recentWindowLabel,
+        labelResolver: (record) => categoryLabelFromPublication(record, 'article'),
+      }),
+      buildTotalPublicationsMixShiftRow({
+        key: 'venue',
+        dimensionLabel: 'Journal',
+        lifetimeRecords: completeScopeRecords,
+        recentRecords,
+        recentWindowLabel,
+        labelResolver: (record) => record.venue.trim() || 'Unspecified journal',
+      }),
+    ]
+    : []
+  const mixShiftNote = completeScopeRecords.length <= 0
+    ? 'Composition shift needs publication-level classification data in complete publication years.'
+    : recentNoteParts[0] || null
+
+  return {
+    emptyReason: phaseStats.emptyReason,
+    firstPublicationValue,
+    activeSpanValue,
+    yearsWithOutputValue,
+    longestStreakValue,
+    maturityNarrative,
+    maturityNote,
+    recentWindowLabel,
+    earlierWindowLabel,
+    recentSharePct,
+    earlierSharePct,
+    recentMeanValue,
+    baselineMeanValue,
+    momentumValue,
+    recentNarrative,
+    recentNote: recentNoteParts.length ? recentNoteParts.join(' ') : null,
+    mixShiftRows,
+    mixShiftNote,
+  }
+}
+
 export function PublicationCategoryDistributionChart({
   publications,
   dimension,
@@ -8914,12 +11291,16 @@ function TotalPublicationsDrilldownWorkspace({
   tile,
   activeTab,
   animateCharts = true,
+  token = null,
   onOpenPublication: _onOpenPublication,
+  onDrilldownTabChange,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
   animateCharts?: boolean
+  token?: string | null
   onOpenPublication?: (workId: string) => void
+  onDrilldownTabChange?: (tab: DrilldownTab) => void
 }) {
   void _onOpenPublication
   const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('all')
@@ -8940,6 +11321,15 @@ function TotalPublicationsDrilldownWorkspace({
   const [topicBreakdownViewMode, setTopicBreakdownViewMode] = useState<TopicBreakdownViewMode>('top-ten')
   const [topicBreakdownExpanded, setTopicBreakdownExpanded] = useState(true)
   const [oaStatusBreakdownExpanded, setOaStatusBreakdownExpanded] = useState(true)
+  const [publicationInsightsByRequestKey, setPublicationInsightsByRequestKey] = useState<Record<string, PublicationInsightsAgentPayload>>({})
+  const [publicationInsightsLoadingByRequestKey, setPublicationInsightsLoadingByRequestKey] = useState<Record<string, boolean>>({})
+  const [publicationInsightsErrorByRequestKey, setPublicationInsightsErrorByRequestKey] = useState<Record<string, string>>({})
+  const publicationInsightsInFlightRef = useRef<Record<string, Promise<PublicationInsightsAgentPayload | null>>>({})
+  const [publicationProductionPhaseInsightOpen, setPublicationProductionPhaseInsightOpen] = useState(false)
+  const [publicationProductionPatternInsightOpen, setPublicationProductionPatternInsightOpen] = useState(false)
+  const [publicationVolumeOverTimeInsightOpen, setPublicationVolumeOverTimeInsightOpen] = useState(false)
+  const [publicationArticleTypeOverTimeInsightOpen, setPublicationArticleTypeOverTimeInsightOpen] = useState(false)
+  const [publicationTypeOverTimeInsightOpen, setPublicationTypeOverTimeInsightOpen] = useState(false)
   const journalBreakdownThumbStyle: CSSProperties = journalBreakdownViewMode === 'all-journals'
     ? {
       width: '58%',
@@ -8981,7 +11371,261 @@ function TotalPublicationsDrilldownWorkspace({
     setTopicBreakdownViewMode('top-ten')
     setTopicBreakdownExpanded(true)
     setOaStatusBreakdownExpanded(true)
+    publicationInsightsInFlightRef.current = {}
+    setPublicationInsightsByRequestKey({})
+    setPublicationInsightsLoadingByRequestKey({})
+    setPublicationInsightsErrorByRequestKey({})
+    setPublicationProductionPhaseInsightOpen(false)
+    setPublicationProductionPatternInsightOpen(false)
+    setPublicationVolumeOverTimeInsightOpen(false)
+    setPublicationArticleTypeOverTimeInsightOpen(false)
+    setPublicationTypeOverTimeInsightOpen(false)
   }, [tile.key])
+
+  const requestPublicationInsights = useCallback(
+    async ({
+      windowId,
+      sectionKey,
+      scope = 'window',
+    }: {
+      windowId: PublicationsWindowMode
+      sectionKey: PublicationInsightsSectionKey
+      scope?: 'window' | 'section'
+    }) => {
+      const normalizedWindowId = windowId === 'all' ? 'all' : windowId
+      const requestKey = `${sectionKey}:${scope}:${normalizedWindowId}`
+      if (publicationInsightsByRequestKey[requestKey]) {
+        return publicationInsightsByRequestKey[requestKey]
+      }
+      if (publicationInsightsInFlightRef.current[requestKey]) {
+        return publicationInsightsInFlightRef.current[requestKey]
+      }
+      if (!token) {
+        const message = 'Session token is required to generate publication insights.'
+        setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
+        return null
+      }
+      const requestPromise = (async () => {
+        setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: true }))
+        setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: '' }))
+        try {
+          const payload = await fetchPublicationInsightsAgent(token, {
+            windowId: normalizedWindowId,
+            scope,
+            sectionKey,
+          })
+          setPublicationInsightsByRequestKey((current) => ({ ...current, [requestKey]: payload }))
+          return payload
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Could not generate publication insights.'
+          setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
+          return null
+        } finally {
+          delete publicationInsightsInFlightRef.current[requestKey]
+          setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: false }))
+        }
+      })()
+      publicationInsightsInFlightRef.current[requestKey] = requestPromise
+      return requestPromise
+    },
+    [publicationInsightsByRequestKey, token],
+  )
+
+  const onTogglePublicationProductionPatternInsight = useCallback(() => {
+    setPublicationProductionPatternInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setPublicationProductionPhaseInsightOpen(false)
+        setPublicationVolumeOverTimeInsightOpen(false)
+        setPublicationArticleTypeOverTimeInsightOpen(false)
+        setPublicationTypeOverTimeInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: 'all',
+          sectionKey: 'publication_output_pattern',
+          scope: 'section',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  const onTogglePublicationProductionPhaseInsight = useCallback(() => {
+    setPublicationProductionPhaseInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setPublicationProductionPatternInsightOpen(false)
+        setPublicationVolumeOverTimeInsightOpen(false)
+        setPublicationArticleTypeOverTimeInsightOpen(false)
+        setPublicationTypeOverTimeInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: 'all',
+          sectionKey: 'publication_production_phase',
+          scope: 'section',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  const onTogglePublicationVolumeOverTimeInsight = useCallback(() => {
+    setPublicationVolumeOverTimeInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setPublicationProductionPhaseInsightOpen(false)
+        setPublicationProductionPatternInsightOpen(false)
+        setPublicationArticleTypeOverTimeInsightOpen(false)
+        setPublicationTypeOverTimeInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: 'all',
+          sectionKey: 'publication_volume_over_time',
+          scope: 'section',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  const onTogglePublicationArticleTypeOverTimeInsight = useCallback(() => {
+    setPublicationArticleTypeOverTimeInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setPublicationProductionPhaseInsightOpen(false)
+        setPublicationProductionPatternInsightOpen(false)
+        setPublicationVolumeOverTimeInsightOpen(false)
+        setPublicationTypeOverTimeInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: 'all',
+          sectionKey: 'publication_article_type_over_time',
+          scope: 'section',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  const onTogglePublicationTypeOverTimeInsight = useCallback(() => {
+    setPublicationTypeOverTimeInsightOpen((current) => {
+      const next = !current
+      if (next) {
+        setPublicationProductionPhaseInsightOpen(false)
+        setPublicationProductionPatternInsightOpen(false)
+        setPublicationVolumeOverTimeInsightOpen(false)
+        setPublicationArticleTypeOverTimeInsightOpen(false)
+        void requestPublicationInsights({
+          windowId: 'all',
+          sectionKey: 'publication_type_over_time',
+          scope: 'section',
+        })
+      }
+      return next
+    })
+  }, [requestPublicationInsights])
+
+  useEffect(() => {
+    if (!publicationProductionPhaseInsightOpen) {
+      return
+    }
+    const requestKey = 'publication_production_phase:section:all'
+    if (publicationInsightsByRequestKey[requestKey]) {
+      return
+    }
+    void requestPublicationInsights({
+      windowId: 'all',
+      sectionKey: 'publication_production_phase',
+      scope: 'section',
+    })
+  }, [
+    publicationInsightsByRequestKey,
+    publicationProductionPhaseInsightOpen,
+    requestPublicationInsights,
+  ])
+
+  useEffect(() => {
+    if (!publicationProductionPatternInsightOpen) {
+      return
+    }
+    const requestKey = 'publication_output_pattern:section:all'
+    if (publicationInsightsByRequestKey[requestKey]) {
+      return
+    }
+    void requestPublicationInsights({
+      windowId: 'all',
+      sectionKey: 'publication_output_pattern',
+      scope: 'section',
+    })
+  }, [
+    publicationInsightsByRequestKey,
+    publicationProductionPatternInsightOpen,
+    requestPublicationInsights,
+  ])
+
+  useEffect(() => {
+    if (!publicationVolumeOverTimeInsightOpen) {
+      return
+    }
+    const requestKey = 'publication_volume_over_time:section:all'
+    if (publicationInsightsByRequestKey[requestKey]) {
+      return
+    }
+    void requestPublicationInsights({
+      windowId: 'all',
+      sectionKey: 'publication_volume_over_time',
+      scope: 'section',
+    })
+  }, [
+    publicationInsightsByRequestKey,
+    publicationVolumeOverTimeInsightOpen,
+    requestPublicationInsights,
+  ])
+
+  useEffect(() => {
+    if (!publicationArticleTypeOverTimeInsightOpen) {
+      return
+    }
+    const requestKey = 'publication_article_type_over_time:section:all'
+    if (publicationInsightsByRequestKey[requestKey]) {
+      return
+    }
+    void requestPublicationInsights({
+      windowId: 'all',
+      sectionKey: 'publication_article_type_over_time',
+      scope: 'section',
+    })
+  }, [
+    publicationArticleTypeOverTimeInsightOpen,
+    publicationInsightsByRequestKey,
+    requestPublicationInsights,
+  ])
+
+  useEffect(() => {
+    if (!publicationTypeOverTimeInsightOpen) {
+      return
+    }
+    const requestKey = 'publication_type_over_time:section:all'
+    if (publicationInsightsByRequestKey[requestKey]) {
+      return
+    }
+    void requestPublicationInsights({
+      windowId: 'all',
+      sectionKey: 'publication_type_over_time',
+      scope: 'section',
+    })
+  }, [
+    publicationInsightsByRequestKey,
+    publicationTypeOverTimeInsightOpen,
+    requestPublicationInsights,
+  ])
+
+  useEffect(() => {
+    if (activeTab === 'summary') {
+      return
+    }
+    setPublicationProductionPhaseInsightOpen(false)
+    setPublicationProductionPatternInsightOpen(false)
+    setPublicationVolumeOverTimeInsightOpen(false)
+    setPublicationArticleTypeOverTimeInsightOpen(false)
+    setPublicationTypeOverTimeInsightOpen(false)
+  }, [activeTab])
 
   const publicationDrilldownRecords = useMemo<PublicationDrilldownRecord[]>(() => {
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
@@ -9302,6 +11946,8 @@ function TotalPublicationsDrilldownWorkspace({
     () => monotonePathFromPoints(trajectoryPoints),
     [trajectoryPoints],
   )
+  const trajectoryEntryRevealIdBase = useId().replace(/:/g, '')
+  const trajectoryEntryRevealClipId = `${trajectoryEntryRevealIdBase}-clip`
   const trajectoryAnimationKey = useMemo(
     () => `${trajectoryMode}|${trajectoryVisibleYears.join('|')}|${trajectoryValues.join('|')}`,
     [trajectoryMode, trajectoryValues, trajectoryVisibleYears],
@@ -9328,6 +11974,70 @@ function TotalPublicationsDrilldownWorkspace({
     () => trajectoryTickRatios.map((ratio) => ratio * Math.max(1, trajectoryDisplayedAxisMax)),
     [trajectoryDisplayedAxisMax, trajectoryTickRatios],
   )
+  const trajectoryWasVisibleRef = useRef(false)
+  const [trajectoryEntryRevealActive, setTrajectoryEntryRevealActive] = useState(false)
+  const [trajectoryEntryRevealProgress, setTrajectoryEntryRevealProgress] = useState(0)
+  const trajectoryEntryRevealWidth = Math.max(0, Math.min(trajectoryPlotWidth, trajectoryPlotWidth * trajectoryEntryRevealProgress))
+
+  useEffect(() => {
+    const becameVisible = trajectoryChartVisible && !trajectoryWasVisibleRef.current
+    trajectoryWasVisibleRef.current = trajectoryChartVisible
+
+    if (!trajectoryChartVisible) {
+      setTrajectoryEntryRevealActive(false)
+      setTrajectoryEntryRevealProgress(0)
+      return
+    }
+
+    if (becameVisible) {
+      if (prefersReducedMotion()) {
+        setTrajectoryEntryRevealActive(false)
+        setTrajectoryEntryRevealProgress(1)
+        return
+      }
+      setTrajectoryEntryRevealActive(true)
+      setTrajectoryEntryRevealProgress(0)
+    }
+  }, [trajectoryChartVisible])
+
+  useEffect(() => {
+    if (!trajectoryChartVisible || !trajectoryPath || !trajectoryEntryRevealActive) {
+      return
+    }
+
+    const entryDelayMs = 120
+    const entryDurationMs = 940
+    let raf = 0
+    const startedAt = performance.now()
+    const easeEntryReveal = (progress: number) => {
+      const clamped = Math.max(0, Math.min(1, progress))
+      return clamped * clamped * (3 - (2 * clamped))
+    }
+
+    setTrajectoryEntryRevealProgress(0)
+    const step = (now: number) => {
+      const elapsed = now - startedAt
+      if (elapsed < entryDelayMs) {
+        setTrajectoryEntryRevealProgress(0)
+        raf = window.requestAnimationFrame(step)
+        return
+      }
+      const progress = Math.min(1, (elapsed - entryDelayMs) / entryDurationMs)
+      const easedProgress = easeEntryReveal(progress)
+      setTrajectoryEntryRevealProgress(easedProgress)
+      if (progress >= 1) {
+        setTrajectoryEntryRevealActive(false)
+      }
+      if (progress < 1) {
+        raf = window.requestAnimationFrame(step)
+      }
+    }
+
+    raf = window.requestAnimationFrame(step)
+    return () => {
+      window.cancelAnimationFrame(raf)
+    }
+  }, [trajectoryChartVisible, trajectoryEntryRevealActive, trajectoryPath])
 
   const trajectoryVolatilityIndex = useMemo(() => {
     if (!trajectoryVisibleRaw.length) {
@@ -9538,6 +12248,14 @@ function TotalPublicationsDrilldownWorkspace({
       { label: 'Year-to-date', value: yearToDateValue },
     ]
   }, [tile])
+  const publicationProductionPatternCompleteStats = useMemo(
+    () => buildPublicationProductionPatternStats(tile, 'complete'),
+    [tile],
+  )
+  const publicationProductionPatternAsOfDate = useMemo(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    return parsePublicationProductionPatternAsOfDate(drilldown.as_of_date) ?? null
+  }, [tile])
   const publicationProductionPatternStats = useMemo(
     () => buildPublicationProductionPatternStats(tile, publicationProductionYearScopeMode),
     [publicationProductionYearScopeMode, tile],
@@ -9545,6 +12263,14 @@ function TotalPublicationsDrilldownWorkspace({
   const publicationProductionPhaseStats = useMemo(
     () => buildPublicationProductionPhaseStats(tile),
     [tile],
+  )
+  const totalPublicationsContextStats = useMemo(
+    () => buildTotalPublicationsContextStats({
+      publicationRecords: publicationDrilldownRecords,
+      patternStats: publicationProductionPatternCompleteStats,
+      phaseStats: publicationProductionPhaseStats,
+    }),
+    [publicationDrilldownRecords, publicationProductionPatternCompleteStats, publicationProductionPhaseStats],
   )
   const publicationProductionPatternNotes = useMemo(() => {
     const notes: string[] = []
@@ -9726,13 +12452,178 @@ function TotalPublicationsDrilldownWorkspace({
         articleType: record.articleType || 'Not available',
       }))
   }, [publicationDrilldownRecords, publicationTrendsWindowMode, publicationVolumeTableDateSortMode])
-  const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
-    context: 'Top publication venues',
-  }
-  const subsectionTitle = subsectionTitleByTab[activeTab] || null
+  const publicationVolumeOverTimeInsightStats = useMemo(
+    () => buildPublicationVolumeOverTimeInsightStats(tile, publicationDrilldownRecords),
+    [publicationDrilldownRecords, tile],
+  )
+  const publicationArticleTypeOverTimeInsightStats = useMemo(
+    () => buildPublicationArticleTypeOverTimeInsightStats(publicationDrilldownRecords, trajectoryAsOfDate),
+    [publicationDrilldownRecords, trajectoryAsOfDate],
+  )
+  const publicationTypeOverTimeInsightStats = useMemo(
+    () => buildPublicationPublicationTypeOverTimeInsightStats(publicationDrilldownRecords, trajectoryAsOfDate),
+    [publicationDrilldownRecords, trajectoryAsOfDate],
+  )
+  const totalPublicationsContextPortfolioTooltip = (
+    <div className="house-publications-drilldown-stack-1">
+      <p>{totalPublicationsContextStats.maturityNarrative}</p>
+      {totalPublicationsContextStats.maturityNote ? <p>{totalPublicationsContextStats.maturityNote}</p> : null}
+    </div>
+  )
+  const totalPublicationsContextRecentTooltip = (
+    <div className="house-publications-drilldown-stack-1">
+      <p>{totalPublicationsContextStats.recentNarrative}</p>
+      <p>{`${totalPublicationsContextStats.recentWindowLabel}: mean ${totalPublicationsContextStats.recentMeanValue}. ${totalPublicationsContextStats.earlierWindowLabel}: mean ${totalPublicationsContextStats.baselineMeanValue}. Change vs baseline: ${totalPublicationsContextStats.momentumValue}.`}</p>
+      {totalPublicationsContextStats.recentNote ? <p>{totalPublicationsContextStats.recentNote}</p> : null}
+    </div>
+  )
+  const totalPublicationsContextCompositionTooltip = (
+    <div className="house-publications-drilldown-stack-1">
+      <p>{`Compares the dominant lifetime mix with ${totalPublicationsContextStats.recentWindowLabel.toLowerCase()} across the complete-year portfolio.`}</p>
+      {totalPublicationsContextStats.mixShiftRows.map((row) => (
+        <p key={`context-tooltip-${row.key}`}>{`${row.dimensionLabel}: ${row.reading}`}</p>
+      ))}
+      {totalPublicationsContextStats.mixShiftNote ? <p>{totalPublicationsContextStats.mixShiftNote}</p> : null}
+    </div>
+  )
+  const publicationProductionPhaseInsightsRequestKey = 'publication_production_phase:section:all'
+  const publicationProductionPhaseInsightsPayload = publicationInsightsByRequestKey[publicationProductionPhaseInsightsRequestKey] || null
+  const publicationProductionPhaseInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[publicationProductionPhaseInsightsRequestKey])
+  const publicationProductionPhaseInsightsError = publicationInsightsErrorByRequestKey[publicationProductionPhaseInsightsRequestKey] || ''
+  const closePublicationProductionPhaseInsight = useCallback(() => setPublicationProductionPhaseInsightOpen(false), [])
+  const publicationProductionPatternInsightsRequestKey = 'publication_output_pattern:section:all'
+  const publicationProductionPatternInsightsPayload = publicationInsightsByRequestKey[publicationProductionPatternInsightsRequestKey] || null
+  const publicationProductionPatternInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[publicationProductionPatternInsightsRequestKey])
+  const publicationProductionPatternInsightsError = publicationInsightsErrorByRequestKey[publicationProductionPatternInsightsRequestKey] || ''
+  const closePublicationProductionPatternInsight = useCallback(() => setPublicationProductionPatternInsightOpen(false), [])
+  const publicationVolumeOverTimeInsightsRequestKey = 'publication_volume_over_time:section:all'
+  const publicationVolumeOverTimeInsightsPayload = publicationInsightsByRequestKey[publicationVolumeOverTimeInsightsRequestKey] || null
+  const publicationVolumeOverTimeInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[publicationVolumeOverTimeInsightsRequestKey])
+  const publicationVolumeOverTimeInsightsError = publicationInsightsErrorByRequestKey[publicationVolumeOverTimeInsightsRequestKey] || ''
+  const closePublicationVolumeOverTimeInsight = useCallback(() => setPublicationVolumeOverTimeInsightOpen(false), [])
+  const publicationArticleTypeOverTimeInsightsRequestKey = 'publication_article_type_over_time:section:all'
+  const publicationArticleTypeOverTimeInsightsPayload = publicationInsightsByRequestKey[publicationArticleTypeOverTimeInsightsRequestKey] || null
+  const publicationArticleTypeOverTimeInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[publicationArticleTypeOverTimeInsightsRequestKey])
+  const publicationArticleTypeOverTimeInsightsError = publicationInsightsErrorByRequestKey[publicationArticleTypeOverTimeInsightsRequestKey] || ''
+  const closePublicationArticleTypeOverTimeInsight = useCallback(() => setPublicationArticleTypeOverTimeInsightOpen(false), [])
+  const publicationTypeOverTimeInsightsRequestKey = 'publication_type_over_time:section:all'
+  const publicationTypeOverTimeInsightsPayload = publicationInsightsByRequestKey[publicationTypeOverTimeInsightsRequestKey] || null
+  const publicationTypeOverTimeInsightsLoading = Boolean(publicationInsightsLoadingByRequestKey[publicationTypeOverTimeInsightsRequestKey])
+  const publicationTypeOverTimeInsightsError = publicationInsightsErrorByRequestKey[publicationTypeOverTimeInsightsRequestKey] || ''
+  const closePublicationTypeOverTimeInsight = useCallback(() => setPublicationTypeOverTimeInsightOpen(false), [])
+  const navigateToInsightTab = useCallback((tab: DrilldownTab) => {
+    onDrilldownTabChange?.(tab)
+    setPublicationProductionPhaseInsightOpen(false)
+    setPublicationProductionPatternInsightOpen(false)
+    setPublicationVolumeOverTimeInsightOpen(false)
+    setPublicationArticleTypeOverTimeInsightOpen(false)
+    setPublicationTypeOverTimeInsightOpen(false)
+  }, [onDrilldownTabChange])
+  const publicationProductionPhaseInsightActions = useMemo<PublicationInsightAction[]>(() => (
+    [
+      {
+        key: 'publication-production-phase-open-trajectory',
+        label: 'Open trajectory',
+        description: 'View the full year-over-year publication chart.',
+        onSelect: () => navigateToInsightTab('trajectory'),
+      },
+      {
+        key: 'publication-production-phase-open-context',
+        label: 'Open context',
+        description: 'Compare recent output with earlier years and composition shifts.',
+        onSelect: () => navigateToInsightTab('context'),
+      },
+    ]
+  ), [navigateToInsightTab])
+  const publicationProductionPatternInsightActions = useMemo<PublicationInsightAction[]>(() => (
+    [
+      {
+        key: 'publication-output-pattern-open-trajectory',
+        label: 'Open trajectory',
+        description: 'View the full year-over-year publication chart.',
+        onSelect: () => navigateToInsightTab('trajectory'),
+      },
+      {
+        key: 'publication-output-pattern-open-context',
+        label: 'Open context',
+        description: 'Compare recent output with earlier years and composition shifts.',
+        onSelect: () => navigateToInsightTab('context'),
+      },
+    ]
+  ), [navigateToInsightTab])
+  const publicationVolumeOverTimeInsightActions = useMemo<PublicationInsightAction[]>(() => (
+    [
+      {
+        key: 'publication-volume-open-trajectory',
+        label: 'Open trajectory',
+        description: 'View the year-over-year publication chart and derived trend reads.',
+        onSelect: () => navigateToInsightTab('trajectory'),
+      },
+      {
+        key: 'publication-volume-open-context',
+        label: 'Open context',
+        description: 'Compare recent output with earlier years and composition shifts.',
+        onSelect: () => navigateToInsightTab('context'),
+      },
+    ]
+  ), [navigateToInsightTab])
+  const publicationArticleTypeOverTimeInsightActions = useMemo<PublicationInsightAction[]>(() => (
+    [
+      {
+        key: 'publication-article-type-open-summary',
+        label: 'Open summary',
+        description: 'Return to the summary view for the related publication mix sections.',
+        onSelect: () => navigateToInsightTab('summary'),
+      },
+      {
+        key: 'publication-article-type-open-context',
+        label: 'Open context',
+        description: 'Compare recent composition shifts against the wider publication record.',
+        onSelect: () => navigateToInsightTab('context'),
+      },
+    ]
+  ), [navigateToInsightTab])
+  const publicationTypeOverTimeInsightActions = useMemo<PublicationInsightAction[]>(() => (
+    [
+      {
+        key: 'publication-type-open-summary',
+        label: 'Open summary',
+        description: 'Return to the summary view for the related publication mix sections.',
+        onSelect: () => navigateToInsightTab('summary'),
+      },
+      {
+        key: 'publication-type-open-context',
+        label: 'Open context',
+        description: 'Compare recent composition shifts against the wider publication record.',
+        onSelect: () => navigateToInsightTab('context'),
+      },
+    ]
+  ), [navigateToInsightTab])
   const publicationProductionSummarySections = (
     <>
       <div className="house-publications-drilldown-bounded-section" data-ui="publication-production-phase">
+        {publicationProductionPhaseInsightOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Close production phase insight"
+              className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              onClick={closePublicationProductionPhaseInsight}
+            />
+            <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-[26rem]">
+                <PublicationInsightsCallout
+                  payload={publicationProductionPhaseInsightsPayload}
+                  sectionKey="publication_production_phase"
+                  loading={publicationProductionPhaseInsightsLoading}
+                  error={publicationProductionPhaseInsightsError}
+                  actions={publicationProductionPhaseInsightActions}
+                  onClose={closePublicationProductionPhaseInsight}
+                />
+              </div>
+            </div>
+          </>
+        ) : null}
         <div className="house-drilldown-heading-block">
           <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <div className="flex min-w-0 items-center gap-2">
@@ -9746,12 +12637,18 @@ function TotalPublicationsDrilldownWorkspace({
                 onMouseDown={(event) => event.stopPropagation()}
               />
             </div>
-            <div className="justify-self-end">
+            <div className="flex items-center justify-self-end gap-2">
               <HelpTooltipIconButton
                 ariaLabel="Explain Production Phase"
                 content={renderPublicationProductionPhaseTooltipContent(publicationProductionPhaseStats)}
+                className="max-w-[20rem] px-3 py-2"
                 align="end"
                 side="top"
+              />
+              <PublicationInsightsTriggerButton
+                ariaLabel="Open production phase insight"
+                active={publicationProductionPhaseInsightOpen}
+                onClick={onTogglePublicationProductionPhaseInsight}
               />
             </div>
           </div>
@@ -9764,9 +12661,31 @@ function TotalPublicationsDrilldownWorkspace({
       </div>
 
       <div className="house-publications-drilldown-bounded-section" data-ui="publication-production-pattern">
+        {publicationProductionPatternInsightOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Close publication output pattern insight"
+              className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              onClick={closePublicationProductionPatternInsight}
+            />
+            <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-[26rem]">
+                <PublicationInsightsCallout
+                  payload={publicationProductionPatternInsightsPayload}
+                  sectionKey="publication_output_pattern"
+                  loading={publicationProductionPatternInsightsLoading}
+                  error={publicationProductionPatternInsightsError}
+                  actions={publicationProductionPatternInsightActions}
+                  onClose={closePublicationProductionPatternInsight}
+                />
+              </div>
+            </div>
+          </>
+        ) : null}
         <div className="house-drilldown-heading-block">
-          <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-            <div className="flex min-w-0 items-center gap-2">
+          <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3">
+            <div className="inline-flex items-start gap-2 justify-self-start">
               <p className="house-drilldown-heading-block-title">Publication Production Pattern</p>
               <DrilldownSheet.HeadingToggle
                 expanded={publicationProductionPatternExpanded}
@@ -9777,10 +12696,17 @@ function TotalPublicationsDrilldownWorkspace({
                 onMouseDown={(event) => event.stopPropagation()}
               />
             </div>
-            <div className="justify-self-end">
+            <div className="flex justify-center self-start">
               <PublicationProductionYearScopeToggle
                 value={publicationProductionYearScopeMode}
                 onChange={setPublicationProductionYearScopeMode}
+              />
+            </div>
+            <div className="justify-self-end self-start">
+              <PublicationInsightsTriggerButton
+                ariaLabel="Open publication output pattern insight"
+                active={publicationProductionPatternInsightOpen}
+                onClick={onTogglePublicationProductionPatternInsight}
               />
             </div>
           </div>
@@ -9817,11 +12743,10 @@ function TotalPublicationsDrilldownWorkspace({
                     semanticLabel={publicationProductionPatternStats.consistencyIndex === null
                       ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Insufficient history</span>
                       : renderPublicationConsistencyBadge(publicationProductionPatternStats.consistencyIndex)}
-                    tooltip={(
-                      <div className="house-publications-drilldown-stack-1">
-                        <p>Measures how evenly publications are distributed across active years. Higher values indicate steadier annual output.</p>
-                        <p>{getPublicationConsistencySupportingText(publicationProductionPatternStats.consistencyIndex)}</p>
-                      </div>
+                    tooltip={renderPublicationConsistencyTooltipContent(
+                      publicationProductionPatternCompleteStats,
+                      publicationProductionPatternStats,
+                      publicationProductionPatternAsOfDate,
                     )}
                     meterValue={publicationProductionPatternStats.consistencyIndex}
                     meterTone={publicationProductionPatternStats.consistencyIndex === null
@@ -9837,11 +12762,10 @@ function TotalPublicationsDrilldownWorkspace({
                     semanticLabel={publicationProductionPatternStats.burstinessScore === null
                       ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Insufficient history</span>
                       : renderPublicationBurstinessBadge(publicationProductionPatternStats.burstinessScore)}
-                    tooltip={(
-                      <div className="house-publications-drilldown-stack-1">
-                        <p>Measures the extent to which publication output occurs in spikes rather than evenly across years.</p>
-                        <p>{getPublicationBurstinessSupportingText(publicationProductionPatternStats.burstinessScore)}</p>
-                      </div>
+                    tooltip={renderPublicationBurstinessTooltipContent(
+                      publicationProductionPatternCompleteStats,
+                      publicationProductionPatternStats,
+                      publicationProductionPatternAsOfDate,
                     )}
                     meterValue={publicationProductionPatternStats.burstinessScore}
                     meterTone={publicationProductionPatternStats.burstinessScore === null
@@ -9857,13 +12781,10 @@ function TotalPublicationsDrilldownWorkspace({
                     semanticLabel={publicationProductionPatternStats.peakYearShare === null
                       ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Not available</span>
                       : renderPublicationPeakYearShareBadge(publicationProductionPatternStats.peakYearShare)}
-                    tooltip={(
-                      <div className="house-publications-drilldown-stack-1">
-                        <p>Proportion of all publications produced in the single most productive year.</p>
-                        <p>{publicationProductionPatternStats.peakYearShare === null
-                          ? 'Peak-year concentration is unavailable for the selected scope.'
-                          : `${Math.round(publicationProductionPatternStats.peakYearShare * 100)}% of publications in this scope occurred in the most productive year.`}</p>
-                      </div>
+                    tooltip={renderPublicationPeakYearShareTooltipContent(
+                      publicationProductionPatternCompleteStats,
+                      publicationProductionPatternStats,
+                      publicationProductionPatternAsOfDate,
                     )}
                     meterValue={publicationProductionPatternStats.peakYearShare}
                     meterTone={publicationProductionPatternStats.peakYearShare === null
@@ -9879,17 +12800,10 @@ function TotalPublicationsDrilldownWorkspace({
                     semanticLabel={publicationProductionPatternStats.outputContinuity === null
                       ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Not available</span>
                       : renderPublicationOutputContinuityBadge(publicationProductionPatternStats.outputContinuity)}
-                    tooltip={(
-                      <div className="house-publications-drilldown-stack-1">
-                        <p>Percentage of years with at least one publication between the first and most recent output.</p>
-                        {publicationProductionPatternStats.outputContinuity !== null ? (
-                          <p>{`${Math.round(publicationProductionPatternStats.outputContinuity * 100)}% continuity across the active publication span.`}</p>
-                        ) : null}
-                        {publicationProductionPatternStats.longestStreak > 0 ? (
-                          <p>{`Longest publication streak: ${formatInt(publicationProductionPatternStats.longestStreak)} ${pluralize(publicationProductionPatternStats.longestStreak, 'year')}.`}</p>
-                        ) : null}
-                        <p>{getPublicationOutputContinuitySupportingText(publicationProductionPatternStats.outputContinuity)}</p>
-                      </div>
+                    tooltip={renderPublicationOutputContinuityTooltipContent(
+                      publicationProductionPatternCompleteStats,
+                      publicationProductionPatternStats,
+                      publicationProductionPatternAsOfDate,
                     )}
                     meterValue={publicationProductionPatternStats.outputContinuity}
                     meterTone={publicationProductionPatternStats.outputContinuity === null
@@ -9930,18 +12844,56 @@ function TotalPublicationsDrilldownWorkspace({
           <>
             {publicationProductionSummarySections}
 
-            <div className="house-publications-drilldown-bounded-section">
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">Publication Volume Over Time</p>
-                  <DrilldownSheet.HeadingToggle
-                    expanded={publicationTrendsExpanded}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setPublicationTrendsExpanded((value) => !value)
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
+            <div className="house-publications-drilldown-bounded-section" data-ui="publication-volume-over-time">
+              {publicationVolumeOverTimeInsightOpen ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close publication volume over time insight"
+                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+                    onClick={closePublicationVolumeOverTimeInsight}
                   />
+                  <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+                    <div className="pointer-events-auto w-full max-w-[26rem]">
+                      <PublicationInsightsCallout
+                        payload={publicationVolumeOverTimeInsightsPayload}
+                        sectionKey="publication_volume_over_time"
+                        loading={publicationVolumeOverTimeInsightsLoading}
+                        error={publicationVolumeOverTimeInsightsError}
+                        actions={publicationVolumeOverTimeInsightActions}
+                        onClose={closePublicationVolumeOverTimeInsight}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              <div className="house-drilldown-heading-block">
+                <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="house-drilldown-heading-block-title">Publication Volume Over Time</p>
+                    <DrilldownSheet.HeadingToggle
+                      expanded={publicationTrendsExpanded}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setPublicationTrendsExpanded((value) => !value)
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                    />
+                  </div>
+                  <div className="flex items-center justify-self-end gap-2">
+                    <HelpTooltipIconButton
+                      ariaLabel="Explain Publication Volume Over Time"
+                      content={renderPublicationVolumeOverTimeTooltipContent(publicationVolumeOverTimeInsightStats)}
+                      className="max-w-[22rem] px-3 py-2"
+                      align="end"
+                      side="top"
+                    />
+                    <PublicationInsightsTriggerButton
+                      ariaLabel="Open publication volume over time insight"
+                      active={publicationVolumeOverTimeInsightOpen}
+                      onClick={onTogglePublicationVolumeOverTimeInsight}
+                    />
+                  </div>
                 </div>
               </div>
               {publicationTrendsExpanded ? (
@@ -10050,18 +13002,56 @@ function TotalPublicationsDrilldownWorkspace({
               ) : null}
             </div>
 
-            <div className="house-publications-drilldown-bounded-section">
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">Type of Articles Published Over Time</p>
-                  <DrilldownSheet.HeadingToggle
-                    expanded={articleTypeTrendsExpanded}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setArticleTypeTrendsExpanded((value) => !value)
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
+            <div className="house-publications-drilldown-bounded-section" data-ui="publication-article-type-over-time">
+              {publicationArticleTypeOverTimeInsightOpen ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close publication article type over time insight"
+                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+                    onClick={closePublicationArticleTypeOverTimeInsight}
                   />
+                  <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+                    <div className="pointer-events-auto w-full max-w-[26rem]">
+                      <PublicationInsightsCallout
+                        payload={publicationArticleTypeOverTimeInsightsPayload}
+                        sectionKey="publication_article_type_over_time"
+                        loading={publicationArticleTypeOverTimeInsightsLoading}
+                        error={publicationArticleTypeOverTimeInsightsError}
+                        actions={publicationArticleTypeOverTimeInsightActions}
+                        onClose={closePublicationArticleTypeOverTimeInsight}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              <div className="house-drilldown-heading-block">
+                <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="house-drilldown-heading-block-title">Type of Articles Published Over Time</p>
+                    <DrilldownSheet.HeadingToggle
+                      expanded={articleTypeTrendsExpanded}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setArticleTypeTrendsExpanded((value) => !value)
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                    />
+                  </div>
+                  <div className="flex items-center justify-self-end gap-2">
+                    <HelpTooltipIconButton
+                      ariaLabel="Explain Type of Articles Published Over Time"
+                      content={renderPublicationArticleTypeOverTimeTooltipContent(publicationArticleTypeOverTimeInsightStats)}
+                      className="max-w-[22rem] px-3 py-2"
+                      align="end"
+                      side="top"
+                    />
+                    <PublicationInsightsTriggerButton
+                      ariaLabel="Open publication article type over time insight"
+                      active={publicationArticleTypeOverTimeInsightOpen}
+                      onClick={onTogglePublicationArticleTypeOverTimeInsight}
+                    />
+                  </div>
                 </div>
               </div>
               {articleTypeTrendsExpanded ? (
@@ -10081,18 +13071,56 @@ function TotalPublicationsDrilldownWorkspace({
               ) : null}
             </div>
 
-            <div className="house-publications-drilldown-bounded-section">
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="house-drilldown-heading-block-title">Type of Publications Published Over Time</p>
-                  <DrilldownSheet.HeadingToggle
-                    expanded={publicationTypeTrendsExpanded}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setPublicationTypeTrendsExpanded((value) => !value)
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
+            <div className="house-publications-drilldown-bounded-section" data-ui="publication-type-over-time">
+              {publicationTypeOverTimeInsightOpen ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close publication type over time insight"
+                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+                    onClick={closePublicationTypeOverTimeInsight}
                   />
+                  <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
+                    <div className="pointer-events-auto w-full max-w-[26rem]">
+                      <PublicationInsightsCallout
+                        payload={publicationTypeOverTimeInsightsPayload}
+                        sectionKey="publication_type_over_time"
+                        loading={publicationTypeOverTimeInsightsLoading}
+                        error={publicationTypeOverTimeInsightsError}
+                        actions={publicationTypeOverTimeInsightActions}
+                        onClose={closePublicationTypeOverTimeInsight}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              <div className="house-drilldown-heading-block">
+                <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="house-drilldown-heading-block-title">Type of Publications Published Over Time</p>
+                    <DrilldownSheet.HeadingToggle
+                      expanded={publicationTypeTrendsExpanded}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setPublicationTypeTrendsExpanded((value) => !value)
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                    />
+                  </div>
+                  <div className="flex items-center justify-self-end gap-2">
+                    <HelpTooltipIconButton
+                      ariaLabel="Explain Type of Publications Published Over Time"
+                      content={renderPublicationPublicationTypeOverTimeTooltipContent(publicationTypeOverTimeInsightStats)}
+                      className="max-w-[22rem] px-3 py-2"
+                      align="end"
+                      side="top"
+                    />
+                    <PublicationInsightsTriggerButton
+                      ariaLabel="Open publication type over time insight"
+                      active={publicationTypeOverTimeInsightOpen}
+                      onClick={onTogglePublicationTypeOverTimeInsight}
+                    />
+                  </div>
                 </div>
               </div>
               {publicationTypeTrendsExpanded ? (
@@ -10463,19 +13491,38 @@ function TotalPublicationsDrilldownWorkspace({
                         ) : null}
                         <svg viewBox={`0 0 ${trajectoryPlotWidth} ${trajectoryPlotHeight}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
                           {trajectoryPath ? (
-                            <path
-                              d={trajectoryPath}
-                              className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS}
-                              strokeWidth="1.9"
-                              strokeLinejoin="round"
-                              vectorEffect="non-scaling-stroke"
-                              shapeRendering="geometricPrecision"
-                              data-expanded={trajectoryLineExpanded ? 'true' : 'false'}
-                              style={{
-                                opacity: trajectoryLineExpanded ? 1 : 0,
-                                transitionDuration: trajectoryLineTransitionDuration,
-                              }}
-                            />
+                            trajectoryEntryRevealActive ? (
+                              <>
+                                <defs>
+                                  <clipPath id={trajectoryEntryRevealClipId} clipPathUnits="userSpaceOnUse">
+                                    <rect x="0" y="0" width={trajectoryEntryRevealWidth} height={trajectoryPlotHeight} />
+                                  </clipPath>
+                                </defs>
+                                <path
+                                  d={trajectoryPath}
+                                  className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS}
+                                  strokeWidth="1.9"
+                                  strokeLinejoin="round"
+                                  vectorEffect="non-scaling-stroke"
+                                  shapeRendering="geometricPrecision"
+                                  clipPath={`url(#${trajectoryEntryRevealClipId})`}
+                                />
+                              </>
+                            ) : (
+                              <path
+                                d={trajectoryPath}
+                                className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS}
+                                strokeWidth="1.9"
+                                strokeLinejoin="round"
+                                vectorEffect="non-scaling-stroke"
+                                shapeRendering="geometricPrecision"
+                                data-expanded={trajectoryLineExpanded ? 'true' : 'false'}
+                                style={{
+                                  opacity: trajectoryLineExpanded ? 1 : 0,
+                                  transitionDuration: trajectoryLineTransitionDuration,
+                                }}
+                              />
+                            )
                           ) : null}
                         </svg>
                         {trajectoryActiveTooltipSlice ? (
@@ -10688,6 +13735,150 @@ function TotalPublicationsDrilldownWorkspace({
           </div>
         ) : null}
 
+        {activeTab === 'context' ? (
+          <>
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Portfolio maturity</p>
+                  <HelpTooltipIconButton
+                    ariaLabel="Explain portfolio maturity context"
+                    content={totalPublicationsContextPortfolioTooltip}
+                  />
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                {totalPublicationsContextStats.emptyReason ? (
+                  <p className="house-publications-drilldown-empty-state">
+                    {totalPublicationsContextStats.emptyReason}
+                  </p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className={cn(HOUSE_DRILLDOWN_STAT_CARD_CLASS, 'px-2.5 py-2')}>
+                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>First publication</p>
+                      <p className="mt-1 text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))] tabular-nums">
+                        {totalPublicationsContextStats.firstPublicationValue}
+                      </p>
+                    </div>
+                    <div className={cn(HOUSE_DRILLDOWN_STAT_CARD_CLASS, 'px-2.5 py-2')}>
+                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Active span</p>
+                      <p className="mt-1 text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))] tabular-nums">
+                        {totalPublicationsContextStats.activeSpanValue}
+                      </p>
+                    </div>
+                    <div className={cn(HOUSE_DRILLDOWN_STAT_CARD_CLASS, 'px-2.5 py-2')}>
+                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Years with output</p>
+                      <p className="mt-1 text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))] tabular-nums">
+                        {totalPublicationsContextStats.yearsWithOutputValue}
+                      </p>
+                    </div>
+                    <div className={cn(HOUSE_DRILLDOWN_STAT_CARD_CLASS, 'px-2.5 py-2')}>
+                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Longest streak</p>
+                      <p className="mt-1 text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))] tabular-nums">
+                        {totalPublicationsContextStats.longestStreakValue}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Recent vs earlier output</p>
+                  <HelpTooltipIconButton
+                    ariaLabel="Explain recent versus earlier output context"
+                    content={totalPublicationsContextRecentTooltip}
+                  />
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <div className="space-y-3">
+                  {totalPublicationsContextStats.recentSharePct !== null && totalPublicationsContextStats.earlierSharePct !== null ? (
+                    <CitationSplitBarCard
+                      bare
+                      left={{
+                        label: totalPublicationsContextStats.recentWindowLabel,
+                        value: formatPercentWhole(totalPublicationsContextStats.recentSharePct),
+                        ratioPct: totalPublicationsContextStats.recentSharePct,
+                        toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
+                      }}
+                      right={{
+                        label: totalPublicationsContextStats.earlierWindowLabel,
+                        value: formatPercentWhole(totalPublicationsContextStats.earlierSharePct),
+                        ratioPct: totalPublicationsContextStats.earlierSharePct,
+                        toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
+                      }}
+                    />
+                  ) : totalPublicationsContextStats.emptyReason ? (
+                    <p className="house-publications-drilldown-empty-state">
+                      {totalPublicationsContextStats.emptyReason}
+                    </p>
+                  ) : null}
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div className={cn(HOUSE_DRILLDOWN_STAT_CARD_CLASS, 'px-2.5 py-2')}>
+                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>
+                        {`Recent mean (${formatTotalPublicationsContextWindowDisplayLabel(totalPublicationsContextStats.recentWindowLabel)})`}
+                      </p>
+                      <p className="mt-1 text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))] tabular-nums">
+                        {totalPublicationsContextStats.recentMeanValue}
+                      </p>
+                    </div>
+                    <div className={cn(HOUSE_DRILLDOWN_STAT_CARD_CLASS, 'px-2.5 py-2')}>
+                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>
+                        {`Earlier mean (${formatTotalPublicationsContextWindowDisplayLabel(totalPublicationsContextStats.earlierWindowLabel)})`}
+                      </p>
+                      <p className="mt-1 text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))] tabular-nums">
+                        {totalPublicationsContextStats.baselineMeanValue}
+                      </p>
+                    </div>
+                    <div className={cn(HOUSE_DRILLDOWN_STAT_CARD_CLASS, 'px-2.5 py-2')}>
+                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Change vs baseline</p>
+                      <p className="mt-1 text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))] tabular-nums">
+                        {totalPublicationsContextStats.momentumValue}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section">
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="house-drilldown-heading-block-title">Composition shift</p>
+                  <HelpTooltipIconButton
+                    ariaLabel="Explain composition shift context"
+                    content={totalPublicationsContextCompositionTooltip}
+                  />
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CanonicalTablePanel
+                  bare
+                  variant="drilldown"
+                  suppressTopRowHighlight
+                  columns={[
+                    { key: 'dimension', label: 'Dimension' },
+                    { key: 'lifetime', label: 'Lifetime leader', align: 'center', width: '1%' },
+                    { key: 'recent', label: 'Recent leader', align: 'center', width: '1%' },
+                  ]}
+                  rows={totalPublicationsContextStats.mixShiftRows.map((row) => ({
+                    key: row.key,
+                    cells: {
+                      dimension: row.dimensionLabel,
+                      lifetime: row.lifetimeValue,
+                      recent: row.recentValue,
+                    },
+                  }))}
+                  emptyMessage={totalPublicationsContextStats.emptyReason ?? 'No composition-shift data available for the current publication set.'}
+                />
+              </div>
+            </div>
+          </>
+        ) : null}
+
         {activeTab === 'methods' ? (
           <>
             {totalPublicationsMethodsSections.map((section) => (
@@ -10731,14 +13922,6 @@ function TotalPublicationsDrilldownWorkspace({
           </>
         ) : null}
 
-        {subsectionTitle && tile.key !== 'total_citations' ? (
-          <>
-            <div className="house-drilldown-heading-block-secondary">
-              <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>{subsectionTitle}</p>
-            </div>
-            <div className="house-drilldown-content-block w-full" />
-          </>
-        ) : null}
       </div>
     </div>
   )
@@ -10787,6 +13970,7 @@ function GenericMetricDrilldownWorkspace({
   const [publicationInsightsByRequestKey, setPublicationInsightsByRequestKey] = useState<Record<string, PublicationInsightsAgentPayload>>({})
   const [publicationInsightsLoadingByRequestKey, setPublicationInsightsLoadingByRequestKey] = useState<Record<string, boolean>>({})
   const [publicationInsightsErrorByRequestKey, setPublicationInsightsErrorByRequestKey] = useState<Record<string, string>>({})
+  const publicationInsightsInFlightRef = useRef<Record<string, Promise<PublicationInsightsAgentPayload | null>>>({})
   const [uncitedInsightOpen, setUncitedInsightOpen] = useState(false)
   const [recentConcentrationInsightOpen, setRecentConcentrationInsightOpen] = useState(false)
   const [citationHistogramInsightOpen, setCitationHistogramInsightOpen] = useState(false)
@@ -10829,6 +14013,7 @@ function GenericMetricDrilldownWorkspace({
     setRecentConcentrationWindowMode('1y')
     setCitationActivationHistoryRangeStart(0)
     setCitationActivationHistoryRangeEnd(0)
+    publicationInsightsInFlightRef.current = {}
     setPublicationInsightsByRequestKey({})
     setPublicationInsightsLoadingByRequestKey({})
     setPublicationInsightsErrorByRequestKey({})
@@ -10859,28 +14044,36 @@ function GenericMetricDrilldownWorkspace({
       if (publicationInsightsByRequestKey[requestKey]) {
         return publicationInsightsByRequestKey[requestKey]
       }
+      if (publicationInsightsInFlightRef.current[requestKey]) {
+        return publicationInsightsInFlightRef.current[requestKey]
+      }
       if (!token) {
         const message = 'Session token is required to generate publication insights.'
         setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
         return null
       }
-      setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: true }))
-      setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: '' }))
-      try {
-        const payload = await fetchPublicationInsightsAgent(token, {
-          windowId: normalizedWindowId,
-          scope,
-          sectionKey,
-        })
-        setPublicationInsightsByRequestKey((current) => ({ ...current, [requestKey]: payload }))
-        return payload
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Could not generate publication insights.'
-        setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
-        return null
-      } finally {
-        setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: false }))
-      }
+      const requestPromise = (async () => {
+        setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: true }))
+        setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: '' }))
+        try {
+          const payload = await fetchPublicationInsightsAgent(token, {
+            windowId: normalizedWindowId,
+            scope,
+            sectionKey,
+          })
+          setPublicationInsightsByRequestKey((current) => ({ ...current, [requestKey]: payload }))
+          return payload
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Could not generate publication insights.'
+          setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
+          return null
+        } finally {
+          delete publicationInsightsInFlightRef.current[requestKey]
+          setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: false }))
+        }
+      })()
+      publicationInsightsInFlightRef.current[requestKey] = requestPromise
+      return requestPromise
     },
     [publicationInsightsByRequestKey, token],
   )
@@ -15396,6 +18589,54 @@ function CitationActivationHistoryChart({
         },
       ]
     : []
+  const citationActivityEntryRevealIdBase = useId().replace(/:/g, '')
+  const citationActivityEntryRevealClipId = `${citationActivityEntryRevealIdBase}-clip`
+  const [citationActivityEntryRevealActive, setCitationActivityEntryRevealActive] = useState(false)
+  const [citationActivityEntryRevealProgress, setCitationActivityEntryRevealProgress] = useState(0)
+  const citationActivityEntryRevealWidth = Math.max(0, Math.min(100, 100 * citationActivityEntryRevealProgress))
+
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setCitationActivityEntryRevealActive(false)
+      setCitationActivityEntryRevealProgress(1)
+      return
+    }
+
+    const entryDelayMs = 120
+    const entryDurationMs = 940
+    let raf = 0
+    const startedAt = performance.now()
+    const easeEntryReveal = (progress: number) => {
+      const clamped = Math.max(0, Math.min(1, progress))
+      return clamped * clamped * (3 - (2 * clamped))
+    }
+
+    setCitationActivityEntryRevealActive(true)
+    setCitationActivityEntryRevealProgress(0)
+
+    const step = (now: number) => {
+      const elapsed = now - startedAt
+      if (elapsed < entryDelayMs) {
+        setCitationActivityEntryRevealProgress(0)
+        raf = window.requestAnimationFrame(step)
+        return
+      }
+      const progress = Math.min(1, (elapsed - entryDelayMs) / entryDurationMs)
+      const easedProgress = easeEntryReveal(progress)
+      setCitationActivityEntryRevealProgress(easedProgress)
+      if (progress >= 1) {
+        setCitationActivityEntryRevealActive(false)
+      } else {
+        raf = window.requestAnimationFrame(step)
+      }
+    }
+
+    raf = window.requestAnimationFrame(step)
+    return () => {
+      window.cancelAnimationFrame(raf)
+    }
+  }, [])
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col px-2 py-2">
       <div
@@ -15453,47 +18694,54 @@ function CitationActivationHistoryChart({
           </div>
           <div className="pointer-events-none absolute inset-0 z-[3] overflow-hidden" aria-hidden="true">
             <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              {seriesPaths.map((item) => item.path ? (
-                item.strokeDasharray ? (
-                  <path
-                    key={`${item.key}-path`}
-                    d={item.path}
-                    fill="none"
-                    stroke={item.color}
-                    strokeWidth={String(item.strokeWidth)}
-                    strokeDasharray={item.strokeDasharray}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+              <defs>
+                <clipPath id={citationActivityEntryRevealClipId} clipPathUnits="userSpaceOnUse">
+                  <rect x="0" y="0" width={citationActivityEntryRevealWidth} height="100" />
+                </clipPath>
+              </defs>
+              <g clipPath={citationActivityEntryRevealActive ? `url(#${citationActivityEntryRevealClipId})` : undefined}>
+                {seriesPaths.map((item) => item.path ? (
+                  item.strokeDasharray ? (
+                    <path
+                      key={`${item.key}-path`}
+                      d={item.path}
+                      fill="none"
+                      stroke={item.color}
+                      strokeWidth={String(item.strokeWidth)}
+                      strokeDasharray={item.strokeDasharray}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      opacity={item.opacity}
+                    />
+                  ) : (
+                    <path
+                      key={`${item.key}-path`}
+                      d={item.path}
+                      fill="none"
+                      stroke={item.color}
+                      strokeWidth={String(item.strokeWidth)}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      opacity={item.opacity}
+                    />
+                  )
+                ) : null)}
+                {latestPoint ? latestSeriesPoints.map((item) => (
+                  <circle
+                    key={`${item.key}-latest`}
+                    cx={String(Math.max(0, Math.min(100, latestPoint.xPct)))}
+                    cy={String(Math.max(0, Math.min(100, 100 - item.value)))}
+                    r="1.1"
+                    fill={item.color}
+                    stroke="white"
+                    strokeWidth="0.6"
                     vectorEffect="non-scaling-stroke"
-                    opacity={item.opacity}
+                    opacity={1}
                   />
-                ) : (
-                  <path
-                    key={`${item.key}-path`}
-                    d={item.path}
-                    fill="none"
-                    stroke={item.color}
-                    strokeWidth={String(item.strokeWidth)}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                    opacity={item.opacity}
-                  />
-                )
-              ) : null)}
-              {latestPoint ? latestSeriesPoints.map((item) => (
-                <circle
-                  key={`${item.key}-latest`}
-                  cx={String(Math.max(0, Math.min(100, latestPoint.xPct)))}
-                  cy={String(Math.max(0, Math.min(100, 100 - item.value)))}
-                  r="1.1"
-                  fill={item.color}
-                  stroke="white"
-                  strokeWidth="0.6"
-                  vectorEffect="non-scaling-stroke"
-                  opacity={1}
-                />
-              )) : null}
+                )) : null}
+              </g>
             </svg>
           </div>
           <TooltipProvider delayDuration={120}>
@@ -15805,11 +19053,22 @@ function PublicationInsightsCallout({
         ? 'Citation activation'
         : sectionKey === 'citation_activation_history'
           ? 'Activation over time'
-        : 'Citation concentration'),
+          : sectionKey === 'publication_production_phase'
+            ? 'Production phase'
+          : sectionKey === 'publication_volume_over_time'
+            ? 'Publication volume over time'
+          : sectionKey === 'publication_article_type_over_time'
+            ? 'Type of articles published over time'
+          : sectionKey === 'publication_type_over_time'
+            ? 'Type of publications published over time'
+          : sectionKey === 'publication_output_pattern'
+            ? 'Publication output pattern'
+            : 'Citation concentration'),
   ).trim()
   const considerationLabel = String(section?.consideration_label || '').trim() || 'Why this matters'
   const consideration = String(section?.consideration || '').trim()
   const generatedAt = String(((payload?.provenance as Record<string, unknown> | undefined) || {})['generated_at'] || '').trim()
+  const showLoading = loading && !section && !error
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -15869,7 +19128,7 @@ function PublicationInsightsCallout({
             </button>
           </div>
         </div>
-        {loading ? (
+        {showLoading ? (
           <div className="space-y-2.5 py-1">
             <div className="h-3 w-4/5 rounded-full bg-[hsl(var(--tone-neutral-200))]" />
             <div className="h-3 w-full rounded-full bg-[hsl(var(--tone-neutral-200))]" />
@@ -19364,7 +22623,9 @@ export function PublicationsTopStrip({
                   tile={activeTile}
                   activeTab={activeDrilldownTab}
                   animateCharts={drawerOpen}
+                  token={token}
                   onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
+                  onDrilldownTabChange={setActiveDrilldownTab}
                 />
               ) : (
                 <GenericMetricDrilldownWorkspace

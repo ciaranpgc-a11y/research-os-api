@@ -29,6 +29,21 @@ export const pagesReviewToken = 'storybook-pages-review-token'
 export const pagesReviewUserId = 'storybook-user-1'
 export const pagesReviewTimestamp = '2026-02-27T09:00:00Z'
 
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+function replaceArray<T>(target: T[], next: T[]): void {
+  target.splice(0, target.length, ...clone(next))
+}
+
+function replaceRecord<T extends Record<string, unknown>>(target: T, next: T): void {
+  for (const key of Object.keys(target)) {
+    delete target[key]
+  }
+  Object.assign(target, clone(next))
+}
+
 const pagesReviewEmptyCollaboratorContactFields = {
   secondary_email: null,
   contact_salutation: null,
@@ -73,6 +88,16 @@ export const pagesReviewUser: AuthUser = {
 
 export const pagesReviewWorkspaceAccountSearchResults = [
   {
+    user_id: 'user-a-patel',
+    name: 'A. Patel',
+    email: 'apatel@example.org',
+  },
+  {
+    user_id: 'user-l-santos',
+    name: 'L. Santos',
+    email: 'lsantos@example.org',
+  },
+  {
     user_id: 'nina-brooks',
     name: 'Nina Brooks',
     email: 'nina.brooks@example.org',
@@ -91,6 +116,26 @@ export const pagesReviewWorkspaceAccountSearchResults = [
     user_id: 'r-khan',
     name: 'R. Khan',
     email: 'r.khan@example.org',
+  },
+  {
+    user_id: 'leah-morgan',
+    name: 'Leah Morgan',
+    email: 'leah.morgan@example.org',
+  },
+  {
+    user_id: 'marta-solis',
+    name: 'Marta Solis',
+    email: 'marta.solis@example.org',
+  },
+  {
+    user_id: 'jonas-weber',
+    name: 'Jonas Weber',
+    email: 'jonas.weber@example.org',
+  },
+  {
+    user_id: 'priya-nair',
+    name: 'Priya Nair',
+    email: 'priya.nair@example.org',
   },
 ] as const
 
@@ -281,6 +326,85 @@ export const pagesReviewLibraryAssets: LibraryAssetRecord[] = [
       { user_id: 'user-a-patel', name: 'A. Patel', role: 'editor' },
       { user_id: 'user-l-santos', name: 'L. Santos', role: 'viewer' },
     ],
+    pending_with: [
+      { user_id: 'nina-brooks', name: 'Nina Brooks', role: 'viewer' },
+    ],
+    workspace_placements: [
+      { workspace_id: 'hf-registry-owner', workspace_name: 'HF Registry Manuscript' },
+      { workspace_id: 'echo-editor', workspace_name: 'Echo AI Validation' },
+    ],
+    origin: 'workspace',
+    origin_workspace_id: 'hf-registry-owner',
+    origin_workspace_name: 'HF Registry Manuscript',
+    audit_log_entries: [
+      {
+        id: 'lib-asset-1-uploaded',
+        category: 'asset',
+        event_type: 'asset_uploaded',
+        actor_user_id: 'storybook-owner-user',
+        actor_name: 'Morgan Hale',
+        message: 'Morgan Hale uploaded hf_registry_analysis_ready.csv.',
+        created_at: '2026-02-26T10:45:00Z',
+      },
+      {
+        id: 'lib-asset-1-linked-hf',
+        category: 'asset',
+        event_type: 'asset_workspace_linked',
+        actor_user_id: 'storybook-owner-user',
+        actor_name: 'Morgan Hale',
+        to_value: 'HF Registry Manuscript',
+        message: 'Morgan Hale linked hf_registry_analysis_ready.csv to HF Registry Manuscript.',
+        created_at: '2026-02-26T10:50:00Z',
+      },
+      {
+        id: 'lib-asset-1-linked-echo',
+        category: 'asset',
+        event_type: 'asset_workspace_linked',
+        actor_user_id: 'storybook-owner-user',
+        actor_name: 'Morgan Hale',
+        to_value: 'Echo AI Validation',
+        message: 'Morgan Hale linked hf_registry_analysis_ready.csv to Echo AI Validation.',
+        created_at: '2026-02-26T10:55:00Z',
+      },
+      {
+        id: 'lib-asset-1-access-apatel',
+        category: 'access',
+        event_type: 'access_granted',
+        actor_user_id: 'storybook-owner-user',
+        actor_name: 'Morgan Hale',
+        subject_user_id: 'user-a-patel',
+        subject_name: 'A. Patel',
+        to_value: 'editor',
+        message: 'Morgan Hale granted editor access to A. Patel.',
+        created_at: '2026-02-26T11:02:00Z',
+      },
+      {
+        id: 'lib-asset-1-access-lsantos',
+        category: 'access',
+        event_type: 'access_granted',
+        actor_user_id: 'storybook-owner-user',
+        actor_name: 'Morgan Hale',
+        subject_user_id: 'user-l-santos',
+        subject_name: 'L. Santos',
+        to_value: 'viewer',
+        message: 'Morgan Hale granted viewer access to L. Santos.',
+        created_at: '2026-02-26T11:08:00Z',
+      },
+      {
+        id: 'lib-asset-1-access-nina',
+        category: 'access',
+        event_type: 'access_invited',
+        actor_user_id: 'storybook-owner-user',
+        actor_name: 'Morgan Hale',
+        subject_user_id: 'nina-brooks',
+        subject_name: 'Nina Brooks',
+        from_value: 'none',
+        to_value: 'pending',
+        role: 'viewer',
+        message: 'Nina Brooks file invitation status switched from none to pending by Morgan Hale as viewer.',
+        created_at: '2026-02-26T11:12:00Z',
+      },
+    ],
     current_user_role: 'owner',
     can_manage_access: true,
     can_edit_metadata: true,
@@ -300,6 +424,12 @@ export const pagesReviewLibraryAssets: LibraryAssetRecord[] = [
     uploaded_at: '2026-02-25T09:12:00Z',
     shared_with_user_ids: [],
     shared_with: [],
+    workspace_placements: [
+      { workspace_id: 'hf-registry-owner', workspace_name: 'HF Registry Manuscript' },
+    ],
+    origin: 'workspace',
+    origin_workspace_id: 'hf-registry-owner',
+    origin_workspace_name: 'HF Registry Manuscript',
     current_user_role: 'owner',
     can_manage_access: true,
     can_edit_metadata: true,
@@ -388,6 +518,12 @@ export const pagesReviewLibraryAssets: LibraryAssetRecord[] = [
       { user_id: 'storybook-viewer-user', name: 'Storybook User', role: 'viewer' },
       { user_id: 'user-a-patel', name: 'A. Patel', role: 'editor' },
     ],
+    pending_with: [
+      { user_id: 'r-khan', name: 'R. Khan', role: 'viewer' },
+    ],
+    workspace_placements: [
+      { workspace_id: 'hf-registry-owner', workspace_name: 'HF Registry Manuscript' },
+    ],
     current_user_role: 'owner',
     can_manage_access: true,
     can_edit_metadata: true,
@@ -452,6 +588,10 @@ export const pagesReviewLibraryAssets: LibraryAssetRecord[] = [
       { user_id: 'user-a-patel', name: 'A. Patel', role: 'editor' },
       { user_id: 'user-l-santos', name: 'L. Santos', role: 'viewer' },
     ],
+    workspace_placements: [
+      { workspace_id: 'hf-registry-owner', workspace_name: 'HF Registry Manuscript' },
+      { workspace_id: 'device-viewer', workspace_name: 'Device Substudy Draft' },
+    ],
     current_user_role: 'owner',
     can_manage_access: true,
     can_edit_metadata: true,
@@ -476,6 +616,118 @@ export const pagesReviewLibraryAssets: LibraryAssetRecord[] = [
     can_download: true,
     is_available: true,
   },
+  {
+    id: 'lib-asset-11',
+    owner_user_id: 'user-jules-martin',
+    owner_name: 'Jules Martin',
+    project_id: 'project-hf-registry',
+    filename: 'hf_registry_site_manifest.csv',
+    kind: 'csv',
+    mime_type: 'text/csv',
+    byte_size: 287144,
+    uploaded_at: '2026-02-24T19:45:00Z',
+    shared_with_user_ids: [],
+    shared_with: [],
+    is_available: true,
+  },
+  {
+    id: 'lib-asset-12',
+    owner_user_id: 'eleanor-hart',
+    owner_name: 'Eleanor Hart',
+    project_id: 'project-echo-qc',
+    filename: 'echo_core_lab_queries.xlsx',
+    kind: 'xlsx',
+    mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    byte_size: 154882,
+    uploaded_at: '2026-02-22T12:24:00Z',
+    shared_with_user_ids: [],
+    shared_with: [],
+    is_available: true,
+  },
+  {
+    id: 'lib-asset-13',
+    owner_user_id: 'noah-bennett',
+    owner_name: 'Noah Bennett',
+    project_id: 'project-imaging',
+    filename: 'amyloid_reader_tracking.csv',
+    kind: 'csv',
+    mime_type: 'text/csv',
+    byte_size: 401233,
+    uploaded_at: '2026-02-21T09:05:00Z',
+    shared_with_user_ids: [],
+    shared_with: [],
+    is_available: true,
+  },
+  {
+    id: 'lib-asset-14',
+    owner_user_id: 'priya-shah',
+    owner_name: 'Priya Shah',
+    project_id: 'project-recruitment',
+    filename: 'device_substudy_enrollment.csv',
+    kind: 'csv',
+    mime_type: 'text/csv',
+    byte_size: 562944,
+    uploaded_at: '2026-02-20T10:55:00Z',
+    shared_with_user_ids: [],
+    shared_with: [],
+    is_available: true,
+  },
+  {
+    id: 'lib-asset-15',
+    owner_user_id: 'storybook-removed-user',
+    owner_name: 'Casey Moore',
+    project_id: null,
+    filename: 'legacy_registry_personal_notes.xlsx',
+    kind: 'xlsx',
+    mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    byte_size: 88712,
+    uploaded_at: '2026-02-19T08:15:00Z',
+    shared_with_user_ids: [],
+    shared_with: [],
+    is_available: true,
+  },
+  {
+    id: 'lib-asset-16',
+    owner_user_id: 'marta-solis',
+    owner_name: 'Marta Solis',
+    project_id: null,
+    filename: 'uk_biobank_ecg_dataset.csv',
+    kind: 'csv',
+    mime_type: 'text/csv',
+    byte_size: 932144,
+    uploaded_at: '2026-03-01T09:30:00Z',
+    shared_with_user_ids: [],
+    shared_with: [],
+    pending_with: [
+      { user_id: 'storybook-owner-user', name: 'Morgan Hale', role: 'reviewer' },
+      { user_id: 'storybook-editor-user', name: 'Avery Cole', role: 'reviewer' },
+      { user_id: 'storybook-reviewer-user', name: 'Jordan Pike', role: 'reviewer' },
+      { user_id: 'storybook-viewer-user', name: 'Riley Hart', role: 'reviewer' },
+      { user_id: 'storybook-removed-user', name: 'Casey Moore', role: 'reviewer' },
+    ],
+    is_available: true,
+  },
+  {
+    id: 'lib-asset-17',
+    owner_user_id: 'leah-morgan',
+    owner_name: 'Leah Morgan',
+    project_id: null,
+    filename: 'core_lab_echo_adjudication_pack.xlsx',
+    kind: 'xlsx',
+    mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    byte_size: 281104,
+    uploaded_at: '2026-03-02T07:20:00Z',
+    shared_with_user_ids: [],
+    shared_with: [],
+    pending_with: [
+      { user_id: 'storybook-owner-user', name: 'Morgan Hale', role: 'editor' },
+      { user_id: 'storybook-editor-user', name: 'Avery Cole', role: 'editor' },
+      { user_id: 'storybook-reviewer-user', name: 'Jordan Pike', role: 'editor' },
+      { user_id: 'storybook-viewer-user', name: 'Riley Hart', role: 'editor' },
+      { user_id: 'storybook-removed-user', name: 'Casey Moore', role: 'editor' },
+    ],
+    is_available: true,
+  },
 ]
 
 export const pagesReviewCollaborationSummary: CollaborationMetricsSummaryPayload = {
@@ -492,8 +744,8 @@ export const pagesReviewCollaborationSummary: CollaborationMetricsSummaryPayload
 
 export const pagesReviewCollaborators: CollaboratorPayload[] = [
   {
-    id: 'collab-1',
-    owner_user_id: pagesReviewUserId,
+    id: 'user-a-patel',
+    owner_user_id: 'user-a-patel',
     full_name: 'A. Patel',
     ...pagesReviewEmptyCollaboratorContactFields,
     preferred_name: 'Asha Patel',
@@ -522,8 +774,8 @@ export const pagesReviewCollaborators: CollaboratorPayload[] = [
     duplicate_warnings: [],
   },
   {
-    id: 'collab-2',
-    owner_user_id: pagesReviewUserId,
+    id: 'user-l-santos',
+    owner_user_id: 'user-l-santos',
     full_name: 'L. Santos',
     ...pagesReviewEmptyCollaboratorContactFields,
     preferred_name: null,
@@ -552,8 +804,8 @@ export const pagesReviewCollaborators: CollaboratorPayload[] = [
     duplicate_warnings: [],
   },
   {
-    id: 'collab-3',
-    owner_user_id: pagesReviewUserId,
+    id: 's-roy',
+    owner_user_id: 's-roy',
     full_name: 'S. Roy',
     ...pagesReviewEmptyCollaboratorContactFields,
     preferred_name: null,
@@ -576,6 +828,96 @@ export const pagesReviewCollaborators: CollaboratorPayload[] = [
       citations_last_12m: 4,
       collaboration_strength_score: 0.22,
       classification: 'OCCASIONAL',
+      computed_at: '2026-02-27T08:55:00Z',
+      status: 'READY',
+    },
+    duplicate_warnings: [],
+  },
+  {
+    id: 'nina-brooks',
+    owner_user_id: 'nina-brooks',
+    full_name: 'Nina Brooks',
+    ...pagesReviewEmptyCollaboratorContactFields,
+    preferred_name: 'Nina',
+    email: 'nina.brooks@example.org',
+    orcid_id: null,
+    openalex_author_id: null,
+    primary_institution: 'Northbridge Cardiac Institute',
+    department: 'Clinical Operations',
+    country: 'United Kingdom',
+    current_position: 'Trial Manager',
+    research_domains: ['Registry operations'],
+    notes: 'Frequently needs viewer access to exports.',
+    created_at: '2026-01-19T09:00:00Z',
+    updated_at: '2026-02-27T09:20:00Z',
+    metrics: {
+      coauthored_works_count: 0,
+      shared_citations_total: 0,
+      first_collaboration_year: null,
+      last_collaboration_year: null,
+      citations_last_12m: 0,
+      collaboration_strength_score: 0.11,
+      classification: 'OCCASIONAL',
+      computed_at: '2026-02-27T08:55:00Z',
+      status: 'READY',
+    },
+    duplicate_warnings: [],
+  },
+  {
+    id: 'r-khan',
+    owner_user_id: 'r-khan',
+    full_name: 'R. Khan',
+    ...pagesReviewEmptyCollaboratorContactFields,
+    preferred_name: 'Razan Khan',
+    email: 'r.khan@example.org',
+    orcid_id: null,
+    openalex_author_id: null,
+    primary_institution: 'Riverbend Clinical Trials Unit',
+    department: 'Outcomes Research',
+    country: 'United Kingdom',
+    current_position: 'Clinical Fellow',
+    research_domains: ['Registry follow-up'],
+    notes: 'Common pending invite target for data review.',
+    created_at: '2026-01-28T08:30:00Z',
+    updated_at: '2026-02-27T08:58:00Z',
+    metrics: {
+      coauthored_works_count: 0,
+      shared_citations_total: 0,
+      first_collaboration_year: null,
+      last_collaboration_year: null,
+      citations_last_12m: 0,
+      collaboration_strength_score: 0.09,
+      classification: 'OCCASIONAL',
+      computed_at: '2026-02-27T08:55:00Z',
+      status: 'READY',
+    },
+    duplicate_warnings: [],
+  },
+  {
+    id: 'leah-morgan',
+    owner_user_id: 'leah-morgan',
+    full_name: 'Leah Morgan',
+    ...pagesReviewEmptyCollaboratorContactFields,
+    preferred_name: null,
+    email: 'leah.morgan@example.org',
+    orcid_id: null,
+    openalex_author_id: null,
+    primary_institution: 'Echo Core Lab',
+    department: 'Adjudication',
+    country: 'United Kingdom',
+    current_position: 'Core Lab Lead',
+    research_domains: ['Echo adjudication'],
+    notes: 'Owner of incoming data invitation fixture.',
+    created_at: '2025-11-12T10:45:00Z',
+    updated_at: '2026-02-27T09:05:00Z',
+    metrics: {
+      coauthored_works_count: 1,
+      shared_citations_total: 12,
+      first_collaboration_year: 2025,
+      last_collaboration_year: 2025,
+      citations_last_12m: 5,
+      collaboration_strength_score: 0.28,
+      classification: 'ACTIVE',
       computed_at: '2026-02-27T08:55:00Z',
       status: 'READY',
     },
@@ -690,49 +1032,120 @@ function toWorkspaceApiRecord(workspace: WorkspaceRecord) {
   }
 }
 
-export const pagesReviewWorkspaceApiListPayload = {
-  items: pagesReviewWorkspaceRecords.map(toWorkspaceApiRecord),
-  active_workspace_id: pagesReviewWorkspaceRecords[0]?.id || null,
+const initialPagesReviewWorkspaceRecords = clone(pagesReviewWorkspaceRecords)
+const initialPagesReviewWorkspaceAuthorRequests = clone(pagesReviewWorkspaceAuthorRequests)
+const initialPagesReviewWorkspaceInvitations = clone(pagesReviewWorkspaceInvitations)
+const initialPagesReviewWorkspaceInboxMessages = clone(pagesReviewWorkspaceInboxMessages)
+const initialPagesReviewWorkspaceInboxReads = clone(pagesReviewWorkspaceInboxReads)
+const initialPagesReviewLibraryAssets = clone(pagesReviewLibraryAssets)
+
+type PagesReviewMockCollections = {
+  workspaceRecords?: WorkspaceRecord[]
+  workspaceAuthorRequests?: WorkspaceAuthorRequest[]
+  workspaceInvitations?: WorkspaceInvitationSent[]
+  workspaceInboxMessages?: WorkspaceInboxMessageRecord[]
+  workspaceInboxReads?: WorkspaceInboxReadMap
+  libraryAssets?: LibraryAssetRecord[]
 }
 
-export const pagesReviewWorkspaceAuthorRequestsApiPayload = {
-  items: pagesReviewWorkspaceAuthorRequests.map((item) => ({
-    id: item.id,
-    workspace_id: item.workspaceId,
-    workspace_name: item.workspaceName,
-    author_name: item.authorName,
-    author_user_id: item.authorUserId,
-    collaborator_role: item.collaboratorRole,
-    invited_at: item.invitedAt,
-  })),
+export function resetPagesReviewMockCollections(overrides: PagesReviewMockCollections = {}) {
+  replaceArray(
+    pagesReviewWorkspaceRecords,
+    overrides.workspaceRecords ?? initialPagesReviewWorkspaceRecords,
+  )
+  replaceArray(
+    pagesReviewWorkspaceAuthorRequests,
+    overrides.workspaceAuthorRequests ?? initialPagesReviewWorkspaceAuthorRequests,
+  )
+  replaceArray(
+    pagesReviewWorkspaceInvitations,
+    overrides.workspaceInvitations ?? initialPagesReviewWorkspaceInvitations,
+  )
+  replaceArray(
+    pagesReviewWorkspaceInboxMessages,
+    overrides.workspaceInboxMessages ?? initialPagesReviewWorkspaceInboxMessages,
+  )
+  replaceRecord(
+    pagesReviewWorkspaceInboxReads,
+    overrides.workspaceInboxReads ?? initialPagesReviewWorkspaceInboxReads,
+  )
+  replaceArray(
+    pagesReviewLibraryAssets,
+    overrides.libraryAssets ?? initialPagesReviewLibraryAssets,
+  )
 }
 
-export const pagesReviewWorkspaceInvitationsApiPayload = {
-  items: pagesReviewWorkspaceInvitations.map((item) => ({
-    id: item.id,
-    workspace_id: item.workspaceId,
-    workspace_name: item.workspaceName,
-    invitee_name: item.inviteeName,
-    invitee_user_id: item.inviteeUserId,
-    role: item.role,
-    invited_at: item.invitedAt,
-    status: item.status,
-  })),
+export function buildPagesReviewWorkspaceApiListPayload() {
+  return {
+    items: pagesReviewWorkspaceRecords.map(toWorkspaceApiRecord),
+    active_workspace_id: pagesReviewWorkspaceRecords[0]?.id || null,
+  }
 }
 
-export const pagesReviewWorkspaceInboxMessagesApiPayload = {
-  items: pagesReviewWorkspaceInboxMessages.map((item) => ({
-    id: item.id,
-    workspace_id: item.workspaceId,
-    sender_name: item.senderName,
-    encrypted_body: item.encryptedBody,
-    iv: item.iv,
-    created_at: item.createdAt,
-  })),
+export function buildPagesReviewWorkspaceAuthorRequestsApiPayload() {
+  return {
+    items: pagesReviewWorkspaceAuthorRequests.map((item) => ({
+      id: item.id,
+      workspace_id: item.workspaceId,
+      workspace_name: item.workspaceName,
+      author_name: item.authorName,
+      author_user_id: item.authorUserId,
+      invitation_type: item.invitationType === 'data' ? 'data' : 'workspace',
+      collaborator_role: item.collaboratorRole,
+      invited_at: item.invitedAt,
+    })),
+  }
 }
 
-export const pagesReviewWorkspaceInboxReadsApiPayload = {
-  reads: pagesReviewWorkspaceInboxReads,
+export function buildPagesReviewWorkspaceInvitationsApiPayload() {
+  return {
+    items: pagesReviewWorkspaceInvitations.map((item) => ({
+      id: item.id,
+      workspace_id: item.workspaceId,
+      workspace_name: item.workspaceName,
+      invitee_name: item.inviteeName,
+      invitee_user_id: item.inviteeUserId,
+      invitation_type: item.invitationType === 'data' ? 'data' : 'workspace',
+      role: item.role,
+      invited_at: item.invitedAt,
+      status: item.status,
+    })),
+  }
+}
+
+export function buildPagesReviewWorkspaceInboxMessagesApiPayload() {
+  return {
+    items: pagesReviewWorkspaceInboxMessages.map((item) => ({
+      id: item.id,
+      workspace_id: item.workspaceId,
+      sender_name: item.senderName,
+      encrypted_body: item.encryptedBody,
+      iv: item.iv,
+      created_at: item.createdAt,
+    })),
+  }
+}
+
+export function buildPagesReviewWorkspaceInboxReadsApiPayload() {
+  return {
+    reads: clone(pagesReviewWorkspaceInboxReads),
+  }
+}
+
+export function buildPagesReviewWorkspaceStateApiPayload() {
+  return {
+    workspaces: buildPagesReviewWorkspaceApiListPayload().items,
+    active_workspace_id: pagesReviewWorkspaceRecords[0]?.id || null,
+    author_requests: buildPagesReviewWorkspaceAuthorRequestsApiPayload().items,
+    invitations_sent: buildPagesReviewWorkspaceInvitationsApiPayload().items,
+  }
+}
+
+export function buildPagesReviewWorkspaceInboxStateApiPayload() {
+  return {
+    messages: buildPagesReviewWorkspaceInboxMessagesApiPayload().items,
+    reads: buildPagesReviewWorkspaceInboxReadsApiPayload().reads,
+  }
 }
 
 export const pagesReviewCollaboratorsListPayload: CollaboratorsListPayload = {
