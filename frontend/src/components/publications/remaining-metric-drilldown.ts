@@ -29,12 +29,40 @@ export type MomentumDrilldownStats = {
   monthlyValues12m: number[]
   weightedMonthlyValues12m: number[]
   trackedPapers: number
+  publications: Array<{
+    workId: string
+    title: string
+    venue: string
+    year: number | null
+    publicationMonthStart: string | null
+    recent3mCitations: number
+    prior9mCitations: number
+    recent1yCitations: number
+    prior4yCitations: number | null
+    citationsLast12m: number
+    citationsPrev12m: number
+    momentumContribution: number
+    recent3mAvg: number | null
+    prior9mAvg: number | null
+    shiftDelta: number | null
+    confidenceLabel: string
+  }>
   topContributors: Array<{
     workId: string
     title: string
     venue: string
+    year: number | null
+    publicationMonthStart: string | null
+    recent3mCitations: number
+    prior9mCitations: number
+    recent1yCitations: number
+    prior4yCitations: number | null
     citationsLast12m: number
+    citationsPrev12m: number
     momentumContribution: number
+    recent3mAvg: number | null
+    prior9mAvg: number | null
+    shiftDelta: number | null
     confidenceLabel: string
   }>
   confidenceBuckets: Array<{ label: string; count: number }>
@@ -160,12 +188,23 @@ type ParsedPublication = {
   workId: string
   title: string
   year: number | null
+  publicationMonthStart: string | null
   venue: string
   publicationType: string
   role: string
   citations: number
+  recent3mCitations: number
+  prior9mCitations: number
+  recent1yCitations: number
+  prior4yCitations: number | null
   citationsLast12m: number
+  citationsPrev12m: number
   momentumContribution: number
+  monthlyAdded24: number[]
+  yearlyCounts: Record<number, number>
+  recent3mAvg: number | null
+  prior9mAvg: number | null
+  shiftDelta: number | null
   confidenceLabel: string
   influentialCitations: number
   influentialLast12m: number
@@ -221,6 +260,13 @@ function formatInt(value: number): string {
   const finiteValue = Number.isFinite(value) ? value : 0
   const boundedValue = Math.max(-Number.MAX_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, finiteValue))
   return Math.round(boundedValue).toLocaleString('en-GB')
+}
+
+function average(values: number[]): number | null {
+  if (!values.length) {
+    return null
+  }
+  return values.reduce((sum, value) => sum + Math.max(0, value), 0) / values.length
 }
 
 function toMetricText(value: unknown, fallback = 'Not available'): string {
@@ -286,10 +332,55 @@ function parsePublications(tile: PublicationMetricTilePayload): ParsedPublicatio
       const cohortYear = Number(row.cohort_year)
       const cohortSampleSize = parseMetricNumber(row.cohort_sample_size)
       const authorPosition = parseMetricNumber(row.user_author_position ?? row.author_position)
+      const citationsLast12m = Math.max(0, Math.round(parseMetricNumber(row.citations_last_12m) || 0))
+      const citationsPrev12m = Math.max(0, Math.round(parseMetricNumber(row.citations_prev_12m) || 0))
+      const monthlyAdded24 = toNumberArray(row.monthly_added_24).map((value) => Math.max(0, value))
+      const yearlyCounts = parseNumericKeyedMap(row.yearly_counts)
+      const recent3mCitations = Math.max(
+        0,
+        Math.round(
+          parseMetricNumber(row.momentum_recent_3m_citations)
+          ?? monthlyAdded24.slice(-3).reduce((sum, value) => sum + Math.max(0, value), 0),
+        ),
+      )
+      const prior9mCitations = Math.max(
+        0,
+        Math.round(
+          parseMetricNumber(row.momentum_prior_9m_citations)
+          ?? (monthlyAdded24.length >= 12
+            ? monthlyAdded24.slice(-12, -3).reduce((sum, value) => sum + Math.max(0, value), 0)
+            : 0),
+        ),
+      )
+      const recent1yCitations = Math.max(
+        0,
+        Math.round(
+          parseMetricNumber(row.momentum_recent_1y_citations)
+          ?? (monthlyAdded24.length >= 12
+            ? monthlyAdded24.slice(-12).reduce((sum, value) => sum + Math.max(0, value), 0)
+            : citationsLast12m),
+        ),
+      )
+      const fallbackPrior4yCitations = Object.entries(yearlyCounts)
+        .filter(([year]) => {
+          const numericYear = Number(year)
+          return Number.isFinite(numericYear) && numericYear >= new Date().getUTCFullYear() - 5 && numericYear <= new Date().getUTCFullYear() - 2
+        })
+        .reduce((sum, [, value]) => sum + Math.max(0, value), 0)
+      const prior4yCitationsRaw = parseMetricNumber(row.momentum_prior_4y_citations)
+      const recent3mAvg = parseMetricNumber(row.momentum_recent_3m_avg)
+        ?? (monthlyAdded24.length >= 3 ? average(monthlyAdded24.slice(-3)) : null)
+      const prior9mAvg = parseMetricNumber(row.momentum_prior_9m_avg)
+        ?? (monthlyAdded24.length >= 12 ? average(monthlyAdded24.slice(-12, -3)) : null)
+      const shiftDelta = parseMetricNumber(row.momentum_shift_delta)
+        ?? (recent3mAvg !== null && prior9mAvg !== null ? recent3mAvg - prior9mAvg : null)
       return {
         workId: String(row.work_id || row.id || `publication-${index}`),
         title: String(row.title || '').trim() || 'Untitled paper',
         year: Number.isInteger(year) ? year : null,
+        publicationMonthStart: typeof row.publication_month_start === 'string' && row.publication_month_start.trim()
+          ? row.publication_month_start.trim()
+          : null,
         venue: String(row.venue || row.journal || '').trim(),
         publicationType: toTitleCaseLabel(
           row.work_type || row.workType || row.publication_type || row.publicationType,
@@ -300,8 +391,20 @@ function parsePublications(tile: PublicationMetricTilePayload): ParsedPublicatio
           0,
           Math.round(parseMetricNumber(row.citations_lifetime ?? row.citations ?? row.cited_by_count) || 0),
         ),
-        citationsLast12m: Math.max(0, Math.round(parseMetricNumber(row.citations_last_12m) || 0)),
+        recent3mCitations,
+        prior9mCitations,
+        recent1yCitations,
+        prior4yCitations: prior4yCitationsRaw === null
+          ? (fallbackPrior4yCitations > 0 ? fallbackPrior4yCitations : null)
+          : Math.max(0, Math.round(prior4yCitationsRaw)),
+        citationsLast12m,
+        citationsPrev12m,
         momentumContribution: parseMetricNumber(row.momentum_contribution) || 0,
+        monthlyAdded24,
+        yearlyCounts,
+        recent3mAvg,
+        prior9mAvg,
+        shiftDelta,
         confidenceLabel: toMetricText(row.confidence_label, 'Not labelled'),
         influentialCitations: Math.max(0, Math.round(parseMetricNumber(row.influential_citations) || 0)),
         influentialLast12m: Math.max(0, Math.round(parseMetricNumber(row.influential_last_12m) || 0)),
@@ -363,21 +466,59 @@ export function buildMomentumDrilldownStats(tile: PublicationMetricTilePayload):
     monthlyValues12m: toNumberArray(chartData.monthly_values_12m).map((value) => Math.max(0, value)),
     weightedMonthlyValues12m: toNumberArray(metadata.weighted_monthly_values_12m).map((value) => Math.max(0, value)),
     trackedPapers: publications.length,
+    publications: publications.map((publication) => ({
+      workId: publication.workId,
+      title: publication.title,
+      venue: publication.venue,
+      year: publication.year,
+      publicationMonthStart: publication.publicationMonthStart,
+      recent3mCitations: publication.recent3mCitations,
+      prior9mCitations: publication.prior9mCitations,
+      recent1yCitations: publication.recent1yCitations,
+      prior4yCitations: publication.prior4yCitations,
+      citationsLast12m: publication.citationsLast12m,
+      citationsPrev12m: publication.citationsPrev12m,
+      momentumContribution: publication.momentumContribution,
+      recent3mAvg: publication.recent3mAvg,
+      prior9mAvg: publication.prior9mAvg,
+      shiftDelta: publication.shiftDelta,
+      confidenceLabel: publication.confidenceLabel,
+    })),
     topContributors: publications
-      .filter((publication) => publication.momentumContribution > 0 || publication.citationsLast12m > 0)
+      .filter((publication) =>
+        publication.momentumContribution > 0
+        || publication.citationsLast12m > 0
+        || publication.recent1yCitations > 0
+        || publication.prior4yCitations !== null
+        || publication.prior9mCitations > 0
+        || Math.abs(publication.shiftDelta ?? 0) > 1e-6,
+      )
       .sort((left, right) => {
+        const shiftDifference = Math.abs(right.shiftDelta ?? 0) - Math.abs(left.shiftDelta ?? 0)
+        if (Math.abs(shiftDifference) > 1e-6) {
+          return shiftDifference
+        }
         if (right.momentumContribution !== left.momentumContribution) {
           return right.momentumContribution - left.momentumContribution
         }
         return right.citationsLast12m - left.citationsLast12m
       })
-      .slice(0, 8)
       .map((publication) => ({
         workId: publication.workId,
         title: publication.title,
         venue: publication.venue,
+        year: publication.year,
+        publicationMonthStart: publication.publicationMonthStart,
+        recent3mCitations: publication.recent3mCitations,
+        prior9mCitations: publication.prior9mCitations,
+        recent1yCitations: publication.recent1yCitations,
+        prior4yCitations: publication.prior4yCitations,
         citationsLast12m: publication.citationsLast12m,
+        citationsPrev12m: publication.citationsPrev12m,
         momentumContribution: publication.momentumContribution,
+        recent3mAvg: publication.recent3mAvg,
+        prior9mAvg: publication.prior9mAvg,
+        shiftDelta: publication.shiftDelta,
         confidenceLabel: publication.confidenceLabel,
       })),
     confidenceBuckets: Array.from(confidenceCounts.entries())

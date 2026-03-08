@@ -86,7 +86,7 @@ LegacySelectTrigger.displayName = 'LegacySelectTrigger'
 const LegacySelectContent = React.forwardRef<
   React.ElementRef<typeof RadixSelect.Content>,
   React.ComponentPropsWithoutRef<typeof RadixSelect.Content>
->(({ className, sideOffset = 4, position = 'popper', ...props }, ref) => (
+>(({ className, sideOffset = 4, position = 'popper', children, ...props }, ref) => (
   <RadixSelect.Portal>
     <RadixSelect.Content
       ref={ref}
@@ -105,7 +105,9 @@ const LegacySelectContent = React.forwardRef<
       )}
       {...props}
     >
-      <RadixSelect.Viewport data-ui="select-primitive-viewport" className="max-h-60 p-1" />
+      <RadixSelect.Viewport data-ui="select-primitive-viewport" className="max-h-60 p-1">
+        {children}
+      </RadixSelect.Viewport>
     </RadixSelect.Content>
   </RadixSelect.Portal>
 ))

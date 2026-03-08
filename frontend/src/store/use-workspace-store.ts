@@ -16,6 +16,7 @@ import {
 } from '@/lib/workspace-api'
 import {
   readScopedStorageItem,
+  readStorageScopeUserId,
   removeScopedStorageItem,
   writeScopedStorageItem,
 } from '@/lib/user-scoped-storage'
@@ -27,30 +28,64 @@ import {
 export type WorkspaceHealth = 'green' | 'amber' | 'red'
 export type WorkspaceInvitationStatus = 'pending' | 'accepted' | 'declined'
 export type WorkspaceCollaboratorRole = 'editor' | 'reviewer' | 'viewer'
-export type WorkspaceAuditCategory = 'collaborator_changes' | 'invitation_decisions'
+export type WorkspaceAuditCategory =
+  | 'collaborator_changes'
+  | 'invitation_decisions'
+  | 'workspace_changes'
+  | 'conversation'
+export type WorkspaceAuditEventType =
+  | 'member_invited'
+  | 'invitation_cancelled'
+  | 'invitation_accepted'
+  | 'invitation_declined'
+  | 'member_removed'
+  | 'member_reinvited'
+  | 'member_role_changed'
+  | 'pending_role_changed'
+  | 'workspace_locked'
+  | 'workspace_unlocked'
+  | 'workspace_renamed'
+  | 'message_logged'
+  | 'other'
 
 export type WorkspaceAuditLogEntry = {
   id: string
   workspaceId: string
   category: WorkspaceAuditCategory
+  eventType?: WorkspaceAuditEventType | null
+  actorUserId?: string | null
+  actorName?: string | null
+  subjectUserId?: string | null
+  subjectName?: string | null
+  fromValue?: string | null
+  toValue?: string | null
+  role?: WorkspaceCollaboratorRole | null
+  metadata?: Record<string, unknown>
   message: string
   createdAt: string
+}
+
+export type WorkspaceParticipant = {
+  userId: string
+  name: string
 }
 
 export type WorkspaceRecord = {
   id: string
   name: string
   ownerName: string
-  collaborators: string[]
-  pendingCollaborators: string[]
+  ownerUserId: string | null
+  collaborators: WorkspaceParticipant[]
+  pendingCollaborators: WorkspaceParticipant[]
   collaboratorRoles: Record<string, WorkspaceCollaboratorRole>
   pendingCollaboratorRoles: Record<string, WorkspaceCollaboratorRole>
-  removedCollaborators: string[]
+  removedCollaborators: WorkspaceParticipant[]
   version: string
   health: WorkspaceHealth
   updatedAt: string
   pinned: boolean
   archived: boolean
+  ownerArchived: boolean
   auditLogEntries?: WorkspaceAuditLogEntry[]
 }
 
@@ -59,6 +94,8 @@ export type WorkspaceAuthorRequest = {
   workspaceId: string
   workspaceName: string
   authorName: string
+  authorUserId: string | null
+  invitationType?: 'workspace' | 'data'
   collaboratorRole: WorkspaceCollaboratorRole
   invitedAt: string
 }
@@ -68,9 +105,15 @@ export type WorkspaceInvitationSent = {
   workspaceId: string
   workspaceName: string
   inviteeName: string
+  inviteeUserId: string | null
   role: WorkspaceCollaboratorRole
   invitedAt: string
   status: WorkspaceInvitationStatus
+}
+
+type WorkspaceInvitee = {
+  userId: string
+  name: string
 }
 
 type WorkspacePatch = Partial<
@@ -78,6 +121,7 @@ type WorkspacePatch = Partial<
     WorkspaceRecord,
     | 'name'
     | 'ownerName'
+    | 'ownerUserId'
     | 'collaborators'
     | 'pendingCollaborators'
     | 'collaboratorRoles'
@@ -88,6 +132,7 @@ type WorkspacePatch = Partial<
     | 'updatedAt'
     | 'pinned'
     | 'archived'
+    | 'ownerArchived'
     | 'auditLogEntries'
   >
 >
@@ -105,7 +150,7 @@ type WorkspaceStore = {
   deleteWorkspace: (workspaceId: string) => void
   sendWorkspaceInvitation: (
     workspaceId: string,
-    inviteeName: string,
+    invitee: WorkspaceInvitee,
     role: WorkspaceCollaboratorRole,
   ) => WorkspaceInvitationSent | null
   acceptAuthorRequest: (requestId: string) => WorkspaceRecord | null
@@ -126,28 +171,110 @@ function normalizeName(value: string | null | undefined): string {
   return trimValue(value).replace(/\s+/g, ' ')
 }
 
-function normalizeCollaborators(values: unknown): string[] {
+function normalizeWorkspaceUserId(value: string | null | undefined): string {
+  const clean = trimValue(value)
+  return clean === 'anonymous' ? '' : clean
+}
+
+function defaultOwnerUserId(): string | null {
+  const clean = normalizeWorkspaceUserId(readStorageScopeUserId())
+  return clean || null
+}
+
+function buildLegacyWorkspaceParticipantId(workspaceId: string, name: string): string {
+  const seed = `${trimValue(workspaceId) || 'workspace'}:${normalizeName(name).toLowerCase()}`
+  let hash = 0
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) | 0
+  }
+  return `legacy:${Math.abs(hash).toString(36)}`
+}
+
+function hasRealParticipantUserId(value: string | null | undefined): boolean {
+  const clean = normalizeWorkspaceUserId(value)
+  return Boolean(clean) && !clean.startsWith('legacy:')
+}
+
+function normalizeParticipant(
+  value: unknown,
+  workspaceId: string,
+  fallbackName = 'Unknown collaborator',
+): WorkspaceParticipant | null {
+  if (typeof value === 'string') {
+    const cleanName = normalizeName(value)
+    if (!cleanName) {
+      return null
+    }
+    return {
+      userId: buildLegacyWorkspaceParticipantId(workspaceId, cleanName),
+      name: cleanName,
+    }
+  }
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const record = value as {
+    userId?: unknown
+    user_id?: unknown
+    id?: unknown
+    name?: unknown
+  }
+  const cleanName = normalizeName(String(record.name || '')) || fallbackName
+  const cleanUserId =
+    normalizeWorkspaceUserId(String(record.userId || '')) ||
+    normalizeWorkspaceUserId(String(record.user_id || '')) ||
+    normalizeWorkspaceUserId(String(record.id || '')) ||
+    buildLegacyWorkspaceParticipantId(workspaceId, cleanName)
+  if (!cleanName || !cleanUserId) {
+    return null
+  }
+  return {
+    userId: cleanUserId,
+    name: cleanName,
+  }
+}
+
+function normalizeParticipants(values: unknown, workspaceId: string): WorkspaceParticipant[] {
   const source = Array.isArray(values) ? values : []
-  const seen = new Set<string>()
-  const output: string[] = []
+  const output: WorkspaceParticipant[] = []
+  const indexByNameKey = new Map<string, number>()
+  const seenUserIds = new Set<string>()
   for (const value of source) {
-    const clean = normalizeName(String(value || ''))
-    if (!clean) {
+    const participant = normalizeParticipant(value, workspaceId)
+    if (!participant) {
       continue
     }
-    const key = clean.toLowerCase()
-    if (seen.has(key)) {
+    const nameKey = participant.name.toLowerCase()
+    const existingIndex = indexByNameKey.get(nameKey)
+    if (existingIndex !== undefined) {
+      const existing = output[existingIndex]
+      if (
+        !hasRealParticipantUserId(existing.userId) &&
+        hasRealParticipantUserId(participant.userId)
+      ) {
+        seenUserIds.delete(existing.userId)
+        output[existingIndex] = participant
+        seenUserIds.add(participant.userId)
+      }
       continue
     }
-    seen.add(key)
-    output.push(clean)
+    if (seenUserIds.has(participant.userId)) {
+      continue
+    }
+    indexByNameKey.set(nameKey, output.length)
+    seenUserIds.add(participant.userId)
+    output.push(participant)
   }
   return output
 }
 
-function normalizeRemovedCollaborators(values: unknown, collaborators: string[]): string[] {
-  const allowed = new Set(collaborators.map((value) => value.toLowerCase()))
-  return normalizeCollaborators(values).filter((value) => allowed.has(value.toLowerCase()))
+function normalizeRemovedCollaborators(
+  values: unknown,
+  collaborators: WorkspaceParticipant[],
+  workspaceId: string,
+): WorkspaceParticipant[] {
+  const allowed = new Set(collaborators.map((value) => value.userId))
+  return normalizeParticipants(values, workspaceId).filter((value) => allowed.has(value.userId))
 }
 
 function normalizeCollaboratorRole(value: unknown): WorkspaceCollaboratorRole {
@@ -160,37 +287,42 @@ function normalizeCollaboratorRole(value: unknown): WorkspaceCollaboratorRole {
 
 function normalizeCollaboratorRoles(
   values: unknown,
-  collaborators: string[],
+  collaborators: WorkspaceParticipant[],
 ): Record<string, WorkspaceCollaboratorRole> {
   const source =
     values && typeof values === 'object' && !Array.isArray(values)
       ? (values as Record<string, unknown>)
       : {}
-  const canonicalNameByKey = new Map<string, string>()
+  const canonicalIds = new Set<string>()
+  const canonicalIdByNameKey = new Map<string, string>()
   for (const collaborator of collaborators) {
-    const clean = normalizeName(collaborator)
-    if (!clean) {
+    if (!collaborator.userId || !collaborator.name) {
       continue
     }
-    canonicalNameByKey.set(clean.toLowerCase(), clean)
+    canonicalIds.add(collaborator.userId)
+    const cleanNameKey = collaborator.name.toLowerCase()
+    if (canonicalIdByNameKey.has(cleanNameKey)) {
+      canonicalIdByNameKey.delete(cleanNameKey)
+      continue
+    }
+    canonicalIdByNameKey.set(cleanNameKey, collaborator.userId)
   }
 
   const output: Record<string, WorkspaceCollaboratorRole> = {}
-  for (const [name, value] of Object.entries(source)) {
-    const clean = normalizeName(name)
-    if (!clean) {
+  for (const [key, value] of Object.entries(source)) {
+    const cleanKey = normalizeWorkspaceUserId(key)
+    const canonicalId =
+      (cleanKey && canonicalIds.has(cleanKey) ? cleanKey : '') ||
+      canonicalIdByNameKey.get(normalizeName(key).toLowerCase())
+    if (!canonicalId) {
       continue
     }
-    const canonical = canonicalNameByKey.get(clean.toLowerCase())
-    if (!canonical) {
-      continue
-    }
-    output[canonical] = normalizeCollaboratorRole(value)
+    output[canonicalId] = normalizeCollaboratorRole(value)
   }
 
-  for (const canonical of canonicalNameByKey.values()) {
-    if (!output[canonical]) {
-      output[canonical] = 'editor'
+  for (const canonicalId of canonicalIds) {
+    if (!output[canonicalId]) {
+      output[canonicalId] = 'editor'
     }
   }
 
@@ -199,16 +331,35 @@ function normalizeCollaboratorRoles(
 
 function normalizePendingCollaborators(
   values: unknown,
-  collaborators: string[],
-  removedCollaborators: string[],
-): string[] {
-  const removedKeys = new Set(removedCollaborators.map((value) => value.toLowerCase()))
+  collaborators: WorkspaceParticipant[],
+  removedCollaborators: WorkspaceParticipant[],
+  workspaceId: string,
+): WorkspaceParticipant[] {
+  const removedKeys = new Set(removedCollaborators.map((value) => value.userId))
   const activeKeys = new Set(
     collaborators
-      .filter((value) => !removedKeys.has(value.toLowerCase()))
-      .map((value) => value.toLowerCase()),
+      .filter((value) => !removedKeys.has(value.userId))
+      .map((value) => value.userId),
   )
-  return normalizeCollaborators(values).filter((value) => !activeKeys.has(value.toLowerCase()))
+  return normalizeParticipants(values, workspaceId).filter((value) => !activeKeys.has(value.userId))
+}
+
+function upsertParticipant(
+  values: WorkspaceParticipant[],
+  participant: WorkspaceParticipant,
+): WorkspaceParticipant[] {
+  const cleanUserId = normalizeWorkspaceUserId(participant.userId)
+  if (!cleanUserId) {
+    return values
+  }
+  const nextValues = [...values]
+  const existingIndex = nextValues.findIndex((value) => value.userId === cleanUserId)
+  if (existingIndex >= 0) {
+    nextValues[existingIndex] = participant
+    return nextValues
+  }
+  nextValues.push(participant)
+  return nextValues
 }
 
 function normalizeWorkspaceAuditCategory(value: unknown): WorkspaceAuditCategory {
@@ -216,7 +367,52 @@ function normalizeWorkspaceAuditCategory(value: unknown): WorkspaceAuditCategory
   if (clean === 'invitation_decisions') {
     return 'invitation_decisions'
   }
+  if (clean === 'workspace_changes') {
+    return 'workspace_changes'
+  }
+  if (clean === 'conversation') {
+    return 'conversation'
+  }
   return 'collaborator_changes'
+}
+
+function normalizeWorkspaceAuditEventType(value: unknown): WorkspaceAuditEventType | null {
+  const clean = trimValue(String(value || '')).toLowerCase()
+  switch (clean) {
+    case 'member_invited':
+    case 'invitation_cancelled':
+    case 'invitation_accepted':
+    case 'invitation_declined':
+    case 'member_removed':
+    case 'member_reinvited':
+    case 'member_role_changed':
+    case 'pending_role_changed':
+    case 'workspace_locked':
+    case 'workspace_unlocked':
+    case 'workspace_renamed':
+    case 'message_logged':
+    case 'other':
+      return clean
+    default:
+      return null
+  }
+}
+
+function normalizeWorkspaceAuditMetadata(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const output: Record<string, unknown> = {}
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const key = trimValue(rawKey)
+    if (!key) {
+      continue
+    }
+    output[key] = rawValue
+  }
+  return Object.keys(output).length > 0 ? output : undefined
 }
 
 function normalizeWorkspaceAuditEntries(
@@ -248,6 +444,25 @@ function normalizeWorkspaceAuditEntries(
       id: entryId,
       workspaceId: entryWorkspaceId,
       category: normalizeWorkspaceAuditCategory(record.category),
+      eventType: normalizeWorkspaceAuditEventType(
+        record.eventType ?? record.event_type,
+      ),
+      actorUserId:
+        normalizeWorkspaceUserId(
+          (record.actorUserId ?? record.actor_user_id) as string,
+        ) || null,
+      actorName:
+        normalizeName(String((record.actorName ?? record.actor_name) || '')) || null,
+      subjectUserId:
+        normalizeWorkspaceUserId(
+          (record.subjectUserId ?? record.subject_user_id) as string,
+        ) || null,
+      subjectName:
+        normalizeName(String((record.subjectName ?? record.subject_name) || '')) || null,
+      fromValue: trimValue(String((record.fromValue ?? record.from_value) || '')) || null,
+      toValue: trimValue(String((record.toValue ?? record.to_value) || '')) || null,
+      role: record.role ? normalizeCollaboratorRole(record.role) : null,
+      metadata: normalizeWorkspaceAuditMetadata(record.metadata),
       message,
       createdAt,
     })
@@ -264,12 +479,12 @@ function buildId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function defaultOwnerName(): string {
-  return readWorkspaceOwnerNameFromProfile() || 'Not set'
+function currentWorkspaceUserId(): string | null {
+  return defaultOwnerUserId()
 }
 
-function currentProfileName(): string {
-  return readWorkspaceOwnerNameFromProfile() || ''
+function defaultOwnerName(): string {
+  return readWorkspaceOwnerNameFromProfile() || 'Not set'
 }
 
 function currentCollaboratorName(): string {
@@ -282,6 +497,7 @@ function defaultWorkspaces(): WorkspaceRecord[] {
       id: 'hf-registry',
       name: 'HF Registry Manuscript',
       ownerName: defaultOwnerName(),
+      ownerUserId: defaultOwnerUserId(),
       collaborators: [],
       pendingCollaborators: [],
       collaboratorRoles: {},
@@ -292,6 +508,7 @@ function defaultWorkspaces(): WorkspaceRecord[] {
       updatedAt: nowIso(),
       pinned: true,
       archived: false,
+      ownerArchived: false,
       auditLogEntries: [],
     },
   ]
@@ -311,15 +528,20 @@ function normalizeWorkspaceRecords(
 ): WorkspaceRecord[] {
   return values.map((workspace) => {
     const workspaceId = trimValue(workspace.id) || `workspace-${Date.now().toString(36)}`
-    const collaborators = normalizeCollaborators((workspace as { collaborators?: unknown }).collaborators)
+    const collaborators = normalizeParticipants(
+      (workspace as { collaborators?: unknown }).collaborators,
+      workspaceId,
+    )
     const removedCollaborators = normalizeRemovedCollaborators(
       (workspace as { removedCollaborators?: unknown }).removedCollaborators,
       collaborators,
+      workspaceId,
     )
     const pendingCollaborators = normalizePendingCollaborators(
       (workspace as { pendingCollaborators?: unknown }).pendingCollaborators,
       collaborators,
       removedCollaborators,
+      workspaceId,
     )
     const collaboratorRoles = normalizeCollaboratorRoles(
       (workspace as { collaboratorRoles?: unknown }).collaboratorRoles,
@@ -337,6 +559,9 @@ function normalizeWorkspaceRecords(
       id: workspaceId,
       name: normalizeName(workspace.name) || 'Workspace',
       ownerName: normalizeName(workspace.ownerName) || fallbackOwnerName,
+      ownerUserId: normalizeWorkspaceUserId((workspace as { ownerUserId?: unknown }).ownerUserId as string)
+        || normalizeWorkspaceUserId((workspace as { owner_user_id?: unknown }).owner_user_id as string)
+        || null,
       collaborators,
       pendingCollaborators,
       collaboratorRoles,
@@ -350,6 +575,10 @@ function normalizeWorkspaceRecords(
       updatedAt: trimValue(workspace.updatedAt) || nowIso(),
       pinned: Boolean(workspace.pinned),
       archived: Boolean(workspace.archived),
+      ownerArchived: Boolean(
+        (workspace as { ownerArchived?: unknown }).ownerArchived
+          ?? (workspace as { owner_archived?: unknown }).owner_archived,
+      ),
       auditLogEntries,
     }
   })
@@ -357,14 +586,25 @@ function normalizeWorkspaceRecords(
 
 function normalizeAuthorRequestRecords(values: Array<Partial<WorkspaceAuthorRequest>>): WorkspaceAuthorRequest[] {
   return values
-    .map((request) => ({
-      id: trimValue(request.id) || buildId('author-request'),
-      workspaceId: trimValue(request.workspaceId) || buildId('workspace'),
-      workspaceName: normalizeName(request.workspaceName) || 'Untitled workspace',
-      authorName: normalizeName(request.authorName) || 'Unknown author',
-      collaboratorRole: normalizeCollaboratorRole(request.collaboratorRole),
-      invitedAt: trimValue(request.invitedAt) || nowIso(),
-    }))
+    .map((request) => {
+      const invitationType: WorkspaceAuthorRequest['invitationType'] =
+        (request as { invitationType?: unknown }).invitationType === 'data'
+          || (request as { invitation_type?: unknown }).invitation_type === 'data'
+          ? 'data'
+          : 'workspace'
+      return {
+        id: trimValue(request.id) || buildId('author-request'),
+        workspaceId: trimValue(request.workspaceId) || buildId('workspace'),
+        workspaceName: normalizeName(request.workspaceName) || 'Untitled workspace',
+        authorName: normalizeName(request.authorName) || 'Unknown author',
+        authorUserId: normalizeWorkspaceUserId((request as { authorUserId?: unknown }).authorUserId as string)
+          || normalizeWorkspaceUserId((request as { author_user_id?: unknown }).author_user_id as string)
+          || null,
+        invitationType,
+        collaboratorRole: normalizeCollaboratorRole(request.collaboratorRole),
+        invitedAt: trimValue(request.invitedAt) || nowIso(),
+      }
+    })
     .filter((request) => request.workspaceId && request.workspaceName)
 }
 
@@ -380,6 +620,9 @@ function normalizeInvitationSentRecords(values: Array<Partial<WorkspaceInvitatio
         workspaceId: trimValue(invitation.workspaceId) || buildId('workspace'),
         workspaceName: normalizeName(invitation.workspaceName) || 'Untitled workspace',
         inviteeName: normalizeName(invitation.inviteeName) || 'Unknown collaborator',
+        inviteeUserId: normalizeWorkspaceUserId((invitation as { inviteeUserId?: unknown }).inviteeUserId as string)
+          || normalizeWorkspaceUserId((invitation as { invitee_user_id?: unknown }).invitee_user_id as string)
+          || null,
         role: normalizeCollaboratorRole(invitation.role),
         invitedAt: trimValue(invitation.invitedAt) || nowIso(),
         status,
@@ -621,6 +864,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' '),
       ownerName: defaultOwnerName(),
+      ownerUserId: currentWorkspaceUserId(),
       collaborators: [],
       pendingCollaborators: [],
       collaboratorRoles: {},
@@ -631,6 +875,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       updatedAt: nowIso(),
       pinned: false,
       archived: false,
+      ownerArchived: false,
       auditLogEntries: [],
     }
     const nextWorkspaces = [nextWorkspace, ...state.workspaces]
@@ -660,6 +905,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       id: baseId,
       name: cleanName,
       ownerName,
+      ownerUserId: currentWorkspaceUserId(),
       collaborators: [],
       pendingCollaborators: [],
       collaboratorRoles: {},
@@ -670,6 +916,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       updatedAt: nowIso(),
       pinned: false,
       archived: false,
+      ownerArchived: false,
       auditLogEntries: [],
     }
     const nextWorkspaces = [nextWorkspace, ...state.workspaces]
@@ -696,17 +943,23 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         return workspace
       }
       const nextCollaborators = patch.collaborators
-        ? normalizeCollaborators(patch.collaborators)
+        ? normalizeParticipants(patch.collaborators, cleanWorkspaceId)
         : workspace.collaborators
       const nextRemovedCollaborators = patch.removedCollaborators
-        ? normalizeRemovedCollaborators(patch.removedCollaborators, nextCollaborators)
-        : normalizeRemovedCollaborators(workspace.removedCollaborators, nextCollaborators)
+        ? normalizeRemovedCollaborators(patch.removedCollaborators, nextCollaborators, cleanWorkspaceId)
+        : normalizeRemovedCollaborators(workspace.removedCollaborators, nextCollaborators, cleanWorkspaceId)
       const nextPendingCollaborators = patch.pendingCollaborators
-        ? normalizePendingCollaborators(patch.pendingCollaborators, nextCollaborators, nextRemovedCollaborators)
+        ? normalizePendingCollaborators(
+            patch.pendingCollaborators,
+            nextCollaborators,
+            nextRemovedCollaborators,
+            cleanWorkspaceId,
+          )
         : normalizePendingCollaborators(
             workspace.pendingCollaborators,
             nextCollaborators,
             nextRemovedCollaborators,
+            cleanWorkspaceId,
           )
       const nextCollaboratorRoles = patch.collaboratorRoles
         ? normalizeCollaboratorRoles(patch.collaboratorRoles, nextCollaborators)
@@ -741,6 +994,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ...workspace,
         ...patch,
         ownerName: patch.ownerName ? normalizeName(patch.ownerName) : workspace.ownerName,
+        ownerUserId:
+          patch.ownerUserId !== undefined
+            ? normalizeWorkspaceUserId(patch.ownerUserId) || null
+            : workspace.ownerUserId,
         collaborators: nextCollaborators,
         pendingCollaborators: nextPendingCollaborators,
         collaboratorRoles: nextCollaboratorRoles,
@@ -781,45 +1038,46 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     })
     runRemoteWorkspaceAction((token) => deleteWorkspaceRecordApi(token, cleanWorkspaceId))
   },
-  sendWorkspaceInvitation: (workspaceId, inviteeName, role) => {
+  sendWorkspaceInvitation: (workspaceId, invitee, role) => {
     const cleanWorkspaceId = trimValue(workspaceId)
-    const cleanInviteeName = normalizeName(inviteeName)
+    const cleanInviteeUserId = normalizeWorkspaceUserId(invitee.userId)
+    const cleanInviteeName = normalizeName(invitee.name)
     const cleanRole = normalizeCollaboratorRole(role)
-    if (!cleanWorkspaceId || !cleanInviteeName) {
+    if (!cleanWorkspaceId || !cleanInviteeUserId || !cleanInviteeName) {
       return null
     }
     const state = get()
-    const currentUserName = currentProfileName()
-    if (!currentUserName) {
+    const currentUserId = currentWorkspaceUserId()
+    if (!currentUserId) {
       return null
     }
     const workspace = state.workspaces.find((item) => item.id === cleanWorkspaceId)
     if (!workspace) {
       return null
     }
-    if (workspace.ownerName.toLowerCase() !== currentUserName.toLowerCase()) {
+    if (workspace.ownerUserId !== currentUserId) {
       return null
     }
-    if (workspace.ownerName.toLowerCase() === cleanInviteeName.toLowerCase()) {
+    if (workspace.ownerUserId === cleanInviteeUserId) {
       return null
     }
-    const removedSet = new Set(workspace.removedCollaborators.map((name) => name.toLowerCase()))
+    const removedSet = new Set(workspace.removedCollaborators.map((item) => item.userId))
     const activeSet = new Set(
       workspace.collaborators
-        .filter((name) => !removedSet.has(name.toLowerCase()))
-        .map((name) => name.toLowerCase()),
+        .filter((item) => !removedSet.has(item.userId))
+        .map((item) => item.userId),
     )
-    if (activeSet.has(cleanInviteeName.toLowerCase())) {
+    if (activeSet.has(cleanInviteeUserId)) {
       return null
     }
-    const pendingSet = new Set((workspace.pendingCollaborators || []).map((name) => name.toLowerCase()))
-    if (pendingSet.has(cleanInviteeName.toLowerCase())) {
+    const pendingSet = new Set((workspace.pendingCollaborators || []).map((item) => item.userId))
+    if (pendingSet.has(cleanInviteeUserId)) {
       return null
     }
     const hasPendingDuplicate = state.invitationsSent.some(
       (invitation) =>
         invitation.workspaceId === cleanWorkspaceId &&
-        invitation.inviteeName.toLowerCase() === cleanInviteeName.toLowerCase() &&
+        invitation.inviteeUserId === cleanInviteeUserId &&
         invitation.status === 'pending',
     )
     if (hasPendingDuplicate) {
@@ -831,6 +1089,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       workspaceId: workspace.id,
       workspaceName: workspace.name,
       inviteeName: cleanInviteeName,
+      inviteeUserId: cleanInviteeUserId,
       role: cleanRole,
       invitedAt: nowIso(),
       status: 'pending',
@@ -840,23 +1099,25 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (item.id !== cleanWorkspaceId) {
         return item
       }
+      const pendingParticipant = {
+        userId: cleanInviteeUserId,
+        name: cleanInviteeName,
+      }
+      const nextPendingCollaborators = normalizePendingCollaborators(
+        upsertParticipant(item.pendingCollaborators || [], pendingParticipant),
+        item.collaborators,
+        item.removedCollaborators,
+        item.id,
+      )
       return {
         ...item,
-        pendingCollaborators: normalizePendingCollaborators(
-          [...(item.pendingCollaborators || []), cleanInviteeName],
-          item.collaborators,
-          item.removedCollaborators,
-        ),
+        pendingCollaborators: nextPendingCollaborators,
         pendingCollaboratorRoles: normalizeCollaboratorRoles(
           {
             ...(item.pendingCollaboratorRoles || {}),
-            [cleanInviteeName]: cleanRole,
+            [cleanInviteeUserId]: cleanRole,
           },
-          normalizePendingCollaborators(
-            [...(item.pendingCollaborators || []), cleanInviteeName],
-            item.collaborators,
-            item.removedCollaborators,
-          ),
+          nextPendingCollaborators,
         ),
         updatedAt: nextInvitation.invitedAt,
       }
@@ -874,6 +1135,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     runRemoteWorkspaceAction((token) =>
       createWorkspaceInvitationApi(token, {
         workspaceId: cleanWorkspaceId,
+        inviteeUserId: cleanInviteeUserId,
         inviteeName: cleanInviteeName,
         role: cleanRole,
         invitedAt: nextInvitation.invitedAt,
@@ -885,6 +1147,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   acceptAuthorRequest: (requestId) => {
     const cleanRequestId = trimValue(requestId)
     if (!cleanRequestId) {
+      return null
+    }
+    const currentUserId = currentWorkspaceUserId()
+    if (!currentUserId) {
       return null
     }
     const state = get()
@@ -902,8 +1168,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       : null
     const canReuseExistingWorkspace = Boolean(
       existingWorkspace &&
-      normalizeName(existingWorkspace.ownerName).toLowerCase() ===
-        normalizeName(request.authorName).toLowerCase(),
+      existingWorkspace.ownerUserId &&
+      existingWorkspace.ownerUserId === request.authorUserId,
     )
 
     let acceptedWorkspaceId = requestedWorkspaceId
@@ -912,14 +1178,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
 
     const acceptedAt = nowIso()
+    const currentParticipant = {
+      userId: currentUserId,
+      name: currentCollaboratorName(),
+    }
     const nextWorkspace: WorkspaceRecord = {
       id: acceptedWorkspaceId,
       name: request.workspaceName,
       ownerName: request.authorName,
-      collaborators: [currentCollaboratorName()],
+      ownerUserId: request.authorUserId,
+      collaborators: [currentParticipant],
       pendingCollaborators: [],
       collaboratorRoles: {
-        [currentCollaboratorName()]: normalizeCollaboratorRole(request.collaboratorRole),
+        [currentUserId]: normalizeCollaboratorRole(request.collaboratorRole),
       },
       pendingCollaboratorRoles: {},
       removedCollaborators: [],
@@ -928,12 +1199,21 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       updatedAt: acceptedAt,
       pinned: false,
       archived: false,
+      ownerArchived: false,
       auditLogEntries: [
         {
           id: `${acceptedWorkspaceId}-audit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
           workspaceId: acceptedWorkspaceId,
           category: 'invitation_decisions',
-          message: `${currentCollaboratorName()} collaborator invitation status switched from pending to accepted by ${currentCollaboratorName()} as ${normalizeCollaboratorRole(request.collaboratorRole)}.`,
+          eventType: 'invitation_accepted',
+          actorUserId: currentUserId,
+          actorName: currentParticipant.name,
+          subjectUserId: currentUserId,
+          subjectName: currentParticipant.name,
+          fromValue: 'pending',
+          toValue: 'accepted',
+          role: normalizeCollaboratorRole(request.collaboratorRole),
+          message: `${currentParticipant.name} collaborator invitation status switched from pending to accepted by ${currentParticipant.name} as ${normalizeCollaboratorRole(request.collaboratorRole)}.`,
           createdAt: acceptedAt,
         },
       ],
@@ -956,9 +1236,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       activeWorkspaceId: nextWorkspace.id,
       authorRequests: nextAuthorRequests,
     })
-    runRemoteWorkspaceAction((token) =>
-      acceptWorkspaceAuthorRequestApi(token, cleanRequestId, currentCollaboratorName()),
-    )
+    runRemoteWorkspaceAction((token) => acceptWorkspaceAuthorRequestApi(token, cleanRequestId))
     return nextWorkspace
   },
   declineAuthorRequest: (requestId) => {
@@ -988,7 +1266,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       return null
     }
 
-    const inviteeKey = normalizeName(invitation.inviteeName).toLowerCase()
+    const inviteeUserId = normalizeWorkspaceUserId(invitation.inviteeUserId || '')
+    if (!inviteeUserId) {
+      return null
+    }
     const nextInvitationsSent = state.invitationsSent.map((item) =>
       item.id === cleanInvitationId
         ? { ...item, status: 'declined' as const }
@@ -1000,15 +1281,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       }
       const nextPendingCollaborators = normalizePendingCollaborators(
         (workspace.pendingCollaborators || []).filter(
-          (name) => normalizeName(name).toLowerCase() !== inviteeKey,
+          (participant) => participant.userId !== inviteeUserId,
         ),
         workspace.collaborators,
         workspace.removedCollaborators,
+        workspace.id,
       )
       const nextPendingCollaboratorRoles = normalizeCollaboratorRoles(
         Object.fromEntries(
           Object.entries(workspace.pendingCollaboratorRoles || {}).filter(
-            ([name]) => normalizeName(name).toLowerCase() !== inviteeKey,
+            ([participantUserId]) => participantUserId !== inviteeUserId,
           ),
         ),
         nextPendingCollaborators,

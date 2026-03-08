@@ -11,6 +11,7 @@ const __dirname = dirname(__filename);
 const config: StorybookConfig = {
   stories: [
     '../src/stories/design-system/approvals/Approvals.stories.@(ts|tsx|mdx)',
+    '../src/stories/design-system/pages/*.stories.@(ts|tsx|mdx)',
     '../src/stories/__archive__/design-system/approved/Approved.stories.@(ts|tsx|mdx)',
     '../src/stories/__archive__/design-system/primitives/Badges.stories.@(ts|tsx|mdx)',
     '../src/stories/__archive__/design-system/foundations/MotionChoreography.stories.@(ts|tsx|mdx)',

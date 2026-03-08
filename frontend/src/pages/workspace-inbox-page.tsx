@@ -10,7 +10,7 @@ import { getAuthSessionToken } from '@/lib/auth-session'
 import { decryptWorkspaceInboxText } from '@/lib/workspace-inbox-crypto'
 import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass, getSectionMarkerTone } from '@/lib/section-tone'
-import { matchesScopedStorageEventKey } from '@/lib/user-scoped-storage'
+import { matchesScopedStorageEventKey, readStorageScopeUserId } from '@/lib/user-scoped-storage'
 import { readWorkspaceOwnerNameFromProfile, WORKSPACE_OWNER_REQUIRED_MESSAGE } from '@/lib/workspace-owner'
 import { cn } from '@/lib/utils'
 import {
@@ -178,30 +178,35 @@ function normalizeName(value: string | null | undefined): string {
   return (value || '').trim().replace(/\s+/g, ' ')
 }
 
+function normalizeWorkspaceUserId(value: string | null | undefined): string {
+  const clean = (value || '').trim()
+  return clean === 'anonymous' ? '' : clean
+}
+
 function isSamePerson(left: string, right: string): boolean {
   return normalizeName(left).toLowerCase() === normalizeName(right).toLowerCase()
 }
 
 function hasWorkspaceInboxWriteAccess(
   workspace: WorkspaceRecord | null,
-  currentUserName: string,
+  currentUserId: string,
 ): boolean {
   if (!workspace) {
     return false
   }
-  const currentUserKey = normalizeName(currentUserName).toLowerCase()
+  const currentUserKey = normalizeWorkspaceUserId(currentUserId)
   if (!currentUserKey) {
     return false
   }
-  const ownerKey = normalizeName(workspace.ownerName).toLowerCase()
+  const ownerKey = normalizeWorkspaceUserId(workspace.ownerUserId)
   if (ownerKey && ownerKey === currentUserKey) {
     return true
   }
-  const collaboratorKeys = new Set((workspace.collaborators || []).map((value) => normalizeName(value).toLowerCase()))
+  const collaboratorKeys = new Set((workspace.collaborators || []).map((value) => normalizeWorkspaceUserId(value.userId)))
   if (!collaboratorKeys.has(currentUserKey)) {
     return false
   }
-  const removedKeys = new Set((workspace.removedCollaborators || []).map((value) => normalizeName(value).toLowerCase()))
+  const removedKeys = new Set((workspace.removedCollaborators || []).map((value) => normalizeWorkspaceUserId(value.userId)))
   return !removedKeys.has(currentUserKey)
 }
 
@@ -398,13 +403,17 @@ export function WorkspaceInboxPage() {
     [allMessages, workspaceId],
   )
   const workspace = workspaces.find((item) => item.id === workspaceId) || null
+  const currentUserId = useMemo(
+    () => normalizeWorkspaceUserId(readStorageScopeUserId()),
+    [],
+  )
   const currentUserName = useMemo(
     () => normalizeName(readWorkspaceOwnerNameFromProfile() || 'You'),
     [],
   )
   const canContributeToWorkspaceInbox = useMemo(
-    () => hasWorkspaceInboxWriteAccess(workspace, currentUserName),
-    [currentUserName, workspace],
+    () => hasWorkspaceInboxWriteAccess(workspace, currentUserId),
+    [currentUserId, workspace],
   )
   const participants = useMemo(() => {
     const output: string[] = []
@@ -416,7 +425,7 @@ export function WorkspaceInboxPage() {
       output.push(clean)
     }
     pushUnique(workspace?.ownerName || '')
-    workspace?.collaborators.forEach(pushUnique)
+    workspace?.collaborators.forEach((participant) => pushUnique(participant.name))
     pushUnique(currentUserName)
     return output
   }, [currentUserName, workspace])

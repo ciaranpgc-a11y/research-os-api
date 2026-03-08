@@ -3257,9 +3257,11 @@ def link_publication_open_access_pdf(
         )
         doi = _normalize_doi(work.doi)
         if not doi:
-            raise PublicationConsoleValidationError(
-                "DOI is required to search for open-access PDF links."
-            )
+            return {
+                "created": False,
+                "file": None,
+                "message": "DOI is required to search for open-access PDF links.",
+            }
 
         email = _unpaywall_email(user_email=user.email)
         if not email:
@@ -3269,7 +3271,11 @@ def link_publication_open_access_pdf(
 
         pdf_url = _find_unpaywall_pdf_url(doi=doi, email=email)
         if not pdf_url:
-            raise PublicationConsoleValidationError("No open access PDF found.")
+            return {
+                "created": False,
+                "file": None,
+                "message": "No open access PDF found.",
+            }
 
         existing = session.scalars(
             select(PublicationFile).where(

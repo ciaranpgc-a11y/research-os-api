@@ -1314,6 +1314,63 @@ def list_collaborators_for_user(
         }
 
 
+def get_collaboration_landing_for_user(
+    *,
+    user_id: str,
+    query: str = "",
+    sort: str = "name",
+    page: int = 1,
+    page_size: int = 50,
+    include_shared_works: bool = False,
+) -> dict[str, Any]:
+    create_all_tables()
+    clean_query = re.sub(r"\s+", " ", str(query or "").strip().lower())
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 50), 200))
+    with session_scope() as session:
+        _resolve_user_or_raise(session, user_id)
+        cached_payload = _read_collaboration_landing_cache(
+            session=session,
+            user_id=user_id,
+        )
+        if cached_payload is None:
+            cached_payload = _build_collaboration_landing_payload(
+                session=session,
+                user_id=user_id,
+            )
+            _upsert_collaboration_landing_cache(
+                session=session,
+                user_id=user_id,
+                payload=cached_payload,
+                computed_at=_utcnow(),
+                status=str(cached_payload.get("summary", {}).get("status") or READY_STATUS),
+            )
+        rows = _filter_collaborator_rows(
+            list(cached_payload["listing"].get("items") or []),
+            clean_query=clean_query,
+        )
+        rows.sort(key=lambda item: _collab_sort_key(item, sort))
+        total = len(rows)
+        start = (page - 1) * page_size
+        end = start + page_size
+        response: dict[str, Any] = {
+            "summary": dict(cached_payload.get("summary") or {}),
+            "listing": {
+                "items": rows[start:end],
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "has_more": end < total,
+            },
+            "sharedWorksByCollaboratorId": {},
+        }
+        if include_shared_works:
+            response["sharedWorksByCollaboratorId"] = dict(
+                cached_payload.get("sharedWorksByCollaboratorId") or {}
+            )
+        return response
+
+
 def create_collaborator_for_user(
     *, user_id: str, payload: dict[str, Any]
 ) -> dict[str, Any]:

@@ -287,7 +287,7 @@ export function StudyCorePage() {
     [effectiveWorkspaceId, workspaceRecords],
   )
   const activeCollaboratorNames = useMemo(
-    () => (activeWorkspace ? [...activeWorkspace.collaborators] : []),
+    () => (activeWorkspace ? activeWorkspace.collaborators.map((participant) => participant.name) : []),
     [activeWorkspace],
   )
 

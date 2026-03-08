@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
 import type { PublicationMetricTilePayload, PublicationsTopMetricsPayload } from '@/types/impact'
 
-function buildTotalPublicationsTile(): PublicationMetricTilePayload {
+function buildTotalPublicationsTile(overrides: Partial<PublicationMetricTilePayload> = {}): PublicationMetricTilePayload {
   return {
     id: 'tile-total-publications',
     key: 'this_year_vs_last',
@@ -101,6 +101,7 @@ function buildTotalPublicationsTile(): PublicationMetricTilePayload {
       ],
       metadata: {},
     },
+    ...overrides,
   }
 }
 
@@ -141,5 +142,84 @@ describe('PublicationsTopStrip methods drilldown', () => {
     expect(within(tabPanel).getByText('Trajectory')).toBeInTheDocument()
     expect(within(tabPanel).getByText('Context')).toBeInTheDocument()
     expect(within(tabPanel).getByText(/How the headline cards and lifetime totals are calculated/i)).toBeInTheDocument()
+  })
+
+  it('renders the publication production pattern module and updates when the year scope changes', () => {
+    const tile = buildTotalPublicationsTile({
+      main_value: 9,
+      value: 9,
+      main_value_display: '9',
+      value_display: '9',
+      chart_data: {
+        years: [2021, 2022, 2023, 2024, 2025, 2026],
+        values: [1, 2, 0, 3, 1, 2],
+        projected_year: 2026,
+        current_year_ytd: 2,
+      },
+      sparkline: [1, 2, 0, 3, 1, 2],
+      drilldown: {
+        ...buildTotalPublicationsTile().drilldown,
+        as_of_date: '2026-03-05',
+        publications: [
+          { work_id: 'w1', year: 2021, title: 'Paper 1', journal: 'Journal A' },
+          { work_id: 'w2', year: 2022, title: 'Paper 2', journal: 'Journal B' },
+          { work_id: 'w3', year: 2024, title: 'Paper 3', journal: 'Journal A' },
+          { work_id: 'w4', year: 2025, title: 'Paper 4', journal: 'Journal A' },
+          { work_id: 'w5', year: 2026, title: 'Paper 5', journal: 'Journal B' },
+          { work_id: 'w6', year: 2026, title: 'Paper 6', journal: 'Journal B' },
+        ],
+      },
+    })
+    const { container } = render(
+      <PublicationsTopStrip
+        metrics={buildMetricsPayload(tile)}
+        loading={false}
+        forceInsightsVisible
+      />,
+    )
+
+    const metricTile = container.querySelector('[data-metric-key="this_year_vs_last"]')
+    expect(metricTile).not.toBeNull()
+    fireEvent.click(metricTile as HTMLElement)
+
+    const phaseTile = document.querySelector('[data-ui="publication-production-phase"]')
+    expect(phaseTile).not.toBeNull()
+    expect(within(phaseTile as HTMLElement).getByText('Production Phase')).toBeInTheDocument()
+    expect(within(phaseTile as HTMLElement).getByText('Trend slope')).toBeInTheDocument()
+    expect(within(phaseTile as HTMLElement).getByText('Peak year')).toBeInTheDocument()
+
+    const module = document.querySelector('[data-ui="publication-production-pattern"]')
+    expect(module).not.toBeNull()
+    expect(within(module as HTMLElement).getByText('Publication Production Pattern')).toBeInTheDocument()
+    expect(within(module as HTMLElement).getByText('Years with Output')).toBeInTheDocument()
+    expect(within(module as HTMLElement).getByText('4 / 5')).toBeInTheDocument()
+
+    fireEvent.click(within(module as HTMLElement).getByRole('button', { name: 'YTD' }))
+
+    expect(within(module as HTMLElement).queryByText('Includes 2026 year-to-date publications as a partial year.')).toBeNull()
+    expect(within(module as HTMLElement).getByText('5 / 6')).toBeInTheDocument()
+    expect(within(module as HTMLElement).queryByText('83% continuity')).toBeNull()
+  })
+
+  it('renders x-axis gridlines on the year-over-year trajectory chart', async () => {
+    const tile = buildTotalPublicationsTile()
+    const { container } = render(
+      <PublicationsTopStrip
+        metrics={buildMetricsPayload(tile)}
+        loading={false}
+        forceInsightsVisible
+      />,
+    )
+
+    const metricTile = container.querySelector('[data-metric-key="this_year_vs_last"]')
+    expect(metricTile).not.toBeNull()
+    fireEvent.click(metricTile as HTMLElement)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
+
+    expect(screen.getByText('Year-over-year trajectory')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-ui="publication-trajectory-grid-x"]')).toHaveLength(3)
+    })
   })
 })

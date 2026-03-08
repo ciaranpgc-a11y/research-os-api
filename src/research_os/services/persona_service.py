@@ -31,7 +31,10 @@ from research_os.db import (
 )
 from research_os.services.metrics_provider_service import get_metrics_provider
 from research_os.services.api_telemetry_service import record_api_usage_event
-from research_os.services.supplementary_work_service import primary_publication_records
+from research_os.services.supplementary_work_service import (
+    is_supplementary_material_work,
+    primary_publication_records,
+)
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 FALLBACK_EMBEDDING_MODEL = "local-hash-1"
@@ -129,8 +132,17 @@ WORK_TYPE_ABSTRACT_PATTERN = re.compile(r"\babstract\b", re.IGNORECASE)
 WORK_TYPE_NUMBERED_ABSTRACT_TITLE_PATTERN = re.compile(
     r"^\s*(?!(?:19|20)\d{2}\b)\d{1,4}\b"
 )
+WORK_TYPE_CODED_ABSTRACT_TITLE_PATTERN = re.compile(r"^\s*[A-Z]{1,6}\d{1,4}\b")
 WORK_TYPE_ABSTRACT_DOI_PATTERN = re.compile(
     r"\b(?:doi\.org/)?10\.\d{4,9}/\S+\.\d{1,4}\b",
+    re.IGNORECASE,
+)
+WORK_TYPE_HEART_SUPPLEMENT_ABSTRACT_DOI_PATTERN = re.compile(
+    r"\b(?:doi\.org/)?10\.1136/heartjnl-\d{4}-(?:bcs|bscmr)\.\d+\b",
+    re.IGNORECASE,
+)
+WORK_TYPE_FLGASTRO_SUPPLEMENT_ABSTRACT_DOI_PATTERN = re.compile(
+    r"\b(?:doi\.org/)?10\.1136/flgastro-\d{4}-bspghan\.\d+\b",
     re.IGNORECASE,
 )
 WORK_TYPE_THESIS_PATTERN = re.compile(r"\b(thesis|dissertation)\b", re.IGNORECASE)
@@ -272,6 +284,13 @@ def _normalize_work_type(
     combined = " ".join(
         item for item in [title, venue_name, publisher, url] if str(item).strip()
     )
+    _inferred_venue, inferred_work_type = _infer_conference_abstract_metadata(
+        title=title,
+        doi="",
+        url=combined,
+    )
+    if inferred_work_type:
+        return inferred_work_type, None
     if WORK_TYPE_PREPRINT_PATTERN.search(combined):
         return "preprint", None
     if WORK_TYPE_THESIS_PATTERN.search(combined):
@@ -709,6 +728,70 @@ def _normalize_venue_candidate(value: Any) -> str | None:
     return text
 
 
+def _is_abstracts_placeholder_venue(value: Any) -> bool:
+    return str(value or "").strip().lower() == "abstracts"
+
+
+def _infer_venue_from_identifiers(*, doi: Any, url: Any) -> str | None:
+    combined = " ".join(
+        str(item or "").strip() for item in [doi, url] if str(item or "").strip()
+    )
+    if WORK_TYPE_HEART_SUPPLEMENT_ABSTRACT_DOI_PATTERN.search(combined):
+        return "Heart"
+    if WORK_TYPE_FLGASTRO_SUPPLEMENT_ABSTRACT_DOI_PATTERN.search(combined):
+        return "Frontline Gastroenterology"
+    return None
+
+
+def _infer_conference_abstract_metadata(
+    *,
+    title: Any,
+    doi: Any,
+    url: Any,
+) -> tuple[str | None, str | None]:
+    clean_title = re.sub(r"\s+", " ", str(title or "").strip())
+    inferred_venue = _infer_venue_from_identifiers(doi=doi, url=url)
+    if inferred_venue in {"Heart", "Frontline Gastroenterology"}:
+        return inferred_venue, "conference-abstract"
+    if not (
+        WORK_TYPE_NUMBERED_ABSTRACT_TITLE_PATTERN.match(clean_title)
+        or WORK_TYPE_CODED_ABSTRACT_TITLE_PATTERN.match(clean_title)
+    ):
+        return None, None
+    return None, None
+
+
+def _is_figshare_repository_value(value: Any) -> bool:
+    return "figshare" in str(value or "").strip().lower()
+
+
+def _is_figshare_repository_doi(value: Any) -> bool:
+    return str(value or "").strip().lower().startswith("10.6084/m9.figshare")
+
+
+def _has_authoritative_publication_identity(*, work: Work, pmid: str | None) -> bool:
+    if str(pmid or "").strip():
+        return True
+    doi = str(work.doi or "").strip().lower()
+    if doi and not _is_figshare_repository_doi(doi):
+        return True
+    publication_type = str(work.publication_type or "").strip()
+    return bool(publication_type)
+
+
+def _should_override_repository_metadata(*, work: Work, pmid: str | None) -> bool:
+    if is_supplementary_material_work(work):
+        return False
+    if not _has_authoritative_publication_identity(work=work, pmid=pmid):
+        return False
+    venue_name = _normalize_venue_candidate(work.venue_name)
+    journal_name = _normalize_venue_candidate(work.journal)
+    return any(
+        _is_figshare_repository_value(value)
+        for value in [venue_name, journal_name, work.publisher, work.url]
+    )
+
+
 def _extract_pmid_and_journal_metric(
     metric_payload: dict[str, Any],
 ) -> tuple[str | None, float | None, str | None]:
@@ -740,6 +823,14 @@ def _extract_pmid_and_journal_metric(
             source = primary_location.get("source")
             if isinstance(source, dict):
                 journal_name = _normalize_venue_candidate(source.get("display_name"))
+    if journal_name and _is_abstracts_placeholder_venue(journal_name):
+        inferred_journal = _infer_venue_from_identifiers(
+            doi=metric_payload.get("doi"),
+            url=(metric_payload.get("open_access") or {}).get("oa_url")
+            or metric_payload.get("url"),
+        )
+        if inferred_journal:
+            journal_name = inferred_journal
     return pmid, impact_factor, journal_name
 
 
@@ -881,6 +972,8 @@ def upsert_work(
             venue_name = _normalize_venue_candidate(work.get("journal")) or ""
         if not venue_name:
             venue_name = _normalize_venue_candidate(work.get("journal_name")) or ""
+        if not venue_name:
+            venue_name = _infer_venue_from_identifiers(doi=doi, url=url) or ""
         publisher = re.sub(r"\s+", " ", str(work.get("publisher", "")).strip())
         raw_work_type = re.sub(r"\s+", " ", str(work.get("work_type", "")).strip())
         allow_llm = bool(
@@ -1637,6 +1730,7 @@ def sync_metrics(
             | set(best_article_type_by_work.keys())
             | set(best_journal_by_work.keys())
             | set(resolved_pmid_by_work.keys())
+            | set(work_payload_by_id.keys())
         )
         if hydrated_work_ids:
             works = session.scalars(
@@ -1683,11 +1777,19 @@ def sync_metrics(
             if work is None:
                 continue
             current_venue = _normalize_venue_candidate(work.venue_name)
-            if current_venue:
+            pmid_value = resolved_pmid_by_work.get(work_id)
+            should_override = _should_override_repository_metadata(
+                work=work,
+                pmid=pmid_value,
+            )
+            if current_venue and not should_override:
                 continue
             if work.user_edited and str(work.venue_name or "").strip():
                 continue
             work.venue_name = journal_name
+            current_journal = _normalize_venue_candidate(work.journal)
+            if not current_journal or should_override:
+                work.journal = journal_name
         for work_id, pmid_value in resolved_pmid_by_work.items():
             work = works_by_id.get(work_id)
             if work is None:
@@ -1695,6 +1797,34 @@ def sync_metrics(
             if _extract_pmid(work.pmid):
                 continue
             work.pmid = pmid_value
+        for work_id, work_payload in work_payload_by_id.items():
+            work = works_by_id.get(work_id)
+            if work is None:
+                continue
+            inferred_venue, inferred_work_type = _infer_conference_abstract_metadata(
+                title=work.title,
+                doi=work.doi,
+                url=work.url,
+            )
+            current_venue = _normalize_venue_candidate(work.venue_name)
+            if inferred_venue and (
+                not current_venue or _is_abstracts_placeholder_venue(current_venue)
+            ):
+                work.venue_name = inferred_venue
+                current_journal = _normalize_venue_candidate(work.journal)
+                if not current_journal or _is_abstracts_placeholder_venue(current_journal):
+                    work.journal = inferred_venue
+            if inferred_work_type and str(work.work_type or "").strip().lower() == "journal-article":
+                work.work_type = inferred_work_type
+        for work_id, work in works_by_id.items():
+            pmid_value = resolved_pmid_by_work.get(work_id)
+            if not _should_override_repository_metadata(work=work, pmid=pmid_value):
+                continue
+            if work.user_edited and str(work.work_type or "").strip():
+                continue
+            current_work_type = str(work.work_type or "").strip().lower()
+            if current_work_type in {"", "other", "dataset", "data-set"}:
+                work.work_type = "journal-article"
         session.flush()
 
     if structured_abstract_refresh_ids:

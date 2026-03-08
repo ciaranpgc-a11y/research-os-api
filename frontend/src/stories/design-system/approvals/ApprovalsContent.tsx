@@ -1148,6 +1148,7 @@ export function ApprovalsContent() {
   const [metricWindow, setMetricWindow] = useState<'12m' | '5y'>('12m')
   const [insightsVisibility, setInsightsVisibility] = useState<'visible' | 'hidden'>('visible')
   const [chartVisualMode, setChartVisualMode] = useState<'bars' | 'line'>('bars')
+  const [publicationValueMode, setPublicationValueMode] = useState<'absolute' | 'percentage'>('absolute')
   const [fieldThreshold, setFieldThreshold] = useState<(typeof FIELD_THRESHOLD_OPTIONS)[number]>(75)
   const chartTheme = useChartTheme()
   const chartMotion = useChartMotion('default')
@@ -1763,7 +1764,7 @@ export function ApprovalsContent() {
                 <IconButton aria-label="Disabled icon button" variant="outline" size="icon" disabled><IconGlyph size={16} /></IconButton>
               </Row>
             </PanelShell>
-            <PanelShell heading="Inline action icons" description="Approved add, edit, save, and discard controls for staged inline field editing.">
+            <PanelShell heading="Inline action icons" description="Approved add, edit, save, discard, remove, and restore controls for staged inline field editing and collaborator management.">
               <Stack space="sm">
                 <Row gap="sm" align="start" className="items-center">
                   <button type="button" className="house-collaborator-action-icon house-collaborator-action-icon-add" aria-label="Add secondary field">
@@ -1778,9 +1779,15 @@ export function ApprovalsContent() {
                   <button type="button" className="house-collaborator-action-icon house-collaborator-action-icon-discard" aria-label="Discard inline field changes">
                     <X className="h-4 w-4" strokeWidth={2.2} />
                   </button>
+                  <button type="button" className="house-collaborator-action-icon house-collaborator-action-icon-remove" aria-label="Remove collaborator">
+                    <X className="h-4 w-4" strokeWidth={2.2} />
+                  </button>
+                  <button type="button" className="house-collaborator-action-icon house-collaborator-action-icon-restore" aria-label="Restore collaborator">
+                    <Check className="h-4 w-4" strokeWidth={2.2} />
+                  </button>
                 </Row>
                 <p className="max-w-[15rem] text-caption text-[hsl(var(--muted-foreground))]">
-                  Use plus to add a new inline field, pencil to enter edit mode, tick to save the draft state, and the red cross to discard it.
+                  Use plus to add a new inline field, pencil to enter edit mode, tick to save the draft state, the red cross to discard it, minus/red remove for destructive collaborator actions, and positive restore to reinstate.
                 </p>
               </Stack>
             </PanelShell>
@@ -2279,6 +2286,36 @@ export function ApprovalsContent() {
                         <circle cx="14" cy="4" r="1.1" fill="currentColor" />
                       </svg>
                     </button>
+                  </div>
+                </div>
+
+                <div className="text-caption text-[hsl(var(--muted-foreground))]">Segmented value toggle (Absolute / %)</div>
+                <div className="house-approved-toggle-context">
+                  <div
+                    className="house-toggle-track overflow-hidden"
+                    style={{ width: '7rem', gridTemplateColumns: '1.55fr 0.75fr' }}
+                  >
+                    {(['absolute', 'percentage'] as const).map((option, optionIndex, options) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={[
+                          'house-toggle-button relative z-[1] min-w-0 px-1.5',
+                          optionIndex === 0
+                            ? '!rounded-l-full !rounded-r-none'
+                            : optionIndex === options.length - 1
+                              ? '!rounded-l-none !rounded-r-full'
+                              : '!rounded-none',
+                          publicationValueMode !== option
+                            ? 'house-drilldown-toggle-button-muted'
+                            : 'bg-foreground text-background shadow-sm',
+                        ].join(' ')}
+                        aria-pressed={publicationValueMode === option}
+                        onClick={() => setPublicationValueMode(option)}
+                      >
+                        {option === 'absolute' ? 'Absolute' : '%'}
+                      </button>
+                    ))}
                   </div>
                 </div>
 

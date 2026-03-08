@@ -420,6 +420,36 @@ class LibraryAssetUploadResponse(BaseModel):
 class LibraryAssetAccessMemberResponse(BaseModel):
     user_id: str
     name: str
+    role: Literal["editor", "viewer"] = "viewer"
+
+
+class LibraryAssetAccessMemberUpdateRequest(BaseModel):
+    user_id: str | None = None
+    name: str | None = None
+    role: Literal["editor", "viewer"] = "viewer"
+
+
+class LibraryAssetAuditEntryResponse(BaseModel):
+    id: str
+    category: Literal["access", "asset"]
+    event_type: Literal[
+        "asset_uploaded",
+        "asset_renamed",
+        "asset_downloaded",
+        "asset_locked",
+        "asset_unlocked",
+        "access_granted",
+        "access_role_changed",
+        "access_revoked",
+    ]
+    actor_user_id: str | None = None
+    actor_name: str | None = None
+    subject_user_id: str | None = None
+    subject_name: str | None = None
+    from_value: str | None = None
+    to_value: str | None = None
+    message: str = ""
+    created_at: datetime
 
 
 class LibraryAssetResponse(BaseModel):
@@ -434,7 +464,13 @@ class LibraryAssetResponse(BaseModel):
     uploaded_at: datetime
     shared_with_user_ids: list[str] = Field(default_factory=list)
     shared_with: list[LibraryAssetAccessMemberResponse] = Field(default_factory=list)
+    audit_log_entries: list[LibraryAssetAuditEntryResponse] = Field(default_factory=list)
+    current_user_role: Literal["owner", "editor", "viewer"] | None = None
     can_manage_access: bool = False
+    can_edit_metadata: bool = False
+    can_download: bool = False
+    locked_for_team_members: bool = False
+    archived_for_current_user: bool = False
     is_available: bool = True
 
 
@@ -450,15 +486,19 @@ class LibraryAssetListResponse(BaseModel):
     sort_direction: Literal["asc", "desc"] = "desc"
     query: str = ""
     ownership: Literal["all", "owned", "shared"] = "all"
+    scope: Literal["all", "active", "archived"] = "all"
 
 
 class LibraryAssetAccessUpdateRequest(BaseModel):
+    collaborators: list[LibraryAssetAccessMemberUpdateRequest] = Field(default_factory=list)
     collaborator_user_ids: list[str] = Field(default_factory=list)
     collaborator_names: list[str] = Field(default_factory=list)
 
 
 class LibraryAssetMetadataUpdateRequest(BaseModel):
-    filename: str
+    filename: str | None = None
+    locked_for_team_members: bool | None = None
+    archived_for_current_user: bool | None = None
 
 
 class ManuscriptAttachAssetsRequest(BaseModel):
@@ -2584,31 +2624,52 @@ class WorkspaceInboxStateUpdateRequest(BaseModel):
 class WorkspaceAuditLogEntryResponse(BaseModel):
     id: str
     workspace_id: str
-    category: Literal["collaborator_changes", "invitation_decisions"] = (
+    category: Literal[
+        "collaborator_changes",
+        "invitation_decisions",
+        "workspace_changes",
+        "conversation",
+    ] = (
         "collaborator_changes"
     )
+    event_type: str | None = None
+    actor_user_id: str | None = None
+    actor_name: str | None = None
+    subject_user_id: str | None = None
+    subject_name: str | None = None
+    from_value: str | None = None
+    to_value: str | None = None
+    role: Literal["editor", "reviewer", "viewer"] | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     message: str
     created_at: str
+
+
+class WorkspaceParticipantResponse(BaseModel):
+    user_id: str
+    name: str
 
 
 class WorkspaceRecordResponse(BaseModel):
     id: str
     name: str
     owner_name: str
-    collaborators: list[str] = Field(default_factory=list)
-    pending_collaborators: list[str] = Field(default_factory=list)
+    owner_user_id: str | None = None
+    collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
+    pending_collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
     collaborator_roles: dict[str, Literal["editor", "reviewer", "viewer"]] = Field(
         default_factory=dict
     )
     pending_collaborator_roles: dict[
         str, Literal["editor", "reviewer", "viewer"]
     ] = Field(default_factory=dict)
-    removed_collaborators: list[str] = Field(default_factory=list)
+    removed_collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
     version: str = "0.1"
     health: Literal["green", "amber", "red"] = "amber"
     updated_at: str
     pinned: bool = False
     archived: bool = False
+    owner_archived: bool = False
     audit_log_entries: list[WorkspaceAuditLogEntryResponse] = Field(default_factory=list)
 
 
@@ -2621,38 +2682,42 @@ class WorkspaceCreateRequest(BaseModel):
     id: str | None = None
     name: str
     owner_name: str
-    collaborators: list[str] = Field(default_factory=list)
-    pending_collaborators: list[str] = Field(default_factory=list)
+    owner_user_id: str | None = None
+    collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
+    pending_collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
     collaborator_roles: dict[str, Literal["editor", "reviewer", "viewer"]] = Field(
         default_factory=dict
     )
     pending_collaborator_roles: dict[
         str, Literal["editor", "reviewer", "viewer"]
     ] = Field(default_factory=dict)
-    removed_collaborators: list[str] = Field(default_factory=list)
+    removed_collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
     version: str = "0.1"
     health: Literal["green", "amber", "red"] = "amber"
     updated_at: str | None = None
     pinned: bool = False
     archived: bool = False
+    owner_archived: bool = False
     audit_log_entries: list[WorkspaceAuditLogEntryResponse] = Field(default_factory=list)
 
 
 class WorkspaceUpdateRequest(BaseModel):
     name: str | None = None
     owner_name: str | None = None
-    collaborators: list[str] | None = None
-    pending_collaborators: list[str] | None = None
+    owner_user_id: str | None = None
+    collaborators: list[WorkspaceParticipantResponse] | None = None
+    pending_collaborators: list[WorkspaceParticipantResponse] | None = None
     collaborator_roles: dict[str, Literal["editor", "reviewer", "viewer"]] | None = None
     pending_collaborator_roles: (
         dict[str, Literal["editor", "reviewer", "viewer"]] | None
     ) = None
-    removed_collaborators: list[str] | None = None
+    removed_collaborators: list[WorkspaceParticipantResponse] | None = None
     version: str | None = None
     health: Literal["green", "amber", "red"] | None = None
     updated_at: str | None = None
     pinned: bool | None = None
     archived: bool | None = None
+    owner_archived: bool | None = None
     audit_log_entries: list[WorkspaceAuditLogEntryResponse] | None = None
 
 
@@ -2674,6 +2739,7 @@ class WorkspaceAuthorRequestResponse(BaseModel):
     workspace_id: str
     workspace_name: str
     author_name: str
+    author_user_id: str | None = None
     collaborator_role: Literal["editor", "reviewer", "viewer"] = "editor"
     invited_at: str
     source_inviter_user_id: str | None = None
@@ -2685,7 +2751,7 @@ class WorkspaceAuthorRequestsResponse(BaseModel):
 
 
 class WorkspaceAuthorRequestAcceptRequest(BaseModel):
-    collaborator_name: str | None = None
+    pass
 
 
 class WorkspaceAuthorRequestAcceptResponse(BaseModel):
@@ -2717,10 +2783,21 @@ class WorkspaceInvitationsSentResponse(BaseModel):
 class WorkspaceInvitationCreateRequest(BaseModel):
     id: str | None = None
     workspace_id: str
-    invitee_name: str
+    invitee_user_id: str
+    invitee_name: str | None = None
     role: Literal["editor", "reviewer", "viewer"]
     invited_at: str | None = None
     status: Literal["pending", "accepted", "declined"] = "pending"
+
+
+class WorkspaceAccountSearchResultResponse(BaseModel):
+    user_id: str
+    name: str
+    email: str = ""
+
+
+class WorkspaceAccountSearchResponse(BaseModel):
+    items: list[WorkspaceAccountSearchResultResponse] = Field(default_factory=list)
 
 
 class WorkspaceInvitationStatusUpdateRequest(BaseModel):

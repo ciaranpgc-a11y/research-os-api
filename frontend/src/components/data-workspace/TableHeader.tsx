@@ -1,4 +1,4 @@
-import { MoreHorizontal, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui'
 import { Input } from '@/components/ui'
@@ -63,8 +63,8 @@ export function TableHeader({
   onUpdateTable,
   onOpenAddColumn,
   onAddRow,
-  onRemoveTable,
-  onClearRows,
+  onRemoveTable: _onRemoveTable,
+  onClearRows: _onClearRows,
 }: TableHeaderProps) {
   const metadata = ensureMetadata(table)
 
@@ -93,27 +93,6 @@ export function TableHeader({
             <Plus className="mr-1 h-4 w-4" />
             Add column
           </Button>
-          <details className="relative">
-            <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-md border border-border bg-background text-sm hover:bg-muted">
-              <MoreHorizontal className="h-4 w-4" />
-            </summary>
-            <div className="absolute right-0 z-20 mt-1 w-44 rounded-md border border-border bg-background p-1 shadow-md">
-              <button
-                type="button"
-                className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-muted"
-                onClick={onClearRows}
-              >
-                Clear all rows
-              </button>
-              <button
-                type="button"
-                className="w-full rounded px-2 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10"
-                onClick={onRemoveTable}
-              >
-                Delete table
-              </button>
-            </div>
-          </details>
         </div>
       </div>
 

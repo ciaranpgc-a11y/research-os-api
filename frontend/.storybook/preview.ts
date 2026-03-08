@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router-dom'
 
 import { AppErrorBoundary } from '../src/components/layout/app-error-boundary'
 import '../src/index.css'
+import { installHouseElementTagging } from '../src/lib/house-element-tagging'
+import { installHouseTableResize } from '../src/lib/house-table-resize'
 import { useAaweStore } from '../src/store/use-aawe-store'
 import type { UiTheme } from '../src/store/use-aawe-store'
 
@@ -47,6 +49,20 @@ function ThemeBridge() {
   return null
 }
 
+function StorybookHouseRuntime() {
+  useEffect(() => {
+    const disposeTagging = installHouseElementTagging()
+    const disposeTableResize = installHouseTableResize()
+
+    return () => {
+      disposeTagging()
+      disposeTableResize()
+    }
+  }, [])
+
+  return null
+}
+
 function StorybookThemeSync({ theme, children }: { theme: UiTheme; children: ReactNode }) {
   useEffect(() => {
     const root = document.documentElement
@@ -72,6 +88,7 @@ function AppProviders({
     Fragment,
     null,
     createElement(ThemeBridge),
+    createElement(StorybookHouseRuntime),
     createElement('div', { className: 'min-h-screen bg-background text-foreground' }, children),
   )
 

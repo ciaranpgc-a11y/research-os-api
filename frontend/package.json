@@ -7,8 +7,10 @@
     "node": ">=20 <21"
   },
   "scripts": {
-    "dev": "node --max_old_space_size=12288 node_modules/vite/bin/vite.js",
+    "dev": "node --max_old_space_size=12288 node_modules/vite/bin/vite.js --port 5173 --strictPort --force",
     "dev:5176": "vite --port 5176 --strictPort",
+    "dev:clean": "node scripts/dev-clean.mjs",
+    "dev:clean-start": "npm run dev:clean && npm run dev",
     "build": "tsc -b && vite build && node scripts/postbuild-spa-fallback.mjs",
     "preview": "vite preview",
     "lint": "eslint src tests",
@@ -16,6 +18,8 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "storybook": "storybook dev -p 6006",
+    "storybook:clean": "node scripts/dev-clean.mjs 6006",
+    "storybook:clean-start": "npm run storybook:clean && npm run storybook",
     "storybook:alt": "storybook dev -p 6007",
     "build-storybook": "storybook build",
     "ui:fit": "node scripts/ui-fit-check.mjs",

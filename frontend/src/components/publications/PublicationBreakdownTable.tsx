@@ -11,11 +11,12 @@ type PublicationBreakdownRow = {
   label: string
   value: number
   share_pct: number
+  total_citations?: number
   avg_citations?: number
 }
 
 type PublicationBreakdownTableVariant = 'interactive' | 'summary-drilldown'
-type SortField = 'label' | 'value' | 'share_pct' | 'avg_citations'
+type SortField = 'label' | 'value' | 'share_pct' | 'total_citations' | 'avg_citations'
 type SortDirection = 'asc' | 'desc'
 
 const HOUSE_TABLE_EMPTY_CLASS = publicationsHouseDrilldown.tableEmpty
@@ -24,10 +25,16 @@ function formatSharePercent(value: number): string {
   return `${(Number.isFinite(value) ? value : 0).toFixed(1)}%`
 }
 
+function formatSharePercentWhole(value: number): string {
+  return `${Math.round(Number.isFinite(value) ? value : 0)}%`
+}
+
 export function PublicationBreakdownTable({
   rows,
   variant = 'interactive',
+  showTotalCitations = false,
   showAvgCitations = false,
+  shareWholeNumbers = false,
   showSearch = true,
   showRowCount = true,
   nameColumnLabel = 'Name',
@@ -36,7 +43,9 @@ export function PublicationBreakdownTable({
 }: {
   rows: PublicationBreakdownRow[]
   variant?: PublicationBreakdownTableVariant
+  showTotalCitations?: boolean
   showAvgCitations?: boolean
+  shareWholeNumbers?: boolean
   showSearch?: boolean
   showRowCount?: boolean
   nameColumnLabel?: string
@@ -74,6 +83,9 @@ export function PublicationBreakdownTable({
       } else if (sortField === 'share_pct') {
         aVal = a.share_pct
         bVal = b.share_pct
+      } else if (sortField === 'total_citations' && showTotalCitations) {
+        aVal = a.total_citations || 0
+        bVal = b.total_citations || 0
       } else if (sortField === 'avg_citations' && showAvgCitations) {
         aVal = a.avg_citations || 0
         bVal = b.avg_citations || 0
@@ -84,7 +96,7 @@ export function PublicationBreakdownTable({
       }
       return aVal > bVal ? -1 : aVal < bVal ? 1 : 0
     })
-  }, [filteredRows, isSummaryDrilldownVariant, sortField, sortDirection, showAvgCitations])
+  }, [filteredRows, isSummaryDrilldownVariant, showAvgCitations, showTotalCitations, sortDirection, sortField])
 
   function handleSort(field: SortField) {
     if (sortField === field) {
@@ -105,6 +117,9 @@ export function PublicationBreakdownTable({
       <ChevronDown className="h-3.5 w-3.5" />
     )
   }
+
+  const formatShare = shareWholeNumbers ? formatSharePercentWhole : formatSharePercent
+  const totalColumnCount = 3 + (showTotalCitations ? 1 : 0) + (showAvgCitations ? 1 : 0)
 
   return (
     <div className="space-y-3">
@@ -149,6 +164,14 @@ export function PublicationBreakdownTable({
                   >
                     Share
                   </th>
+                  {showTotalCitations ? (
+                    <th
+                      className="house-table-head-text h-10 px-1.5 text-right align-middle font-semibold whitespace-nowrap"
+                      style={{ width: '1%' }}
+                    >
+                      Total cites
+                    </th>
+                  ) : null}
                   {showAvgCitations ? (
                     <th
                       className="house-table-head-text h-10 px-1.5 text-right align-middle font-semibold whitespace-nowrap"
@@ -167,7 +190,12 @@ export function PublicationBreakdownTable({
                         <span className="block max-w-full whitespace-normal break-words leading-snug">{row.label}</span>
                       </td>
                       <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">{row.value}</td>
-                      <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">{formatSharePercent(row.share_pct)}</td>
+                      <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">{formatShare(row.share_pct)}</td>
+                      {showTotalCitations ? (
+                        <td className="house-table-cell-text px-1.5 py-2 text-right whitespace-nowrap tabular-nums">
+                          {row.total_citations !== undefined ? Math.round(row.total_citations) : 'n/a'}
+                        </td>
+                      ) : null}
                       {showAvgCitations ? (
                         <td className="house-table-cell-text px-1.5 py-2 text-right whitespace-nowrap tabular-nums">
                           {row.avg_citations !== undefined ? row.avg_citations.toFixed(1) : 'n/a'}
@@ -177,7 +205,7 @@ export function PublicationBreakdownTable({
                   ))
                 ) : (
                   <tr>
-                    <td className={cn('house-table-cell-text px-3 py-4 text-center', HOUSE_TABLE_EMPTY_CLASS)} colSpan={showAvgCitations ? 4 : 3}>
+                    <td className={cn('house-table-cell-text px-3 py-4 text-center', HOUSE_TABLE_EMPTY_CLASS)} colSpan={totalColumnCount}>
                       {emptyMessage}
                     </td>
                   </tr>
@@ -235,6 +263,21 @@ export function PublicationBreakdownTable({
                       <SortIcon field="share_pct" />
                     </button>
                   </TableHead>
+                  {showTotalCitations ? (
+                    <TableHead className="house-table-head-text text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleSort('total_citations')}
+                        className={cn(
+                          'ml-auto inline-flex items-center gap-1 text-inherit',
+                          houseTables.sortTrigger,
+                        )}
+                      >
+                        Total cites
+                        <SortIcon field="total_citations" />
+                      </button>
+                    </TableHead>
+                  ) : null}
                   {showAvgCitations ? (
                     <TableHead className="house-table-head-text text-right">
                       <button
@@ -256,7 +299,7 @@ export function PublicationBreakdownTable({
                 {displayedRows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={showAvgCitations ? 4 : 3}
+                      colSpan={totalColumnCount}
                       className={cn('house-table-cell-text px-3 py-4 text-center', HOUSE_TABLE_EMPTY_CLASS)}
                     >
                       {emptyMessage}
@@ -267,7 +310,12 @@ export function PublicationBreakdownTable({
                     <TableRow key={row.key}>
                       <TableCell className="house-table-cell-text px-3 py-2 align-top font-medium whitespace-normal break-words leading-tight">{row.label}</TableCell>
                       <TableCell className="house-table-cell-text px-3 py-2 align-top text-right whitespace-nowrap tabular-nums">{row.value}</TableCell>
-                      <TableCell className="house-table-cell-text px-3 py-2 align-top text-right whitespace-nowrap tabular-nums">{formatSharePercent(row.share_pct)}</TableCell>
+                      <TableCell className="house-table-cell-text px-3 py-2 align-top text-right whitespace-nowrap tabular-nums">{formatShare(row.share_pct)}</TableCell>
+                      {showTotalCitations ? (
+                        <TableCell className="house-table-cell-text px-3 py-2 align-top text-right whitespace-nowrap tabular-nums">
+                          {row.total_citations !== undefined ? Math.round(row.total_citations) : 'n/a'}
+                        </TableCell>
+                      ) : null}
                       {showAvgCitations ? (
                         <TableCell className="house-table-cell-text px-3 py-2 align-top text-right whitespace-nowrap tabular-nums">
                           {row.avg_citations !== undefined ? row.avg_citations.toFixed(1) : 'n/a'}

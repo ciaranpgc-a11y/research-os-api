@@ -51,8 +51,13 @@ export function SectionToolIconButton({
   className,
   active = false,
   wrapperClassName,
+  onClick,
+  onPointerDown,
+  onKeyDown,
   ...props
 }: SectionToolIconButtonProps) {
+  const clickedWithPointerRef = React.useRef(false)
+
   return (
     <div className={cn('group relative inline-flex', wrapperClassName)}>
       <button
@@ -64,6 +69,21 @@ export function SectionToolIconButton({
           buttonClassName,
           className,
         )}
+        onPointerDown={(event) => {
+          clickedWithPointerRef.current = true
+          onPointerDown?.(event)
+        }}
+        onKeyDown={(event) => {
+          clickedWithPointerRef.current = false
+          onKeyDown?.(event)
+        }}
+        onClick={(event) => {
+          onClick?.(event)
+          if (clickedWithPointerRef.current) {
+            event.currentTarget.blur()
+            clickedWithPointerRef.current = false
+          }
+        }}
         {...props}
       >
         <span className={cn('inline-flex', iconClassName)}>{icon}</span>

@@ -15,6 +15,7 @@ import {
   pagesReviewLibraryAssetsListPayload,
   pagesReviewTimestamp,
   pagesReviewUser,
+  pagesReviewWorkspaceAccountSearchResults,
   pagesReviewWorkspaceApiListPayload,
   pagesReviewWorkspaceAuthorRequestsApiPayload,
   pagesReviewWorkspaceInboxMessagesApiPayload,
@@ -43,6 +44,20 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
+}
+
+function resolveMockCurrentUserId(): string {
+  if (typeof window === 'undefined') {
+    return pagesReviewUser.id
+  }
+  try {
+    const raw = window.localStorage.getItem('aawe_integrations_user_cache')
+    const parsed = raw ? JSON.parse(raw) as { id?: unknown } : null
+    const currentUserId = String(parsed?.id || '').trim()
+    return currentUserId || pagesReviewUser.id
+  } catch {
+    return pagesReviewUser.id
+  }
 }
 
 function sortByUploadedAt(records: typeof pagesReviewLibraryAssets, direction: 'asc' | 'desc') {
@@ -79,16 +94,25 @@ function listLibraryAssetsForRequest(request: Request) {
   const url = new URL(request.url)
   const query = String(url.searchParams.get('query') || '').trim().toLowerCase()
   const ownership = String(url.searchParams.get('ownership') || 'all').trim().toLowerCase()
+  const scope = String(url.searchParams.get('scope') || 'all').trim().toLowerCase()
   const sortBy = String(url.searchParams.get('sort_by') || 'uploaded_at').trim().toLowerCase()
   const sortDirection = String(url.searchParams.get('sort_direction') || 'desc').trim().toLowerCase() === 'asc' ? 'asc' : 'desc'
   const page = Math.max(1, Number(url.searchParams.get('page') || '1'))
   const pageSize = Math.max(1, Math.min(200, Number(url.searchParams.get('page_size') || '25')))
 
-  let items = [...pagesReviewLibraryAssets]
+  const currentUserId = resolveMockCurrentUserId()
+  let items = pagesReviewLibraryAssets
+    .map((item) => applyMockLibraryAssetCapabilities(item, currentUserId))
+    .filter((item) => item.current_user_role)
   if (ownership === 'owned') {
-    items = items.filter((item) => item.owner_user_id === pagesReviewUser.id)
+    items = items.filter((item) => item.owner_user_id === currentUserId)
   } else if (ownership === 'shared') {
-    items = items.filter((item) => item.owner_user_id !== pagesReviewUser.id)
+    items = items.filter((item) => item.owner_user_id !== currentUserId)
+  }
+  if (scope === 'active') {
+    items = items.filter((item) => item.archived_for_current_user !== true)
+  } else if (scope === 'archived') {
+    items = items.filter((item) => item.archived_for_current_user === true)
   }
   if (query) {
     items = items.filter((item) => {
@@ -127,6 +151,7 @@ function listLibraryAssetsForRequest(request: Request) {
     sort_direction: sortDirection,
     query,
     ownership: ownership === 'owned' || ownership === 'shared' ? ownership : 'all',
+    scope: scope === 'active' || scope === 'archived' ? scope : 'all',
   }
 }
 
@@ -168,6 +193,31 @@ function listCollaboratorsForRequest(request: Request) {
     page_size: pageSize,
     total,
     has_more: start + pageSize < total,
+  }
+}
+
+function resolveMockLibraryAssetRole(asset: LibraryAssetRecord, currentUserId: string): 'owner' | 'editor' | 'viewer' | null {
+  if (asset.owner_user_id === currentUserId) {
+    return 'owner'
+  }
+  const membership = (asset.shared_with || []).find((item) => item.user_id === currentUserId)
+  if (!membership) {
+    return null
+  }
+  return membership.role === 'editor' ? 'editor' : 'viewer'
+}
+
+function applyMockLibraryAssetCapabilities(asset: LibraryAssetRecord, currentUserId = resolveMockCurrentUserId()): LibraryAssetRecord {
+  const currentUserRole = resolveMockLibraryAssetRole(asset, currentUserId)
+  const lockedForTeamMembers = asset.locked_for_team_members === true
+  const archivedForCurrentUser = Array.isArray(asset.archived_by_user_ids) && asset.archived_by_user_ids.includes(currentUserId)
+  return {
+    ...asset,
+    current_user_role: currentUserRole,
+    can_manage_access: currentUserRole === 'owner',
+    can_edit_metadata: currentUserRole === 'owner',
+    can_download: currentUserRole === 'owner' || (currentUserRole === 'editor' && !lockedForTeamMembers),
+    archived_for_current_user: archivedForCurrentUser,
   }
 }
 
@@ -306,6 +356,18 @@ const workspacesInvitationsHandler = http.get(
   '*/v1/workspaces/invitations/sent',
   () => HttpResponse.json(pagesReviewWorkspaceInvitationsApiPayload),
 )
+const workspacesAccountSearchHandler = http.get('*/v1/workspaces/accounts/search', ({ request }) => {
+  const url = new URL(request.url)
+  const query = String(url.searchParams.get('q') || '').trim().toLowerCase()
+  if (query.length < 2) {
+    return HttpResponse.json({ items: [] })
+  }
+  const items = pagesReviewWorkspaceAccountSearchResults.filter((item) => {
+    const haystack = [item.name, item.email].join(' ').toLowerCase()
+    return haystack.includes(query)
+  })
+  return HttpResponse.json({ items })
+})
 const workspacesSetActiveHandler = http.put('*/v1/workspaces/active', async ({ request }) => {
   const body = (await request.json()) as { workspace_id?: string | null }
   return HttpResponse.json({
@@ -365,6 +427,7 @@ const libraryAssetsHandler = http.get('*/v1/library/assets', async ({ request })
 
 const libraryAssetAccessPatchHandler = http.patch('*/v1/library/assets/:assetId/access', async ({ params, request }) => {
   const body = (await request.json()) as {
+    collaborators?: Array<{ user_id?: string | null; name?: string | null; role?: 'editor' | 'viewer' }>
     collaborator_user_ids?: string[]
     collaborator_names?: string[]
   }
@@ -372,32 +435,79 @@ const libraryAssetAccessPatchHandler = http.patch('*/v1/library/assets/:assetId/
   if (!asset) {
     return HttpResponse.json({ error: { message: 'Not found', detail: 'Asset not found' } }, { status: 404 })
   }
-  return HttpResponse.json({
+  const collaboratorPayload = Array.isArray(body.collaborators) ? body.collaborators : []
+  const nextSharedWith = collaboratorPayload.length > 0
+    ? collaboratorPayload.map((member, index) => {
+        const userId = String(member.user_id || body.collaborator_user_ids?.[index] || '').trim()
+        const collaborator = pagesReviewCollaborators.find((candidate) => candidate.owner_user_id === userId || candidate.id === userId)
+        const resolvedName = String(member.name || collaborator?.full_name || body.collaborator_names?.[index] || userId || `user-${index + 1}`).trim()
+        return {
+          user_id: userId || `user-${index + 1}`,
+          name: resolvedName,
+          role: member.role === 'editor' ? 'editor' : 'viewer',
+        }
+      })
+    : (body.collaborator_user_ids || []).map((userId, index) => {
+        const cleanUserId = String(userId || '').trim() || `user-${index + 1}`
+        const collaborator = pagesReviewCollaborators.find((candidate) => candidate.owner_user_id === cleanUserId || candidate.id === cleanUserId)
+        return {
+          user_id: cleanUserId,
+          name: String(body.collaborator_names?.[index] || collaborator?.full_name || cleanUserId).trim(),
+          role: 'viewer' as const,
+        }
+      })
+  const updated = applyMockLibraryAssetCapabilities({
     ...asset,
-    shared_with_user_ids: body.collaborator_user_ids || [],
-    shared_with: (body.collaborator_names || []).map((name, index) => ({
-      user_id: body.collaborator_user_ids?.[index] || `user-${index + 1}`,
-      name,
-    })),
+    shared_with_user_ids: nextSharedWith.map((member) => member.user_id),
+    shared_with: nextSharedWith,
   })
+  Object.assign(asset, updated)
+  return HttpResponse.json(updated)
 })
 
 const libraryAssetMetadataPatchHandler = http.patch('*/v1/library/assets/:assetId', async ({ params, request }) => {
-  const body = (await request.json()) as { filename?: string }
+  const body = (await request.json()) as { filename?: string; locked_for_team_members?: boolean; archived_for_current_user?: boolean }
   const asset = pagesReviewLibraryAssets.find((item) => item.id === params.assetId)
   if (!asset) {
     return HttpResponse.json({ error: { message: 'Not found', detail: 'Asset not found' } }, { status: 404 })
   }
-  return HttpResponse.json({
+  const currentUserId = resolveMockCurrentUserId()
+  const scopedAsset = applyMockLibraryAssetCapabilities(asset)
+  const ownerOnlyChangeRequested =
+    (typeof body.filename === 'string' && body.filename.trim().length > 0 && body.filename.trim() !== asset.filename)
+    || typeof body.locked_for_team_members === 'boolean'
+  if (ownerOnlyChangeRequested && !scopedAsset.can_edit_metadata) {
+    return HttpResponse.json({ error: { message: 'Forbidden', detail: 'Only the asset owner can update file details.' } }, { status: 403 })
+  }
+  const archivedByUserIds = new Set(Array.isArray(asset.archived_by_user_ids) ? asset.archived_by_user_ids : [])
+  if (typeof body.archived_for_current_user === 'boolean') {
+    if (body.archived_for_current_user) {
+      archivedByUserIds.add(currentUserId)
+    } else {
+      archivedByUserIds.delete(currentUserId)
+    }
+  }
+  const updated = applyMockLibraryAssetCapabilities({
     ...asset,
-    filename: String(body.filename || asset.filename),
+    filename: typeof body.filename === 'string' && body.filename.trim() ? String(body.filename) : asset.filename,
+    locked_for_team_members:
+      typeof body.locked_for_team_members === 'boolean'
+        ? body.locked_for_team_members
+        : asset.locked_for_team_members === true,
+    archived_by_user_ids: Array.from(archivedByUserIds),
   })
+  Object.assign(asset, updated)
+  return HttpResponse.json(updated)
 })
 
 const libraryAssetDownloadHandler = http.get('*/v1/library/assets/:assetId/download', ({ params }) => {
   const asset = pagesReviewLibraryAssets.find((item) => item.id === params.assetId)
   if (!asset) {
     return HttpResponse.json({ error: { message: 'Not found', detail: 'Asset not found' } }, { status: 404 })
+  }
+  const scopedAsset = applyMockLibraryAssetCapabilities(asset)
+  if (!scopedAsset.can_download) {
+    return HttpResponse.json({ error: { message: 'Forbidden', detail: 'Download unavailable for this asset.' } }, { status: 403 })
   }
   return new HttpResponse('patient_id,group,event_12m\nP-001,Intervention,0\n', {
     headers: {
@@ -631,6 +741,7 @@ export const handlers = [
   workspacesListHandler,
   workspacesAuthorRequestsHandler,
   workspacesInvitationsHandler,
+  workspacesAccountSearchHandler,
   workspacesSetActiveHandler,
   workspacesInboxMessagesHandler,
   workspacesInboxReadsHandler,

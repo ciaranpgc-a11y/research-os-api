@@ -53,6 +53,14 @@ import {
 } from './remaining-metric-drilldown'
 import { buildTotalPublicationsMethodsSections } from './total-publications-methods'
 import { PublicationBreakdownTable } from './PublicationBreakdownTable'
+import { buildTrajectoryYearTicks, getTrajectoryYearTickAnchor } from './publication-trajectory-axis'
+import {
+  buildPublicationTrajectoryMovingAverageSeries,
+  formatTrajectoryMovingAveragePeriodLabel,
+  mergePublicationTrajectoryYears,
+  resolvePublicationTrajectoryYear,
+} from './publication-trajectory-series'
+import { buildTrajectoryTooltipSlices, type PublicationTrajectoryTooltipSlice } from './publication-trajectory-tooltip'
 
 type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
@@ -104,6 +112,768 @@ function formatInt(value: number): string {
   return Math.round(boundedValue).toLocaleString('en-GB')
 }
 
+function normalizePublicationYearSeries(publicationsPerYear: number[]): number[] {
+  return publicationsPerYear
+    .map((value) => (Number.isFinite(value) ? Math.max(0, value) : 0))
+    .filter((value) => Number.isFinite(value))
+}
+
+export function calculatePublicationConsistencyIndex(publicationsPerYear: number[]): number {
+  const series = normalizePublicationYearSeries(publicationsPerYear)
+  if (!series.length) {
+    return 0
+  }
+  const mean = series.reduce((sum, value) => sum + value, 0) / series.length
+  if (mean <= 1e-9) {
+    return 0
+  }
+  const variance = series.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / series.length
+  const coefficientOfVariation = Math.sqrt(variance) / mean
+  const rawScore = 1 - coefficientOfVariation
+  return Math.max(0, Math.min(1, rawScore))
+}
+
+export function calculatePublicationBurstinessScore(publicationsPerYear: number[]): number {
+  const series = normalizePublicationYearSeries(publicationsPerYear)
+  if (!series.length) {
+    return 0
+  }
+  const mean = series.reduce((sum, value) => sum + value, 0) / series.length
+  if (mean <= 1e-9) {
+    return 0
+  }
+  const variance = series.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / series.length
+  const coefficientOfVariation = Math.sqrt(variance) / mean
+  return Math.max(0, Math.min(1, coefficientOfVariation / (1 + coefficientOfVariation)))
+}
+
+export function calculatePublicationPeakYearShare(publicationsPerYear: number[]): number {
+  const series = normalizePublicationYearSeries(publicationsPerYear)
+  if (!series.length) {
+    return 0
+  }
+  const total = series.reduce((sum, value) => sum + value, 0)
+  if (total <= 1e-9) {
+    return 0
+  }
+  return Math.max(0, Math.min(1, Math.max(...series) / total))
+}
+
+export function getPublicationConsistencyInterpretation(value: number): string {
+  const normalized = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
+  if (normalized >= 0.75) {
+    return 'Very consistent'
+  }
+  if (normalized >= 0.55) {
+    return 'Consistent'
+  }
+  if (normalized >= 0.35) {
+    return 'Moderately variable'
+  }
+  if (normalized >= 0.2) {
+    return 'Bursty'
+  }
+  return 'Highly bursty'
+}
+
+export function getPublicationBurstinessInterpretation(value: number): string {
+  const normalized = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
+  if (normalized > 0.8) {
+    return 'Highly bursty'
+  }
+  if (normalized > 0.6) {
+    return 'Bursty'
+  }
+  if (normalized > 0.4) {
+    return 'Moderately bursty'
+  }
+  if (normalized > 0.2) {
+    return 'Moderately steady'
+  }
+  return 'Very steady'
+}
+
+export function getPublicationPeakYearShareInterpretation(value: number): string {
+  const normalized = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
+  if (normalized < 0.12) {
+    return 'Very distributed'
+  }
+  if (normalized < 0.2) {
+    return 'Distributed'
+  }
+  if (normalized < 0.3) {
+    return 'Moderately concentrated'
+  }
+  if (normalized < 0.4) {
+    return 'Concentrated'
+  }
+  return 'Highly concentrated'
+}
+
+export function getPublicationPeakYearShareCaution(totalPublications: number): string | null {
+  const normalized = Number.isFinite(totalPublications) ? Math.max(0, totalPublications) : 0
+  if (normalized > 0 && normalized < 15) {
+    return 'Interpret with caution: small portfolio'
+  }
+  return null
+}
+
+export function shouldShowPublicationPeakYearShareInterpretation(totalPublications: number): boolean {
+  const normalized = Number.isFinite(totalPublications) ? Math.max(0, totalPublications) : 0
+  return normalized >= 10
+}
+
+export function calculatePublicationOutputContinuity(publicationsPerYear: number[]): number {
+  const series = normalizePublicationYearSeries(publicationsPerYear)
+  if (!series.length) {
+    return 0
+  }
+  const yearsWithOutput = series.filter((value) => value >= 1).length
+  return Math.max(0, Math.min(1, yearsWithOutput / series.length))
+}
+
+export function calculatePublicationLongestStreak(publicationsPerYear: number[]): number {
+  const series = normalizePublicationYearSeries(publicationsPerYear)
+  let currentStreak = 0
+  let longestStreak = 0
+  series.forEach((value) => {
+    if (value >= 1) {
+      currentStreak += 1
+      longestStreak = Math.max(longestStreak, currentStreak)
+      return
+    }
+    currentStreak = 0
+  })
+  return longestStreak
+}
+
+export function getPublicationOutputContinuityInterpretation(value: number): string {
+  const normalized = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
+  if (normalized >= 0.85) {
+    return 'Continuous output'
+  }
+  if (normalized >= 0.7) {
+    return 'Highly active'
+  }
+  if (normalized >= 0.5) {
+    return 'Intermittent'
+  }
+  if (normalized >= 0.3) {
+    return 'Episodic'
+  }
+  return 'Sporadic'
+}
+
+function calculatePublicationProductionTrendSlope(years: number[], values: number[]): number | null {
+  const pairCount = Math.min(years.length, values.length)
+  if (pairCount < 2) {
+    return null
+  }
+  const safeYears = years.slice(0, pairCount).map((year) => Number(year))
+  const safeValues = values.slice(0, pairCount).map((value) => Math.max(0, Number(value)))
+  const meanYear = safeYears.reduce((sum, year) => sum + year, 0) / pairCount
+  const meanValue = safeValues.reduce((sum, value) => sum + value, 0) / pairCount
+  const denominator = safeYears.reduce((sum, year) => sum + ((year - meanYear) ** 2), 0)
+  if (denominator <= 1e-9) {
+    return 0
+  }
+  const numerator = safeYears.reduce(
+    (sum, year, index) => sum + ((year - meanYear) * ((safeValues[index] ?? 0) - meanValue)),
+    0,
+  )
+  return numerator / denominator
+}
+
+function meanPublicationSeries(values: number[]): number | null {
+  if (!values.length) {
+    return null
+  }
+  return values.reduce((sum, value) => sum + Math.max(0, value), 0) / values.length
+}
+
+export type PublicationProductionPatternStats = {
+  totalPublications: number
+  scopedPublicationCount: number
+  firstPublicationYear: number | null
+  lastPublicationYear: number | null
+  activeSpan: number
+  yearsWithOutput: number
+  outputContinuity: number | null
+  longestStreak: number
+  consistencyIndex: number | null
+  burstinessScore: number | null
+  peakYearShare: number | null
+  lowVolume: boolean
+  includesPartialYear: boolean
+  partialYear: number | null
+  emptyReason: string | null
+}
+
+type PublicationProductionYearSeriesScope = {
+  totalPublications: number
+  scopedPublicationCount: number
+  firstPublicationYear: number | null
+  lastPublicationYear: number | null
+  activeSpan: number
+  years: number[]
+  series: number[]
+  lowVolume: boolean
+  includesPartialYear: boolean
+  partialYear: number | null
+  emptyReason: string | null
+}
+
+export type PublicationProductionPhaseLabel =
+  | 'Emerging'
+  | 'Scaling'
+  | 'Established'
+  | 'Plateauing'
+  | 'Contracting'
+  | 'Rebuilding'
+
+export type PublicationProductionPhaseStats = {
+  phase: PublicationProductionPhaseLabel | null
+  phaseLabel: string
+  interpretation: string
+  confidenceLow: boolean
+  confidenceNote: string | null
+  insufficientHistory: boolean
+  totalPublications: number
+  activeSpan: number
+  usableYears: number
+  years: number[]
+  series: number[]
+  slope: number | null
+  recentMean: number | null
+  baselineMean: number | null
+  momentum: number | null
+  recentShare: number | null
+  peakYear: number | null
+  peakCount: number | null
+  historicalGapYearsPresent: boolean
+  emptyReason: string | null
+}
+
+function parsePublicationProductionPatternAsOfDate(value: unknown): Date | null {
+  const clean = String(value || '').trim()
+  if (!clean) {
+    return null
+  }
+  const parsed = new Date(`${clean}T00:00:00Z`)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function buildPublicationProductionYearSeries(
+  tile: PublicationMetricTilePayload,
+  yearScopeMode: PublicationProductionYearScopeMode = 'complete',
+): PublicationProductionYearSeriesScope {
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+  const publicationRows = Array.isArray(drilldown.publications) ? drilldown.publications : []
+  const totalPublicationsCandidates = [
+    Number(tile.main_value),
+    Number(tile.value),
+    publicationRows.length,
+  ].filter((value) => Number.isFinite(value))
+  const totalPublications = Math.max(0, Math.round(totalPublicationsCandidates[0] ?? 0))
+
+  if (totalPublications <= 0) {
+    return {
+      totalPublications: 0,
+      scopedPublicationCount: 0,
+      firstPublicationYear: null,
+      lastPublicationYear: null,
+      activeSpan: 0,
+      years: [],
+      series: [],
+      lowVolume: false,
+      includesPartialYear: false,
+      partialYear: null,
+      emptyReason: 'No publications available for the current filter.',
+    }
+  }
+
+  const chartYears = Array.isArray(chartData.years)
+    ? chartData.years
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 1900 && value <= 3000)
+    : []
+  const chartValues = Array.isArray(chartData.values)
+    ? chartData.values
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value))
+    : []
+  const yearCounts = new Map<number, number>()
+  chartYears.forEach((year, index) => {
+    yearCounts.set(year, Math.max(0, Number(chartValues[index] || 0)))
+  })
+
+  if (!yearCounts.size) {
+    publicationRows.forEach((row) => {
+      if (!row || typeof row !== 'object') {
+        return
+      }
+      const record = row as Record<string, unknown>
+      const publicationDate = typeof record.publication_date === 'string' ? record.publication_date : null
+      const publicationMonthStart = typeof record.publication_month_start === 'string' ? record.publication_month_start : null
+      const yearRaw = Number(record.year)
+      const year = resolvePublicationTrajectoryYear({
+        year: Number.isInteger(yearRaw) ? yearRaw : null,
+        publicationDate,
+        publicationMonthStart,
+      })
+      if (year === null) {
+        return
+      }
+      yearCounts.set(year, (yearCounts.get(year) || 0) + 1)
+    })
+  }
+
+  const asOfDate = parsePublicationProductionPatternAsOfDate(drilldown.as_of_date) ?? new Date()
+  const projectedYearRaw = Number(chartData.projected_year)
+  const projectedYear = Number.isFinite(projectedYearRaw)
+    ? Math.round(projectedYearRaw)
+    : asOfDate.getUTCFullYear()
+  const currentYearYtdRaw = Number(chartData.current_year_ytd)
+  const existingCurrentYearValue = yearCounts.get(projectedYear) ?? 0
+  if (Number.isFinite(currentYearYtdRaw)) {
+    yearCounts.set(projectedYear, Math.max(0, currentYearYtdRaw))
+  } else if (existingCurrentYearValue > 0) {
+    yearCounts.set(projectedYear, existingCurrentYearValue)
+  }
+
+  const currentYearIsPartial = isPublicationProductionPatternPartialYear(asOfDate, projectedYear)
+  const scopedYearCounts = new Map(yearCounts)
+  if (yearScopeMode === 'complete' && currentYearIsPartial) {
+    scopedYearCounts.delete(projectedYear)
+  }
+
+  const positiveYears = [...scopedYearCounts.entries()]
+    .filter((entry) => entry[1] > 0)
+    .map((entry) => entry[0])
+    .sort((left, right) => left - right)
+
+  if (!positiveYears.length) {
+    const currentYearCount = yearCounts.get(projectedYear) ?? 0
+    return {
+      totalPublications,
+      scopedPublicationCount: 0,
+      firstPublicationYear: null,
+      lastPublicationYear: null,
+      activeSpan: 0,
+      years: [],
+      series: [],
+      lowVolume: totalPublications < 10,
+      includesPartialYear: false,
+      partialYear: null,
+      emptyReason: yearScopeMode === 'complete' && currentYearIsPartial && currentYearCount > 0
+        ? `No complete publication years are available yet because ${projectedYear} is still in progress.`
+        : 'Publication year data is unavailable for the current filter.',
+    }
+  }
+
+  const firstPublicationYear = positiveYears[0]
+  const lastPublicationYear = positiveYears[positiveYears.length - 1]
+  const years = Array.from(
+    { length: Math.max(1, lastPublicationYear - firstPublicationYear + 1) },
+    (_, index) => firstPublicationYear + index,
+  )
+  const series = years.map((year) => Math.max(0, Number(scopedYearCounts.get(year) || 0)))
+  const scopedPublicationCount = Math.round(series.reduce((sum, value) => sum + Math.max(0, value), 0))
+  const includesPartialYear = (
+    yearScopeMode === 'include_current'
+    && currentYearIsPartial
+    && lastPublicationYear === projectedYear
+    && (scopedYearCounts.get(projectedYear) ?? 0) > 0
+  )
+
+  return {
+    totalPublications,
+    scopedPublicationCount,
+    firstPublicationYear,
+    lastPublicationYear,
+    activeSpan: series.length,
+    years,
+    series,
+    lowVolume: totalPublications < 10,
+    includesPartialYear,
+    partialYear: includesPartialYear ? projectedYear : null,
+    emptyReason: null,
+  }
+}
+
+function isPublicationProductionPatternPartialYear(asOfDate: Date, year: number): boolean {
+  return year === asOfDate.getUTCFullYear()
+    && (asOfDate.getUTCMonth() < 11 || asOfDate.getUTCDate() < 31)
+}
+
+function getPublicationProductionPatternLowVolumeNote(totalPublications: number): string | null {
+  const normalized = Number.isFinite(totalPublications) ? Math.max(0, Math.round(totalPublications)) : 0
+  if (normalized > 0 && normalized < 10) {
+    return 'Low-volume caution: pattern metrics are directional with fewer than 10 publications.'
+  }
+  return null
+}
+
+function getPublicationConsistencySupportingText(value: number | null): string {
+  if (value === null) {
+    return 'Need at least two active years to compare year-to-year variation.'
+  }
+  if (value >= 0.75) {
+    return 'Publication output is spread very evenly across active years.'
+  }
+  if (value >= 0.55) {
+    return 'Publication output varies modestly year to year.'
+  }
+  if (value >= 0.35) {
+    return 'Publication output shows noticeable year-to-year variation.'
+  }
+  if (value >= 0.2) {
+    return 'Publication output clusters into several stronger years.'
+  }
+  return 'Publication output is concentrated into distinct spike years.'
+}
+
+function getPublicationBurstinessSupportingText(value: number | null): string {
+  if (value === null) {
+    return 'Need at least two active years to assess spike behaviour.'
+  }
+  if (value <= 0.2) {
+    return 'Output follows a very steady annual cadence.'
+  }
+  if (value <= 0.4) {
+    return 'Some peak years occur but production stays broadly balanced.'
+  }
+  if (value <= 0.6) {
+    return 'Output shows a mix of steady years and noticeable spikes.'
+  }
+  if (value <= 0.8) {
+    return 'Output is concentrated into several pronounced spike years.'
+  }
+  return 'Output is dominated by sharp publication surges rather than steady flow.'
+}
+
+function getPublicationOutputContinuitySupportingText(value: number | null): string {
+  if (value === null) {
+    return 'Publication continuity is unavailable for the selected scope.'
+  }
+  if (value >= 0.85) {
+    return 'Publications occur nearly every year across the active span.'
+  }
+  if (value >= 0.7) {
+    return 'Publications occur in most years within the active span.'
+  }
+  if (value >= 0.5) {
+    return 'Publication activity is present in roughly half of the active years.'
+  }
+  if (value >= 0.3) {
+    return 'Publication activity appears in scattered runs across the active span.'
+  }
+  return 'Publication activity appears only sporadically across the active span.'
+}
+
+type PublicationProductionPatternTone = 'accent' | 'positive' | 'neutral' | 'warning' | 'danger'
+
+function resolvePublicationProductionPatternToneColor(tone: PublicationProductionPatternTone): string {
+  switch (tone) {
+    case 'positive':
+      return 'hsl(var(--tone-positive-500))'
+    case 'warning':
+      return 'hsl(var(--tone-warning-500))'
+    case 'danger':
+      return 'hsl(var(--tone-danger-500))'
+    case 'neutral':
+      return 'hsl(var(--tone-neutral-500))'
+    default:
+      return 'hsl(var(--tone-accent-600))'
+  }
+}
+
+function getPublicationConsistencyTone(value: number): PublicationProductionPatternTone {
+  if (value >= 0.55) {
+    return 'positive'
+  }
+  if (value >= 0.35) {
+    return 'neutral'
+  }
+  if (value >= 0.2) {
+    return 'warning'
+  }
+  return 'danger'
+}
+
+function getPublicationBurstinessTone(value: number): PublicationProductionPatternTone {
+  if (value > 0.8) {
+    return 'danger'
+  }
+  if (value > 0.6) {
+    return 'warning'
+  }
+  if (value > 0.4) {
+    return 'neutral'
+  }
+  if (value > 0.2) {
+    return 'accent'
+  }
+  return 'positive'
+}
+
+function getPublicationPeakYearShareTone(value: number): PublicationProductionPatternTone {
+  if (value >= 0.4) {
+    return 'danger'
+  }
+  if (value >= 0.3) {
+    return 'warning'
+  }
+  if (value >= 0.2) {
+    return 'neutral'
+  }
+  if (value >= 0.12) {
+    return 'accent'
+  }
+  return 'positive'
+}
+
+function getPublicationOutputContinuityTone(value: number): PublicationProductionPatternTone {
+  if (value >= 0.85) {
+    return 'positive'
+  }
+  if (value >= 0.7) {
+    return 'accent'
+  }
+  if (value >= 0.5) {
+    return 'neutral'
+  }
+  if (value >= 0.3) {
+    return 'warning'
+  }
+  return 'danger'
+}
+
+export function buildPublicationProductionPatternStats(
+  tile: PublicationMetricTilePayload,
+  yearScopeMode: PublicationProductionYearScopeMode = 'complete',
+): PublicationProductionPatternStats {
+  const yearSeries = buildPublicationProductionYearSeries(tile, yearScopeMode)
+
+  if (yearSeries.emptyReason) {
+    return {
+      totalPublications: yearSeries.totalPublications,
+      scopedPublicationCount: 0,
+      firstPublicationYear: null,
+      lastPublicationYear: null,
+      activeSpan: 0,
+      yearsWithOutput: 0,
+      outputContinuity: null,
+      longestStreak: 0,
+      consistencyIndex: null,
+      burstinessScore: null,
+      peakYearShare: null,
+      lowVolume: yearSeries.lowVolume,
+      includesPartialYear: yearSeries.includesPartialYear,
+      partialYear: yearSeries.partialYear,
+      emptyReason: yearSeries.emptyReason,
+    }
+  }
+
+  const series = yearSeries.series
+  const outputContinuity = series.length ? calculatePublicationOutputContinuity(series) : null
+
+  return {
+    totalPublications: yearSeries.totalPublications,
+    scopedPublicationCount: yearSeries.scopedPublicationCount,
+    firstPublicationYear: yearSeries.firstPublicationYear,
+    lastPublicationYear: yearSeries.lastPublicationYear,
+    activeSpan: yearSeries.activeSpan,
+    yearsWithOutput: series.filter((value) => value >= 1).length,
+    outputContinuity,
+    longestStreak: calculatePublicationLongestStreak(series),
+    consistencyIndex: series.length >= 2 ? calculatePublicationConsistencyIndex(series) : null,
+    burstinessScore: series.length >= 2 ? calculatePublicationBurstinessScore(series) : null,
+    peakYearShare: yearSeries.scopedPublicationCount > 0 ? calculatePublicationPeakYearShare(series) : null,
+    lowVolume: yearSeries.lowVolume,
+    includesPartialYear: yearSeries.includesPartialYear,
+    partialYear: yearSeries.partialYear,
+    emptyReason: null,
+  }
+}
+
+function resolvePublicationProductionPhaseTone(phase: PublicationProductionPhaseLabel | null): PublicationProductionPatternTone {
+  switch (phase) {
+    case 'Scaling':
+    case 'Established':
+      return 'positive'
+    case 'Emerging':
+      return 'accent'
+    case 'Plateauing':
+      return 'warning'
+    case 'Contracting':
+      return 'danger'
+    case 'Rebuilding':
+      return 'neutral'
+    default:
+      return 'neutral'
+  }
+}
+
+function getPublicationProductionPhaseInterpretation(phase: PublicationProductionPhaseLabel | null, insufficientHistory: boolean): string {
+  if (insufficientHistory || phase === null) {
+    return 'At least two complete publication years are needed to estimate a production phase.'
+  }
+  switch (phase) {
+    case 'Emerging':
+      return 'Early-stage publication portfolio beginning to grow.'
+    case 'Scaling':
+      return 'Publication output is increasing steadily.'
+    case 'Established':
+      return 'Publication output is stable across recent years.'
+    case 'Plateauing':
+      return 'Publication growth has levelled off recently.'
+    case 'Contracting':
+      return 'Publication output has declined from earlier levels.'
+    case 'Rebuilding':
+      return 'Publication activity is recovering after an earlier lull.'
+    default:
+      return 'Publication phase is not available.'
+  }
+}
+
+export function buildPublicationProductionPhaseStats(tile: PublicationMetricTilePayload): PublicationProductionPhaseStats {
+  const yearSeries = buildPublicationProductionYearSeries(tile, 'complete')
+
+  if (yearSeries.emptyReason) {
+    return {
+      phase: null,
+      phaseLabel: 'Insufficient history',
+      interpretation: 'At least two complete publication years are needed to estimate a production phase.',
+      confidenceLow: true,
+      confidenceNote: null,
+      insufficientHistory: true,
+      totalPublications: yearSeries.totalPublications,
+      activeSpan: yearSeries.activeSpan,
+      usableYears: yearSeries.series.length,
+      years: yearSeries.years,
+      series: yearSeries.series,
+      slope: null,
+      recentMean: null,
+      baselineMean: null,
+      momentum: null,
+      recentShare: null,
+      peakYear: null,
+      peakCount: null,
+      historicalGapYearsPresent: false,
+      emptyReason: yearSeries.emptyReason,
+    }
+  }
+
+  const years = yearSeries.years
+  const series = yearSeries.series
+  const activeSpan = yearSeries.activeSpan
+  const usableYears = series.length
+  const recentWindowSize = Math.max(1, Math.min(3, usableYears))
+  const recentSeries = series.slice(-recentWindowSize)
+  const baselineSeries = series.slice(0, Math.max(0, usableYears - recentWindowSize))
+  const recentMean = meanPublicationSeries(recentSeries)
+  const baselineMean = baselineSeries.length ? meanPublicationSeries(baselineSeries) : 0
+  const momentum = recentMean === null || baselineMean === null ? null : recentMean - baselineMean
+  const recentShare = yearSeries.scopedPublicationCount > 0
+    ? recentSeries.reduce((sum, value) => sum + Math.max(0, value), 0) / yearSeries.scopedPublicationCount
+    : null
+  const slope = calculatePublicationProductionTrendSlope(years, series)
+  const historicalGapYearsPresent = baselineSeries.some((value) => value <= 0)
+  const peakIndex = series.length
+    ? series.reduce((selectedIndex, value, index, collection) => (
+      value > (collection[selectedIndex] ?? -1)
+        ? index
+        : selectedIndex
+    ), 0)
+    : -1
+  const peakYear = peakIndex >= 0 ? (years[peakIndex] ?? null) : null
+  const peakCount = peakIndex >= 0 ? (series[peakIndex] ?? null) : null
+  const careerLength = activeSpan
+  const lowConfidence = yearSeries.totalPublications < 10 || activeSpan < 4 || usableYears < 4
+  const confidenceNote = lowConfidence
+    ? 'Phase estimate has lower confidence due to limited publication history.'
+    : null
+
+  if (usableYears <= 1) {
+    return {
+      phase: null,
+      phaseLabel: 'Insufficient history',
+      interpretation: 'At least two complete publication years are needed to estimate a production phase.',
+      confidenceLow: true,
+      confidenceNote,
+      insufficientHistory: true,
+      totalPublications: yearSeries.totalPublications,
+      activeSpan,
+      usableYears,
+      years,
+      series,
+      slope,
+      recentMean,
+      baselineMean,
+      momentum,
+      recentShare,
+      peakYear,
+      peakCount,
+      historicalGapYearsPresent,
+      emptyReason: null,
+    }
+  }
+
+  const safeSlope = slope ?? 0
+  const safeMomentum = momentum ?? 0
+  const safeRecentShare = recentShare ?? 0
+  let phase: PublicationProductionPhaseLabel
+
+  if (safeMomentum > 1 && safeRecentShare > 0.35 && historicalGapYearsPresent) {
+    phase = 'Rebuilding'
+  } else if (safeSlope < -0.3 && safeMomentum < 0 && safeRecentShare < 0.2) {
+    phase = 'Contracting'
+  } else if (careerLength > 8 && Math.abs(safeSlope) < 0.3 && safeMomentum < 0) {
+    phase = 'Plateauing'
+  } else if (careerLength > 8 && Math.abs(safeSlope) < 0.3 && safeRecentShare >= 0.2 && safeRecentShare <= 0.4) {
+    phase = 'Established'
+  } else if (careerLength <= 5 && (recentMean ?? 0) >= (baselineMean ?? 0)) {
+    phase = 'Emerging'
+  } else if (safeSlope > 0.3 && safeMomentum > 0 && safeRecentShare > 0.3) {
+    phase = 'Scaling'
+  } else if (historicalGapYearsPresent && safeMomentum > 0) {
+    phase = 'Rebuilding'
+  } else if (careerLength <= 5) {
+    phase = 'Emerging'
+  } else if (safeSlope < -0.1 || safeMomentum < -0.5) {
+    phase = safeRecentShare < 0.2 ? 'Contracting' : 'Plateauing'
+  } else if (safeSlope > 0.1 || safeMomentum > 0.5) {
+    phase = 'Scaling'
+  } else {
+    phase = 'Established'
+  }
+
+  return {
+    phase,
+    phaseLabel: phase,
+    interpretation: getPublicationProductionPhaseInterpretation(phase, false),
+    confidenceLow: lowConfidence,
+    confidenceNote,
+    insufficientHistory: false,
+    totalPublications: yearSeries.totalPublications,
+    activeSpan,
+    usableYears,
+    years,
+    series,
+    slope,
+    recentMean,
+    baselineMean,
+    momentum,
+    recentShare,
+    peakYear,
+    peakCount,
+    historicalGapYearsPresent,
+    emptyReason: null,
+  }
+}
+
 function pluralize(count: number, singular: string, plural = `${singular}s`): string {
   return Math.abs(Math.round(count)) === 1 ? singular : plural
 }
@@ -142,12 +912,12 @@ function formatRecentConcentrationTableTooltip(recordsCount: number, windowPhras
 
 function formatCitationHistogramTooltip(totalPublications: number, maxCitations: number): string {
   if (totalPublications <= 0) {
-    return 'This histogram groups papers by lifetime citations per paper once publication-level citation counts are available.'
+    return 'This histogram groups publications by lifetime citations per publication once publication-level citation counts are available.'
   }
   if (maxCitations <= 0) {
-    return `This histogram groups your ${formatInt(totalPublications)} papers by lifetime citations per paper. All currently sit in the uncited bucket.`
+    return `This histogram groups your ${formatInt(totalPublications)} publications by lifetime citations per publication. All currently sit in the uncited bucket.`
   }
-  return `This histogram groups your ${formatInt(totalPublications)} papers by lifetime citations per paper. The zero-citation bucket stays separate, and the highest bucket adapts to your current maximum of ${formatInt(maxCitations)} citations.`
+  return `This histogram groups your ${formatInt(totalPublications)} publications by lifetime citations per publication. The zero-citation bucket stays separate, and the highest bucket adapts to your current maximum of ${formatInt(maxCitations)} citations.`
 }
 
 function formatCitationActivationStateTooltip({
@@ -164,8 +934,14 @@ function formatCitationActivationStateTooltip({
   return `Of your ${formatInt(totalPublications)} publications, ${formatInt(newlyActiveCount)} are newly active, ${formatInt(stillActiveCount)} are still active, and ${formatInt(inactiveCount)} had no citations in the last 12 months.`
 }
 
-function formatCitationActivationTableTooltip(recordsCount: number): string {
-  return `Your ${formatInt(recordsCount)} newly active publications are listed here with last-12-month and total citations. Select a title to open it in your library.`
+function formatCitationActivationTableTooltip(mode: CitationActivationTableMode, recordsCount: number): string {
+  if (mode === 'stillActive') {
+    return `Your ${formatInt(recordsCount)} still active publications are listed here with rolling last-12-month and lifetime citations. Select a title to open it in your library.`
+  }
+  if (mode === 'inactive') {
+    return `Your ${formatInt(recordsCount)} inactive publications are listed here with rolling last-12-month and lifetime citations. These had no citations in the last 12 completed months. Select a title to open it in your library.`
+  }
+  return `Your ${formatInt(recordsCount)} newly active publications are listed here with rolling last-12-month and lifetime citations. These picked up citations in the last 12 completed months after no citations in the prior 24-month lookback. Select a title to open it in your library.`
 }
 
 function formatCitationActivationHistoryTooltip(lastCompleteYear: number | null, focusRangeLabel?: string | null): string {
@@ -182,21 +958,43 @@ function formatCitationMomentumTooltip({
   freshPickupCount: number
 }): string {
   if (mode === 'sleeping') {
-    return `Sleeping papers are older titles with established lifetime citations but just 0-1 citations in the last 12 months. This view currently surfaces ${formatInt(sleepingCount)} papers.`
+    return `Sleeping publications are older titles with established lifetime citations but just 0-1 citations in the last 12 months. This view currently surfaces ${formatInt(sleepingCount)} publications.`
   }
-  return `Fresh-pickup papers are older titles whose last 12 months outperformed their prior 24 months combined. This view currently surfaces ${formatInt(freshPickupCount)} papers.`
+  return `Fresh-pickup publications are older titles whose last 12 months outperformed their prior 24 months combined. This view currently surfaces ${formatInt(freshPickupCount)} publications.`
 }
 
-function formatHIndexSummaryTooltip(stats: HIndexDrilldownStats): string {
-  return `This view anchors the current h-index at h${formatInt(stats.currentH)} and shows the observed h-index path over time. The current projection points to h${formatInt(stats.projectedH)} by ${formatInt(stats.projectedYear)}, with ${formatInt(stats.citationsNeededForNextH)} citations still needed across the nearest candidate papers to secure h${formatInt(stats.targetH)}.`
+function formatHIndexThresholdStepsTooltip(stats: HIndexDrilldownStats): string {
+  const nextStep = stats.summaryThresholdSteps[0]
+  const followingStep = stats.summaryThresholdSteps[1]
+  if (!nextStep) {
+    return 'This view shows the next two h-index thresholds using the current publication set once publication-level citation data is available.'
+  }
+  return followingStep
+    ? `This view shows the step-by-step path to H${formatInt(nextStep.targetH)} and H${formatInt(followingStep.targetH)}. Each row reports how many papers already clear that citation line, the combined citation gap still needed, and the nearest individual gaps.`
+    : `This view shows the step-by-step path to H${formatInt(nextStep.targetH)}. It reports how many papers already clear that citation line, the combined citation gap still needed, and the nearest individual gaps.`
+}
+
+function formatHIndexThresholdCandidateTableTooltip(
+  targetH: number,
+  count: number,
+): string {
+  if (count <= 0) {
+    return `No nearby publications are currently available for H${formatInt(targetH)}.`
+  }
+  return `This table lists the ${formatInt(count)} ${pluralize(count, 'publication')} currently closest to H${formatInt(targetH)}, showing current citations, the remaining gap, the simple 12-month projection, and a pace-based outlook. The outlook is directional, not a literal probability.`
 }
 
 function formatHIndexCoreTooltip(stats: HIndexDrilldownStats): string {
-  return `The h-core is the set of papers with at least h citations, where h is currently ${formatInt(stats.currentH)}. It currently contains ${formatInt(stats.hCorePublicationCount)} papers and accounts for ${stats.hCoreShareValue} of citations, with the mix panels showing which authorship roles and publication types appear most often inside that core.`
+  return `For this drilldown, the h-core is the set of papers with at least h citations, where h is currently ${formatInt(stats.currentH)}. Because tied papers can sit on that threshold, this set can contain more than h papers. It currently contains ${formatInt(stats.hCorePublicationCount)} papers and accounts for ${stats.hCoreShareValue} of citations.`
 }
 
 function formatHIndexTrajectoryTooltip(stats: HIndexDrilldownStats): string {
-  return `This chart traces the observed h-index by year, from the current h${formatInt(stats.currentH)} toward the present h${formatInt(stats.projectedH)} outlook. Because h-index only moves when another paper crosses the current threshold, the trajectory advances in milestone steps rather than as a smooth cumulative citation curve.`
+  const firstYear = stats.fullHistoryYears[0]
+  const lastYear = stats.fullHistoryYears[stats.fullHistoryYears.length - 1]
+  const spanText = firstYear && lastYear
+    ? `from ${formatInt(firstYear)} through ${formatInt(lastYear)}`
+    : 'across the full observed publication history'
+  return `This chart traces every observed h-index step ${spanText}, up to the current h${formatInt(stats.currentH)}. Because h-index only moves when another paper crosses the next qualifying line, the series advances in discrete thresholds rather than as a smooth cumulative citation curve.`
 }
 
 function formatHIndexMilestonesTooltip(stats: HIndexDrilldownStats): string {
@@ -206,8 +1004,739 @@ function formatHIndexMilestonesTooltip(stats: HIndexDrilldownStats): string {
     : 'This table records when each h threshold was first reached and how long it took to move from the previous one once milestone data is available.'
 }
 
-function formatHIndexRunwayTooltip(stats: HIndexDrilldownStats): string {
-  return `The next milestone is h${formatInt(stats.targetH)}. Progress shows how much of that threshold is already covered, while the gap chart and candidate table track the nearest papers to qualification rather than the full portfolio.`
+function formatHIndexTrajectoryPointLabel(label: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(label.trim())
+  if (!match) {
+    return label
+  }
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return label
+  }
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleString('en-GB', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+function renderHIndexOutlookPill(label: string): ReactNode {
+  let toneClass: string = HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
+  switch (label) {
+    case 'Strong':
+    case 'On pace':
+    case 'At line':
+      toneClass = HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS
+      break
+    case 'Live':
+      toneClass = HOUSE_DRILLDOWN_BADGE_ACCENT_CLASS
+      break
+    case 'Stretch':
+      toneClass = HOUSE_DRILLDOWN_BADGE_WARNING_CLASS
+      break
+    case 'Off pace':
+    case 'No recent pace':
+      toneClass = HOUSE_DRILLDOWN_BADGE_DANGER_CLASS
+      break
+    default:
+      toneClass = HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
+      break
+  }
+  const allowsWrap = label === 'No recent pace'
+  return (
+    <span
+      className={cn(
+        HOUSE_DRILLDOWN_BADGE_CLASS,
+        toneClass,
+        'justify-center text-center',
+        allowsWrap ? 'leading-tight whitespace-normal py-1' : 'whitespace-nowrap',
+      )}
+    >
+      {allowsWrap ? <>No recent<br />pace</> : label}
+    </span>
+  )
+}
+
+function renderTrajectoryPhaseBadge(label: string): ReactNode {
+  let toneClass: string = HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
+  switch (label) {
+    case 'Expanding':
+      toneClass = HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS
+      break
+    case 'Contracting':
+      toneClass = HOUSE_DRILLDOWN_BADGE_DANGER_CLASS
+      break
+    default:
+      toneClass = HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
+      break
+  }
+  return (
+    <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, toneClass, 'whitespace-nowrap')}>
+      {label}
+    </span>
+  )
+}
+
+function renderPublicationConsistencyBadge(value: number): ReactNode {
+  const label = getPublicationConsistencyInterpretation(value)
+  const tone = getPublicationConsistencyTone(value)
+  const toneClass = tone === 'positive'
+    ? HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS
+    : tone === 'neutral'
+      ? HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
+      : tone === 'warning'
+        ? HOUSE_DRILLDOWN_BADGE_WARNING_CLASS
+        : HOUSE_DRILLDOWN_BADGE_DANGER_CLASS
+  return (
+    <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, toneClass, 'whitespace-nowrap')}>
+      {label}
+    </span>
+  )
+}
+
+function renderPublicationBurstinessBadge(value: number): ReactNode {
+  const label = getPublicationBurstinessInterpretation(value)
+  const tone = getPublicationBurstinessTone(value)
+  const toneClass = tone === 'danger'
+    ? HOUSE_DRILLDOWN_BADGE_DANGER_CLASS
+    : tone === 'warning'
+      ? HOUSE_DRILLDOWN_BADGE_WARNING_CLASS
+      : tone === 'neutral'
+        ? HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
+        : tone === 'accent'
+          ? HOUSE_DRILLDOWN_BADGE_ACCENT_CLASS
+          : HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS
+  return (
+    <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, toneClass, 'whitespace-nowrap')}>
+      {label}
+    </span>
+  )
+}
+
+function renderPublicationPeakYearShareBadge(value: number): ReactNode {
+  const label = getPublicationPeakYearShareInterpretation(value)
+  const tone = getPublicationPeakYearShareTone(value)
+  const toneClass = tone === 'danger'
+    ? HOUSE_DRILLDOWN_BADGE_DANGER_CLASS
+    : tone === 'warning'
+      ? HOUSE_DRILLDOWN_BADGE_WARNING_CLASS
+      : tone === 'neutral'
+        ? HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
+        : tone === 'accent'
+          ? HOUSE_DRILLDOWN_BADGE_ACCENT_CLASS
+          : HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS
+  return (
+    <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, toneClass, 'whitespace-nowrap')}>
+      {label}
+    </span>
+  )
+}
+
+function renderPublicationOutputContinuityBadge(value: number): ReactNode {
+  const label = getPublicationOutputContinuityInterpretation(value)
+  const tone = getPublicationOutputContinuityTone(value)
+  const toneClass = tone === 'danger'
+    ? HOUSE_DRILLDOWN_BADGE_DANGER_CLASS
+    : tone === 'warning'
+      ? HOUSE_DRILLDOWN_BADGE_WARNING_CLASS
+      : tone === 'neutral'
+        ? HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
+        : tone === 'accent'
+          ? HOUSE_DRILLDOWN_BADGE_ACCENT_CLASS
+          : HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS
+  return (
+    <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, toneClass, 'whitespace-nowrap')}>
+      {label}
+    </span>
+  )
+}
+
+type PublicationProductionPatternCardProps = {
+  dataUi: string
+  title: string
+  primaryValue: string
+  secondaryValue?: string
+  semanticLabel: ReactNode
+  tooltip: ReactNode
+  meterValue?: number | null
+  meterTone?: PublicationProductionPatternTone
+  meterIndex?: number
+}
+
+function PublicationProductionPatternCard({
+  dataUi,
+  title,
+  primaryValue,
+  secondaryValue,
+  semanticLabel,
+  tooltip,
+  meterValue,
+  meterTone = 'accent',
+  meterIndex = 0,
+}: PublicationProductionPatternCardProps) {
+  const boundedMeterValue = meterValue === null || meterValue === undefined
+    ? null
+    : Math.max(0, Math.min(1, meterValue))
+  const progressAnimationKey = useMemo(
+    () => `${title}|${Math.round((boundedMeterValue ?? 0) * 1000)}`,
+    [boundedMeterValue, title],
+  )
+  const progressExpanded = useUnifiedToggleBarAnimation(progressAnimationKey, boundedMeterValue !== null)
+  const isEntryCycle = useIsFirstChartEntry(progressAnimationKey, boundedMeterValue !== null)
+  const progressTransitionDuration = tileMotionEntryDuration(meterIndex, isEntryCycle && progressExpanded)
+
+  return (
+    <div
+      data-ui={dataUi}
+      className={cn(
+        HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_SMALL_CLASS,
+        'items-stretch justify-start gap-3.5 px-[1.05rem] py-[1.05rem] text-left',
+      )}
+    >
+      <div className="flex w-full items-start justify-between gap-3.5">
+        <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS, 'min-h-0 justify-start text-left')}>
+          {title}
+        </p>
+        <HelpTooltipIconButton
+          ariaLabel={`Explain ${title}`}
+          content={tooltip}
+          align="end"
+          side="top"
+          buttonClassName="h-6 w-6 shrink-0"
+          iconClassName="text-[0.82rem]"
+        />
+      </div>
+
+      <div className="flex w-full flex-col gap-2">
+        <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'text-left tabular-nums')}>
+          {primaryValue}
+        </p>
+        {secondaryValue ? (
+          <p className="text-sm font-semibold tabular-nums text-[hsl(var(--tone-neutral-700))]">
+            {secondaryValue}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="w-full pt-0.5">
+        {semanticLabel}
+      </div>
+
+      {boundedMeterValue !== null ? (
+        <div className="w-full pt-1">
+          <div className={HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS}>
+            <div
+              className={cn(HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS, 'house-progress-fill-motion')}
+              style={{
+                width: `${progressExpanded ? boundedMeterValue * 100 : 0}%`,
+                backgroundColor: resolvePublicationProductionPatternToneColor(meterTone),
+                transitionDelay: tileMotionEntryDelay(meterIndex, isEntryCycle && progressExpanded),
+                '--chart-transition-duration': progressTransitionDuration,
+              } as React.CSSProperties}
+              aria-hidden="true"
+            />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function PublicationProductionPhaseChart({
+  years,
+  values,
+  tone,
+}: {
+  years: number[]
+  values: number[]
+  tone: PublicationProductionPatternTone
+}) {
+  const pathRef = useRef<SVGPathElement>(null)
+  const [pathLength, setPathLength] = useState(0)
+  const [lineRevealProgress, setLineRevealProgress] = useState(0)
+  const bars = useMemo(() => (
+    years.map((year, index) => ({
+      key: `publication-production-phase-${year}-${index}`,
+      year,
+      value: Math.max(0, Number(values[index] || 0)),
+    }))
+  ), [values, years])
+  const hasBars = bars.length > 0
+  const animationKey = useMemo(
+    () => `publication-production-phase-chart:${bars.map((bar) => `${bar.year}-${bar.value}`).join('|') || 'empty'}`,
+    [bars],
+  )
+  const lineEntryCycle = useIsFirstChartEntry(`${animationKey}|phase-line`, hasBars)
+  const lineAnimationDelayMs = lineEntryCycle ? 120 : 48
+  const lineAnimationDurationMs = lineEntryCycle ? 940 : 720
+  const axisScale = useMemo(
+    () => buildNiceAxis(Math.max(1, ...bars.map((bar) => bar.value))),
+    [bars],
+  )
+  const axisMax = Math.max(1, axisScale.axisMax)
+  const yAxisTickValues = axisScale.ticks
+  const yAxisTickRatios = useMemo(
+    () => yAxisTickValues.map((tickValue) => (axisMax <= 0 ? 0 : tickValue / axisMax)),
+    [axisMax, yAxisTickValues],
+  )
+  const gridTickRatiosWithoutTop = yAxisTickRatios.filter((ratio) => ratio < 0.999)
+  const hasTopYAxisTick = yAxisTickRatios.some((ratio) => ratio >= 0.999)
+  const positionedTicks = useMemo(() => {
+    const rawTicks = buildTrajectoryYearTicks(years)
+    return rawTicks.map((tick) => {
+      const tickYear = Number(tick.label)
+      const tickIndex = years.findIndex((year) => year === tickYear)
+      return {
+        ...tick,
+        leftPct: years.length <= 1
+          ? 50
+          : tickIndex < 0
+            ? 50
+            : (tickIndex / Math.max(1, years.length - 1)) * 100,
+      }
+    })
+  }, [years])
+  const verticalGridPercents = useMemo(
+    () => positionedTicks
+      .map((tick) => Math.max(0, Math.min(100, tick.leftPct)))
+      .filter((value) => value > 0.5 && value < 99.5)
+      .filter((value, index, collection) => index === 0 || Math.abs(value - collection[index - 1]) > 0.5),
+    [positionedTicks],
+  )
+  const xAxisLayout = useMemo(
+    () => buildChartAxisLayout({
+      axisLabels: positionedTicks.map((tick) => tick.label),
+      showXAxisName: true,
+      xAxisName: 'Publication year',
+      dense: positionedTicks.length >= 5,
+      maxLabelLines: 1,
+      maxSubLabelLines: 1,
+      maxAxisNameLines: 1,
+    }),
+    [positionedTicks],
+  )
+  const yAxisPanelWidthRem = buildYAxisPanelWidthRem(yAxisTickValues, true, 0.5)
+  const chartLeftInset = `${yAxisPanelWidthRem + PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM}rem`
+  const plotAreaStyle = {
+    left: chartLeftInset,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
+    bottom: `${xAxisLayout.plotBottomRem}rem`,
+  }
+  const xAxisTicksStyle = {
+    left: chartLeftInset,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    bottom: `${xAxisLayout.axisBottomRem}rem`,
+    minHeight: `${xAxisLayout.axisMinHeightRem}rem`,
+  }
+  const yAxisPanelStyle = {
+    left: `${PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM}rem`,
+    top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
+    bottom: `${xAxisLayout.plotBottomRem}rem`,
+    width: `${yAxisPanelWidthRem}rem`,
+  }
+  const yAxisTitleLeft = '36%'
+  const yAxisLabel = 'Publications (per year)'
+  const toneColor = resolvePublicationProductionPatternToneColor(tone)
+  const points = useMemo(() => (
+    bars.map((bar, index) => ({
+      ...bar,
+      xPct: bars.length <= 1 ? 50 : (index / Math.max(1, bars.length - 1)) * 100,
+      yPct: Math.max(0, Math.min(100, (bar.value / axisMax) * 100)),
+    }))
+  ), [axisMax, bars])
+  const linePath = useMemo(() => {
+    if (!points.length) {
+      return ''
+    }
+    if (points.length === 1) {
+      const point = points[0]
+      return point ? `M ${point.xPct} ${100 - point.yPct}` : ''
+    }
+    return monotonePathFromPoints(points.map((point) => ({
+      x: point.xPct,
+      y: 100 - point.yPct,
+    })))
+  }, [points])
+  const areaPath = useMemo(() => {
+    if (points.length < 2 || !linePath) {
+      return ''
+    }
+    const firstPoint = points[0]
+    const lastPoint = points[points.length - 1]
+    if (!firstPoint || !lastPoint) {
+      return ''
+    }
+    return `${linePath} L ${lastPoint.xPct} 100 L ${firstPoint.xPct} 100 Z`
+  }, [linePath, points])
+  const fallbackPathLength = useMemo(
+    () => Math.max(1, estimatePolylineLength(points.map((point) => ({
+      x: point.xPct,
+      y: 100 - point.yPct,
+    })))),
+    [points],
+  )
+  const effectivePathLength = pathLength > 0 ? pathLength : fallbackPathLength
+
+  useEffect(() => {
+    setPathLength(0)
+    if (pathRef.current) {
+      try {
+        const length = pathRef.current.getTotalLength()
+        setPathLength(length)
+      } catch {
+        setPathLength(0)
+      }
+    }
+  }, [linePath])
+
+  useEffect(() => {
+    if (!hasBars || !linePath) {
+      setLineRevealProgress(0)
+      return
+    }
+    if (prefersReducedMotion()) {
+      setLineRevealProgress(1)
+      return
+    }
+    let raf = 0
+    const startedAt = performance.now()
+    const easePhaseLine = (progress: number) => {
+      const clamped = Math.max(0, Math.min(1, progress))
+      if (clamped <= 0.62) {
+        const frontLoaded = clamped / 0.62
+        return 0.8 * (1 - ((1 - frontLoaded) ** 3))
+      }
+      const settled = (clamped - 0.62) / 0.38
+      return 0.8 + (0.2 * (1 - ((1 - settled) ** 2)))
+    }
+    setLineRevealProgress(0)
+    const step = (now: number) => {
+      const elapsed = now - startedAt
+      if (elapsed < lineAnimationDelayMs) {
+        setLineRevealProgress(0)
+        raf = window.requestAnimationFrame(step)
+        return
+      }
+      const progress = Math.min(1, (elapsed - lineAnimationDelayMs) / Math.max(1, lineAnimationDurationMs))
+      setLineRevealProgress(easePhaseLine(progress))
+      if (progress < 1) {
+        raf = window.requestAnimationFrame(step)
+      }
+    }
+    raf = window.requestAnimationFrame(step)
+    return () => {
+      window.cancelAnimationFrame(raf)
+    }
+  }, [animationKey, hasBars, lineAnimationDelayMs, lineAnimationDurationMs, linePath])
+
+  if (!hasBars) {
+    return null
+  }
+
+  return (
+    <div
+      className={cn(
+        'relative h-[13.25rem] w-full',
+        HOUSE_CHART_TRANSITION_CLASS,
+        HOUSE_CHART_ENTERED_CLASS,
+        'house-publications-trend-chart-frame-borderless',
+      )}
+      data-ui="publication-production-phase-chart"
+      data-house-role="chart-frame"
+    >
+      <div className="absolute overflow-visible" style={plotAreaStyle}>
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+          <div
+            className="absolute inset-y-0 left-0"
+            style={{ borderLeft: '1px solid hsl(var(--stroke-soft) / 0.7)' }}
+          />
+          {gridTickRatiosWithoutTop.map((ratio, index) => (
+            <div
+              key={`publication-production-phase-grid-y-${index}`}
+              className={cn('absolute inset-x-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS)}
+              style={{
+                bottom: `${Math.max(0, Math.min(100, ratio * 100))}%`,
+                borderTop: `1px solid hsl(var(--stroke-soft) / ${ratio <= 0.0001 ? 0.95 : 0.76})`,
+              }}
+            />
+          ))}
+          {hasTopYAxisTick ? (
+            <div
+              className={cn('absolute inset-x-0 top-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS)}
+              style={{ borderTop: '1px solid hsl(var(--stroke-soft) / 0.76)' }}
+            />
+          ) : null}
+          {verticalGridPercents.map((leftPct, index) => (
+            <div
+              key={`publication-production-phase-grid-x-${index}`}
+              className={cn('absolute inset-y-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS)}
+              style={{ left: `${leftPct}%`, borderLeft: '1px solid hsl(var(--stroke-soft) / 0.58)' }}
+              aria-hidden="true"
+            />
+          ))}
+          <div
+            className="absolute inset-y-0 right-0"
+            style={{ borderRight: '1px solid hsl(var(--stroke-soft) / 0.76)' }}
+            aria-hidden="true"
+          />
+        </div>
+
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 h-full w-full"
+          role="img"
+          aria-label="Publication production phase chart"
+        >
+          {areaPath ? (
+            <path
+              d={areaPath}
+              fill={toneColor}
+              opacity={0.12 * Math.max(0, Math.min(1, (lineRevealProgress - 0.28) / 0.72))}
+              vectorEffect="non-scaling-stroke"
+            />
+          ) : null}
+          {linePath && points.length > 1 ? (
+            <path
+              ref={pathRef}
+              d={linePath}
+              fill="none"
+              stroke={toneColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+              style={{
+                strokeDasharray: effectivePathLength,
+                strokeDashoffset: Math.max(0, effectivePathLength * (1 - lineRevealProgress)),
+              } as React.CSSProperties}
+            />
+          ) : null}
+        </svg>
+      </div>
+
+      <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
+        {yAxisTickValues.map((tickValue, index) => {
+          const pct = Math.max(0, Math.min(100, (yAxisTickRatios[index] || 0) * 100))
+          const tickRatioKey = Math.round((yAxisTickRatios[index] || 0) * 1000)
+          return (
+            <p
+              key={`publication-production-phase-y-axis-${tickRatioKey}`}
+              className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS)}
+              style={{ bottom: `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM}rem)` }}
+            >
+              {formatInt(Math.round(Number(tickValue || 0)))}
+            </p>
+          )
+        })}
+        <p
+          className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
+          style={{ left: yAxisTitleLeft }}
+        >
+          {yAxisLabel}
+        </p>
+      </div>
+
+      <div
+        className={cn(
+          'pointer-events-none absolute',
+          HOUSE_TOGGLE_CHART_LABEL_CLASS,
+        )}
+        style={xAxisTicksStyle}
+        data-ui="publication-production-phase-x-axis"
+      >
+        {positionedTicks.map((tick, index) => {
+          const tickAnchor = getTrajectoryYearTickAnchor(tick.leftPct)
+          const isFirst = index === 0
+          const isLast = index === positionedTicks.length - 1
+          return (
+            <div
+              key={tick.key}
+              className={cn(
+                'house-chart-axis-period-item absolute top-0 leading-none',
+                tickAnchor === 'left' ? 'text-left' : tickAnchor === 'right' ? 'text-right' : 'text-center',
+                HOUSE_CHART_SCALE_TICK_CLASS,
+              )}
+              style={{
+                left: `${tick.leftPct}%`,
+                transform: tickAnchor === 'left'
+                  ? 'translateX(0)'
+                  : tickAnchor === 'right'
+                    ? 'translateX(-100%)'
+                    : 'translateX(-50%)',
+              }}
+              aria-label={`${isFirst ? 'Start' : isLast ? 'End' : 'Middle'} phase year: ${tick.label}`}
+            >
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+                {tick.label}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+
+      <div
+        className="pointer-events-none absolute"
+        style={{
+          left: chartLeftInset,
+          right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+          bottom: `${xAxisLayout.xAxisNameBottomRem}rem`,
+          minHeight: `${xAxisLayout.xAxisNameMinHeightRem}rem`,
+        }}
+      >
+        <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
+          Publication year
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function renderPublicationProductionPhaseTooltipContent(stats: PublicationProductionPhaseStats) {
+  return (
+    <div className="house-publications-drilldown-stack-1">
+      <p>Classifies the current publication-output stage using publication counts by year only.</p>
+      <p>The phase estimate always uses complete publication years so an in-progress current year does not distort the slope or momentum classification.</p>
+      {stats.slope !== null ? <p>{`Trend slope: ${stats.slope >= 0 ? '+' : ''}${stats.slope.toFixed(2)} papers/year.`}</p> : null}
+      {stats.recentShare !== null ? <p>{`Recent share of output: ${Math.round(stats.recentShare * 100)}%.`}</p> : null}
+      {stats.peakYear !== null ? (
+        <p>{stats.peakCount !== null
+          ? `Peak year: ${formatInt(stats.peakCount)} publications in ${stats.peakYear}.`
+          : `Peak year: ${stats.peakYear}.`}</p>
+      ) : null}
+      {stats.interpretation ? <p>{stats.interpretation}</p> : null}
+      {stats.confidenceNote ? <p>{stats.confidenceNote}</p> : null}
+    </div>
+  )
+}
+
+function PublicationProductionPhaseSummary({
+  stats,
+}: {
+  stats: PublicationProductionPhaseStats
+}) {
+  const tone = resolvePublicationProductionPhaseTone(stats.phase)
+  const slopeLabel = stats.slope === null
+    ? '\u2014'
+    : `${stats.slope >= 0 ? '+' : ''}${stats.slope.toFixed(1)} papers/year`
+  const recentShareLabel = stats.recentShare === null
+    ? '\u2014'
+    : `${Math.round(stats.recentShare * 100)}%`
+  const peakYearLabel = stats.peakYear === null
+    ? '\u2014'
+    : stats.peakCount === null
+      ? `${stats.peakYear}`
+      : `${formatInt(stats.peakCount)} (${stats.peakYear})`
+  const showSummaryTiles = !stats.emptyReason && !stats.insufficientHistory
+
+  return (
+    <div className="house-drilldown-stack-2">
+      <div className="flex justify-center">
+        <p
+          className={cn(
+            HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS,
+            'text-center',
+          )}
+        >
+          {stats.phaseLabel}
+        </p>
+      </div>
+
+      {stats.confidenceNote ? (
+        <p className={cn(HOUSE_DRILLDOWN_NOTE_SOFT_CLASS, HOUSE_DRILLDOWN_NOTE_WARNING_CLASS, 'text-left')}>
+          {stats.confidenceNote}
+        </p>
+      ) : null}
+
+      {stats.emptyReason ? (
+        <p className="house-publications-drilldown-empty-state">
+          {stats.emptyReason}
+        </p>
+      ) : null}
+
+      {stats.insufficientHistory && !stats.emptyReason ? (
+        <p className="house-publications-drilldown-empty-state">
+          At least two complete publication years are needed to estimate a production phase.
+        </p>
+      ) : null}
+
+      {showSummaryTiles ? (
+        <>
+          <div className="grid gap-2 lg:grid-cols-3">
+            <div className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_SMALL_CLASS, 'min-h-0 items-start gap-2 px-4 py-3 text-left')}>
+              <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Trend slope</p>
+              <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')}>{slopeLabel}</p>
+            </div>
+            <div className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_SMALL_CLASS, 'min-h-0 items-start gap-2 px-4 py-3 text-left')}>
+              <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Recent share of output</p>
+              <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')}>{recentShareLabel}</p>
+            </div>
+            <div className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_SMALL_CLASS, 'min-h-0 items-start gap-2 px-4 py-3 text-left')}>
+              <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Peak year</p>
+              <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')}>{peakYearLabel}</p>
+            </div>
+          </div>
+
+          <div className="pt-1">
+            <PublicationProductionPhaseChart
+              years={stats.years}
+              values={stats.series}
+              tone={tone}
+            />
+          </div>
+        </>
+      ) : null}
+
+      {stats.insufficientHistory && !stats.emptyReason && stats.series.length > 0 ? (
+        <div className="pt-1">
+          <PublicationProductionPhaseChart
+            years={stats.years}
+            values={stats.series}
+            tone={tone}
+          />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function getTrajectoryGrowthTileTintStyle(value: number): CSSProperties | undefined {
+  if (value > 0.2) {
+    return { backgroundColor: 'hsl(var(--tone-positive-100) / 0.9)' }
+  }
+  if (value < -0.2) {
+    return { backgroundColor: 'hsl(var(--tone-danger-100) / 0.82)' }
+  }
+  return undefined
+}
+
+function getTrajectoryVolatilityTileTintStyle(value: number): CSSProperties | undefined {
+  if (value <= 0.35) {
+    return { backgroundColor: 'hsl(var(--tone-positive-100) / 0.9)' }
+  }
+  if (value > 0.75) {
+    return { backgroundColor: 'hsl(var(--tone-warning-100) / 0.9)' }
+  }
+  return undefined
+}
+
+function renderMomentumStateBanner(state: string): ReactNode {
+  const normalized = String(state || '').trim()
+  let toneClass: string = HOUSE_SURFACE_BANNER_INFO_CLASS
+  if (normalized === 'Accelerating') {
+    toneClass = HOUSE_SURFACE_BANNER_SUCCESS_CLASS
+  } else if (normalized === 'Slowing') {
+    toneClass = HOUSE_SURFACE_BANNER_WARNING_CLASS
+  } else if (normalized && normalized !== 'Stable') {
+    toneClass = HOUSE_SURFACE_BANNER_DANGER_CLASS
+  }
+  return (
+    <span className={cn(HOUSE_SURFACE_BANNER_CLASS, toneClass, 'inline-flex items-center justify-center px-3 py-1.5 text-sm leading-none')}>
+      {normalized || 'Stable'}
+    </span>
+  )
 }
 
 function formatHIndexContextTooltip(stats: HIndexDrilldownStats): string {
@@ -215,6 +1744,31 @@ function formatHIndexContextTooltip(stats: HIndexDrilldownStats): string {
     ? 'the observed citation-active span'
     : `${formatInt(stats.yearsSinceFirstCitedPaper)} citation-active years`
   return `Companion indices contextualise scale, pace, and depth around the h-index. m-index normalises h across ${careerSpanText}, g-index captures citation depth beyond the h-core, and i10-index counts papers with at least ten citations.`
+}
+
+function formatHIndexCorePerformanceTooltip(stats: HIndexDrilldownStats): string {
+  const careerSpanText = stats.yearsSinceFirstCitedPaper === null
+    ? 'citation-active span unavailable'
+    : `${formatInt(stats.yearsSinceFirstCitedPaper)} citation-active years`
+  return `This panel combines the main context values behind the current h-core. h-core citation density is ${stats.hCoreCitationDensityValue}, h-core share of citations is ${stats.hCoreShareValue}, and the observed citation-active span is ${careerSpanText}. Read them together: higher density and share suggest a compact strong core, while longer span with lower density usually points to broader but more gradual accumulation.`
+}
+
+function formatMomentumOverviewTooltip(stats: MomentumDrilldownStats): string {
+  return `Momentum is currently ${stats.state.toLowerCase()} at index ${formatInt(stats.momentumIndex)}. This chart compares recent citation pace against the immediately preceding baseline window, so it is a recency signal rather than a lifetime scale measure.`
+}
+
+function formatMomentumContributorsTooltip(stats: MomentumDrilldownStats): string {
+  return stats.topContributors.length
+    ? `This table highlights the papers that best explain the momentum shift, using each paper's change from the prior baseline window to the recent window.`
+    : 'No paper-level momentum contributors are currently available.'
+}
+
+function formatMomentumTrajectoryTooltip(stats: MomentumDrilldownStats): string {
+  return `This table shows the operational inputs feeding the current momentum state, including ${formatInt(stats.monthlyValues12m.length)} monthly points and ${formatInt(stats.weightedMonthlyValues12m.length)} weighted points. It explains how the current score is being produced rather than showing a lifetime citation curve.`
+}
+
+function formatMomentumContextTooltip(stats: MomentumDrilldownStats): string {
+  return `Momentum currently tracks ${formatInt(stats.trackedPapers)} papers with usable citation history. Confidence buckets show the mix of match or enrichment quality behind that signal, so this section is mainly about how much weight to place on the headline.`
 }
 
 function formatSignedPercentCompact(value: number): string {
@@ -448,36 +2002,31 @@ type MomentumYearBreakdown = {
 
 type MomentumWindowMode = '12m' | '5y'
 type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
-type RecentConcentrationWindowMode = Exclude<PublicationsWindowMode, 'all'>
-type PublicationTrendsVisualMode = 'bars' | 'line'
+type RecentConcentrationWindowMode = PublicationsWindowMode
+type PublicationTrendsVisualMode = 'bars' | 'line' | 'table'
 type CitationActivationHistorySeriesMode = 'default' | 'activeInactive'
 type CitationMomentumViewMode = 'sleeping' | 'freshPickup'
+type CitationActivationTableMode = 'newlyActive' | 'stillActive' | 'inactive'
 type PublicationCategoryValueMode = 'absolute' | 'percentage' | 'perPaper'
 type PublicationCategoryDisplayMode = 'chart' | 'table'
 type JournalBreakdownViewMode = 'top-ten' | 'all-journals'
 type TopicBreakdownViewMode = 'top-ten' | 'all-topics'
 type HIndexViewMode = 'trajectory' | 'needed'
+type HIndexSummaryThresholdTableMode = 'next' | 'after'
 type HIndexInsightKey =
-  | 'summary-trajectory'
-  | 'summary-readout'
-  | 'breakdown-core-papers'
-  | 'breakdown-core-citations'
+  | 'summary-threshold-steps'
+  | 'summary-threshold-candidates'
   | 'breakdown-structure-table'
-  | 'breakdown-authorship-mix'
   | 'breakdown-authorship-table'
-  | 'breakdown-publication-type-mix'
   | 'breakdown-publication-type-table'
   | 'trajectory-chart'
   | 'trajectory-milestones'
-  | 'trajectory-runway'
-  | 'trajectory-runway-table'
-  | 'trajectory-candidates'
   | 'context-complementary-indices'
   | 'context-index-reference'
   | 'context-h-core-performance'
-  | 'context-h-core-table'
 type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
 type DrilldownTab = 'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'
+type PublicationProductionYearScopeMode = 'complete' | 'include_current'
 
 type SplitBreakdownViewMode = 'bar' | 'table'
 
@@ -493,29 +2042,22 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
   { value: '1y', label: '1y' },
   { value: '3y', label: '3y' },
   { value: '5y', label: '5y' },
-  { value: 'all', label: 'Life' },
+  { value: 'all', label: 'All' },
 ]
 const RECENT_CONCENTRATION_WINDOW_OPTIONS: Array<{ value: RecentConcentrationWindowMode; label: string }> = [
   { value: '1y', label: '1y' },
   { value: '3y', label: '3y' },
   { value: '5y', label: '5y' },
-]
-const PUBLICATION_TRENDS_VISUAL_OPTIONS: Array<{ value: PublicationTrendsVisualMode; label: string }> = [
-  { value: 'bars', label: 'Bar view' },
-  { value: 'line', label: 'Line view' },
+  { value: 'all', label: 'All' },
 ]
 const PUBLICATION_VALUE_MODE_OPTIONS: Array<{ value: PublicationCategoryValueMode; label: string }> = [
-  { value: 'absolute', label: 'Absolute' },
   { value: 'percentage', label: '%' },
+  { value: 'absolute', label: 'Absolute' },
 ]
 const PUBLICATION_CITATION_VALUE_MODE_OPTIONS: Array<{ value: PublicationCategoryValueMode; label: string }> = [
   { value: 'absolute', label: 'Absolute' },
   { value: 'percentage', label: '%' },
-  { value: 'perPaper', label: 'Per paper' },
-]
-const PUBLICATION_DISPLAY_MODE_OPTIONS: Array<{ value: PublicationCategoryDisplayMode; label: string }> = [
-  { value: 'chart', label: 'Chart' },
-  { value: 'table', label: 'Table' },
+  { value: 'perPaper', label: 'Per item' },
 ]
 const PUBLICATION_INSIGHTS_TITLE = 'Publication insights'
 const PUBLICATION_INSIGHTS_LABEL = 'publication insights'
@@ -553,9 +2095,14 @@ const HOUSE_TOGGLE_CHART_LINE_CLASS = publicationsHouseMotion.toggleChartLine
 const HOUSE_SURFACE_SECTION_PANEL_CLASS = publicationsHouseSurfaces.sectionPanel
 const HOUSE_SURFACE_STRONG_PANEL_CLASS = publicationsHouseSurfaces.strongPanel
 const HOUSE_SURFACE_PANEL_BARE_CLASS = publicationsHouseSurfaces.panelBare
+const HOUSE_SURFACE_TABLE_SHELL_CLASS = publicationsHouseSurfaces.tableShell
+const HOUSE_SURFACE_TABLE_HEAD_CLASS = publicationsHouseSurfaces.tableHead
+const HOUSE_SURFACE_TABLE_ROW_CLASS = publicationsHouseSurfaces.tableRow
 const HOUSE_SURFACE_BANNER_CLASS = publicationsHouseSurfaces.banner
 const HOUSE_SURFACE_BANNER_INFO_CLASS = publicationsHouseSurfaces.bannerInfo
+const HOUSE_SURFACE_BANNER_SUCCESS_CLASS = publicationsHouseSurfaces.bannerSuccess
 const HOUSE_SURFACE_BANNER_WARNING_CLASS = publicationsHouseSurfaces.bannerWarning
+const HOUSE_SURFACE_BANNER_DANGER_CLASS = publicationsHouseSurfaces.bannerDanger
 const HOUSE_SURFACE_METRIC_PILL_CLASS = publicationsHouseSurfaces.metricPill
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS = publicationsHouseSurfaces.metricPillPublications
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS = publicationsHouseSurfaces.metricPillPublicationsRegular
@@ -566,7 +2113,13 @@ const HOUSE_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
 const HOUSE_DRILLDOWN_HINT_CLASS = publicationsHouseDrilldown.hint
 const HOUSE_DRILLDOWN_ROW_CLASS = publicationsHouseDrilldown.row
 const HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS = publicationsHouseDrilldown.progressTrack
-const HOUSE_DRILLDOWN_RANGE_CLASS = publicationsHouseDrilldown.range
+const HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS = publicationsHouseDrilldown.progressFill
+const HOUSE_DRILLDOWN_BADGE_CLASS = publicationsHouseDrilldown.badge
+const HOUSE_DRILLDOWN_BADGE_ACCENT_CLASS = publicationsHouseDrilldown.badgeAccent
+const HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS = publicationsHouseDrilldown.badgePositive
+const HOUSE_DRILLDOWN_BADGE_WARNING_CLASS = publicationsHouseDrilldown.badgeWarning
+const HOUSE_DRILLDOWN_BADGE_DANGER_CLASS = publicationsHouseDrilldown.badgeDanger
+const HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS = publicationsHouseDrilldown.badgeNeutral
 const HOUSE_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
 const HOUSE_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
 const HOUSE_DRILLDOWN_STAT_VALUE_CLASS = publicationsHouseDrilldown.statValue
@@ -574,13 +2127,13 @@ const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS = publicationsHouseDrilldown.summ
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS = publicationsHouseDrilldown.summaryStatValueEmphasis
 const HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = publicationsHouseDrilldown.summaryStatTitle
 const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS = publicationsHouseDrilldown.summaryStatCard
+const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_SMALL_CLASS = 'house-drilldown-summary-stat-card-small'
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS = publicationsHouseDrilldown.summaryStatValueWrap
 const HOUSE_DRILLDOWN_OVERLINE_CLASS = publicationsHouseDrilldown.overline
 const HOUSE_DRILLDOWN_SECTION_LABEL_CLASS = publicationsHouseDrilldown.sectionLabel
 const HOUSE_DRILLDOWN_NOTE_CLASS = publicationsHouseDrilldown.note
 const HOUSE_DRILLDOWN_NOTE_SOFT_CLASS = publicationsHouseDrilldown.noteSoft
-const HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS = publicationsHouseDrilldown.chartAreaSvg
-const HOUSE_DRILLDOWN_CHART_MOVING_SVG_CLASS = publicationsHouseDrilldown.chartMovingSvg
+const HOUSE_DRILLDOWN_NOTE_WARNING_CLASS = publicationsHouseDrilldown.noteWarning
 const HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS = publicationsHouseDrilldown.chartMainSvg
 const HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS = publicationsHouseDrilldown.chartTooltip
 const HOUSE_DRILLDOWN_SKELETON_BLOCK_CLASS = publicationsHouseDrilldown.skeletonBlock
@@ -807,67 +2360,72 @@ function PublicationTrendsVisualToggle({
   value: PublicationTrendsVisualMode
   onChange: (mode: PublicationTrendsVisualMode) => void
 }) {
-  const activeVisualModeIndex = PUBLICATION_TRENDS_VISUAL_OPTIONS.findIndex((option) => option.value === value)
-
   return (
     <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
       <div
-        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'overflow-hidden')}
         data-stop-tile-open="true"
         data-ui="publications-trends-visual-toggle"
         data-house-role="chart-toggle"
-        style={{ width: '5.25rem' }}
+        style={{ width: '7.75rem', gridTemplateColumns: '1fr 1fr 1fr' }}
       >
-        <span
-          className={HOUSE_TOGGLE_THUMB_CLASS}
-          style={buildTileToggleThumbStyle(activeVisualModeIndex, PUBLICATION_TRENDS_VISUAL_OPTIONS.length, false)}
-          aria-hidden="true"
-        />
-        <button
-          type="button"
-          data-stop-tile-open="true"
-          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'bars' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
-          aria-pressed={value === 'bars'}
-          onClick={(event) => {
-            event.stopPropagation()
-            onChange('bars')
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true" className={cn(HOUSE_TOGGLE_CHART_BAR_CLASS, 'h-3.5 w-3.5 fill-current')}>
-            <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
-            <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
-            <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          data-stop-tile-open="true"
-          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'line' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
-          aria-pressed={value === 'line'}
-          onClick={(event) => {
-            event.stopPropagation()
-            onChange('line')
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
-            <polyline
-              points="2,11 6,8 9,9 14,4"
-              fill="none"
-              className="house-toggle-chart-line"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              data-expanded="true"
-            />
-            <circle cx="2" cy="11" r="1.1" fill="currentColor" />
-            <circle cx="6" cy="8" r="1.1" fill="currentColor" />
-            <circle cx="9" cy="9" r="1.1" fill="currentColor" />
-            <circle cx="14" cy="4" r="1.1" fill="currentColor" />
-          </svg>
-        </button>
+        {(['bars', 'line', 'table'] as const).map((mode, optionIndex, options) => (
+          <button
+            key={mode}
+            type="button"
+            data-stop-tile-open="true"
+            className={cn(
+              HOUSE_TOGGLE_BUTTON_CLASS,
+              'relative z-[1] inline-flex min-w-0 items-center justify-center px-1.5',
+              optionIndex === 0
+                ? '!rounded-l-full !rounded-r-none'
+                : optionIndex === options.length - 1
+                  ? '!rounded-l-none !rounded-r-full'
+                  : '!rounded-none',
+              value === mode
+                ? 'bg-foreground text-background shadow-sm'
+                : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+            )}
+            aria-pressed={value === mode}
+            onClick={(event) => {
+              event.stopPropagation()
+              onChange(mode)
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            {mode === 'bars' ? (
+              <svg viewBox="0 0 16 16" aria-hidden="true" className={cn(HOUSE_TOGGLE_CHART_BAR_CLASS, 'h-3.5 w-3.5 fill-current')}>
+                <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
+                <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
+                <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
+              </svg>
+            ) : mode === 'line' ? (
+              <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
+                <polyline
+                  points="2,11 6,8 9,9 14,4"
+                  fill="none"
+                  className="house-toggle-chart-line"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  data-expanded="true"
+                />
+                <circle cx="2" cy="11" r="1.1" fill="currentColor" />
+                <circle cx="6" cy="8" r="1.1" fill="currentColor" />
+                <circle cx="9" cy="9" r="1.1" fill="currentColor" />
+                <circle cx="14" cy="4" r="1.1" fill="currentColor" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
+                <rect x="2.2" y="3" width="11.6" height="10" rx="1.1" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <line x1="2.9" y1="6.1" x2="13.1" y2="6.1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <line x1="2.9" y1="9.1" x2="13.1" y2="9.1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <line x1="6.1" y1="3.7" x2="6.1" y2="12.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            )}
+          </button>
+        ))}
       </div>
     </div>
   )
@@ -2034,6 +3592,20 @@ type LinePoint = {
   label: string
 }
 
+type MonotonePathSegment =
+  | {
+    kind: 'line'
+    start: Pick<LinePoint, 'x' | 'y'>
+    end: Pick<LinePoint, 'x' | 'y'>
+  }
+  | {
+    kind: 'cubic'
+    start: Pick<LinePoint, 'x' | 'y'>
+    cp1: Pick<LinePoint, 'x' | 'y'>
+    cp2: Pick<LinePoint, 'x' | 'y'>
+    end: Pick<LinePoint, 'x' | 'y'>
+  }
+
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return []
@@ -2110,12 +3682,21 @@ function monotonePathFromPoints(points: Array<{ x: number; y: number }>): string
   if (points.length === 0) {
     return ''
   }
-  if (points.length === 1) {
-    const p = points[0]
-    return `M ${p.x} ${p.y}`
+  return serializeMonotonePath(points[0], buildMonotonePathSegments(points))
+}
+
+function buildMonotonePathSegments(points: Array<{ x: number; y: number }>): MonotonePathSegment[] {
+  if (points.length < 2) {
+    return []
   }
   if (points.length === 2) {
-    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`
+    return [
+      {
+        kind: 'line',
+        start: points[0],
+        end: points[1],
+      },
+    ]
   }
 
   const n = points.length
@@ -2151,16 +3732,39 @@ function monotonePathFromPoints(points: Array<{ x: number; y: number }>): string
     }
   }
 
-  let d = `M ${points[0].x} ${points[0].y}`
+  const segments: MonotonePathSegment[] = []
   for (let index = 0; index < n - 1; index += 1) {
     const current = points[index]
     const next = points[index + 1]
     const dx = next.x - current.x
-    const cp1x = current.x + (dx / 3)
-    const cp1y = current.y + ((tangents[index] * dx) / 3)
-    const cp2x = next.x - (dx / 3)
-    const cp2y = next.y - ((tangents[index + 1] * dx) / 3)
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${next.x} ${next.y}`
+    segments.push({
+      kind: 'cubic',
+      start: current,
+      cp1: {
+        x: current.x + (dx / 3),
+        y: current.y + ((tangents[index] * dx) / 3),
+      },
+      cp2: {
+        x: next.x - (dx / 3),
+        y: next.y - ((tangents[index + 1] * dx) / 3),
+      },
+      end: next,
+    })
+  }
+  return segments
+}
+
+function serializeMonotonePath(
+  startPoint: { x: number; y: number },
+  segments: MonotonePathSegment[],
+): string {
+  let d = `M ${startPoint.x} ${startPoint.y}`
+  for (const segment of segments) {
+    if (segment.kind === 'line') {
+      d += ` L ${segment.end.x} ${segment.end.y}`
+      continue
+    }
+    d += ` C ${segment.cp1.x} ${segment.cp1.y}, ${segment.cp2.x} ${segment.cp2.y}, ${segment.end.x} ${segment.end.y}`
   }
   return d
 }
@@ -2621,37 +4225,44 @@ function StructuredMetricTile({
 
 function HIndexYearChart({
   tile,
+  series: overrideSeries,
   showCaption = false,
   animate = true,
   collapse = false,
 }: {
   tile: PublicationMetricTilePayload
+  series?: Array<{ x: number; label: string; value: number }>
   showCaption?: boolean
   animate?: boolean
   collapse?: boolean
 }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
-  const years = toNumberArray(chartData.years).map((item) => Math.round(item))
-  const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
-  const hasValidSeries = years.length > 0 && values.length > 0 && years.length === values.length
-  const bars = useMemo<Array<{ year: number; value: number }>>(
-    () => (hasValidSeries
-      ? years.map((year, index) => ({
-          year,
-          value: values[index],
+  const fallbackYears = toNumberArray(chartData.years).map((item) => Math.round(item))
+  const fallbackValues = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+  const series = useMemo<Array<{ x: number; label: string; value: number }>>(
+    () => {
+      if (overrideSeries && overrideSeries.length > 0) {
+        return overrideSeries
+      }
+      if (fallbackYears.length > 0 && fallbackYears.length === fallbackValues.length) {
+        return fallbackYears.map((year, index) => ({
+          x: year,
+          label: String(year),
+          value: fallbackValues[index],
         }))
-      : []),
-    [hasValidSeries, values, years],
+      }
+      return []
+    },
+    [fallbackValues, fallbackYears, overrideSeries],
   )
-  const animationKey = bars.map((bar) => `${bar.year}-${bar.value}`).join('|')
-  const hasBars = bars.length > 0
-  const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-year`, hasBars)
-  const isEntryCycle = useIsFirstChartEntry(`${animationKey}|hindex-year`, hasBars)
+  const animationKey = series.map((point) => `${point.x}-${point.value}`).join('|')
+  const hasSeries = series.length > 0
+  const lineExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-year`, hasSeries)
+  const isEntryCycle = useIsFirstChartEntry(`${animationKey}|hindex-year`, hasSeries)
   const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const rawTargetValues = useMemo(
-    () => bars.map((bar) => Math.max(0, bar.value)),
-    [bars],
+    () => series.map((point) => Math.max(0, point.value)),
+    [series],
   )
   const targetValues = useMemo(
     () => (collapse ? rawTargetValues.map(() => 0) : rawTargetValues),
@@ -2660,101 +4271,235 @@ function HIndexYearChart({
   const animatedValues = useEasedSeries(
     targetValues,
     `${animationKey}|values|${collapse ? 'collapse' : 'expand'}`,
-    animate && hasBars,
+    animate && hasSeries,
     axisDurationMs,
   )
-  const targetMax = Math.max(1, ...rawTargetValues) * 1.18
-  const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate && hasBars, axisDurationMs)
+  const targetAxisScale = useMemo(
+    () => buildNiceAxis(rawTargetValues.length ? Math.max(1, ...rawTargetValues) : 1),
+    [rawTargetValues],
+  )
+  const animatedMax = useEasedValue(
+    Math.max(1, targetAxisScale.axisMax),
+    `${animationKey}|max`,
+    animate && hasSeries,
+    axisDurationMs,
+  )
 
-  useEffect(() => {
-    setHoveredIndex(null)
-  }, [animationKey])
-
-  if (!hasBars) {
+  if (!hasSeries) {
     return <div className={dashboardTileStyles.emptyChart}>No h-index timeline</div>
   }
 
   const scaledMax = Math.max(1, animatedMax)
+  const minX = Math.min(...series.map((point) => point.x))
+  const maxX = Math.max(...series.map((point) => point.x))
+  const xRange = Math.max(1e-6, maxX - minX)
+  const tickStartYear = Math.ceil(minX)
+  const tickEndYear = Math.floor(maxX)
+  const yearTicks = Array.from(
+    { length: Math.max(1, tickEndYear - tickStartYear + 1) },
+    (_, index) => tickStartYear + index,
+  )
+  const tickStep = yearTicks.length <= 5 ? 1 : Math.max(2, Math.ceil(yearTicks.length / 4))
+  const axisLabels = yearTicks.map((year, index) => (
+    index === 0 || index === yearTicks.length - 1 || index % tickStep === 0 ? String(year) : ''
+  ))
   const axisLayout = buildChartAxisLayout({
-    axisLabels: bars.map((bar) => String(bar.year).slice(-2)),
-    axisSubLabels: bars.map(() => null),
-    dense: bars.length >= 6,
+    axisLabels,
+    axisSubLabels: yearTicks.map(() => null),
+    showXAxisName: true,
+    xAxisName: 'Year',
+    dense: yearTicks.length >= 7,
+    maxLabelLines: 1,
+    maxSubLabelLines: 1,
+    maxAxisNameLines: 1,
   })
+  const yAxisTickValues = targetAxisScale.ticks
+  const yAxisTickRatios = yAxisTickValues.map((tick) => Math.max(0, Math.min(1, tick / scaledMax)))
+  const yAxisPanelWidthRem = buildYAxisPanelWidthRem(yAxisTickValues, true, 0.85)
+  const chartLeftInset = `${yAxisPanelWidthRem + PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM}rem`
+  const plotAreaStyle = {
+    left: chartLeftInset,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
+    bottom: `${axisLayout.plotBottomRem}rem`,
+  }
+  const xAxisTicksStyle = {
+    left: chartLeftInset,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    bottom: `${axisLayout.axisBottomRem}rem`,
+    minHeight: `${axisLayout.axisMinHeightRem}rem`,
+  }
+  const yAxisPanelStyle = {
+    left: `${PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM}rem`,
+    top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
+    bottom: `${axisLayout.plotBottomRem}rem`,
+    width: `${yAxisPanelWidthRem}rem`,
+  }
+  const linePoints = series.map((point, index) => {
+    const normalizedX = (point.x - minX) / xRange
+    const boundedValue = Math.max(0, Math.min(scaledMax, animatedValues[index] ?? point.value))
+    const normalizedY = scaledMax <= 0 ? 0 : boundedValue / scaledMax
+    return {
+      x: normalizedX * 100,
+      y: 100 - (normalizedY * 100),
+      value: boundedValue,
+      label: point.label,
+    }
+  })
+  const linePath = (() => {
+    if (!linePoints.length) {
+      return ''
+    }
+    let path = `M ${linePoints[0].x} ${linePoints[0].y}`
+    for (let index = 1; index < linePoints.length; index += 1) {
+      const previous = linePoints[index - 1]
+      const current = linePoints[index]
+      path += ` L ${current.x} ${previous.y} L ${current.x} ${current.y}`
+    }
+    return path
+  })()
+  const verticalGridPercents = yearTicks
+    .map((year, index) => (axisLabels[index] ? ((year - minX) / xRange) * 100 : null))
+    .filter((value): value is number => value !== null)
+    .filter((value, index, items) => index === 0 || Math.abs(value - items[index - 1]) > 0.5)
 
   return (
     <div className="flex h-full min-h-0 min-w-0 w-full flex-col">
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
+          HOUSE_CHART_SERIES_BY_SLOT_CLASS,
           HOUSE_CHART_ENTERED_CLASS,
+          'house-publications-trend-chart-frame-borderless',
+          'h-full',
         )}
         style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
-        <div
-          className="absolute inset-x-2"
-          style={{
-            top: 'var(--metric-right-chart-top-inset, 1rem)',
-            bottom: `${axisLayout.plotBottomRem}rem`,
-          }}
-        >
-          {[50].map((pct) => (
+        <div className="absolute overflow-visible" style={plotAreaStyle}>
+          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
             <div
-              key={`h-grid-${pct}`}
-              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
-              style={{ bottom: `${pct}%` }}
-              aria-hidden="true"
+              className={cn('absolute inset-y-0 left-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={{ borderLeft: '1px solid hsl(var(--stroke-soft) / 0.78)' }}
             />
-          ))}
-          <div className="absolute inset-0 flex items-end gap-1">
-            {bars.map((bar, index) => {
-              const animatedValue = Math.max(0, animatedValues[index] ?? 0)
-              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / scaledMax) * 100)
-              const isActive = hoveredIndex === index
-              const toneClass = HOUSE_CHART_BAR_ACCENT_CLASS
-              return (
+            <div
+              className={cn('absolute inset-y-0 right-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={{ borderLeft: '1px solid hsl(var(--stroke-soft) / 0.58)' }}
+            />
+            <div
+              className={cn('absolute inset-x-0 bottom-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={{ borderTop: '1px solid hsl(var(--stroke-soft) / 0.9)' }}
+            />
+            {yAxisTickRatios
+              .filter((_, index) => index > 0 && index < yAxisTickRatios.length - 1)
+              .map((ratio, index) => (
                 <div
-                  key={`${bar.year}-${index}`}
-                  className="relative flex h-full min-h-0 flex-1 items-end"
-                  onMouseEnter={() => setHoveredIndex(index)}
-                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                >
-                  <span
-                    className={cn(
-                      HOUSE_DRILLDOWN_TOOLTIP_CLASS,
-                      isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
-                    )}
-                    style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
-                    aria-hidden="true"
-                  >
-                    h {formatInt(animatedValue)}
-                  </span>
-                  <span
-                    className={cn(
-                      'block w-full rounded',
-                      HOUSE_TOGGLE_CHART_BAR_CLASS,
-                      toneClass,
-                      isActive && 'brightness-[1.08] saturate-[1.14]',
-                    )}
-                    style={{
-                      height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
-                      transformOrigin: 'bottom',
-                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
-                      transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
-                    }}
-                  />
-                </div>
-              )
-            })}
+                  key={`h-index-grid-y-${index}`}
+                  className={cn('absolute inset-x-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                  style={{ bottom: `${Math.max(0, Math.min(100, ratio * 100))}%`, borderTop: '1px solid hsl(var(--stroke-soft) / 0.72)' }}
+                />
+              ))}
+            {yAxisTickRatios.length > 1 ? (
+              <div
+                className={cn('absolute inset-x-0 top-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{ borderTop: '1px solid hsl(var(--stroke-soft) / 0.72)' }}
+              />
+            ) : null}
+            {verticalGridPercents.map((leftPct, index) => (
+              <div
+                key={`h-index-grid-x-${index}`}
+                className={cn('absolute inset-y-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{ left: `${leftPct}%`, borderLeft: '1px solid hsl(var(--stroke-soft) / 0.58)' }}
+              />
+            ))}
           </div>
+
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-hidden">
+            <path
+              d={linePath}
+              fill="none"
+              stroke="hsl(var(--tone-accent-600) / 0.96)"
+              strokeWidth="1.9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              shapeRendering="geometricPrecision"
+              vectorEffect="non-scaling-stroke"
+              style={{
+                opacity: lineExpanded ? 1 : 0,
+                transitionDuration: tileMotionEntryDuration(0, isEntryCycle && lineExpanded),
+              }}
+            />
+          </svg>
+
+          <TooltipProvider delayDuration={120}>
+            <div className="absolute inset-0">
+              {series.map((point, index) => {
+                const linePoint = linePoints[index]
+                const yPct = linePoint?.y ?? 0
+                if (!linePoint) {
+                  return null
+                }
+                const pointLabel = formatHIndexTrajectoryPointLabel(point.label)
+                return (
+                  <Tooltip key={`h-index-tooltip-${point.x}-${point.value}-${index}`}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="absolute focus-visible:outline-none"
+                        style={{
+                          left: `calc(${linePoint.x}% - 0.8rem)`,
+                          top: `calc(${yPct}% - 0.8rem)`,
+                          width: '1.6rem',
+                          height: '1.6rem',
+                        }}
+                        aria-label={`${pointLabel}: h-index ${formatInt(point.value)}`}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      align="center"
+                      sideOffset={4}
+                      className="house-approved-tooltip max-w-[14rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                    >
+                      <div className="space-y-1">
+                        <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{pointLabel}</p>
+                        <p>{`H-index: ${formatInt(point.value)}`}</p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              })}
+            </div>
+          </TooltipProvider>
         </div>
+
+        <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
+          {yAxisTickValues.map((tick, index) => {
+            const pct = Math.max(0, Math.min(100, (yAxisTickRatios[index] || 0) * 100))
+            return (
+              <p
+                key={`h-index-y-axis-${tick}-${index}`}
+                className={cn('absolute right-0 whitespace-nowrap tabular-nums text-[0.68rem] leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
+                style={{ bottom: `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM}rem)` }}
+              >
+                {formatInt(tick)}
+              </p>
+            )
+          })}
+          <p
+            className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
+            style={{ left: '36%' }}
+          >
+            H-index
+          </p>
+        </div>
+
         <div
-          className="pointer-events-none absolute inset-x-2 grid grid-flow-col auto-cols-fr items-start gap-1"
-          style={{ bottom: `${axisLayout.axisBottomRem}rem`, minHeight: `${axisLayout.axisMinHeightRem}rem` }}
+          className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)}
+          style={xAxisTicksStyle}
         >
-          {bars.map((bar, index) => (
-            <div key={`${bar.year}-${index}-axis`} className={cn('text-center leading-none', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
-              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-tight')}>{String(bar.year).slice(-2)}</p>
+          {axisLabels.map((label, index) => (
+            <div key={`h-index-axis-${yearTicks[index] ?? index}`} className="text-center leading-none">
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-tight')}>{label}</p>
             </div>
           ))}
         </div>
@@ -2820,7 +4565,7 @@ export function PublicationsPerYearChart({
   showVisualModeToggle?: boolean
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
-  const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('all')
   const [localVisualMode, setLocalVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const effectiveWindowMode: PublicationsWindowMode = enableWindowToggle
     ? (activeWindowMode ?? windowMode)
@@ -2842,7 +4587,7 @@ export function PublicationsPerYearChart({
       setWindowMode(activeWindowMode)
       return
     }
-    setWindowMode('5y')
+    setWindowMode('all')
   }, [tile.key, enableWindowToggle, activeWindowMode])
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
@@ -4275,8 +6020,6 @@ export function PublicationsPerYearChart({
                     width: `${slotWidthPct}%`,
                     pointerEvents: effectiveVisualMode === 'line' ? 'none' : undefined,
                   }}
-                  onMouseEnter={effectiveVisualMode === 'line' ? undefined : () => setHoveredIndex(index)}
-                  onMouseLeave={effectiveVisualMode === 'line' ? undefined : () => setHoveredIndex((current) => (current === index ? null : current))}
                 >
                   {effectiveVisualMode !== 'line' ? (
                     <span
@@ -4299,6 +6042,8 @@ export function PublicationsPerYearChart({
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
+                    onMouseEnter={effectiveVisualMode === 'line' ? undefined : () => setHoveredIndex(index)}
+                    onMouseLeave={effectiveVisualMode === 'line' ? undefined : () => setHoveredIndex((current) => (current === index ? null : current))}
                     style={{
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${baseScaleX}) scaleY(${barScaleY})`,
@@ -4792,6 +6537,340 @@ function MomentumTilePanel({
   )
 }
 
+function formatMomentumOverviewTick(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0'
+  }
+  const rounded = roundMomentumOverviewValue(value)
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+}
+
+function parsePublicationRecordDate(record: Pick<PublicationDrilldownRecord, 'publicationMonthStart' | 'publicationDate' | 'year'>): Date | null {
+  if (record.publicationMonthStart) {
+    const parsedMonth = new Date(`${record.publicationMonthStart}T00:00:00Z`)
+    if (!Number.isNaN(parsedMonth.getTime())) {
+      return parsedMonth
+    }
+  }
+  if (record.publicationDate) {
+    const parsedDate = new Date(`${record.publicationDate}T00:00:00Z`)
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate
+    }
+  }
+  if (typeof record.year === 'number' && Number.isFinite(record.year)) {
+    return new Date(Date.UTC(Math.round(record.year), 0, 1))
+  }
+  return null
+}
+
+function formatPublicationMonthYear(value: Date | null): string {
+  if (!value) {
+    return 'Not available'
+  }
+  return value.toLocaleString('en-GB', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+function roundMomentumOverviewValue(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0
+  }
+  return Math.round(value * 10) / 10
+}
+
+function shiftUtcMonth(date: Date, delta: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + delta, 1))
+}
+
+function parsePublicationMonthStart(value: string | null | undefined, year: number | null | undefined): Date | null {
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = new Date(`${value.trim()}T00:00:00Z`)
+    if (!Number.isNaN(parsed.getTime())) {
+      return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), 1))
+    }
+  }
+  if (typeof year === 'number' && Number.isFinite(year)) {
+    return new Date(Date.UTC(Math.round(year), 0, 1))
+  }
+  return null
+}
+
+function formatMomentumTableAverageValue({
+  totalCitations,
+  months,
+  publicationMonthStart,
+  windowStart,
+}: {
+  totalCitations: number
+  months: number
+  publicationMonthStart: Date | null
+  windowStart: Date
+}): string {
+  if (publicationMonthStart && publicationMonthStart.getTime() >= windowStart.getTime()) {
+    return 'N/A'
+  }
+  if (totalCitations > 0) {
+    return formatMomentumOverviewTick(totalCitations / months)
+  }
+  return formatMomentumOverviewTick(0)
+}
+
+type MomentumRecentCellTone = 'positive' | 'accent' | 'danger' | 'neutral'
+
+function getMomentumRecentCellTone({
+  recentTotalCitations,
+  recentMonths,
+  priorTotalCitations,
+  priorMonths,
+  isNotComparable,
+}: {
+  recentTotalCitations: number
+  recentMonths: number
+  priorTotalCitations: number
+  priorMonths: number
+  isNotComparable: boolean
+}): MomentumRecentCellTone {
+  if (isNotComparable) {
+    return 'neutral'
+  }
+  const recentRate = recentMonths > 0 ? recentTotalCitations / recentMonths : 0
+  const priorRate = priorMonths > 0 ? priorTotalCitations / priorMonths : 0
+  if (recentRate <= 1e-6 && priorRate <= 1e-6) {
+    return 'accent'
+  }
+  const ratio = recentRate / priorRate
+  if (ratio >= 1.15) {
+    return 'positive'
+  }
+  if (ratio <= 0.85) {
+    return 'danger'
+  }
+  return 'accent'
+}
+
+function getMomentumRecentCellTintClass(tone: MomentumRecentCellTone): string {
+  switch (tone) {
+    case 'positive':
+      return 'border-[hsl(var(--tone-positive-300)/0.92)] bg-[hsl(var(--tone-positive-50)/0.9)] text-[hsl(var(--tone-positive-800))]'
+    case 'danger':
+      return 'border-[hsl(var(--tone-danger-300)/0.92)] bg-[hsl(var(--tone-danger-50)/0.92)] text-[hsl(var(--tone-danger-800))]'
+    case 'accent':
+      return 'border-[hsl(var(--tone-accent-300)/0.92)] bg-[hsl(var(--tone-accent-50)/0.92)] text-[hsl(var(--tone-accent-800))]'
+    default:
+      return 'border-[hsl(var(--tone-neutral-300)/0.9)] bg-[hsl(var(--tone-neutral-100)/0.78)] text-[hsl(var(--tone-neutral-600))]'
+  }
+}
+
+function isMomentumWindowComparable(publicationMonthStart: Date | null, windowStart: Date): boolean {
+  return !publicationMonthStart || publicationMonthStart.getTime() < windowStart.getTime()
+}
+
+function buildMomentumOverviewTicks(values: number[]): [number, number, number] {
+  const maxValue = Math.max(0, ...values)
+  if (maxValue <= 0) {
+    return [0, 1, 2]
+  }
+  const paddedMax = maxValue * 1.08
+  const minimumStep = paddedMax / 2
+  const exponent = Math.floor(Math.log10(Math.max(minimumStep, 1e-6)))
+  const magnitude = 10 ** exponent
+  const normalized = minimumStep / magnitude
+  const niceNormalizedStep = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10
+  const step = niceNormalizedStep * magnitude
+  return [0, step, step * 2]
+}
+
+function MomentumOverviewChart({
+  tile,
+  mode,
+  yearBreakdown,
+}: {
+  tile: PublicationMetricTilePayload
+  mode: MomentumWindowMode
+  yearBreakdown: MomentumYearBreakdown | null
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const monthlyBreakdown = buildMomentumBreakdown(tile)
+  const useYearMode = mode === '5y' && Boolean(yearBreakdown?.bars.length)
+  const bars = useMemo(() => {
+    const baseline = useYearMode ? yearBreakdown?.rate4y ?? null : monthlyBreakdown.rate9m
+    const recent = useYearMode ? yearBreakdown?.rate1y ?? null : monthlyBreakdown.rate3m
+    if (baseline === null && recent === null) {
+      return []
+    }
+    return [
+      {
+        key: 'baseline',
+        label: useYearMode ? 'Prior 4 years' : 'Prior 9 months',
+        value: Math.max(0, baseline ?? 0),
+        toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
+      },
+      {
+        key: 'recent',
+        label: useYearMode ? 'Recent 1 year' : 'Recent 3 months',
+        value: Math.max(0, recent ?? 0),
+        toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
+      },
+    ]
+  }, [mode, monthlyBreakdown.rate3m, monthlyBreakdown.rate9m, useYearMode, yearBreakdown?.rate1y, yearBreakdown?.rate4y])
+
+  const yTickValues = useMemo(() => {
+    return buildMomentumOverviewTicks(bars.map((bar) => bar.value))
+  }, [bars])
+  const hasBars = bars.length > 0
+  const animationKey = useMemo(
+    () => `momentum-overview:${bars.map((bar) => `${bar.key}-${bar.value.toFixed(3)}`).join('|') || 'empty'}`,
+    [bars],
+  )
+  const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
+
+  const scaledMax = Math.max(1, yTickValues[yTickValues.length - 1] || 1)
+  const chartLeftInsetRem = 3.35
+  const chartBottomInsetRem = 3
+  const chartTopInsetRem = 0.55
+  const yAxisTickOffsetRem = 0.42
+
+  if (!bars.length) {
+    return <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>No monthly citation data.</div>
+  }
+
+  return (
+    <div className={cn('relative h-[15rem] w-full', 'house-publications-trend-chart-frame-borderless')}>
+      <div
+        className="absolute"
+        style={{
+          left: `${chartLeftInsetRem}rem`,
+          right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+          top: `${chartTopInsetRem}rem`,
+          bottom: `${chartBottomInsetRem}rem`,
+        }}
+      >
+        {[0, 0.5, 1].map((ratio) => (
+          <div
+            key={`momentum-overview-grid-${ratio}`}
+            className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+            style={{
+              bottom: `${ratio * 100}%`,
+              borderTop: `1px solid hsl(var(--stroke-soft) / ${ratio <= 0.0001 ? 0.95 : 0.76})`,
+            }}
+            aria-hidden="true"
+          />
+        ))}
+        <div
+          className={cn('pointer-events-none absolute inset-y-0 left-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+          style={{ borderLeft: '1px solid hsl(var(--stroke-soft) / 0.7)' }}
+          aria-hidden="true"
+        />
+        <div
+          className={cn('pointer-events-none absolute inset-y-0 right-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+          style={{ borderRight: '1px solid hsl(var(--stroke-soft) / 0.76)' }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 grid grid-cols-2 items-end gap-3 px-4">
+          {bars.map((bar, index) => {
+            const heightPct = bar.value <= 0 ? 3 : Math.max(6, (bar.value / scaledMax) * 100)
+            const isActive = hoveredIndex === index
+            return (
+              <div
+                key={bar.key}
+                className="relative flex h-full min-h-0 items-end"
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+              >
+                <span
+                  className={cn(
+                    HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                    isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                  )}
+                  style={{ bottom: `calc(${heightPct}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
+                  aria-hidden="true"
+                >
+                  {formatMomentumOverviewTick(bar.value)}
+                </span>
+                <div
+                  className={cn('w-full rounded-sm', HOUSE_TOGGLE_CHART_BAR_CLASS, bar.toneClass)}
+                  style={{
+                    height: `${heightPct}%`,
+                    transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                    transformOrigin: 'bottom',
+                    transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
+                    transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
+                  }}
+                  aria-label={`${bar.label}: ${formatMomentumOverviewTick(bar.value)} average citations per month`}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div
+        className="pointer-events-none absolute"
+        style={{
+          left: '0',
+          width: `${chartLeftInsetRem - 0.55}rem`,
+          top: `${chartTopInsetRem}rem`,
+          bottom: `${chartBottomInsetRem}rem`,
+        }}
+        aria-hidden="true"
+      >
+        {yTickValues.map((tickValue, index) => {
+          const ratio = scaledMax <= 0 ? 0 : tickValue / scaledMax
+          return (
+            <p
+              key={`momentum-overview-y-${index}`}
+              className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
+              style={{ bottom: `calc(${ratio * 100}% - ${yAxisTickOffsetRem}rem)` }}
+            >
+              {formatMomentumOverviewTick(tickValue)}
+            </p>
+          )
+        })}
+        <p
+          className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
+          style={{ left: '0.65rem' }}
+        >
+          {useYearMode ? 'Avg cites / year' : 'Avg cites / month'}
+        </p>
+      </div>
+
+      <div
+        className={cn('pointer-events-none absolute grid grid-cols-2 gap-3 px-4', HOUSE_TOGGLE_CHART_LABEL_CLASS)}
+        style={{
+          left: `${chartLeftInsetRem}rem`,
+          right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+          bottom: '1.3rem',
+        }}
+      >
+        {bars.map((bar) => (
+          <div key={`momentum-overview-label-${bar.key}`} className={cn('text-center leading-none', HOUSE_CHART_SCALE_TICK_CLASS)}>
+            <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>{bar.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div
+        className="pointer-events-none absolute"
+        style={{
+          left: `${chartLeftInsetRem}rem`,
+          right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+          bottom: '0',
+          minHeight: '1rem',
+        }}
+      >
+        <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
+          Comparison window
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function parseNumericKeyedMap(value: unknown): Record<number, number> {
   if (!value || typeof value !== 'object') {
     return {}
@@ -5256,10 +7335,13 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
 
 export type PublicationDrilldownSortKey = 'year' | 'title' | 'role' | 'type' | 'venue' | 'citations'
 export type PublicationTrajectoryMode = 'raw' | 'moving_avg' | 'cumulative'
+type PublicationVolumeTableDateSortMode = 'newest' | 'oldest'
 
 type PublicationDrilldownRecord = {
   workId: string
   year: number | null
+  publicationDate: string | null
+  publicationMonthStart: string | null
   title: string
   role: string
   type: string
@@ -5653,14 +7735,16 @@ export function PublicationCategoryDistributionChart({
   const valueModeOptions = valueMetric === 'citations'
     ? PUBLICATION_CITATION_VALUE_MODE_OPTIONS
     : PUBLICATION_VALUE_MODE_OPTIONS
-  const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
-  const [valueMode, setValueMode] = useState<PublicationCategoryValueMode>('absolute')
+  const perItemToggleLabel = dimension === 'article' ? 'Per article' : 'Per publication'
+  const perItemAxisLabel = dimension === 'article' ? 'Citations per article' : 'Citations per publication'
+  const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('all')
+  const [valueMode, setValueMode] = useState<PublicationCategoryValueMode>('percentage')
   const [displayMode, setDisplayMode] = useState<PublicationCategoryDisplayMode>('chart')
   const [renderDisplayMode, setRenderDisplayMode] = useState<PublicationCategoryDisplayMode>('chart')
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   useEffect(() => {
-    setWindowMode('5y')
-    setValueMode('absolute')
+    setWindowMode('all')
+    setValueMode('percentage')
     setDisplayMode('chart')
     setRenderDisplayMode('chart')
   }, [dimension, publications.length])
@@ -5696,6 +7780,27 @@ export function PublicationCategoryDistributionChart({
       ? fullYears
       : fullYears.slice(-windowSize)
   }, [fullYears, windowMode])
+  const resolvedAbsoluteYAxisLabel = useMemo(() => {
+    const labelBase = valueMetric === 'citations' ? 'Citations' : 'Publications'
+    switch (windowMode) {
+      case '1y':
+        return `${labelBase} (1 year)`
+      case '3y':
+        return `${labelBase} (3 years)`
+      case '5y':
+        return `${labelBase} (5 years)`
+      default: {
+        const now = new Date()
+        const startYear = yearsWithData.length ? yearsWithData[0] : null
+        if (startYear === null) {
+          return yAxisLabel
+        }
+        const startDateMs = Date.UTC(startYear, 0, 1)
+        const yearsCovered = Math.max(0.1, (now.getTime() - startDateMs) / (365.25 * 24 * 60 * 60 * 1000))
+        return `${labelBase} (${formatRoundedOneDecimalTrimmed(yearsCovered)} years)`
+      }
+    }
+  }, [valueMetric, windowMode, yAxisLabel, yearsWithData])
 
   const categoryConfig = useMemo(() => {
     const totals = new Map<string, number>()
@@ -5860,6 +7965,10 @@ export function PublicationCategoryDistributionChart({
           : 0,
       }))
   }, [dimension, publications, valueMetric, windowMode, windowYears])
+  const tableShareWholePercents = useMemo(
+    () => allocateWholePercentages(tableRows.map((row) => row.percentage)),
+    [tableRows],
+  )
 
   const activeWindowBars = barsByWindowMode[windowMode]
   const activeBars = activeWindowBars.bars
@@ -5876,28 +7985,29 @@ export function PublicationCategoryDistributionChart({
         : Math.max(0, bar.count)
   )
   const formatPerPaperValue = (value: number): string => (
-    (Math.round(Math.max(0, value) * 10) / 10).toFixed(1)
+    formatInt(Math.round(Math.max(0, value)))
   )
-  const formatRenderedValue = (value: number): string => (
-    showPercentageMode
-      ? `${Math.round(value)}%`
-      : showPerPaperMode
-        ? formatPerPaperValue(value)
-        : formatInt(value)
-  )
-  const formatTooltipMeta = (
-    bar: { percentage: number; paperCount: number },
-  ): string | null => {
-    if (valueMetric !== 'citations') {
-      return null
+  const formatTooltipLabel = (
+    bar: { label: string; count: number; percentage: number; paperCount: number; perPaper: number },
+  ): string => {
+    if (valueMetric === 'count') {
+      const publicationCount = Math.max(0, Math.round(bar.count))
+      const publicationsLabel = `${formatInt(publicationCount)} ${pluralize(publicationCount, 'publication')}`
+      const shareLabel = `${Math.round(bar.percentage)}%`
+      return showPercentageMode
+        ? `${shareLabel} (${publicationsLabel})`
+        : `${publicationsLabel} (${shareLabel})`
     }
-    const paperCount = Math.max(0, Math.round(bar.paperCount))
-    const papersLabel = `${formatInt(paperCount)} ${paperCount === 1 ? 'paper' : 'papers'}`
-    if (showPercentageMode) {
-      return papersLabel
-    }
+    const citationCount = Math.max(0, Math.round(bar.count))
+    const citationLabel = `${formatInt(citationCount)} ${pluralize(citationCount, 'citation')}`
     const shareLabel = `${Math.round(bar.percentage)}%`
-    return `${shareLabel} · ${papersLabel}`
+    if (showPercentageMode) {
+      return `${shareLabel} (${citationLabel})`
+    }
+    if (showPerPaperMode) {
+      return `${formatPerPaperValue(Math.max(0, bar.perPaper))} per ${bar.label.toLowerCase()}`
+    }
+    return `${citationLabel} (${shareLabel})`
   }
   const animationKey = useMemo(
     () => `${dimension}|${windowMode}|${valueMode}|${activeBars.map((bar) => `${bar.label}-${bar.count}-${bar.perPaper}`).join('|')}`,
@@ -6020,36 +8130,12 @@ export function PublicationCategoryDistributionChart({
     paddingBottom: `${xAxisLabelLayout.framePaddingBottomRem}rem`,
   }
   const yAxisTickOffsetRem = 0.4
-  const windowModeThumbStyle: CSSProperties = windowMode === 'all'
-    ? {
-      width: '28%',
-      left: '72%',
-      willChange: 'left,width',
-      transitionDuration: isEntryCycle ? '0ms' : undefined,
-    }
-    : windowMode === '5y'
-      ? {
-        width: '24%',
-        left: '48%',
-        willChange: 'left,width',
-        transitionDuration: isEntryCycle ? '0ms' : undefined,
-      }
-      : windowMode === '3y'
-        ? {
-          width: '24%',
-          left: '24%',
-          willChange: 'left,width',
-          transitionDuration: isEntryCycle ? '0ms' : undefined,
-        }
-        : {
-          width: '24%',
-          left: '0%',
-          willChange: 'left,width',
-          transitionDuration: isEntryCycle ? '0ms' : undefined,
-        }
-  const activeDisplayModeIndex = PUBLICATION_DISPLAY_MODE_OPTIONS.findIndex((option) => option.value === displayMode)
-  const useSeparatedValueModeToggle = valueModeOptions.length === 3
+  const useSeparatedValueModeToggle = valueModeOptions.length >= 2
   const activeValueModeIndex = valueModeOptions.findIndex((option) => option.value === valueMode)
+  const valueModeGridTemplate = useMemo(
+    () => valueModeOptions.map(() => 'max-content').join(' '),
+    [valueModeOptions],
+  )
   const valueModeThumbStyle: CSSProperties = buildTileToggleThumbStyle(
     Math.max(0, activeValueModeIndex),
     valueModeOptions.length,
@@ -6067,46 +8153,8 @@ export function PublicationCategoryDistributionChart({
     <div className={distributionRootClassName}>
       <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
         <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
-          <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
-            <div
-              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
-                data-stop-tile-open="true"
-                data-ui={`${dimension}-window-toggle`}
-                data-house-role="chart-toggle"
-                style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
-              >
-                <span
-                  className={HOUSE_TOGGLE_THUMB_CLASS}
-                  style={windowModeThumbStyle}
-                  aria-hidden="true"
-                />
-                {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-                  <button
-                    key={`${dimension}-window-${option.value}`}
-                    type="button"
-                    data-stop-tile-open="true"
-                    className={cn(
-                      HOUSE_TOGGLE_BUTTON_CLASS,
-                      windowMode === option.value
-                        ? 'text-white'
-                        : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                    )}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      if (windowMode === option.value) {
-                        return
-                      }
-                      setWindowMode(option.value)
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    aria-pressed={windowMode === option.value}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-          </div>
-          {enableValueModeToggle ? (
+          <PublicationWindowToggle value={windowMode} onChange={setWindowMode} />
+          {enableValueModeToggle && renderDisplayMode !== 'table' ? (
             <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
               <div
                 className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, useSeparatedValueModeToggle && 'overflow-hidden')}
@@ -6114,10 +8162,9 @@ export function PublicationCategoryDistributionChart({
                 data-ui={`${dimension}-value-mode-toggle`}
                 data-house-role="chart-toggle"
                 style={{
-                  width: valueModeOptions.length === 3 ? '11.5rem' : '7rem',
-                  gridTemplateColumns: valueModeOptions.length === 3
-                    ? '2.8fr 1.35fr 3.75fr'
-                    : `repeat(${valueModeOptions.length}, minmax(0, 1fr))`,
+                  width: 'auto',
+                  minWidth: 'fit-content',
+                  gridTemplateColumns: valueModeGridTemplate,
                 }}
               >
                 {!useSeparatedValueModeToggle ? (
@@ -6136,7 +8183,7 @@ export function PublicationCategoryDistributionChart({
                       HOUSE_TOGGLE_BUTTON_CLASS,
                       useSeparatedValueModeToggle
                         ? [
-                          'relative z-[1] min-w-0 px-1.5',
+                          'house-segmented-fill-toggle-button relative z-[1] min-w-0 px-1.5 text-center',
                           optionIndex === 0
                             ? '!rounded-l-full !rounded-r-none'
                             : optionIndex === valueModeOptions.length - 1
@@ -6144,7 +8191,7 @@ export function PublicationCategoryDistributionChart({
                               : '!rounded-none',
                           option.value !== valueMode
                             ? HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS
-                            : 'bg-foreground text-background shadow-sm',
+                            : 'bg-foreground text-background',
                         ]
                         : valueMode === option.value
                           ? 'text-white'
@@ -6167,7 +8214,7 @@ export function PublicationCategoryDistributionChart({
                     onMouseDown={(event) => event.stopPropagation()}
                     aria-pressed={valueMode === option.value}
                   >
-                    {option.label}
+                    {option.value === 'perPaper' ? perItemToggleLabel : option.label}
                   </button>
                 ))}
               </div>
@@ -6177,45 +8224,71 @@ export function PublicationCategoryDistributionChart({
         <div className="flex items-center gap-2">
           <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
             <div
-              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2 overflow-hidden')}
               data-stop-tile-open="true"
               data-ui={`${dimension}-display-mode-toggle`}
               data-house-role="chart-toggle"
-              style={{ width: '7rem' }}
+              style={{ width: '5.25rem' }}
             >
-                <span
-                  className={HOUSE_TOGGLE_THUMB_CLASS}
-                  style={buildTileToggleThumbStyle(activeDisplayModeIndex, PUBLICATION_DISPLAY_MODE_OPTIONS.length, isEntryCycle)}
-                  aria-hidden="true"
-                />
-                {PUBLICATION_DISPLAY_MODE_OPTIONS.map((option) => (
-                  <button
-                    key={`${dimension}-display-mode-${option.value}`}
-                    type="button"
-                    data-stop-tile-open="true"
-                    className={cn(
-                      HOUSE_TOGGLE_BUTTON_CLASS,
-                      displayMode === option.value
-                        ? 'text-white'
-                        : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                    )}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      if (displayMode === option.value) {
-                        if (option.value === 'table') {
-                          setDisplayMode('chart')
-                        }
-                        return
-                      }
-                      setDisplayMode(option.value)
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    aria-pressed={displayMode === option.value}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                data-stop-tile-open="true"
+                className={cn(
+                  HOUSE_TOGGLE_BUTTON_CLASS,
+                  'house-segmented-fill-toggle-button !rounded-l-full !rounded-r-none',
+                  displayMode === 'chart' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                )}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  if (displayMode === 'chart') {
+                    return
+                  }
+                  setDisplayMode('chart')
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                aria-pressed={displayMode === 'chart'}
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true" className={cn(HOUSE_TOGGLE_CHART_BAR_CLASS, 'h-3.5 w-3.5 fill-current')}>
+                  <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
+                  <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
+                  <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                data-stop-tile-open="true"
+                className={cn(
+                  HOUSE_TOGGLE_BUTTON_CLASS,
+                  'house-segmented-fill-toggle-button !rounded-l-none !rounded-r-full border-l border-[hsl(var(--stroke-soft)/0.7)]',
+                  displayMode === 'table' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                )}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  if (displayMode === 'table') {
+                    return
+                  }
+                  setDisplayMode('table')
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                aria-pressed={displayMode === 'table'}
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
+                  <rect
+                    x="2.2"
+                    y="3"
+                    width="11.6"
+                    height="10"
+                    rx="1.1"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                  />
+                  <line x1="2.9" y1="6.1" x2="13.1" y2="6.1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <line x1="2.9" y1="9.1" x2="13.1" y2="9.1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <line x1="6.1" y1="3.7" x2="6.1" y2="12.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -6236,7 +8309,7 @@ export function PublicationCategoryDistributionChart({
                     {tableHeadingLabel}
                   </th>
                   <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>
-                    {showPerPaperMode ? 'Cites/paper' : 'Count'}
+                    {showPerPaperMode ? (dimension === 'article' ? 'Cites/article' : 'Cites/publication') : 'Count'}
                   </th>
                   <th className="house-table-head-text h-10 px-1.5 text-center align-middle font-semibold whitespace-nowrap" style={{ width: '1%' }}>
                     {showPerPaperMode ? 'Papers' : 'Share'}
@@ -6244,7 +8317,7 @@ export function PublicationCategoryDistributionChart({
                 </tr>
               </thead>
               <tbody>
-                {tableRows.map((row) => (
+                {tableRows.map((row, index) => (
                   <tr key={`${dimension}-table-row-${row.label}`} className="house-table-row">
                     <td className="house-table-cell-text px-2 py-2">
                       <span className="block max-w-full break-words leading-snug">{row.label}</span>
@@ -6253,7 +8326,7 @@ export function PublicationCategoryDistributionChart({
                       {showPerPaperMode ? formatPerPaperValue(row.perPaper) : formatInt(row.count)}
                     </td>
                     <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">
-                      {showPerPaperMode ? formatInt(row.paperCount) : `${row.percentage.toFixed(1)}%`}
+                      {showPerPaperMode ? formatInt(row.paperCount) : `${tableShareWholePercents[index] || 0}%`}
                     </td>
                   </tr>
                 ))}
@@ -6264,7 +8337,7 @@ export function PublicationCategoryDistributionChart({
                       {showPerPaperMode ? formatPerPaperValue(tableTotalPerPaper) : formatInt(tableTotalCount)}
                     </td>
                     <td className="house-table-cell-text px-1.5 py-2 text-center font-semibold whitespace-nowrap tabular-nums">
-                      {showPerPaperMode ? formatInt(tableTotalPapers) : '100.0%'}
+                      {showPerPaperMode ? formatInt(tableTotalPapers) : '100%'}
                     </td>
                   </tr>
                 ) : null}
@@ -6323,8 +8396,6 @@ export function PublicationCategoryDistributionChart({
                 <div
                   key={`${bar.key}-${index}`}
                   className="relative flex h-full min-h-0 flex-1 items-end"
-                  onMouseEnter={() => setHoveredIndex(index)}
-                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
                 >
                     <span
                       className={cn(
@@ -6335,12 +8406,7 @@ export function PublicationCategoryDistributionChart({
                       style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
                       aria-hidden="true"
                     >
-                      <span className="block">{formatRenderedValue(animatedValue)}</span>
-                      {formatTooltipMeta(bar) ? (
-                        <span className="mt-0.5 block whitespace-nowrap text-[0.64rem] leading-tight opacity-80">
-                          {formatTooltipMeta(bar)}
-                        </span>
-                      ) : null}
+                      <span className="block whitespace-nowrap">{formatTooltipLabel(bar)}</span>
                     </span>
                   <span
                     className={cn(
@@ -6349,6 +8415,8 @@ export function PublicationCategoryDistributionChart({
                       HOUSE_CHART_BAR_ACCENT_CLASS,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
+                    onMouseEnter={() => setHoveredIndex(index)}
+                    onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
                     style={{
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${hoverScaleX}) scaleY(${barsExpanded ? 1 : 0})`,
@@ -6384,7 +8452,7 @@ export function PublicationCategoryDistributionChart({
             className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
             style={{ left: yAxisTitleLeft }}
           >
-            {showPercentageMode ? 'Share (%)' : showPerPaperMode ? 'Citations per paper' : yAxisLabel}
+            {showPercentageMode ? 'Share (%)' : showPerPaperMode ? perItemAxisLabel : resolvedAbsoluteYAxisLabel}
           </p>
         </div>
         <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
@@ -6426,24 +8494,22 @@ function SplitBreakdownViewToggle({
   value: SplitBreakdownViewMode
   onChange: (mode: SplitBreakdownViewMode) => void
 }) {
-  const activeIndex = value === 'bar' ? 0 : 1
-
   return (
     <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
       <div
-        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2 overflow-hidden')}
         data-stop-tile-open="true"
-        style={{ width: '7rem' }}
+        data-house-role="chart-toggle"
+        style={{ width: '5.25rem' }}
       >
-        <span
-          className={HOUSE_TOGGLE_THUMB_CLASS}
-          style={buildTileToggleThumbStyle(activeIndex, 2, false)}
-          aria-hidden="true"
-        />
         <button
           type="button"
           data-stop-tile-open="true"
-          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'bar' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          className={cn(
+            HOUSE_TOGGLE_BUTTON_CLASS,
+            'house-segmented-fill-toggle-button !rounded-l-full !rounded-r-none',
+            value === 'bar' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+          )}
           aria-pressed={value === 'bar'}
           onClick={(event) => {
             event.stopPropagation()
@@ -6451,20 +8517,42 @@ function SplitBreakdownViewToggle({
           }}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          Bar
+          <svg viewBox="0 0 16 16" aria-hidden="true" className={cn(HOUSE_TOGGLE_CHART_BAR_CLASS, 'h-3.5 w-3.5 fill-current')}>
+            <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
+            <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
+            <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
+          </svg>
         </button>
         <button
           type="button"
           data-stop-tile-open="true"
-          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'table' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          className={cn(
+            HOUSE_TOGGLE_BUTTON_CLASS,
+            'house-segmented-fill-toggle-button !rounded-l-none !rounded-r-full border-l border-[hsl(var(--stroke-soft)/0.7)]',
+            value === 'table' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+          )}
           aria-pressed={value === 'table'}
           onClick={(event) => {
             event.stopPropagation()
-            onChange(value === 'table' ? 'bar' : 'table')
+            onChange('table')
           }}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          Table
+          <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
+            <rect
+              x="2.2"
+              y="3"
+              width="11.6"
+              height="10"
+              rx="1.1"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+            />
+            <line x1="2.9" y1="6.1" x2="13.1" y2="6.1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            <line x1="2.9" y1="9.1" x2="13.1" y2="9.1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            <line x1="6.1" y1="3.7" x2="6.1" y2="12.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
         </button>
       </div>
     </div>
@@ -6478,24 +8566,20 @@ function CitationActivationHistorySeriesToggle({
   value: CitationActivationHistorySeriesMode
   onChange: (mode: CitationActivationHistorySeriesMode) => void
 }) {
-  const activeIndex = value === 'default' ? 0 : 1
-
   return (
     <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
       <div
-        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        className="house-segmented-auto-toggle"
         data-stop-tile-open="true"
-        style={{ width: '13rem' }}
       >
-        <span
-          className={HOUSE_TOGGLE_THUMB_CLASS}
-          style={buildTileToggleThumbStyle(activeIndex, 2, false)}
-          aria-hidden="true"
-        />
         <button
           type="button"
           data-stop-tile-open="true"
-          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'default' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          className={cn(
+            HOUSE_TOGGLE_BUTTON_CLASS,
+            'house-segmented-fill-toggle-button !rounded-l-full !rounded-r-none px-3',
+            value === 'default' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+          )}
           aria-pressed={value === 'default'}
           onClick={(event) => {
             event.stopPropagation()
@@ -6508,7 +8592,11 @@ function CitationActivationHistorySeriesToggle({
         <button
           type="button"
           data-stop-tile-open="true"
-          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'activeInactive' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          className={cn(
+            HOUSE_TOGGLE_BUTTON_CLASS,
+            'house-segmented-fill-toggle-button !rounded-l-none !rounded-r-full px-3',
+            value === 'activeInactive' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+          )}
           aria-pressed={value === 'activeInactive'}
           onClick={(event) => {
             event.stopPropagation()
@@ -6517,6 +8605,61 @@ function CitationActivationHistorySeriesToggle({
           onMouseDown={(event) => event.stopPropagation()}
         >
           Active/inactive
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PublicationProductionYearScopeToggle({
+  value,
+  onChange,
+}: {
+  value: PublicationProductionYearScopeMode
+  onChange: (mode: PublicationProductionYearScopeMode) => void
+}) {
+  return (
+    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+      <div className="house-segmented-auto-toggle" data-stop-tile-open="true">
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(
+            HOUSE_TOGGLE_BUTTON_CLASS,
+            'house-segmented-fill-toggle-button !rounded-l-full !rounded-r-none px-3.5',
+            value === 'complete' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+          )}
+          aria-pressed={value === 'complete'}
+          onClick={(event) => {
+            event.stopPropagation()
+            if (value === 'complete') {
+              return
+            }
+            onChange('complete')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          Full years
+        </button>
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(
+            HOUSE_TOGGLE_BUTTON_CLASS,
+            'house-segmented-fill-toggle-button !rounded-l-none !rounded-r-full px-3.5',
+            value === 'include_current' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+          )}
+          aria-pressed={value === 'include_current'}
+          onClick={(event) => {
+            event.stopPropagation()
+            if (value === 'include_current') {
+              return
+            }
+            onChange('include_current')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          YTD
         </button>
       </div>
     </div>
@@ -6547,7 +8690,7 @@ function CitationMomentumViewToggle({
         <button
           type="button"
           data-stop-tile-open="true"
-          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'sleeping' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, 'inline-flex items-center justify-center', value === 'sleeping' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
           aria-pressed={value === 'sleeping'}
           onClick={(event) => {
             event.stopPropagation()
@@ -6560,7 +8703,7 @@ function CitationMomentumViewToggle({
         <button
           type="button"
           data-stop-tile-open="true"
-          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === 'freshPickup' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, 'inline-flex items-center justify-center', value === 'freshPickup' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
           aria-pressed={value === 'freshPickup'}
           onClick={(event) => {
             event.stopPropagation()
@@ -6575,18 +8718,161 @@ function CitationMomentumViewToggle({
   )
 }
 
-function PublicationWindowToggle({
+function CitationActivationTableModeToggle({
   value,
   onChange,
-  options = PUBLICATIONS_WINDOW_OPTIONS,
 }: {
-  value: PublicationsWindowMode | RecentConcentrationWindowMode
-  onChange: (mode: PublicationsWindowMode | RecentConcentrationWindowMode) => void
-  options?: Array<{ value: PublicationsWindowMode | RecentConcentrationWindowMode; label: string }>
+  value: CitationActivationTableMode
+  onChange: (mode: CitationActivationTableMode) => void
 }) {
-  const activeIndex = Math.max(0, options.findIndex((option) => option.value === value))
-  const gridColsClass = options.length === 3 ? 'grid-cols-3' : 'grid-cols-[24%_24%_24%_28%]'
-  const toggleWidth = options.length === 3 ? '6.75rem' : '8.75rem'
+  return (
+    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+      <div className="house-segmented-auto-toggle" data-stop-tile-open="true">
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(
+            HOUSE_TOGGLE_BUTTON_CLASS,
+            'house-segmented-fill-toggle-button !rounded-l-full !rounded-r-none px-3',
+            value === 'newlyActive' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+          )}
+          aria-pressed={value === 'newlyActive'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('newlyActive')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          Newly active
+        </button>
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(
+            HOUSE_TOGGLE_BUTTON_CLASS,
+            'house-segmented-fill-toggle-button !rounded-none px-3',
+            value === 'stillActive' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+          )}
+          aria-pressed={value === 'stillActive'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('stillActive')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          Still active
+        </button>
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(
+            HOUSE_TOGGLE_BUTTON_CLASS,
+            'house-segmented-fill-toggle-button !rounded-l-none !rounded-r-full px-3',
+            value === 'inactive' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+          )}
+          aria-pressed={value === 'inactive'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('inactive')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          Inactive
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function HIndexThresholdCandidateToggle({
+  nextLabel,
+  afterLabel,
+  value,
+  onChange,
+}: {
+  nextLabel: string
+  afterLabel: string
+  value: HIndexSummaryThresholdTableMode
+  onChange: (mode: HIndexSummaryThresholdTableMode) => void
+}) {
+  const activeIndex = value === 'after' ? 1 : 0
+
+  return (
+    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+      <div
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        data-stop-tile-open="true"
+        style={{ width: '11rem', minWidth: '11rem', maxWidth: '11rem' }}
+      >
+        <span
+          className={HOUSE_TOGGLE_THUMB_CLASS}
+          style={buildTileToggleThumbStyle(activeIndex, 2, false)}
+          aria-hidden="true"
+        />
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, 'inline-flex items-center justify-center', value === 'next' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'next'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('next')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {nextLabel}
+        </button>
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(HOUSE_TOGGLE_BUTTON_CLASS, 'inline-flex items-center justify-center', value === 'after' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+          aria-pressed={value === 'after'}
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange('after')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {afterLabel}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PublicationWindowToggle<TValue extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: TValue
+  onChange: (mode: TValue) => void
+  options?: Array<{ value: TValue; label: string }>
+}) {
+  const resolvedOptions = options ?? (PUBLICATIONS_WINDOW_OPTIONS as Array<{ value: TValue; label: string }>)
+  const activeIndex = Math.max(0, resolvedOptions.findIndex((option) => option.value === value))
+  const gridColsClass = resolvedOptions.length === 2
+    ? 'grid-cols-2'
+    : resolvedOptions.length === 3
+      ? 'grid-cols-3'
+      : 'grid-cols-[24%_24%_24%_28%]'
+  const toggleWidth = resolvedOptions.length === 2
+    ? '11rem'
+    : resolvedOptions.length === 3
+      ? '6.75rem'
+      : '8.75rem'
+  const thumbStyle: CSSProperties = resolvedOptions.length === 4
+    ? (() => {
+      const segmentWidths = [24, 24, 24, 28]
+      const safeIndex = Math.max(0, Math.min(activeIndex, segmentWidths.length - 1))
+      const left = segmentWidths.slice(0, safeIndex).reduce((sum, width) => sum + width, 0)
+      return {
+        width: `${segmentWidths[safeIndex]}%`,
+        left: `${left}%`,
+        willChange: 'left,width',
+      }
+    })()
+    : buildTileToggleThumbStyle(activeIndex, resolvedOptions.length, false)
 
   return (
     <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
@@ -6597,15 +8883,15 @@ function PublicationWindowToggle({
       >
         <span
           className={HOUSE_TOGGLE_THUMB_CLASS}
-          style={buildTileToggleThumbStyle(activeIndex, options.length, false)}
+          style={thumbStyle}
           aria-hidden="true"
         />
-        {options.map((option) => (
+        {resolvedOptions.map((option) => (
           <button
             key={`recent-concentration-window-${option.value}`}
             type="button"
             data-stop-tile-open="true"
-            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, value === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, 'inline-flex items-center justify-center', value === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
             onClick={(event) => {
               event.stopPropagation()
               if (value === option.value) {
@@ -6636,47 +8922,24 @@ function TotalPublicationsDrilldownWorkspace({
   onOpenPublication?: (workId: string) => void
 }) {
   void _onOpenPublication
-  const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('all')
   const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
+  const [publicationVolumeTableDateSortMode, setPublicationVolumeTableDateSortMode] = useState<PublicationVolumeTableDateSortMode>('newest')
+  const [publicationProductionYearScopeMode, setPublicationProductionYearScopeMode] = useState<PublicationProductionYearScopeMode>('complete')
   const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
+  const [publicationProductionPhaseExpanded, setPublicationProductionPhaseExpanded] = useState(true)
+  const [publicationProductionPatternExpanded, setPublicationProductionPatternExpanded] = useState(true)
   const [publicationTypeTrendsExpanded, setPublicationTypeTrendsExpanded] = useState(true)
   const [articleTypeTrendsExpanded, setArticleTypeTrendsExpanded] = useState(true)
   const [trajectoryMode, setTrajectoryMode] = useState<PublicationTrajectoryMode>('raw')
-  const [trajectoryWindow, setTrajectoryWindow] = useState(12)
+  const [trajectoryRangeStart, setTrajectoryRangeStart] = useState(0)
+  const [trajectoryRangeEnd, setTrajectoryRangeEnd] = useState(0)
+  const [trajectoryTooltipYear, setTrajectoryTooltipYear] = useState<number | null>(null)
   const [venueBreakdownExpanded, setVenueBreakdownExpanded] = useState(true)
   const [journalBreakdownViewMode, setJournalBreakdownViewMode] = useState<JournalBreakdownViewMode>('top-ten')
   const [topicBreakdownViewMode, setTopicBreakdownViewMode] = useState<TopicBreakdownViewMode>('top-ten')
   const [topicBreakdownExpanded, setTopicBreakdownExpanded] = useState(true)
   const [oaStatusBreakdownExpanded, setOaStatusBreakdownExpanded] = useState(true)
-  const publicationTrendsAnimationKey = `pub-trends|${publicationTrendsWindowMode}|${publicationTrendsVisualMode}`
-  const publicationTrendsIsEntryCycle = useIsFirstChartEntry(publicationTrendsAnimationKey, true)
-  const publicationTrendsWindowThumbStyle: CSSProperties = publicationTrendsWindowMode === 'all'
-    ? {
-      width: '28%',
-      left: '72%',
-      willChange: 'left,width',
-      transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
-    }
-    : publicationTrendsWindowMode === '5y'
-      ? {
-        width: '24%',
-        left: '48%',
-        willChange: 'left,width',
-        transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
-      }
-      : publicationTrendsWindowMode === '3y'
-        ? {
-          width: '24%',
-          left: '24%',
-          willChange: 'left,width',
-          transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
-        }
-        : {
-          width: '24%',
-          left: '0%',
-          willChange: 'left,width',
-          transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
-        }
   const journalBreakdownThumbStyle: CSSProperties = journalBreakdownViewMode === 'all-journals'
     ? {
       width: '58%',
@@ -6701,13 +8964,18 @@ function TotalPublicationsDrilldownWorkspace({
     }
 
   useEffect(() => {
-    setPublicationTrendsWindowMode('5y')
+    setPublicationTrendsWindowMode('all')
     setPublicationTrendsVisualMode('bars')
+    setPublicationProductionYearScopeMode('complete')
     setPublicationTrendsExpanded(true)
+    setPublicationProductionPhaseExpanded(true)
+    setPublicationProductionPatternExpanded(true)
     setPublicationTypeTrendsExpanded(true)
     setArticleTypeTrendsExpanded(true)
     setTrajectoryMode('raw')
-    setTrajectoryWindow(12)
+    setTrajectoryRangeStart(0)
+    setTrajectoryRangeEnd(0)
+    setTrajectoryTooltipYear(null)
     setVenueBreakdownExpanded(true)
     setJournalBreakdownViewMode('top-ten')
     setTopicBreakdownViewMode('top-ten')
@@ -6724,8 +8992,18 @@ function TotalPublicationsDrilldownWorkspace({
           return null
         }
         const record = item as Record<string, unknown>
+        const publicationDate = typeof record.publication_date === 'string' && record.publication_date.trim()
+          ? record.publication_date.trim()
+          : null
+        const publicationMonthStart = typeof record.publication_month_start === 'string' && record.publication_month_start.trim()
+          ? record.publication_month_start.trim()
+          : null
         const yearRaw = Number(record.year)
-        const year = Number.isInteger(yearRaw) ? yearRaw : null
+        const year = resolvePublicationTrajectoryYear({
+          year: Number.isInteger(yearRaw) ? yearRaw : null,
+          publicationDate,
+          publicationMonthStart,
+        })
         const workId = String(record.work_id || record.id || `publication-${index}`)
         const title = String(record.title || '').trim()
         const role = String(record.role || record.user_author_role || '').trim()
@@ -6739,6 +9017,8 @@ function TotalPublicationsDrilldownWorkspace({
         return {
           workId,
           year,
+          publicationDate,
+          publicationMonthStart,
           title,
           role,
           type,
@@ -6772,32 +9052,36 @@ function TotalPublicationsDrilldownWorkspace({
     }
     return output
   }, [trajectoryFallbackValues, trajectoryFallbackYears])
+  const trajectoryAsOfDate = useMemo(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const asOfRaw = String(drilldown.as_of_date || '').trim()
+    const parsed = asOfRaw ? parseIsoPublicationDate(asOfRaw) : null
+    return parsed ?? new Date()
+  }, [tile.drilldown])
 
   const recordYearsWithData = useMemo(() => (
     publicationDrilldownRecords
       .map((record) => record.year)
       .filter((value): value is number => Number.isInteger(value))
   ), [publicationDrilldownRecords])
+  const trajectoryAvailableYears = useMemo(
+    () => mergePublicationTrajectoryYears(recordYearsWithData, trajectoryFallbackYears),
+    [recordYearsWithData, trajectoryFallbackYears],
+  )
 
   const trajectoryMinYear = useMemo(() => {
-    if (recordYearsWithData.length) {
-      return Math.min(...recordYearsWithData)
-    }
-    if (trajectoryFallbackYears.length) {
-      return Math.min(...trajectoryFallbackYears)
+    if (trajectoryAvailableYears.length) {
+      return trajectoryAvailableYears[0]
     }
     return new Date().getUTCFullYear()
-  }, [recordYearsWithData, trajectoryFallbackYears])
+  }, [trajectoryAvailableYears])
 
   const trajectoryMaxYear = useMemo(() => {
-    if (recordYearsWithData.length) {
-      return Math.max(...recordYearsWithData)
-    }
-    if (trajectoryFallbackYears.length) {
-      return Math.max(...trajectoryFallbackYears)
+    if (trajectoryAvailableYears.length) {
+      return trajectoryAvailableYears[trajectoryAvailableYears.length - 1]
     }
     return trajectoryMinYear
-  }, [recordYearsWithData, trajectoryFallbackYears, trajectoryMinYear])
+  }, [trajectoryAvailableYears, trajectoryMinYear])
 
   const trajectoryFullYears = useMemo(() => {
     const output: number[] = []
@@ -6832,12 +9116,13 @@ function TotalPublicationsDrilldownWorkspace({
   )
 
   const trajectoryYearSeriesMovingAvg = useMemo(
-    () => trajectoryYearSeriesRaw.map((_, index) => {
-      const start = Math.max(0, index - 2)
-      const window = trajectoryYearSeriesRaw.slice(start, index + 1)
-      return window.length ? (window.reduce((sum, value) => sum + value, 0) / window.length) : 0
+    () => buildPublicationTrajectoryMovingAverageSeries({
+      years: trajectoryFullYears,
+      rawValues: trajectoryYearSeriesRaw,
+      records: publicationDrilldownRecords,
+      asOfDate: trajectoryAsOfDate,
     }),
-    [trajectoryYearSeriesRaw],
+    [publicationDrilldownRecords, trajectoryAsOfDate, trajectoryFullYears, trajectoryYearSeriesRaw],
   )
 
   const trajectoryYearSeriesCumulative = useMemo(() => {
@@ -6848,30 +9133,59 @@ function TotalPublicationsDrilldownWorkspace({
     })
   }, [trajectoryYearSeriesRaw])
 
-  const trajectoryMaxWindow = Math.max(1, trajectoryFullYears.length)
-  const trajectoryMinWindow = Math.min(6, trajectoryMaxWindow)
+  const trajectoryMaxIndex = Math.max(0, trajectoryFullYears.length - 1)
+  const trajectoryMinSpan = Math.min(6, Math.max(1, trajectoryFullYears.length))
 
   useEffect(() => {
-    const initialWindow = Math.max(trajectoryMinWindow, Math.min(12, trajectoryMaxWindow))
-    setTrajectoryWindow(initialWindow)
-  }, [trajectoryMaxWindow, trajectoryMinWindow])
+    if (!trajectoryFullYears.length) {
+      setTrajectoryRangeStart(0)
+      setTrajectoryRangeEnd(0)
+      return
+    }
+    const initialCount = Math.max(trajectoryMinSpan, Math.min(12, trajectoryFullYears.length))
+    setTrajectoryRangeStart(Math.max(0, trajectoryFullYears.length - initialCount))
+    setTrajectoryRangeEnd(trajectoryMaxIndex)
+  }, [trajectoryFullYears.length, trajectoryMaxIndex, trajectoryMinSpan])
 
-  const trajectoryVisibleCount = Math.max(trajectoryMinWindow, Math.min(trajectoryWindow, trajectoryMaxWindow))
+  const trajectoryVisibleRange = useMemo(() => {
+    if (!trajectoryFullYears.length) {
+      return { start: 0, end: 0 }
+    }
+    const safeStart = Math.max(0, Math.min(trajectoryMaxIndex, trajectoryRangeStart))
+    const safeEnd = Math.max(
+      safeStart,
+      Math.min(trajectoryMaxIndex, Math.max(trajectoryRangeEnd, Math.min(trajectoryMaxIndex, safeStart + trajectoryMinSpan - 1))),
+    )
+    const adjustedStart = Math.max(0, Math.min(safeStart, safeEnd - trajectoryMinSpan + 1))
+    return {
+      start: adjustedStart,
+      end: safeEnd,
+    }
+  }, [trajectoryFullYears.length, trajectoryMaxIndex, trajectoryMinSpan, trajectoryRangeEnd, trajectoryRangeStart])
+
   const trajectoryVisibleYears = useMemo(
-    () => trajectoryFullYears.slice(-trajectoryVisibleCount),
-    [trajectoryFullYears, trajectoryVisibleCount],
+    () => trajectoryFullYears.slice(trajectoryVisibleRange.start, trajectoryVisibleRange.end + 1),
+    [trajectoryFullYears, trajectoryVisibleRange.end, trajectoryVisibleRange.start],
   )
+  useEffect(() => {
+    if (trajectoryTooltipYear === null) {
+      return
+    }
+    if (!trajectoryVisibleYears.includes(trajectoryTooltipYear)) {
+      setTrajectoryTooltipYear(null)
+    }
+  }, [trajectoryTooltipYear, trajectoryVisibleYears])
   const trajectoryVisibleRaw = useMemo(
-    () => trajectoryYearSeriesRaw.slice(-trajectoryVisibleCount),
-    [trajectoryYearSeriesRaw, trajectoryVisibleCount],
+    () => trajectoryYearSeriesRaw.slice(trajectoryVisibleRange.start, trajectoryVisibleRange.end + 1),
+    [trajectoryVisibleRange.end, trajectoryVisibleRange.start, trajectoryYearSeriesRaw],
   )
   const trajectoryVisibleMoving = useMemo(
-    () => trajectoryYearSeriesMovingAvg.slice(-trajectoryVisibleCount),
-    [trajectoryYearSeriesMovingAvg, trajectoryVisibleCount],
+    () => trajectoryYearSeriesMovingAvg.slice(trajectoryVisibleRange.start, trajectoryVisibleRange.end + 1),
+    [trajectoryVisibleRange.end, trajectoryVisibleRange.start, trajectoryYearSeriesMovingAvg],
   )
   const trajectoryVisibleCumulative = useMemo(
-    () => trajectoryYearSeriesCumulative.slice(-trajectoryVisibleCount),
-    [trajectoryYearSeriesCumulative, trajectoryVisibleCount],
+    () => trajectoryYearSeriesCumulative.slice(trajectoryVisibleRange.start, trajectoryVisibleRange.end + 1),
+    [trajectoryVisibleRange.end, trajectoryVisibleRange.start, trajectoryYearSeriesCumulative],
   )
 
   const trajectoryValues = trajectoryMode === 'cumulative'
@@ -6892,16 +9206,18 @@ function TotalPublicationsDrilldownWorkspace({
     () => buildNiceAxis(trajectoryAxisObservedMax),
     [trajectoryAxisObservedMax],
   )
-  const trajectoryAxisMax = Math.max(1, trajectoryAxisScale.axisMax)
-  const trajectoryTickRatios = useMemo(() => [0, 0.25, 0.5, 0.75, 1], [])
-  const trajectoryHorizontalGridRatios = useMemo(
-    () => trajectoryTickRatios.filter((ratio) => ratio > 0 && ratio < 1),
+  const trajectoryTargetAxisMax = Math.max(1, trajectoryAxisScale.axisMax)
+  const trajectoryTickRatios = useMemo(
+    () => trajectoryAxisScale.ticks.map((tickValue) => (
+      trajectoryAxisScale.axisMax <= 0 ? 0 : tickValue / trajectoryAxisScale.axisMax
+    )),
+    [trajectoryAxisScale.axisMax, trajectoryAxisScale.ticks],
+  )
+  const trajectoryGridTickRatiosWithoutTop = useMemo(
+    () => trajectoryTickRatios.filter((ratio) => Number.isFinite(ratio) && ratio >= 0 && ratio < 0.999),
     [trajectoryTickRatios],
   )
-  const trajectoryAxisTickValues = useMemo(
-    () => trajectoryTickRatios.map((ratio) => ratio * trajectoryAxisMax),
-    [trajectoryAxisMax, trajectoryTickRatios],
-  )
+  const trajectoryHasTopYAxisTick = trajectoryTickRatios.some((ratio) => Number.isFinite(ratio) && ratio >= 0.999)
   const trajectoryLabels = useMemo(
     () => trajectoryVisibleYears.map((year) => String(year)),
     [trajectoryVisibleYears],
@@ -6917,14 +9233,14 @@ function TotalPublicationsDrilldownWorkspace({
           trajectoryPlotHeight,
           trajectoryLabels,
           0,
-          trajectoryAxisMax,
+          trajectoryTargetAxisMax,
           0,
           0,
         )
         : []
     ),
     [
-      trajectoryAxisMax,
+      trajectoryTargetAxisMax,
       trajectoryLabels,
       trajectoryPlotHeight,
       trajectoryPlotWidth,
@@ -6940,79 +9256,100 @@ function TotalPublicationsDrilldownWorkspace({
           trajectoryPlotHeight,
           trajectoryLabels,
           0,
-          trajectoryAxisMax,
+          trajectoryTargetAxisMax,
           0,
           0,
         )
         : []
     ),
     [
-      trajectoryAxisMax,
+      trajectoryTargetAxisMax,
       trajectoryLabels,
       trajectoryPlotHeight,
       trajectoryPlotWidth,
       trajectoryVisibleMoving,
     ],
   )
-  const trajectoryRawPoints = useMemo(
-    () => (
-      trajectoryVisibleRaw.length
-        ? buildLinePointsFromBounds(
-          trajectoryVisibleRaw,
-          trajectoryPlotWidth,
-          trajectoryPlotHeight,
-          trajectoryLabels,
-          0,
-          trajectoryAxisMax,
-          0,
-          0,
-        )
-        : []
-    ),
+  const trajectoryTooltipSlices = useMemo(
+    () => buildTrajectoryTooltipSlices({
+      years: trajectoryVisibleYears,
+      rawValues: trajectoryVisibleRaw,
+      movingAvgValues: trajectoryVisibleMoving,
+      cumulativeValues: trajectoryVisibleCumulative,
+      activeValues: trajectoryValues,
+      activePoints: trajectoryPoints,
+      movingPoints: trajectoryMovingPoints,
+      fullRawValues: trajectoryYearSeriesRaw,
+      visibleStartIndex: trajectoryVisibleRange.start,
+    }),
     [
-      trajectoryAxisMax,
-      trajectoryLabels,
-      trajectoryPlotHeight,
-      trajectoryPlotWidth,
+      trajectoryMovingPoints,
+      trajectoryPoints,
+      trajectoryValues,
+      trajectoryVisibleCumulative,
+      trajectoryVisibleMoving,
+      trajectoryVisibleRange.start,
       trajectoryVisibleRaw,
+      trajectoryVisibleYears,
+      trajectoryYearSeriesRaw,
     ],
+  )
+  const trajectoryActiveTooltipSlice = useMemo(
+    () => trajectoryTooltipSlices.find((slice) => slice.year === trajectoryTooltipYear) || null,
+    [trajectoryTooltipSlices, trajectoryTooltipYear],
   )
   const trajectoryPath = useMemo(
     () => monotonePathFromPoints(trajectoryPoints),
     [trajectoryPoints],
   )
-  const trajectoryMovingPath = useMemo(
-    () => monotonePathFromPoints(trajectoryMovingPoints),
-    [trajectoryMovingPoints],
+  const trajectoryAnimationKey = useMemo(
+    () => `${trajectoryMode}|${trajectoryVisibleYears.join('|')}|${trajectoryValues.join('|')}`,
+    [trajectoryMode, trajectoryValues, trajectoryVisibleYears],
   )
-  const trajectoryVolatilityAreaPath = useMemo(() => {
-    if (!trajectoryRawPoints.length || !trajectoryMovingPoints.length) {
-      return ''
-    }
-    return `M ${trajectoryRawPoints.map((point) => `${point.x} ${point.y}`).join(' L ')} L ${[...trajectoryMovingPoints].reverse().map((point) => `${point.x} ${point.y}`).join(' L ')} Z`
-  }, [trajectoryMovingPoints, trajectoryRawPoints])
+  const trajectoryChartVisible = activeTab === 'trajectory' && trajectoryVisibleYears.length > 0
+  const trajectoryLineExpanded = useUnifiedToggleBarAnimation(
+    `${trajectoryAnimationKey}|publication-trajectory`,
+    trajectoryChartVisible,
+  )
+  const trajectoryIsEntryCycle = useIsFirstChartEntry(
+    `${trajectoryAnimationKey}|publication-trajectory`,
+    trajectoryChartVisible,
+  )
+  const trajectoryAxisDurationMs = tileAxisDurationMs(trajectoryIsEntryCycle)
+  const trajectoryLineTransitionDuration = tileChartDurationVar(trajectoryIsEntryCycle)
+  const trajectoryDisplayedAxisTarget = trajectoryChartVisible ? trajectoryTargetAxisMax : 0
+  const trajectoryDisplayedAxisMax = useEasedValue(
+    trajectoryDisplayedAxisTarget,
+    `${trajectoryAnimationKey}|y-axis-max|${trajectoryChartVisible ? 'visible' : 'hidden'}`,
+    trajectoryChartVisible,
+    trajectoryAxisDurationMs,
+  )
+  const trajectoryAnimatedAxisTickValues = useMemo(
+    () => trajectoryTickRatios.map((ratio) => ratio * Math.max(1, trajectoryDisplayedAxisMax)),
+    [trajectoryDisplayedAxisMax, trajectoryTickRatios],
+  )
 
   const trajectoryVolatilityIndex = useMemo(() => {
-    if (!trajectoryYearSeriesRaw.length) {
+    if (!trajectoryVisibleRaw.length) {
       return 0
     }
-    const mean = trajectoryYearSeriesRaw.reduce((sum, value) => sum + value, 0) / trajectoryYearSeriesRaw.length
+    const mean = trajectoryVisibleRaw.reduce((sum, value) => sum + value, 0) / trajectoryVisibleRaw.length
     if (mean <= 1e-9) {
       return 0
     }
-    const variance = trajectoryYearSeriesRaw.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / trajectoryYearSeriesRaw.length
+    const variance = trajectoryVisibleRaw.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / trajectoryVisibleRaw.length
     return Math.sqrt(variance) / mean
-  }, [trajectoryYearSeriesRaw])
+  }, [trajectoryVisibleRaw])
 
   const trajectoryGrowthSlope = useMemo(() => {
-    if (trajectoryYearSeriesRaw.length <= 1) {
+    if (trajectoryVisibleRaw.length <= 1) {
       return 0
     }
-    const n = trajectoryYearSeriesRaw.length
+    const n = trajectoryVisibleRaw.length
     const xs = Array.from({ length: n }, (_, index) => index + 1)
     const sumX = xs.reduce((sum, value) => sum + value, 0)
-    const sumY = trajectoryYearSeriesRaw.reduce((sum, value) => sum + value, 0)
-    const sumXY = trajectoryYearSeriesRaw.reduce((sum, value, index) => sum + (value * xs[index]), 0)
+    const sumY = trajectoryVisibleRaw.reduce((sum, value) => sum + value, 0)
+    const sumXY = trajectoryVisibleRaw.reduce((sum, value, index) => sum + (value * xs[index]), 0)
     const sumXX = xs.reduce((sum, value) => sum + (value * value), 0)
     const numerator = (n * sumXY) - (sumX * sumY)
     const denominator = (n * sumXX) - (sumX * sumX)
@@ -7020,28 +9357,44 @@ function TotalPublicationsDrilldownWorkspace({
       return 0
     }
     return numerator / denominator
-  }, [trajectoryYearSeriesRaw])
+  }, [trajectoryVisibleRaw])
 
   const trajectoryPhase = trajectoryGrowthSlope > 0.2
     ? 'Expanding'
     : trajectoryGrowthSlope < -0.2
       ? 'Contracting'
       : 'Stable'
+  const trajectoryVolatilityTileTintStyle = getTrajectoryVolatilityTileTintStyle(trajectoryVolatilityIndex)
+  const trajectoryGrowthTileTintStyle = getTrajectoryGrowthTileTintStyle(trajectoryGrowthSlope)
   const trajectoryStartYearLabel = trajectoryVisibleYears.length ? String(trajectoryVisibleYears[0]) : ''
   const trajectoryEndYearLabel = trajectoryVisibleYears.length ? String(trajectoryVisibleYears[trajectoryVisibleYears.length - 1]) : ''
+  const trajectoryFocusRangeLabel = trajectoryVisibleYears.length
+    ? `${trajectoryStartYearLabel} - ${trajectoryEndYearLabel}`
+    : 'Publication years'
+  const trajectoryXAxisTicks = useMemo(
+    () => buildTrajectoryYearTicks(trajectoryVisibleYears),
+    [trajectoryVisibleYears],
+  )
+  const trajectoryVerticalGridPercents = useMemo(
+    () => trajectoryXAxisTicks
+      .map((tick) => Math.max(0, Math.min(100, tick.leftPct)))
+      .filter((value) => value > 0.5 && value < 99.5)
+      .filter((value, index, values) => index === 0 || Math.abs(value - values[index - 1]) > 0.5),
+    [trajectoryXAxisTicks],
+  )
   const trajectoryXAxisLayout = useMemo(
     () => buildChartAxisLayout({
-      axisLabels: [trajectoryStartYearLabel, trajectoryEndYearLabel],
+      axisLabels: trajectoryXAxisTicks.map((tick) => tick.label),
       showXAxisName: true,
       xAxisName: 'Publication year',
-      dense: false,
+      dense: trajectoryXAxisTicks.length >= 5,
       maxLabelLines: 1,
       maxSubLabelLines: 1,
       maxAxisNameLines: 1,
     }),
-    [trajectoryEndYearLabel, trajectoryStartYearLabel],
+    [trajectoryXAxisTicks],
   )
-  const trajectoryYAxisPanelWidthRem = buildYAxisPanelWidthRem(trajectoryAxisTickValues, true, 0.5)
+  const trajectoryYAxisPanelWidthRem = buildYAxisPanelWidthRem(trajectoryAxisScale.ticks, true, 0.5)
   const trajectoryChartLeftInset = `${trajectoryYAxisPanelWidthRem + PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM}rem`
   const trajectoryPlotAreaStyle = {
     left: trajectoryChartLeftInset,
@@ -7158,14 +9511,9 @@ function TotalPublicationsDrilldownWorkspace({
       : 0
     const activeYearsValue = activeYears > 0 ? formatInt(activeYears) : '\u2014'
 
-    const highestYieldValue = (() => {
-      const nonZeroHistory = historyBars.filter((entry) => entry.value > 0)
-      if (!nonZeroHistory.length) {
-        return '\u2014'
-      }
-      const peak = nonZeroHistory.reduce((best, entry) => (entry.value > best.value ? entry : best), nonZeroHistory[0])
-      return `${formatInt(peak.value)} (${peak.year})`
-    })()
+    const firstPublicationValue = firstPublicationYear !== null
+      ? String(firstPublicationYear)
+      : '\u2014'
 
     const totalPublicationsFromChart = Math.round(sumNumbers(historyBars.map((entry) => entry.value)))
     const totalPublicationsValue = totalPublicationsFromChart > 0
@@ -7183,13 +9531,29 @@ function TotalPublicationsDrilldownWorkspace({
       { label: 'Total publications', value: totalPublicationsValue },
       { label: 'Active years', value: activeYearsValue },
       { label: 'Mean yearly publications', value: meanYearlyValue },
-      { label: 'Highest yield', value: highestYieldValue },
+      { label: 'First publication', value: firstPublicationValue },
       { label: 'Last 1 year (rolling)', value: formatInt(rolling1Year) },
       { label: 'Last 3 years (rolling)', value: formatInt(rolling3Year) },
       { label: 'Last 5 years (rolling)', value: formatInt(rolling5Year) },
       { label: 'Year-to-date', value: yearToDateValue },
     ]
   }, [tile])
+  const publicationProductionPatternStats = useMemo(
+    () => buildPublicationProductionPatternStats(tile, publicationProductionYearScopeMode),
+    [publicationProductionYearScopeMode, tile],
+  )
+  const publicationProductionPhaseStats = useMemo(
+    () => buildPublicationProductionPhaseStats(tile),
+    [tile],
+  )
+  const publicationProductionPatternNotes = useMemo(() => {
+    const notes: string[] = []
+    const lowVolumeNote = getPublicationProductionPatternLowVolumeNote(publicationProductionPatternStats.totalPublications)
+    if (lowVolumeNote) {
+      notes.push(lowVolumeNote)
+    }
+    return notes
+  }, [publicationProductionPatternStats])
 
   const venueBreakdownData = useMemo(() => {
     const fallbackRows = (() => {
@@ -7217,6 +9581,7 @@ function TotalPublicationsDrilldownWorkspace({
           label,
           value: stats.count,
           share_pct: Number(((stats.count / total) * 100).toFixed(1)),
+          total_citations: stats.citations,
           avg_citations: Number((stats.citations / Math.max(1, stats.count)).toFixed(1)),
         }))
     })()
@@ -7239,9 +9604,10 @@ function TotalPublicationsDrilldownWorkspace({
         label: String(row.label || ''),
         value: Number(row.value || 0),
         share_pct: Number(row.share_pct || 0),
+        total_citations: Number(row.total_citations ?? row.citations ?? row.citation_count ?? 0),
         avg_citations: Number(row.avg_citations || 0),
       }
-    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
+    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; total_citations: number; avg_citations: number } => row !== null)
     return parsedRows.length > 0 ? parsedRows : fallbackRows
   }, [publicationDrilldownRecords, tile.drilldown])
 
@@ -7266,9 +9632,10 @@ function TotalPublicationsDrilldownWorkspace({
         label: String(row.label || ''),
         value: Number(row.value || 0),
         share_pct: Number(row.share_pct || 0),
+        total_citations: Number(row.total_citations ?? row.citations ?? row.citation_count ?? 0),
         avg_citations: Number(row.avg_citations || 0),
       }
-    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
+    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; total_citations: number; avg_citations: number } => row !== null)
   }, [tile.drilldown])
   const topicTop10Data = useMemo(() => topicBreakdownData.slice(0, 10), [topicBreakdownData])
 
@@ -7291,9 +9658,10 @@ function TotalPublicationsDrilldownWorkspace({
         label: String(row.label || ''),
         value: Number(row.value || 0),
         share_pct: Number(row.share_pct || 0),
+        total_citations: Number(row.total_citations ?? row.citations ?? row.citation_count ?? 0),
         avg_citations: Number(row.avg_citations || 0),
       }
-    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; avg_citations: number } => row !== null)
+    }).filter((row): row is { key: string; label: string; value: number; share_pct: number; total_citations: number; avg_citations: number } => row !== null)
   }, [tile.drilldown])
   const trajectoryOptions = [
     { key: 'raw' as const, label: 'Raw' },
@@ -7305,19 +9673,241 @@ function TotalPublicationsDrilldownWorkspace({
     () => buildTotalPublicationsMethodsSections(tile),
     [tile],
   )
+  const publicationVolumeYAxisLabel = useMemo(
+    () => resolvePublicationVolumeYAxisLabel({
+      windowMode: publicationTrendsWindowMode,
+      visualMode: publicationTrendsVisualMode,
+      publicationRecords: publicationDrilldownRecords,
+      tile,
+    }),
+    [publicationDrilldownRecords, publicationTrendsVisualMode, publicationTrendsWindowMode, tile],
+  )
+  const publicationVolumeTableRows = useMemo(() => {
+    const currentUtcMonthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1))
+    const startDate = publicationTrendsWindowMode === '1y'
+      ? shiftUtcMonth(currentUtcMonthStart, -12)
+      : publicationTrendsWindowMode === '3y'
+        ? new Date(Date.UTC(currentUtcMonthStart.getUTCFullYear() - 2, 0, 1))
+        : publicationTrendsWindowMode === '5y'
+          ? new Date(Date.UTC(currentUtcMonthStart.getUTCFullYear() - 4, 0, 1))
+          : null
+    return publicationDrilldownRecords
+      .map((record) => {
+        const publicationDate = parsePublicationRecordDate(record)
+        return {
+          ...record,
+          publicationDate,
+        }
+      })
+      .filter((record) => {
+        if (!record.publicationDate) {
+          return publicationTrendsWindowMode === 'all'
+        }
+        if (!startDate) {
+          return true
+        }
+        return record.publicationDate.getTime() >= startDate.getTime()
+          && record.publicationDate.getTime() < currentUtcMonthStart.getTime()
+      })
+      .sort((left, right) => {
+        const leftTime = left.publicationDate?.getTime() ?? 0
+        const rightTime = right.publicationDate?.getTime() ?? 0
+        if (leftTime !== rightTime) {
+          return publicationVolumeTableDateSortMode === 'oldest'
+            ? leftTime - rightTime
+            : rightTime - leftTime
+        }
+        return left.title.localeCompare(right.title)
+      })
+      .map((record) => ({
+        key: record.workId,
+        title: record.title,
+        publicationDateLabel: formatPublicationMonthYear(record.publicationDate),
+        articleType: record.articleType || 'Not available',
+      }))
+  }, [publicationDrilldownRecords, publicationTrendsWindowMode, publicationVolumeTableDateSortMode])
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
     context: 'Top publication venues',
   }
   const subsectionTitle = subsectionTitleByTab[activeTab] || null
+  const publicationProductionSummarySections = (
+    <>
+      <div className="house-publications-drilldown-bounded-section" data-ui="publication-production-phase">
+        <div className="house-drilldown-heading-block">
+          <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="house-drilldown-heading-block-title">Production Phase</p>
+              <DrilldownSheet.HeadingToggle
+                expanded={publicationProductionPhaseExpanded}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setPublicationProductionPhaseExpanded((value) => !value)
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+              />
+            </div>
+            <div className="justify-self-end">
+              <HelpTooltipIconButton
+                ariaLabel="Explain Production Phase"
+                content={renderPublicationProductionPhaseTooltipContent(publicationProductionPhaseStats)}
+                align="end"
+                side="top"
+              />
+            </div>
+          </div>
+        </div>
+        {publicationProductionPhaseExpanded ? (
+          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+            <PublicationProductionPhaseSummary stats={publicationProductionPhaseStats} />
+          </div>
+        ) : null}
+      </div>
+
+      <div className="house-publications-drilldown-bounded-section" data-ui="publication-production-pattern">
+        <div className="house-drilldown-heading-block">
+          <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="house-drilldown-heading-block-title">Publication Production Pattern</p>
+              <DrilldownSheet.HeadingToggle
+                expanded={publicationProductionPatternExpanded}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setPublicationProductionPatternExpanded((value) => !value)
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+              />
+            </div>
+            <div className="justify-self-end">
+              <PublicationProductionYearScopeToggle
+                value={publicationProductionYearScopeMode}
+                onChange={setPublicationProductionYearScopeMode}
+              />
+            </div>
+          </div>
+        </div>
+        {publicationProductionPatternExpanded ? (
+          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+            <div className="house-drilldown-stack-2">
+              {publicationProductionPatternNotes.length > 0 ? (
+                <div className="house-drilldown-stack-2">
+                  {publicationProductionPatternNotes.map((note) => (
+                    <p key={note} className={cn(HOUSE_DRILLDOWN_NOTE_SOFT_CLASS, 'text-left')}>
+                      {note}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+
+              {publicationProductionPatternStats.emptyReason ? (
+                <p className="house-publications-drilldown-empty-state">
+                  {publicationProductionPatternStats.emptyReason}
+                </p>
+              ) : (
+                <div
+                  className={cn(
+                    HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS,
+                    'house-publications-headline-metric-grid mt-0 lg:grid-cols-2',
+                  )}
+                >
+                  <PublicationProductionPatternCard
+                    dataUi="publication-production-pattern-card-consistency"
+                    title="Consistency Index"
+                    meterIndex={0}
+                    primaryValue={publicationProductionPatternStats.consistencyIndex === null ? '\u2014' : publicationProductionPatternStats.consistencyIndex.toFixed(2)}
+                    semanticLabel={publicationProductionPatternStats.consistencyIndex === null
+                      ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Insufficient history</span>
+                      : renderPublicationConsistencyBadge(publicationProductionPatternStats.consistencyIndex)}
+                    tooltip={(
+                      <div className="house-publications-drilldown-stack-1">
+                        <p>Measures how evenly publications are distributed across active years. Higher values indicate steadier annual output.</p>
+                        <p>{getPublicationConsistencySupportingText(publicationProductionPatternStats.consistencyIndex)}</p>
+                      </div>
+                    )}
+                    meterValue={publicationProductionPatternStats.consistencyIndex}
+                    meterTone={publicationProductionPatternStats.consistencyIndex === null
+                      ? 'neutral'
+                      : getPublicationConsistencyTone(publicationProductionPatternStats.consistencyIndex)}
+                  />
+
+                  <PublicationProductionPatternCard
+                    dataUi="publication-production-pattern-card-burstiness"
+                    title="Burstiness Score"
+                    meterIndex={1}
+                    primaryValue={publicationProductionPatternStats.burstinessScore === null ? '\u2014' : publicationProductionPatternStats.burstinessScore.toFixed(2)}
+                    semanticLabel={publicationProductionPatternStats.burstinessScore === null
+                      ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Insufficient history</span>
+                      : renderPublicationBurstinessBadge(publicationProductionPatternStats.burstinessScore)}
+                    tooltip={(
+                      <div className="house-publications-drilldown-stack-1">
+                        <p>Measures the extent to which publication output occurs in spikes rather than evenly across years.</p>
+                        <p>{getPublicationBurstinessSupportingText(publicationProductionPatternStats.burstinessScore)}</p>
+                      </div>
+                    )}
+                    meterValue={publicationProductionPatternStats.burstinessScore}
+                    meterTone={publicationProductionPatternStats.burstinessScore === null
+                      ? 'neutral'
+                      : getPublicationBurstinessTone(publicationProductionPatternStats.burstinessScore)}
+                  />
+
+                  <PublicationProductionPatternCard
+                    dataUi="publication-production-pattern-card-peak-year-share"
+                    title="Peak-year Share"
+                    meterIndex={2}
+                    primaryValue={publicationProductionPatternStats.peakYearShare === null ? '\u2014' : `${Math.round(publicationProductionPatternStats.peakYearShare * 100)}%`}
+                    semanticLabel={publicationProductionPatternStats.peakYearShare === null
+                      ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Not available</span>
+                      : renderPublicationPeakYearShareBadge(publicationProductionPatternStats.peakYearShare)}
+                    tooltip={(
+                      <div className="house-publications-drilldown-stack-1">
+                        <p>Proportion of all publications produced in the single most productive year.</p>
+                        <p>{publicationProductionPatternStats.peakYearShare === null
+                          ? 'Peak-year concentration is unavailable for the selected scope.'
+                          : `${Math.round(publicationProductionPatternStats.peakYearShare * 100)}% of publications in this scope occurred in the most productive year.`}</p>
+                      </div>
+                    )}
+                    meterValue={publicationProductionPatternStats.peakYearShare}
+                    meterTone={publicationProductionPatternStats.peakYearShare === null
+                      ? 'neutral'
+                      : getPublicationPeakYearShareTone(publicationProductionPatternStats.peakYearShare)}
+                  />
+
+                  <PublicationProductionPatternCard
+                    dataUi="publication-production-pattern-card-years-with-output"
+                    title="Years with Output"
+                    meterIndex={3}
+                    primaryValue={`${formatInt(publicationProductionPatternStats.yearsWithOutput)} / ${formatInt(publicationProductionPatternStats.activeSpan)}`}
+                    semanticLabel={publicationProductionPatternStats.outputContinuity === null
+                      ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Not available</span>
+                      : renderPublicationOutputContinuityBadge(publicationProductionPatternStats.outputContinuity)}
+                    tooltip={(
+                      <div className="house-publications-drilldown-stack-1">
+                        <p>Percentage of years with at least one publication between the first and most recent output.</p>
+                        {publicationProductionPatternStats.outputContinuity !== null ? (
+                          <p>{`${Math.round(publicationProductionPatternStats.outputContinuity * 100)}% continuity across the active publication span.`}</p>
+                        ) : null}
+                        {publicationProductionPatternStats.longestStreak > 0 ? (
+                          <p>{`Longest publication streak: ${formatInt(publicationProductionPatternStats.longestStreak)} ${pluralize(publicationProductionPatternStats.longestStreak, 'year')}.`}</p>
+                        ) : null}
+                        <p>{getPublicationOutputContinuitySupportingText(publicationProductionPatternStats.outputContinuity)}</p>
+                      </div>
+                    )}
+                    meterValue={publicationProductionPatternStats.outputContinuity}
+                    meterTone={publicationProductionPatternStats.outputContinuity === null
+                      ? 'neutral'
+                      : getPublicationOutputContinuityTone(publicationProductionPatternStats.outputContinuity)}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </>
+  )
 
   return (
     <div className="house-drilldown-stack-3" data-metric-key={tile.key}>
       <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-drilldown-panel-no-pad')}>
-        {activeTab === 'summary' ? (
-          <div className="house-drilldown-heading-block">
-            <p className="house-drilldown-heading-block-title">Headline results</p>
-          </div>
-        ) : null}
         {activeTab === 'summary' ? (
           <div className="house-drilldown-content-block house-publications-headline-content house-drilldown-heading-content-block w-full">
             <div
@@ -7338,6 +9928,8 @@ function TotalPublicationsDrilldownWorkspace({
 
         {activeTab === 'summary' ? (
           <>
+            {publicationProductionSummarySections}
+
             <div className="house-publications-drilldown-bounded-section">
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2">
@@ -7356,43 +9948,7 @@ function TotalPublicationsDrilldownWorkspace({
                 <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                   <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
                     <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
-                      <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
-                        <div
-                          className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
-                          data-stop-tile-open="true"
-                          data-ui="publications-trends-window-toggle"
-                          data-house-role="chart-toggle"
-                          style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
-                        >
-                          <span
-                            className={HOUSE_TOGGLE_THUMB_CLASS}
-                            style={publicationTrendsWindowThumbStyle}
-                            aria-hidden="true"
-                          />
-                          {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-                            <button
-                              key={`pub-trends-window-${option.value}`}
-                              type="button"
-                              data-stop-tile-open="true"
-                              className={cn(
-                                HOUSE_TOGGLE_BUTTON_CLASS,
-                                publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                              )}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                if (publicationTrendsWindowMode === option.value) {
-                                  return
-                                }
-                                setPublicationTrendsWindowMode(option.value)
-                              }}
-                              onMouseDown={(event) => event.stopPropagation()}
-                              aria-pressed={publicationTrendsWindowMode === option.value}
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      <PublicationWindowToggle value={publicationTrendsWindowMode} onChange={setPublicationTrendsWindowMode} />
                     </div>
                     <PublicationTrendsVisualToggle
                       value={publicationTrendsVisualMode}
@@ -7400,28 +9956,95 @@ function TotalPublicationsDrilldownWorkspace({
                     />
                   </div>
 
-                  <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
-                    <PublicationsPerYearChart
-                      tile={tile}
-                      animate={animateCharts}
-                      showAxes
-                      yAxisLabel="Publications"
-                      enableWindowToggle
-                      showPeriodHint
-                      showCurrentPeriodSemantic
-                      useCompletedMonthWindowLabels
-                      autoScaleByWindow
-                      showMeanLine
-                      showMeanValueLabel
-                      meanValueOneDecimalIn1y
-                      longWindowLineXAxisTitleTranslateRem={1.1}
-                      subtleGrid
-                      activeWindowMode={publicationTrendsWindowMode}
-                      onWindowModeChange={setPublicationTrendsWindowMode}
-                      visualMode={publicationTrendsVisualMode}
-                      onVisualModeChange={setPublicationTrendsVisualMode}
-                      showWindowToggle={false}
-                    />
+                  <div
+                    className={cn(
+                      'house-drilldown-content-block w-full',
+                      publicationTrendsVisualMode === 'table'
+                        ? 'h-auto'
+                        : 'house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall',
+                    )}
+                  >
+                    {publicationTrendsVisualMode === 'table' ? (
+                      <CanonicalTablePanel
+                        bare
+                        variant="drilldown"
+                        suppressTopRowHighlight
+                        columns={[
+                          { key: 'paper', label: 'Publication' },
+                          {
+                            key: 'date',
+                            label: (
+                              <button
+                                type="button"
+                                data-stop-tile-open="true"
+                                className="inline-flex items-center justify-center gap-1 text-inherit transition-colors duration-[var(--motion-duration-ui)] ease-out hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:underline"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setPublicationVolumeTableDateSortMode((current) => current === 'newest' ? 'oldest' : 'newest')
+                                }}
+                                onMouseDown={(event) => event.stopPropagation()}
+                                aria-label={`Sort by date ${publicationVolumeTableDateSortMode === 'newest' ? 'oldest first' : 'newest first'}`}
+                                title={publicationVolumeTableDateSortMode === 'newest' ? 'Sort oldest to youngest' : 'Sort youngest to oldest'}
+                              >
+                                <span>Date</span>
+                                <span aria-hidden="true" className="text-[0.7rem] leading-none">
+                                  {publicationVolumeTableDateSortMode === 'newest' ? '↓' : '↑'}
+                                </span>
+                              </button>
+                            ),
+                            align: 'center',
+                            width: '1%',
+                          },
+                          { key: 'articleType', label: 'Article type', align: 'center', width: '1%' },
+                        ]}
+                        rows={publicationVolumeTableRows.map((row) => ({
+                          key: row.key,
+                          cells: {
+                            paper: _onOpenPublication ? (
+                              <button
+                                type="button"
+                                data-stop-tile-open="true"
+                                className="block w-full text-left text-[hsl(var(--tone-accent-700))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:text-[hsl(var(--tone-accent-800))] hover:underline focus-visible:outline-none focus-visible:underline"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  _onOpenPublication(row.key)
+                                }}
+                                onMouseDown={(event) => event.stopPropagation()}
+                              >
+                                <span className="block max-w-full break-words leading-snug">{row.title}</span>
+                              </button>
+                            ) : (
+                              <span className="block max-w-full break-words leading-snug">{row.title}</span>
+                            ),
+                            date: row.publicationDateLabel,
+                            articleType: row.articleType,
+                          },
+                        }))}
+                        emptyMessage="No publications found in the selected period."
+                      />
+                    ) : (
+                      <PublicationsPerYearChart
+                        tile={tile}
+                        animate={animateCharts}
+                        showAxes
+                        yAxisLabel={publicationVolumeYAxisLabel}
+                        enableWindowToggle
+                        showPeriodHint
+                        showCurrentPeriodSemantic
+                        useCompletedMonthWindowLabels
+                        autoScaleByWindow
+                        showMeanLine
+                        showMeanValueLabel
+                        meanValueOneDecimalIn1y
+                        longWindowLineXAxisTitleTranslateRem={1.1}
+                        subtleGrid
+                        activeWindowMode={publicationTrendsWindowMode}
+                        onWindowModeChange={setPublicationTrendsWindowMode}
+                        visualMode={publicationTrendsVisualMode}
+                        onVisualModeChange={setPublicationTrendsVisualMode}
+                        showWindowToggle={false}
+                      />
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -7488,6 +10111,7 @@ function TotalPublicationsDrilldownWorkspace({
                 </div>
               ) : null}
             </div>
+
           </>
         ) : null}
 
@@ -7527,7 +10151,7 @@ function TotalPublicationsDrilldownWorkspace({
                           <button
                             type="button"
                             data-stop-tile-open="true"
-                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, journalBreakdownViewMode === 'top-ten' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, 'inline-flex items-center justify-center', journalBreakdownViewMode === 'top-ten' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
                             onClick={(event) => {
                               event.stopPropagation()
                               setJournalBreakdownViewMode('top-ten')
@@ -7540,7 +10164,7 @@ function TotalPublicationsDrilldownWorkspace({
                           <button
                             type="button"
                             data-stop-tile-open="true"
-                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, journalBreakdownViewMode === 'all-journals' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, 'inline-flex items-center justify-center', journalBreakdownViewMode === 'all-journals' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
                             onClick={(event) => {
                               event.stopPropagation()
                               setJournalBreakdownViewMode('all-journals')
@@ -7558,6 +10182,8 @@ function TotalPublicationsDrilldownWorkspace({
                       <PublicationBreakdownTable
                         rows={venueTop10Data}
                         variant="summary-drilldown"
+                        showAvgCitations
+                        shareWholeNumbers
                         showSearch={false}
                         showRowCount={false}
                         nameColumnLabel="Journal"
@@ -7571,6 +10197,7 @@ function TotalPublicationsDrilldownWorkspace({
                         rows={venueBreakdownData}
                         variant="summary-drilldown"
                         showAvgCitations
+                        shareWholeNumbers
                         showSearch={false}
                         showRowCount={false}
                         nameColumnLabel="Journal"
@@ -7618,7 +10245,7 @@ function TotalPublicationsDrilldownWorkspace({
                           <button
                             type="button"
                             data-stop-tile-open="true"
-                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, topicBreakdownViewMode === 'top-ten' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, 'inline-flex items-center justify-center', topicBreakdownViewMode === 'top-ten' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
                             onClick={(event) => {
                               event.stopPropagation()
                               setTopicBreakdownViewMode('top-ten')
@@ -7631,7 +10258,7 @@ function TotalPublicationsDrilldownWorkspace({
                           <button
                             type="button"
                             data-stop-tile-open="true"
-                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, topicBreakdownViewMode === 'all-topics' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
+                            className={cn(HOUSE_TOGGLE_BUTTON_CLASS, 'inline-flex items-center justify-center', topicBreakdownViewMode === 'all-topics' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS)}
                             onClick={(event) => {
                               event.stopPropagation()
                               setTopicBreakdownViewMode('all-topics')
@@ -7649,6 +10276,8 @@ function TotalPublicationsDrilldownWorkspace({
                         <PublicationBreakdownTable
                           rows={topicTop10Data}
                           variant="summary-drilldown"
+                          showAvgCitations
+                          shareWholeNumbers
                           showSearch={false}
                           showRowCount={false}
                           nameColumnLabel="Topic"
@@ -7662,6 +10291,7 @@ function TotalPublicationsDrilldownWorkspace({
                         rows={topicBreakdownData}
                         variant="summary-drilldown"
                         showAvgCitations
+                        shareWholeNumbers
                         showSearch={false}
                         showRowCount={false}
                         nameColumnLabel="Topic"
@@ -7697,6 +10327,7 @@ function TotalPublicationsDrilldownWorkspace({
                         rows={oaStatusBreakdownData}
                         variant="summary-drilldown"
                         showAvgCitations
+                        shareWholeNumbers
                         showSearch={false}
                         showRowCount={false}
                         nameColumnLabel="OA status"
@@ -7718,49 +10349,60 @@ function TotalPublicationsDrilldownWorkspace({
               <p className="house-drilldown-heading-block-title">Year-over-year trajectory</p>
             </div>
             <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-              <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'justify-start')}>
-                <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
-                  <div
-                    className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-3')}
-                    data-stop-tile-open="true"
-                    data-ui="publications-trajectory-mode-toggle"
-                    data-house-role="chart-toggle"
-                    style={{ width: '15rem', minWidth: '15rem', maxWidth: '15rem' }}
-                  >
-                    <span
-                      className={HOUSE_TOGGLE_THUMB_CLASS}
-                      style={buildTileToggleThumbStyle(activeTrajectoryIndex, trajectoryOptions.length)}
-                      aria-hidden="true"
-                    />
-                    {trajectoryOptions.map((option) => (
-                      <button
-                        key={`trajectory-mode-${option.key}`}
-                        type="button"
-                        data-stop-tile-open="true"
-                        className={cn(
-                          HOUSE_TOGGLE_BUTTON_CLASS,
-                          'whitespace-nowrap',
-                          trajectoryMode === option.key ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                        )}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          if (trajectoryMode === option.key) {
-                            return
-                          }
-                          setTrajectoryMode(option.key)
-                        }}
-                        onMouseDown={(event) => event.stopPropagation()}
-                        aria-pressed={trajectoryMode === option.key}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
               {trajectoryVisibleYears.length ? (
                 <>
+                  <CompletedPeriodRangeSlider
+                    minIndex={0}
+                    maxIndex={trajectoryMaxIndex}
+                    startIndex={trajectoryVisibleRange.start}
+                    endIndex={trajectoryVisibleRange.end}
+                    minSpan={trajectoryMinSpan}
+                    selectionLabel={trajectoryFocusRangeLabel}
+                    trailingContent={(
+                      <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                        <div
+                          className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-3')}
+                          data-stop-tile-open="true"
+                          data-ui="publications-trajectory-mode-toggle"
+                          data-house-role="chart-toggle"
+                          style={{ width: '15rem', minWidth: '15rem', maxWidth: '15rem' }}
+                        >
+                          <span
+                            className={HOUSE_TOGGLE_THUMB_CLASS}
+                            style={buildTileToggleThumbStyle(activeTrajectoryIndex, trajectoryOptions.length)}
+                            aria-hidden="true"
+                          />
+                          {trajectoryOptions.map((option) => (
+                            <button
+                              key={`trajectory-mode-${option.key}`}
+                              type="button"
+                              data-stop-tile-open="true"
+                              className={cn(
+                                HOUSE_TOGGLE_BUTTON_CLASS,
+                                'whitespace-nowrap',
+                                trajectoryMode === option.key ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                              )}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                if (trajectoryMode === option.key) {
+                                  return
+                                }
+                                setTrajectoryMode(option.key)
+                              }}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              aria-pressed={trajectoryMode === option.key}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    onChange={(nextStart, nextEnd) => {
+                      setTrajectoryRangeStart(nextStart)
+                      setTrajectoryRangeEnd(nextEnd)
+                    }}
+                  />
                   <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
                     <div
                       className={cn(
@@ -7772,79 +10414,164 @@ function TotalPublicationsDrilldownWorkspace({
                       data-house-role="chart-frame"
                     >
                       <div className="absolute overflow-visible" style={trajectoryPlotAreaStyle}>
+                        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+                          <div
+                            className={cn('absolute inset-y-0 left-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+                            style={{ borderLeft: '1px solid hsl(var(--stroke-soft) / 0.7)' }}
+                          />
+                          {trajectoryGridTickRatiosWithoutTop.map((ratio, index) => (
+                            <div
+                              key={`trajectory-grid-${index}`}
+                              className={cn('absolute inset-x-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                              style={{
+                                bottom: `${Math.max(0, Math.min(100, ratio * 100))}%`,
+                                borderTop: `1px solid hsl(var(--stroke-soft) / ${ratio <= 0.0001 ? 0.95 : 0.76})`,
+                              }}
+                            />
+                          ))}
+                          {trajectoryHasTopYAxisTick ? (
+                            <div
+                              className={cn('absolute inset-x-0 top-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                              style={{ borderTop: '1px solid hsl(var(--stroke-soft) / 0.76)' }}
+                            />
+                          ) : null}
+                          {trajectoryVerticalGridPercents.map((leftPct, index) => (
+                            <div
+                              key={`trajectory-grid-x-${index}`}
+                              className={cn('absolute inset-y-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                              style={{ left: `${leftPct}%`, borderLeft: '1px solid hsl(var(--stroke-soft) / 0.58)' }}
+                              data-ui="publication-trajectory-grid-x"
+                              aria-hidden="true"
+                            />
+                          ))}
+                          <div
+                            className={cn('absolute inset-y-0 right-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+                            style={{ borderRight: '1px solid hsl(var(--stroke-soft) / 0.76)' }}
+                            aria-hidden="true"
+                          />
+                        </div>
+                        {trajectoryActiveTooltipSlice ? (
+                          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+                            <div
+                              className="absolute inset-y-0 rounded-[0.2rem] bg-[hsl(var(--tone-accent-200)/0.16)]"
+                              style={{
+                                left: `${trajectoryActiveTooltipSlice.leftPct}%`,
+                                width: `${trajectoryActiveTooltipSlice.widthPct}%`,
+                              }}
+                            />
+                          </div>
+                        ) : null}
                         <svg viewBox={`0 0 ${trajectoryPlotWidth} ${trajectoryPlotHeight}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
-                          {trajectoryHorizontalGridRatios.map((ratio, index) => {
-                            const clampedRatio = Math.max(0, Math.min(1, ratio))
-                            const y = trajectoryPlotHeight - (trajectoryPlotHeight * clampedRatio)
-                            return (
-                              <line
-                                key={`trajectory-grid-${index}`}
-                                x1={0}
-                                x2={trajectoryPlotWidth}
-                                y1={y}
-                                y2={y}
-                                stroke="hsl(var(--stroke-soft) / 0.56)"
-                                strokeWidth={1}
-                                vectorEffect="non-scaling-stroke"
-                              />
-                            )
-                          })}
-                          <line
-                            x1={0}
-                            x2={trajectoryPlotWidth}
-                            y1={0}
-                            y2={0}
-                            stroke="hsl(var(--stroke-soft) / 0.56)"
-                            strokeWidth={1}
-                            vectorEffect="non-scaling-stroke"
-                          />
-                          <line
-                            x1={0}
-                            x2={0}
-                            y1={0}
-                            y2={trajectoryPlotHeight}
-                            stroke="hsl(var(--stroke-soft) / 0.56)"
-                            strokeWidth={1}
-                            vectorEffect="non-scaling-stroke"
-                          />
-                          <line
-                            x1={trajectoryPlotWidth}
-                            x2={trajectoryPlotWidth}
-                            y1={0}
-                            y2={trajectoryPlotHeight}
-                            stroke="hsl(var(--stroke-soft) / 0.56)"
-                            strokeWidth={1}
-                            vectorEffect="non-scaling-stroke"
-                          />
-                          <line
-                            x1={0}
-                            x2={trajectoryPlotWidth}
-                            y1={trajectoryPlotHeight}
-                            y2={trajectoryPlotHeight}
-                            stroke="hsl(var(--stroke-soft) / 0.56)"
-                            strokeWidth={1}
-                            vectorEffect="non-scaling-stroke"
-                          />
-                          {trajectoryMode === 'raw' && trajectoryVolatilityAreaPath ? (
-                            <path d={trajectoryVolatilityAreaPath} className={HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS} />
-                          ) : null}
-                          {trajectoryMode === 'raw' && trajectoryMovingPath ? (
-                            <path d={trajectoryMovingPath} className={HOUSE_DRILLDOWN_CHART_MOVING_SVG_CLASS} />
-                          ) : null}
                           {trajectoryPath ? (
-                            <path d={trajectoryPath} className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS} />
+                            <path
+                              d={trajectoryPath}
+                              className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS}
+                              strokeWidth="1.9"
+                              strokeLinejoin="round"
+                              vectorEffect="non-scaling-stroke"
+                              shapeRendering="geometricPrecision"
+                              data-expanded={trajectoryLineExpanded ? 'true' : 'false'}
+                              style={{
+                                opacity: trajectoryLineExpanded ? 1 : 0,
+                                transitionDuration: trajectoryLineTransitionDuration,
+                              }}
+                            />
                           ) : null}
                         </svg>
+                        {trajectoryActiveTooltipSlice ? (
+                          <div className="pointer-events-none absolute inset-0 z-[3] overflow-hidden" aria-hidden="true">
+                            <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                              <line
+                                x1={String(trajectoryActiveTooltipSlice.xPct)}
+                                y1="0"
+                                x2={String(trajectoryActiveTooltipSlice.xPct)}
+                                y2="100"
+                                stroke="hsl(var(--tone-accent-500) / 0.9)"
+                                strokeWidth="1"
+                                strokeDasharray="4 3"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                              <circle
+                                cx={String(trajectoryActiveTooltipSlice.xPct)}
+                                cy={String(trajectoryActiveTooltipSlice.yPct)}
+                                r="1.55"
+                                fill="hsl(var(--tone-accent-700))"
+                                stroke="white"
+                                strokeWidth="0.7"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            </svg>
+                          </div>
+                        ) : null}
+                        <TooltipProvider delayDuration={120}>
+                          <div className="absolute inset-0 z-[4]" data-ui="publication-trajectory-tooltip-overlay">
+                            {trajectoryTooltipSlices.map((slice) => {
+                              const movingAveragePeriodLabel = formatTrajectoryMovingAveragePeriodLabel(slice.year, trajectoryAsOfDate)
+                              return (
+                                <Tooltip key={slice.key}>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="absolute inset-y-0 block rounded-[0.2rem] bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-200))]"
+                                      style={{
+                                        left: `${slice.leftPct}%`,
+                                        width: `${slice.widthPct}%`,
+                                      }}
+                                      data-ui="publication-trajectory-tooltip-slice"
+                                      aria-label={buildTrajectoryTooltipAriaLabel(slice, trajectoryMode, movingAveragePeriodLabel)}
+                                      onMouseEnter={() => setTrajectoryTooltipYear(slice.year)}
+                                      onMouseLeave={() => {
+                                        setTrajectoryTooltipYear((currentYear) => (
+                                          currentYear === slice.year ? null : currentYear
+                                        ))
+                                      }}
+                                      onFocus={() => setTrajectoryTooltipYear(slice.year)}
+                                      onBlur={() => {
+                                        setTrajectoryTooltipYear((currentYear) => (
+                                          currentYear === slice.year ? null : currentYear
+                                        ))
+                                      }}
+                                    />
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="top"
+                                    align="center"
+                                    sideOffset={8}
+                                    className="house-approved-tooltip z-[80] max-w-[18rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                                  >
+                                    <div className="space-y-1">
+                                      <p className="font-medium text-[hsl(var(--tone-neutral-900))]">
+                                        {slice.year}
+                                      </p>
+                                      {trajectoryMode === 'moving_avg' ? (
+                                        <p>{`3-year avg ending ${movingAveragePeriodLabel}: ${formatTrajectoryMovingAverageValue(slice.movingAvgValue)}`}</p>
+                                      ) : trajectoryMode === 'cumulative' ? (
+                                        <p>{`Cumulative through ${slice.year}: ${formatInt(slice.cumulativeValue)}`}</p>
+                                      ) : (
+                                        <p>{`Publications: ${formatInt(slice.rawValue)}`}</p>
+                                      )}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )
+                            })}
+                          </div>
+                        </TooltipProvider>
                       </div>
 
                       <div className="pointer-events-none absolute" style={trajectoryYAxisPanelStyle} aria-hidden="true">
-                        {trajectoryAxisTickValues.map((tickValue, index) => {
+                        {trajectoryAnimatedAxisTickValues.map((tickValue, index) => {
                           const pct = Math.max(0, Math.min(100, (trajectoryTickRatios[index] || 0) * 100))
+                          const tickRatioKey = Math.round((trajectoryTickRatios[index] || 0) * 1000)
                           return (
                             <p
-                              key={`trajectory-y-axis-${tickValue}-${index}`}
+                              key={`trajectory-y-axis-${tickRatioKey}`}
                               className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
-                              style={{ bottom: `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM}rem)` }}
+                              style={{
+                                bottom: `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM}rem)`,
+                                transitionDuration: `${trajectoryAxisDurationMs}ms`,
+                                transitionProperty: 'bottom,opacity',
+                              }}
                             >
                               {formatInt(Math.round(Number(tickValue || 0)))}
                             </p>
@@ -7864,17 +10591,43 @@ function TotalPublicationsDrilldownWorkspace({
 
                       <div
                         className={cn(
-                          'pointer-events-none absolute flex items-start justify-between',
+                          'pointer-events-none absolute',
                           HOUSE_TOGGLE_CHART_LABEL_CLASS,
+                          HOUSE_CHART_SCALE_LAYER_CLASS,
                         )}
                         style={trajectoryXAxisTicksStyle}
+                        data-ui="publication-trajectory-x-axis"
                       >
-                        <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
-                          {trajectoryStartYearLabel}
-                        </p>
-                        <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
-                          {trajectoryEndYearLabel}
-                        </p>
+                        {trajectoryXAxisTicks.map((tick, index) => {
+                          const tickAnchor = getTrajectoryYearTickAnchor(tick.leftPct)
+                          const isFirst = index === 0
+                          const isLast = index === trajectoryXAxisTicks.length - 1
+                          return (
+                            <div
+                              key={tick.key}
+                              className={cn(
+                                'house-chart-axis-period-item absolute top-0 leading-none',
+                                tickAnchor === 'left' ? 'text-left' : tickAnchor === 'right' ? 'text-right' : 'text-center',
+                                HOUSE_CHART_SCALE_TICK_CLASS,
+                              )}
+                              style={{
+                                left: `${tick.leftPct}%`,
+                                transform: tickAnchor === 'left'
+                                  ? 'translateX(0)'
+                                  : tickAnchor === 'right'
+                                    ? 'translateX(-100%)'
+                                    : 'translateX(-50%)',
+                                transitionProperty: 'opacity',
+                                transitionDuration: `${trajectoryAxisDurationMs}ms`,
+                              }}
+                              aria-label={`${isFirst ? 'Start' : isLast ? 'End' : 'Middle'} trajectory year: ${tick.label}`}
+                            >
+                              <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+                                {tick.label}
+                              </p>
+                            </div>
+                          )
+                        })}
                       </div>
 
                       <div
@@ -7893,29 +10646,36 @@ function TotalPublicationsDrilldownWorkspace({
                     </div>
                   </div>
 
-                  <div className="mt-2">
-                    <input
-                      type="range"
-                      min={trajectoryMinWindow}
-                      max={trajectoryMaxWindow}
-                      value={Math.min(trajectoryWindow, trajectoryMaxWindow)}
-                      onChange={(event) => setTrajectoryWindow(Math.max(trajectoryMinWindow, Number(event.target.value) || trajectoryMinWindow))}
-                      className={HOUSE_DRILLDOWN_RANGE_CLASS}
-                    />
-                  </div>
-
                   <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
-                    <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
-                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Volatility index</p>
-                      <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{trajectoryVolatilityIndex.toFixed(2)}</p>
+                    <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_SMALL_CLASS} style={trajectoryVolatilityTileTintStyle}>
+                      <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>
+                        Volatility index
+                      </p>
+                      <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                        <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>
+                          {trajectoryVolatilityIndex.toFixed(2)}
+                        </p>
+                      </div>
                     </div>
-                    <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
-                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Growth slope</p>
-                      <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{trajectoryGrowthSlope >= 0 ? '+' : ''}{trajectoryGrowthSlope.toFixed(2)}/year</p>
+                    <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_SMALL_CLASS} style={trajectoryGrowthTileTintStyle}>
+                      <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>
+                        Growth slope
+                      </p>
+                      <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                        <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>
+                          {trajectoryGrowthSlope >= 0 ? '+' : ''}{trajectoryGrowthSlope.toFixed(2)}/year
+                        </p>
+                      </div>
                     </div>
-                    <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
-                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Phase marker</p>
-                      <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{trajectoryPhase}</p>
+                    <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_SMALL_CLASS}>
+                      <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>
+                        Phase marker
+                      </p>
+                      <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                        <div className="flex w-full justify-center">
+                          {renderTrajectoryPhaseBadge(trajectoryPhase)}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -7991,6 +10751,7 @@ function GenericMetricDrilldownWorkspace({
   token = null,
   onOpenPublication,
   onDrilldownTabChange,
+  totalCitationsTile,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
@@ -7998,8 +10759,9 @@ function GenericMetricDrilldownWorkspace({
   token?: string | null
   onOpenPublication?: (workId: string) => void
   onDrilldownTabChange?: (tab: DrilldownTab) => void
+  totalCitationsTile: PublicationMetricTilePayload | null
 }) {
-  const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('all')
   const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
   const [articleTypeTrendsExpanded, setArticleTypeTrendsExpanded] = useState(true)
@@ -8011,10 +10773,13 @@ function GenericMetricDrilldownWorkspace({
   const [citationActivationHistoryExpanded, setCitationActivationHistoryExpanded] = useState(true)
   const [citationMomentumExpanded, setCitationMomentumExpanded] = useState(true)
   const [citationMomentumViewMode, setCitationMomentumViewMode] = useState<CitationMomentumViewMode>('sleeping')
+  const [momentumWindowMode, setMomentumWindowMode] = useState<MomentumWindowMode>('12m')
+  const [momentumOverviewViewMode, setMomentumOverviewViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [fieldPercentileDrilldownThreshold, setFieldPercentileDrilldownThreshold] = useState<FieldPercentileThreshold>(75)
   const [uncitedBreakdownViewMode, setUncitedBreakdownViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [recentConcentrationViewMode, setRecentConcentrationViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [citationActivationViewMode, setCitationActivationViewMode] = useState<SplitBreakdownViewMode>('bar')
+  const [citationActivationTableMode, setCitationActivationTableMode] = useState<CitationActivationTableMode>('newlyActive')
   const [citationActivationHistorySeriesMode, setCitationActivationHistorySeriesMode] = useState<CitationActivationHistorySeriesMode>('default')
   const [recentConcentrationWindowMode, setRecentConcentrationWindowMode] = useState<RecentConcentrationWindowMode>('1y')
   const [citationActivationHistoryRangeStart, setCitationActivationHistoryRangeStart] = useState(0)
@@ -8029,7 +10794,13 @@ function GenericMetricDrilldownWorkspace({
   const [citationActivationHistoryInsightOpen, setCitationActivationHistoryInsightOpen] = useState(false)
   const [citationMomentumInsightOpen, setCitationMomentumInsightOpen] = useState(false)
   const [hIndexInsightKey, setHIndexInsightKey] = useState<HIndexInsightKey | null>(null)
-
+  const [hIndexSummaryStepsExpanded, setHIndexSummaryStepsExpanded] = useState(true)
+  const [hIndexSummaryCandidatesExpanded, setHIndexSummaryCandidatesExpanded] = useState(true)
+  const [hIndexSummaryThresholdTableMode, setHIndexSummaryThresholdTableMode] = useState<HIndexSummaryThresholdTableMode>('next')
+  const momentumYearBreakdown = useMemo(
+    () => buildMomentumYearBreakdown(totalCitationsTile),
+    [totalCitationsTile],
+  )
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
     breakdown: 'Breakdown results',
     trajectory: 'Trajectory results',
@@ -8038,38 +10809,8 @@ function GenericMetricDrilldownWorkspace({
   }
   const subsectionTitle = subsectionTitleByTab[activeTab] || null
 
-  const publicationTrendsAnimationKey = `pub-trends|${publicationTrendsWindowMode}|${publicationTrendsVisualMode}`
-  const publicationTrendsIsEntryCycle = useIsFirstChartEntry(publicationTrendsAnimationKey, true)
-  const publicationTrendsWindowThumbStyle: CSSProperties = publicationTrendsWindowMode === 'all'
-    ? {
-      width: '28%',
-      left: '72%',
-      willChange: 'left,width',
-      transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
-    }
-    : publicationTrendsWindowMode === '5y'
-      ? {
-        width: '24%',
-        left: '48%',
-        willChange: 'left,width',
-        transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
-      }
-      : publicationTrendsWindowMode === '3y'
-        ? {
-          width: '24%',
-          left: '24%',
-          willChange: 'left,width',
-          transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
-        }
-        : {
-          width: '24%',
-          left: '0%',
-          willChange: 'left,width',
-          transitionDuration: publicationTrendsIsEntryCycle ? '0ms' : undefined,
-        }
-
   useEffect(() => {
-    setPublicationTrendsWindowMode('5y')
+    setPublicationTrendsWindowMode('all')
     setPublicationTrendsVisualMode('bars')
     setPublicationTrendsExpanded(true)
     setArticleTypeTrendsExpanded(true)
@@ -8083,6 +10824,7 @@ function GenericMetricDrilldownWorkspace({
     setUncitedBreakdownViewMode('bar')
     setRecentConcentrationViewMode('bar')
     setCitationActivationViewMode('bar')
+    setCitationActivationTableMode('newlyActive')
     setCitationActivationHistorySeriesMode('default')
     setRecentConcentrationWindowMode('1y')
     setCitationActivationHistoryRangeStart(0)
@@ -8097,6 +10839,9 @@ function GenericMetricDrilldownWorkspace({
     setCitationActivationHistoryInsightOpen(false)
     setCitationMomentumInsightOpen(false)
     setHIndexInsightKey(null)
+    setHIndexSummaryStepsExpanded(true)
+    setHIndexSummaryCandidatesExpanded(true)
+    setHIndexSummaryThresholdTableMode('next')
   }, [tile.key])
 
   const requestPublicationInsights = useCallback(
@@ -8370,6 +11115,12 @@ function GenericMetricDrilldownWorkspace({
         return {
           workId,
           year,
+          publicationDate: typeof record.publication_date === 'string' && record.publication_date.trim()
+            ? record.publication_date.trim()
+            : null,
+          publicationMonthStart: typeof record.publication_month_start === 'string' && record.publication_month_start.trim()
+            ? record.publication_month_start.trim()
+            : null,
           title,
           role,
           type,
@@ -8387,6 +11138,19 @@ function GenericMetricDrilldownWorkspace({
       })
       .filter(isNonNullish)
   }, [tile.drilldown])
+  const citationVolumeYAxisLabel = useMemo(
+    () => resolveCitationVolumeYAxisLabel({
+      windowMode: publicationTrendsWindowMode,
+      visualMode: publicationTrendsVisualMode,
+      publicationRecords: publicationDrilldownRecords,
+      tile,
+    }),
+    [publicationDrilldownRecords, publicationTrendsVisualMode, publicationTrendsWindowMode, tile],
+  )
+  const citationVolumeTableRows = useMemo(
+    () => buildCitationVolumeTableRows(tile, publicationTrendsWindowMode),
+    [publicationTrendsWindowMode, tile],
+  )
   const uncitedPublicationRecords = useMemo(
     () => publicationDrilldownRecords
       .filter((record) => record.citations <= 0)
@@ -8487,10 +11251,78 @@ function GenericMetricDrilldownWorkspace({
       .filter((record) => Math.max(0, (record.citations3yRolling || 0) - (record.citations1yRolling || 0)) > 0),
     [citationActivationPublicationRecords],
   )
+  const inactivePublicationRecords = useMemo(
+    () => publicationDrilldownRecords
+      .filter((record) => (record.citations1yRolling || 0) <= 0)
+      .slice()
+      .sort((left, right) => {
+        if (right.citations !== left.citations) {
+          return right.citations - left.citations
+        }
+        return left.title.localeCompare(right.title, 'en-GB')
+      }),
+    [publicationDrilldownRecords],
+  )
   const inactivePublicationCount = useMemo(
     () => Math.max(0, publicationDrilldownRecords.length - citationActivationPublicationRecords.length),
     [citationActivationPublicationRecords.length, publicationDrilldownRecords.length],
   )
+  const citationActivationTableConfig = useMemo(() => {
+    if (citationActivationTableMode === 'stillActive') {
+      return {
+        mode: 'stillActive' as const,
+        nameColumnLabel: 'Still active publication',
+        metricColumnLabel: 'Last 12m',
+        secondaryMetricColumnLabel: 'Total citations',
+        rows: stillActivePublicationRecords.map((record) => ({
+          key: record.workId,
+          label: record.title || 'Untitled publication',
+          year: record.year,
+          metricValue: formatInt(record.citations1yRolling || 0),
+          secondaryMetricValue: formatInt(record.citations),
+          workId: record.workId,
+        })),
+        emptyMessage: 'No still active publications available.',
+      }
+    }
+    if (citationActivationTableMode === 'inactive') {
+      return {
+        mode: 'inactive' as const,
+        nameColumnLabel: 'Inactive publication',
+        metricColumnLabel: 'Last 12m',
+        secondaryMetricColumnLabel: 'Total citations',
+        rows: inactivePublicationRecords.map((record) => ({
+          key: record.workId,
+          label: record.title || 'Untitled publication',
+          year: record.year,
+          metricValue: formatInt(record.citations1yRolling || 0),
+          secondaryMetricValue: formatInt(record.citations),
+          workId: record.workId,
+        })),
+        emptyMessage: 'No inactive publications available.',
+      }
+    }
+    return {
+      mode: 'newlyActive' as const,
+      nameColumnLabel: 'Newly active publication',
+      metricColumnLabel: 'Last 12m',
+      secondaryMetricColumnLabel: 'Total citations',
+      rows: newlyActivePublicationRecords.map((record) => ({
+        key: record.workId,
+        label: record.title || 'Untitled publication',
+        year: record.year,
+        metricValue: formatInt(record.citations1yRolling || 0),
+        secondaryMetricValue: formatInt(record.citations),
+        workId: record.workId,
+      })),
+      emptyMessage: 'No newly active publications available.',
+    }
+  }, [
+    citationActivationTableMode,
+    inactivePublicationRecords,
+    newlyActivePublicationRecords,
+    stillActivePublicationRecords,
+  ])
   const citationActivationHistoryPoints = useMemo(() => {
     const fallbackRowsByYear = new Map<number, {
       key: string
@@ -8765,35 +11597,33 @@ function GenericMetricDrilldownWorkspace({
     ),
     [citationActivationHistoryPointSpacingMonths, citationActivationHistoryPoints.length],
   )
-  const citationActivationHistoryDefaultSpan = useMemo(() => {
-    const pointCount = citationActivationHistoryPoints.length
-    if (pointCount <= 0) {
-      return 1
-    }
-    if (citationActivationHistoryPointSpacingMonths <= 2) {
-      const recentWindowPoints = Math.max(
-        citationActivationHistoryMinSpan,
-        Math.ceil(60 / Math.max(1, citationActivationHistoryPointSpacingMonths)),
-      )
-      return Math.min(pointCount, recentWindowPoints)
-    }
-    return pointCount
-  }, [
-    citationActivationHistoryMinSpan,
-    citationActivationHistoryPointSpacingMonths,
-    citationActivationHistoryPoints.length,
-  ])
   useEffect(() => {
     if (!citationActivationHistoryPoints.length) {
       setCitationActivationHistoryRangeStart(0)
       setCitationActivationHistoryRangeEnd(0)
       return
     }
-    const defaultEnd = citationActivationHistoryPoints.length - 1
-    const defaultStart = Math.max(0, defaultEnd - citationActivationHistoryDefaultSpan + 1)
-    setCitationActivationHistoryRangeStart(defaultStart)
-    setCitationActivationHistoryRangeEnd(defaultEnd)
-  }, [citationActivationHistoryDefaultSpan, citationActivationHistoryPoints.length, tile.key])
+    const maxIndex = citationActivationHistoryPoints.length - 1
+    const pointSpacing = Math.max(1, citationActivationHistoryPointSpacingMonths)
+    const usesRollingMonthlyPoints = pointSpacing <= 2
+    if (!usesRollingMonthlyPoints) {
+      setCitationActivationHistoryRangeStart(0)
+      setCitationActivationHistoryRangeEnd(maxIndex)
+      return
+    }
+    const defaultWindowMonths = 60
+    const defaultPointCount = Math.max(
+      citationActivationHistoryMinSpan,
+      Math.floor(defaultWindowMonths / pointSpacing) + 1,
+    )
+    setCitationActivationHistoryRangeStart(Math.max(0, citationActivationHistoryPoints.length - defaultPointCount))
+    setCitationActivationHistoryRangeEnd(maxIndex)
+  }, [
+    citationActivationHistoryMinSpan,
+    citationActivationHistoryPointSpacingMonths,
+    citationActivationHistoryPoints.length,
+    tile.key,
+  ])
   const citationActivationHistoryVisibleRange = useMemo(() => {
     if (!citationActivationHistoryPoints.length) {
       return { start: 0, end: 0 }
@@ -8844,6 +11674,8 @@ function GenericMetricDrilldownWorkspace({
         return 'in the last 3 years'
       case '5y':
         return 'in the last 5 years'
+      case 'all':
+        return 'across all years'
       default:
         return 'in the selected period'
     }
@@ -9153,10 +11985,24 @@ function GenericMetricDrilldownWorkspace({
     }
     return buildHIndexDrilldownStats(tile)
   }, [tile])
-  const hIndexNearestCandidate = useMemo(
-    () => (hIndexDrilldownStats?.candidatePapers.length ? hIndexDrilldownStats.candidatePapers[0] : null),
+  const hIndexSummaryThresholdCandidateGroups = useMemo(
+    () => hIndexDrilldownStats?.summaryThresholdCandidates ?? [],
     [hIndexDrilldownStats],
   )
+  const selectedHIndexSummaryThresholdCandidateGroup = useMemo(
+    () => hIndexSummaryThresholdCandidateGroups[hIndexSummaryThresholdTableMode === 'after' ? 1 : 0] ?? null,
+    [hIndexSummaryThresholdCandidateGroups, hIndexSummaryThresholdTableMode],
+  )
+  const hIndexSummaryStepsHeading = useMemo(() => {
+    if (!hIndexDrilldownStats) {
+      return 'Step-by-step to next h step'
+    }
+    const nextStep = hIndexDrilldownStats.summaryThresholdSteps[0]
+    const followingStep = hIndexDrilldownStats.summaryThresholdSteps[1]
+    return followingStep
+      ? `Step-by-step to H${formatInt(nextStep?.targetH ?? hIndexDrilldownStats.targetH)} and H${formatInt(followingStep.targetH)}`
+      : `Step-by-step to H${formatInt(nextStep?.targetH ?? hIndexDrilldownStats.targetH)}`
+  }, [hIndexDrilldownStats])
   const hIndexTopAuthorshipBucket = useMemo(
     () => (hIndexDrilldownStats?.authorshipMix.length ? hIndexDrilldownStats.authorshipMix[0] : null),
     [hIndexDrilldownStats],
@@ -9220,11 +12066,6 @@ function GenericMetricDrilldownWorkspace({
   return (
     <div className="house-drilldown-stack-3" data-metric-key={tile.key}>
       <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-drilldown-panel-no-pad')}>
-        {activeTab === 'summary' ? (
-          <div className="house-drilldown-heading-block">
-            <p className="house-drilldown-heading-block-title">Headline results</p>
-          </div>
-        ) : null}
         {activeTab === 'summary' && headlineMetricTiles.length > 0 ? (
           <div className="house-drilldown-content-block house-publications-headline-content house-drilldown-heading-content-block w-full">
             <div
@@ -9281,43 +12122,7 @@ function GenericMetricDrilldownWorkspace({
                 <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                   <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
                     <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
-                      <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
-                        <div
-                          className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-[24%_24%_24%_28%]')}
-                          data-stop-tile-open="true"
-                          data-ui="publications-trends-window-toggle"
-                          data-house-role="chart-toggle"
-                          style={{ width: '8.75rem', minWidth: '8.75rem', maxWidth: '8.75rem' }}
-                        >
-                          <span
-                            className={HOUSE_TOGGLE_THUMB_CLASS}
-                            style={publicationTrendsWindowThumbStyle}
-                            aria-hidden="true"
-                          />
-                          {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-                            <button
-                              key={`pub-trends-window-${option.value}`}
-                              type="button"
-                              data-stop-tile-open="true"
-                              className={cn(
-                                HOUSE_TOGGLE_BUTTON_CLASS,
-                                publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                              )}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                if (publicationTrendsWindowMode === option.value) {
-                                  return
-                                }
-                                setPublicationTrendsWindowMode(option.value)
-                              }}
-                              onMouseDown={(event) => event.stopPropagation()}
-                              aria-pressed={publicationTrendsWindowMode === option.value}
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      <PublicationWindowToggle value={publicationTrendsWindowMode} onChange={setPublicationTrendsWindowMode} />
                     </div>
                     <PublicationTrendsVisualToggle
                       value={publicationTrendsVisualMode}
@@ -9325,28 +12130,74 @@ function GenericMetricDrilldownWorkspace({
                     />
                   </div>
 
-                  <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
-                    <PublicationsPerYearChart
-                      tile={tile}
-                      animate={animateCharts}
-                      showAxes
-                      yAxisLabel="Citations"
-                      enableWindowToggle
-                      showPeriodHint
-                      showCurrentPeriodSemantic
-                      useCompletedMonthWindowLabels
-                      autoScaleByWindow
-                      showMeanLine
-                      showMeanValueLabel
-                      roundMeanValueInLongWindows
-                      longWindowLineXAxisTitleTranslateRem={1.1}
-                      subtleGrid
-                      activeWindowMode={publicationTrendsWindowMode}
-                      onWindowModeChange={setPublicationTrendsWindowMode}
-                      visualMode={publicationTrendsVisualMode}
-                      onVisualModeChange={setPublicationTrendsVisualMode}
-                      showWindowToggle={false}
-                    />
+                  <div
+                    className={cn(
+                      'house-drilldown-content-block w-full',
+                      publicationTrendsVisualMode === 'table'
+                        ? 'h-auto'
+                        : 'house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall',
+                    )}
+                  >
+                    {publicationTrendsVisualMode === 'table' ? (
+                      <CanonicalTablePanel
+                        bare
+                        variant="drilldown"
+                        suppressTopRowHighlight
+                        columns={[
+                          {
+                            key: 'period',
+                            label: publicationTrendsWindowMode === '1y' ? 'Month year' : 'Year',
+                            align: 'center',
+                            width: '1%',
+                          },
+                          { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
+                          { key: 'change', label: 'Change', align: 'center', width: '1%' },
+                        ]}
+                        rows={citationVolumeTableRows.map((row) => ({
+                          key: row.key,
+                          cells: {
+                            period: row.projected ? (
+                              <span className="inline-flex w-full items-center justify-center rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.92)] px-2 py-1 text-[hsl(var(--tone-neutral-800))]">
+                                {row.periodLabel}
+                              </span>
+                            ) : row.periodLabel,
+                            citations: row.projected ? (
+                              <span className="inline-flex w-full items-center justify-center rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.92)] px-2 py-1 text-[hsl(var(--tone-neutral-800))]">
+                                {row.citations}
+                              </span>
+                            ) : row.citations,
+                            change: row.projected ? (
+                              <span className="inline-flex w-full items-center justify-center rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.92)] px-2 py-1 text-[hsl(var(--tone-neutral-800))]">
+                                {row.change}
+                              </span>
+                            ) : row.change,
+                          },
+                        }))}
+                        emptyMessage="No citation counts found in the selected period."
+                      />
+                    ) : (
+                      <PublicationsPerYearChart
+                        tile={tile}
+                        animate={animateCharts}
+                        showAxes
+                        yAxisLabel={citationVolumeYAxisLabel}
+                        enableWindowToggle
+                        showPeriodHint
+                        showCurrentPeriodSemantic
+                        useCompletedMonthWindowLabels
+                        autoScaleByWindow
+                        showMeanLine
+                        showMeanValueLabel
+                        roundMeanValueInLongWindows
+                        longWindowLineXAxisTitleTranslateRem={1.1}
+                        subtleGrid
+                        activeWindowMode={publicationTrendsWindowMode}
+                        onWindowModeChange={setPublicationTrendsWindowMode}
+                        visualMode={publicationTrendsVisualMode}
+                        onVisualModeChange={setPublicationTrendsVisualMode}
+                        showWindowToggle={false}
+                      />
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -9423,117 +12274,157 @@ function GenericMetricDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section relative">
               <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
                 <HelpTooltipIconButton
-                  ariaLabel="Explain h-index trajectory"
-                  content={formatHIndexSummaryTooltip(hIndexDrilldownStats)}
+                  ariaLabel="Explain step-by-step to next h milestones"
+                  content={formatHIndexThresholdStepsTooltip(hIndexDrilldownStats)}
                 />
                 <PublicationInsightsTriggerButton
-                  ariaLabel="Open h-index trajectory insight"
-                  active={hIndexInsightKey === 'summary-trajectory'}
-                  onClick={() => toggleHIndexInsight('summary-trajectory')}
+                  ariaLabel="Open step-by-step h-index insight"
+                  active={hIndexInsightKey === 'summary-threshold-steps'}
+                  onClick={() => toggleHIndexInsight('summary-threshold-steps')}
                 />
               </div>
               <StaticPublicationInsightsOverlay
-                open={hIndexInsightKey === 'summary-trajectory'}
+                open={hIndexInsightKey === 'summary-threshold-steps'}
                 onClose={closeHIndexInsight}
-                title="H-index trajectory"
-                body={`Your portfolio currently supports h${formatInt(hIndexDrilldownStats.currentH)}. The observed h-index path is already backed by ${formatInt(hIndexDrilldownStats.hCorePublicationCount)} qualifying papers, and the near-threshold set currently points to h${formatInt(hIndexDrilldownStats.projectedH)} by ${formatInt(hIndexDrilldownStats.projectedYear)}.`}
-                considerationLabel="How to read this"
-                consideration={`H-index moves in thresholds, not increments of total citations. A flat stretch usually means the portfolio is waiting for one or more papers to clear the next qualifying line, rather than a lack of citation activity overall.`}
+                title={hIndexSummaryStepsHeading}
+                body={hIndexDrilldownStats.summaryThresholdSteps[1]
+                  ? `This ladder shows the immediate path from h${formatInt(hIndexDrilldownStats.currentH)} to H${formatInt(hIndexDrilldownStats.summaryThresholdSteps[0].targetH)} and then H${formatInt(hIndexDrilldownStats.summaryThresholdSteps[1].targetH)}. It makes the next two steps explicit by showing how many papers already clear each line and the exact nearest gaps that still matter.`
+                  : `This ladder shows the immediate path from h${formatInt(hIndexDrilldownStats.currentH)} to H${formatInt(hIndexDrilldownStats.targetH)}. It makes the next step explicit by showing how many papers already clear that line and the exact nearest gaps that still matter.`}
+                considerationLabel="How to read it"
+                consideration="Read papers-at-threshold before total citations. h-index moves when enough papers cross the next line, not when one paper becomes much more cited than the rest."
                 actions={[
                   {
-                    key: 'h-index-summary-open-trajectory',
-                    label: 'Next h runway',
-                    description: 'Open the milestone and runway sections on the trajectory tab.',
+                    key: 'h-index-summary-open-runway',
+                    label: 'Open runway',
+                    description: 'Jump to the trajectory tab for the full gap chart and candidate table.',
                     onSelect: () => navigateToInsightTab('trajectory'),
                   },
                 ]}
               />
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">H-index trajectory</p>
+                  <p className="house-drilldown-heading-block-title">{hIndexSummaryStepsHeading}</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={hIndexSummaryStepsExpanded}
+                    expandedLabel="Collapse h-index step summary"
+                    collapsedLabel="Expand h-index step summary"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setHIndexSummaryStepsExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
                 </div>
               </div>
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
-                  <HIndexTrajectoryPanel tile={tile} mode="trajectory" />
+              {hIndexSummaryStepsExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <HIndexThresholdStepsSummary steps={hIndexDrilldownStats.summaryThresholdSteps} />
                 </div>
-              </div>
+              ) : null}
             </div>
 
             <div className="house-publications-drilldown-bounded-section relative">
               <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
                 <HelpTooltipIconButton
-                  ariaLabel="Explain h-index readout"
-                  content={formatHIndexSummaryTooltip(hIndexDrilldownStats)}
+                  ariaLabel="Explain which publications may get me there"
+                  content={formatHIndexThresholdCandidateTableTooltip(
+                    selectedHIndexSummaryThresholdCandidateGroup?.targetH ?? hIndexDrilldownStats.targetH,
+                    selectedHIndexSummaryThresholdCandidateGroup?.candidates.length ?? 0,
+                  )}
                 />
                 <PublicationInsightsTriggerButton
-                  ariaLabel="Open h-index readout insight"
-                  active={hIndexInsightKey === 'summary-readout'}
-                  onClick={() => toggleHIndexInsight('summary-readout')}
+                  ariaLabel="Open publications that may get me there insight"
+                  active={hIndexInsightKey === 'summary-threshold-candidates'}
+                  onClick={() => toggleHIndexInsight('summary-threshold-candidates')}
                 />
               </div>
               <StaticPublicationInsightsOverlay
-                open={hIndexInsightKey === 'summary-readout'}
+                open={hIndexInsightKey === 'summary-threshold-candidates'}
                 onClose={closeHIndexInsight}
-                title="Canonical readout"
-                body={`This readout keeps the four summary checks together: current h-index, projected h-index, progress to h${formatInt(hIndexDrilldownStats.targetH)}, and career pace via m-index. Taken together, they show present scale, near-term movement, and how quickly the portfolio has accumulated durable citation depth.`}
-                considerationLabel="Why it matters"
-                consideration={hIndexDrilldownStats.yearsSinceFirstCitedPaper === null
-                  ? 'Without a reliable first cited year, the pace view is less precise. In that case, current h-index and next-target runway should carry more weight.'
-                  : `Because m-index normalises across ${formatInt(hIndexDrilldownStats.yearsSinceFirstCitedPaper)} citation-active years, it helps separate a large mature portfolio from a fast-rising one.`}
+                title="Which publications may get me there?"
+                body={selectedHIndexSummaryThresholdCandidateGroup
+                  ? selectedHIndexSummaryThresholdCandidateGroup.targetH > hIndexDrilldownStats.targetH
+                    ? `This table lists the publications currently closest to H${formatInt(selectedHIndexSummaryThresholdCandidateGroup.targetH)}. For the second step, the shortlist widens slightly so you can see a broader set of plausible papers instead of a near-duplicate of the first view.`
+                    : `This table lists the publications currently closest to H${formatInt(selectedHIndexSummaryThresholdCandidateGroup.targetH)}. It is useful when you want to see exactly which papers are carrying the next step without switching to the trajectory tab.`
+                  : 'This table lists the publications currently closest to the selected h-index step once publication-level citation data is available.'}
+                considerationLabel="How to use it"
+                consideration="Read the gap column before the projection column. The outlook column is just a pace signal from recent citation gains versus the remaining gap, not a certainty estimate."
+                actions={[
+                  {
+                    key: 'h-index-summary-candidates-open-trajectory',
+                    label: 'Open full runway',
+                    description: 'Jump to the trajectory tab for the full runway chart and candidate table.',
+                    onSelect: () => navigateToInsightTab('trajectory'),
+                  },
+                ]}
               />
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">Canonical readout</p>
+                  <p className="house-drilldown-heading-block-title">Which publications may get me there?</p>
+                  <DrilldownSheet.HeadingToggle
+                    expanded={hIndexSummaryCandidatesExpanded}
+                    expandedLabel="Collapse candidate publications"
+                    collapsedLabel="Expand candidate publications"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setHIndexSummaryCandidatesExpanded((value) => !value)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  />
                 </div>
               </div>
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <CanonicalTablePanel
-                  bare
-                  columns={[
-                    { key: 'measure', label: 'Measure' },
-                    { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                    { key: 'interpretation', label: 'Interpretation' },
-                  ]}
-                  rows={[
-                    {
-                      key: 'current-h',
-                      cells: {
-                        measure: 'Current h-index',
-                        value: formatInt(hIndexDrilldownStats.currentH),
-                        interpretation: `${formatInt(hIndexDrilldownStats.hCorePublicationCount)} papers already meet the current h threshold.`,
-                      },
-                    },
-                    {
-                      key: 'projected-h',
-                      cells: {
-                        measure: `Projected ${hIndexDrilldownStats.projectedYear}`,
-                        value: formatInt(hIndexDrilldownStats.projectedH),
-                        interpretation: 'Twelve-month outlook using near-threshold candidate papers.',
-                      },
-                    },
-                    {
-                      key: 'next-target',
-                      cells: {
-                        measure: `Progress to h${formatInt(hIndexDrilldownStats.targetH)}`,
-                        value: `${Math.round(hIndexDrilldownStats.progressPct)}%`,
-                        interpretation: `${formatInt(hIndexDrilldownStats.citationsNeededForNextH)} citations still needed to secure the next threshold.`,
-                      },
-                    },
-                    {
-                      key: 'career-pace',
-                      cells: {
-                        measure: 'Career pace',
-                        value: hIndexDrilldownStats.mIndexValue,
-                        interpretation: hIndexDrilldownStats.yearsSinceFirstCitedPaper === null
-                          ? 'Career span not available.'
-                          : `Normalised across ${formatInt(hIndexDrilldownStats.yearsSinceFirstCitedPaper)} citation-active years.`,
-                      },
-                    },
-                  ]}
-                />
-              </div>
+              {hIndexSummaryCandidatesExpanded ? (
+                <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                  <div className="space-y-3">
+                    {hIndexSummaryThresholdCandidateGroups.length > 1 ? (
+                      <div className="flex justify-center">
+                        <HIndexThresholdCandidateToggle
+                          nextLabel={`To h${formatInt(hIndexSummaryThresholdCandidateGroups[0]?.targetH ?? hIndexDrilldownStats.targetH)}`}
+                          afterLabel={`To h${formatInt(hIndexSummaryThresholdCandidateGroups[1]?.targetH ?? (hIndexDrilldownStats.targetH + 1))}`}
+                          value={hIndexSummaryThresholdTableMode}
+                          onChange={setHIndexSummaryThresholdTableMode}
+                        />
+                      </div>
+                    ) : null}
+                    <CanonicalTablePanel
+                      bare
+                      variant="drilldown"
+                      suppressTopRowHighlight
+                      columns={H_INDEX_CANDIDATE_TABLE_COLUMNS}
+                      rows={(selectedHIndexSummaryThresholdCandidateGroup?.candidates ?? []).map((candidate) => ({
+                        key: `${selectedHIndexSummaryThresholdCandidateGroup?.targetH || 'target'}-${candidate.workId}`,
+                        cells: {
+                          paper: onOpenPublication ? (
+                            <button
+                              type="button"
+                              data-stop-tile-open="true"
+                              className="block w-full text-left text-[hsl(var(--tone-accent-700))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:text-[hsl(var(--tone-accent-800))] hover:underline focus-visible:outline-none focus-visible:underline"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                onOpenPublication(candidate.workId)
+                              }}
+                              onMouseDown={(event) => event.stopPropagation()}
+                            >
+                              <span className="block max-w-full break-words leading-snug">{candidate.title}</span>
+                            </button>
+                          ) : (
+                            <span className="block max-w-full break-words leading-snug">{candidate.title}</span>
+                          ),
+                          current: formatInt(candidate.citations),
+                          gap: `+${formatInt(candidate.citationsToNextH)}`,
+                          projected: formatInt(candidate.projectedCitations12m),
+                          outlook: renderHIndexOutlookPill(candidate.projectionOutlookLabel),
+                        },
+                      }))}
+                      emptyMessage={selectedHIndexSummaryThresholdCandidateGroup
+                        ? `No nearby publications available for H${formatInt(selectedHIndexSummaryThresholdCandidateGroup.targetH)}.`
+                        : 'No nearby publications available.'}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
+
           </>
         ) : null}
 
@@ -9595,7 +12486,7 @@ function GenericMetricDrilldownWorkspace({
               {uncitedBreakdownExpanded ? (
                 <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                 <div className="space-y-3">
-                  <div className="flex justify-center">
+                  <div className="flex justify-end">
                     <SplitBreakdownViewToggle value={uncitedBreakdownViewMode} onChange={setUncitedBreakdownViewMode} />
                   </div>
                   {uncitedBreakdownViewMode === 'bar' ? (
@@ -9605,7 +12496,7 @@ function GenericMetricDrilldownWorkspace({
                         label: 'Uncited',
                         value: `${formatInt(totalCitationsHeadlineStats.uncitedPapersCount)} (${Math.round(totalCitationsHeadlineStats.uncitedPapersPct)}%)`,
                         ratioPct: totalCitationsHeadlineStats.uncitedPapersPct,
-                        toneClass: HOUSE_CHART_BAR_WARNING_CLASS,
+                        toneClass: HOUSE_CHART_BAR_DANGER_CLASS,
                       }}
                       right={{
                         label: 'Cited',
@@ -9693,10 +12584,10 @@ function GenericMetricDrilldownWorkspace({
               {recentConcentrationExpanded ? (
                 <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                 <div className="space-y-3">
-                  <div className="flex items-center justify-center gap-2">
+                  <div className="flex items-center justify-between gap-3">
                     <PublicationWindowToggle
                       value={recentConcentrationWindowMode}
-                      onChange={(mode) => setRecentConcentrationWindowMode(mode as RecentConcentrationWindowMode)}
+                      onChange={(mode) => setRecentConcentrationWindowMode(mode as PublicationsWindowMode)}
                       options={RECENT_CONCENTRATION_WINDOW_OPTIONS}
                     />
                     <SplitBreakdownViewToggle value={recentConcentrationViewMode} onChange={setRecentConcentrationViewMode} />
@@ -9705,13 +12596,13 @@ function GenericMetricDrilldownWorkspace({
                     <CitationSplitBarCard
                       bare
                       left={{
-                        label: 'Top 3 papers',
+                        label: 'Top 3 publications',
                         value: `${formatInt(recentConcentrationTopThreeCitations)} (${Math.round(recentConcentrationPct)}%)`,
                         ratioPct: recentConcentrationPct,
                         toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
                       }}
                       right={{
-                        label: 'All other papers',
+                        label: 'All other publications',
                         value: `${formatInt(recentConcentrationOtherCitations)} (${Math.max(0, 100 - Math.round(recentConcentrationPct))}%)`,
                         ratioPct: Math.max(0, 100 - recentConcentrationPct),
                         toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
@@ -9773,7 +12664,7 @@ function GenericMetricDrilldownWorkspace({
               ) : null}
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">How are citations distributed across my papers?</p>
+                  <p className="house-drilldown-heading-block-title">How are citations distributed across my publications?</p>
                   <DrilldownSheet.HeadingToggle
                     expanded={citationHistogramExpanded}
                     expandedLabel="Collapse citation distribution"
@@ -9792,6 +12683,7 @@ function GenericMetricDrilldownWorkspace({
                 </div>
               ) : null}
             </div>
+
           </>
         ) : null}
 
@@ -9800,101 +12692,11 @@ function GenericMetricDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section relative">
               <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
                 <HelpTooltipIconButton
-                  ariaLabel="Explain h-core papers"
+                  ariaLabel="Explain h-core structure"
                   content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
                 />
                 <PublicationInsightsTriggerButton
-                  ariaLabel="Open h-core papers insight"
-                  active={hIndexInsightKey === 'breakdown-core-papers'}
-                  onClick={() => toggleHIndexInsight('breakdown-core-papers')}
-                />
-              </div>
-              <StaticPublicationInsightsOverlay
-                open={hIndexInsightKey === 'breakdown-core-papers'}
-                onClose={closeHIndexInsight}
-                title="h-core papers"
-                body={`The h-core currently contains ${formatInt(hIndexDrilldownStats.hCorePublicationCount)} of ${formatInt(hIndexDrilldownStats.totalPublications)} papers. This tells you how much of the portfolio already clears the h${formatInt(hIndexDrilldownStats.currentH)} threshold, which is the structural base of the current h-index.`}
-                considerationLabel="How to read this"
-                consideration={`A smaller h-core share can still support a strong h-index if the qualifying papers are deep enough. What matters is not just how many papers sit inside the core, but whether the next group is close enough to push the threshold higher.`}
-              />
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">h-core papers</p>
-                </div>
-              </div>
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <CitationSplitBarCard
-                  bare
-                  left={{
-                    label: 'h-core',
-                    value: `${formatInt(hIndexDrilldownStats.hCorePublicationCount)} (${Math.round(hIndexDrilldownStats.hCorePublicationSharePct)}%)`,
-                    ratioPct: hIndexDrilldownStats.hCorePublicationSharePct,
-                    toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
-                  }}
-                  right={{
-                    label: 'Outside h-core',
-                    value: `${formatInt(hIndexDrilldownStats.nonHCorePublicationCount)} (${hIndexDrilldownStats.totalPublications > 0 ? Math.round((hIndexDrilldownStats.nonHCorePublicationCount / hIndexDrilldownStats.totalPublications) * 100) : 0}%)`,
-                    ratioPct: hIndexDrilldownStats.totalPublications > 0
-                      ? (hIndexDrilldownStats.nonHCorePublicationCount / hIndexDrilldownStats.totalPublications) * 100
-                      : 0,
-                    toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="house-publications-drilldown-bounded-section relative">
-              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
-                <HelpTooltipIconButton
-                  ariaLabel="Explain h-core citations"
-                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
-                />
-                <PublicationInsightsTriggerButton
-                  ariaLabel="Open h-core citations insight"
-                  active={hIndexInsightKey === 'breakdown-core-citations'}
-                  onClick={() => toggleHIndexInsight('breakdown-core-citations')}
-                />
-              </div>
-              <StaticPublicationInsightsOverlay
-                open={hIndexInsightKey === 'breakdown-core-citations'}
-                onClose={closeHIndexInsight}
-                title="h-core citations"
-                body={`The h-core accounts for ${hIndexDrilldownStats.hCoreShareValue} of total citations. That shows how much of the citation portfolio is concentrated in the papers that already define the current h-index, versus the rest of the catalogue.`}
-                considerationLabel="Why it matters"
-                consideration={`If citation volume is heavily concentrated inside the h-core, future h-index growth depends on whether papers just outside the core can join it. If concentration is lower, the portfolio may have broader support for later threshold gains.`}
-              />
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">h-core citations</p>
-                </div>
-              </div>
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <CitationSplitBarCard
-                  bare
-                  left={{
-                    label: 'h-core',
-                    value: `${formatInt(hIndexDrilldownStats.hCoreCitations)} (${Math.round(hIndexDrilldownStats.hCoreSharePct)}%)`,
-                    ratioPct: hIndexDrilldownStats.hCoreSharePct,
-                    toneClass: HOUSE_CHART_BAR_WARNING_CLASS,
-                  }}
-                  right={{
-                    label: 'Outside h-core',
-                    value: `${formatInt(hIndexDrilldownStats.nonHCoreCitations)} (${Math.max(0, 100 - Math.round(hIndexDrilldownStats.hCoreSharePct))}%)`,
-                    ratioPct: Math.max(0, 100 - hIndexDrilldownStats.hCoreSharePct),
-                    toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="house-publications-drilldown-bounded-section relative">
-              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
-                <HelpTooltipIconButton
-                  ariaLabel="Explain h-core structure table"
-                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
-                />
-                <PublicationInsightsTriggerButton
-                  ariaLabel="Open h-core structure table insight"
+                  ariaLabel="Open h-core structure insight"
                   active={hIndexInsightKey === 'breakdown-structure-table'}
                   onClick={() => toggleHIndexInsight('breakdown-structure-table')}
                 />
@@ -9902,19 +12704,21 @@ function GenericMetricDrilldownWorkspace({
               <StaticPublicationInsightsOverlay
                 open={hIndexInsightKey === 'breakdown-structure-table'}
                 onClose={closeHIndexInsight}
-                title="h-core structure table"
-                body="This table compares papers, citations, and citation density inside and outside the h-core. It gives the exact structural split behind the simpler bar views."
+                title={`h-core structure (H-index ${formatInt(hIndexDrilldownStats.currentH)})`}
+                body={`This table compares papers, citations, and citation density inside and outside the h-core. Right now the h-core contains ${formatInt(hIndexDrilldownStats.hCorePublicationCount)} papers and ${hIndexDrilldownStats.hCoreShareValue} of citations, so it gives the full structural split behind the current h-index.`}
                 considerationLabel="How to use it"
                 consideration="Read density beside share. A compact h-core with very high density means the current h-index is being carried by a smaller elite set; a broader split suggests deeper support across the wider portfolio."
               />
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">h-core structure table</p>
+                  <p className="house-drilldown-heading-block-title">{`h-core structure (H-index ${formatInt(hIndexDrilldownStats.currentH)})`}</p>
                 </div>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                 <CanonicalTablePanel
                   bare
+                  variant="drilldown"
+                  suppressTopRowHighlight
                   columns={[
                     { key: 'segment', label: 'Segment' },
                     { key: 'papers', label: 'Papers', align: 'center', width: '1%' },
@@ -9961,50 +12765,11 @@ function GenericMetricDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section relative">
               <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
                 <HelpTooltipIconButton
-                  ariaLabel="Explain h-core authorship mix"
+                  ariaLabel="Explain h-core authorship"
                   content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
                 />
                 <PublicationInsightsTriggerButton
-                  ariaLabel="Open h-core authorship mix insight"
-                  active={hIndexInsightKey === 'breakdown-authorship-mix'}
-                  onClick={() => toggleHIndexInsight('breakdown-authorship-mix')}
-                />
-              </div>
-              <StaticPublicationInsightsOverlay
-                open={hIndexInsightKey === 'breakdown-authorship-mix'}
-                onClose={closeHIndexInsight}
-                title="h-core authorship mix"
-                body={hIndexTopAuthorshipBucket
-                  ? `${hIndexTopAuthorshipBucket.label} is the most common role inside the h-core, appearing in ${hIndexTopAuthorshipBucket.value}. This highlights which contribution position most often sits on the papers already strong enough to support the current h-index.`
-                  : 'This mix shows which authorship positions appear most often inside the h-core once authorship-role data is available.'}
-                considerationLabel="How to read this"
-                consideration="This is descriptive of the current h-defining set, not a causal statement about authorship position. It is most useful for checking whether durable citation depth tends to cluster in specific contribution roles."
-              />
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">h-core authorship mix</p>
-                </div>
-              </div>
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <CitationEfficiencyComparisonPanel
-                  bare
-                  metrics={hIndexDrilldownStats.authorshipMix.map((metric) => ({
-                    label: metric.label,
-                    value: metric.value,
-                    raw: metric.raw,
-                  }))}
-                />
-              </div>
-            </div>
-
-            <div className="house-publications-drilldown-bounded-section relative">
-              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
-                <HelpTooltipIconButton
-                  ariaLabel="Explain h-core authorship table"
-                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
-                />
-                <PublicationInsightsTriggerButton
-                  ariaLabel="Open h-core authorship table insight"
+                  ariaLabel="Open h-core authorship insight"
                   active={hIndexInsightKey === 'breakdown-authorship-table'}
                   onClick={() => toggleHIndexInsight('breakdown-authorship-table')}
                 />
@@ -10012,19 +12777,23 @@ function GenericMetricDrilldownWorkspace({
               <StaticPublicationInsightsOverlay
                 open={hIndexInsightKey === 'breakdown-authorship-table'}
                 onClose={closeHIndexInsight}
-                title="h-core authorship table"
-                body="This table gives the exact authorship counts and shares inside the h-core. Use it when the bar view suggests a skew and you want the precise split by role."
+                title="h-core authorship"
+                body={hIndexTopAuthorshipBucket
+                  ? `${hIndexTopAuthorshipBucket.label} is the most common role inside the h-core, appearing in ${hIndexTopAuthorshipBucket.value}. This table shows the exact role split across the papers already strong enough to support the current h-index.`
+                  : 'This table shows which authorship positions appear most often inside the h-core once authorship-role data is available.'}
                 considerationLabel="Why it matters"
-                consideration="A mixed authorship profile can indicate that h-defining papers are being supported across multiple contribution positions, while a dominant role suggests a narrower structural pattern."
+                consideration="This is descriptive of the current h-defining set, not a causal statement about authorship position. It is most useful for checking whether durable citation depth clusters in specific contribution roles."
               />
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">h-core authorship table</p>
+                  <p className="house-drilldown-heading-block-title">h-core authorship</p>
                 </div>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                 <CanonicalTablePanel
                   bare
+                  variant="drilldown"
+                  suppressTopRowHighlight
                   columns={[
                     { key: 'bucket', label: 'Authorship bucket' },
                     { key: 'count', label: 'Count', align: 'center', width: '1%' },
@@ -10041,7 +12810,7 @@ function GenericMetricDrilldownWorkspace({
                       },
                     }
                   })}
-                  emptyMessage="No h-core authorship mix available."
+                  emptyMessage="No h-core authorship data available."
                 />
               </div>
             </div>
@@ -10049,50 +12818,11 @@ function GenericMetricDrilldownWorkspace({
             <div className="house-publications-drilldown-bounded-section relative">
               <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
                 <HelpTooltipIconButton
-                  ariaLabel="Explain h-core publication type mix"
+                  ariaLabel="Explain h-core publication types"
                   content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
                 />
                 <PublicationInsightsTriggerButton
-                  ariaLabel="Open h-core publication type mix insight"
-                  active={hIndexInsightKey === 'breakdown-publication-type-mix'}
-                  onClick={() => toggleHIndexInsight('breakdown-publication-type-mix')}
-                />
-              </div>
-              <StaticPublicationInsightsOverlay
-                open={hIndexInsightKey === 'breakdown-publication-type-mix'}
-                onClose={closeHIndexInsight}
-                title="h-core publication type mix"
-                body={hIndexTopPublicationTypeBucket
-                  ? `${hIndexTopPublicationTypeBucket.label} is the most represented publication format inside the h-core, accounting for ${hIndexTopPublicationTypeBucket.value}. This shows which formats currently contribute most often to durable h-defining citation depth.`
-                  : 'This mix shows which publication formats appear most often inside the h-core once publication-type data is available.'}
-                considerationLabel="How to use it"
-                consideration="This view is useful for structure rather than value judgement. It tells you which formats are most common in the h-core, not which format is inherently stronger in all contexts."
-              />
-              <div className="house-drilldown-heading-block">
-                <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">h-core publication type mix</p>
-                </div>
-              </div>
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <CitationEfficiencyComparisonPanel
-                  bare
-                  metrics={hIndexDrilldownStats.publicationTypeMix.map((metric) => ({
-                    label: metric.label,
-                    value: metric.value,
-                    raw: metric.raw,
-                  }))}
-                />
-              </div>
-            </div>
-
-            <div className="house-publications-drilldown-bounded-section relative">
-              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
-                <HelpTooltipIconButton
-                  ariaLabel="Explain h-core publication type table"
-                  content={formatHIndexCoreTooltip(hIndexDrilldownStats)}
-                />
-                <PublicationInsightsTriggerButton
-                  ariaLabel="Open h-core publication type table insight"
+                  ariaLabel="Open h-core publication types insight"
                   active={hIndexInsightKey === 'breakdown-publication-type-table'}
                   onClick={() => toggleHIndexInsight('breakdown-publication-type-table')}
                 />
@@ -10100,19 +12830,23 @@ function GenericMetricDrilldownWorkspace({
               <StaticPublicationInsightsOverlay
                 open={hIndexInsightKey === 'breakdown-publication-type-table'}
                 onClose={closeHIndexInsight}
-                title="h-core publication type table"
-                body="This table gives the exact publication-format counts and shares inside the h-core. It complements the mix view when you want the precise composition of the h-defining paper set."
-                considerationLabel="Why it matters"
-                consideration="If one format dominates this table, then h-index strength may be structurally concentrated in that publication type. A broader spread suggests the h-core is supported across multiple output formats."
+                title="h-core publication types"
+                body={hIndexTopPublicationTypeBucket
+                  ? `${hIndexTopPublicationTypeBucket.label} is the most represented publication format inside the h-core, accounting for ${hIndexTopPublicationTypeBucket.value}. This table shows the exact format split across the papers that currently define the h-index.`
+                  : 'This table shows which publication formats appear most often inside the h-core once publication-type data is available.'}
+                considerationLabel="How to read it"
+                consideration="This view is useful for structure rather than value judgement. It tells you which formats are most common in the h-core, not which format is inherently stronger in all contexts."
               />
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">h-core publication type table</p>
+                  <p className="house-drilldown-heading-block-title">h-core publication types</p>
                 </div>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                 <CanonicalTablePanel
                   bare
+                  variant="drilldown"
+                  suppressTopRowHighlight
                   columns={[
                     { key: 'bucket', label: 'Publication type' },
                     { key: 'count', label: 'Count', align: 'center', width: '1%' },
@@ -10129,7 +12863,7 @@ function GenericMetricDrilldownWorkspace({
                       },
                     }
                   })}
-                  emptyMessage="No h-core publication-type mix available."
+                  emptyMessage="No h-core publication-type data available."
                 />
               </div>
             </div>
@@ -10144,7 +12878,7 @@ function GenericMetricDrilldownWorkspace({
                   ariaLabel="Explain citation activation"
                   content={
                     citationActivationViewMode === 'table'
-                      ? formatCitationActivationTableTooltip(newlyActivePublicationRecords.length)
+                      ? formatCitationActivationTableTooltip(citationActivationTableConfig.mode, citationActivationTableConfig.rows.length)
                       : formatCitationActivationStateTooltip({
                         totalPublications: totalCitationsHeadlineStats.publicationCount,
                         newlyActiveCount: newlyActivePublicationRecords.length,
@@ -10183,7 +12917,7 @@ function GenericMetricDrilldownWorkspace({
               ) : null}
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">How much of my portfolio is actively being cited?</p>
+                  <p className="house-drilldown-heading-block-title">Citation activity of my portfolio (over the last 12 months)</p>
                   <DrilldownSheet.HeadingToggle
                     expanded={citationActivationExpanded}
                     expandedLabel="Collapse citation activation"
@@ -10199,7 +12933,15 @@ function GenericMetricDrilldownWorkspace({
               {citationActivationExpanded ? (
                 <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                   <div className="space-y-3">
-                    <div className="flex justify-center">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        {citationActivationViewMode === 'table' ? (
+                          <CitationActivationTableModeToggle
+                            value={citationActivationTableMode}
+                            onChange={setCitationActivationTableMode}
+                          />
+                        ) : null}
+                      </div>
                       <SplitBreakdownViewToggle value={citationActivationViewMode} onChange={setCitationActivationViewMode} />
                     </div>
                     {citationActivationViewMode === 'bar' ? (
@@ -10240,19 +12982,12 @@ function GenericMetricDrilldownWorkspace({
                       />
                     ) : (
                       <PublicationLinkTable
-                        nameColumnLabel="Newly active publication"
-                        metricColumnLabel="Last 12m"
-                        secondaryMetricColumnLabel="Total citations"
-                        rows={newlyActivePublicationRecords.map((record) => ({
-                          key: record.workId,
-                          label: record.title || 'Untitled publication',
-                          year: record.year,
-                        metricValue: formatInt(record.citations1yRolling || 0),
-                        secondaryMetricValue: formatInt(record.citations),
-                        workId: record.workId,
-                        }))}
+                        nameColumnLabel={citationActivationTableConfig.nameColumnLabel}
+                        metricColumnLabel={citationActivationTableConfig.metricColumnLabel}
+                        secondaryMetricColumnLabel={citationActivationTableConfig.secondaryMetricColumnLabel}
+                        rows={citationActivationTableConfig.rows}
                         onOpenPublication={onOpenPublication}
-                        emptyMessage="No newly active publications available."
+                        emptyMessage={citationActivationTableConfig.emptyMessage}
                       />
                     )}
                   </div>
@@ -10310,13 +13045,7 @@ function GenericMetricDrilldownWorkspace({
               </div>
               {citationActivationHistoryExpanded ? (
                 <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                  <div className="space-y-3">
-                    <div className="flex justify-start">
-                      <CitationActivationHistorySeriesToggle
-                        value={citationActivationHistorySeriesMode}
-                        onChange={setCitationActivationHistorySeriesMode}
-                      />
-                    </div>
+                  <div className="space-y-2">
                     <CompletedPeriodRangeSlider
                       minIndex={0}
                       maxIndex={Math.max(0, citationActivationHistoryPoints.length - 1)}
@@ -10324,6 +13053,12 @@ function GenericMetricDrilldownWorkspace({
                       endIndex={citationActivationHistoryVisibleRange.end}
                       minSpan={citationActivationHistoryMinSpan}
                       selectionLabel={citationActivationHistoryFocusRangeLabel || 'Completed periods'}
+                      trailingContent={(
+                        <CitationActivationHistorySeriesToggle
+                          value={citationActivationHistorySeriesMode}
+                          onChange={setCitationActivationHistorySeriesMode}
+                        />
+                      )}
                       onChange={(nextStart, nextEnd) => {
                         setCitationActivationHistoryRangeStart(nextStart)
                         setCitationActivationHistoryRangeEnd(nextEnd)
@@ -10377,11 +13112,11 @@ function GenericMetricDrilldownWorkspace({
               ) : null}
               <div className="house-drilldown-heading-block">
                 <div className="flex items-center justify-between gap-2 pr-16">
-                  <p className="house-drilldown-heading-block-title">Which papers are sleeping or seeing fresh pickup?</p>
+                  <p className="house-drilldown-heading-block-title">Which publications are sleeping or picking up?</p>
                   <DrilldownSheet.HeadingToggle
                     expanded={citationMomentumExpanded}
-                    expandedLabel="Collapse sleeping and fresh pickup papers"
-                    collapsedLabel="Expand sleeping and fresh pickup papers"
+                    expandedLabel="Collapse sleeping and fresh pickup publications"
+                    collapsedLabel="Expand sleeping and fresh pickup publications"
                     onClick={(event) => {
                       event.stopPropagation()
                       setCitationMomentumExpanded((value) => !value)
@@ -10417,39 +13152,73 @@ function GenericMetricDrilldownWorkspace({
         {tile.key === 'h_index_projection' && activeTab === 'trajectory' && hIndexDrilldownStats ? (
           <>
             <div className="house-publications-drilldown-bounded-section relative">
-              <div className="absolute right-2 top-2 z-10">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
                 <HelpTooltipIconButton
                   ariaLabel="Explain h-index trajectory over time"
                   content={formatHIndexTrajectoryTooltip(hIndexDrilldownStats)}
                 />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-index trajectory over time insight"
+                  active={hIndexInsightKey === 'trajectory-chart'}
+                  onClick={() => toggleHIndexInsight('trajectory-chart')}
+                />
               </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'trajectory-chart'}
+                onClose={closeHIndexInsight}
+                title="H-index over time"
+                body={`This chart shows how the portfolio moved through successive h thresholds to the current h${formatInt(hIndexDrilldownStats.currentH)}. It is the clearest time-based view of when durable citation depth actually converted into new h-index milestones.`}
+                considerationLabel="Why it matters"
+                consideration="This is not a cumulative citation curve. Flat periods can still contain citation growth if the next qualifying paper has not yet crossed the threshold needed to lift h-index."
+              />
               <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title pr-10">H-index trajectory</p>
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">H-index over time</p>
+                </div>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="space-y-3">
-                  <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
-                    <HIndexTrajectoryPanel tile={tile} mode="trajectory" />
-                  </div>
+                <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
+                  <HIndexYearChart
+                    tile={tile}
+                    series={hIndexDrilldownStats.trajectoryPoints}
+                    animate={animateCharts}
+                  />
                 </div>
               </div>
             </div>
 
             <div className="house-publications-drilldown-bounded-section relative">
-              <div className="absolute right-2 top-2 z-10">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
                 <HelpTooltipIconButton
                   ariaLabel="Explain h-index milestones"
                   content={formatHIndexMilestonesTooltip(hIndexDrilldownStats)}
                 />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-index milestones insight"
+                  active={hIndexInsightKey === 'trajectory-milestones'}
+                  onClick={() => toggleHIndexInsight('trajectory-milestones')}
+                />
               </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'trajectory-milestones'}
+                onClose={closeHIndexInsight}
+                title="Milestone progression"
+                body={hIndexDrilldownStats.milestones.length
+                  ? 'These rows show when each h threshold was first reached. The spacing between milestones is effectively the pace at which the portfolio converted citation accumulation into new durable h-index steps.'
+                  : 'This table will show when each h threshold was first reached once milestone data is available.'}
+                considerationLabel="How to read this"
+                consideration="Longer gaps between milestones usually indicate that the portfolio is waiting on a smaller set of near-threshold papers. Shorter gaps suggest that multiple papers are rising together and creating broader runway."
+              />
               <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title pr-10">Milestone progression</p>
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">Milestone progression</p>
+                </div>
               </div>
               <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                 <CanonicalTablePanel
                   bare
-                  title="Milestone table"
-                  subtitle="Canonical record of when each h threshold was first reached."
+                  variant="drilldown"
+                  suppressTopRowHighlight
                   columns={[
                     { key: 'milestone', label: 'Milestone' },
                     { key: 'year', label: 'Year reached', align: 'center', width: '1%' },
@@ -10468,73 +13237,6 @@ function GenericMetricDrilldownWorkspace({
               </div>
             </div>
 
-            <div className="house-publications-drilldown-bounded-section relative">
-              <div className="absolute right-2 top-2 z-10">
-                <HelpTooltipIconButton
-                  ariaLabel="Explain next h runway"
-                  content={formatHIndexRunwayTooltip(hIndexDrilldownStats)}
-                />
-              </div>
-              <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title pr-10">Next h runway</p>
-              </div>
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="space-y-3">
-                  <div className="space-y-2.5">
-                    <div className="space-y-1">
-                      <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{`Progress to h${hIndexDrilldownStats.targetH}`}</p>
-                      <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">Shows the remaining runway to the next h-threshold and the current candidate-gap distribution.</p>
-                    </div>
-                    <HIndexProgressInline tile={tile} progressLabel={`Progress to h${hIndexDrilldownStats.targetH}`} compact />
-                    <div className="min-h-[10rem]">
-                      <HIndexToggleBarsChart tile={tile} mode="needed" />
-                    </div>
-                  </div>
-                  <CanonicalTablePanel
-                    bare
-                    title="Runway table"
-                    subtitle="Canonical runway readout for the next h milestone."
-                    columns={[
-                      { key: 'measure', label: 'Measure' },
-                      { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                      { key: 'note', label: 'Interpretation' },
-                    ]}
-                    rows={[
-                      {
-                        key: 'progress',
-                        cells: {
-                          measure: `Progress to h${formatInt(hIndexDrilldownStats.targetH)}`,
-                          value: `${Math.round(hIndexDrilldownStats.progressPct)}%`,
-                          note: 'Share of the next threshold already covered by the current candidate set.',
-                        },
-                      },
-                      {
-                        key: 'needed',
-                        cells: {
-                          measure: 'Citations still needed',
-                          value: formatInt(hIndexDrilldownStats.citationsNeededForNextH),
-                          note: 'Remaining citation gap across the closest qualifying papers.',
-                        },
-                      },
-                      {
-                        key: 'candidates',
-                        cells: {
-                          measure: 'Candidate papers tracked',
-                          value: formatInt(hIndexDrilldownStats.candidatePapers.length),
-                          note: 'Near-threshold papers monitored for the next h-step.',
-                        },
-                      },
-                    ]}
-                  />
-                  <HIndexCandidateTablePanel
-                    bare
-                    title="Closest candidate papers"
-                    subtitle="Nearest papers to the next h-threshold, with projected 12-month citation totals."
-                    candidates={hIndexDrilldownStats.candidatePapers}
-                  />
-                </div>
-              </div>
-            </div>
           </>
         ) : null}
 
@@ -10596,140 +13298,170 @@ function GenericMetricDrilldownWorkspace({
         {tile.key === 'h_index_projection' && activeTab === 'context' && hIndexDrilldownStats ? (
           <>
             <div className="house-publications-drilldown-bounded-section relative">
-              <div className="absolute right-2 top-2 z-10">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
                 <HelpTooltipIconButton
                   ariaLabel="Explain h-index scholarly context"
                   content={formatHIndexContextTooltip(hIndexDrilldownStats)}
                 />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open complementary indices insight"
+                  active={hIndexInsightKey === 'context-complementary-indices'}
+                  onClick={() => toggleHIndexInsight('context-complementary-indices')}
+                />
               </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'context-complementary-indices'}
+                onClose={closeHIndexInsight}
+                title="Complementary indices"
+                body="m-index, g-index, and i10-index contextualise the h-index from different angles: pace, excess citation depth, and breadth of consistently cited papers. Together they show whether the same h-index is being achieved through slower mature accumulation or through broader or deeper citation support."
+                considerationLabel="How to use them"
+                consideration="Read them together, not as substitutes for each other. m-index is the pace lens, g-index is the depth lens, and i10-index is the breadth lens."
+              />
               <div className="house-drilldown-heading-block">
-                <p className="house-drilldown-heading-block-title pr-10">Scholarly context</p>
-              </div>
-              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-                <div className="space-y-3">
-                  <CitationEfficiencyComparisonPanel
-                    bare
-                    title="Complementary indices"
-                    subtitle="Companion bibliometric measures that contextualise h-index breadth, pace, and depth."
-                    metrics={[
-                      {
-                        label: 'm-index',
-                        value: hIndexDrilldownStats.mIndexValue,
-                        raw: hIndexDrilldownStats.mIndexRaw,
-                      },
-                      {
-                        label: 'g-index',
-                        value: hIndexDrilldownStats.gIndexValue,
-                        raw: hIndexDrilldownStats.gIndexRaw,
-                      },
-                      {
-                        label: 'i10-index',
-                        value: hIndexDrilldownStats.i10IndexValue,
-                        raw: hIndexDrilldownStats.i10IndexRaw,
-                      },
-                    ]}
-                  />
-                  <CanonicalTablePanel
-                    bare
-                    title="Index reference table"
-                    subtitle="Canonical interpretation of the companion bibliometric measures."
-                    columns={[
-                      { key: 'measure', label: 'Measure' },
-                      { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                      { key: 'meaning', label: 'What it adds' },
-                    ]}
-                    rows={[
-                      {
-                        key: 'm-index',
-                        cells: {
-                          measure: 'm-index',
-                          value: hIndexDrilldownStats.mIndexValue,
-                          meaning: 'Normalises h-index by career length, so it is a pace metric rather than a scale metric.',
-                        },
-                      },
-                      {
-                        key: 'g-index',
-                        cells: {
-                          measure: 'g-index',
-                          value: hIndexDrilldownStats.gIndexValue,
-                          meaning: 'Rewards excess depth from highly cited papers beyond the h-core threshold.',
-                        },
-                      },
-                      {
-                        key: 'i10-index',
-                        cells: {
-                          measure: 'i10-index',
-                          value: hIndexDrilldownStats.i10IndexValue,
-                          meaning: 'Counts papers with at least ten citations for a simpler breadth check.',
-                        },
-                      },
-                    ]}
-                  />
-                  <CitationEfficiencyComparisonPanel
-                    bare
-                    title="h-core performance"
-                    subtitle="Puts h-core efficiency, concentration, and career span beside each other."
-                    metrics={[
-                      {
-                        label: 'h-core citation density',
-                        value: hIndexDrilldownStats.hCoreCitationDensityValue,
-                        raw: hIndexDrilldownStats.hCoreCitationDensityRaw,
-                      },
-                      {
-                        label: 'h-core share of citations',
-                        value: hIndexDrilldownStats.hCoreShareValue,
-                        raw: hIndexDrilldownStats.hCoreSharePct,
-                      },
-                      {
-                        label: 'Years since first cited paper',
-                        value: hIndexDrilldownStats.yearsSinceFirstCitedPaper === null
-                          ? '\u2014'
-                          : formatInt(hIndexDrilldownStats.yearsSinceFirstCitedPaper),
-                        raw: hIndexDrilldownStats.yearsSinceFirstCitedPaper,
-                      },
-                    ]}
-                  />
-                  <CanonicalTablePanel
-                    bare
-                    title="h-core context table"
-                    subtitle="Canonical context for concentration, efficiency, and career span."
-                    columns={[
-                      { key: 'measure', label: 'Measure' },
-                      { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                      { key: 'meaning', label: 'Interpretation' },
-                    ]}
-                    rows={[
-                      {
-                        key: 'density',
-                        cells: {
-                          measure: 'h-core citation density',
-                          value: hIndexDrilldownStats.hCoreCitationDensityValue,
-                          meaning: 'Average citation depth inside the current h-core.',
-                        },
-                      },
-                      {
-                        key: 'share',
-                        cells: {
-                          measure: 'h-core share of citations',
-                          value: hIndexDrilldownStats.hCoreShareValue,
-                          meaning: 'How concentrated total citation volume is inside the h-defining papers.',
-                        },
-                      },
-                      {
-                        key: 'career-span',
-                        cells: {
-                          measure: 'Years since first cited paper',
-                          value: hIndexDrilldownStats.yearsSinceFirstCitedPaper === null
-                            ? '\u2014'
-                            : formatInt(hIndexDrilldownStats.yearsSinceFirstCitedPaper),
-                          meaning: 'Observed citation-active span used to contextualise m-index and trajectory pace.',
-                        },
-                      },
-                    ]}
-                  />
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">Complementary indices</p>
                 </div>
               </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CitationEfficiencyComparisonPanel
+                  bare
+                  metrics={[
+                    {
+                      label: 'm-index',
+                      value: hIndexDrilldownStats.mIndexValue,
+                      raw: hIndexDrilldownStats.mIndexRaw,
+                    },
+                    {
+                      label: 'g-index',
+                      value: hIndexDrilldownStats.gIndexValue,
+                      raw: hIndexDrilldownStats.gIndexRaw,
+                    },
+                    {
+                      label: 'i10-index',
+                      value: hIndexDrilldownStats.i10IndexValue,
+                      raw: hIndexDrilldownStats.i10IndexRaw,
+                    },
+                  ]}
+                />
+              </div>
             </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-index reference table"
+                  content={formatHIndexContextTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-index reference table insight"
+                  active={hIndexInsightKey === 'context-index-reference'}
+                  onClick={() => toggleHIndexInsight('context-index-reference')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'context-index-reference'}
+                onClose={closeHIndexInsight}
+                title="Index reference table"
+                body="This table is the plain-language interpretation layer for the companion indices. It is useful when you want an explicit reminder of what each metric adds rather than just the values."
+                considerationLabel="Why it matters"
+                consideration="Different portfolios can share the same h-index but have very different pace, depth, and breadth profiles. This table makes those distinctions explicit."
+              />
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">Index reference table</p>
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CanonicalTablePanel
+                  bare
+                  variant="drilldown"
+                  suppressTopRowHighlight
+                  columns={[
+                    { key: 'measure', label: 'Measure' },
+                    { key: 'value', label: 'Value', align: 'center', width: '1%' },
+                    { key: 'meaning', label: 'What it adds' },
+                  ]}
+                  rows={[
+                    {
+                      key: 'm-index',
+                      cells: {
+                        measure: 'm-index',
+                        value: hIndexDrilldownStats.mIndexValue,
+                        meaning: 'Normalises h-index by career length, so it is a pace metric rather than a scale metric.',
+                      },
+                    },
+                    {
+                      key: 'g-index',
+                      cells: {
+                        measure: 'g-index',
+                        value: hIndexDrilldownStats.gIndexValue,
+                        meaning: 'Rewards excess depth from highly cited papers beyond the h-core threshold.',
+                      },
+                    },
+                    {
+                      key: 'i10-index',
+                      cells: {
+                        measure: 'i10-index',
+                        value: hIndexDrilldownStats.i10IndexValue,
+                        meaning: 'Counts papers with at least ten citations for a simpler breadth check.',
+                      },
+                    },
+                  ]}
+                />
+              </div>
+            </div>
+
+            <div className="house-publications-drilldown-bounded-section relative">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                <HelpTooltipIconButton
+                  ariaLabel="Explain h-core performance"
+                  content={formatHIndexCorePerformanceTooltip(hIndexDrilldownStats)}
+                />
+                <PublicationInsightsTriggerButton
+                  ariaLabel="Open h-core performance insight"
+                  active={hIndexInsightKey === 'context-h-core-performance'}
+                  onClick={() => toggleHIndexInsight('context-h-core-performance')}
+                />
+              </div>
+              <StaticPublicationInsightsOverlay
+                open={hIndexInsightKey === 'context-h-core-performance'}
+                onClose={closeHIndexInsight}
+                title="h-core performance"
+                body="This panel combines three context signals around the h-core: citation density inside the core, the core's share of overall citations, and the citation-active career span supporting the current h-index."
+                considerationLabel="How to read this"
+                consideration="High density and a high citation share point to a compact but strong core. Lower density with a longer active span can indicate a broader, more gradually accumulated citation base."
+              />
+              <div className="house-drilldown-heading-block">
+                <div className="flex items-center justify-between gap-2 pr-16">
+                  <p className="house-drilldown-heading-block-title">h-core performance</p>
+                </div>
+              </div>
+              <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+                <CitationEfficiencyComparisonPanel
+                  bare
+                  metrics={[
+                    {
+                      label: 'h-core citation density',
+                      value: hIndexDrilldownStats.hCoreCitationDensityValue,
+                      raw: hIndexDrilldownStats.hCoreCitationDensityRaw,
+                    },
+                    {
+                      label: 'h-core share of citations',
+                      value: hIndexDrilldownStats.hCoreShareValue,
+                      raw: hIndexDrilldownStats.hCoreSharePct,
+                    },
+                    {
+                      label: 'Years since first cited paper',
+                      value: hIndexDrilldownStats.yearsSinceFirstCitedPaper === null
+                        ? '\u2014'
+                        : formatInt(hIndexDrilldownStats.yearsSinceFirstCitedPaper),
+                      raw: hIndexDrilldownStats.yearsSinceFirstCitedPaper,
+                    },
+                  ]}
+                />
+              </div>
+            </div>
+
           </>
         ) : null}
 
@@ -10738,6 +13470,14 @@ function GenericMetricDrilldownWorkspace({
             tile,
             activeTab,
             momentumStats: momentumDrilldownStats,
+            momentumInsightOpen: citationMomentumInsightOpen,
+            onToggleMomentumInsight: onToggleCitationMomentumInsight,
+            onOpenPublication,
+            momentumWindowMode,
+            onMomentumWindowModeChange: setMomentumWindowMode,
+            momentumYearBreakdown,
+            momentumOverviewViewMode,
+            onMomentumOverviewViewModeChange: setMomentumOverviewViewMode,
             impactStats: impactConcentrationDrilldownStats,
             influentialStats: influentialCitationsDrilldownStats,
             fieldPercentileStats: fieldPercentileDrilldownStats,
@@ -10972,7 +13712,6 @@ function HIndexNeedsChart({
   )
 }
 
-void HIndexYearChart
 void HIndexNeedsChart
 
 type HIndexToggleBarDatum = {
@@ -11272,6 +14011,69 @@ function HIndexProgressInline({
           {Math.round(progressMeta.progressPct)}%
         </span>
       </div>
+    </div>
+  )
+}
+
+function HIndexThresholdStepsSummary({
+  steps,
+}: {
+  steps: HIndexDrilldownStats['summaryThresholdSteps']
+}) {
+  if (!steps.length) {
+    return <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No threshold-step summary available.</p>
+  }
+
+  return (
+    <div className="space-y-4">
+      {steps.map((step, index) => {
+        const toneClass = index === 0 ? HOUSE_CHART_BAR_POSITIVE_CLASS : HOUSE_CHART_BAR_NEUTRAL_CLASS
+        const title = index === 0
+          ? `Next step: h${formatInt(step.targetH)}`
+          : `Step after: h${formatInt(step.targetH)}`
+        return (
+          <div
+            key={`h-index-threshold-step-${step.targetH}`}
+            className={cn(index > 0 ? 'border-t border-[hsl(var(--stroke-soft)/0.7)] pt-4' : '', 'space-y-2.5')}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p>
+                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">
+                  {`${formatInt(step.currentMeetingTarget)} of ${formatInt(step.targetH)} papers already at ${formatInt(step.targetH)}+ citations`}
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'text-[1.15rem] tabular-nums')}>{Math.round(step.progressPct)}%</p>
+                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">
+                  {step.papersNeeded > 0
+                    ? `${formatInt(step.papersNeeded)} ${pluralize(step.papersNeeded, 'paper')} short`
+                    : 'Threshold already met'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.72rem] flex-1')}>
+                <div
+                  className={cn('h-full rounded-full', toneClass)}
+                  style={{ width: `${step.progressPct}%` }}
+                  aria-hidden="true"
+                />
+              </div>
+              <span className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'whitespace-nowrap tabular-nums')}>
+                {step.citationsNeeded > 0
+                  ? `+${formatInt(step.citationsNeeded)} ${pluralize(step.citationsNeeded, 'citation')}`
+                  : 'Ready'}
+              </span>
+            </div>
+            {step.nearestGapValues.length ? (
+              <p className={cn(HOUSE_DRILLDOWN_NOTE_SOFT_CLASS, 'tabular-nums')}>
+                {`Nearest gaps: ${step.nearestGapValues.map((gap) => `+${formatInt(gap)}`).join(', ')}`}
+              </p>
+            ) : null}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -11737,6 +14539,11 @@ function CitationSplitBarCard({
 }) {
   const leftWidth = Math.max(0, Math.min(100, left.ratioPct))
   const rightWidth = Math.max(0, Math.min(100, right.ratioPct))
+  const animationKey = useMemo(
+    () => `citation-split:${left.label}:${Math.round(leftWidth)}|${right.label}:${Math.round(rightWidth)}`,
+    [left.label, leftWidth, right.label, rightWidth],
+  )
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, leftWidth + rightWidth > 0, 'entry-only')
   return (
     <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
       {title || subtitle ? (
@@ -11747,13 +14554,21 @@ function CitationSplitBarCard({
       ) : null}
       <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'flex h-[var(--metric-progress-track-height)] overflow-hidden rounded-full')}>
         <div
-          className={cn('h-full border-r border-white/75', left.toneClass)}
-          style={{ width: `${leftWidth}%` }}
+          className={cn('h-full border-r border-white/75', left.toneClass, HOUSE_TOGGLE_CHART_MORPH_CLASS)}
+          style={{
+            width: `${leftWidth}%`,
+            transform: `scaleX(${barsExpanded ? 1 : 0})`,
+            transformOrigin: 'left center',
+          }}
           aria-hidden="true"
         />
         <div
-          className={cn('h-full', right.toneClass)}
-          style={{ width: `${rightWidth}%` }}
+          className={cn('h-full', right.toneClass, HOUSE_TOGGLE_CHART_MORPH_CLASS)}
+          style={{
+            width: `${rightWidth}%`,
+            transform: `scaleX(${barsExpanded ? 1 : 0})`,
+            transformOrigin: 'right center',
+          }}
           aria-hidden="true"
         />
       </div>
@@ -11848,6 +14663,14 @@ function CitationActivationStateBarCard({
     align?: 'left' | 'center' | 'right'
   }>
 }) {
+  const animationKey = useMemo(
+    () => `citation-activation-state:${segments.map((segment) => `${segment.key}:${Math.round(Math.max(0, Math.min(100, segment.ratioPct)))}`).join('|')}`,
+    [segments],
+  )
+  const barsExpanded = useUnifiedToggleBarAnimation(
+    animationKey,
+    segments.some((segment) => segment.ratioPct > 0),
+  )
   const getTextToneStyle = (key: string): CSSProperties | undefined => {
     if (key === 'newly-active') {
       return { color: 'hsl(var(--tone-positive-700))' }
@@ -11871,8 +14694,13 @@ function CitationActivationStateBarCard({
               'h-full',
               index < segments.length - 1 && 'border-r border-white/75',
               segment.toneClass,
+              HOUSE_TOGGLE_CHART_MORPH_CLASS,
             )}
-            style={{ width: `${Math.max(0, Math.min(100, segment.ratioPct))}%` }}
+            style={{
+              width: `${Math.max(0, Math.min(100, segment.ratioPct))}%`,
+              transform: `scaleX(${barsExpanded ? 1 : 0})`,
+              transformOrigin: index === 0 ? 'left center' : index === segments.length - 1 ? 'right center' : 'left center',
+            }}
             aria-hidden="true"
           />
         ))}
@@ -11927,12 +14755,18 @@ function CitationHistogramChart({
     [targetValues],
   )
   const scaledMax = Math.max(1, targetAxisScale.axisMax)
+  const displayedAxisMax = useEasedValue(
+    targetAxisScale.axisMax,
+    `${animationKey}|citation-histogram-y-axis-max`,
+    hasBars,
+    axisDurationMs,
+  )
   const axisLayout = useMemo(
     () => buildChartAxisLayout({
       axisLabels: buckets.map((bucket) => bucket.label),
       axisSubLabels: buckets.map(() => null),
       showXAxisName: true,
-      xAxisName: 'Lifetime citations per paper',
+      xAxisName: 'Lifetime citations per publication',
       dense: buckets.length >= 8,
       maxLabelLines: 2,
       maxAxisNameLines: 1,
@@ -11940,22 +14774,24 @@ function CitationHistogramChart({
     [buckets],
   )
   const yAxisTickValues = targetAxisScale.ticks
-  const yAxisLabelTicks = useMemo(
-    () => yAxisTickValues.filter((_, index) => index < yAxisTickValues.length - 1 || yAxisTickValues.length <= 4),
-    [yAxisTickValues],
-  )
+  const yAxisLabelTicks = yAxisTickValues
   const yAxisTickRatios = useMemo(
     () => yAxisTickValues.map((tick) => Math.max(0, Math.min(1, tick / scaledMax))),
     [scaledMax, yAxisTickValues],
   )
+  const displayedYAxisTickValues = useMemo(
+    () => yAxisTickRatios.map((ratio) => ratio * Math.max(1, displayedAxisMax)),
+    [displayedAxisMax, yAxisTickRatios],
+  )
   const yAxisLabelItems = useMemo(
     () => yAxisTickValues
       .map((tick, index) => ({
-        tick,
+        tick: displayedYAxisTickValues[index] ?? tick,
+        targetTick: tick,
         ratio: yAxisTickRatios[index] || 0,
       }))
-      .filter((item) => yAxisLabelTicks.includes(item.tick)),
-    [yAxisLabelTicks, yAxisTickRatios, yAxisTickValues],
+      .filter((item) => yAxisLabelTicks.includes(item.targetTick)),
+    [displayedYAxisTickValues, yAxisLabelTicks, yAxisTickRatios, yAxisTickValues],
   )
   const interiorGridTickRatios = useMemo(
     () => yAxisTickRatios.filter((_, index) => index > 0 && index < yAxisTickRatios.length - 1),
@@ -11994,15 +14830,33 @@ function CitationHistogramChart({
 
   const toneClassForBucket = (bucket: CitationHistogramBucket) => {
     if (bucket.minCitations === 0 && bucket.maxCitations === 0) {
-      return HOUSE_CHART_BAR_WARNING_CLASS
+      return 'bg-[hsl(var(--tone-positive-200))]'
     }
-    if (bucket.maxCitations === null) {
-      return HOUSE_CHART_BAR_POSITIVE_CLASS
+    if (bucket.maxCitations !== null && bucket.maxCitations <= 1) {
+      return 'bg-[hsl(var(--tone-positive-300))]'
     }
-    if (bucket.minCitations >= 10) {
-      return HOUSE_CHART_BAR_ACCENT_CLASS
+    if (bucket.maxCitations !== null && bucket.maxCitations <= 4) {
+      return 'bg-[hsl(var(--tone-positive-400))]'
     }
-    return HOUSE_CHART_BAR_NEUTRAL_CLASS
+    if (bucket.maxCitations !== null && bucket.maxCitations <= 9) {
+      return 'bg-[hsl(var(--tone-positive-400))]'
+    }
+    if (bucket.maxCitations !== null && bucket.maxCitations <= 24) {
+      return 'bg-[hsl(var(--tone-positive-500))]'
+    }
+    if (bucket.maxCitations !== null && bucket.maxCitations <= 49) {
+      return 'bg-[hsl(var(--tone-positive-500))]'
+    }
+    if (bucket.maxCitations !== null && bucket.maxCitations <= 99) {
+      return 'bg-[hsl(var(--tone-positive-600))]'
+    }
+    if (bucket.maxCitations !== null && bucket.maxCitations <= 199) {
+      return 'bg-[hsl(var(--tone-positive-600))]'
+    }
+    if (bucket.maxCitations === null || bucket.minCitations >= 200) {
+      return 'bg-[hsl(var(--tone-positive-700))]'
+    }
+    return 'bg-[hsl(var(--tone-positive-500))]'
   }
 
   return (
@@ -12022,6 +14876,10 @@ function CitationHistogramChart({
             <div
               className={cn('absolute inset-y-0 left-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
               style={{ borderLeft: '1px solid hsl(var(--stroke-soft) / 0.78)' }}
+            />
+            <div
+              className={cn('absolute inset-y-0 right-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={{ borderRight: '1px solid hsl(var(--stroke-soft) / 0.78)' }}
             />
             <div
               className={cn('absolute inset-x-0 bottom-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
@@ -12071,7 +14929,7 @@ function CitationHistogramChart({
                           onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
                           onFocus={() => setHoveredIndex(index)}
                           onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
-                          aria-label={`${bucket.label} citations: ${formatInt(bucket.count)} ${pluralize(bucket.count, 'paper')}, ${Math.round(bucket.sharePct)}% of papers`}
+                          aria-label={`${bucket.label} citations: ${formatInt(bucket.count)} ${pluralize(bucket.count, 'publication')}, ${Math.round(bucket.sharePct)}% of publications`}
                         />
                       </TooltipTrigger>
                       <TooltipContent
@@ -12082,7 +14940,7 @@ function CitationHistogramChart({
                       >
                         <div className="space-y-1">
                           <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{`${bucket.label} citations`}</p>
-                          <p>{`${formatInt(bucket.count)} ${pluralize(bucket.count, 'paper')}`}</p>
+                          <p>{`${formatInt(bucket.count)} ${pluralize(bucket.count, 'publication')}`}</p>
                           <p>{`${Math.round(bucket.sharePct)}% of publication set`}</p>
                         </div>
                       </TooltipContent>
@@ -12098,11 +14956,16 @@ function CitationHistogramChart({
           {yAxisLabelItems.map(({ tick, ratio }) => {
             const pct = Math.max(0, Math.min(100, ratio * 100))
             const tickRatioKey = Math.round(ratio * 1000)
+            const isTopTick = ratio >= 0.999
             return (
               <p
                 key={`citation-histogram-y-axis-${tickRatioKey}`}
                 className={cn('absolute right-0 whitespace-nowrap tabular-nums text-[0.68rem] leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
-                style={{ bottom: `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM}rem)` }}
+                style={{
+                  bottom: isTopTick
+                    ? `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM + 0.62}rem)`
+                    : `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM}rem)`,
+                }}
               >
                 {formatInt(tick)}
               </p>
@@ -12112,7 +14975,7 @@ function CitationHistogramChart({
             className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
             style={{ left: yAxisTitleLeft }}
           >
-            Papers
+            Number of publications per class
           </p>
         </div>
 
@@ -12137,7 +15000,7 @@ function CitationHistogramChart({
           }}
         >
           <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
-            Lifetime citations per paper
+            Lifetime citations per publication
           </p>
         </div>
       </div>
@@ -12152,6 +15015,7 @@ function CompletedPeriodRangeSlider({
   endIndex,
   minSpan,
   selectionLabel,
+  trailingContent,
   onChange,
 }: {
   minIndex: number
@@ -12160,6 +15024,7 @@ function CompletedPeriodRangeSlider({
   endIndex: number
   minSpan: number
   selectionLabel: string
+  trailingContent?: React.ReactNode
   onChange: (nextStart: number, nextEnd: number) => void
 }) {
   const totalPoints = Math.max(0, maxIndex - minIndex + 1)
@@ -12177,6 +15042,8 @@ function CompletedPeriodRangeSlider({
   const endPct = ((safeEnd - minIndex) / axisSpan) * 100
   const isAdjustable = totalPoints > minSpan
   const trackRef = useRef<HTMLDivElement | null>(null)
+  const selectionLabelParts = selectionLabel.split(/\s+-\s+/)
+  const hasSelectionRange = selectionLabelParts.length === 2
 
   const getIndexFromClientX = useCallback((clientX: number) => {
     const track = trackRef.current
@@ -12239,53 +15106,76 @@ function CompletedPeriodRangeSlider({
     event.stopPropagation()
     beginDrag('end', event.clientX)
   }
+  const sliderHandleClassName = cn(
+    'absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[hsl(var(--tone-positive-300))] bg-white shadow-[0_0_0_2px_hsl(var(--tone-neutral-0)),0_1px_4px_hsl(var(--tone-neutral-950)/0.14)] transition-[border-color,box-shadow,transform] duration-[var(--motion-duration-ui)] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-positive-200)/0.78)]',
+    isAdjustable ? 'cursor-ew-resize hover:border-[hsl(var(--tone-positive-400))] hover:shadow-[0_0_0_2px_hsl(var(--tone-neutral-0)),0_2px_6px_hsl(var(--tone-neutral-950)/0.16)]' : 'cursor-default',
+  )
 
   return (
     <div className="px-3 py-3">
-      <div className="flex items-center gap-6">
-        <div
-          ref={trackRef}
-          className={cn('relative h-8 min-w-0 flex-1 px-2', isAdjustable ? 'cursor-ew-resize' : 'cursor-default')}
-          onPointerDown={handleTrackPointerDown}
-        >
+      <div className="flex items-start gap-6">
+        <div className="min-w-0 max-w-[24rem] flex-1">
           <div
-            className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[hsl(var(--tone-neutral-200))]"
-            aria-hidden="true"
-          />
-          <div
-            className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-[hsl(var(--tone-accent-500))]"
-            style={{
-              left: `${startPct}%`,
-              width: `${Math.max(0, endPct - startPct)}%`,
-            }}
-            aria-hidden="true"
-          />
-          <button
-            type="button"
-            aria-label="Start of selected period"
-            className={cn(
-              'absolute top-1/2 z-20 h-[0.95rem] w-[0.95rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-0))] shadow-[0_1px_4px_hsl(var(--tone-neutral-950)/0.14)]',
-              isAdjustable ? 'cursor-ew-resize' : 'cursor-default',
-            )}
-            style={{ left: `calc(${startPct}% + 0.5rem)` }}
-            disabled={!isAdjustable}
-            onPointerDown={handleStartPointerDown}
-          />
-          <button
-            type="button"
-            aria-label="End of selected period"
-            className={cn(
-              'absolute top-1/2 z-30 h-[0.95rem] w-[0.95rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-0))] shadow-[0_1px_4px_hsl(var(--tone-neutral-950)/0.14)]',
-              isAdjustable ? 'cursor-ew-resize' : 'cursor-default',
-            )}
-            style={{ left: `calc(${endPct}% + 0.5rem)` }}
-            disabled={!isAdjustable}
-            onPointerDown={handleEndPointerDown}
-          />
+            ref={trackRef}
+            className={cn('relative h-8 px-2', isAdjustable ? 'cursor-ew-resize' : 'cursor-default')}
+            onPointerDown={handleTrackPointerDown}
+          >
+            <div
+              className="absolute left-0 right-0 top-1/2 h-[0.28rem] -translate-y-1/2 rounded-full bg-[hsl(var(--tone-neutral-400)/0.88)]"
+              aria-hidden="true"
+            />
+            <div
+              className="absolute top-1/2 h-[0.28rem] -translate-y-1/2 rounded-full bg-[hsl(var(--tone-positive-400))] shadow-[0_0_0_1px_hsl(var(--tone-positive-300)/0.24)]"
+              style={{
+                left: `${startPct}%`,
+                width: `${Math.max(0, endPct - startPct)}%`,
+              }}
+              aria-hidden="true"
+            />
+            <button
+              type="button"
+              aria-label="Start of selected period"
+              className={cn(sliderHandleClassName, 'z-20')}
+              style={{ left: `calc(${startPct}% + 0.5rem)` }}
+              disabled={!isAdjustable}
+              onPointerDown={handleStartPointerDown}
+            >
+              <span
+                className="pointer-events-none absolute left-1/2 top-1/2 h-[0.34rem] w-[0.34rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[hsl(var(--tone-positive-400))]"
+                aria-hidden="true"
+              />
+            </button>
+            <button
+              type="button"
+              aria-label="End of selected period"
+              className={cn(sliderHandleClassName, 'z-30')}
+              style={{ left: `calc(${endPct}% + 0.5rem)` }}
+              disabled={!isAdjustable}
+              onPointerDown={handleEndPointerDown}
+            >
+              <span
+                className="pointer-events-none absolute left-1/2 top-1/2 h-[0.34rem] w-[0.34rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[hsl(var(--tone-positive-400))]"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+          {hasSelectionRange ? (
+            <div className={cn('mx-auto grid w-[10.6rem] grid-cols-[1fr_auto_1fr] items-center justify-items-center pt-1 tabular-nums', HOUSE_CHART_AXIS_TEXT_TREND_CLASS)}>
+              <span className="w-[4.45rem] text-center whitespace-nowrap">{selectionLabelParts[0]}</span>
+              <span aria-hidden="true" className="px-0.5">-</span>
+              <span className="w-[4.45rem] text-center whitespace-nowrap">{selectionLabelParts[1]}</span>
+            </div>
+          ) : (
+            <p className={cn('mx-auto w-[10.6rem] pt-1 text-center tabular-nums', HOUSE_CHART_AXIS_TEXT_TREND_CLASS)}>
+              {selectionLabel}
+            </p>
+          )}
         </div>
-        <p className="w-[11.25rem] shrink-0 whitespace-nowrap text-right text-[0.72rem] font-semibold uppercase tracking-[0.18em] tabular-nums text-[hsl(var(--tone-neutral-700))]">
-          {selectionLabel}
-        </p>
+        {trailingContent ? (
+          <div className="shrink-0 pt-0.5">
+            {trailingContent}
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -12451,6 +15341,7 @@ function CitationActivationHistoryChart({
       .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
     return {
       ...item,
+      pathPoints,
       path: pathPoints.length ? monotonePathFromPoints(pathPoints) : '',
     }
   })
@@ -12505,7 +15396,6 @@ function CitationActivationHistoryChart({
         },
       ]
     : []
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col px-2 py-2">
       <div
@@ -12564,19 +15454,32 @@ function CitationActivationHistoryChart({
           <div className="pointer-events-none absolute inset-0 z-[3] overflow-hidden" aria-hidden="true">
             <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
               {seriesPaths.map((item) => item.path ? (
-                <path
-                  key={`${item.key}-path`}
-                  d={item.path}
-                  className={HOUSE_TOGGLE_CHART_LINE_CLASS}
-                  fill="none"
-                  stroke={item.color}
-                  strokeWidth={String(item.strokeWidth)}
-                  strokeDasharray={item.strokeDasharray}
-                  opacity={String(item.opacity)}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
-                />
+                item.strokeDasharray ? (
+                  <path
+                    key={`${item.key}-path`}
+                    d={item.path}
+                    fill="none"
+                    stroke={item.color}
+                    strokeWidth={String(item.strokeWidth)}
+                    strokeDasharray={item.strokeDasharray}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                    opacity={item.opacity}
+                  />
+                ) : (
+                  <path
+                    key={`${item.key}-path`}
+                    d={item.path}
+                    fill="none"
+                    stroke={item.color}
+                    strokeWidth={String(item.strokeWidth)}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                    opacity={item.opacity}
+                  />
+                )
               ) : null)}
               {latestPoint ? latestSeriesPoints.map((item) => (
                 <circle
@@ -12588,6 +15491,7 @@ function CitationActivationHistoryChart({
                   stroke="white"
                   strokeWidth="0.6"
                   vectorEffect="non-scaling-stroke"
+                  opacity={1}
                 />
               )) : null}
             </svg>
@@ -12599,7 +15503,7 @@ function CitationActivationHistoryChart({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      className="absolute inset-y-0 block rounded-[0.2rem] bg-transparent transition-colors hover:bg-[hsl(var(--tone-accent-500)/0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-200))]"
+                      className="absolute inset-y-0 block rounded-[0.2rem] bg-transparent transition-[background-color,box-shadow] hover:bg-[hsl(var(--tone-neutral-400)/0.14)] hover:shadow-[inset_1px_0_0_hsl(var(--stroke-soft)/0.95),inset_-1px_0_0_hsl(var(--stroke-soft)/0.95)] focus-visible:bg-[hsl(var(--tone-neutral-400)/0.16)] focus-visible:shadow-[inset_1px_0_0_hsl(var(--stroke-soft)),inset_-1px_0_0_hsl(var(--stroke-soft))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-200))]"
                       style={{
                         left: `${point.leftPct}%`,
                         width: `${point.widthPct}%`,
@@ -12615,24 +15519,24 @@ function CitationActivationHistoryChart({
                     side="top"
                     align="center"
                     sideOffset={8}
-                    className="house-approved-tooltip max-w-[18rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                    className="house-approved-tooltip z-[80] max-w-[18rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
                   >
                     <div className="space-y-1">
                       <p className="font-medium text-[hsl(var(--tone-neutral-900))]">
                         {usesMonthlyPoints ? formatMonthYearLabel(point.timeMs) : point.label}
                       </p>
-                      <p>{`${formatInt(point.totalCount)} papers in cohort`}</p>
+                      <p>{`${formatInt(point.totalCount)} publications in cohort`}</p>
                       {seriesMode === 'activeInactive' ? (
                         <div className="space-y-0.5">
-                          <p>{`Active: ${Math.round(point.activePct)}% (${formatInt(point.activeCount)} papers)`}</p>
-                          <p>{`Inactive: ${Math.round(point.inactivePct)}% (${formatInt(point.inactiveCount)} papers)`}</p>
-                          <p>{`Active split: ${formatInt(point.newlyActiveCount)} newly active, ${formatInt(point.stillActiveCount)} still active`}</p>
+                          <p>{`Active: ${Math.round(point.activePct)}% (${formatInt(point.activeCount)} publications)`}</p>
+                          <p>{`Inactive: ${Math.round(point.inactivePct)}% (${formatInt(point.inactiveCount)} publications)`}</p>
+                          <p>{`Active split: ${formatInt(point.newlyActiveCount)} newly active, ${formatInt(point.stillActiveCount)} still active publications`}</p>
                         </div>
                       ) : (
                         <div className="space-y-0.5">
-                          <p>{`Newly active: ${Math.round(point.newlyActivePct)}% (${formatInt(point.newlyActiveCount)} papers)`}</p>
-                          <p>{`Still active: ${Math.round(point.stillActivePct)}% (${formatInt(point.stillActiveCount)} papers)`}</p>
-                          <p>{`Inactive: ${Math.round(point.inactivePct)}% (${formatInt(point.inactiveCount)} papers)`}</p>
+                          <p>{`Newly active: ${Math.round(point.newlyActivePct)}% (${formatInt(point.newlyActiveCount)} publications)`}</p>
+                          <p>{`Still active: ${Math.round(point.stillActivePct)}% (${formatInt(point.stillActiveCount)} publications)`}</p>
+                          <p>{`Inactive: ${Math.round(point.inactivePct)}% (${formatInt(point.inactiveCount)} publications)`}</p>
                         </div>
                       )}
                     </div>
@@ -12766,10 +15670,18 @@ function CitationEfficiencyComparisonPanel({
 
 type CanonicalTableColumn = {
   key: string
-  label: string
+  label: ReactNode
   align?: 'left' | 'center' | 'right'
   width?: string
 }
+
+const H_INDEX_CANDIDATE_TABLE_COLUMNS: CanonicalTableColumn[] = [
+  { key: 'paper', label: 'Paper' },
+  { key: 'current', label: 'Current', align: 'center', width: '4.25rem' },
+  { key: 'gap', label: 'Gap', align: 'center', width: '3.5rem' },
+  { key: 'projected', label: '12m proj.', align: 'center', width: '5.5rem' },
+  { key: 'outlook', label: 'Outlook', align: 'center', width: '6.75rem' },
+]
 
 function DrilldownNarrativeCard({
   eyebrow,
@@ -13312,16 +16224,16 @@ function PublicationLinkTable({
                     <span className="block max-w-full break-words leading-snug">{row.label}</span>
                   </button>
                 </td>
-                <td className="house-table-cell-text px-1.5 py-2 text-center font-semibold whitespace-nowrap tabular-nums">
+                <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">
                   {row.year === null ? '\u2014' : String(row.year)}
                 </td>
                 {metricColumnLabel ? (
-                  <td className="house-table-cell-text px-1.5 py-2 text-center font-semibold whitespace-nowrap tabular-nums">
+                  <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">
                     {row.metricValue ?? '\u2014'}
                   </td>
                 ) : null}
                 {secondaryMetricColumnLabel ? (
-                  <td className="house-table-cell-text px-1.5 py-2 text-center font-semibold whitespace-nowrap tabular-nums">
+                  <td className="house-table-cell-text px-1.5 py-2 text-center whitespace-nowrap tabular-nums">
                     {row.secondaryMetricValue ?? '\u2014'}
                   </td>
                 ) : null}
@@ -13347,6 +16259,8 @@ function CanonicalTablePanel({
   columns,
   rows,
   bare = false,
+  variant = 'default',
+  suppressTopRowHighlight = false,
   emptyMessage = 'No rows available.',
 }: {
   title?: string
@@ -13354,6 +16268,8 @@ function CanonicalTablePanel({
   columns: CanonicalTableColumn[]
   rows: Array<{ key: string; cells: Record<string, ReactNode> }>
   bare?: boolean
+  variant?: 'default' | 'drilldown'
+  suppressTopRowHighlight?: boolean
   emptyMessage?: string
 }) {
   const alignClassName = (align: CanonicalTableColumn['align']) => {
@@ -13365,6 +16281,78 @@ function CanonicalTablePanel({
       default:
         return 'text-left'
     }
+  }
+
+  if (variant === 'drilldown') {
+    return (
+      <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+        {title || subtitle ? (
+          <div className="space-y-1">
+            {title ? <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p> : null}
+            {subtitle ? <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p> : null}
+          </div>
+        ) : null}
+        <div className="w-full overflow-visible">
+          <div
+            className={cn(
+              HOUSE_SURFACE_TABLE_SHELL_CLASS,
+              'house-publications-trend-table-shell-plain h-auto w-full overflow-hidden rounded-md bg-background',
+              suppressTopRowHighlight && 'house-publications-trend-table-shell-no-top-highlight',
+            )}
+            style={{ overflowX: 'hidden', overflowY: 'visible', maxWidth: '100%' }}
+          >
+            <table
+              className="w-full border-collapse"
+              data-house-no-column-resize="true"
+              data-house-no-column-controls="true"
+            >
+              <thead className={HOUSE_SURFACE_TABLE_HEAD_CLASS}>
+                <tr>
+                  {columns.map((column) => (
+                    <th
+                      key={column.key}
+                      className={cn(
+                        'house-table-head-text h-10 px-2 align-middle font-semibold whitespace-nowrap',
+                        alignClassName(column.align),
+                      )}
+                      style={column.width ? { width: column.width } : undefined}
+                    >
+                      {column.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length ? (
+                  rows.map((row) => (
+                    <tr key={row.key} className={HOUSE_SURFACE_TABLE_ROW_CLASS}>
+                      {columns.map((column) => (
+                        <td
+                          key={`${row.key}-${column.key}`}
+                          className={cn(
+                            'house-table-cell-text px-2 py-2 align-top leading-snug',
+                            alignClassName(column.align),
+                            column.width ? 'whitespace-nowrap tabular-nums' : '',
+                          )}
+                        >
+                          {row.cells[column.key]}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className={cn('house-table-cell-text px-3 py-4 text-center', HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS)} colSpan={columns.length}>
+                      {emptyMessage}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -13430,6 +16418,37 @@ function formatPercentOne(value: number): string {
   return `${safeValue.toFixed(1)}%`
 }
 
+function allocateWholePercentages(values: number[]): number[] {
+  const safeValues = values.map((value) => (Number.isFinite(value) ? Math.max(0, value) : 0))
+  const floors = safeValues.map((value) => Math.floor(value))
+  let remainder = Math.max(0, 100 - floors.reduce((sum, value) => sum + value, 0))
+  const rankedFractions = safeValues
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((left, right) => {
+      if (right.fraction !== left.fraction) {
+        return right.fraction - left.fraction
+      }
+      return left.index - right.index
+    })
+  const output = [...floors]
+  for (const item of rankedFractions) {
+    if (remainder <= 0) {
+      break
+    }
+    output[item.index] += 1
+    remainder -= 1
+  }
+  return output
+}
+
+function formatRoundedOneDecimalTrimmed(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '0'
+  }
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+}
+
 function formatSignedNumber(value: number | null, decimals = 1): string {
   if (value === null || !Number.isFinite(value)) {
     return '\u2014'
@@ -13437,130 +16456,741 @@ function formatSignedNumber(value: number | null, decimals = 1): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(decimals)}`
 }
 
+function formatTrajectoryMovingAverageValue(value: number): string {
+  return formatRoundedOneDecimalTrimmed(Number.isFinite(value) ? value : 0)
+}
+
+function buildTrajectoryTooltipAriaLabel(
+  slice: PublicationTrajectoryTooltipSlice,
+  mode: PublicationTrajectoryMode,
+  movingAveragePeriodLabel: string,
+): string {
+  if (mode === 'moving_avg') {
+    return `Trajectory in ${slice.year}: 3-year average ending ${movingAveragePeriodLabel} is ${formatTrajectoryMovingAverageValue(slice.movingAvgValue)}`
+  }
+  if (mode === 'cumulative') {
+    return `Trajectory in ${slice.year}: cumulative through ${slice.year} is ${formatInt(slice.cumulativeValue)}`
+  }
+  return `Trajectory in ${slice.year}: ${formatInt(slice.rawValue)} publications`
+}
+
+function resolvePublicationVolumeYAxisLabel({
+  windowMode,
+  visualMode,
+  publicationRecords,
+  tile,
+}: {
+  windowMode: PublicationsWindowMode
+  visualMode: PublicationTrendsVisualMode
+  publicationRecords: PublicationDrilldownRecord[]
+  tile: PublicationMetricTilePayload
+}): string {
+  if (visualMode === 'bars') {
+    switch (windowMode) {
+      case '1y':
+        return 'Publications (per month)'
+      case '3y':
+      case '5y':
+        return 'Publications (per year)'
+      default: {
+        const chartData = (tile.chart_data || {}) as Record<string, unknown>
+        const years = toNumberArray(chartData.years).map((value) => Math.round(value))
+        const projectedYearRaw = Number(chartData.projected_year)
+        const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : null
+        const uniqueYears = new Set(years.filter((value) => Number.isFinite(value)))
+        if (projectedYear !== null) {
+          uniqueYears.add(projectedYear)
+        }
+        const bucketYears = selectPublicationBucketSize(Math.max(0, uniqueYears.size))
+        return bucketYears <= 1
+          ? 'Publications (per year)'
+          : `Publications (per ${formatInt(bucketYears)}-year period)`
+      }
+    }
+  }
+
+  if (windowMode === '1y') {
+    return 'Publications (1 year)'
+  }
+  if (windowMode === '3y') {
+    return 'Publications (3 years)'
+  }
+  if (windowMode === '5y') {
+    return 'Publications (5 years)'
+  }
+
+  const now = new Date()
+  const earliestRecordDateMs = publicationRecords
+    .map((record) => (
+      typeof record.year === 'number' && Number.isFinite(record.year)
+        ? Date.UTC(Math.round(record.year), 0, 1)
+        : null
+    ))
+    .filter((value): value is number => value !== null)
+    .sort((left, right) => left - right)[0] ?? null
+
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const years = toNumberArray(chartData.years).map((value) => Math.round(value))
+  const earliestChartYear = years.length ? Math.min(...years) : null
+  const fallbackDateMs = earliestChartYear !== null ? Date.UTC(earliestChartYear, 0, 1) : null
+  const startDateMs = earliestRecordDateMs ?? fallbackDateMs
+  if (startDateMs === null) {
+    return 'Publications'
+  }
+  const yearsCovered = Math.max(0.1, (now.getTime() - startDateMs) / (365.25 * 24 * 60 * 60 * 1000))
+  return `Publications (${formatRoundedOneDecimalTrimmed(yearsCovered)} years)`
+}
+
+function resolveCitationVolumeYAxisLabel({
+  windowMode,
+  visualMode,
+  publicationRecords,
+  tile,
+}: {
+  windowMode: PublicationsWindowMode
+  visualMode: PublicationTrendsVisualMode
+  publicationRecords: PublicationDrilldownRecord[]
+  tile: PublicationMetricTilePayload
+}): string {
+  if (visualMode === 'bars') {
+    switch (windowMode) {
+      case '1y':
+        return 'Citations (per month)'
+      case '3y':
+      case '5y':
+        return 'Citations (per year)'
+      default: {
+        const chartData = (tile.chart_data || {}) as Record<string, unknown>
+        const years = toNumberArray(chartData.years).map((value) => Math.round(value))
+        const projectedYearRaw = Number(chartData.projected_year)
+        const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : null
+        const uniqueYears = new Set(years.filter((value) => Number.isFinite(value)))
+        if (projectedYear !== null) {
+          uniqueYears.add(projectedYear)
+        }
+        const bucketYears = selectPublicationBucketSize(Math.max(0, uniqueYears.size))
+        return bucketYears <= 1
+          ? 'Citations (per year)'
+          : `Citations (per ${formatInt(bucketYears)}-year period)`
+      }
+    }
+  }
+
+  if (windowMode === '1y') {
+    return 'Citations (1 year)'
+  }
+  if (windowMode === '3y') {
+    return 'Citations (3 years)'
+  }
+  if (windowMode === '5y') {
+    return 'Citations (5 years)'
+  }
+
+  const now = new Date()
+  const earliestRecordDateMs = publicationRecords
+    .map((record) => (
+      typeof record.year === 'number' && Number.isFinite(record.year)
+        ? Date.UTC(Math.round(record.year), 0, 1)
+        : null
+    ))
+    .filter((value): value is number => value !== null)
+    .sort((left, right) => left - right)[0] ?? null
+
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const years = toNumberArray(chartData.years).map((value) => Math.round(value))
+  const earliestChartYear = years.length ? Math.min(...years) : null
+  const fallbackDateMs = earliestChartYear !== null ? Date.UTC(earliestChartYear, 0, 1) : null
+  const startDateMs = earliestRecordDateMs ?? fallbackDateMs
+  if (startDateMs === null) {
+    return 'Citations'
+  }
+  const yearsCovered = Math.max(0.1, (now.getTime() - startDateMs) / (365.25 * 24 * 60 * 60 * 1000))
+  return `Citations (${formatRoundedOneDecimalTrimmed(yearsCovered)} years)`
+}
+
+function buildCitationVolumeTableRows(
+  tile: PublicationMetricTilePayload,
+  windowMode: PublicationsWindowMode,
+): Array<{ key: string; periodLabel: string; citations: string; change: ReactNode; projected?: boolean }> {
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+
+  const renderCitationChangeCell = (
+    currentValue: number,
+    previousValue: number | null,
+    suppress = false,
+  ): ReactNode => {
+    if (suppress || previousValue === null) {
+      return '\u2014'
+    }
+    const safeCurrent = Math.max(0, currentValue)
+    const safePrevious = Math.max(0, previousValue)
+    const delta = safeCurrent - safePrevious
+    const percentDelta = safePrevious > 0
+      ? (delta / safePrevious) * 100
+      : (safeCurrent > 0 ? null : 0)
+    const arrow = delta > 0 ? '↑' : delta < 0 ? '↓' : '→'
+    const toneClass = delta > 0
+      ? 'text-[hsl(var(--tone-positive-700))]'
+      : delta < 0
+        ? 'text-[hsl(var(--tone-danger-700))]'
+        : 'text-[hsl(var(--tone-neutral-700))]'
+    const percentLabel = percentDelta === null
+      ? 'new'
+      : `${delta >= 0 ? '+' : ''}${Math.round(percentDelta)}%`
+    return (
+      <span className={cn('inline-flex items-center gap-1 whitespace-nowrap font-semibold tabular-nums', toneClass)}>
+        <span aria-hidden="true">{arrow}</span>
+        <span>{`${delta >= 0 ? '+' : ''}${formatInt(Math.abs(delta))}`.replace('+0', '0').replace('-0', '0')}</span>
+        <span className="opacity-70">{`(${percentLabel})`}</span>
+      </span>
+    )
+  }
+
+  if (windowMode === '1y') {
+    const sourceValues = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
+    const sourceLabels = toStringArray(chartData.month_labels_12m)
+    const currentMonthIndex = new Date().getUTCMonth()
+    const sourceLastMonthIndex = sourceLabels.length ? parseMonthIndex(sourceLabels[sourceLabels.length - 1]) : null
+    const sourceLikelyIncludesCurrentMonth = sourceLastMonthIndex !== null && sourceLastMonthIndex === currentMonthIndex
+    const sourceValuesWindow = sourceValues.length >= 13 && sourceLikelyIncludesCurrentMonth
+      ? sourceValues.slice(-13, -1)
+      : sourceValues.length >= 12
+        ? sourceValues.slice(-12)
+        : sourceValues
+    const values12 = sourceValuesWindow.length >= 12
+      ? sourceValuesWindow.slice(-12)
+      : sourceValues.length > 0
+        ? [...Array.from({ length: 12 - sourceValuesWindow.length }, () => 0), ...sourceValuesWindow]
+        : Array.from({ length: 12 }, () => 0)
+    const monthStarts12 = buildTrailingMonthStarts(12, true)
+    return values12.map((value, index) => ({
+      key: `citation-month-${index}`,
+      periodLabel: formatMonthYearLabel(monthStarts12[index]?.getTime() ?? Date.now()),
+      citations: formatInt(Math.round(Math.max(0, value))),
+      change: renderCitationChangeCell(
+        Math.round(Math.max(0, value)),
+        index > 0 ? Math.round(Math.max(0, values12[index - 1] ?? 0)) : null,
+      ),
+    }))
+  }
+
+  const lifetimeValues = toNumberArray(chartData.monthly_values_lifetime).map((item) => Math.max(0, item))
+  const lifetimeLabels = toStringArray(chartData.month_labels_lifetime)
+  const fallbackMonthStarts = buildTrailingMonthStarts(lifetimeValues.length, true)
+  const yearlyTotals = new Map<number, number>()
+  lifetimeValues.forEach((value, index) => {
+    const parsed = parseIsoMonthStart(lifetimeLabels[index] || '')
+    const monthStart = parsed || fallbackMonthStarts[index] || null
+    if (!monthStart) {
+      return
+    }
+    const year = monthStart.getUTCFullYear()
+    yearlyTotals.set(year, (yearlyTotals.get(year) || 0) + Math.max(0, value))
+  })
+
+  const nowYear = new Date().getUTCFullYear()
+  const projectedYearRaw = Number(chartData.projected_year)
+  const currentYearYtdRaw = Number(chartData.current_year_ytd)
+  const projectedValueRaw = Number(chartData.projected_value)
+  const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : nowYear
+  if (Number.isFinite(currentYearYtdRaw)) {
+    yearlyTotals.set(projectedYear, Math.max(0, currentYearYtdRaw))
+  }
+
+  const dedupedBars = Array.from(yearlyTotals.entries())
+    .map(([year, value]) => ({
+      year,
+      value: Math.max(0, value),
+      current: year === projectedYear,
+    }))
+    .sort((left, right) => left.year - right.year)
+
+  const currentYearBars = dedupedBars.filter((bar) => bar.current)
+  const completedYearBars = dedupedBars.filter((bar) => !bar.current)
+  const visibleBars = windowMode === '3y'
+    ? [...completedYearBars.slice(-3), ...currentYearBars]
+    : windowMode === '5y'
+      ? [...completedYearBars.slice(-5), ...currentYearBars]
+      : dedupedBars
+  const rows: Array<{ key: string; periodLabel: string; citations: string; change: ReactNode; projected?: boolean }> = []
+  visibleBars.forEach((bar) => {
+    const completedIndex = completedYearBars.findIndex((entry) => entry.year === bar.year)
+    const previousCompletedYearValue = bar.current
+      ? (completedYearBars.length
+        ? Math.round(Math.max(0, completedYearBars[completedYearBars.length - 1]?.value ?? 0))
+        : null)
+      : (completedIndex > 0
+        ? Math.round(Math.max(0, completedYearBars[completedIndex - 1]?.value ?? 0))
+        : null)
+    if (bar.current && Number.isFinite(projectedValueRaw)) {
+      rows.push({
+        key: `citation-year-${bar.year}-projected`,
+        periodLabel: `${bar.year} projected`,
+        citations: formatInt(Math.round(Math.max(0, projectedValueRaw))),
+        change: renderCitationChangeCell(
+          Math.round(Math.max(0, projectedValueRaw)),
+          previousCompletedYearValue,
+        ),
+        projected: true,
+      })
+    }
+    rows.push({
+      key: `citation-year-${bar.year}`,
+      periodLabel: bar.current ? `${bar.year} YTD` : String(bar.year),
+      citations: formatInt(Math.round(Math.max(0, bar.value))),
+      change: renderCitationChangeCell(
+        Math.round(Math.max(0, bar.value)),
+        previousCompletedYearValue,
+        bar.current,
+      ),
+    })
+  })
+  return rows
+}
+
 function renderMomentumDrilldownSection({
   tile,
   activeTab,
   stats,
+  momentumInsightOpen,
+  onToggleMomentumInsight,
+  onOpenPublication,
+  momentumWindowMode,
+  onMomentumWindowModeChange,
+  momentumYearBreakdown,
+  momentumOverviewViewMode,
+  onMomentumOverviewViewModeChange,
+  tileToggleMotionReady,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
   stats: MomentumDrilldownStats
+  momentumInsightOpen: boolean
+  onToggleMomentumInsight: () => void
+  onOpenPublication?: (workId: string) => void
+  momentumWindowMode: MomentumWindowMode
+  onMomentumWindowModeChange: (next: MomentumWindowMode) => void
+  momentumYearBreakdown: MomentumYearBreakdown | null
+  momentumOverviewViewMode: SplitBreakdownViewMode
+  onMomentumOverviewViewModeChange: (next: SplitBreakdownViewMode) => void
+  tileToggleMotionReady: boolean
 }): ReactNode {
+  const renderMomentumOverviewTableHeader = (periodLabel: string) => (
+    <span className="inline-flex flex-col whitespace-normal leading-tight">
+      <span>{periodLabel}</span>
+      <span className="font-medium normal-case tracking-normal text-[hsl(var(--tone-neutral-600))]">(Avg/month)</span>
+    </span>
+  )
+
   if (activeTab === 'summary') {
+    const currentUtcMonthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1))
+    const lastCompleteMonthStart = shiftUtcMonth(currentUtcMonthStart, -1)
+    const recent3WindowStart = shiftUtcMonth(lastCompleteMonthStart, -2)
+    const prior9WindowStart = shiftUtcMonth(lastCompleteMonthStart, -11)
+    const recent1yWindowStart = shiftUtcMonth(lastCompleteMonthStart, -11)
+    const prior4yWindowStart = new Date(Date.UTC(currentUtcMonthStart.getUTCFullYear() - 5, 0, 1))
+    const useYearMode = momentumWindowMode === '5y' && Boolean(momentumYearBreakdown?.bars.length)
+    const recentPace = useYearMode
+      ? momentumYearBreakdown?.rate1y ?? 0
+      : stats.monthlyValues12m.length >= 3
+        ? stats.monthlyValues12m.slice(-3).reduce((sum, value) => sum + Math.max(0, value), 0) / 3
+        : 0
+    const priorPace = useYearMode
+      ? momentumYearBreakdown?.rate4y ?? 0
+      : stats.monthlyValues12m.length >= 12
+        ? stats.monthlyValues12m.slice(-12, -3).reduce((sum, value) => sum + Math.max(0, value), 0) / 9
+        : 0
+    const paceUnitLabel = useYearMode ? '/year' : '/month'
+    const recentPeriodCountLabel = useYearMode ? 'Recent 1y' : 'Recent 3m'
+    const priorPeriodCountLabel = useYearMode ? 'Prior 4y' : 'Prior 9m'
+    const momentumOverviewRows = stats.publications
+      .slice()
+      .filter((publication) => {
+        const publicationMonthStart = parsePublicationMonthStart(publication.publicationMonthStart, publication.year)
+        const recentTotal = useYearMode ? publication.recent1yCitations : publication.recent3mCitations
+        const priorTotal = useYearMode ? (publication.prior4yCitations ?? 0) : publication.prior9mCitations
+        const recentComparable = isMomentumWindowComparable(
+          publicationMonthStart,
+          useYearMode ? recent1yWindowStart : recent3WindowStart,
+        )
+        const priorComparable = isMomentumWindowComparable(
+          publicationMonthStart,
+          useYearMode ? prior4yWindowStart : prior9WindowStart,
+        )
+        const recentMonths = useYearMode ? 12 : 3
+        const priorMonths = useYearMode ? 48 : 9
+        const recentDisplayedValue = roundMomentumOverviewValue(recentTotal / recentMonths)
+        const priorDisplayedValue = roundMomentumOverviewValue(priorTotal / priorMonths)
+        if (!recentComparable && !priorComparable) {
+          return false
+        }
+        if (recentComparable && !priorComparable && recentDisplayedValue <= 0) {
+          return false
+        }
+        if (!recentComparable && priorComparable && priorDisplayedValue <= 0) {
+          return false
+        }
+        return recentDisplayedValue > 0 || priorDisplayedValue > 0
+      })
+      .sort((left, right) => {
+        const leftPublicationMonthStart = parsePublicationMonthStart(left.publicationMonthStart, left.year)
+        const rightPublicationMonthStart = parsePublicationMonthStart(right.publicationMonthStart, right.year)
+        const leftRecentTotal = useYearMode ? left.recent1yCitations : left.recent3mCitations
+        const rightRecentTotal = useYearMode ? right.recent1yCitations : right.recent3mCitations
+        const leftRecentMonths = useYearMode ? 12 : 3
+        const rightRecentMonths = useYearMode ? 12 : 3
+        const leftPriorTotal = useYearMode ? (left.prior4yCitations ?? 0) : left.prior9mCitations
+        const rightPriorTotal = useYearMode ? (right.prior4yCitations ?? 0) : right.prior9mCitations
+        const leftPriorMonths = useYearMode ? 48 : 9
+        const rightPriorMonths = useYearMode ? 48 : 9
+        const leftRecentWindowStart = useYearMode ? recent1yWindowStart : recent3WindowStart
+        const rightRecentWindowStart = useYearMode ? recent1yWindowStart : recent3WindowStart
+        const leftPriorWindowStart = useYearMode ? prior4yWindowStart : prior9WindowStart
+        const rightPriorWindowStart = useYearMode ? prior4yWindowStart : prior9WindowStart
+        const leftIsNotComparable = !isMomentumWindowComparable(leftPublicationMonthStart, leftRecentWindowStart)
+          || !isMomentumWindowComparable(leftPublicationMonthStart, leftPriorWindowStart)
+        const rightIsNotComparable = !isMomentumWindowComparable(rightPublicationMonthStart, rightRecentWindowStart)
+          || !isMomentumWindowComparable(rightPublicationMonthStart, rightPriorWindowStart)
+        const toneRank = (tone: MomentumRecentCellTone): number => {
+          switch (tone) {
+            case 'positive':
+              return 0
+            case 'accent':
+              return 1
+            case 'danger':
+              return 2
+            default:
+              return 3
+          }
+        }
+        const leftTone = getMomentumRecentCellTone({
+          recentTotalCitations: leftRecentTotal,
+          recentMonths: leftRecentMonths,
+          priorTotalCitations: leftPriorTotal,
+          priorMonths: leftPriorMonths,
+          isNotComparable: leftIsNotComparable,
+        })
+        const rightTone = getMomentumRecentCellTone({
+          recentTotalCitations: rightRecentTotal,
+          recentMonths: rightRecentMonths,
+          priorTotalCitations: rightPriorTotal,
+          priorMonths: rightPriorMonths,
+          isNotComparable: rightIsNotComparable,
+        })
+        const rankDifference = toneRank(leftTone) - toneRank(rightTone)
+        if (rankDifference !== 0) {
+          return rankDifference
+        }
+        const leftDelta = Math.abs((leftRecentTotal / leftRecentMonths) - (leftPriorTotal / leftPriorMonths))
+        const rightDelta = Math.abs((rightRecentTotal / rightRecentMonths) - (rightPriorTotal / rightPriorMonths))
+        if (Math.abs(rightDelta - leftDelta) > 1e-6) {
+          return rightDelta - leftDelta
+        }
+        return rightRecentTotal - leftRecentTotal
+      })
     return (
-        <div className="house-publications-drilldown-bounded-section">
-        <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Momentum overview</p>
+      <>
+        <div
+          className="house-publications-drilldown-bounded-section relative"
+          style={{ border: '0', background: 'transparent', padding: '0' }}
+        >
+          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+            <div
+              className={cn(
+                HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS,
+                'house-publications-headline-metric-grid mt-0 w-full grid-cols-2 md:grid-cols-4',
+              )}
+              style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+            >
+              {[
+                { label: 'Momentum index', value: formatInt(stats.momentumIndex) },
+                { label: 'State', value: renderMomentumStateBanner(stats.state) },
+                {
+                  label: useYearMode ? 'Recent 1y citation avg' : 'Recent 3m citation avg',
+                  value: `${formatMomentumOverviewTick(recentPace)}${paceUnitLabel}`,
+                },
+                {
+                  label: useYearMode ? 'Prior 4y citation avg' : 'Prior 9m citation avg',
+                  value: `${formatMomentumOverviewTick(priorPace)}${paceUnitLabel}`,
+                },
+                { label: 'Tracked papers', value: formatInt(stats.trackedPapers) },
+              ].map((metricTile) => (
+                <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
+                  <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                    {typeof metricTile.value === 'string' || typeof metricTile.value === 'number' ? (
+                      <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
+                    ) : (
+                      metricTile.value
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-          <div className="space-y-3">
-            <DrilldownNarrativeCard
-              eyebrow="Approved story"
-              title={`Momentum is currently ${stats.state.toLowerCase()} at index ${formatInt(stats.momentumIndex)}.`}
-              body={`This drilldown compares recent citation pace against the immediately preceding baseline window. The active signal is built from ${formatInt(stats.trackedPapers)} papers with matched citation histories, so it highlights recent acceleration rather than lifetime scale.`}
+
+        <div className={cn('house-publications-drilldown-bounded-section relative', 'border-0 bg-transparent px-0 py-0')}>
+          <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+            <HelpTooltipIconButton
+              ariaLabel="Explain momentum overview"
+              content={formatMomentumOverviewTooltip(stats)}
             />
-            <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-              <div className="space-y-1">
-                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Recent vs baseline citation pace</p>
-                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">The chart keeps the current 12-month momentum comparison in view for the summary story.</p>
-              </div>
-              <div className="min-h-[11rem]">
-                <MomentumTilePanel tile={tile} mode="12m" yearBreakdown={null} />
+            <PublicationInsightsTriggerButton
+              ariaLabel="Open momentum overview insight"
+              active={momentumInsightOpen}
+              onClick={onToggleMomentumInsight}
+            />
+          </div>
+          <div className="house-drilldown-heading-block">
+            <div className="space-y-3 pr-16">
+              <p className="house-drilldown-heading-block-title">How has citation pace changed recently?</p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                  <div
+                    className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+                    data-stop-tile-open="true"
+                  >
+                    <span
+                      className={HOUSE_TOGGLE_THUMB_CLASS}
+                      style={buildTileToggleThumbStyle(momentumWindowMode === '5y' ? 1 : 0, 2, !tileToggleMotionReady)}
+                      aria-hidden="true"
+                    />
+                    <button
+                      type="button"
+                      data-stop-tile-open="true"
+                      className={cn(
+                        HOUSE_TOGGLE_BUTTON_CLASS,
+                        momentumWindowMode === '12m' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        if (momentumWindowMode === '12m') {
+                          return
+                        }
+                        onMomentumWindowModeChange('12m')
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      aria-pressed={momentumWindowMode === '12m'}
+                    >
+                      1y
+                    </button>
+                    <button
+                      type="button"
+                      data-stop-tile-open="true"
+                      className={cn(
+                        HOUSE_TOGGLE_BUTTON_CLASS,
+                        momentumWindowMode === '5y' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        if (momentumWindowMode === '5y') {
+                          return
+                        }
+                        onMomentumWindowModeChange('5y')
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      aria-pressed={momentumWindowMode === '5y'}
+                    >
+                      5y
+                    </button>
+                  </div>
+                </div>
+                <SplitBreakdownViewToggle
+                  value={momentumOverviewViewMode}
+                  onChange={onMomentumOverviewViewModeChange}
+                />
               </div>
             </div>
+          </div>
+          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+            <div className="min-h-[11rem]">
+              {momentumOverviewViewMode === 'bar' ? (
+                <MomentumOverviewChart tile={tile} mode={momentumWindowMode} yearBreakdown={momentumYearBreakdown} />
+              ) : (
+                <CanonicalTablePanel
+                  bare
+                  variant="drilldown"
+                  suppressTopRowHighlight
+                  columns={[
+                    { key: 'paper', label: 'Paper' },
+                    { key: 'recent', label: renderMomentumOverviewTableHeader(recentPeriodCountLabel), align: 'center', width: '1%' },
+                    { key: 'prior', label: renderMomentumOverviewTableHeader(priorPeriodCountLabel), align: 'center', width: '1%' },
+                  ]}
+                  rows={momentumOverviewRows.map((publication) => {
+                    const publicationMonthStart = parsePublicationMonthStart(
+                      publication.publicationMonthStart,
+                      publication.year,
+                    )
+                    const recentTotalCitations = useYearMode ? publication.recent1yCitations : publication.recent3mCitations
+                    const recentMonths = useYearMode ? 12 : 3
+                    const priorTotalCitations = useYearMode ? (publication.prior4yCitations ?? 0) : publication.prior9mCitations
+                    const priorMonths = useYearMode ? 48 : 9
+                    const recentWindowStart = useYearMode ? recent1yWindowStart : recent3WindowStart
+                    const priorWindowStart = useYearMode ? prior4yWindowStart : prior9WindowStart
+                    const isNotComparable = !isMomentumWindowComparable(publicationMonthStart, recentWindowStart)
+                      || !isMomentumWindowComparable(publicationMonthStart, priorWindowStart)
+                    const recentTone = getMomentumRecentCellTone({
+                      recentTotalCitations,
+                      recentMonths,
+                      priorTotalCitations,
+                      priorMonths,
+                      isNotComparable,
+                    })
+                    return {
+                      key: `momentum-overview-${publication.workId}`,
+                      cells: {
+                      paper: onOpenPublication ? (
+                        <button
+                          type="button"
+                          data-stop-tile-open="true"
+                          className="block w-full text-left text-[hsl(var(--tone-accent-700))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:text-[hsl(var(--tone-accent-800))] hover:underline focus-visible:outline-none focus-visible:underline"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onOpenPublication(publication.workId)
+                          }}
+                          onMouseDown={(event) => event.stopPropagation()}
+                        >
+                          <span className="block max-w-full break-words leading-snug">{publication.title}</span>
+                        </button>
+                      ) : (
+                        <span className="block max-w-full break-words leading-snug">{publication.title}</span>
+                      ),
+                      recent: (
+                        <span
+                          className={cn(
+                            'inline-flex min-w-[4.35rem] items-center justify-center rounded-md border px-2 py-1 text-center font-medium tabular-nums',
+                            getMomentumRecentCellTintClass(recentTone),
+                          )}
+                        >
+                          {formatMomentumTableAverageValue({
+                            totalCitations: recentTotalCitations,
+                            months: recentMonths,
+                            publicationMonthStart,
+                            windowStart: recentWindowStart,
+                          })}
+                        </span>
+                      ),
+                      prior: formatMomentumTableAverageValue({
+                        totalCitations: priorTotalCitations,
+                        months: priorMonths,
+                        publicationMonthStart,
+                        windowStart: priorWindowStart,
+                      }),
+                    },
+                  }})}
+                  emptyMessage="No papers recorded citations in the selected comparison windows."
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="house-publications-drilldown-bounded-section relative">
+          <div className="absolute right-2 top-2 z-10">
+            <HelpTooltipIconButton
+              ariaLabel="Explain what is driving this"
+              content={formatMomentumContributorsTooltip({
+                ...stats,
+                topContributors: stats.topContributors.slice(0, 3),
+              })}
+            />
+          </div>
+          <div className="house-drilldown-heading-block">
+            <p className="house-drilldown-heading-block-title">Which papers explain the change?</p>
+          </div>
+          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
             <CanonicalTablePanel
-              title="Momentum readout"
-              subtitle="Canonical summary of the current momentum state and recent pacing inputs."
+              bare
+              variant="drilldown"
+              suppressTopRowHighlight
               columns={[
-                { key: 'measure', label: 'Measure' },
-                { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                { key: 'meaning', label: 'Interpretation' },
+                { key: 'paper', label: 'Paper' },
+                { key: 'shift', label: 'Shift', align: 'center', width: '1%' },
+                { key: 'delta', label: 'Delta', align: 'center', width: '1%' },
               ]}
-              rows={[
-                {
-                  key: 'index',
-                  cells: {
-                    measure: 'Momentum index',
-                    value: formatInt(stats.momentumIndex),
-                    meaning: 'Headline recency-weighted pace signal.',
-                  },
+              rows={stats.topContributors.slice(0, 3).map((publication) => ({
+                key: publication.workId,
+                cells: {
+                  paper: onOpenPublication ? (
+                    <button
+                      type="button"
+                      data-stop-tile-open="true"
+                      className="block w-full text-left text-[hsl(var(--tone-accent-700))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:text-[hsl(var(--tone-accent-800))] hover:underline focus-visible:outline-none focus-visible:underline"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onOpenPublication(publication.workId)
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                      <span className="block max-w-full break-words leading-snug">{publication.title}</span>
+                    </button>
+                  ) : (
+                    <span className="block max-w-full break-words leading-snug">{publication.title}</span>
+                  ),
+                  shift: publication.prior9mAvg !== null && publication.recent3mAvg !== null
+                    ? `${formatMomentumOverviewTick(publication.prior9mAvg)} -> ${formatMomentumOverviewTick(publication.recent3mAvg)}`
+                    : '\u2014',
+                  delta: (
+                    <span
+                      className={cn(
+                        'font-semibold tabular-nums',
+                        publication.shiftDelta === null
+                          ? 'text-[hsl(var(--tone-neutral-600))]'
+                          : publication.shiftDelta >= 0
+                          ? 'text-[hsl(var(--tone-positive-700))]'
+                          : 'text-[hsl(var(--tone-danger-700))]',
+                      )}
+                    >
+                      {publication.shiftDelta === null ? '\u2014' : formatSignedNumber(publication.shiftDelta, 1)}
+                    </span>
+                  ),
                 },
-                {
-                  key: 'state',
-                  cells: {
-                    measure: 'State',
-                    value: stats.state,
-                    meaning: 'Narrative label assigned from the current index.',
-                  },
-                },
-                {
-                  key: 'recent',
-                  cells: {
-                    measure: 'Current score',
-                    value: stats.recentScore12m === null ? '\u2014' : stats.recentScore12m.toFixed(1),
-                    meaning: 'Latest 12-month momentum score.',
-                  },
-                },
-                {
-                  key: 'prior',
-                  cells: {
-                    measure: 'Previous score',
-                    value: stats.previousScore12m === null ? '\u2014' : stats.previousScore12m.toFixed(1),
-                    meaning: 'Comparison baseline from the previous window.',
-                  },
-                },
-                {
-                  key: 'delta',
-                  cells: {
-                    measure: 'Delta',
-                    value: formatSignedNumber(stats.delta, 2),
-                    meaning: 'Direction and magnitude versus the previous score.',
-                  },
-                },
-              ]}
+              }))}
+              emptyMessage="No momentum-shift drivers available."
             />
           </div>
         </div>
-      </div>
+      </>
     )
   }
 
   if (activeTab === 'breakdown') {
     return (
-      <div className="house-publications-drilldown-bounded-section">
+      <div className="house-publications-drilldown-bounded-section relative">
+        <div className="absolute right-2 top-2 z-10">
+          <HelpTooltipIconButton
+            ariaLabel="Explain momentum contributors"
+            content={formatMomentumContributorsTooltip(stats)}
+          />
+        </div>
         <div className="house-drilldown-heading-block">
           <p className="house-drilldown-heading-block-title">Momentum contributors</p>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-          <div className="space-y-3">
-            <DrilldownNarrativeCard
-              eyebrow="Approved story"
-              title="Recent momentum is being carried by a defined subset of papers."
-              body="Contributor ranking surfaces the papers with the strongest recent citation pace and the highest contribution to the momentum score, so the bottom table should explain the headline state directly."
-            />
-            <CanonicalTablePanel
-              title="Top contributing papers"
-              subtitle="Papers ranked by momentum contribution and recent citation activity."
-              columns={[
-                { key: 'paper', label: 'Paper' },
-                { key: 'recent', label: '12m cites', align: 'center', width: '1%' },
-                { key: 'contribution', label: 'Contribution', align: 'center', width: '1%' },
-                { key: 'confidence', label: 'Confidence', align: 'center', width: '1%' },
-                { key: 'venue', label: 'Venue' },
-              ]}
-              rows={stats.topContributors.map((publication) => ({
-                key: publication.workId,
-                cells: {
-                  paper: publication.title,
-                  recent: formatInt(publication.citationsLast12m),
-                  contribution: publication.momentumContribution.toFixed(1),
-                  confidence: publication.confidenceLabel,
-                  venue: publication.venue || '\u2014',
-                },
-              }))}
-              emptyMessage="No paper-level momentum contributors available."
-            />
-          </div>
+          <CanonicalTablePanel
+            bare
+            variant="drilldown"
+            suppressTopRowHighlight
+            columns={[
+              { key: 'paper', label: 'Paper' },
+              { key: 'recent', label: '12m cites', align: 'center', width: '1%' },
+              { key: 'contribution', label: 'Contribution', align: 'center', width: '1%' },
+              { key: 'confidence', label: 'Confidence', align: 'center', width: '1%' },
+              { key: 'venue', label: 'Venue' },
+            ]}
+            rows={stats.topContributors.map((publication) => ({
+              key: publication.workId,
+              cells: {
+                paper: publication.title,
+                recent: formatInt(publication.citationsLast12m),
+                contribution: publication.momentumContribution.toFixed(1),
+                confidence: publication.confidenceLabel,
+                venue: publication.venue || '\u2014',
+              },
+            }))}
+            emptyMessage="No paper-level momentum contributors available."
+          />
         </div>
       </div>
     )
@@ -13568,61 +17198,61 @@ function renderMomentumDrilldownSection({
 
   if (activeTab === 'trajectory') {
     return (
-      <div className="house-publications-drilldown-bounded-section">
+      <div className="house-publications-drilldown-bounded-section relative">
+        <div className="absolute right-2 top-2 z-10">
+          <HelpTooltipIconButton
+            ariaLabel="Explain momentum trajectory"
+            content={formatMomentumTrajectoryTooltip(stats)}
+          />
+        </div>
         <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Momentum trajectory</p>
+          <p className="house-drilldown-heading-block-title">Trajectory inputs</p>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-          <div className="space-y-3">
-            <DrilldownNarrativeCard
-              eyebrow="Approved story"
-              title="Momentum trajectory is a recency comparison, not a lifetime curve."
-              body="This metric is designed to move quickly. It compares the current recent window against the preceding baseline, so the trajectory discussion should stay focused on score change and monthly evidence rather than cumulative citations."
-            />
-            <CanonicalTablePanel
-              title="Trajectory inputs"
-              subtitle="Operational view of the monthly evidence feeding the current momentum state."
-              columns={[
-                { key: 'measure', label: 'Measure' },
-                { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                { key: 'note', label: 'Interpretation' },
-              ]}
-              rows={[
-                {
-                  key: 'months',
-                  cells: {
-                    measure: 'Monthly points',
-                    value: formatInt(stats.monthlyValues12m.length),
-                    note: 'Observed monthly citation additions in the active 12-month view.',
-                  },
+          <CanonicalTablePanel
+            bare
+            variant="drilldown"
+            suppressTopRowHighlight
+            columns={[
+              { key: 'measure', label: 'Measure' },
+              { key: 'value', label: 'Value', align: 'center', width: '1%' },
+              { key: 'note', label: 'Interpretation' },
+            ]}
+            rows={[
+              {
+                key: 'months',
+                cells: {
+                  measure: 'Monthly points',
+                  value: formatInt(stats.monthlyValues12m.length),
+                  note: 'Observed monthly citation additions in the active 12-month view.',
                 },
-                {
-                  key: 'weighted',
-                  cells: {
-                    measure: 'Weighted monthly points',
-                    value: formatInt(stats.weightedMonthlyValues12m.length),
-                    note: 'Recency-weighted monthly series used where available.',
-                  },
+              },
+              {
+                key: 'weighted',
+                cells: {
+                  measure: 'Weighted monthly points',
+                  value: formatInt(stats.weightedMonthlyValues12m.length),
+                  note: 'Recency-weighted monthly series used where available.',
                 },
-                {
-                  key: 'current',
-                  cells: {
-                    measure: 'Current score',
-                    value: stats.recentScore12m === null ? '\u2014' : stats.recentScore12m.toFixed(1),
-                    note: 'Most recent active-window score.',
-                  },
+              },
+              {
+                key: 'current',
+                cells: {
+                  measure: 'Current score',
+                  value: stats.recentScore12m === null ? '\u2014' : stats.recentScore12m.toFixed(1),
+                  note: 'Most recent active-window score.',
                 },
-                {
-                  key: 'previous',
-                  cells: {
-                    measure: 'Previous score',
-                    value: stats.previousScore12m === null ? '\u2014' : stats.previousScore12m.toFixed(1),
-                    note: 'Prior baseline score for comparison.',
-                  },
+              },
+              {
+                key: 'previous',
+                cells: {
+                  measure: 'Previous score',
+                  value: stats.previousScore12m === null ? '\u2014' : stats.previousScore12m.toFixed(1),
+                  note: 'Prior baseline score for comparison.',
                 },
-              ]}
-            />
-          </div>
+              },
+            ]}
+          />
         </div>
       </div>
     )
@@ -13630,46 +17260,46 @@ function renderMomentumDrilldownSection({
 
   if (activeTab === 'context') {
     return (
-      <div className="house-publications-drilldown-bounded-section">
+      <div className="house-publications-drilldown-bounded-section relative">
+        <div className="absolute right-2 top-2 z-10">
+          <HelpTooltipIconButton
+            ariaLabel="Explain momentum context"
+            content={formatMomentumContextTooltip(stats)}
+          />
+        </div>
         <div className="house-drilldown-heading-block">
           <p className="house-drilldown-heading-block-title">Momentum context</p>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-          <div className="space-y-3">
-            <DrilldownNarrativeCard
-              eyebrow="Approved story"
-              title="Momentum should be read as an early signal, not a scale metric."
-              body="A high momentum score means recent citation pace is strong relative to the immediately preceding baseline. It does not mean the total citation portfolio is larger; it means the recent direction of travel is stronger."
-            />
-            <CanonicalTablePanel
-              title="Confidence context"
-              subtitle="Coverage and confidence details used to interpret the current momentum headline."
-              columns={[
-                { key: 'measure', label: 'Measure' },
-                { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                { key: 'note', label: 'Interpretation' },
-              ]}
-              rows={[
-                {
-                  key: 'tracked',
-                  cells: {
-                    measure: 'Tracked papers',
-                    value: formatInt(stats.trackedPapers),
-                    note: 'Papers with usable citation history for the momentum calculation.',
-                  },
+          <CanonicalTablePanel
+            bare
+            variant="drilldown"
+            suppressTopRowHighlight
+            columns={[
+              { key: 'measure', label: 'Measure' },
+              { key: 'value', label: 'Value', align: 'center', width: '1%' },
+              { key: 'note', label: 'Interpretation' },
+            ]}
+            rows={[
+              {
+                key: 'tracked',
+                cells: {
+                  measure: 'Tracked papers',
+                  value: formatInt(stats.trackedPapers),
+                  note: 'Papers with usable citation history for the momentum calculation.',
                 },
-                ...stats.confidenceBuckets.map((bucket) => ({
-                  key: `confidence-${bucket.label}`,
-                  cells: {
-                    measure: `${bucket.label} confidence`,
-                    value: formatInt(bucket.count),
-                    note: 'Match quality or enrichment confidence bucket.',
-                  },
-                })),
-              ]}
-              emptyMessage="No confidence context available."
-            />
-          </div>
+              },
+              ...stats.confidenceBuckets.map((bucket) => ({
+                key: `confidence-${bucket.label}`,
+                cells: {
+                  measure: `${bucket.label} confidence`,
+                  value: formatInt(bucket.count),
+                  note: 'Match quality or enrichment confidence bucket.',
+                },
+              })),
+            ]}
+            emptyMessage="No confidence context available."
+          />
         </div>
       </div>
     )
@@ -14397,6 +18027,14 @@ function renderEnhancedGenericMetricDrilldownSection({
   tile,
   activeTab,
   momentumStats,
+  momentumInsightOpen,
+  onToggleMomentumInsight,
+  onOpenPublication,
+  momentumWindowMode,
+  onMomentumWindowModeChange,
+  momentumYearBreakdown,
+  momentumOverviewViewMode,
+  onMomentumOverviewViewModeChange,
   impactStats,
   influentialStats,
   fieldPercentileStats,
@@ -14409,6 +18047,14 @@ function renderEnhancedGenericMetricDrilldownSection({
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
   momentumStats: MomentumDrilldownStats | null
+  momentumInsightOpen: boolean
+  onToggleMomentumInsight: () => void
+  onOpenPublication?: (workId: string) => void
+  momentumWindowMode: MomentumWindowMode
+  onMomentumWindowModeChange: (next: MomentumWindowMode) => void
+  momentumYearBreakdown: MomentumYearBreakdown | null
+  momentumOverviewViewMode: SplitBreakdownViewMode
+  onMomentumOverviewViewModeChange: (next: SplitBreakdownViewMode) => void
   impactStats: ImpactConcentrationDrilldownStats | null
   influentialStats: InfluentialCitationsDrilldownStats | null
   fieldPercentileStats: FieldPercentileShareDrilldownStats | null
@@ -14420,7 +18066,22 @@ function renderEnhancedGenericMetricDrilldownSection({
 }): ReactNode {
   switch (tile.key) {
     case 'momentum':
-      return momentumStats ? renderMomentumDrilldownSection({ tile, activeTab, stats: momentumStats }) : null
+      return momentumStats
+        ? renderMomentumDrilldownSection({
+          tile,
+          activeTab,
+          stats: momentumStats,
+          momentumInsightOpen,
+          onToggleMomentumInsight,
+          onOpenPublication,
+          momentumWindowMode,
+          onMomentumWindowModeChange,
+          momentumYearBreakdown,
+          momentumOverviewViewMode,
+          onMomentumOverviewViewModeChange,
+          tileToggleMotionReady,
+        })
+        : null
     case 'impact_concentration':
       return impactStats ? renderImpactConcentrationDrilldownSection({ tile, activeTab, stats: impactStats }) : null
     case 'influential_citations':
@@ -14923,67 +18584,6 @@ function renderInfluentialCitationsDrilldownSection({
   }
 
   return null
-}
-
-function HIndexCandidateTablePanel({
-  title,
-  subtitle,
-  candidates,
-  bare = false,
-}: {
-  title?: string
-  subtitle?: string
-  candidates: HIndexDrilldownStats['candidatePapers']
-  bare?: boolean
-}) {
-  return (
-    <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-      {title || subtitle ? (
-        <div className="space-y-1">
-          {title ? <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p> : null}
-          {subtitle ? <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p> : null}
-        </div>
-      ) : null}
-      {candidates.length ? (
-        <div className="overflow-hidden rounded-[1rem] border border-[hsl(var(--stroke-soft)/0.78)]">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-surface-100)/0.9)]">
-                <th className="house-table-head-text px-2 py-2 text-left font-semibold">Paper</th>
-                <th className="house-table-head-text px-2 py-2 text-center font-semibold whitespace-nowrap">Current</th>
-                <th className="house-table-head-text px-2 py-2 text-center font-semibold whitespace-nowrap">Gap</th>
-                <th className="house-table-head-text px-2 py-2 text-center font-semibold whitespace-nowrap">Projected 12m</th>
-                <th className="house-table-head-text px-2 py-2 text-center font-semibold whitespace-nowrap">Likelihood</th>
-              </tr>
-            </thead>
-            <tbody>
-              {candidates.map((candidate) => (
-                <tr key={candidate.workId} className="border-b border-[hsl(var(--stroke-soft)/0.55)] last:border-b-0">
-                  <td className="house-table-cell-text px-2 py-2 align-top">
-                    <span className="block max-w-full break-words leading-snug">{candidate.title}</span>
-                  </td>
-                  <td className="house-table-cell-text px-2 py-2 text-center whitespace-nowrap tabular-nums">
-                    {formatInt(candidate.citations)}
-                  </td>
-                  <td className="house-table-cell-text px-2 py-2 text-center whitespace-nowrap tabular-nums">
-                    {`+${formatInt(candidate.citationsToNextH)}`}
-                  </td>
-                  <td className="house-table-cell-text px-2 py-2 text-center whitespace-nowrap tabular-nums">
-                    {formatInt(candidate.projectedCitations12m)}
-                  </td>
-                  <td className="house-table-cell-text px-2 py-2 text-center whitespace-nowrap tabular-nums">
-                    {`${candidate.projectionProbabilityPct}%`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No near-threshold papers identified.</p>
-      )}
-    </div>
-  )
 }
 
 export function PublicationsTopStrip({
@@ -15763,17 +19363,18 @@ export function PublicationsTopStrip({
                 <TotalPublicationsDrilldownWorkspace
                   tile={activeTile}
                   activeTab={activeDrilldownTab}
-                  animateCharts={drawerOpen && activeDrilldownTab === 'summary'}
+                  animateCharts={drawerOpen}
                   onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
                 />
               ) : (
                 <GenericMetricDrilldownWorkspace
                   tile={activeTile}
                   activeTab={activeDrilldownTab}
-                  animateCharts={drawerOpen && activeDrilldownTab === 'summary'}
+                  animateCharts={drawerOpen}
                   token={token}
                   onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
                   onDrilldownTabChange={setActiveDrilldownTab}
+                  totalCitationsTile={totalCitationsTile}
                 />
               )}
             </DrilldownSheet.TabPanel>

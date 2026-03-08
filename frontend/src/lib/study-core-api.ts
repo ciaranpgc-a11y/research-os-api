@@ -11,6 +11,7 @@ import type {
   LibraryAssetRecord,
   LibraryAssetListPayload,
   LibraryAssetOwnership,
+  LibraryAssetScope,
   LibraryAssetSortBy,
   LibraryAssetSortDirection,
   LibraryAssetUploadPayload,
@@ -29,6 +30,7 @@ import type {
   GroundedDraftPayload,
   GenerationJobPayload,
   JournalOption,
+  LibraryAssetAccessRole,
   ManuscriptAuthorSuggestion,
   ManuscriptAuthorsPayload,
   PlanClarificationHistoryItem,
@@ -152,6 +154,7 @@ export async function listLibraryAssets(input: {
   projectId?: string
   query?: string
   ownership?: LibraryAssetOwnership
+  scope?: LibraryAssetScope
   page?: number
   pageSize?: number
   sortBy?: LibraryAssetSortBy
@@ -167,6 +170,9 @@ export async function listLibraryAssets(input: {
   }
   if ((input.ownership || '').trim()) {
     search.set('ownership', input.ownership!)
+  }
+  if ((input.scope || '').trim()) {
+    search.set('scope', input.scope!)
   }
   if (Number.isFinite(input.page)) {
     search.set('page', String(Math.max(1, Number(input.page || 1))))
@@ -198,12 +204,14 @@ export async function listLibraryAssets(input: {
     sort_direction: (payload.sort_direction || 'desc') as LibraryAssetSortDirection,
     query: String(payload.query || ''),
     ownership: (payload.ownership || 'all') as LibraryAssetOwnership,
+    scope: (payload.scope || 'all') as LibraryAssetScope,
   }
 }
 
 export async function updateLibraryAssetAccess(input: {
   token?: string
   assetId: string
+  collaborators?: Array<{ user_id?: string | null; name?: string | null; role: LibraryAssetAccessRole }>
   collaboratorUserIds?: string[]
   collaboratorNames?: string[]
 }): Promise<LibraryAssetRecord> {
@@ -211,6 +219,7 @@ export async function updateLibraryAssetAccess(input: {
     method: 'PATCH',
     headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      collaborators: input.collaborators || [],
       collaborator_user_ids: input.collaboratorUserIds || [],
       collaborator_names: input.collaboratorNames || [],
     }),
@@ -224,13 +233,17 @@ export async function updateLibraryAssetAccess(input: {
 export async function updateLibraryAssetMetadata(input: {
   token?: string
   assetId: string
-  filename: string
+  filename?: string
+  lockedForTeamMembers?: boolean
+  archivedForCurrentUser?: boolean
 }): Promise<LibraryAssetRecord> {
   const response = await fetch(`${API_BASE_URL}/v1/library/assets/${encodeURIComponent(input.assetId)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       filename: input.filename,
+      locked_for_team_members: input.lockedForTeamMembers,
+      archived_for_current_user: input.archivedForCurrentUser,
     }),
   })
   if (!response.ok) {

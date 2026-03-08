@@ -106,7 +106,7 @@ export function buildHIndexMethodsSections(tile: PublicationMetricTilePayload): 
       bullets: [
         'Trajectory charts show historical h-index by year and a separate view of citation gaps among the nearest candidate papers.',
         'Milestone tables use the first year each integer h threshold was reached and calculate elapsed years between milestones.',
-        'Candidate rows show current citations, the remaining gap to h+1, projected 12-month citations, and crossing likelihood.',
+        'Candidate rows show current citations, the remaining gap to h+1, projected 12-month citations, and a pace-based outlook.',
       ],
     },
     {

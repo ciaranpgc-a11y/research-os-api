@@ -1,6 +1,6 @@
 import type { PersonaStatePayload } from '@/types/impact'
 
-const PERSONA_STATE_CACHE_KEY = 'aawe-persona-state-cache-v1'
+const PERSONA_STATE_CACHE_KEY = 'aawe-persona-state-cache-v2'
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7
 
 type CachedPersonaState = {

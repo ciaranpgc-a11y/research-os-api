@@ -37,7 +37,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 22
+TOP_METRICS_SCHEMA_VERSION = 24
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 DRILLDOWN_TILE_ID_BY_KEY = {
@@ -2738,6 +2738,36 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "citations_prev_12m": prev_12,
                 "yoy_delta": last_12 - prev_12,
                 "momentum_contribution": momentum,
+                "momentum_recent_3m_citations": int(sum(monthly_added[-3:]))
+                if len(monthly_added) >= 3
+                else None,
+                "momentum_prior_9m_citations": int(sum(monthly_added[-12:-3]))
+                if len(monthly_added) >= 12
+                else None,
+                "momentum_recent_1y_citations": int(sum(monthly_added[-12:]))
+                if len(monthly_added) >= 12
+                else None,
+                "momentum_prior_4y_citations": int(
+                    sum(
+                        max(0, int(yearly_counts.get(year, 0) or 0))
+                        for year in range(now.year - 5, now.year - 1)
+                    )
+                )
+                if yearly_counts
+                else None,
+                "momentum_recent_3m_avg": round(float(sum(monthly_added[-3:])) / 3.0, 3)
+                if len(monthly_added) >= 3
+                else None,
+                "momentum_prior_9m_avg": round(float(sum(monthly_added[-12:-3])) / 9.0, 3)
+                if len(monthly_added) >= 12
+                else None,
+                "momentum_shift_delta": round(
+                    (float(sum(monthly_added[-3:])) / 3.0)
+                    - (float(sum(monthly_added[-12:-3])) / 9.0),
+                    3,
+                )
+                if len(monthly_added) >= 12
+                else None,
                 "influential_citations": latest_influential,
                 "influential_last_12m": int(sum(monthly_semantic_added[-12:])),
                 "confidence_score": round(confidence_score, 2),
@@ -2968,8 +2998,18 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "doi": row["doi"],
                     "year": row["year"],
                     "journal": row["journal"],
+                    "publication_date": row.get("publication_date"),
+                    "publication_month_start": row.get("publication_month_start"),
                     "momentum_contribution": row["momentum_contribution"],
+                    "momentum_recent_3m_citations": row["momentum_recent_3m_citations"],
+                    "momentum_prior_9m_citations": row["momentum_prior_9m_citations"],
+                    "momentum_recent_1y_citations": row["momentum_recent_1y_citations"],
+                    "momentum_prior_4y_citations": row["momentum_prior_4y_citations"],
                     "citations_last_12m": row["citations_last_12m"],
+                    "citations_prev_12m": row["citations_prev_12m"],
+                    "yoy_delta": row["yoy_delta"],
+                    "monthly_added_24": row["monthly_added_24"],
+                    "yearly_counts": row["yearly_counts"],
                     "confidence_score": row["confidence_score"],
                     "confidence_label": row["confidence_label"],
                     "match_source": row["match_source"],
@@ -5554,17 +5594,12 @@ def get_publication_top_metrics(*, user_id: str) -> dict[str, Any]:
     create_all_tables()
     enqueue = False
     response: dict[str, Any]
-    fallback_required = False
-    fallback_reason = "stale_read"
-    fallback_last_error: str | None = None
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
         row = _load_bundle_row(session, user_id=user_id)
         if row is None:
             response = _response_from_row(None, status_override=RUNNING_STATUS)
             enqueue = True
-            fallback_required = True
-            fallback_reason = "missing_bundle"
         else:
             status = _normalize_status(row.status)
             computed_at = (
@@ -5586,33 +5621,9 @@ def get_publication_top_metrics(*, user_id: str) -> dict[str, Any]:
             ) and status != RUNNING_STATUS:
                 enqueue = True
                 status = RUNNING_STATUS
-            if status == RUNNING_STATUS or payload_incomplete:
-                fallback_required = True
-                fallback_reason = (
-                    "incomplete_bundle" if payload_incomplete else "running_bundle"
-                )
-            fallback_last_error = str(row.last_error or "").strip() or None
             response = _response_from_row(row, status_override=status)
             response["is_stale"] = (
                 bool(response.get("is_stale")) or schema_outdated or payload_incomplete
-            )
-    if fallback_required:
-        try:
-            computed_at = _utcnow()
-            payload = _build_payload_read_only(user_id=user_id, computed_at=computed_at)
-            response = _response_from_payload(
-                payload,
-                computed_at=computed_at,
-                status=READY_STATUS,
-                is_stale=False,
-                is_updating=False,
-                last_error=fallback_last_error,
-            )
-            enqueue = True
-        except Exception:
-            logger.exception(
-                "publication_top_metrics_fallback_failed",
-                extra={"user_id": user_id, "reason": fallback_reason},
             )
     if enqueue:
         enqueue_publication_top_metrics_refresh(user_id=user_id, reason="stale_read")

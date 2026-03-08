@@ -21,14 +21,14 @@ import { houseTypography } from '@/lib/house-style'
  */
 
 const defaultStyles = `${houseTypography.buttonText} border border-[hsl(var(--tone-neutral-900))] bg-white text-[hsl(var(--tone-neutral-900))] hover:bg-[hsl(var(--section-style-profile-accent,var(--tone-accent-500))/0.12)] hover:border-[hsl(var(--tone-neutral-900))] active:bg-[hsl(var(--section-style-profile-accent,var(--tone-accent-500))/0.22)] active:border-[hsl(var(--section-style-profile-accent,var(--tone-accent-500))/0.8)]`
-const ctaStyles = `${houseTypography.buttonText} border border-[hsl(var(--tone-accent-700))] bg-[hsl(var(--tone-accent-700))] text-[hsl(var(--tone-neutral-50))] shadow-none hover:border-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-800))] hover:text-[hsl(var(--tone-neutral-50))] active:border-[hsl(var(--tone-accent-800))] active:bg-[hsl(var(--tone-accent-800))] active:text-[hsl(var(--tone-neutral-50))]`
+const ctaStyles = `${houseTypography.buttonText} border border-[hsl(var(--tone-accent-800))] bg-[hsl(var(--tone-accent-800))] text-[hsl(var(--tone-neutral-50))] shadow-[0_1px_2px_hsl(var(--tone-accent-900)/0.16)] hover:border-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-800))] hover:text-[hsl(var(--tone-neutral-50))] hover:shadow-[0_0_0_1px_hsl(var(--tone-accent-500)/0.24),0_6px_18px_hsl(var(--tone-accent-900)/0.18)] active:border-[hsl(var(--tone-accent-800))] active:bg-[hsl(var(--tone-accent-800))] active:text-[hsl(var(--tone-neutral-50))] active:shadow-[0_1px_2px_hsl(var(--tone-accent-900)/0.16)]`
 const primaryStyles = `${houseTypography.buttonText} bg-primary text-primary-foreground`
 const secondaryStyles = `${houseTypography.buttonText} bg-secondary text-secondary-foreground`
 const tertiaryStyles = `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted`
 const destructiveStyles = `${houseTypography.buttonText} bg-destructive text-destructive-foreground`
 
 export const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md ring-offset-background transition-[background-color,border-color,color,transform] duration-ui ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-md ring-offset-background transition-[background-color,border-color,color,transform,box-shadow] duration-ui ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {

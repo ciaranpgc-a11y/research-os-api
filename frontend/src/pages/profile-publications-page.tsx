@@ -195,8 +195,8 @@ const PUBLICATION_EXPORT_FIELD_OPTIONS: Array<{ key: PublicationExportFieldKey; 
 ]
 
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
-const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache'
-const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache'
+const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache_v2'
+const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache_v2'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
 const PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX = 'aawe_publications_library_columns:'
 const PUBLICATIONS_LIBRARY_PAGE_SIZE_STORAGE_PREFIX = 'aawe_publications_library_page_size:'
@@ -2283,7 +2283,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [activeDetailTab, setActiveDetailTab] = useState<PublicationDetailTab>(
     () => fixture?.initialActiveDetailTab ?? loadActivePublicationDetailTab(),
   )
-  const [publicationTrajectoryWindowMode, setPublicationTrajectoryWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [publicationTrajectoryWindowMode, setPublicationTrajectoryWindowMode] = useState<PublicationsWindowMode>('all')
   const [publicationTrajectoryVisualMode, setPublicationTrajectoryVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const [detailCacheByWorkId, setDetailCacheByWorkId] = useState<Record<string, PublicationDetailPayload>>({})
   const [authorsCacheByWorkId, setAuthorsCacheByWorkId] = useState<Record<string, PublicationAuthorsPayload>>({})
@@ -3210,6 +3210,47 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return filtered
   }, [metricsByWorkId, personaState?.works, query, selectedArticleTypes, selectedPublicationTypes, sortDirection, sortField])
 
+  const publicationLibraryEmptyState = useMemo(() => {
+    const hasWorks = Boolean((personaState?.works ?? []).length)
+    if (hasWorks || filteredWorks.length > 0) {
+      return null
+    }
+    if (loading) {
+      return {
+        title: 'Loading publication library...',
+        steps: [
+          'Checking your synced publications.',
+          'Hydrating publication metrics and analytics.',
+          'This should resolve automatically if data is available.',
+        ],
+      }
+    }
+    const metricsMessage = String(topMetricsResponse?.last_error || status || '').trim()
+    const metricsUnavailable = Boolean(
+      topMetricsResponse?.status === 'FAILED'
+      || topMetricsResponse?.status === 'RUNNING'
+      || /metrics|lookup failed|timed out|unavailable/i.test(metricsMessage),
+    )
+    if (metricsUnavailable) {
+      return {
+        title: 'Publication data is still loading.',
+        steps: [
+          'Your publication metrics request is still running or failed to return in time.',
+          'Try refreshing the page or rerunning the publication refresh action.',
+          'If this persists, the backend metrics job needs attention rather than an ORCID reconnect.',
+        ],
+      }
+    }
+    return {
+      title: 'No works in your library yet.',
+      steps: [
+        'Connect ORCID in Integrations.',
+        'Run ORCID sync from the top-right actions.',
+        'Select any row to inspect publication details.',
+      ],
+    }
+  }, [filteredWorks.length, loading, personaState?.works, status, topMetricsResponse?.last_error, topMetricsResponse?.status])
+
   const totalFilteredPublicationWorks = filteredWorks.length
   const publicationLibraryTotalPages = useMemo(() => {
     if (publicationLibraryPageSize === 'all') {
@@ -3759,7 +3800,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [selectedWorkId])
 
   useEffect(() => {
-    setPublicationTrajectoryWindowMode('5y')
+    setPublicationTrajectoryWindowMode('all')
     setPublicationTrajectoryVisualMode('bars')
   }, [selectedWorkId])
 
@@ -5280,11 +5321,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
               {filteredWorks.length === 0 ? (
                 <div className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  <p className="mb-2 text-foreground">No works in your library yet.</p>
+                  <p className="mb-2 text-foreground">{publicationLibraryEmptyState?.title || 'No works in your library yet.'}</p>
                   <ol className="list-decimal space-y-1 pl-5">
-                    <li>Connect ORCID in Integrations.</li>
-                    <li>Run ORCID sync from the top-right actions.</li>
-                    <li>Select any row to inspect publication details.</li>
+                    {(publicationLibraryEmptyState?.steps || [
+                      'Connect ORCID in Integrations.',
+                      'Run ORCID sync from the top-right actions.',
+                      'Select any row to inspect publication details.',
+                    ]).map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
                   </ol>
                 </div>
               ) : (
@@ -6027,7 +6072,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       activeWindowMode={publicationTrajectoryWindowMode}
                                       onWindowModeChange={setPublicationTrajectoryWindowMode}
                                       visualMode={publicationTrajectoryVisualMode}
-                                      onVisualModeChange={setPublicationTrajectoryVisualMode}
+                                      onVisualModeChange={(mode) => setPublicationTrajectoryVisualMode(mode === 'table' ? 'bars' : mode)}
                                       showWindowToggle={false}
                                     />
                                   </div>

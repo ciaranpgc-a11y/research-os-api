@@ -24,6 +24,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    event,
     text,
 )
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -35,6 +36,7 @@ from sqlalchemy.orm import (
     relationship,
     sessionmaker,
 )
+from sqlalchemy.pool import NullPool
 
 
 def _utcnow() -> datetime:
@@ -664,6 +666,18 @@ class DataLibraryAsset(Base):
         String(36), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
     shared_with_user_ids: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    shared_with_roles_json: Mapped[dict[str, str] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    locked_for_team_members: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    archived_by_user_ids_json: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    audit_log_json: Mapped[list[dict] | None] = mapped_column(
         JSON, nullable=True
     )
     filename: Mapped[str] = mapped_column(String(255))
@@ -1681,19 +1695,42 @@ _create_all_tables_lock = Lock()
 _initialized_schema_engine_url: str | None = None
 
 
+def _configure_sqlite_connection(dbapi_connection: Any, connection_record: Any) -> None:
+    if not isinstance(dbapi_connection, sqlite3.Connection):
+        return
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=15000")
+        cursor.execute("PRAGMA foreign_keys=ON")
+    finally:
+        cursor.close()
+
+
 def get_engine():
     global _engine
     if _engine is None:
         database_url = get_database_url()
-        connect_args = (
-            {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-        )
+        connect_args = {}
+        engine_kwargs: dict[str, Any] = {}
+        if database_url.startswith("sqlite"):
+            connect_args = {
+                "check_same_thread": False,
+                "timeout": 15,
+            }
+            engine_kwargs["poolclass"] = NullPool
         _engine = create_engine(
             database_url,
             future=True,
             pool_pre_ping=True,
             connect_args=connect_args,
+            **engine_kwargs,
         )
+        if database_url.startswith("sqlite"):
+            event.listen(_engine, "connect", _configure_sqlite_connection)
+            with _engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
     return _engine
 
 
@@ -1862,6 +1899,24 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                 connection,
                 table_name="data_library_assets",
                 column_name="shared_with_user_ids",
+                column_sql="JSON",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="data_library_assets",
+                column_name="shared_with_roles_json",
+                column_sql="JSON",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="data_library_assets",
+                column_name="locked_for_team_members",
+                column_sql="BOOLEAN NOT NULL DEFAULT 0",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="data_library_assets",
+                column_name="archived_by_user_ids_json",
                 column_sql="JSON",
             )
             connection.execute(

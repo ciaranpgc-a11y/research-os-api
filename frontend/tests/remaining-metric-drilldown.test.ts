@@ -45,7 +45,17 @@ function buildMomentumTile(): PublicationMetricTilePayload {
           work_id: 'w-1',
           title: 'Paper 1',
           journal: 'Journal A',
-          citations_last_12m: 9,
+          yearly_counts: { '2021': 2, '2022': 3, '2023': 4, '2024': 5 },
+          citations_last_12m: 15,
+          citations_prev_12m: 12,
+          momentum_recent_3m_citations: 6,
+          momentum_prior_9m_citations: 9,
+          momentum_recent_1y_citations: 15,
+          momentum_prior_4y_citations: 14,
+          momentum_recent_3m_avg: 2,
+          momentum_prior_9m_avg: 1,
+          momentum_shift_delta: 1,
+          monthly_added_24: [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2],
           momentum_contribution: 3.6,
           confidence_label: 'High',
         },
@@ -53,7 +63,17 @@ function buildMomentumTile(): PublicationMetricTilePayload {
           work_id: 'w-2',
           title: 'Paper 2',
           journal: 'Journal B',
-          citations_last_12m: 7,
+          yearly_counts: { '2021': 1, '2022': 1, '2023': 1, '2024': 1 },
+          citations_last_12m: 12,
+          citations_prev_12m: 12,
+          momentum_recent_3m_citations: 3,
+          momentum_prior_9m_citations: 9,
+          momentum_recent_1y_citations: 12,
+          momentum_prior_4y_citations: 4,
+          momentum_recent_3m_avg: 1,
+          momentum_prior_9m_avg: 1,
+          momentum_shift_delta: 0,
+          monthly_added_24: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
           momentum_contribution: 2.4,
           confidence_label: 'Medium',
         },
@@ -142,6 +162,13 @@ describe('remaining metric drilldown builders', () => {
     expect(stats.momentumIndex).toBe(118)
     expect(stats.state).toBe('Accelerating')
     expect(stats.topContributors[0]?.title).toBe('Paper 1')
+    expect(stats.topContributors[0]?.recent3mCitations).toBe(6)
+    expect(stats.topContributors[0]?.prior9mCitations).toBe(9)
+    expect(stats.topContributors[0]?.recent1yCitations).toBe(15)
+    expect(stats.topContributors[0]?.prior4yCitations).toBe(14)
+    expect(stats.topContributors[0]?.prior9mAvg).toBeCloseTo(1, 4)
+    expect(stats.topContributors[0]?.recent3mAvg).toBeCloseTo(2, 4)
+    expect(stats.topContributors[0]?.shiftDelta).toBeCloseTo(1, 4)
     expect(stats.confidenceBuckets[0]?.label).toBe('High')
   })
 

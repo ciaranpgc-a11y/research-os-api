@@ -353,6 +353,35 @@ export type PlanSectionEditPayload = {
   model_used: string
 }
 
+export type LibraryAssetAuditCategory = 'access' | 'asset'
+
+export type LibraryAssetAuditEventType =
+  | 'asset_uploaded'
+  | 'asset_renamed'
+  | 'asset_downloaded'
+  | 'asset_locked'
+  | 'asset_unlocked'
+  | 'access_granted'
+  | 'access_role_changed'
+  | 'access_revoked'
+
+export type LibraryAssetAccessRole = 'editor' | 'viewer'
+export type LibraryAssetCurrentRole = 'owner' | LibraryAssetAccessRole
+
+export type LibraryAssetAuditEntry = {
+  id: string
+  category: LibraryAssetAuditCategory
+  event_type: LibraryAssetAuditEventType
+  actor_user_id: string | null
+  actor_name?: string | null
+  subject_user_id?: string | null
+  subject_name?: string | null
+  from_value?: string | null
+  to_value?: string | null
+  message: string
+  created_at: string
+}
+
 export type LibraryAssetRecord = {
   id: string
   owner_user_id: string | null
@@ -364,14 +393,22 @@ export type LibraryAssetRecord = {
   byte_size: number
   uploaded_at: string
   shared_with_user_ids?: string[]
-  shared_with?: Array<{ user_id: string; name: string }>
+  shared_with?: Array<{ user_id: string; name: string; role: LibraryAssetAccessRole }>
+  audit_log_entries?: LibraryAssetAuditEntry[]
+  current_user_role?: LibraryAssetCurrentRole | null
   can_manage_access?: boolean
+  can_edit_metadata?: boolean
+  can_download?: boolean
+  locked_for_team_members?: boolean
+  archived_for_current_user?: boolean
+  archived_by_user_ids?: string[]
   is_available?: boolean
 }
 
 export type LibraryAssetSortBy = 'uploaded_at' | 'filename' | 'byte_size' | 'kind' | 'owner_name'
 export type LibraryAssetSortDirection = 'asc' | 'desc'
 export type LibraryAssetOwnership = 'all' | 'owned' | 'shared'
+export type LibraryAssetScope = 'all' | 'active' | 'archived'
 
 export type LibraryAssetListPayload = {
   items: LibraryAssetRecord[]
@@ -383,6 +420,7 @@ export type LibraryAssetListPayload = {
   sort_direction: LibraryAssetSortDirection
   query: string
   ownership: LibraryAssetOwnership
+  scope: LibraryAssetScope
 }
 
 export type LibraryAssetUploadPayload = {

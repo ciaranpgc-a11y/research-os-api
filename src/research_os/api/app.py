@@ -156,6 +156,7 @@ from research_os.api.schemas import (
     ManuscriptAuthorsSaveRequest,
     WorkspaceActiveUpdateRequest,
     WorkspaceActiveUpdateResponse,
+    WorkspaceAccountSearchResponse,
     WorkspaceAuthorRequestAcceptRequest,
     WorkspaceAuthorRequestAcceptResponse,
     WorkspaceAuthorRequestDeclineResponse,
@@ -529,6 +530,7 @@ from research_os.services.workspace_service import (
     list_workspace_inbox_reads,
     list_workspace_invitations_sent,
     list_workspace_records,
+    search_workspace_accounts,
     mark_workspace_inbox_read,
     has_workspace_access,
     save_workspace_inbox_state,
@@ -3819,6 +3821,34 @@ def v1_get_workspace_run_context(
 
 
 @app.get(
+    "/v1/workspaces/accounts/search",
+    response_model=WorkspaceAccountSearchResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_search_workspace_accounts(
+    request: Request,
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=8, ge=1, le=20),
+) -> WorkspaceAccountSearchResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = search_workspace_accounts(
+            user_id=str(user["id"]),
+            query=q,
+            limit=limit,
+        )
+        return WorkspaceAccountSearchResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
     "/v1/workspaces/author-requests",
     response_model=WorkspaceAuthorRequestsResponse,
     responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
@@ -3853,6 +3883,7 @@ def v1_accept_workspace_author_request(
     request_id: str,
     payload: WorkspaceAuthorRequestAcceptRequest,
 ) -> WorkspaceAuthorRequestAcceptResponse | JSONResponse:
+    del payload
     token = _extract_session_token(request)
     if not token:
         return _build_unauthorized_response("Session token is required.")
@@ -3861,7 +3892,6 @@ def v1_accept_workspace_author_request(
         result = accept_workspace_author_request(
             user_id=str(user["id"]),
             request_id=request_id,
-            collaborator_name=payload.collaborator_name,
         )
         return WorkspaceAuthorRequestAcceptResponse(**result)
     except AuthNotFoundError as exc:
@@ -4625,6 +4655,7 @@ def v1_list_library_assets(
     project_id: str | None = Query(default=None),
     query: str = Query(default=""),
     ownership: Literal["all", "owned", "shared"] = Query(default="all"),
+    scope: Literal["all", "active", "archived"] = Query(default="all"),
     page: int = Query(default=1, ge=1, le=100000),
     page_size: int = Query(default=50, ge=1, le=200),
     sort_by: Literal[
@@ -4643,6 +4674,7 @@ def v1_list_library_assets(
             account_key_hint=account_key_hint,
             query=query,
             ownership=ownership,
+            scope=scope,
             page=page,
             page_size=page_size,
             sort_by=sort_by,
@@ -4658,6 +4690,7 @@ def v1_list_library_assets(
             sort_direction=str(payload.get("sort_direction") or sort_direction),
             query=str(payload.get("query") or ""),
             ownership=str(payload.get("ownership") or ownership),
+            scope=str(payload.get("scope") or scope),
         )
     except PlannerValidationError as exc:
         return _build_bad_request_response(str(exc))
@@ -4684,6 +4717,8 @@ def v1_update_library_asset_metadata(
             user_id=requesting_user_id or "",
             account_key_hint=account_key_hint,
             filename=payload.filename,
+            locked_for_team_members=payload.locked_for_team_members,
+            archived_for_current_user=payload.archived_for_current_user,
         )
         return LibraryAssetResponse(**updated)
     except DataAssetNotFoundError as exc:
@@ -4712,6 +4747,10 @@ def v1_update_library_asset_access(
             asset_id=asset_id,
             user_id=requesting_user_id or "",
             account_key_hint=account_key_hint,
+            collaborators=[
+                member.model_dump(mode="python")
+                for member in payload.collaborators
+            ],
             collaborator_user_ids=payload.collaborator_user_ids,
             collaborator_names=payload.collaborator_names,
         )

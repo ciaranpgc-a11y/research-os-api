@@ -9,6 +9,7 @@ import {
 } from '@/lib/workspace-api'
 import {
   readScopedStorageItem,
+  readStorageScopeUserId,
   writeScopedStorageItem,
 } from '@/lib/user-scoped-storage'
 import { encryptWorkspaceInboxText } from '@/lib/workspace-inbox-crypto'
@@ -62,6 +63,11 @@ function normalizeReaderKey(value: string | null | undefined): string {
   return normalizeSenderName(value).toLowerCase()
 }
 
+function normalizeWorkspaceUserId(value: string | null | undefined): string {
+  const clean = trimValue(value)
+  return clean === 'anonymous' ? '' : clean
+}
+
 function isSamePerson(left: string, right: string): boolean {
   return normalizeReaderKey(left) === normalizeReaderKey(right)
 }
@@ -70,25 +76,26 @@ function hasWorkspaceInboxWriteAccess(
   workspace: WorkspaceRecord | null,
   senderName: string,
 ): boolean {
+  void senderName
   if (!workspace) {
     return false
   }
-  const senderKey = normalizeReaderKey(senderName)
+  const senderKey = normalizeWorkspaceUserId(readStorageScopeUserId())
   if (!senderKey) {
     return false
   }
-  const ownerKey = normalizeReaderKey(workspace.ownerName)
+  const ownerKey = normalizeWorkspaceUserId(workspace.ownerUserId)
   if (ownerKey && ownerKey === senderKey) {
     return true
   }
   const collaboratorKeys = new Set(
-    (workspace.collaborators || []).map((value) => normalizeReaderKey(value)),
+    (workspace.collaborators || []).map((value) => normalizeWorkspaceUserId(value.userId)),
   )
   if (!collaboratorKeys.has(senderKey)) {
     return false
   }
   const removedKeys = new Set(
-    (workspace.removedCollaborators || []).map((value) => normalizeReaderKey(value)),
+    (workspace.removedCollaborators || []).map((value) => normalizeWorkspaceUserId(value.userId)),
   )
   return !removedKeys.has(senderKey)
 }
