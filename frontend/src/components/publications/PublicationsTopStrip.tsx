@@ -626,8 +626,8 @@ function getPublicationProductionPatternRangeDetails(stats: PublicationProductio
   return {
     maxCount,
     minCount,
-    maxYears: stats.years.filter((year, index) => (stats.series[index] ?? Number.NEGATIVE_INFINITY) === maxCount),
-    minYears: stats.years.filter((year, index) => (stats.series[index] ?? Number.POSITIVE_INFINITY) === minCount),
+    maxYears: stats.years.filter((_year, index) => (stats.series[index] ?? Number.NEGATIVE_INFINITY) === maxCount),
+    minYears: stats.years.filter((_year, index) => (stats.series[index] ?? Number.POSITIVE_INFINITY) === minCount),
   }
 }
 
@@ -836,16 +836,17 @@ function formatPublicationBurstinessSpikePatternExplanation(stats: PublicationPr
   }
 
   const typicalPaceText = `${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year`
+  const burstinessValue = value ?? 0
 
   if (standoutYears.length === 1) {
-    const standout = standoutYears[0]
-    const leadLabel = value <= 0.4 ? 'your main high-output year' : 'your clearest spike'
+    const standout = standoutYears[0]!
+    const leadLabel = burstinessValue <= 0.4 ? 'your main high-output year' : 'your clearest spike'
     return `${leadLabel} was ${standout.year}, with ${formatInt(standout.count)} ${pluralize(standout.count, 'publication')} against a typical pace of ${typicalPaceText}.`
   }
 
-  const first = standoutYears[0]
-  const second = standoutYears[1]
-  const leadLabel = value <= 0.4 ? 'your main high-output years were' : 'your clearest spikes came in'
+  const first = standoutYears[0]!
+  const second = standoutYears[1]!
+  const leadLabel = burstinessValue <= 0.4 ? 'your main high-output years were' : 'your clearest spikes came in'
   return `${leadLabel} ${first.year} (${formatInt(first.count)} ${pluralize(first.count, 'publication')}) and ${second.year} (${formatInt(second.count)} ${pluralize(second.count, 'publication')}), against a typical pace of ${typicalPaceText}.`
 }
 
@@ -863,7 +864,7 @@ function getPublicationProductionPatternPeakYearDetails(stats: PublicationProduc
   }
 
   const peakCount = Math.max(...stats.series)
-  const tiedPeakYears = stats.years.filter((year, index) => (stats.series[index] ?? -1) === peakCount)
+  const tiedPeakYears = stats.years.filter((_year, index) => (stats.series[index] ?? -1) === peakCount)
 
   return {
     peakYear: tiedPeakYears[0] ?? null,
@@ -1557,26 +1558,6 @@ function buildPublicationOutputContinuityYtdNote(
 
   const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(currentStats, asOfDate)
   return `${formatPublicationProductionPatternPartialYearContext(currentStats, asOfDate)} ${changeSummary}. Because the YTD view already counts ${currentYearLabel} as an output year before it is finished, the visible continuity ratio can move ahead of the completed-years pattern.`
-}
-
-function formatPublicationProductionAveragePaceExplanation(stats: PublicationProductionPatternStats, averagePerActiveYear: number | null): string {
-  if (averagePerActiveYear === null) {
-    return 'your average annual output is not available yet.'
-  }
-
-  if (stats.activeSpan <= 0) {
-    return `you averaged ${averagePerActiveYear.toFixed(1)} publications per active year.`
-  }
-
-  if (stats.yearsWithOutput >= stats.activeSpan) {
-    return `you averaged ${averagePerActiveYear.toFixed(1)} publications per year and published in every year of that span.`
-  }
-
-  if (stats.yearsWithOutput <= 0) {
-    return `you averaged ${averagePerActiveYear.toFixed(1)} publications per active year, although no output years were identified in the selected span.`
-  }
-
-  return `you averaged ${averagePerActiveYear.toFixed(1)} publications per active year, publishing in ${formatInt(stats.yearsWithOutput)} of the ${formatInt(stats.activeSpan)} years in that span.`
 }
 
 function renderPublicationConsistencyTooltipContent(
@@ -2950,11 +2931,11 @@ function buildPublicationVolumeOverTimeInsightStats(
   const peakCount = yearSeries.series.length ? Math.max(...yearSeries.series) : null
   const peakYears = peakCount === null
     ? []
-    : yearSeries.years.filter((year, index) => yearSeries.series[index] === peakCount)
+    : yearSeries.years.filter((_year, index) => yearSeries.series[index] === peakCount)
   const lowCount = yearSeries.series.length ? Math.min(...yearSeries.series) : null
   const lowYears = lowCount === null
     ? []
-    : yearSeries.years.filter((year, index) => yearSeries.series[index] === lowCount)
+    : yearSeries.years.filter((_year, index) => yearSeries.series[index] === lowCount)
 
   const recentDetailedRecords = publicationRecords
     .map((record) => ({
@@ -11324,7 +11305,7 @@ function TotalPublicationsDrilldownWorkspace({
   const [publicationInsightsByRequestKey, setPublicationInsightsByRequestKey] = useState<Record<string, PublicationInsightsAgentPayload>>({})
   const [publicationInsightsLoadingByRequestKey, setPublicationInsightsLoadingByRequestKey] = useState<Record<string, boolean>>({})
   const [publicationInsightsErrorByRequestKey, setPublicationInsightsErrorByRequestKey] = useState<Record<string, string>>({})
-  const publicationInsightsInFlightRef = useRef<Record<string, Promise<PublicationInsightsAgentPayload | null>>>({})
+  const publicationInsightsInFlightRef = useRef<Partial<Record<string, Promise<PublicationInsightsAgentPayload | null>>>>({})
   const [publicationProductionPhaseInsightOpen, setPublicationProductionPhaseInsightOpen] = useState(false)
   const [publicationProductionPatternInsightOpen, setPublicationProductionPatternInsightOpen] = useState(false)
   const [publicationVolumeOverTimeInsightOpen, setPublicationVolumeOverTimeInsightOpen] = useState(false)
@@ -13970,7 +13951,7 @@ function GenericMetricDrilldownWorkspace({
   const [publicationInsightsByRequestKey, setPublicationInsightsByRequestKey] = useState<Record<string, PublicationInsightsAgentPayload>>({})
   const [publicationInsightsLoadingByRequestKey, setPublicationInsightsLoadingByRequestKey] = useState<Record<string, boolean>>({})
   const [publicationInsightsErrorByRequestKey, setPublicationInsightsErrorByRequestKey] = useState<Record<string, string>>({})
-  const publicationInsightsInFlightRef = useRef<Record<string, Promise<PublicationInsightsAgentPayload | null>>>({})
+  const publicationInsightsInFlightRef = useRef<Partial<Record<string, Promise<PublicationInsightsAgentPayload | null>>>>({})
   const [uncitedInsightOpen, setUncitedInsightOpen] = useState(false)
   const [recentConcentrationInsightOpen, setRecentConcentrationInsightOpen] = useState(false)
   const [citationHistogramInsightOpen, setCitationHistogramInsightOpen] = useState(false)

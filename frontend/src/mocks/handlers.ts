@@ -1,6 +1,12 @@
 import { HttpResponse, http } from 'msw'
 import type { CollaboratorPayload } from '@/types/impact'
 import type { LibraryAssetRecord } from '@/types/study-core'
+import type {
+  WorkspaceAuditEventType,
+  WorkspaceAuthorRequest,
+  WorkspaceInvitationSent,
+  WorkspaceRecord,
+} from '@/store/use-workspace-store'
 
 import {
   publicationsMetricsEmptyFixture,
@@ -52,6 +58,31 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
+}
+
+function normalizeMockWorkspaceAuditEventType(value: string | null | undefined): WorkspaceAuditEventType | null {
+  switch (value) {
+    case 'member_invited':
+    case 'invitation_cancelled':
+    case 'invitation_accepted':
+    case 'invitation_declined':
+    case 'member_removed':
+    case 'member_reinvited':
+    case 'member_role_changed':
+    case 'pending_role_changed':
+    case 'workspace_locked':
+    case 'workspace_unlocked':
+    case 'workspace_renamed':
+    case 'message_logged':
+    case 'other':
+      return value
+    case '':
+    case null:
+    case undefined:
+      return null
+    default:
+      return 'other'
+  }
 }
 
 function resolveMockCurrentUserId(): string {
@@ -641,7 +672,7 @@ function normalizeMockWorkspaceRecordFromApi(body: {
     message?: string
     created_at?: string
   }>
-}) {
+}): WorkspaceRecord {
   const workspaceId = String(body.id || '').trim() || buildId('workspace')
   return {
     id: workspaceId,
@@ -672,7 +703,7 @@ function normalizeMockWorkspaceRecordFromApi(body: {
       id: String(entry.id || buildId(`${workspaceId}-audit`)).trim(),
       workspaceId: String(entry.workspace_id || workspaceId).trim() || workspaceId,
       category: entry.category || 'collaborator_changes',
-      eventType: entry.event_type || null,
+      eventType: normalizeMockWorkspaceAuditEventType(entry.event_type),
       actorUserId: String(entry.actor_user_id || '').trim() || null,
       actorName: String(entry.actor_name || '').trim() || null,
       subjectUserId: String(entry.subject_user_id || '').trim() || null,
@@ -696,7 +727,7 @@ function normalizeMockWorkspaceAuthorRequestFromApi(body: {
   invitation_type?: 'workspace' | 'data'
   collaborator_role?: 'editor' | 'reviewer' | 'viewer'
   invited_at?: string
-}) {
+}): WorkspaceAuthorRequest {
   return {
     id: String(body.id || buildId('author-request')).trim(),
     workspaceId: String(body.workspace_id || buildId('workspace')).trim(),
@@ -719,7 +750,7 @@ function normalizeMockWorkspaceInvitationFromApi(body: {
   role?: 'editor' | 'reviewer' | 'viewer'
   invited_at?: string
   status?: 'pending' | 'accepted' | 'declined'
-}) {
+}): WorkspaceInvitationSent {
   return {
     id: String(body.id || buildId('invite')).trim(),
     workspaceId: String(body.workspace_id || buildId('workspace')).trim(),

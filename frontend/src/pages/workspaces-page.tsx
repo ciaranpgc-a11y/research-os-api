@@ -389,7 +389,6 @@ function clampWorkspaceTableColumnsToAvailableWidth(input: {
     collaborators: { ...input.columns.collaborators },
     stage: { ...input.columns.stage },
     unread: { ...input.columns.unread },
-    open: { ...input.columns.open },
   }
   const visibleColumns = input.columnOrder.filter((column) => next[column].visible)
   if (visibleColumns.length === 0) {
@@ -3497,7 +3496,7 @@ export function WorkspacesPage() {
   }, [centerView])
 
   useEffect(() => {
-    if (centerView !== 'data') {
+    if (centerView !== 'data-library') {
       setDataLibraryDrilldownRequest(null)
     }
   }, [centerView])
@@ -4715,7 +4714,7 @@ export function WorkspacesPage() {
         accessFilter: 'invitation_status',
         actorName: currentReaderName,
       })
-      setCenterView('data')
+      setCenterView('data-library')
     }
   }
 
