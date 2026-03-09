@@ -374,6 +374,58 @@ export type AdminApiMonitorPayload = {
   monthly_trend: AdminApiMonitorMonthlyTrendPointPayload[]
 }
 
+export type AdminJournalProfileSummaryPayload = {
+  id: string
+  provider: string
+  provider_journal_id: string | null
+  display_name: string
+  publisher: string | null
+  venue_type: string | null
+  issn_l: string | null
+  issns: string[]
+  two_year_mean_citedness: number | null
+  h_index: number | null
+  i10_index: number | null
+  works_count: number | null
+  cited_by_count: number | null
+  publisher_reported_impact_factor: number | null
+  publisher_reported_impact_factor_year: number | null
+  publisher_reported_impact_factor_label: string | null
+  publisher_reported_impact_factor_source_url: string | null
+  time_to_first_decision_days: number | null
+  time_to_publication_days: number | null
+  editor_in_chief_name: string | null
+  editorial_source_url: string | null
+  editorial_source_title: string | null
+  editorial_confidence: string | null
+  is_oa: boolean | null
+  is_in_doaj: boolean | null
+  apc_usd: number | null
+  homepage_url: string | null
+  last_synced_at: string | null
+  editorial_last_verified_at: string | null
+  updated_at: string | null
+  created_at: string | null
+}
+
+export type AdminJournalProfilesSummaryPayload = {
+  total_profiles: number
+  with_openalex_metrics: number
+  with_editorial_data: number
+  with_publisher_reported_impact_factor: number
+  with_editor_in_chief: number
+  with_decision_timing: number
+}
+
+export type AdminJournalProfilesListPayload = {
+  items: AdminJournalProfileSummaryPayload[]
+  total: number
+  limit: number
+  offset: number
+  generated_at: string
+  summary: AdminJournalProfilesSummaryPayload
+}
+
 export type AdminRuntimeSettingWorkTypeLlmPayload = {
   setting_key: string
   setting_enabled: boolean

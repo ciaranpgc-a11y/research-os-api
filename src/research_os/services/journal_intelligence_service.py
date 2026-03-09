@@ -450,9 +450,10 @@ def _build_editorial_prompt(profile: JournalProfile) -> str:
         f'ISSN-L: "{profile.issn_l or ""}".\n'
         "Find the current publisher-reported impact factor if shown, the metric year, "
         "time to first decision in days, time to publication in days, and the current "
-        "editor-in-chief name. If a field is not explicitly shown by an official source, "
-        "return null. Convert weeks to whole days only when the official page gives the "
-        "value explicitly.\n"
+        "editor-in-chief name. If multiple historical values are shown, choose the most "
+        "recent year/value pair and ignore older archived values. If a field is not "
+        "explicitly shown by an official source, return null. Convert weeks to whole days "
+        "only when the official page gives the value explicitly.\n"
         "{\n"
         '  "publisher_reported_impact_factor": "number|null",\n'
         '  "publisher_reported_impact_factor_year": "integer|null",\n'
@@ -561,6 +562,27 @@ def _lookup_editorial_intelligence(
     raise RuntimeError("Editorial intelligence lookup failed.")
 
 
+def _should_replace_impact_factor(
+    profile: JournalProfile,
+    *,
+    candidate_value: float | None,
+    candidate_year: int | None,
+) -> bool:
+    if candidate_value is None:
+        return False
+    existing_value = _safe_float(profile.publisher_reported_impact_factor)
+    existing_year = _safe_int(profile.publisher_reported_impact_factor_year)
+    if existing_value is None:
+        return True
+    if candidate_year is not None:
+        if existing_year is None:
+            return True
+        return candidate_year >= existing_year
+    if existing_year is not None:
+        return False
+    return True
+
+
 def _apply_editorial_payload(
     profile: JournalProfile,
     *,
@@ -570,20 +592,26 @@ def _apply_editorial_payload(
     impact_factor = _safe_float(
         editorial_payload.get("publisher_reported_impact_factor")
     )
-    if impact_factor is not None:
-        profile.publisher_reported_impact_factor = round(impact_factor, 3)
     impact_factor_year = _safe_int(
         editorial_payload.get("publisher_reported_impact_factor_year")
     )
-    if impact_factor_year is not None:
-        profile.publisher_reported_impact_factor_year = impact_factor_year
     impact_factor_label = _sanitize_text(
         editorial_payload.get("publisher_reported_impact_factor_label"),
         max_length=64,
     )
+    replace_impact_factor = _should_replace_impact_factor(
+        profile,
+        candidate_value=impact_factor,
+        candidate_year=impact_factor_year,
+    )
+    if replace_impact_factor and impact_factor is not None:
+        profile.publisher_reported_impact_factor = round(impact_factor, 3)
+    if replace_impact_factor and impact_factor_year is not None:
+        profile.publisher_reported_impact_factor_year = impact_factor_year
     if impact_factor_label:
-        profile.publisher_reported_impact_factor_label = impact_factor_label
-    elif impact_factor is not None and not _sanitize_text(
+        if replace_impact_factor:
+            profile.publisher_reported_impact_factor_label = impact_factor_label
+    elif replace_impact_factor and impact_factor is not None and not _sanitize_text(
         profile.publisher_reported_impact_factor_label
     ):
         profile.publisher_reported_impact_factor_label = IMPACT_FACTOR_LABEL_FALLBACK
@@ -598,7 +626,7 @@ def _apply_editorial_payload(
         editorial_source_title = editorial_source_title or best_source.get("title")
     if editorial_source_url:
         profile.editorial_source_url = editorial_source_url
-        if impact_factor is not None:
+        if replace_impact_factor and impact_factor is not None:
             profile.publisher_reported_impact_factor_source_url = editorial_source_url
     if editorial_source_title:
         profile.editorial_source_title = editorial_source_title

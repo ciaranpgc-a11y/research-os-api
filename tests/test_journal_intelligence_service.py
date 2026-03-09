@@ -14,6 +14,7 @@ from research_os.db import (
     session_scope,
 )
 from research_os.services.journal_intelligence_service import (
+    _apply_editorial_payload,
     refresh_persona_journal_intelligence,
 )
 from research_os.services.persona_service import list_journals
@@ -277,3 +278,98 @@ def test_list_journals_returns_cached_editorial_fields(monkeypatch, tmp_path) ->
     assert payload["time_to_first_decision_days"] == 18
     assert payload["time_to_publication_days"] == 42
     assert payload["editor_in_chief_name"] == "Professor Jane Smith"
+
+
+def test_apply_editorial_payload_preserves_newer_impact_factor_year(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with session_scope() as session:
+        profile = JournalProfile(
+            provider="openalex",
+            provider_journal_id="S1",
+            display_name="Heart",
+            publisher="BMJ",
+            publisher_reported_impact_factor=6.7,
+            publisher_reported_impact_factor_year=2024,
+            publisher_reported_impact_factor_label="Impact Factor",
+            publisher_reported_impact_factor_source_url="https://heart.bmj.com/current",
+            time_to_first_decision_days=18,
+            time_to_publication_days=42,
+            editor_in_chief_name="Professor Jane Smith",
+        )
+        session.add(profile)
+        session.flush()
+
+        _apply_editorial_payload(
+            profile,
+            editorial_payload={
+                "publisher_reported_impact_factor": 5.9,
+                "publisher_reported_impact_factor_year": 2022,
+                "publisher_reported_impact_factor_label": "Journal Impact Factor",
+                "time_to_first_decision_days": 16,
+                "time_to_publication_days": 37,
+                "editor_in_chief_name": "Professor Jane Doe",
+                "editorial_source_url": "https://heart.bmj.com/older",
+                "editorial_source_title": "Heart archive",
+                "confidence": "medium",
+            },
+            sources=[],
+        )
+        session.flush()
+
+        assert profile.publisher_reported_impact_factor == 6.7
+        assert profile.publisher_reported_impact_factor_year == 2024
+        assert profile.publisher_reported_impact_factor_label == "Impact Factor"
+        assert (
+            profile.publisher_reported_impact_factor_source_url
+            == "https://heart.bmj.com/current"
+        )
+        assert profile.time_to_first_decision_days == 16
+        assert profile.time_to_publication_days == 37
+        assert profile.editor_in_chief_name == "Professor Jane Doe"
+
+
+def test_apply_editorial_payload_overwrites_older_impact_factor_with_newer_year(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with session_scope() as session:
+        profile = JournalProfile(
+            provider="openalex",
+            provider_journal_id="S1",
+            display_name="Heart",
+            publisher="BMJ",
+            publisher_reported_impact_factor=5.9,
+            publisher_reported_impact_factor_year=2022,
+            publisher_reported_impact_factor_label="Impact Factor",
+            publisher_reported_impact_factor_source_url="https://heart.bmj.com/older",
+        )
+        session.add(profile)
+        session.flush()
+
+        _apply_editorial_payload(
+            profile,
+            editorial_payload={
+                "publisher_reported_impact_factor": 6.8,
+                "publisher_reported_impact_factor_year": 2024,
+                "publisher_reported_impact_factor_label": "Journal Impact Factor",
+                "editorial_source_url": "https://heart.bmj.com/current",
+                "editorial_source_title": "Heart current",
+                "confidence": "high",
+            },
+            sources=[],
+        )
+        session.flush()
+
+        assert profile.publisher_reported_impact_factor == 6.8
+        assert profile.publisher_reported_impact_factor_year == 2024
+        assert profile.publisher_reported_impact_factor_label == "Journal Impact Factor"
+        assert (
+            profile.publisher_reported_impact_factor_source_url
+            == "https://heart.bmj.com/current"
+        )

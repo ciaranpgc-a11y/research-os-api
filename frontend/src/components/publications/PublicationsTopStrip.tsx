@@ -736,25 +736,6 @@ function getPublicationProductionPatternLowVolumeNote(totalPublications: number)
   return null
 }
 
-function getPublicationConsistencySupportingText(value: number | null): string {
-  if (value === null) {
-    return 'Need at least two active years to compare year-to-year variation.'
-  }
-  if (value >= 0.75) {
-    return 'Publication output is spread very evenly across active years.'
-  }
-  if (value >= 0.55) {
-    return 'Publication output varies modestly year to year.'
-  }
-  if (value >= 0.35) {
-    return 'Publication output shows noticeable year-to-year variation.'
-  }
-  if (value >= 0.2) {
-    return 'Publication output clusters into several stronger years.'
-  }
-  return 'Publication output is concentrated into distinct spike years.'
-}
-
 function getPublicationProductionPatternGapYearCount(stats: PublicationProductionPatternStats): number {
   if (stats.activeSpan <= 0) {
     return 0
@@ -808,80 +789,6 @@ function formatPublicationProductionCoverageSummary(stats: PublicationProduction
     : `you published in ${formatInt(stats.yearsWithOutput)} of the ${formatInt(stats.activeSpan)} years in this span.`
 }
 
-function formatPublicationProductionGapYearSummary(stats: PublicationProductionPatternStats): string {
-  const gapYears = getPublicationProductionPatternGapYearCount(stats)
-  if (stats.activeSpan <= 0) {
-    return 'gap-year context is not available yet.'
-  }
-  if (gapYears <= 0) {
-    return 'there were no gap years without recorded publications.'
-  }
-  if (gapYears === 1) {
-    return 'there was 1 gap year without a recorded publication in this span.'
-  }
-  return `there were ${formatInt(gapYears)} gap years without recorded publications in this span.`
-}
-
-function formatPublicationProductionLongestStreakSummary(stats: PublicationProductionPatternStats): string {
-  if (stats.longestStreak <= 0) {
-    return 'a continuous publication streak is not available yet.'
-  }
-  if (stats.activeSpan > 0 && stats.longestStreak >= stats.activeSpan && stats.yearsWithOutput >= stats.activeSpan) {
-    return `your longest uninterrupted publication streak ran through the full ${formatInt(stats.activeSpan)} years.`
-  }
-  return `your longest uninterrupted publication streak lasted ${formatInt(stats.longestStreak)} ${pluralize(stats.longestStreak, 'year')}.`
-}
-
-function getPublicationConsistencyUserMeaning(value: number | null, stats: PublicationProductionPatternStats | null = null): string {
-  const gapYears = stats ? getPublicationProductionPatternGapYearCount(stats) : 0
-
-  if (value === null) {
-    return 'There is not enough publication history to estimate year-to-year consistency reliably.'
-  }
-  if (value >= 0.75) {
-    return gapYears === 0
-      ? 'This means your publication output is very evenly distributed from year to year.'
-      : 'This means your publication output is still broadly even overall, despite occasional quieter years.'
-  }
-  if (value >= 0.55) {
-    return gapYears === 0
-      ? 'This means your publication output is fairly even from year to year, with only modest variation.'
-      : 'This means your publication output is fairly even overall, although quieter years still pull it away from full consistency.'
-  }
-  if (value >= 0.35) {
-    return gapYears === 0
-      ? 'This means your publication output varies from year to year rather than staying tightly even.'
-      : 'This means your publication output varies from year to year and includes quieter years.'
-  }
-  if (value >= 0.2) {
-    return gapYears === 0
-      ? 'This means your publication output is clustered into stronger years rather than staying even across your active span.'
-      : 'This means your publication output is clustered into stronger years, with quieter gaps lowering overall consistency.'
-  }
-  return gapYears === 0
-    ? 'This means your publication output is concentrated into distinct spike years rather than being spread evenly across your active span.'
-    : 'This means your publication output is concentrated into distinct spike years, separated by quiet or zero-output years.'
-}
-
-function getPublicationBurstinessSupportingText(value: number | null): string {
-  if (value === null) {
-    return 'Need at least two active years to assess spike behaviour.'
-  }
-  if (value <= 0.2) {
-    return 'Output follows a very steady annual cadence.'
-  }
-  if (value <= 0.4) {
-    return 'Some peak years occur but production stays broadly balanced.'
-  }
-  if (value <= 0.6) {
-    return 'Output shows a mix of steady years and noticeable spikes.'
-  }
-  if (value <= 0.8) {
-    return 'Output is concentrated into several pronounced spike years.'
-  }
-  return 'Output is dominated by sharp publication surges rather than steady flow.'
-}
-
 function getPublicationBurstinessStandoutYears(stats: PublicationProductionPatternStats): Array<{ year: number; count: number }> {
   const value = stats.burstinessScore
   if (value === null || stats.years.length < 2 || stats.years.length !== stats.series.length || stats.activeSpan <= 0) {
@@ -907,70 +814,6 @@ function getPublicationBurstinessStandoutYears(stats: PublicationProductionPatte
     })
 }
 
-function getPublicationBurstinessUserMeaning(value: number | null, stats: PublicationProductionPatternStats | null = null): string {
-  const standoutYearCount = stats ? getPublicationBurstinessStandoutYears(stats).length : 0
-
-  if (value === null) {
-    return 'There is not enough publication history to estimate spike behaviour reliably.'
-  }
-  if (value <= 0.2) {
-    return 'This means your publication output follows a very steady annual cadence.'
-  }
-  if (value <= 0.4) {
-    return standoutYearCount <= 1
-      ? 'This means your publication output remains broadly balanced, with only limited signs of a stronger year.'
-      : 'This means your publication output remains broadly balanced, although a few stronger years stand above the rest.'
-  }
-  if (value <= 0.6) {
-    return standoutYearCount <= 1
-      ? 'This means your publication output mixes steadier years with one clear spike year.'
-      : 'This means your publication output mixes steadier years with a small set of noticeable spike years.'
-  }
-  if (value <= 0.8) {
-    return standoutYearCount <= 1
-      ? 'This means your publication output is concentrated into a pronounced surge year.'
-      : 'This means your publication output is concentrated into several pronounced surge years.'
-  }
-  return standoutYearCount <= 1
-    ? 'This means your publication output is dominated by a sharp publication surge rather than a steady annual flow.'
-    : 'This means your publication output is dominated by sharp publication surges rather than a steady annual flow.'
-}
-
-function formatPublicationPeakYearGroupLabel(count: number): string {
-  if (count <= 1) {
-    return 'a single peak year'
-  }
-  if (count === 2) {
-    return 'two peak years'
-  }
-  if (count === 3) {
-    return 'three peak years'
-  }
-  return 'a small set of peak years'
-}
-
-function getPublicationPeakYearShareUserMeaning(value: number | null, peakYearCount = 1): string {
-  const peakYearGroupLabel = formatPublicationPeakYearGroupLabel(peakYearCount)
-  const peakYearGroupPluralVerb = peakYearCount === 1 ? 'stands' : 'stand'
-
-  if (value === null) {
-    return 'There is not enough publication history to estimate peak-year concentration reliably.'
-  }
-  if (value < 0.12) {
-    return `This means your publication output is broadly distributed across your publication span, rather than being dominated by ${peakYearGroupLabel}.`
-  }
-  if (value < 0.2) {
-    return `This means your publication output is distributed overall, although ${peakYearGroupLabel} ${peakYearGroupPluralVerb} above the rest.`
-  }
-  if (value < 0.3) {
-    return `This means a moderate share of your publication output is concentrated in ${peakYearGroupLabel}.`
-  }
-  if (value < 0.4) {
-    return `This means ${peakYearGroupLabel} carr${peakYearCount === 1 ? 'ies' : 'y'} a substantial share of your publication output.`
-  }
-  return `This means your publication output is heavily concentrated in ${peakYearGroupLabel}.`
-}
-
 function formatPublicationProductionPatternYearList(years: number[]): string {
   const labels = years
     .filter((year) => Number.isInteger(year))
@@ -983,34 +826,6 @@ function formatPublicationProductionPatternYearList(years: number[]): string {
     return `${labels[0]} and ${labels[1]}`
   }
   return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`
-}
-
-function formatPublicationBurstinessSpikePatternExplanation(stats: PublicationProductionPatternStats): string {
-  const value = stats.burstinessScore
-  const fallback = getPublicationBurstinessSupportingText(value).replace(/^Output/i, 'your publication output')
-  const standoutYears = getPublicationBurstinessStandoutYears(stats)
-  const averagePerActiveYear = stats.activeSpan > 0 ? stats.scopedPublicationCount / stats.activeSpan : null
-
-  if (!standoutYears.length || averagePerActiveYear === null || averagePerActiveYear <= 0) {
-    return fallback
-  }
-
-  const typicalPaceText = `${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year`
-  const burstinessValue = value ?? 0
-
-  if (standoutYears.length === 1) {
-    const standout = standoutYears[0]!
-    const leadLabel = burstinessValue <= 0.4 ? 'your main high-output year' : 'your clearest spike'
-    return `${leadLabel} was ${standout.year}, with ${formatInt(standout.count)} ${pluralize(standout.count, 'publication')} against a typical pace of ${typicalPaceText}.`
-  }
-
-  const first = standoutYears[0]!
-  const second = standoutYears[1]!
-  const leadLabel = burstinessValue <= 0.4 ? 'your main high-output years were' : 'your clearest spikes came in'
-  if (first.count === second.count) {
-    return `${leadLabel} ${first.year} and ${second.year} (both ${formatInt(first.count)} ${pluralize(first.count, 'publication')}), against a typical pace of ${typicalPaceText}.`
-  }
-  return `${leadLabel} ${first.year} (${formatInt(first.count)} ${pluralize(first.count, 'publication')}) and ${second.year} (${formatInt(second.count)} ${pluralize(second.count, 'publication')}), against a typical pace of ${typicalPaceText}.`
 }
 
 function getPublicationProductionPatternPeakYearDetails(stats: PublicationProductionPatternStats): {
@@ -1034,86 +849,6 @@ function getPublicationProductionPatternPeakYearDetails(stats: PublicationProduc
     peakCount,
     tiedPeakYears,
   }
-}
-
-function formatPublicationPeakYearSummary(details: {
-  peakYear: number | null
-  peakCount: number | null
-  tiedPeakYears: number[]
-}): string {
-  const { peakYear, peakCount, tiedPeakYears } = details
-
-  if (peakYear === null) {
-    return 'your highest-output year is not available yet.'
-  }
-
-  if (peakCount === null) {
-    return tiedPeakYears.length > 1
-      ? `your highest-output years were ${formatPublicationProductionPatternYearList(tiedPeakYears)}.`
-      : `your highest-output year was ${peakYear}.`
-  }
-
-  if (tiedPeakYears.length > 1) {
-    if (tiedPeakYears.length === 2) {
-      return `your highest-output years were ${formatPublicationProductionPatternYearList(tiedPeakYears)} (both ${formatInt(peakCount)} ${pluralize(peakCount, 'publication')}).`
-    }
-    return `your highest-output years were ${formatPublicationProductionPatternYearList(tiedPeakYears)}, with ${formatInt(peakCount)} ${pluralize(peakCount, 'publication')} each.`
-  }
-
-  return `your highest-output year was ${peakYear}, with ${formatInt(peakCount)} ${pluralize(peakCount, 'publication')}.`
-}
-
-function formatPublicationPeakYearPortfolioShareSummary(
-  stats: PublicationProductionPatternStats,
-  details: {
-    peakYear: number | null
-    peakCount: number | null
-    tiedPeakYears: number[]
-  },
-  peakYearShare: number | null,
-): string {
-  const { peakYear, peakCount, tiedPeakYears } = details
-
-  if (peakYear === null || peakCount === null || peakYearShare === null || stats.scopedPublicationCount <= 0) {
-    return 'the share carried by your highest-output year is not available yet.'
-  }
-
-  const perYearShareLabel = formatPercentWhole(peakYearShare * 100)
-  if (tiedPeakYears.length > 1) {
-    const combinedCount = peakCount * tiedPeakYears.length
-    const combinedShareLabel = formatPercentWhole((combinedCount / stats.scopedPublicationCount) * 100)
-    return `each of those years contributed ${formatInt(peakCount)} of your ${formatInt(stats.scopedPublicationCount)} publications (${perYearShareLabel}). Together, those tied peak years contributed ${formatInt(combinedCount)} publications (${combinedShareLabel}).`
-  }
-
-  return `${formatInt(peakCount)} of your ${formatInt(stats.scopedPublicationCount)} publications (${perYearShareLabel}) came in ${peakYear}.`
-}
-
-function formatPublicationPeakYearEvenSpreadSummary(
-  stats: PublicationProductionPatternStats,
-  details: {
-    peakYear: number | null
-    peakCount: number | null
-    tiedPeakYears: number[]
-  },
-  peakYearShare: number | null,
-): string {
-  if (peakYearShare === null) {
-    return 'an even-spread comparison is not available yet.'
-  }
-
-  if (stats.activeSpan <= 1) {
-    return 'with only one active publication year, the full portfolio sits in that year.'
-  }
-
-  const evenSharePct = 100 / stats.activeSpan
-  const peakSharePct = peakYearShare * 100
-  const multiple = evenSharePct > 0 ? peakSharePct / evenSharePct : null
-  const perYearSubject = details.tiedPeakYears.length > 1 ? 'each of your tied peak years accounts for' : 'your peak year accounts for'
-  const multipleText = multiple !== null && Number.isFinite(multiple) && multiple >= 1.15
-    ? ` That is about ${formatRoundedOneDecimalTrimmed(multiple)}x an even annual share.`
-    : ''
-
-  return `across a ${formatPublicationProductionSpanLabel(stats.activeSpan)}, an even spread would be about ${formatRoundedOneDecimalTrimmed(evenSharePct)}% per year. ${perYearSubject} ${formatPercentWhole(peakSharePct)}.${multipleText}`
 }
 
 function calculatePublicationSeriesQuantile(values: number[], quantile: number): number | null {
@@ -1238,9 +973,10 @@ function getPublicationProductionPatternSignificantPeaks(
     ...standoutYears.filter((entry) => localPeakYearSet.has(entry.year)).map((entry) => entry.year),
   ])
 
-  if (peakDetails.peakCount !== null) {
+  const peakCount = peakDetails.peakCount
+  if (peakCount !== null) {
     localPeaks
-      .filter((point) => point.count >= peakDetails.peakCount * 0.8)
+      .filter((point) => point.count >= peakCount * 0.8)
       .forEach((point) => significantPeakYears.add(point.year))
   }
 
@@ -1563,168 +1299,6 @@ function buildPublicationContinuityDetail(stats: PublicationProductionPatternSta
   return `Continuity is ${formatPercentWhole(stats.outputContinuity * 100)}${spanLabel ? ` across ${spanLabel}` : ''}. ${formatInt(gapYears)} of ${formatInt(stats.activeSpan)} complete years had no recorded publications${gapShare !== null ? ` (${formatPercentWhole(gapShare * 100)})` : ''}, and the longest uninterrupted run lasted ${formatInt(stats.longestStreak)} ${pluralize(stats.longestStreak, 'year')}.`
 }
 
-function formatPublicationConsistencyPatternExplanation(stats: PublicationProductionPatternStats): string {
-  const fallback = getPublicationConsistencySupportingText(stats.consistencyIndex).replace(/^Publication output/i, 'your publication output')
-  const details = getPublicationProductionPatternRangeDetails(stats)
-  const gapYears = getPublicationProductionPatternGapYearCount(stats)
-
-  if (!details) {
-    return fallback
-  }
-
-  if (details.maxCount === details.minCount) {
-    return `every active year recorded ${formatInt(details.maxCount)} ${pluralize(details.maxCount, 'publication')}.`
-  }
-
-  if (gapYears > 0 && details.minCount === 0) {
-    if (details.maxYears.length > 1) {
-      return `${formatInt(gapYears)} ${pluralize(gapYears, 'year')} had no recorded publications, while your strongest years were ${formatPublicationProductionPatternYearList(details.maxYears)} with ${formatInt(details.maxCount)} each.`
-    }
-    return `${formatInt(gapYears)} ${pluralize(gapYears, 'year')} had no recorded publications, while your strongest year was ${details.maxYears[0]} with ${formatInt(details.maxCount)} publications.`
-  }
-
-  if ((details.maxCount - details.minCount) <= 2) {
-    return `annual output stayed within a fairly tight range of ${formatInt(details.minCount)} to ${formatInt(details.maxCount)} publications.`
-  }
-
-  if (details.maxYears.length === 1 && details.minYears.length === 1) {
-    return `annual output ranged from ${formatInt(details.minCount)} publications in ${details.minYears[0]} to ${formatInt(details.maxCount)} in ${details.maxYears[0]}.`
-  }
-
-  return `annual output ranged from ${formatInt(details.minCount)} to ${formatInt(details.maxCount)} publications across your active years.`
-}
-
-function formatPublicationConsistencyAverageComparison(stats: PublicationProductionPatternStats, averagePerActiveYear: number | null): string {
-  if (averagePerActiveYear === null) {
-    return 'a comparison with your average annual pace is not available yet.'
-  }
-
-  const details = getPublicationProductionPatternRangeDetails(stats)
-  const gapYears = getPublicationProductionPatternGapYearCount(stats)
-  if (!details) {
-    return `your average pace was ${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year.`
-  }
-
-  if (details.maxCount === details.minCount) {
-    return `every active year sat right on your average pace of ${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year.`
-  }
-
-  const strongestYearText = details.maxYears.length > 1
-    ? `your strongest years reached ${formatInt(details.maxCount)} publications`
-    : `your strongest year reached ${formatInt(details.maxCount)} publications`
-
-  if (gapYears > 0 && details.minCount === 0) {
-    return `${strongestYearText}, while ${formatInt(gapYears)} gap ${gapYears === 1 ? 'year' : 'years'} pulled the overall average to ${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} per year.`
-  }
-
-  return `${strongestYearText}, against an average pace of ${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year.`
-}
-
-function formatPublicationConsistencyExtremesSummary(stats: PublicationProductionPatternStats): string {
-  const details = getPublicationProductionPatternRangeDetails(stats)
-  if (!details) {
-    return 'your strongest and quietest years are not available yet.'
-  }
-
-  if (details.maxCount === details.minCount) {
-    return `your strongest and quietest years sat at the same level, with ${formatInt(details.maxCount)} ${pluralize(details.maxCount, 'publication')} in every active year.`
-  }
-
-  const strongestYearsLabel = formatPublicationProductionPatternYearList(details.maxYears)
-  const quietestYearsLabel = formatPublicationProductionPatternYearList(details.minYears)
-  const quietestCountLabel = details.minCount === 0
-    ? 'no recorded publications'
-    : `${formatInt(details.minCount)} ${pluralize(details.minCount, 'publication')}`
-
-  return `your strongest ${details.maxYears.length === 1 ? 'year was' : 'years were'} ${strongestYearsLabel} with ${formatInt(details.maxCount)} ${pluralize(details.maxCount, 'publication')}, while your quietest ${details.minYears.length === 1 ? 'year was' : 'years were'} ${quietestYearsLabel} with ${quietestCountLabel}.`
-}
-
-function formatPublicationBurstinessTypicalYearSummary(stats: PublicationProductionPatternStats, averagePerActiveYear: number | null): string {
-  if (averagePerActiveYear === null || !stats.series.length) {
-    return 'your typical-year baseline is not available yet.'
-  }
-
-  const standoutYears = getPublicationBurstinessStandoutYears(stats)
-  const yearsAtOrBelowAverage = stats.series.filter((value) => value <= averagePerActiveYear).length
-  const yearsNearAverage = stats.series.filter((value) => Math.abs(value - averagePerActiveYear) <= 1).length
-  const typicalPaceText = `${formatRoundedOneDecimalTrimmed(averagePerActiveYear)} publications per year`
-
-  if (!standoutYears.length) {
-    if (yearsNearAverage >= Math.max(1, Math.ceil(stats.series.length * 0.6))) {
-      return `most years stayed close to your typical pace of ${typicalPaceText}.`
-    }
-    return `your yearly output generally stayed around a typical pace of ${typicalPaceText}, without a major spike year standing apart.`
-  }
-
-  if (yearsAtOrBelowAverage >= stats.series.length - standoutYears.length) {
-    return `${formatInt(yearsAtOrBelowAverage)} of your ${formatInt(stats.series.length)} active years sat at or below your typical pace of ${typicalPaceText}, with the spikes doing the rest of the lifting.`
-  }
-
-  return `your spike years sat above a typical pace of ${typicalPaceText}, but several other years still ran close to that baseline.`
-}
-
-function formatPublicationBurstinessLowerTailSummary(stats: PublicationProductionPatternStats): string {
-  const details = getPublicationProductionPatternRangeDetails(stats)
-  if (!details) {
-    return 'your quieter years are not available yet.'
-  }
-
-  if (details.minCount === details.maxCount) {
-    return 'there is no lower-output tail here; every active year contributed at the same level.'
-  }
-
-  const quietestYearsLabel = formatPublicationProductionPatternYearList(details.minYears)
-  if (details.minCount === 0) {
-    return `the contrast is amplified by ${details.minYears.length === 1 ? `a zero-output year in ${quietestYearsLabel}` : `zero-output years in ${quietestYearsLabel}`}.`
-  }
-
-  return `outside the stronger years, output fell as low as ${formatInt(details.minCount)} ${pluralize(details.minCount, 'publication')} in ${quietestYearsLabel}.`
-}
-
-function getPublicationOutputContinuitySupportingText(value: number | null): string {
-  if (value === null) {
-    return 'Publication continuity is unavailable for the selected scope.'
-  }
-  if (value >= 0.85) {
-    return 'Publications occur nearly every year across the active span.'
-  }
-  if (value >= 0.7) {
-    return 'Publications occur in most years within the active span.'
-  }
-  if (value >= 0.5) {
-    return 'Publication activity is present in roughly half of the active years.'
-  }
-  if (value >= 0.3) {
-    return 'Publication activity appears in scattered runs across the active span.'
-  }
-  return 'Publication activity appears only sporadically across the active span.'
-}
-
-function getPublicationOutputContinuityUserMeaning(value: number | null, stats: PublicationProductionPatternStats | null = null): string {
-  const gapYears = stats ? getPublicationProductionPatternGapYearCount(stats) : 0
-
-  if (value === null) {
-    return 'There is not enough publication history to estimate continuity reliably.'
-  }
-  if (value >= 0.85) {
-    return gapYears === 0
-      ? 'This means your publication activity is continuous across your publication span.'
-      : 'This means your publication activity is highly continuous, with only occasional gap years.'
-  }
-  if (value >= 0.7) {
-    return gapYears <= 2
-      ? 'This means your publication activity is present in most years, with only a few breaks.'
-      : 'This means your publication activity is present in most years, but not continuously.'
-  }
-  if (value >= 0.5) {
-    return 'This means your publication activity is intermittent rather than continuous across your publication span.'
-  }
-  if (value >= 0.3) {
-    return 'This means your publication activity is episodic, with substantial breaks between active years.'
-  }
-  return 'This means your publication activity is sporadic, with output appearing only in scattered years.'
-}
-
 type PublicationProductionPatternTone = 'accent' | 'positive' | 'neutral' | 'warning' | 'danger'
 
 function resolvePublicationProductionPatternToneColor(tone: PublicationProductionPatternTone): string {
@@ -1902,48 +1476,6 @@ function getPublicationProductionPhaseInterpretation(phase: PublicationProductio
   }
 }
 
-function getPublicationProductionPhaseUserMeaning(phase: PublicationProductionPhaseLabel | null): string {
-  switch (phase) {
-    case 'Emerging':
-      return 'This means your publication record is still in its early build-up phase.'
-    case 'Scaling':
-      return 'This means your portfolio is in a growth phase overall, even if year-to-year output still varies.'
-    case 'Established':
-      return 'This means your publication record is mature, with annual output staying broadly stable.'
-    case 'Plateauing':
-      return 'This means earlier growth has levelled off and annual output is no longer rising strongly.'
-    case 'Contracting':
-      return 'This means annual output has fallen back from earlier levels.'
-    case 'Rebuilding':
-      return 'This means annual output is picking up again after an earlier lull.'
-    default:
-      return 'This means the current stage cannot yet be interpreted reliably.'
-  }
-}
-
-function formatPublicationProductionPhaseSlopeExplanation(
-  slope: number | null,
-  slopePeriodText: string | null,
-): string {
-  if (slope === null) {
-    return 'your trend slope is not available yet.'
-  }
-
-  const absSlope = Math.abs(slope)
-  const periodText = slopePeriodText ?? 'across the observed period'
-  const roundedSlope = absSlope.toFixed(1)
-
-  if (absSlope < 0.05) {
-    return `your best-fit publication trend was broadly flat ${periodText}, changing by less than 0.1 publications per year on average.`
-  }
-
-  if (slope > 0) {
-    return `your best-fit publication trend rose by about ${roundedSlope} publications per year ${periodText}.`
-  }
-
-  return `your best-fit publication trend fell by about ${roundedSlope} publications per year ${periodText}.`
-}
-
 function buildPublicationProductionPhaseCurrentYearHighlight(
   stats: PublicationProductionPhaseStats,
 ): PublicationProductionPhaseCurrentYearHighlight | null {
@@ -2029,496 +1561,6 @@ function renderPublicationProductionPhaseYearTooltip(
     <div className="space-y-1">
       <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{slice.year}</p>
       <p>{`Publications: ${formatInt(slice.value)}`}</p>
-    </div>
-  )
-}
-
-function formatPublicationProductionSpanLabel(years: number): string {
-  return `${formatInt(years)}-year publication span`
-}
-
-function formatPublicationProductionPatternAsOfDateLabel(asOfDate: Date | null): string | null {
-  if (!asOfDate || Number.isNaN(asOfDate.getTime())) {
-    return null
-  }
-
-  return asOfDate.toLocaleString('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  })
-}
-
-function resolvePublicationProductionPatternCurrentYearLabel(
-  stats: PublicationProductionPatternStats,
-  asOfDate: Date | null,
-): string {
-  const partialYear = stats.partialYear ?? (asOfDate && !Number.isNaN(asOfDate.getTime()) ? asOfDate.getUTCFullYear() : null)
-  return partialYear !== null ? String(partialYear) : 'the current year'
-}
-
-function formatPublicationProductionPatternPartialYearContext(
-  stats: PublicationProductionPatternStats,
-  asOfDate: Date | null,
-): string {
-  const cutoffLabel = formatPublicationProductionPatternAsOfDateLabel(asOfDate)
-  const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(stats, asOfDate)
-
-  if (cutoffLabel) {
-    return `Including your ${currentYearLabel} publications recorded through ${cutoffLabel}`
-  }
-
-  return `Including your ${currentYearLabel} publications recorded so far`
-}
-
-type PublicationProductionPatternYtdMetricSnapshot = {
-  interpretationLabel: string | null
-  valueLabel: string | null
-}
-
-function buildPublicationProductionPatternYtdChangeSummary({
-  metricLabel,
-  complete,
-  current,
-}: {
-  metricLabel: string
-  complete: PublicationProductionPatternYtdMetricSnapshot
-  current: PublicationProductionPatternYtdMetricSnapshot
-}): string | null {
-  const valueChanged = complete.valueLabel !== current.valueLabel
-  const interpretationChanged = complete.interpretationLabel !== current.interpretationLabel
-
-  if (!valueChanged && !interpretationChanged) {
-    return null
-  }
-
-  if (!complete.valueLabel && !complete.interpretationLabel) {
-    if (current.valueLabel && current.interpretationLabel) {
-      return `produces a provisional ${metricLabel} of ${current.valueLabel} (${current.interpretationLabel})`
-    }
-    if (current.valueLabel) {
-      return `produces a provisional ${metricLabel} of ${current.valueLabel}`
-    }
-    if (current.interpretationLabel) {
-      return `produces a provisional ${metricLabel} reading of ${current.interpretationLabel}`
-    }
-    return null
-  }
-
-  if (!current.valueLabel && !current.interpretationLabel) {
-    if (complete.valueLabel && complete.interpretationLabel) {
-      return `removes the provisional ${metricLabel} reading; completed years alone still read as ${complete.valueLabel} (${complete.interpretationLabel})`
-    }
-    if (complete.valueLabel) {
-      return `removes the provisional ${metricLabel} reading; completed years alone still read as ${complete.valueLabel}`
-    }
-    if (complete.interpretationLabel) {
-      return `removes the provisional ${metricLabel} reading; completed years alone still read as ${complete.interpretationLabel}`
-    }
-    return null
-  }
-
-  if (valueChanged && interpretationChanged && complete.valueLabel && current.valueLabel && complete.interpretationLabel && current.interpretationLabel) {
-    return `changes the displayed ${metricLabel} from ${complete.valueLabel} (${complete.interpretationLabel}) to ${current.valueLabel} (${current.interpretationLabel})`
-  }
-
-  if (!valueChanged && interpretationChanged && current.valueLabel && complete.interpretationLabel && current.interpretationLabel) {
-    return `keeps the displayed ${metricLabel} at ${current.valueLabel}, but shifts the reading from ${complete.interpretationLabel} to ${current.interpretationLabel}`
-  }
-
-  if (valueChanged && complete.valueLabel && current.valueLabel) {
-    if (current.interpretationLabel && complete.interpretationLabel && current.interpretationLabel === complete.interpretationLabel) {
-      return `changes the displayed ${metricLabel} from ${complete.valueLabel} to ${current.valueLabel}, while the overall reading stays ${current.interpretationLabel}`
-    }
-    return `changes the displayed ${metricLabel} from ${complete.valueLabel} to ${current.valueLabel}`
-  }
-
-  if (interpretationChanged && complete.interpretationLabel && current.interpretationLabel) {
-    return `shifts the ${metricLabel} reading from ${complete.interpretationLabel} to ${current.interpretationLabel}`
-  }
-
-  return null
-}
-
-function renderPublicationProductionPatternTooltipNote(note: string | null): ReactNode {
-  if (!note) {
-    return null
-  }
-
-  return (
-    <div className="border-t border-[hsl(var(--stroke-soft)/0.7)] pt-2">
-      <p>
-        <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Note:</span>
-        {' '}
-        {note}
-      </p>
-    </div>
-  )
-}
-
-function buildPublicationConsistencyYtdNote(
-  completeStats: PublicationProductionPatternStats,
-  currentStats: PublicationProductionPatternStats,
-  asOfDate: Date | null,
-): string | null {
-  if (!currentStats.includesPartialYear) {
-    return null
-  }
-
-  const changeSummary = buildPublicationProductionPatternYtdChangeSummary({
-    metricLabel: 'consistency index',
-    complete: {
-      valueLabel: completeStats.consistencyIndex === null ? null : completeStats.consistencyIndex.toFixed(2),
-      interpretationLabel: completeStats.consistencyIndex === null ? null : getPublicationConsistencyInterpretation(completeStats.consistencyIndex),
-    },
-    current: {
-      valueLabel: currentStats.consistencyIndex === null ? null : currentStats.consistencyIndex.toFixed(2),
-      interpretationLabel: currentStats.consistencyIndex === null ? null : getPublicationConsistencyInterpretation(currentStats.consistencyIndex),
-    },
-  })
-  if (!changeSummary) {
-    return null
-  }
-
-  const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(currentStats, asOfDate)
-  return `${formatPublicationProductionPatternPartialYearContext(currentStats, asOfDate)} ${changeSummary}. Because ${currentYearLabel} is still incomplete, the YTD view can make your year-to-year output look more or less even than it does across completed years.`
-}
-
-function buildPublicationBurstinessYtdNote(
-  completeStats: PublicationProductionPatternStats,
-  currentStats: PublicationProductionPatternStats,
-  asOfDate: Date | null,
-): string | null {
-  if (!currentStats.includesPartialYear) {
-    return null
-  }
-
-  const changeSummary = buildPublicationProductionPatternYtdChangeSummary({
-    metricLabel: 'burstiness score',
-    complete: {
-      valueLabel: completeStats.burstinessScore === null ? null : completeStats.burstinessScore.toFixed(2),
-      interpretationLabel: completeStats.burstinessScore === null ? null : getPublicationBurstinessInterpretation(completeStats.burstinessScore),
-    },
-    current: {
-      valueLabel: currentStats.burstinessScore === null ? null : currentStats.burstinessScore.toFixed(2),
-      interpretationLabel: currentStats.burstinessScore === null ? null : getPublicationBurstinessInterpretation(currentStats.burstinessScore),
-    },
-  })
-  if (!changeSummary) {
-    return null
-  }
-
-  const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(currentStats, asOfDate)
-  return `${formatPublicationProductionPatternPartialYearContext(currentStats, asOfDate)} ${changeSummary}. Because ${currentYearLabel} is still incomplete, the YTD view can temporarily exaggerate or soften how spiky your publication pattern looks.`
-}
-
-function buildPublicationPeakYearShareYtdNote(
-  completeStats: PublicationProductionPatternStats,
-  currentStats: PublicationProductionPatternStats,
-  asOfDate: Date | null,
-): string | null {
-  if (!currentStats.includesPartialYear) {
-    return null
-  }
-
-  const changeSummary = buildPublicationProductionPatternYtdChangeSummary({
-    metricLabel: 'peak-year share',
-    complete: {
-      valueLabel: completeStats.peakYearShare === null ? null : formatPercentWhole(completeStats.peakYearShare * 100),
-      interpretationLabel: completeStats.peakYearShare === null ? null : getPublicationPeakYearShareInterpretation(completeStats.peakYearShare),
-    },
-    current: {
-      valueLabel: currentStats.peakYearShare === null ? null : formatPercentWhole(currentStats.peakYearShare * 100),
-      interpretationLabel: currentStats.peakYearShare === null ? null : getPublicationPeakYearShareInterpretation(currentStats.peakYearShare),
-    },
-  })
-  if (!changeSummary) {
-    return null
-  }
-
-  const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(currentStats, asOfDate)
-  return `${formatPublicationProductionPatternPartialYearContext(currentStats, asOfDate)} ${changeSummary}. Because ${currentYearLabel} is still incomplete, its share of your whole publication portfolio is still provisional and can shift as the year fills out.`
-}
-
-function buildPublicationOutputContinuityYtdNote(
-  completeStats: PublicationProductionPatternStats,
-  currentStats: PublicationProductionPatternStats,
-  asOfDate: Date | null,
-): string | null {
-  if (!currentStats.includesPartialYear) {
-    return null
-  }
-
-  const changeSummary = buildPublicationProductionPatternYtdChangeSummary({
-    metricLabel: 'years-with-output ratio',
-    complete: {
-      valueLabel: `${formatInt(completeStats.yearsWithOutput)} / ${formatInt(completeStats.activeSpan)}`,
-      interpretationLabel: completeStats.outputContinuity === null ? null : getPublicationOutputContinuityInterpretation(completeStats.outputContinuity),
-    },
-    current: {
-      valueLabel: `${formatInt(currentStats.yearsWithOutput)} / ${formatInt(currentStats.activeSpan)}`,
-      interpretationLabel: currentStats.outputContinuity === null ? null : getPublicationOutputContinuityInterpretation(currentStats.outputContinuity),
-    },
-  })
-  if (!changeSummary) {
-    return null
-  }
-
-  const currentYearLabel = resolvePublicationProductionPatternCurrentYearLabel(currentStats, asOfDate)
-  return `${formatPublicationProductionPatternPartialYearContext(currentStats, asOfDate)} ${changeSummary}. Because the YTD view already counts ${currentYearLabel} as an output year before it is finished, the visible continuity ratio can move ahead of the completed-years pattern.`
-}
-
-function renderPublicationConsistencyTooltipContent(
-  stats: PublicationProductionPatternStats,
-  currentStats: PublicationProductionPatternStats = stats,
-  asOfDate: Date | null = null,
-) {
-  const value = stats.consistencyIndex
-  const averagePerActiveYear = stats.activeSpan > 0
-    ? stats.scopedPublicationCount / stats.activeSpan
-    : null
-  const lowVolumeNote = stats.lowVolume ? getPublicationProductionPatternLowVolumeNote(stats.totalPublications) : null
-  const ytdNote = buildPublicationConsistencyYtdNote(stats, currentStats, asOfDate)
-  const yearPatternExplanation = value === null
-    ? null
-    : formatPublicationConsistencyPatternExplanation(stats)
-
-  return (
-    <div className="space-y-2.5">
-      {value === null ? (
-        <>
-          <p>
-            <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">
-              Your consistency index cannot yet be estimated confidently.
-            </span>
-            {' '}
-            {getPublicationConsistencySupportingText(value)}
-          </p>
-          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
-          {renderPublicationProductionPatternTooltipNote(ytdNote)}
-        </>
-      ) : (
-        <>
-          <div className="space-y-1">
-            <p className="text-[hsl(var(--tone-neutral-600))]">Your consistency index is:</p>
-            <p
-              className="text-center text-sm font-semibold leading-tight"
-              style={{ color: resolvePublicationProductionPatternToneColor(getPublicationConsistencyTone(value)) }}
-            >
-              {value.toFixed(2)}
-            </p>
-            <p>{getPublicationConsistencyUserMeaning(value, stats)}</p>
-          </div>
-          <ul className="ml-4 list-disc space-y-1.5">
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Year-to-year pattern:</span>
-              {' '}
-              {yearPatternExplanation}
-            </li>
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Strongest vs quietest years:</span>
-              {' '}
-              {formatPublicationConsistencyExtremesSummary(stats)}
-            </li>
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Compared with your average:</span>
-              {' '}
-              {formatPublicationConsistencyAverageComparison(stats, averagePerActiveYear)}
-            </li>
-          </ul>
-          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
-          {renderPublicationProductionPatternTooltipNote(ytdNote)}
-        </>
-      )}
-    </div>
-  )
-}
-
-function renderPublicationBurstinessTooltipContent(
-  stats: PublicationProductionPatternStats,
-  currentStats: PublicationProductionPatternStats = stats,
-  asOfDate: Date | null = null,
-) {
-  const value = stats.burstinessScore
-  const averagePerActiveYear = stats.activeSpan > 0
-    ? stats.scopedPublicationCount / stats.activeSpan
-    : null
-  const lowVolumeNote = stats.lowVolume ? getPublicationProductionPatternLowVolumeNote(stats.totalPublications) : null
-  const ytdNote = buildPublicationBurstinessYtdNote(stats, currentStats, asOfDate)
-  const spikePatternExplanation = value === null
-    ? null
-    : formatPublicationBurstinessSpikePatternExplanation(stats)
-
-  return (
-    <div className="space-y-2.5">
-      {value === null ? (
-        <>
-          <p>
-            <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">
-              Your burstiness score cannot yet be estimated confidently.
-            </span>
-            {' '}
-            {getPublicationBurstinessSupportingText(value)}
-          </p>
-          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
-          {renderPublicationProductionPatternTooltipNote(ytdNote)}
-        </>
-      ) : (
-        <>
-          <div className="space-y-1">
-            <p className="text-[hsl(var(--tone-neutral-600))]">Your burstiness score is:</p>
-            <p
-              className="text-center text-sm font-semibold leading-tight"
-              style={{ color: resolvePublicationProductionPatternToneColor(getPublicationBurstinessTone(value)) }}
-            >
-              {value.toFixed(2)}
-            </p>
-            <p>{getPublicationBurstinessUserMeaning(value, stats)}</p>
-          </div>
-          <ul className="ml-4 list-disc space-y-1.5">
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Spike pattern:</span>
-              {' '}
-              {spikePatternExplanation}
-            </li>
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Typical years:</span>
-              {' '}
-              {formatPublicationBurstinessTypicalYearSummary(stats, averagePerActiveYear)}
-            </li>
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Lower tail:</span>
-              {' '}
-              {formatPublicationBurstinessLowerTailSummary(stats)}
-            </li>
-          </ul>
-          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
-          {renderPublicationProductionPatternTooltipNote(ytdNote)}
-        </>
-      )}
-    </div>
-  )
-}
-
-function renderPublicationPeakYearShareTooltipContent(
-  stats: PublicationProductionPatternStats,
-  currentStats: PublicationProductionPatternStats = stats,
-  asOfDate: Date | null = null,
-) {
-  const value = stats.peakYearShare
-  const lowVolumeNote = getPublicationPeakYearShareCaution(stats.scopedPublicationCount) ?? (
-    stats.lowVolume ? getPublicationProductionPatternLowVolumeNote(stats.totalPublications) : null
-  )
-  const ytdNote = buildPublicationPeakYearShareYtdNote(stats, currentStats, asOfDate)
-  const peakYearDetails = getPublicationProductionPatternPeakYearDetails(stats)
-
-  return (
-    <div className="space-y-2.5">
-      {value === null ? (
-        <>
-          <p>
-            <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">
-              Your peak-year share cannot yet be estimated confidently.
-            </span>
-            {' '}
-            Peak-year concentration is unavailable for the selected scope.
-          </p>
-          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
-          {renderPublicationProductionPatternTooltipNote(ytdNote)}
-        </>
-      ) : (
-        <>
-          <div className="space-y-1">
-            <p className="text-[hsl(var(--tone-neutral-600))]">Your peak-year share is:</p>
-            <p
-              className="text-center text-sm font-semibold leading-tight"
-              style={{ color: resolvePublicationProductionPatternToneColor(getPublicationPeakYearShareTone(value)) }}
-            >
-              {formatPercentWhole(value * 100)}
-            </p>
-            <p>{getPublicationPeakYearShareUserMeaning(value, Math.max(1, peakYearDetails.tiedPeakYears.length))}</p>
-          </div>
-          <ul className="ml-4 list-disc space-y-1.5">
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Peak year:</span>
-              {' '}
-              {formatPublicationPeakYearSummary(peakYearDetails)}
-            </li>
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Portfolio share:</span>
-              {' '}
-              {formatPublicationPeakYearPortfolioShareSummary(stats, peakYearDetails, value)}
-            </li>
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Compared with an even spread:</span>
-              {' '}
-              {formatPublicationPeakYearEvenSpreadSummary(stats, peakYearDetails, value)}
-            </li>
-          </ul>
-          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
-          {renderPublicationProductionPatternTooltipNote(ytdNote)}
-        </>
-      )}
-    </div>
-  )
-}
-
-function renderPublicationOutputContinuityTooltipContent(
-  stats: PublicationProductionPatternStats,
-  currentStats: PublicationProductionPatternStats = stats,
-  asOfDate: Date | null = null,
-) {
-  const value = stats.outputContinuity
-  const lowVolumeNote = stats.lowVolume ? getPublicationProductionPatternLowVolumeNote(stats.totalPublications) : null
-  const ytdNote = buildPublicationOutputContinuityYtdNote(stats, currentStats, asOfDate)
-  return (
-    <div className="space-y-2.5">
-      {value === null ? (
-        <>
-          <p>
-            <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">
-              Your years-with-output pattern cannot yet be estimated confidently.
-            </span>
-            {' '}
-            {getPublicationOutputContinuitySupportingText(value)}
-          </p>
-          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
-          {renderPublicationProductionPatternTooltipNote(ytdNote)}
-        </>
-      ) : (
-        <>
-          <div className="space-y-1">
-            <p className="text-[hsl(var(--tone-neutral-600))]">Your years with output are:</p>
-            <p
-              className="text-center text-sm font-semibold leading-tight tabular-nums"
-              style={{ color: resolvePublicationProductionPatternToneColor(getPublicationOutputContinuityTone(value)) }}
-            >
-              {`${formatInt(stats.yearsWithOutput)} / ${formatInt(stats.activeSpan)}`}
-            </p>
-            <p>{getPublicationOutputContinuityUserMeaning(value, stats)}</p>
-          </div>
-          <ul className="ml-4 list-disc space-y-1.5">
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Coverage across the span:</span>
-              {' '}
-              {formatPublicationProductionCoverageSummary(stats)}
-            </li>
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Longest streak:</span>
-              {' '}
-              {formatPublicationProductionLongestStreakSummary(stats)}
-            </li>
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Gap years:</span>
-              {' '}
-              {formatPublicationProductionGapYearSummary(stats)}
-            </li>
-          </ul>
-          {lowVolumeNote ? <p>{lowVolumeNote}</p> : null}
-          {renderPublicationProductionPatternTooltipNote(ytdNote)}
-        </>
-      )}
     </div>
   )
 }
@@ -3053,16 +2095,6 @@ function formatPublicationProductionPhaseCompactRecentWindowSummary(
   return `${averageClause} and accounted for ${shareLabel} of the record, leaving recent years close to the earlier baseline.`
 }
 
-function formatPublicationProductionPhaseCompactRecentWindowHeading(recentPeriodText: string | null): string {
-  if (!recentPeriodText) {
-    return 'Recent years'
-  }
-  return recentPeriodText
-    .replace(/^between /, '')
-    .replace(/^in /, '')
-    .replace(' and ', '-')
-}
-
 function formatPublicationProductionPhaseScopeSummary(stats: PublicationProductionPhaseStats): string {
   if (stats.latestYear === null) {
     return 'Based on complete years only.'
@@ -3252,7 +2284,7 @@ export function buildPublicationProductionPhaseStats(tile: PublicationMetricTile
   const peakCount = series.length ? Math.max(...series) : null
   const peakYears = peakCount === null
     ? []
-    : years.filter((year, index) => (series[index] ?? -1) === peakCount)
+    : years.filter((_, index) => (series[index] ?? -1) === peakCount)
   const peakIndex = peakYears.length
     ? years.findIndex((year) => year === peakYears[0])
     : -1
@@ -3578,16 +2610,6 @@ function getTrajectoryVolatilityTone(value: number): PublicationProductionPatter
     return 'warning'
   }
   return 'accent'
-}
-
-function getTrajectoryVolatilityLabel(value: number): string {
-  if (value <= 0.35) {
-    return 'Low volatility'
-  }
-  if (value > 0.75) {
-    return 'High volatility'
-  }
-  return 'Moderate volatility'
 }
 
 function formatTrajectoryRangeLabel(years: number[]): string {
@@ -4632,26 +3654,6 @@ function formatPublicationInsightYearList(years: number[]): string {
   return `${cleanYears.slice(0, -1).join(', ')}, and ${cleanYears[cleanYears.length - 1]}`
 }
 
-function formatPublicationInsightPeriodLabel(label: string | null | undefined): string | null {
-  const clean = String(label || '').trim()
-  if (!clean) {
-    return null
-  }
-  const match = /^([A-Za-z]{3}) (\d{4})-([A-Za-z]{3}) (\d{4})$/.exec(clean)
-  if (!match) {
-    return clean
-  }
-  const startYear = Number(match[2])
-  const endYear = Number(match[4])
-  if (!Number.isFinite(startYear) || !Number.isFinite(endYear)) {
-    return clean
-  }
-  if (startYear === endYear) {
-    return `${startYear} period`
-  }
-  return `${startYear}-${String(endYear).slice(-2)} period`
-}
-
 function buildPublicationVolumeOverTimeRollingBlocks(
   monthStarts: Date[],
   counts: number[],
@@ -4962,7 +3964,6 @@ function buildPublicationMixOverTimeRead(
       && array.findIndex((candidate) => candidate.rangeLabel === summary.rangeLabel) === index
     ))
   const latestWindow = oneYearWindow || threeYearWindow || fiveYearWindow || allWindow
-  const latestWindowLabel = formatPublicationMixWindowLabel(latestWindow, true)
   const robustFiveYearWindow = hasRobustPublicationMixWindow(fiveYearWindow)
   const robustThreeYearWindow = hasRobustPublicationMixWindow(threeYearWindow)
   const preferredRecentWindow = robustThreeYearWindow
@@ -5525,8 +4526,6 @@ function renderPublicationVolumeOverTimeTooltipContent(stats: PublicationVolumeO
         ? 'earlier'
         : 'mixed'
 
-  const firstFiveYearBlock = stats.fiveYearBlocks[0] ?? null
-  const lastFiveYearBlock = stats.fiveYearBlocks[stats.fiveYearBlocks.length - 1] ?? null
   const previousThreeYearBlock = stats.threeYearBlocks.length >= 2 ? stats.threeYearBlocks[stats.threeYearBlocks.length - 2] : null
   const latestThreeYearBlock = stats.threeYearBlocks.length >= 1 ? stats.threeYearBlocks[stats.threeYearBlocks.length - 1] : null
   const recentCooling = previousThreeYearBlock !== null && latestThreeYearBlock !== null
@@ -13762,6 +12761,11 @@ function TotalPublicationsDrilldownWorkspace({
         setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
         return null
       }
+      const authToken = token
+      if (!authToken) {
+        setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: 'Session token is required to generate publication insights.' }))
+        return null
+      }
       const requestPromise = (async () => {
         if (force) {
           setPublicationInsightsByRequestKey((current) => {
@@ -13776,7 +12780,7 @@ function TotalPublicationsDrilldownWorkspace({
         setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: true }))
         setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: '' }))
         try {
-          const payload = await fetchPublicationInsightsAgent(token, {
+          const payload = await fetchPublicationInsightsAgent(authToken, {
             windowId: normalizedWindowId,
             scope,
             sectionKey,
@@ -15091,7 +14095,6 @@ function TotalPublicationsDrilldownWorkspace({
               iconClassName={getPublicationProductionPatternHelpIconClass()}
               align="start"
               side="left"
-              sideOffset={10}
             />
               <LivePublicationInsightsTriggerButton
                 available={publicationInsightsAvailable}
@@ -16512,6 +15515,11 @@ function GenericMetricDrilldownWorkspace({
         setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
         return null
       }
+      const authToken = token
+      if (!authToken) {
+        setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: 'Session token is required to generate publication insights.' }))
+        return null
+      }
       const requestPromise = (async () => {
         if (force) {
           setPublicationInsightsByRequestKey((current) => {
@@ -16526,7 +15534,7 @@ function GenericMetricDrilldownWorkspace({
         setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: true }))
         setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: '' }))
         try {
-          const payload = await fetchPublicationInsightsAgent(token, {
+          const payload = await fetchPublicationInsightsAgent(authToken, {
             windowId: normalizedWindowId,
             scope,
             sectionKey,

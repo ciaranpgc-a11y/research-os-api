@@ -57,6 +57,7 @@ from research_os.api.schemas import (
     AdminCollaborationMetricsRecomputeAllResponse,
     AdminPublicationsSyncRunAllRequest,
     AdminPublicationsSyncRunAllResponse,
+    AdminJournalProfilesListResponse,
     AdminWorkTypeLlmSettingUpdateRequest,
     AdminWorkTypeLlmSettingUpdateResponse,
     AdminUsageCostsResponse,
@@ -273,6 +274,7 @@ from research_os.services.admin_service import (
     get_admin_overview,
     get_admin_runtime_settings,
     get_admin_usage_costs,
+    list_admin_journal_profiles,
     list_admin_audit_events,
     list_admin_jobs,
     list_admin_organisations,
@@ -1743,6 +1745,29 @@ def v1_admin_usage_costs(
         return auth_error
     payload = get_admin_usage_costs(query=query)
     return AdminUsageCostsResponse(**payload)
+
+
+@app.get(
+    "/v1/admin/journals",
+    response_model=AdminJournalProfilesListResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_journals(
+    request: Request,
+    query: str = Query(default="", max_length=120),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> AdminJournalProfilesListResponse | JSONResponse:
+    _, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    payload = list_admin_journal_profiles(
+        query=query,
+        limit=limit,
+        offset=offset,
+    )
+    return AdminJournalProfilesListResponse(**payload)
 
 
 @app.get(

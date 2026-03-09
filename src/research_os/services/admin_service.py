@@ -15,6 +15,7 @@ from research_os.db import (
     AdminAuditEvent,
     DataLibraryAsset,
     GenerationJob,
+    JournalProfile,
     Manuscript,
     ManuscriptSnapshot,
     PublicationFile,
@@ -2636,6 +2637,220 @@ def _serialize_admin_job_row(
         "updated_at": updated_at,
         "duration_seconds": duration_seconds,
     }
+
+
+def _admin_journal_float(value: Any) -> float | None:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if numeric != numeric:
+        return None
+    return numeric
+
+
+def _admin_journal_int(value: Any) -> int | None:
+    numeric = _admin_journal_float(value)
+    if numeric is None:
+        return None
+    return int(round(numeric))
+
+
+def _admin_journal_summary_stats(profile: JournalProfile) -> dict[str, Any]:
+    value = profile.summary_stats_json
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _admin_journal_two_year_mean_citedness(profile: JournalProfile) -> float | None:
+    return _admin_journal_float(
+        _admin_journal_summary_stats(profile).get("2yr_mean_citedness")
+    )
+
+
+def _admin_journal_h_index(profile: JournalProfile) -> int | None:
+    return _admin_journal_int(_admin_journal_summary_stats(profile).get("h_index"))
+
+
+def _admin_journal_i10_index(profile: JournalProfile) -> int | None:
+    return _admin_journal_int(_admin_journal_summary_stats(profile).get("i10_index"))
+
+
+def _admin_journal_has_openalex_metrics(profile: JournalProfile) -> bool:
+    return any(
+        value is not None
+        for value in (
+            _admin_journal_two_year_mean_citedness(profile),
+            _admin_journal_h_index(profile),
+            _admin_journal_i10_index(profile),
+            profile.works_count,
+            profile.cited_by_count,
+        )
+    )
+
+
+def _admin_journal_has_editorial_data(profile: JournalProfile) -> bool:
+    return any(
+        value not in {None, ""}
+        for value in (
+            profile.publisher_reported_impact_factor,
+            profile.editor_in_chief_name,
+            profile.time_to_first_decision_days,
+            profile.time_to_publication_days,
+            profile.editorial_source_url,
+            profile.editorial_last_verified_at,
+        )
+    )
+
+
+def _serialize_admin_journal_profile(profile: JournalProfile) -> dict[str, object]:
+    return {
+        "id": profile.id,
+        "provider": str(profile.provider or "").strip() or "openalex",
+        "provider_journal_id": str(profile.provider_journal_id or "").strip() or None,
+        "display_name": str(profile.display_name or "").strip(),
+        "publisher": str(profile.publisher or "").strip() or None,
+        "venue_type": str(profile.venue_type or "").strip() or None,
+        "issn_l": str(profile.issn_l or "").strip() or None,
+        "issns": [
+            str(value).strip()
+            for value in list(profile.issns_json or [])
+            if str(value).strip()
+        ],
+        "two_year_mean_citedness": _admin_journal_two_year_mean_citedness(profile),
+        "h_index": _admin_journal_h_index(profile),
+        "i10_index": _admin_journal_i10_index(profile),
+        "works_count": (
+            max(0, int(profile.works_count or 0))
+            if profile.works_count is not None
+            else None
+        ),
+        "cited_by_count": (
+            max(0, int(profile.cited_by_count or 0))
+            if profile.cited_by_count is not None
+            else None
+        ),
+        "publisher_reported_impact_factor": (
+            float(profile.publisher_reported_impact_factor)
+            if profile.publisher_reported_impact_factor is not None
+            else None
+        ),
+        "publisher_reported_impact_factor_year": (
+            max(0, int(profile.publisher_reported_impact_factor_year or 0))
+            if profile.publisher_reported_impact_factor_year is not None
+            else None
+        ),
+        "publisher_reported_impact_factor_label": (
+            str(profile.publisher_reported_impact_factor_label or "").strip() or None
+        ),
+        "publisher_reported_impact_factor_source_url": (
+            str(profile.publisher_reported_impact_factor_source_url or "").strip()
+            or None
+        ),
+        "time_to_first_decision_days": (
+            max(0, int(profile.time_to_first_decision_days or 0))
+            if profile.time_to_first_decision_days is not None
+            else None
+        ),
+        "time_to_publication_days": (
+            max(0, int(profile.time_to_publication_days or 0))
+            if profile.time_to_publication_days is not None
+            else None
+        ),
+        "editor_in_chief_name": str(profile.editor_in_chief_name or "").strip() or None,
+        "editorial_source_url": str(profile.editorial_source_url or "").strip() or None,
+        "editorial_source_title": (
+            str(profile.editorial_source_title or "").strip() or None
+        ),
+        "editorial_confidence": (
+            str(profile.editorial_confidence or "").strip() or None
+        ),
+        "is_oa": profile.is_oa,
+        "is_in_doaj": profile.is_in_doaj,
+        "apc_usd": (
+            max(0, int(profile.apc_usd or 0)) if profile.apc_usd is not None else None
+        ),
+        "homepage_url": str(profile.homepage_url or "").strip() or None,
+        "last_synced_at": _coerce_utc(profile.last_synced_at),
+        "editorial_last_verified_at": _coerce_utc(profile.editorial_last_verified_at),
+        "updated_at": _coerce_utc(profile.updated_at),
+        "created_at": _coerce_utc(profile.created_at),
+    }
+
+
+def list_admin_journal_profiles(
+    *,
+    query: str = "",
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, object]:
+    create_all_tables()
+    normalized_query = str(query or "").strip().lower()
+    normalized_limit = max(1, min(500, int(limit)))
+    normalized_offset = max(0, int(offset))
+    with session_scope() as session:
+        profiles = list(
+            session.scalars(
+                select(JournalProfile).order_by(
+                    JournalProfile.updated_at.desc(),
+                    JournalProfile.display_name.asc(),
+                )
+            ).all()
+        )
+
+        filtered: list[JournalProfile] = []
+        with_openalex_metrics = 0
+        with_editorial_data = 0
+        with_impact_factor = 0
+        with_editor_in_chief = 0
+        with_decision_timing = 0
+
+        for profile in profiles:
+            haystack = " ".join(
+                [
+                    str(profile.display_name or ""),
+                    str(profile.publisher or ""),
+                    str(profile.issn_l or ""),
+                    str(profile.provider_journal_id or ""),
+                    str(profile.editor_in_chief_name or ""),
+                ]
+            ).strip().lower()
+            if normalized_query and normalized_query not in haystack:
+                continue
+            filtered.append(profile)
+            if _admin_journal_has_openalex_metrics(profile):
+                with_openalex_metrics += 1
+            if _admin_journal_has_editorial_data(profile):
+                with_editorial_data += 1
+            if profile.publisher_reported_impact_factor is not None:
+                with_impact_factor += 1
+            if str(profile.editor_in_chief_name or "").strip():
+                with_editor_in_chief += 1
+            if (
+                profile.time_to_first_decision_days is not None
+                or profile.time_to_publication_days is not None
+            ):
+                with_decision_timing += 1
+
+        page = filtered[normalized_offset : normalized_offset + normalized_limit]
+        items = [_serialize_admin_journal_profile(profile) for profile in page]
+
+        return {
+            "items": items,
+            "total": len(filtered),
+            "limit": normalized_limit,
+            "offset": normalized_offset,
+            "generated_at": _utcnow(),
+            "summary": {
+                "total_profiles": len(filtered),
+                "with_openalex_metrics": with_openalex_metrics,
+                "with_editorial_data": with_editorial_data,
+                "with_publisher_reported_impact_factor": with_impact_factor,
+                "with_editor_in_chief": with_editor_in_chief,
+                "with_decision_timing": with_decision_timing,
+            },
+        }
 
 
 def list_admin_jobs(

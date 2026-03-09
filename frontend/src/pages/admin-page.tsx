@@ -32,6 +32,7 @@ import {
   deleteAdminUserAccount,
   fetchAdminAuditEvents,
   fetchAdminApiMonitor,
+  fetchAdminJournalProfiles,
   fetchAdminJobs,
   fetchAdminOrganisations,
   fetchAdminOverview,
@@ -55,6 +56,7 @@ import type {
   AdminAuditEventPayload,
   AdminAuditEventsListPayload,
   AdminJobsListPayload,
+  AdminJournalProfilesListPayload,
   AdminApiMonitorPayload,
   AdminOrganisationsListPayload,
   AdminOverviewPayload,
@@ -166,6 +168,20 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     ],
   },
   {
+    id: 'journal-intel',
+    title: 'Journal Intel Cache',
+    icon: LineChart,
+    status: 'live',
+    lane: 'now',
+    summary: 'Global journal intelligence cache that stores OpenAlex metrics and publisher-reported editorial data before any new web lookup is attempted.',
+    items: [
+      'Canonical journal registry keyed by OpenAlex source and ISSN-L',
+      'OpenAlex source metrics, OA flags, APC, and source freshness',
+      'Publisher-reported impact factor, editor-in-chief, and decision timings',
+      'Searchable cache coverage so repeated refreshes do not re-spend unnecessarily',
+    ],
+  },
+  {
     id: 'jobs',
     title: 'Jobs & Queues',
     icon: ServerCog,
@@ -258,7 +274,7 @@ const ADMIN_NAV_GROUPS: AdminNavigationGroup[] = [
   },
   {
     title: 'Scale',
-    items: ['organisations', 'workspaces', 'usage-costs', 'jobs', 'billing'],
+    items: ['organisations', 'workspaces', 'usage-costs', 'journal-intel', 'jobs', 'billing'],
   },
   {
     title: 'Governance',
@@ -464,6 +480,7 @@ export function AdminPage() {
   const [organisations, setOrganisations] = useState<AdminOrganisationsListPayload | null>(null)
   const [workspaces, setWorkspaces] = useState<AdminWorkspacesListPayload | null>(null)
   const [usageCosts, setUsageCosts] = useState<AdminUsageCostsPayload | null>(null)
+  const [journalProfiles, setJournalProfiles] = useState<AdminJournalProfilesListPayload | null>(null)
   const [apiMonitor, setApiMonitor] = useState<AdminApiMonitorPayload | null>(null)
   const [runtimeSettings, setRuntimeSettings] = useState<AdminRuntimeSettingsPayload | null>(null)
   const [jobs, setJobs] = useState<AdminJobsListPayload | null>(null)
@@ -472,6 +489,7 @@ export function AdminPage() {
   const [organisationQuery, setOrganisationQuery] = useState('')
   const [workspaceQuery, setWorkspaceQuery] = useState('')
   const [usageQuery, setUsageQuery] = useState('')
+  const [journalQuery, setJournalQuery] = useState('')
   const [jobsQuery, setJobsQuery] = useState('')
   const [jobStatus, setJobStatus] = useState('all')
   const [selectedOrganisationId, setSelectedOrganisationId] = useState('')
@@ -515,6 +533,7 @@ export function AdminPage() {
       nextOrganisationsQuery: string,
       nextWorkspacesQuery: string,
       nextUsageQuery: string,
+      nextJournalQuery: string,
       nextJobsQuery: string,
       nextJobStatus: string,
     ) => {
@@ -533,6 +552,7 @@ export function AdminPage() {
           organisationsPayload,
           workspacesPayload,
           usagePayload,
+          journalProfilesPayload,
           apiMonitorPayload,
           runtimeSettingsPayload,
           jobsPayload,
@@ -557,6 +577,11 @@ export function AdminPage() {
           fetchAdminUsageCosts(token, {
             query: nextUsageQuery,
           }),
+          fetchAdminJournalProfiles(token, {
+            query: nextJournalQuery,
+            limit: 100,
+            offset: 0,
+          }),
           fetchAdminApiMonitor(token, {
             query: nextUsageQuery,
           }),
@@ -577,6 +602,7 @@ export function AdminPage() {
         setOrganisations(organisationsPayload)
         setWorkspaces(workspacesPayload)
         setUsageCosts(usagePayload)
+        setJournalProfiles(journalProfilesPayload)
         setApiMonitor(apiMonitorPayload)
         setRuntimeSettings(runtimeSettingsPayload)
         setJobs(jobsPayload)
@@ -596,7 +622,7 @@ export function AdminPage() {
           return exists ? current : workspacesPayload.items[0]?.id || ''
         })
         setStatus(
-          `Loaded users ${usersPayload.items.length}/${usersPayload.total}, organisations ${organisationsPayload.items.length}/${organisationsPayload.total}, workspaces ${workspacesPayload.items.length}/${workspacesPayload.total}, jobs ${jobsPayload.items.length}/${jobsPayload.total}, and ${auditPayload.items.length} audit events.`,
+          `Loaded users ${usersPayload.items.length}/${usersPayload.total}, organisations ${organisationsPayload.items.length}/${organisationsPayload.total}, workspaces ${workspacesPayload.items.length}/${workspacesPayload.total}, journals ${journalProfilesPayload.items.length}/${journalProfilesPayload.total}, jobs ${jobsPayload.items.length}/${jobsPayload.total}, and ${auditPayload.items.length} audit events.`,
         )
       } catch (loadError) {
         const detail = loadError instanceof Error ? loadError.message : 'Could not load admin data.'
@@ -619,32 +645,37 @@ export function AdminPage() {
   )
 
   useEffect(() => {
-    void loadData('', '', '', '', '', 'all')
+    void loadData('', '', '', '', '', '', 'all')
   }, [loadData])
 
   const onUsersSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
   }
 
   const onOrganisationsSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
   }
 
   const onWorkspacesSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
   }
 
   const onUsageSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
+  }
+
+  const onJournalSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
   }
 
   const onJobsSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
   }
 
   const onImpersonateOrganisation = async () => {
@@ -666,7 +697,7 @@ export function AdminPage() {
       setStatus(
         `Impersonation ticket ${payload.impersonation_ticket} created for ${payload.target_user_email} (expires ${formatTimestamp(payload.expires_at)}).`,
       )
-      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Could not impersonate organisation admin.')
     } finally {
@@ -688,7 +719,7 @@ export function AdminPage() {
         reason: 'Admin console cancel action.',
       })
       setStatus(payload.message)
-      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Could not cancel job.')
     } finally {
@@ -710,7 +741,7 @@ export function AdminPage() {
         reason: 'Admin console retry action.',
       })
       setStatus(payload.message)
-      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Could not retry job.')
     } finally {
@@ -875,7 +906,7 @@ export function AdminPage() {
             : `${payload.message} Owned assets: ${beforeCount} -> ${afterCount}. No changes were detected; review reconcile tracker for diagnostics.`
           : `${payload.message} Owned assets: ${beforeCount} -> ${afterCount}.`,
       )
-      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Could not reconcile user library.')
     } finally {
@@ -904,7 +935,7 @@ export function AdminPage() {
       setStatus(
         `${payload.message} Rebound: ${rebound}. Available: ${availableBefore} -> ${availableAfter}. Missing: ${missingAfter}.`,
       )
-      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Could not recover user storage paths.')
     } finally {
@@ -926,7 +957,7 @@ export function AdminPage() {
         reason: 'Admin console publication refresh action.',
       })
       setStatus(payload.message)
-      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Could not refresh user publications.')
     } finally {
@@ -954,7 +985,7 @@ export function AdminPage() {
         reason: 'Admin console account deletion action.',
       })
       setStatus(payload.message)
-      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Could not delete user account.')
     } finally {
@@ -970,6 +1001,8 @@ export function AdminPage() {
   const selectedWorkspace =
     workspaceItems.find((item) => item.id === selectedWorkspaceId) || workspaceItems[0] || null
   const usageSummary = usageCosts?.summary || null
+  const journalSummary = journalProfiles?.summary || null
+  const journalProfileItems = useMemo(() => journalProfiles?.items || [], [journalProfiles?.items])
   const usageModelItems = useMemo(() => usageCosts?.model_usage || [], [usageCosts?.model_usage])
   const usageToolItems = useMemo(() => usageCosts?.tool_usage || [], [usageCosts?.tool_usage])
   const usageOrganisationItems = useMemo(() => usageCosts?.organisation_usage || [], [usageCosts?.organisation_usage])
@@ -1195,7 +1228,7 @@ export function AdminPage() {
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)}
+                onClick={() => void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)}
                 disabled={loading}
               >
                 {loading ? 'Refreshing...' : 'Refresh'}
@@ -2244,6 +2277,129 @@ export function AdminPage() {
               </>
             ) : null}
 
+            {activeCapability.id === 'journal-intel' ? (
+              <Card className="border-[hsl(var(--tone-neutral-200))]">
+                <CardHeader className="pb-2">
+                  <CardTitle>Journal intelligence cache</CardTitle>
+                  <CardDescription>
+                    Global cache used before any new journal web-search refresh is attempted.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <form className="flex flex-wrap items-center gap-2" onSubmit={onJournalSearch}>
+                    <div className="relative w-full max-w-md">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={journalQuery}
+                        onChange={(event) => setJournalQuery(event.target.value)}
+                        placeholder="Search by journal, publisher, ISSN, source id, or editor"
+                        className="pl-9"
+                      />
+                    </div>
+                    <Button type="submit" disabled={loading}>
+                      {loading ? 'Loading...' : 'Apply filter'}
+                    </Button>
+                  </form>
+
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Profiles</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                        {formatInteger(journalSummary?.total_profiles || 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">OpenAlex metrics</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                        {formatInteger(journalSummary?.with_openalex_metrics || 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Editorial profiles</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                        {formatInteger(journalSummary?.with_editorial_data || 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Impact factor</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                        {formatInteger(journalSummary?.with_publisher_reported_impact_factor || 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Decision timing</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                        {formatInteger(journalSummary?.with_decision_timing || 0)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {journalProfileItems.length ? (
+                    <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                      <table className="w-full min-w-full text-left text-sm">
+                        <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2">Journal</th>
+                            <th className="px-3 py-2">Source</th>
+                            <th className="px-3 py-2">OpenAlex</th>
+                            <th className="px-3 py-2">Impact factor</th>
+                            <th className="px-3 py-2">Editor</th>
+                            <th className="px-3 py-2">Decision</th>
+                            <th className="px-3 py-2">Cache</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {journalProfileItems.map((item) => (
+                            <tr key={item.id} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                              <td className="px-3 py-2">
+                                <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{item.display_name}</p>
+                                <p className="text-xs text-muted-foreground">{item.publisher || 'Unknown publisher'}</p>
+                              </td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">
+                                <p>{item.provider}</p>
+                                <p className="text-xs text-muted-foreground">{item.issn_l || item.provider_journal_id || 'No identifier'}</p>
+                              </td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">
+                                <p>2yr citedness: {item.two_year_mean_citedness != null ? item.two_year_mean_citedness.toFixed(2) : 'n/a'}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  H-index: {item.h_index != null ? formatInteger(item.h_index) : 'n/a'} | Works: {item.works_count != null ? formatInteger(item.works_count) : 'n/a'}
+                                </p>
+                              </td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">
+                                <p>
+                                  {item.publisher_reported_impact_factor != null
+                                    ? `${item.publisher_reported_impact_factor}${item.publisher_reported_impact_factor_year ? ` (${item.publisher_reported_impact_factor_year})` : ''}`
+                                    : 'n/a'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{item.publisher_reported_impact_factor_label || 'Publisher-reported'}</p>
+                              </td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">
+                                {item.editor_in_chief_name || 'n/a'}
+                              </td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">
+                                <p>First decision: {item.time_to_first_decision_days != null ? `${formatInteger(item.time_to_first_decision_days)} d` : 'n/a'}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Publication: {item.time_to_publication_days != null ? `${formatInteger(item.time_to_publication_days)} d` : 'n/a'}
+                                </p>
+                              </td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">
+                                <p>OpenAlex: {formatTimestamp(item.last_synced_at)}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Editorial: {formatTimestamp(item.editorial_last_verified_at)}
+                                </p>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No journal cache rows matched the current filter.</p>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
+
             {activeCapability.id === 'jobs' ? (
               <>
                 <Card className="border-[hsl(var(--tone-neutral-200))]">
@@ -2979,6 +3135,7 @@ export function AdminPage() {
             activeCapability.id !== 'workspaces' &&
             activeCapability.id !== 'users' &&
             activeCapability.id !== 'usage-costs' &&
+            activeCapability.id !== 'journal-intel' &&
             activeCapability.id !== 'jobs' &&
             activeCapability.id !== 'security' &&
             activeCapability.id !== 'billing' &&

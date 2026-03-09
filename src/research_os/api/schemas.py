@@ -1205,6 +1205,60 @@ class AdminApiMonitorResponse(BaseModel):
     )
 
 
+class AdminJournalProfileSummaryResponse(BaseModel):
+    id: str
+    provider: str
+    provider_journal_id: str | None = None
+    display_name: str
+    publisher: str | None = None
+    venue_type: str | None = None
+    issn_l: str | None = None
+    issns: list[str] = Field(default_factory=list)
+    two_year_mean_citedness: float | None = None
+    h_index: int | None = None
+    i10_index: int | None = None
+    works_count: int | None = None
+    cited_by_count: int | None = None
+    publisher_reported_impact_factor: float | None = None
+    publisher_reported_impact_factor_year: int | None = None
+    publisher_reported_impact_factor_label: str | None = None
+    publisher_reported_impact_factor_source_url: str | None = None
+    time_to_first_decision_days: int | None = None
+    time_to_publication_days: int | None = None
+    editor_in_chief_name: str | None = None
+    editorial_source_url: str | None = None
+    editorial_source_title: str | None = None
+    editorial_confidence: str | None = None
+    is_oa: bool | None = None
+    is_in_doaj: bool | None = None
+    apc_usd: int | None = None
+    homepage_url: str | None = None
+    last_synced_at: datetime | None = None
+    editorial_last_verified_at: datetime | None = None
+    updated_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class AdminJournalProfilesSummaryResponse(BaseModel):
+    total_profiles: int = 0
+    with_openalex_metrics: int = 0
+    with_editorial_data: int = 0
+    with_publisher_reported_impact_factor: int = 0
+    with_editor_in_chief: int = 0
+    with_decision_timing: int = 0
+
+
+class AdminJournalProfilesListResponse(BaseModel):
+    items: list[AdminJournalProfileSummaryResponse] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 100
+    offset: int = 0
+    generated_at: datetime
+    summary: AdminJournalProfilesSummaryResponse = Field(
+        default_factory=AdminJournalProfilesSummaryResponse
+    )
+
+
 class AdminJobSummaryResponse(BaseModel):
     id: str
     status: str

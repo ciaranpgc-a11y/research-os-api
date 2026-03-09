@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime, timezone
 import time
 from types import SimpleNamespace
 
@@ -8,6 +9,7 @@ from research_os.api.app import app
 from research_os.db import (
     DataLibraryAsset,
     GenerationJob,
+    JournalProfile,
     User,
     reset_database_state,
     session_scope,
@@ -3880,6 +3882,7 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
         organisations_response = client.get("/v1/admin/organisations")
         workspaces_response = client.get("/v1/admin/workspaces")
         usage_costs_response = client.get("/v1/admin/usage-costs")
+        journals_response = client.get("/v1/admin/journals")
         jobs_response = client.get("/v1/admin/jobs")
         delete_user_response = client.request(
             "DELETE",
@@ -3915,6 +3918,8 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
     assert workspaces_response.json()["error"]["type"] == "unauthorized"
     assert usage_costs_response.status_code == 401
     assert usage_costs_response.json()["error"]["type"] == "unauthorized"
+    assert journals_response.status_code == 401
+    assert journals_response.json()["error"]["type"] == "unauthorized"
     assert jobs_response.status_code == 401
     assert jobs_response.json()["error"]["type"] == "unauthorized"
     assert delete_user_response.status_code == 401
@@ -3964,6 +3969,10 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
         )
         usage_costs_response = client.get(
             "/v1/admin/usage-costs",
+            headers=_auth_headers(token),
+        )
+        journals_response = client.get(
+            "/v1/admin/journals",
             headers=_auth_headers(token),
         )
         jobs_response = client.get(
@@ -4020,6 +4029,8 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
     assert workspaces_response.json()["error"]["type"] == "forbidden"
     assert usage_costs_response.status_code == 403
     assert usage_costs_response.json()["error"]["type"] == "forbidden"
+    assert journals_response.status_code == 403
+    assert journals_response.json()["error"]["type"] == "forbidden"
     assert jobs_response.status_code == 403
     assert jobs_response.json()["error"]["type"] == "forbidden"
     assert delete_user_response.status_code == 403
@@ -4119,6 +4130,22 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
         )
         assert viewer_register_response.status_code == 200
         viewer_token = viewer_register_response.json()["session_token"]
+        workspace_response = client.post(
+            "/v1/workspaces",
+            headers=_auth_headers(viewer_token),
+            json={
+                "id": "org-workspace-1",
+                "name": "Org Workspace 1",
+                "owner_name": "Viewer User",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": True,
+                "archived": False,
+            },
+        )
+        assert workspace_response.status_code == 200
         delete_target_register_response = client.post(
             "/v1/auth/register",
             json={
@@ -4172,6 +4199,32 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
             )
             session.add(queued_job)
             session.add(failed_job)
+            session.add(
+                JournalProfile(
+                    provider="openalex",
+                    provider_journal_id="S42424242",
+                    issn_l="0195-668X",
+                    issns_json=["0195-668X", "1522-9645"],
+                    display_name="European Heart Journal",
+                    publisher="Oxford University Press",
+                    venue_type="journal",
+                    summary_stats_json={
+                        "2yr_mean_citedness": 12.4,
+                        "h_index": 331,
+                        "i10_index": 9021,
+                    },
+                    works_count=14567,
+                    cited_by_count=401233,
+                    publisher_reported_impact_factor=39.3,
+                    publisher_reported_impact_factor_year=2024,
+                    publisher_reported_impact_factor_label="Journal Impact Factor",
+                    editor_in_chief_name="Thomas F. Luscher",
+                    time_to_first_decision_days=18,
+                    time_to_publication_days=126,
+                    editorial_last_verified_at=datetime.now(timezone.utc),
+                    last_synced_at=datetime.now(timezone.utc),
+                )
+            )
             session.flush()
             queued_job_id = queued_job.id
             failed_job_id = failed_job.id
@@ -4223,6 +4276,11 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
             "/v1/admin/usage-costs",
             headers=_auth_headers(admin_token),
             params={"query": "example.com"},
+        )
+        journals_response = client.get(
+            "/v1/admin/journals",
+            headers=_auth_headers(admin_token),
+            params={"query": "heart", "limit": 20, "offset": 0},
         )
         jobs_response = client.get(
             "/v1/admin/jobs",
@@ -4341,6 +4399,22 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert isinstance(usage_costs_payload["organisation_usage"], list)
     assert isinstance(usage_costs_payload["user_usage"], list)
     assert len(usage_costs_payload["monthly_trend"]) >= 1
+
+    assert journals_response.status_code == 200
+    journals_payload = journals_response.json()
+    assert journals_payload["limit"] == 20
+    assert journals_payload["offset"] == 0
+    assert journals_payload["total"] >= 1
+    assert journals_payload["summary"]["with_openalex_metrics"] >= 1
+    assert journals_payload["summary"]["with_editorial_data"] >= 1
+    assert journals_payload["summary"]["with_publisher_reported_impact_factor"] >= 1
+    journal = journals_payload["items"][0]
+    assert journal["display_name"] == "European Heart Journal"
+    assert journal["issn_l"] == "0195-668X"
+    assert journal["two_year_mean_citedness"] == 12.4
+    assert journal["h_index"] == 331
+    assert journal["publisher_reported_impact_factor"] == 39.3
+    assert journal["editor_in_chief_name"] == "Thomas F. Luscher"
 
     assert jobs_response.status_code == 200
     jobs_payload = jobs_response.json()

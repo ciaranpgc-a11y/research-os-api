@@ -15,6 +15,7 @@ import type {
   AdminOverviewPayload,
   AdminOrganisationImpersonationStartPayload,
   AdminApiMonitorPayload,
+  AdminJournalProfilesListPayload,
   AdminPublicationsAutoSyncSettingUpdatePayload,
   AdminCollaborationMetricsRecomputeAllPayload,
   AdminPublicationsSyncRunAllPayload,
@@ -451,6 +452,30 @@ export async function fetchAdminUsageCosts(
       headers: authHeaders(token),
     },
     'Admin usage and costs lookup failed',
+  )
+}
+
+export async function fetchAdminJournalProfiles(
+  token: string,
+  options?: {
+    query?: string
+    limit?: number
+    offset?: number
+  },
+): Promise<AdminJournalProfilesListPayload> {
+  const params = new URLSearchParams()
+  if (String(options?.query || '').trim()) {
+    params.set('query', String(options?.query || '').trim())
+  }
+  params.set('limit', String(Math.max(1, Math.min(500, Number(options?.limit || 100)))))
+  params.set('offset', String(Math.max(0, Number(options?.offset || 0))))
+  return requestJson<AdminJournalProfilesListPayload>(
+    `${API_BASE_URL}/v1/admin/journals?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Admin journal cache lookup failed',
   )
 }
 
