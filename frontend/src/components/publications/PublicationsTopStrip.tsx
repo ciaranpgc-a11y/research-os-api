@@ -2721,6 +2721,66 @@ function getPublicationVolumeOverTimeHelpIconClass(stats: PublicationVolumeOverT
   }
 }
 
+function getPublicationVolumeOverTimeInsightButtonClass(stats: PublicationVolumeOverTimeInsightStats): string {
+  switch (resolvePublicationVolumeOverTimeTone(stats)) {
+    case 'positive':
+      return 'h-7 w-7 border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50)/0.78)] text-[hsl(var(--tone-positive-700))] shadow-[0_1px_2px_hsl(var(--tone-positive-950)/0.06)] hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-100)/0.92)] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+    case 'warning':
+      return 'h-7 w-7 border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50)/0.82)] text-[hsl(var(--tone-warning-700))] shadow-[0_1px_2px_hsl(var(--tone-warning-950)/0.06)] hover:border-[hsl(var(--tone-warning-300))] hover:bg-[hsl(var(--tone-warning-100)/0.92)] focus-visible:ring-[hsl(var(--tone-warning-200))]'
+    case 'danger':
+      return 'h-7 w-7 border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50)/0.82)] text-[hsl(var(--tone-danger-700))] shadow-[0_1px_2px_hsl(var(--tone-danger-950)/0.06)] hover:border-[hsl(var(--tone-danger-300))] hover:bg-[hsl(var(--tone-danger-100)/0.92)] focus-visible:ring-[hsl(var(--tone-danger-200))]'
+    case 'neutral':
+      return 'h-7 w-7 border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--tone-neutral-50)/0.82)] text-[hsl(var(--tone-neutral-700))] shadow-[0_1px_2px_hsl(var(--tone-neutral-950)/0.05)] hover:border-[hsl(var(--tone-neutral-300))] hover:bg-[hsl(var(--tone-neutral-100)/0.92)] focus-visible:ring-[hsl(var(--tone-neutral-200))]'
+    default:
+      return 'h-7 w-7 border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.78)] text-[hsl(var(--tone-accent-800))] shadow-[0_1px_2px_hsl(var(--tone-accent-950)/0.06)] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-100)/0.92)] focus-visible:ring-[hsl(var(--tone-accent-200))]'
+  }
+}
+
+function getPublicationVolumeOverTimeInsightActiveButtonClass(stats: PublicationVolumeOverTimeInsightStats): string {
+  switch (resolvePublicationVolumeOverTimeTone(stats)) {
+    case 'positive':
+      return 'border-[hsl(var(--tone-positive-400))] bg-[hsl(var(--tone-positive-100)/0.96)] text-[hsl(var(--tone-positive-800))]'
+    case 'warning':
+      return 'border-[hsl(var(--tone-warning-400))] bg-[hsl(var(--tone-warning-100)/0.96)] text-[hsl(var(--tone-warning-800))]'
+    case 'danger':
+      return 'border-[hsl(var(--tone-danger-400))] bg-[hsl(var(--tone-danger-100)/0.96)] text-[hsl(var(--tone-danger-800))]'
+    case 'neutral':
+      return 'border-[hsl(var(--tone-neutral-350))] bg-[hsl(var(--tone-neutral-100)/0.96)] text-[hsl(var(--tone-neutral-900))]'
+    default:
+      return 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-100)/0.96)] text-[hsl(var(--tone-accent-900))]'
+  }
+}
+
+function getPublicationVolumeOverTimeInsightIconClass(stats: PublicationVolumeOverTimeInsightStats): string {
+  switch (resolvePublicationVolumeOverTimeTone(stats)) {
+    case 'positive':
+      return 'text-[hsl(var(--tone-positive-700))]'
+    case 'warning':
+      return 'text-[hsl(var(--tone-warning-700))]'
+    case 'danger':
+      return 'text-[hsl(var(--tone-danger-700))]'
+    case 'neutral':
+      return 'text-[hsl(var(--tone-neutral-700))]'
+    default:
+      return 'text-[hsl(var(--tone-accent-800))]'
+  }
+}
+
+function getPublicationVolumeOverTimeInsightActiveIconClass(stats: PublicationVolumeOverTimeInsightStats): string {
+  switch (resolvePublicationVolumeOverTimeTone(stats)) {
+    case 'positive':
+      return 'text-[hsl(var(--tone-positive-800))]'
+    case 'warning':
+      return 'text-[hsl(var(--tone-warning-800))]'
+    case 'danger':
+      return 'text-[hsl(var(--tone-danger-800))]'
+    case 'neutral':
+      return 'text-[hsl(var(--tone-neutral-900))]'
+    default:
+      return 'text-[hsl(var(--tone-accent-900))]'
+  }
+}
+
 function getPublicationArticleTypeOverTimeTooltipSurfaceClass(): string {
   return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-positive-950)/0.09)]'
 }
@@ -2733,6 +2793,22 @@ function getPublicationArticleTypeOverTimeHelpIconClass(): string {
   return 'text-[1rem] text-[hsl(var(--tone-positive-700))] group-hover:text-[hsl(var(--tone-positive-800))] group-focus-visible:text-[hsl(var(--tone-positive-800))]'
 }
 
+function getPublicationArticleTypeOverTimeInsightButtonClass(): string {
+  return 'h-7 w-7 border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50)/0.78)] text-[hsl(var(--tone-positive-700))] shadow-[0_1px_2px_hsl(var(--tone-positive-950)/0.06)] hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-100)/0.92)] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+}
+
+function getPublicationArticleTypeOverTimeInsightActiveButtonClass(): string {
+  return 'border-[hsl(var(--tone-positive-400))] bg-[hsl(var(--tone-positive-100)/0.96)] text-[hsl(var(--tone-positive-800))]'
+}
+
+function getPublicationArticleTypeOverTimeInsightIconClass(): string {
+  return 'text-[hsl(var(--tone-positive-700))]'
+}
+
+function getPublicationArticleTypeOverTimeInsightActiveIconClass(): string {
+  return 'text-[hsl(var(--tone-positive-800))]'
+}
+
 function getPublicationPublicationTypeOverTimeTooltipSurfaceClass(): string {
   return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-positive-950)/0.09)]'
 }
@@ -2743,6 +2819,22 @@ function getPublicationPublicationTypeOverTimeHelpButtonClass(): string {
 
 function getPublicationPublicationTypeOverTimeHelpIconClass(): string {
   return 'text-[1rem] text-[hsl(var(--tone-positive-700))] group-hover:text-[hsl(var(--tone-positive-800))] group-focus-visible:text-[hsl(var(--tone-positive-800))]'
+}
+
+function getPublicationPublicationTypeOverTimeInsightButtonClass(): string {
+  return 'h-7 w-7 border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50)/0.78)] text-[hsl(var(--tone-positive-700))] shadow-[0_1px_2px_hsl(var(--tone-positive-950)/0.06)] hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-100)/0.92)] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+}
+
+function getPublicationPublicationTypeOverTimeInsightActiveButtonClass(): string {
+  return 'border-[hsl(var(--tone-positive-400))] bg-[hsl(var(--tone-positive-100)/0.96)] text-[hsl(var(--tone-positive-800))]'
+}
+
+function getPublicationPublicationTypeOverTimeInsightIconClass(): string {
+  return 'text-[hsl(var(--tone-positive-700))]'
+}
+
+function getPublicationPublicationTypeOverTimeInsightActiveIconClass(): string {
+  return 'text-[hsl(var(--tone-positive-800))]'
 }
 
 function resolveTrajectoryPhaseTone(phase: PublicationTrajectoryPhaseLabel): PublicationProductionPatternTone {
@@ -13648,14 +13740,16 @@ function TotalPublicationsDrilldownWorkspace({
       windowId,
       sectionKey,
       scope = 'window',
+      force = false,
     }: {
       windowId: PublicationsWindowMode
       sectionKey: PublicationInsightsSectionKey
       scope?: 'window' | 'section'
+      force?: boolean
     }) => {
       const normalizedWindowId = windowId === 'all' ? 'all' : windowId
       const requestKey = `${sectionKey}:${scope}:${normalizedWindowId}`
-      if (publicationInsightsByRequestKey[requestKey]) {
+      if (!force && publicationInsightsByRequestKey[requestKey]) {
         return publicationInsightsByRequestKey[requestKey]
       }
       if (publicationInsightsInFlightRef.current[requestKey]) {
@@ -13669,6 +13763,16 @@ function TotalPublicationsDrilldownWorkspace({
         return null
       }
       const requestPromise = (async () => {
+        if (force) {
+          setPublicationInsightsByRequestKey((current) => {
+            if (!(requestKey in current)) {
+              return current
+            }
+            const next = { ...current }
+            delete next[requestKey]
+            return next
+          })
+        }
         setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: true }))
         setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: '' }))
         try {
@@ -14872,6 +14976,14 @@ function TotalPublicationsDrilldownWorkspace({
                   error={publicationProductionPhaseInsightsError}
                   actions={publicationProductionPhaseInsightActions}
                   loadingTone={resolvePublicationProductionPhaseInsightTone(publicationProductionPhaseStats.phase)}
+                  onRegenerate={() => {
+                    void requestPublicationInsights({
+                      windowId: 'all',
+                      sectionKey: 'publication_production_phase',
+                      scope: 'section',
+                      force: true,
+                    })
+                  }}
                   onClose={closePublicationProductionPhaseInsight}
                 />
               </div>
@@ -14939,6 +15051,14 @@ function TotalPublicationsDrilldownWorkspace({
                   loading={publicationProductionPatternInsightsLoading}
                   error={publicationProductionPatternInsightsError}
                   actions={publicationProductionPatternInsightActions}
+                  onRegenerate={() => {
+                    void requestPublicationInsights({
+                      windowId: 'all',
+                      sectionKey: 'publication_output_pattern',
+                      scope: 'section',
+                      force: true,
+                    })
+                  }}
                   onClose={closePublicationProductionPatternInsight}
                 />
               </div>
@@ -15117,6 +15237,14 @@ function TotalPublicationsDrilldownWorkspace({
                         loading={publicationVolumeOverTimeInsightsLoading}
                         error={publicationVolumeOverTimeInsightsError}
                         actions={publicationVolumeOverTimeInsightActions}
+                        onRegenerate={() => {
+                          void requestPublicationInsights({
+                            windowId: 'all',
+                            sectionKey: 'publication_volume_over_time',
+                            scope: 'section',
+                            force: true,
+                          })
+                        }}
                         onClose={closePublicationVolumeOverTimeInsight}
                       />
                     </div>
@@ -15151,6 +15279,11 @@ function TotalPublicationsDrilldownWorkspace({
                       ariaLabel="Open publication volume over time insight"
                       active={publicationVolumeOverTimeInsightOpen}
                       onClick={onTogglePublicationVolumeOverTimeInsight}
+                      buttonClassName={getPublicationVolumeOverTimeInsightButtonClass(publicationVolumeOverTimeInsightStats)}
+                      activeButtonClassName={getPublicationVolumeOverTimeInsightActiveButtonClass(publicationVolumeOverTimeInsightStats)}
+                      iconClassName={getPublicationVolumeOverTimeInsightIconClass(publicationVolumeOverTimeInsightStats)}
+                      activeIconClassName={getPublicationVolumeOverTimeInsightActiveIconClass(publicationVolumeOverTimeInsightStats)}
+                      useCurrentColorIcon
                     />
                   </div>
                 </div>
@@ -15278,6 +15411,14 @@ function TotalPublicationsDrilldownWorkspace({
                         loading={publicationArticleTypeOverTimeInsightsLoading}
                         error={publicationArticleTypeOverTimeInsightsError}
                         actions={publicationArticleTypeOverTimeInsightActions}
+                        onRegenerate={() => {
+                          void requestPublicationInsights({
+                            windowId: 'all',
+                            sectionKey: 'publication_article_type_over_time',
+                            scope: 'section',
+                            force: true,
+                          })
+                        }}
                         onClose={closePublicationArticleTypeOverTimeInsight}
                       />
                     </div>
@@ -15312,6 +15453,11 @@ function TotalPublicationsDrilldownWorkspace({
                       ariaLabel="Open publication article type over time insight"
                       active={publicationArticleTypeOverTimeInsightOpen}
                       onClick={onTogglePublicationArticleTypeOverTimeInsight}
+                      buttonClassName={getPublicationArticleTypeOverTimeInsightButtonClass()}
+                      activeButtonClassName={getPublicationArticleTypeOverTimeInsightActiveButtonClass()}
+                      iconClassName={getPublicationArticleTypeOverTimeInsightIconClass()}
+                      activeIconClassName={getPublicationArticleTypeOverTimeInsightActiveIconClass()}
+                      useCurrentColorIcon
                     />
                   </div>
                 </div>
@@ -15350,6 +15496,14 @@ function TotalPublicationsDrilldownWorkspace({
                         loading={publicationTypeOverTimeInsightsLoading}
                         error={publicationTypeOverTimeInsightsError}
                         actions={publicationTypeOverTimeInsightActions}
+                        onRegenerate={() => {
+                          void requestPublicationInsights({
+                            windowId: 'all',
+                            sectionKey: 'publication_type_over_time',
+                            scope: 'section',
+                            force: true,
+                          })
+                        }}
                         onClose={closePublicationTypeOverTimeInsight}
                       />
                     </div>
@@ -15384,6 +15538,11 @@ function TotalPublicationsDrilldownWorkspace({
                       ariaLabel="Open publication type over time insight"
                       active={publicationTypeOverTimeInsightOpen}
                       onClick={onTogglePublicationTypeOverTimeInsight}
+                      buttonClassName={getPublicationPublicationTypeOverTimeInsightButtonClass()}
+                      activeButtonClassName={getPublicationPublicationTypeOverTimeInsightActiveButtonClass()}
+                      iconClassName={getPublicationPublicationTypeOverTimeInsightIconClass()}
+                      activeIconClassName={getPublicationPublicationTypeOverTimeInsightActiveIconClass()}
+                      useCurrentColorIcon
                     />
                   </div>
                 </div>
@@ -16331,14 +16490,16 @@ function GenericMetricDrilldownWorkspace({
       windowId,
       sectionKey,
       scope = 'window',
+      force = false,
     }: {
       windowId: PublicationsWindowMode
       sectionKey: PublicationInsightsSectionKey
       scope?: 'window' | 'section'
+      force?: boolean
     }) => {
       const normalizedWindowId = windowId === 'all' ? 'all' : windowId
       const requestKey = `${sectionKey}:${scope}:${normalizedWindowId}`
-      if (publicationInsightsByRequestKey[requestKey]) {
+      if (!force && publicationInsightsByRequestKey[requestKey]) {
         return publicationInsightsByRequestKey[requestKey]
       }
       if (publicationInsightsInFlightRef.current[requestKey]) {
@@ -16352,6 +16513,16 @@ function GenericMetricDrilldownWorkspace({
         return null
       }
       const requestPromise = (async () => {
+        if (force) {
+          setPublicationInsightsByRequestKey((current) => {
+            if (!(requestKey in current)) {
+              return current
+            }
+            const next = { ...current }
+            delete next[requestKey]
+            return next
+          })
+        }
         setPublicationInsightsLoadingByRequestKey((current) => ({ ...current, [requestKey]: true }))
         setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: '' }))
         try {
@@ -17955,6 +18126,13 @@ function GenericMetricDrilldownWorkspace({
                         loading={uncitedInsightsLoading}
                         error={uncitedInsightsError}
                         actions={uncitedInsightActions}
+                        onRegenerate={() => {
+                          void requestPublicationInsights({
+                            windowId: 'all',
+                            sectionKey: 'uncited_works',
+                            force: true,
+                          })
+                        }}
                         onClose={closeUncitedInsight}
                       />
                     </div>
@@ -18054,6 +18232,14 @@ function GenericMetricDrilldownWorkspace({
                         loading={recentConcentrationInsightsLoading}
                         error={recentConcentrationInsightsError}
                         actions={recentConcentrationInsightActions}
+                        onRegenerate={() => {
+                          void requestPublicationInsights({
+                            windowId: '1y',
+                            sectionKey: 'citation_drivers',
+                            scope: 'section',
+                            force: true,
+                          })
+                        }}
                         onClose={closeRecentConcentrationInsight}
                       />
                     </div>
@@ -18151,6 +18337,14 @@ function GenericMetricDrilldownWorkspace({
                         loading={citationHistogramInsightsLoading}
                         error={citationHistogramInsightsError}
                         actions={citationHistogramInsightActions}
+                        onRegenerate={() => {
+                          void requestPublicationInsights({
+                            windowId: 'all',
+                            sectionKey: 'citation_drivers',
+                            scope: 'section',
+                            force: true,
+                          })
+                        }}
                         onClose={closeCitationHistogramInsight}
                       />
                     </div>
@@ -18405,6 +18599,14 @@ function GenericMetricDrilldownWorkspace({
                         loading={citationActivationInsightsLoading}
                         error={citationActivationInsightsError}
                         actions={citationActivationInsightActions}
+                        onRegenerate={() => {
+                          void requestPublicationInsights({
+                            windowId: '1y',
+                            sectionKey: 'citation_activation',
+                            scope: 'section',
+                            force: true,
+                          })
+                        }}
                         onClose={closeCitationActivationInsight}
                       />
                     </div>
@@ -18519,6 +18721,14 @@ function GenericMetricDrilldownWorkspace({
                         loading={citationActivationHistoryInsightsLoading}
                         error={citationActivationHistoryInsightsError}
                         actions={citationActivationHistoryInsightActions}
+                        onRegenerate={() => {
+                          void requestPublicationInsights({
+                            windowId: 'all',
+                            sectionKey: 'citation_activation_history',
+                            scope: 'section',
+                            force: true,
+                          })
+                        }}
                         onClose={closeCitationActivationHistoryInsight}
                       />
                     </div>
@@ -18602,6 +18812,14 @@ function GenericMetricDrilldownWorkspace({
                         loading={citationHistogramInsightsLoading}
                         error={citationHistogramInsightsError}
                         actions={citationMomentumInsightActions}
+                        onRegenerate={() => {
+                          void requestPublicationInsights({
+                            windowId: 'all',
+                            sectionKey: 'citation_drivers',
+                            scope: 'section',
+                            force: true,
+                          })
+                        }}
                         onClose={closeCitationMomentumInsight}
                       />
                     </div>
@@ -21667,6 +21885,7 @@ function PublicationInsightsCallout({
   error = '',
   actions = [],
   loadingTone,
+  onRegenerate,
   onClose,
 }: {
   payload: PublicationInsightsAgentPayload | null
@@ -21675,6 +21894,7 @@ function PublicationInsightsCallout({
   error?: string
   actions?: PublicationInsightAction[]
   loadingTone?: PublicationInsightTone
+  onRegenerate?: () => void
   onClose: () => void
 }) {
   const section = getPublicationInsightsSection(payload, sectionKey)
@@ -21689,6 +21909,7 @@ function PublicationInsightsCallout({
   const loadingMessages = useMemo(() => getPublicationInsightLoadingMessages(sectionKey), [sectionKey])
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0)
   const loadingMessage = loadingMessages[loadingMessageIndex] || loadingMessages[0] || 'Insight is on the way.'
+  const showDevRegenerate = import.meta.env.DEV && typeof onRegenerate === 'function'
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -21879,6 +22100,27 @@ function PublicationInsightsCallout({
                     </button>
                   ))}
                 </div>
+              </div>
+            ) : null}
+            {showDevRegenerate ? (
+              <div className="border-t border-[hsl(var(--tone-neutral-200))] pt-3">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onRegenerate?.()
+                  }}
+                  disabled={loading}
+                  className={cn(
+                    'inline-flex items-center justify-center rounded-full border px-3 py-1.5 text-[0.74rem] font-semibold tracking-[0.02em] transition-colors',
+                    'border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-700))]',
+                    'hover:border-[hsl(var(--tone-neutral-300))] hover:text-[hsl(var(--tone-neutral-900))]',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-300))]',
+                    'disabled:cursor-wait disabled:opacity-60',
+                  )}
+                >
+                  {loading ? 'Regenerating insight...' : 'Regenerate insight'}
+                </button>
               </div>
             ) : null}
           </div>

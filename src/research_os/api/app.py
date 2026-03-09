@@ -228,6 +228,8 @@ from research_os.api.schemas import (
     PublicationsAnalyticsTopDriversResponse,
     PersonaMetricsSyncRequest,
     PersonaMetricsSyncResponse,
+    PersonaJournalRefreshRequest,
+    PersonaJournalRefreshResponse,
     PersonaJournalResponse,
     PersonaWorkResponse,
     PublicationInsightsAgentResponse,
@@ -404,6 +406,9 @@ from research_os.services.persona_service import (
     list_journals,
     list_works,
     sync_metrics,
+)
+from research_os.services.journal_intelligence_service import (
+    refresh_persona_journal_intelligence,
 )
 from research_os.services.grants_service import (
     GrantsValidationError,
@@ -2509,6 +2514,35 @@ def v1_persona_list_journals(
         return _build_unauthorized_response(str(exc))
     except PersonaNotFoundError as exc:
         return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/persona/journals/refresh",
+    response_model=PersonaJournalRefreshResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_persona_refresh_journal_intelligence(
+    request: Request,
+    payload: PersonaJournalRefreshRequest,
+) -> PersonaJournalRefreshResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        data = refresh_persona_journal_intelligence(
+            user_id=str(user["id"]),
+            include_editorial_intel=payload.include_editorial_intel,
+            force=payload.force,
+        )
+        return PersonaJournalRefreshResponse(**data)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PersonaNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except ValueError as exc:
+        return _build_bad_request_response(str(exc))
 
 
 @app.get(

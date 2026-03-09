@@ -1910,9 +1910,36 @@ class PersonaJournalResponse(BaseModel):
     latest_publication_year: int | None = None
     journal_metric_value: float | None = None
     journal_metric_label: str | None = None
+    h_index: int | None = None
+    i10_index: int | None = None
+    works_count: int | None = None
+    cited_by_count: int | None = None
+    publisher_reported_impact_factor: float | None = None
+    publisher_reported_impact_factor_year: int | None = None
+    publisher_reported_impact_factor_label: str | None = None
+    publisher_reported_impact_factor_source_url: str | None = None
+    time_to_first_decision_days: int | None = None
+    time_to_publication_days: int | None = None
+    editor_in_chief_name: str | None = None
+    editorial_source_url: str | None = None
+    editorial_source_title: str | None = None
+    editorial_last_verified_at: datetime | None = None
     is_oa: bool | None = None
     is_in_doaj: bool | None = None
     apc_usd: int | None = None
+
+
+class PersonaJournalRefreshRequest(BaseModel):
+    include_editorial_intel: bool = True
+    force: bool = False
+
+
+class PersonaJournalRefreshResponse(BaseModel):
+    journals_considered: int
+    openalex_profiles_refreshed: int = 0
+    editorial_profiles_refreshed: int = 0
+    editorial_profiles_skipped: int = 0
+    warnings: list[str] = Field(default_factory=list)
 
 
 class PersonaMetricsSyncRequest(BaseModel):

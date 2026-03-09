@@ -38,6 +38,9 @@ from research_os.services.journal_identity import (
 )
 from research_os.services.metrics_provider_service import get_metrics_provider
 from research_os.services.api_telemetry_service import record_api_usage_event
+from research_os.services.journal_intelligence_service import (
+    refresh_openalex_journal_profiles,
+)
 from research_os.services.supplementary_work_service import (
     is_supplementary_material_work,
     primary_publication_records,
@@ -802,6 +805,28 @@ def _prefer_venue_display_name(current: Any, candidate: Any) -> str | None:
     return current_clean
 
 
+def _first_venue_candidate(*values: Any) -> str | None:
+    for value in values:
+        clean = _normalize_venue_candidate(value)
+        if clean:
+            return clean
+    return None
+
+
+def _first_preferred_venue_candidate(*values: Any) -> str | None:
+    first_placeholder: str | None = None
+    for value in values:
+        clean = _normalize_venue_candidate(value)
+        if not clean:
+            continue
+        if _is_abstracts_placeholder_venue(clean):
+            if first_placeholder is None:
+                first_placeholder = clean
+            continue
+        return clean
+    return first_placeholder
+
+
 def _normalize_work_issns(value: Any, *, issn_l: str | None = None) -> list[str]:
     normalized = normalize_issns(value)
     if issn_l and issn_l not in normalized:
@@ -1088,6 +1113,19 @@ def _journal_metric_from_payload(metric_payload: dict[str, Any]) -> float | None
     if derived_metric is not None:
         return derived_metric
     return _safe_float(metric_payload.get("journal_2yr_mean_citedness"))
+
+
+def _journal_int_stat_from_profile(
+    profile: JournalProfile | None, key: str
+) -> int | None:
+    if profile is None:
+        return None
+    summary_stats = (
+        dict(profile.summary_stats_json)
+        if isinstance(profile.summary_stats_json, dict)
+        else {}
+    )
+    return _safe_int(summary_stats.get(key))
 
 
 def _is_non_journal_venue(
@@ -1504,7 +1542,7 @@ def upsert_work(
 def list_works(*, user_id: str) -> list[dict[str, Any]]:
     create_all_tables()
     with session_scope() as session:
-        _resolve_user_or_raise(session, user_id)
+        user = _resolve_user_or_raise(session, user_id)
         works = session.scalars(
             select(Work)
             .where(Work.user_id == user_id)
@@ -1677,6 +1715,9 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
             snapshot = latest_metrics.get(work.id)
             metric_payload = dict(snapshot.metric_payload or {}) if snapshot else {}
             identity = _extract_journal_identity(metric_payload)
+            _, _, resolved_metric_journal_name = _extract_pmid_and_journal_metric(
+                metric_payload
+            )
             source_id = extract_openalex_source_id(
                 work.openalex_source_id or identity.get("openalex_source_id")
             )
@@ -1689,21 +1730,18 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                 if isinstance(identity.get("source"), dict)
                 else {}
             )
-            display_name = next(
-                (
-                    candidate
-                    for candidate in [
-                        _normalize_venue_candidate(
-                            profile.display_name if profile is not None else None
-                        ),
-                        _normalize_venue_candidate(metric_payload.get("journal_name")),
-                        _normalize_venue_candidate(source.get("display_name")),
-                        _normalize_venue_candidate(work.journal),
-                        _normalize_venue_candidate(work.venue_name),
-                    ]
-                    if candidate
-                ),
-                None,
+            source_identity_display_name = _first_venue_candidate(
+                profile.display_name if profile is not None else None,
+                source.get("display_name"),
+                metric_payload.get("journal_name"),
+            )
+            display_name = _first_preferred_venue_candidate(
+                profile.display_name if profile is not None else None,
+                resolved_metric_journal_name,
+                metric_payload.get("journal_name"),
+                source.get("display_name"),
+                work.journal,
+                work.venue_name,
             )
             if not display_name:
                 continue
@@ -1745,8 +1783,17 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
             ):
                 continue
 
+            grouping_source_id = source_id
+            if (
+                grouping_source_id
+                and source_identity_display_name
+                and _is_abstracts_placeholder_venue(source_identity_display_name)
+                and not _is_abstracts_placeholder_venue(display_name)
+            ):
+                grouping_source_id = None
+
             journal_key = _journal_group_key(
-                openalex_source_id=source_id,
+                openalex_source_id=grouping_source_id,
                 issn_l=issn_l,
                 display_name=display_name,
             )
@@ -1768,7 +1815,7 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                     "journal_key": journal_key,
                     "display_name": display_name,
                     "publisher": publisher or "",
-                    "openalex_source_id": source_id,
+                    "openalex_source_id": grouping_source_id,
                     "issn_l": issn_l,
                     "issns": list(issns),
                     "venue_type": venue_type,
@@ -1779,6 +1826,64 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                     "journal_metric_value": metric_value,
                     "journal_metric_label": (
                         JOURNAL_METRIC_LABEL if metric_value is not None else None
+                    ),
+                    "h_index": (
+                        _journal_int_stat_from_profile(profile, "h_index")
+                        if profile is not None
+                        else None
+                    ),
+                    "i10_index": (
+                        _journal_int_stat_from_profile(profile, "i10_index")
+                        if profile is not None
+                        else None
+                    ),
+                    "works_count": profile.works_count if profile is not None else None,
+                    "cited_by_count": (
+                        profile.cited_by_count if profile is not None else None
+                    ),
+                    "publisher_reported_impact_factor": (
+                        profile.publisher_reported_impact_factor
+                        if profile is not None
+                        else None
+                    ),
+                    "publisher_reported_impact_factor_year": (
+                        profile.publisher_reported_impact_factor_year
+                        if profile is not None
+                        else None
+                    ),
+                    "publisher_reported_impact_factor_label": (
+                        profile.publisher_reported_impact_factor_label
+                        if profile is not None
+                        else None
+                    ),
+                    "publisher_reported_impact_factor_source_url": (
+                        profile.publisher_reported_impact_factor_source_url
+                        if profile is not None
+                        else None
+                    ),
+                    "time_to_first_decision_days": (
+                        profile.time_to_first_decision_days
+                        if profile is not None
+                        else None
+                    ),
+                    "time_to_publication_days": (
+                        profile.time_to_publication_days
+                        if profile is not None
+                        else None
+                    ),
+                    "editor_in_chief_name": (
+                        profile.editor_in_chief_name if profile is not None else None
+                    ),
+                    "editorial_source_url": (
+                        profile.editorial_source_url if profile is not None else None
+                    ),
+                    "editorial_source_title": (
+                        profile.editorial_source_title if profile is not None else None
+                    ),
+                    "editorial_last_verified_at": (
+                        profile.editorial_last_verified_at
+                        if profile is not None
+                        else None
                     ),
                     "is_oa": profile.is_oa if profile is not None else None,
                     "is_in_doaj": profile.is_in_doaj if profile is not None else None,
@@ -1802,8 +1907,11 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                 )
                 or ""
             )
-            if not str(group.get("openalex_source_id") or "").strip() and source_id:
-                group["openalex_source_id"] = source_id
+            if (
+                not str(group.get("openalex_source_id") or "").strip()
+                and grouping_source_id
+            ):
+                group["openalex_source_id"] = grouping_source_id
             if not str(group.get("issn_l") or "").strip() and issn_l:
                 group["issn_l"] = issn_l
             if not str(group.get("venue_type") or "").strip() and venue_type:
@@ -1817,6 +1925,78 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
             if group.get("journal_metric_value") is None and metric_value is not None:
                 group["journal_metric_value"] = metric_value
                 group["journal_metric_label"] = JOURNAL_METRIC_LABEL
+            if group.get("h_index") is None and profile is not None:
+                group["h_index"] = _journal_int_stat_from_profile(profile, "h_index")
+            if group.get("i10_index") is None and profile is not None:
+                group["i10_index"] = _journal_int_stat_from_profile(
+                    profile, "i10_index"
+                )
+            if group.get("works_count") is None and profile is not None:
+                group["works_count"] = profile.works_count
+            if group.get("cited_by_count") is None and profile is not None:
+                group["cited_by_count"] = profile.cited_by_count
+            if (
+                group.get("publisher_reported_impact_factor") is None
+                and profile is not None
+            ):
+                group["publisher_reported_impact_factor"] = (
+                    profile.publisher_reported_impact_factor
+                )
+            if (
+                group.get("publisher_reported_impact_factor_year") is None
+                and profile is not None
+            ):
+                group["publisher_reported_impact_factor_year"] = (
+                    profile.publisher_reported_impact_factor_year
+                )
+            if (
+                not str(
+                    group.get("publisher_reported_impact_factor_label") or ""
+                ).strip()
+                and profile is not None
+                and str(profile.publisher_reported_impact_factor_label or "").strip()
+            ):
+                group["publisher_reported_impact_factor_label"] = (
+                    profile.publisher_reported_impact_factor_label
+                )
+            if (
+                not str(
+                    group.get("publisher_reported_impact_factor_source_url") or ""
+                ).strip()
+                and profile is not None
+                and str(
+                    profile.publisher_reported_impact_factor_source_url or ""
+                ).strip()
+            ):
+                group["publisher_reported_impact_factor_source_url"] = (
+                    profile.publisher_reported_impact_factor_source_url
+                )
+            if group.get("time_to_first_decision_days") is None and profile is not None:
+                group["time_to_first_decision_days"] = (
+                    profile.time_to_first_decision_days
+                )
+            if group.get("time_to_publication_days") is None and profile is not None:
+                group["time_to_publication_days"] = profile.time_to_publication_days
+            if (
+                not str(group.get("editor_in_chief_name") or "").strip()
+                and profile is not None
+                and str(profile.editor_in_chief_name or "").strip()
+            ):
+                group["editor_in_chief_name"] = profile.editor_in_chief_name
+            if (
+                not str(group.get("editorial_source_url") or "").strip()
+                and profile is not None
+                and str(profile.editorial_source_url or "").strip()
+            ):
+                group["editorial_source_url"] = profile.editorial_source_url
+            if (
+                not str(group.get("editorial_source_title") or "").strip()
+                and profile is not None
+                and str(profile.editorial_source_title or "").strip()
+            ):
+                group["editorial_source_title"] = profile.editorial_source_title
+            if group.get("editorial_last_verified_at") is None and profile is not None:
+                group["editorial_last_verified_at"] = profile.editorial_last_verified_at
             if (
                 group.get("is_oa") is None
                 and profile is not None
@@ -1850,6 +2030,11 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                     "journal_metric_value": (
                         round(float(row["journal_metric_value"]), 3)
                         if row.get("journal_metric_value") is not None
+                        else None
+                    ),
+                    "publisher_reported_impact_factor": (
+                        round(float(row["publisher_reported_impact_factor"]), 3)
+                        if row.get("publisher_reported_impact_factor") is not None
                         else None
                     ),
                 }
@@ -2348,7 +2533,7 @@ def sync_metrics(
     provider_counts: dict[str, int] = defaultdict(int)
     structured_abstract_refresh_ids: set[str] = set()
     with session_scope() as session:
-        _resolve_user_or_raise(session, user_id)
+        user = _resolve_user_or_raise(session, user_id)
         works_by_id: dict[str, Work] = {}
         hydrated_work_ids = list(
             set(best_abstract_by_work.keys())
@@ -2383,6 +2568,19 @@ def sync_metrics(
                 )
             synced += 1
             provider_counts[snapshot.provider] += 1
+        openalex_metric_payloads = [
+            dict(row.get("metric_payload") or {})
+            for row in metric_rows
+            if str(row.get("provider") or "").strip().lower() == "openalex"
+            and isinstance(row.get("metric_payload"), dict)
+        ]
+        if openalex_metric_payloads:
+            refresh_openalex_journal_profiles(
+                session,
+                user_email=str(user.email or "").strip() or None,
+                metric_payloads=openalex_metric_payloads,
+                force=False,
+            )
         for work_id, (_, abstract) in best_abstract_by_work.items():
             work = works_by_id.get(work_id)
             if work is None:

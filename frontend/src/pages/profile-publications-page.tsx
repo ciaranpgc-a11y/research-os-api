@@ -25,6 +25,7 @@ import {
   fetchPublicationsAnalytics,
   fetchPublicationsTopMetrics,
   listPersonaJournals,
+  refreshPersonaJournals,
   triggerPublicationsTopMetricsRefresh,
   linkPublicationOpenAccessPdf,
   listPersonaSyncJobs,
@@ -62,6 +63,7 @@ type JournalSortField =
   | 'avg_citations'
   | 'median_citations'
   | 'journal_metric'
+  | 'impact_factor'
   | 'is_oa'
   | 'latest_publication_year'
 type LibrarySortField = PublicationSortField | JournalSortField
@@ -2301,6 +2303,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [journalSortField, setJournalSortField] = useState<JournalSortField>('publication_count')
   const [journalSortDirection, setJournalSortDirection] = useState<SortDirection>('desc')
   const [personaJournals, setPersonaJournals] = useState<PersonaJournal[]>([])
+  const [refreshingJournalIntel, setRefreshingJournalIntel] = useState(false)
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [richImporting, setRichImporting] = useState(false)
@@ -2532,6 +2535,36 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
     }
   }, [navigate, user?.id])
+
+  const onRefreshJournalIntel = useCallback(async () => {
+    const sessionToken = token.trim()
+    if (!sessionToken || refreshingJournalIntel) {
+      return
+    }
+    setRefreshingJournalIntel(true)
+    setError('')
+    setStatus('Refreshing missing and stale journal intelligence...')
+    try {
+      const refreshResult = await refreshPersonaJournals(sessionToken, {
+        includeEditorialIntel: true,
+        force: false,
+      })
+      const journals = await listPersonaJournals(sessionToken)
+      setPersonaJournals(journals)
+      const warningSuffix = refreshResult.warnings.length > 0
+        ? ` ${refreshResult.warnings.length} source${refreshResult.warnings.length === 1 ? '' : 's'} still need review.`
+        : ''
+      setStatus(
+        `Journal intelligence refreshed for ${refreshResult.journals_considered} journal${refreshResult.journals_considered === 1 ? '' : 's'} `
+        + `(${refreshResult.openalex_profiles_refreshed} OpenAlex, ${refreshResult.editorial_profiles_refreshed} editorial, `
+        + `${refreshResult.editorial_profiles_skipped} cached).${warningSuffix}`,
+      )
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : 'Could not refresh journal intelligence.')
+    } finally {
+      setRefreshingJournalIntel(false)
+    }
+  }, [refreshingJournalIntel, token])
 
   useEffect(() => {
     saveActivePublicationDetailTab(activeDetailTab)
@@ -3282,6 +3315,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
       if (journalSortField === 'journal_metric') {
         return ((left.journal_metric_value || 0) - (right.journal_metric_value || 0)) * direction
+      }
+      if (journalSortField === 'impact_factor') {
+        return ((left.publisher_reported_impact_factor || 0) - (right.publisher_reported_impact_factor || 0)) * direction
       }
       if (journalSortField === 'is_oa') {
         return ((Number(left.is_oa) || 0) - (Number(right.is_oa) || 0)) * direction
@@ -4906,7 +4942,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 )
               })}
             </div>
-            <SectionTools tone="publications" framed={false} className="order-1">
+            {publicationLibraryVisible && publicationLibraryViewMode === 'journals' ? (
+              <button
+                type="button"
+                className={cn(
+                  'order-1 inline-flex h-8 items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--foreground))] shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition-colors hover:border-[hsl(var(--foreground))]',
+                  refreshingJournalIntel && 'pointer-events-none opacity-70',
+                )}
+                onClick={() => {
+                  void onRefreshJournalIntel()
+                }}
+                aria-label="Refresh missing and stale journal intelligence"
+              >
+                {refreshingJournalIntel ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.1} /> : null}
+                <span>{refreshingJournalIntel ? 'Refreshing...' : 'Refresh stale journal intel'}</span>
+              </button>
+            ) : null}
+            <SectionTools tone="publications" framed={false} className="order-2">
             {publicationLibraryVisible ? (
               <div className="relative order-1 shrink-0">
                 <button
@@ -5602,8 +5654,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         </TableHead>
                         <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
                           <SortHeader
-                            label="Journal metric"
+                            label="2yr citedness"
                             column="journal_metric"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="left"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                          <SortHeader
+                            label="Impact factor"
+                            column="impact_factor"
                             sortField={journalSortField}
                             sortDirection={journalSortDirection}
                             align="left"
@@ -5659,9 +5721,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               <span>
                                 {journal.journal_metric_value == null ? 'n/a' : journal.journal_metric_value.toFixed(2)}
                               </span>
-                              {journal.journal_metric_label ? (
+                              {journal.journal_metric_value != null ? (
                                 <span className="text-[0.65rem] uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
-                                  {journal.journal_metric_label.replace(/_/g, ' ')}
+                                  OpenAlex
+                                </span>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                            <div className="grid gap-1">
+                              <span>
+                                {journal.publisher_reported_impact_factor == null ? 'n/a' : journal.publisher_reported_impact_factor.toFixed(2)}
+                              </span>
+                              {journal.publisher_reported_impact_factor != null ? (
+                                <span className="text-[0.65rem] uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
+                                  {journal.publisher_reported_impact_factor_year
+                                    ? `${journal.publisher_reported_impact_factor_year} publisher`
+                                    : 'publisher reported'}
                                 </span>
                               ) : null}
                             </div>

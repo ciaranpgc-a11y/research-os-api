@@ -75,6 +75,20 @@ def test_alembic_upgrade_head_creates_schema_for_fresh_database(
     assert "issns_json" in work_columns
     assert "venue_type" in work_columns
 
+    journal_profile_columns = {
+        column["name"] for column in inspector.get_columns("journal_profiles")
+    }
+    assert "works_count" in journal_profile_columns
+    assert "cited_by_count" in journal_profile_columns
+    assert "publisher_reported_impact_factor" in journal_profile_columns
+    assert "publisher_reported_impact_factor_year" in journal_profile_columns
+    assert "publisher_reported_impact_factor_source_url" in journal_profile_columns
+    assert "time_to_first_decision_days" in journal_profile_columns
+    assert "time_to_publication_days" in journal_profile_columns
+    assert "editor_in_chief_name" in journal_profile_columns
+    assert "editorial_raw_json" in journal_profile_columns
+    assert "editorial_last_verified_at" in journal_profile_columns
+
 
 def test_alembic_upgrade_head_adds_missing_columns_for_legacy_generation_jobs(
     monkeypatch, tmp_path

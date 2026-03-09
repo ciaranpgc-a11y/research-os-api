@@ -34,6 +34,24 @@ Do not mix the two patterns accidentally. Choose one deliberately based on depth
 
 - Lead with the interpretive point, then justify it.
 - Explain what is driving the read for this record, not just what the metric is called.
+- For live AI insights, do not pass only flat metric dumps when richer structure is available.
+  - Prefer a compact analyst brief alongside the raw fields.
+  - Good prompt evidence usually includes:
+    - structural read
+    - main driver
+    - concentration or mix read
+    - confidence qualifier
+    - why-it-matters hint
+    - what-changes-it hint when the evidence supports it
+- For publication insights, keep one shared prompt template where possible and grow the evidence schema instead of adding more bespoke prompt prose.
+  - The section question can change.
+  - Prefer one canonical evidence object: `portfolio_context`, `publication_library`, `section_data`, plus optional `analysis_brief` and `confidence_flags`.
+  - The publication evidence pack should grow as the product grows.
+  - Prefer adding new structured evidence to the payload over adding new one-off prompt instructions.
+- For publication insights, include the publication library as a whole-record evidence layer when available.
+  - The model should be able to see the actual publication rows, not only summary metrics.
+  - Keep the rows compact and structured.
+  - Use the whole library when it sharpens the interpretation, but stay focused on the section question.
 - Prefer adaptive copy over fixed templates.
 - For live AI insights, write for a highly capable academic reader who wants interpretation, not reassurance.
 - For live AI insights, lead with the structural story rather than the metric label.
@@ -77,6 +95,10 @@ Do not mix the two patterns accidentally. Choose one deliberately based on depth
 - Keep the outer surface mostly neutral.
 - Put semantic colour in the hero, marker dots, and controls.
 - Help-button tone should match the tooltip's interpretive tone when the section has a clear semantic state.
+- Live insight sparkle buttons should use the same semantic tone as the matching `?` and insight card.
+  - The button shell and the sparkle icon should both inherit the section tone.
+  - Do not leave the sparkle icon on the default accent/blue when the section already has a clearer semantic tone.
+  - Active sparkle states should stay in the same tone family, just one step stronger.
 - Use semantic tones consistently:
   - `positive`: strengthening / healthy continuation
   - `accent`: active but not cautionary
@@ -97,9 +119,20 @@ Do not mix the two patterns accidentally. Choose one deliberately based on depth
   - thin semantic rail at the top
   - badge-style header
   - one hero interpretation block
-  - one optional consideration block
+  - one or more optional secondary interpretation blocks when each answers a distinct question
   - neutral action rows underneath
+- Do not add extra secondary blocks for symmetry alone.
+  - Good secondary block jobs are:
+    - `Why it matters`
+    - `What changes it`
+    - `What to watch`
+    - `Peak structure`
+    - `Signal strength`
 - Avoid separate visual systems for static and live insights unless a section has a deliberate reason to diverge.
+- Live AI insight buttons should only appear when the API is confirmed available.
+  - Hide the live insight trigger entirely if the health check fails or auth is missing.
+  - Do not show a disabled sparkle button by default.
+  - The local `?` explainer can still remain available when the live insight service is down.
 
 ## 8. Specific section rules
 
@@ -108,11 +141,23 @@ Do not mix the two patterns accidentally. Choose one deliberately based on depth
 - Use the phase label as the hero heading.
 - Keep supporting evidence as concise factual statements rather than pseudo-subheadings.
 - Classify on complete years; if partial-year context is shown, present it separately and clearly.
+- For live insights, explain the structural transition, not just the label.
+  - Good: `the record has moved out of the higher-output band that ran at 11-19 publications across 2021-2024`
+  - Better than: `the slope is still positive but recent years softened`
+- For `Plateauing`, make clear why the record is no longer scaling.
+  - Identify the stronger band or repeated high that is no longer being sustained.
+  - Distinguish `pause after expansion` from `broad contraction`.
+- When the evidence supports it, use the consideration block to say what would change the read in the next complete year.
+  - Keep this analytical, not advisory.
 
 ### Publication output steadiness
 
 - Use the section-level `?` only; avoid per-tile `?` buttons if the section-level explainer already synthesizes the four metrics.
 - Each evidence tile should integrate the interpretation and metric rather than separating them mechanically.
+- For live insights, treat peak-year share as a concentration read, not a formula to define.
+  - Prefer `Peak structure` or `Why it matters` over a note that merely explains how peak-year share is calculated.
+- If the record has shared peaks, make clear whether that means repeated strong years rather than one isolated spike.
+- When recent softening follows repeated peaks, explain whether that looks like broader loss of momentum across the record rather than just the fading of one standout year.
 
 ### Publication volume over time
 
@@ -120,6 +165,23 @@ Do not mix the two patterns accidentally. Choose one deliberately based on depth
 - Prefer rolling averages and recent cadence language over generic early-career framing.
 - The second evidence line should add nuance, not duplicate the rolling-window line.
 - In live insights, treat the rolling `5-year` and `3-year` views as the main recent evidence and use the latest `12` months mainly to refine cadence or confidence.
+- When recent volume has softened, identify the stronger rolling band that the latest window now sits below.
+  - Prefer a year span plus range or average, for example `a stronger 2021-2025 stretch with rolling annual counts of 9-15`.
+- Prefer direct structural headlines over vague softening labels.
+  - Good: `Paused below recent band`
+  - Better than: `Earlier high, softer`
+- Use the recent publication rows or active-month spread as a confidence qualifier, not as the main thesis.
+- Make the structural choice explicit:
+  - `pause below recent band`
+  - `lower recent baseline`
+  - `continuing build`
+  - `holding range`
+  - `renewed rebuild`
+- Give the follow-on note a real academic `so what`.
+  - Good: `If this pause holds, near-term assessments of the portfolio will be driven more by earlier strong years than by fresh output.`
+  - Better than: `Because only 2 dated publications sit in the latest 12 months...`
+- Reject vague phrases when stronger evidence exists.
+  - Avoid `stronger middle-to-late run`, `high-water mark`, and `recent detail`.
 
 ### Article type and publication type over time
 
@@ -141,6 +203,17 @@ Do not mix the two patterns accidentally. Choose one deliberately based on depth
   - still led by the same type, but now more contested
   - gradually leaning toward a different type
   - clearly reordered across both the `5-year` and `3-year` windows
+- Prefer the `5-year` and `3-year` windows for the main reading.
+  - Use the newest `1-year` slice mainly as confirmation or caution unless it has enough volume to stand on its own.
+- Avoid stock phrasing such as:
+  - `anchors the full record`
+  - `recent signal`
+  - `latest view`
+  - `centre of gravity`
+- Better follow-on labels here are:
+  - `Confidence`
+  - `What to watch`
+  - `Read this`
 
 ### Live insight prompts
 

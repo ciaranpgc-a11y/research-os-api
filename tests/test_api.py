@@ -7149,6 +7149,48 @@ def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) ->
     assert len(journals_response.json()) == 2
 
 
+def test_v1_persona_journals_refresh_route(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        "research_os.api.app.refresh_persona_journal_intelligence",
+        lambda **kwargs: {
+            "journals_considered": 3,
+            "openalex_profiles_refreshed": 2,
+            "editorial_profiles_refreshed": 1,
+            "editorial_profiles_skipped": 0,
+            "warnings": [],
+        },
+    )
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "persona-journal-refresh@example.com",
+                "password": "StrongPassword123",
+                "name": "Persona Journal Refresh",
+            },
+        )
+        assert register_response.status_code == 200
+        token = register_response.json()["session_token"]
+
+        response = client.post(
+            "/v1/persona/journals/refresh",
+            headers=_auth_headers(token),
+            json={"include_editorial_intel": True, "force": True},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "journals_considered": 3,
+        "openalex_profiles_refreshed": 2,
+        "editorial_profiles_refreshed": 1,
+        "editorial_profiles_skipped": 0,
+        "warnings": [],
+    }
+
+
 def test_v1_plan_sections_can_include_persona_context(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 

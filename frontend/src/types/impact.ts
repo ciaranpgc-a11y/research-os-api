@@ -647,9 +647,31 @@ export type PersonaJournal = {
   latest_publication_year?: number | null
   journal_metric_value?: number | null
   journal_metric_label?: string | null
+  h_index?: number | null
+  i10_index?: number | null
+  works_count?: number | null
+  cited_by_count?: number | null
+  publisher_reported_impact_factor?: number | null
+  publisher_reported_impact_factor_year?: number | null
+  publisher_reported_impact_factor_label?: string | null
+  publisher_reported_impact_factor_source_url?: string | null
+  time_to_first_decision_days?: number | null
+  time_to_publication_days?: number | null
+  editor_in_chief_name?: string | null
+  editorial_source_url?: string | null
+  editorial_source_title?: string | null
+  editorial_last_verified_at?: string | null
   is_oa?: boolean | null
   is_in_doaj?: boolean | null
   apc_usd?: number | null
+}
+
+export type PersonaJournalRefreshPayload = {
+  journals_considered: number
+  openalex_profiles_refreshed: number
+  editorial_profiles_refreshed: number
+  editorial_profiles_skipped: number
+  warnings: string[]
 }
 
 export type PersonaMetricsSyncPayload = {

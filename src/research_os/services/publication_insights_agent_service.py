@@ -18,7 +18,7 @@ from research_os.services.publication_metrics_service import (
 
 AGENT_NAME = "Publication insights agent"
 PROMPT_VERSION = "publication_insights_agent_v7"
-PREFERRED_MODEL = "gpt-5.2"
+PREFERRED_MODEL = "gpt-5.4"
 FALLBACK_MODEL = "gpt-4.1-mini"
 
 WINDOW_CONFIG: dict[str, dict[str, str]] = {
@@ -422,6 +422,91 @@ def _build_portfolio_context(metrics: dict[str, Any]) -> dict[str, Any]:
         ),
         "unique_collaborators": _safe_int(collaboration_chart.get("unique_collaborators")),
         "countries": _safe_int(collaboration_chart.get("countries")),
+    }
+
+
+def _sort_publication_library_records(
+    publications: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    sorted_rows = [dict(item) for item in publications if isinstance(item, dict)]
+    sorted_rows.sort(
+        key=lambda item: (
+            _resolve_publication_output_date(item) or date.min,
+            _resolve_publication_output_year(item) or 0,
+            str(item.get("title") or "").lower(),
+        ),
+        reverse=True,
+    )
+    return sorted_rows
+
+
+def _serialize_publication_library_record(record: dict[str, Any]) -> dict[str, Any]:
+    title = str(record.get("title") or "").strip() or "Untitled"
+    row: dict[str, Any] = {
+        "work_id": str(record.get("work_id") or ""),
+        "title": title,
+        "year": _resolve_publication_output_year(record),
+        "publication_date": _format_publication_output_date_label(record),
+        "article_type": _format_publication_article_type_label(record),
+        "publication_type": _format_publication_type_label(record),
+    }
+    citations_lifetime = _safe_int(record.get("citations_lifetime"))
+    if citations_lifetime is not None:
+        row["citations_lifetime"] = citations_lifetime
+    journal = str(
+        record.get("journal")
+        or record.get("journal_name")
+        or record.get("venue")
+        or record.get("source_title")
+        or ""
+    ).strip()
+    if journal:
+        row["journal"] = journal
+    return row
+
+
+def _build_publication_library_context(
+    publications: list[dict[str, Any]], *, as_of_date: date | None
+) -> dict[str, Any]:
+    sorted_rows = _sort_publication_library_records(publications)
+    serialized_rows = [
+        _serialize_publication_library_record(record)
+        for record in sorted_rows
+    ]
+    year_counts = Counter(
+        _resolve_publication_output_year(record)
+        for record in sorted_rows
+        if _resolve_publication_output_year(record) is not None
+    )
+    article_type_counts = Counter(
+        _format_publication_article_type_label(record)
+        for record in sorted_rows
+        if str(record.get("title") or "").strip() or str(record.get("article_type") or "").strip()
+    )
+    publication_type_counts = Counter(
+        _format_publication_type_label(record)
+        for record in sorted_rows
+        if str(record.get("work_type") or record.get("publication_type") or record.get("type") or "").strip()
+    )
+    years = sorted(year_counts.keys())
+    return {
+        "total_records": len(serialized_rows),
+        "first_publication_year": years[0] if years else None,
+        "last_publication_year": years[-1] if years else None,
+        "years_with_output": [
+            {"year": int(year), "count": int(year_counts[year])}
+            for year in years
+        ],
+        "article_type_counts": [
+            {"label": str(label), "count": int(count)}
+            for label, count in article_type_counts.most_common()
+        ],
+        "publication_type_counts": [
+            {"label": str(label), "count": int(count)}
+            for label, count in publication_type_counts.most_common()
+        ],
+        "records": serialized_rows,
+        "as_of_date": as_of_date.isoformat() if isinstance(as_of_date, date) else None,
     }
 
 
@@ -1509,6 +1594,105 @@ def _build_publication_production_current_pace_summary(
     }
 
 
+def _build_publication_production_high_run_summary(
+    *,
+    years: list[int],
+    series: list[int],
+    peak_years: list[int],
+    average_per_active_year: float | None,
+    earlier_mean: float | None,
+) -> dict[str, Any]:
+    if not years or not series or not peak_years:
+        return {
+            "high_run_years": [],
+            "high_run_label": None,
+            "high_run_min_count": None,
+            "high_run_max_count": None,
+            "high_run_mean": None,
+            "high_run_threshold": None,
+            "last_peak_year": None,
+            "years_since_last_peak": None,
+            "post_peak_complete_years": 0,
+            "latest_gap_from_high_run_mean": None,
+        }
+
+    safe_peak_years = [int(year) for year in peak_years if year in years]
+    if not safe_peak_years:
+        return {
+            "high_run_years": [],
+            "high_run_label": None,
+            "high_run_min_count": None,
+            "high_run_max_count": None,
+            "high_run_mean": None,
+            "high_run_threshold": None,
+            "last_peak_year": None,
+            "years_since_last_peak": None,
+            "post_peak_complete_years": 0,
+            "latest_gap_from_high_run_mean": None,
+        }
+
+    peak_count = max(series)
+    threshold_candidates = [1]
+    if peak_count > 0:
+        threshold_candidates.append(max(1, int(math.floor(float(peak_count) * 0.55))))
+    if average_per_active_year is not None and average_per_active_year > 0:
+        threshold_candidates.append(max(1, int(round(float(average_per_active_year)))))
+    if earlier_mean is not None and earlier_mean > 0:
+        threshold_candidates.append(max(1, int(round(float(earlier_mean)))))
+    threshold = max(threshold_candidates)
+
+    last_peak_year = max(safe_peak_years)
+    last_peak_index = max(
+        index for index, year in enumerate(years) if int(year) == last_peak_year
+    )
+    start_index = last_peak_index
+    while start_index - 1 >= 0 and int(series[start_index - 1]) >= threshold:
+        start_index -= 1
+    end_index = last_peak_index
+    while end_index + 1 < len(series) and int(series[end_index + 1]) >= threshold:
+        end_index += 1
+
+    high_run_years = [int(year) for year in years[start_index : end_index + 1]]
+    high_run_counts = [max(0, int(value)) for value in series[start_index : end_index + 1]]
+    latest_year = int(years[-1]) if years else None
+    latest_count = max(0, int(series[-1])) if series else None
+    high_run_mean = (
+        round(sum(high_run_counts) / float(len(high_run_counts)), 1)
+        if high_run_counts
+        else None
+    )
+    latest_gap_from_high_run_mean = (
+        round(float(high_run_mean) - float(latest_count), 1)
+        if high_run_mean is not None and latest_count is not None
+        else None
+    )
+    post_peak_complete_years = (
+        max(0, latest_year - last_peak_year)
+        if latest_year is not None
+        else 0
+    )
+
+    return {
+        "high_run_years": high_run_years,
+        "high_run_label": _format_publication_year_range(
+            high_run_years[0] if high_run_years else None,
+            high_run_years[-1] if high_run_years else None,
+        ),
+        "high_run_min_count": min(high_run_counts) if high_run_counts else None,
+        "high_run_max_count": max(high_run_counts) if high_run_counts else None,
+        "high_run_mean": high_run_mean,
+        "high_run_threshold": threshold,
+        "last_peak_year": last_peak_year,
+        "years_since_last_peak": (
+            max(0, latest_year - last_peak_year)
+            if latest_year is not None
+            else None
+        ),
+        "post_peak_complete_years": post_peak_complete_years,
+        "latest_gap_from_high_run_mean": latest_gap_from_high_run_mean,
+    }
+
+
 def _trim_publication_output_pattern_text(
     text: str | None, *, max_chars: int, require_sentence_end: bool = False
 ) -> str:
@@ -1737,6 +1921,175 @@ def _summarize_publication_volume_window_blocks(
     }
 
 
+def _extract_publication_volume_block_year_bounds(
+    label: str | None,
+) -> tuple[int | None, int | None]:
+    years = [int(value) for value in re.findall(r"\b(?:19|20)\d{2}\b", str(label or ""))]
+    if not years:
+        return None, None
+    return years[0], years[-1]
+
+
+def _format_publication_volume_block_span(blocks: list[dict[str, Any]]) -> str | None:
+    clean_blocks = [item for item in blocks if isinstance(item, dict)]
+    if not clean_blocks:
+        return None
+    first_label = str(clean_blocks[0].get("label") or "").strip() or None
+    last_label = str(clean_blocks[-1].get("label") or "").strip() or None
+    first_start_year, _ = _extract_publication_volume_block_year_bounds(first_label)
+    _, last_end_year = _extract_publication_volume_block_year_bounds(last_label)
+    if first_start_year is not None and last_end_year is not None:
+        if first_start_year == last_end_year:
+            return str(first_start_year)
+        return f"{first_start_year}-{last_end_year}"
+    if first_label and last_label:
+        if first_label == last_label:
+            return first_label
+        return f"{first_label} to {last_label}"
+    return first_label or last_label
+
+
+def _format_publication_volume_count_band(
+    min_count: int | None, max_count: int | None
+) -> str | None:
+    if min_count is None or max_count is None:
+        return None
+    if min_count == max_count:
+        return str(min_count)
+    return f"{min_count}-{max_count}"
+
+
+def _build_publication_volume_stronger_run_summary(
+    *,
+    rolling_5y_blocks: list[dict[str, Any]],
+    rolling_3y_blocks: list[dict[str, Any]],
+    recent_position: str | None,
+) -> dict[str, Any]:
+    if str(recent_position or "").strip() not in {
+        "recently_lighter_than_long_run",
+        "very_sparse_recent_window",
+        "short_term_softening",
+        "longer_run_softening",
+    }:
+        return {
+            "label": None,
+            "source": None,
+            "block_count": 0,
+            "min_count": None,
+            "max_count": None,
+            "mean": None,
+            "latest_count": None,
+            "latest_label": None,
+            "gap_from_mean": None,
+        }
+
+    selected_source = None
+    selected_prior_blocks: list[dict[str, Any]] = []
+    selected_latest_block: dict[str, Any] | None = None
+    for source, raw_blocks in (("5y", rolling_5y_blocks), ("3y", rolling_3y_blocks)):
+        clean_blocks = [item for item in raw_blocks if isinstance(item, dict)]
+        prior_blocks = clean_blocks[:-1]
+        latest_block = clean_blocks[-1] if clean_blocks else None
+        if len(prior_blocks) >= 2 and isinstance(latest_block, dict):
+            selected_source = source
+            selected_prior_blocks = prior_blocks
+            selected_latest_block = latest_block
+            break
+
+    if not selected_prior_blocks or not isinstance(selected_latest_block, dict):
+        return {
+            "label": None,
+            "source": None,
+            "block_count": 0,
+            "min_count": None,
+            "max_count": None,
+            "mean": None,
+            "latest_count": None,
+            "latest_label": None,
+            "gap_from_mean": None,
+        }
+
+    counts = [max(0, int(item.get("count") or 0)) for item in selected_prior_blocks]
+    latest_count = max(0, int(selected_latest_block.get("count") or 0))
+    mean = round(sum(counts) / float(len(counts)), 1) if counts else None
+    gap_from_mean = (
+        round(float(latest_count) - float(mean), 1)
+        if mean is not None
+        else None
+    )
+    return {
+        "label": _format_publication_volume_block_span(selected_prior_blocks),
+        "source": selected_source,
+        "block_count": len(selected_prior_blocks),
+        "min_count": min(counts) if counts else None,
+        "max_count": max(counts) if counts else None,
+        "mean": mean,
+        "latest_count": latest_count,
+        "latest_label": str(selected_latest_block.get("label") or "").strip() or None,
+        "gap_from_mean": gap_from_mean,
+    }
+
+
+def _classify_publication_volume_recent_support_strength(
+    *,
+    recent_detail_pattern: str | None,
+    table_recent_count: int,
+    recent_monthly_active_months: int,
+) -> str:
+    detail_pattern = str(recent_detail_pattern or "").strip()
+    if detail_pattern in {"no_recent_output", "very_small_dated_set", "limited_recent_detail"}:
+        return "thin"
+    if detail_pattern == "small_dated_set" and (
+        table_recent_count <= 4 or recent_monthly_active_months <= 4
+    ):
+        return "thin"
+    if detail_pattern == "clustered_recent_months":
+        return "moderate"
+    if detail_pattern == "broad_recent_spread":
+        return "broad"
+    return "moderate"
+
+
+def _classify_publication_volume_read_mode(
+    *,
+    overall_trajectory: str | None,
+    recent_position: str | None,
+    stronger_run_label: str | None,
+    stronger_run_min_count: int | None,
+    stronger_run_latest_count: int | None,
+    recent_support_strength: str | None,
+) -> str:
+    trajectory = str(overall_trajectory or "").strip()
+    recent = str(recent_position or "").strip()
+    support = str(recent_support_strength or "").strip()
+    has_stronger_run = bool(str(stronger_run_label or "").strip())
+
+    if recent in {"recently_lighter_than_long_run", "very_sparse_recent_window", "short_term_softening", "longer_run_softening"}:
+        if (
+            has_stronger_run
+            and stronger_run_min_count is not None
+            and stronger_run_latest_count is not None
+            and stronger_run_latest_count < stronger_run_min_count
+        ):
+            if support == "thin":
+                return "pause_below_band"
+            return "lower_recent_baseline"
+        if support == "thin":
+            return "soft_patch_with_limited_support"
+        return "recent_softening"
+    if trajectory == "interrupted_then_rebuilding" and recent in {
+        "recently_stronger",
+        "recent_rebound",
+        "longer_run_strength",
+    }:
+        return "renewed_rebuild"
+    if recent in {"recently_stronger", "recent_rebound", "longer_run_strength"}:
+        return "continuing_build"
+    if recent == "recently_in_line" and trajectory in {"broadly_stable", "stable_with_peaks"}:
+        return "holding_range"
+    return "mixed_recent_read"
+
+
 def _classify_publication_volume_overall_trajectory(
     *,
     total_publications: int,
@@ -1959,6 +2312,13 @@ def _build_publication_output_pattern_evidence(*, user_id: str) -> dict[str, Any
     )
     recent_mean = recent_summary["recent_mean"]
     earlier_mean = recent_summary["earlier_mean"]
+    high_run_summary = _build_publication_production_high_run_summary(
+        years=years,
+        series=series,
+        peak_years=peak_years,
+        average_per_active_year=average_per_active_year,
+        earlier_mean=earlier_mean,
+    )
     low_year_position = _classify_publication_output_pattern_position(low_years, years)
     peak_year_position = _classify_publication_output_pattern_position(peak_years, years)
     as_of_date = series_payload.get("as_of_date")
@@ -2005,6 +2365,14 @@ def _build_publication_output_pattern_evidence(*, user_id: str) -> dict[str, Any
         "window_phrase": "across completed publication years",
         "data_sources": tile.get("data_source") or [],
         "portfolio_context": _build_portfolio_context(metrics),
+        "publication_library": _build_publication_library_context(
+            [
+                dict(item)
+                for item in (series_payload.get("publications") or [])
+                if isinstance(item, dict)
+            ],
+            as_of_date=as_of_date if isinstance(as_of_date, date) else None,
+        ),
         "total_publications": total_publications,
         "scoped_publications": scoped_publications,
         "first_publication_year": first_publication_year,
@@ -2067,6 +2435,16 @@ def _build_publication_output_pattern_evidence(*, user_id: str) -> dict[str, Any
         "latest_year": phase_summary["latest_year"],
         "latest_output_count": phase_summary["latest_output_count"],
         "latest_vs_peak_ratio": phase_summary["latest_vs_peak_ratio"],
+        "high_run_years": high_run_summary["high_run_years"],
+        "high_run_label": high_run_summary["high_run_label"],
+        "high_run_min_count": high_run_summary["high_run_min_count"],
+        "high_run_max_count": high_run_summary["high_run_max_count"],
+        "high_run_mean": high_run_summary["high_run_mean"],
+        "high_run_threshold": high_run_summary["high_run_threshold"],
+        "last_peak_year": high_run_summary["last_peak_year"],
+        "years_since_last_peak": high_run_summary["years_since_last_peak"],
+        "post_peak_complete_years": high_run_summary["post_peak_complete_years"],
+        "latest_gap_from_high_run_mean": high_run_summary["latest_gap_from_high_run_mean"],
         "current_pace_year": current_pace_summary["current_pace_year"],
         "current_pace_cutoff_label": current_pace_summary["current_pace_cutoff_label"],
         "current_pace_count": current_pace_summary["current_pace_count"],
@@ -2105,7 +2483,127 @@ def _build_publication_output_pattern_shape_phrase(evidence: dict[str, Any]) -> 
     return "variation and spike structure remain mixed"
 
 
-def _build_publication_output_pattern_peak_share_note(
+def _format_publication_output_pattern_number(value: float | None) -> str | None:
+    if value is None:
+        return None
+    rounded = round(float(value))
+    return str(int(rounded))
+
+
+def _build_publication_output_pattern_prompt_brief(
+    evidence: dict[str, Any],
+) -> dict[str, str | None]:
+    phase_label = str(evidence.get("phase_label") or "").strip() or None
+    first_year = _safe_int(evidence.get("first_publication_year"))
+    last_year = _safe_int(evidence.get("last_publication_year"))
+    gap_years = max(0, int(evidence.get("gap_years") or 0))
+    peak_years = [int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None]
+    peak_count = _safe_int(evidence.get("peak_count"))
+    latest_year = _safe_int(evidence.get("latest_year"))
+    latest_output_count = _safe_int(evidence.get("latest_output_count"))
+    recent_mean = _safe_float(evidence.get("recent_mean"))
+    earlier_mean = _safe_float(evidence.get("earlier_mean"))
+    high_run_label = str(evidence.get("high_run_label") or "").strip() or None
+    high_run_min_count = _safe_int(evidence.get("high_run_min_count"))
+    high_run_max_count = _safe_int(evidence.get("high_run_max_count"))
+    peak_year_share_pct = _safe_float(evidence.get("peak_year_share_pct"))
+    low_year_position = str(evidence.get("low_year_position") or "").strip() or "mixed"
+
+    if gap_years <= 0 and first_year is not None and last_year is not None:
+        continuity_summary = f"No gap years across {first_year}-{last_year}."
+    elif gap_years == 1:
+        continuity_summary = "One gap year interrupts the span."
+    elif gap_years > 1:
+        continuity_summary = f"{gap_years} gap years interrupt the span."
+    else:
+        continuity_summary = None
+
+    recent_mean_label = _format_publication_output_pattern_number(recent_mean)
+    earlier_mean_label = _format_publication_output_pattern_number(earlier_mean)
+    peak_years_label = _format_year_list(peak_years) if peak_years else None
+
+    if phase_label == "Plateauing" and latest_year is not None and latest_output_count is not None:
+        structural_read = f"Repeated highs, then a softer finish in {latest_year}."
+    elif phase_label == "Contracting" and latest_year is not None and latest_output_count is not None:
+        structural_read = f"Output has pulled back into a weaker recent run by {latest_year}."
+    elif phase_label == "Scaling" and gap_years == 0 and low_year_position == "early":
+        structural_read = "Continuous output has built upward from a light early base."
+    elif phase_label == "Rebuilding":
+        structural_read = "Earlier disruption is being followed by a stronger recent rebuild."
+    elif phase_label == "Established":
+        structural_read = "Output sits in a broad working range rather than one dominant spike."
+    else:
+        structural_read = "The record is active across the span but shaped by uneven stronger years."
+
+    if (
+        phase_label in {"Plateauing", "Contracting"}
+        and recent_mean_label
+        and earlier_mean_label
+        and latest_year is not None
+        and latest_output_count is not None
+    ):
+        primary_driver = (
+            f"Recent years averaged {recent_mean_label} publications versus {earlier_mean_label} earlier, "
+            f"but {latest_year} fell to {latest_output_count}."
+        )
+    elif recent_mean_label and earlier_mean_label:
+        primary_driver = (
+            f"Recent years averaged {recent_mean_label} publications versus {earlier_mean_label} earlier in the span."
+        )
+    else:
+        primary_driver = None
+
+    if len(peak_years) > 1 and peak_count is not None and peak_years_label:
+        concentration_read = (
+            f"Shared peaks in {peak_years_label} at {peak_count} each mean the record is not being carried by one isolated year."
+        )
+    elif len(peak_years) == 1 and peak_count is not None and peak_year_share_pct is not None:
+        concentration_read = (
+            f"The single strongest year, {peak_years[0]}, carries about {round(peak_year_share_pct):.0f}% of the record."
+        )
+    else:
+        concentration_read = None
+
+    if phase_label in {"Plateauing", "Contracting"} and len(peak_years) > 1 and latest_year is not None and latest_output_count is not None:
+        why_it_matters_hint = (
+            f"Because the highs are shared rather than isolated, the drop to {latest_output_count} in {latest_year} matters as broader lost momentum rather than the fading of one standout year."
+        )
+    elif phase_label in {"Scaling", "Rebuilding"} and gap_years == 0:
+        why_it_matters_hint = "Because the stronger years are recent and continuous, the shape looks like real build rather than legacy concentration."
+    elif len(peak_years) > 1 and concentration_read:
+        why_it_matters_hint = "Repeated strong years matter more here than one exceptional spike."
+    else:
+        why_it_matters_hint = None
+
+    if (
+        phase_label in {"Plateauing", "Contracting"}
+        and high_run_label
+        and high_run_min_count is not None
+        and high_run_max_count is not None
+        and latest_output_count is not None
+    ):
+        band_label = (
+            f"{high_run_min_count}"
+            if high_run_min_count == high_run_max_count
+            else f"{high_run_min_count}-{high_run_max_count}"
+        )
+        what_changes_it_hint = (
+            f"A next complete year back into the {band_label} publication band seen across {high_run_label} would soften this read; another year near {latest_output_count} would deepen it."
+        )
+    else:
+        what_changes_it_hint = None
+
+    return {
+        "structural_read": structural_read,
+        "continuity_summary": continuity_summary,
+        "primary_driver": primary_driver,
+        "concentration_read": concentration_read,
+        "why_it_matters_hint": why_it_matters_hint,
+        "what_changes_it_hint": what_changes_it_hint,
+    }
+
+
+def _build_publication_output_pattern_peak_structure_note(
     evidence: dict[str, Any],
 ) -> tuple[str | None, str | None]:
     peak_years = [int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None]
@@ -2122,22 +2620,76 @@ def _build_publication_output_pattern_peak_share_note(
         combined_share_pct = min(100.0, peak_year_share_pct * len(peak_years))
         combined_share_label = f"{round(combined_share_pct):.0f}%"
         return (
-            "Peak share",
+            "Peak structure",
             (
-                "Peak-year share is calculated per strongest year. "
-                f"With tied peaks in {_format_year_list(peak_years)}, each year contributes "
-                f"{peak_count} {publication_noun} ({per_year_share_label}), and together those peaks account for about "
-                f"{combined_share_label} of the record."
+                f"Shared peaks in {_format_year_list(peak_years)} mean the record is being lifted by repeated strong years rather than one isolated spike; "
+                f"together those peaks account for about {combined_share_label} of the record."
             ),
         )
 
     return (
-        "Peak share",
+        "Concentration",
         (
-            "Peak-year share is the share carried by the single strongest year. "
-            f"{peak_years[0]} contributes {peak_count} of {scoped_publications} publications ({per_year_share_label})."
+            f"{peak_years[0]} contributes {peak_count} of {scoped_publications} {publication_noun} ({per_year_share_label}), "
+            "so the overall shape is more concentrated around one standout year than a broad high-output run."
         ),
     )
+
+
+def _build_publication_output_pattern_consideration(
+    evidence: dict[str, Any],
+) -> tuple[str | None, str | None]:
+    phase_label = str(evidence.get("phase_label") or "").strip() or None
+    gap_years = max(0, int(evidence.get("gap_years") or 0))
+    peak_years = [int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None]
+    latest_year = _safe_int(evidence.get("latest_year"))
+    latest_output_count = _safe_int(evidence.get("latest_output_count"))
+    high_run_label = str(evidence.get("high_run_label") or "").strip() or None
+    high_run_min_count = _safe_int(evidence.get("high_run_min_count"))
+    high_run_max_count = _safe_int(evidence.get("high_run_max_count"))
+    prompt_brief = _build_publication_output_pattern_prompt_brief(evidence)
+
+    if (
+        phase_label in {"Plateauing", "Contracting"}
+        and high_run_label
+        and high_run_min_count is not None
+        and high_run_max_count is not None
+        and latest_output_count is not None
+    ):
+        band_label = (
+            f"{high_run_min_count}"
+            if high_run_min_count == high_run_max_count
+            else f"{high_run_min_count}-{high_run_max_count}"
+        )
+        return (
+            "What changes it",
+            (
+                f"A next complete year back into the {band_label} publication band seen across {high_run_label} "
+                f"would soften this read; another year near {latest_output_count} would deepen it."
+            ),
+        )
+
+    why_it_matters_hint = str(prompt_brief.get("why_it_matters_hint") or "").strip() or None
+    if why_it_matters_hint:
+        return "Why it matters", why_it_matters_hint
+
+    if gap_years > 0:
+        longest_streak = max(0, int(evidence.get("longest_streak") or 0))
+        return (
+            "Continuity",
+            f"The longest uninterrupted stretch is {longest_streak} years, so gaps still shape the pattern as well as the peaks.",
+        )
+
+    if latest_year is not None and latest_output_count is not None and len(peak_years) > 1:
+        return (
+            "Why it matters",
+            (
+                f"Because the highs are shared rather than isolated, the drop to {latest_output_count} in {latest_year} "
+                "looks more like broader lost momentum than the fading of one standout year."
+            ),
+        )
+
+    return _build_publication_output_pattern_peak_structure_note(evidence)
 
 
 def _build_publication_output_pattern_fallback_payload(evidence: dict[str, Any]) -> dict[str, Any]:
@@ -2164,10 +2716,12 @@ def _build_publication_output_pattern_fallback_payload(evidence: dict[str, Any])
     earlier_mean = _safe_float(evidence.get("earlier_mean"))
     recent_share_pct = _safe_float(evidence.get("recent_share_pct"))
     recent_years_label = str(evidence.get("recent_years_label") or "").strip() or None
+    latest_year = _safe_int(evidence.get("latest_year"))
+    latest_output_count = _safe_int(evidence.get("latest_output_count"))
     phase_confidence_low = bool(evidence.get("phase_confidence_low"))
     phase_confidence_note = str(evidence.get("phase_confidence_note") or "").strip() or None
     shape_phrase = _build_publication_output_pattern_shape_phrase(evidence)
-    peak_share_label, peak_share_note = _build_publication_output_pattern_peak_share_note(evidence)
+    peak_structure_label, peak_structure_note = _build_publication_output_pattern_peak_structure_note(evidence)
     headline = _build_publication_output_pattern_shape_headline(evidence)
 
     if active_span <= 1:
@@ -2209,6 +2763,25 @@ def _build_publication_output_pattern_fallback_payload(evidence: dict[str, Any])
                 f"Your record looks interrupted but recovering: {continuity_phrase}, "
                 f"recent output is back above the earlier baseline, {shape_phrase}, and {peak_phrase}."
             )
+        elif (
+            phase_label in {"Plateauing", "Contracting"}
+            and recent_mean is not None
+            and earlier_mean is not None
+            and latest_year is not None
+            and latest_output_count is not None
+            and peak_years
+            and peak_count is not None
+        ):
+            peak_descriptor = (
+                f"shared peaks of {peak_count} in {_format_year_list(peak_years)}"
+                if len(peak_years) > 1
+                else f"a peak of {peak_count} in {peak_years[0]}"
+            )
+            body = (
+                f"This is a broad record rather than a one-peak record: {continuity_phrase}, "
+                f"and recent years averaged {recent_mean:.1f} publications versus {earlier_mean:.1f} earlier. "
+                f"But {latest_year} fell to {latest_output_count} after {peak_descriptor}, so the pattern now looks softer than that earlier stronger run."
+            )
         elif phase_label in {"Plateauing", "Contracting"} and recent_mean is not None and earlier_mean is not None:
             body = (
                 f"Your recent pattern looks softer than earlier output: {continuity_phrase}, "
@@ -2230,45 +2803,44 @@ def _build_publication_output_pattern_fallback_payload(evidence: dict[str, Any])
                 f"{shape_phrase}, {peak_phrase}, and the overall pattern remains {str(burstiness_label or 'mixed').lower()}."
             )
 
-        if peak_share_label and peak_share_note and len(peak_years) > 1:
-            consideration_label = peak_share_label
-            consideration = peak_share_note
-        elif recent_share_pct is not None and recent_years_label and phase_label in {"Scaling", "Rebuilding"}:
-            consideration_label = "Recent build"
-            consideration = (
-                f"{round(recent_share_pct)}% of publications fall in {recent_years_label}, reinforcing that the pattern is being driven by the recent part of the span."
-            )
-        elif peak_share_label and peak_share_note:
-            consideration_label = peak_share_label
-            consideration = peak_share_note
-        elif low_year_position == "early":
-            consideration_label = "Career timing"
-            low_years_phrase = (
-                f" ({_format_year_list(low_years)})"
-                if low_years
-                else ""
-            )
-            consideration = (
-                f"The quietest years sit early{low_years_phrase}, so some unevenness likely reflects portfolio build-up rather than a recent slowdown."
-            )
-        elif low_year_position == "recent":
-            consideration_label = "Recent signal"
-            consideration = (
-                "The quietest years sit toward the recent end of the span, so the pattern may reflect flattening rather than early-career build-up."
-            )
-        elif gap_years > 0 and longest_streak > 0:
-            consideration_label = "Continuity"
-            consideration = (
-                f"The longest uninterrupted stretch is {longest_streak} years, so the pattern is being shaped by gaps as well as peaks."
-            )
-        elif peak_vs_average_ratio is not None and peak_vs_average_ratio >= 1.6:
-            consideration_label = "How to read it"
-            consideration = (
-                f"The strongest year sits about {peak_vs_average_ratio:.1f}x above a typical active year, so the record is broader than a single spike but still uneven."
-            )
-        else:
-            consideration_label = None
-            consideration = None
+        consideration_label, consideration = _build_publication_output_pattern_consideration(evidence)
+        if not consideration_label and not consideration:
+            if peak_structure_label and peak_structure_note:
+                consideration_label = peak_structure_label
+                consideration = peak_structure_note
+            elif recent_share_pct is not None and recent_years_label and phase_label in {"Scaling", "Rebuilding"}:
+                consideration_label = "Recent build"
+                consideration = (
+                    f"{round(recent_share_pct)}% of publications fall in {recent_years_label}, reinforcing that the pattern is being driven by the recent part of the span."
+                )
+            elif low_year_position == "early":
+                consideration_label = "Career timing"
+                low_years_phrase = (
+                    f" ({_format_year_list(low_years)})"
+                    if low_years
+                    else ""
+                )
+                consideration = (
+                    f"The quietest years sit early{low_years_phrase}, so some unevenness likely reflects portfolio build-up rather than a recent slowdown."
+                )
+            elif low_year_position == "recent":
+                consideration_label = "Recent signal"
+                consideration = (
+                    "The quietest years sit toward the recent end of the span, so the pattern may reflect flattening rather than early-career build-up."
+                )
+            elif gap_years > 0 and longest_streak > 0:
+                consideration_label = "Continuity"
+                consideration = (
+                    f"The longest uninterrupted stretch is {longest_streak} years, so the pattern is being shaped by gaps as well as peaks."
+                )
+            elif peak_vs_average_ratio is not None and peak_vs_average_ratio >= 1.6:
+                consideration_label = "How to read it"
+                consideration = (
+                    f"The strongest year sits about {peak_vs_average_ratio:.1f}x above a typical active year, so the record is broader than a single spike but still uneven."
+                )
+            else:
+                consideration_label = None
+                consideration = None
 
         if phase_confidence_low and phase_confidence_note:
             consideration_label = consideration_label or "Confidence"
@@ -2450,8 +3022,40 @@ def _build_publication_production_phase_body(evidence: dict[str, Any]) -> str:
     latest_year = _safe_int(evidence.get("latest_year"))
     latest_output_count = _safe_int(evidence.get("latest_output_count"))
     peak_years_label = _format_year_list(peak_years) if peak_years else None
+    high_run_label = str(evidence.get("high_run_label") or "").strip() or None
+    high_run_min_count = _safe_int(evidence.get("high_run_min_count"))
+    high_run_max_count = _safe_int(evidence.get("high_run_max_count"))
 
     if phase_label == "Plateauing":
+        if (
+            high_run_label
+            and high_run_min_count is not None
+            and high_run_max_count is not None
+            and latest_year is not None
+            and latest_output_count is not None
+        ):
+            band_count_label = (
+                str(high_run_min_count)
+                if high_run_min_count == high_run_max_count
+                else f"{high_run_min_count}-{high_run_max_count}"
+            )
+            peak_phrase = (
+                f"joint peaks of {peak_count} in {peak_years_label}"
+                if peak_years_label and peak_count is not None and len(peak_years) > 1
+                else f"a peak of {peak_count} in {peak_years_label}"
+                if peak_years_label and peak_count is not None
+                else None
+            )
+            second_sentence = (
+                f"{latest_year} fell to {latest_output_count} after {peak_phrase}, so this now reads as flattening rather than continued scaling."
+                if peak_phrase
+                else f"{latest_year} fell to {latest_output_count}, so this now reads as flattening rather than continued scaling."
+            )
+            return (
+                f"{slope_summary[0].upper()}{slope_summary[1:]}, but the record has moved out of the higher-output band that ran at "
+                f"{band_count_label} publications across {high_run_label}. "
+                f"{second_sentence}"
+            )
         if (
             peak_years_label
             and peak_count is not None
@@ -2544,6 +3148,12 @@ def _build_publication_production_phase_fallback_payload(evidence: dict[str, Any
     current_pace_summary = _format_publication_production_phase_current_pace_summary(
         evidence
     )
+    high_run_label = str(evidence.get("high_run_label") or "").strip() or None
+    high_run_min_count = _safe_int(evidence.get("high_run_min_count"))
+    high_run_max_count = _safe_int(evidence.get("high_run_max_count"))
+    latest_output_count = _safe_int(evidence.get("latest_output_count"))
+    current_pace_cutoff_label = str(evidence.get("current_pace_cutoff_label") or "").strip() or None
+    current_pace_signal = str(evidence.get("current_pace_signal") or "").strip() or None
     headline = _build_publication_production_phase_headline(evidence)
 
     if insufficient_history:
@@ -2553,7 +3163,29 @@ def _build_publication_production_phase_fallback_payload(evidence: dict[str, Any
     else:
         body = _build_publication_production_phase_body(evidence)
 
-        if current_pace_summary:
+        if (
+            phase_label == "Plateauing"
+            and high_run_label
+            and high_run_min_count is not None
+            and high_run_max_count is not None
+            and latest_output_count is not None
+        ):
+            band_count_label = (
+                str(high_run_min_count)
+                if high_run_min_count == high_run_max_count
+                else f"{high_run_min_count}-{high_run_max_count}"
+            )
+            consideration_label = "What changes it"
+            pace_clause = (
+                f" Through {current_pace_cutoff_label}, the live year is still behind that pace."
+                if current_pace_cutoff_label and current_pace_signal == "behind"
+                else ""
+            )
+            consideration = (
+                f"A next complete year back into the {band_count_label} range seen across {high_run_label} would push this toward scaling again; "
+                f"another year near {latest_output_count} would strengthen plateauing.{pace_clause}"
+            )
+        elif current_pace_summary:
             consideration_label = "Live year"
             consideration = current_pace_summary
         elif (
@@ -2621,6 +3253,10 @@ def _build_publication_production_phase_fallback_payload(evidence: dict[str, Any
                     "recent_years_label": evidence.get("recent_years_label"),
                     "peak_years": list(evidence.get("peak_years") or []),
                     "peak_count": evidence.get("peak_count"),
+                    "high_run_label": evidence.get("high_run_label"),
+                    "high_run_min_count": evidence.get("high_run_min_count"),
+                    "high_run_max_count": evidence.get("high_run_max_count"),
+                    "years_since_last_peak": evidence.get("years_since_last_peak"),
                 },
             }
         ],
@@ -2682,12 +3318,35 @@ def _build_publication_volume_over_time_evidence(*, user_id: str) -> dict[str, A
         recent_monthly_total=max(0, int(recent_monthly.get("total") or 0)),
         recent_monthly_active_months=max(0, int(recent_monthly.get("active_months") or 0)),
     )
+    stronger_run_summary = _build_publication_volume_stronger_run_summary(
+        rolling_5y_blocks=rolling_5y_blocks,
+        rolling_3y_blocks=rolling_3y_blocks,
+        recent_position=recent_position,
+    )
+    recent_support_strength = _classify_publication_volume_recent_support_strength(
+        recent_detail_pattern=recent_detail_pattern,
+        table_recent_count=table_recent_count,
+        recent_monthly_active_months=max(0, int(recent_monthly.get("active_months") or 0)),
+    )
+    volume_read_mode = _classify_publication_volume_read_mode(
+        overall_trajectory=overall_trajectory,
+        recent_position=recent_position,
+        stronger_run_label=stronger_run_summary.get("label"),
+        stronger_run_min_count=_safe_int(stronger_run_summary.get("min_count")),
+        stronger_run_latest_count=_safe_int(stronger_run_summary.get("latest_count")),
+        recent_support_strength=recent_support_strength,
+    )
     return {
         "metrics_status": "READY",
         "window_id": "all",
         "window_label": "All",
         "window_phrase": "across all publication-volume views",
         "data_sources": tile.get("data_source") or [],
+        "portfolio_context": pattern_evidence.get("portfolio_context") or {},
+        "publication_library": _build_publication_library_context(
+            publications,
+            as_of_date=as_of_date,
+        ),
         "total_publications": pattern_evidence.get("total_publications"),
         "scoped_publications": pattern_evidence.get("scoped_publications"),
         "first_publication_year": pattern_evidence.get("first_publication_year"),
@@ -2763,13 +3422,37 @@ def _build_publication_volume_over_time_evidence(*, user_id: str) -> dict[str, A
         "overall_trajectory": overall_trajectory,
         "recent_position": recent_position,
         "recent_detail_pattern": recent_detail_pattern,
+        "stronger_run_label": stronger_run_summary.get("label"),
+        "stronger_run_source": stronger_run_summary.get("source"),
+        "stronger_run_block_count": stronger_run_summary.get("block_count"),
+        "stronger_run_min_count": stronger_run_summary.get("min_count"),
+        "stronger_run_max_count": stronger_run_summary.get("max_count"),
+        "stronger_run_mean": stronger_run_summary.get("mean"),
+        "stronger_run_latest_count": stronger_run_summary.get("latest_count"),
+        "stronger_run_latest_label": stronger_run_summary.get("latest_label"),
+        "stronger_run_gap_from_mean": stronger_run_summary.get("gap_from_mean"),
+        "recent_support_strength": recent_support_strength,
+        "volume_read_mode": volume_read_mode,
         "as_of_date": as_of_date.isoformat(),
     }
 
 
 def _build_publication_volume_over_time_headline(evidence: dict[str, Any]) -> str:
+    volume_read_mode = str(evidence.get("volume_read_mode") or "").strip()
     overall_trajectory = str(evidence.get("overall_trajectory") or "").strip()
     recent_position = str(evidence.get("recent_position") or "").strip()
+    if volume_read_mode == "pause_below_band":
+        return "Paused below recent band"
+    if volume_read_mode == "lower_recent_baseline":
+        return "Lower recent baseline"
+    if volume_read_mode == "soft_patch_with_limited_support":
+        return "Softer, still thin"
+    if volume_read_mode == "continuing_build":
+        return "Build still holding"
+    if volume_read_mode == "holding_range":
+        return "Holding the range"
+    if volume_read_mode == "renewed_rebuild":
+        return "Rebuild still carrying"
     if overall_trajectory == "limited_history":
         return "Early volume read"
     if recent_position == "no_recent_output":
@@ -2976,6 +3659,75 @@ def _build_publication_volume_recent_clause(evidence: dict[str, Any]) -> str:
     return f"{opening}, with {monthly_context}, and {detail_clause}."
 
 
+def _build_publication_volume_over_time_body(evidence: dict[str, Any]) -> str:
+    overall_trajectory = str(evidence.get("overall_trajectory") or "").strip()
+    recent_position = str(evidence.get("recent_position") or "").strip()
+    volume_read_mode = str(evidence.get("volume_read_mode") or "").strip()
+    span_years_label = str(evidence.get("span_years_label") or "").strip() or "the full publication span"
+    stronger_run_label = str(evidence.get("stronger_run_label") or "").strip() or None
+    stronger_run_min_count = _safe_int(evidence.get("stronger_run_min_count"))
+    stronger_run_max_count = _safe_int(evidence.get("stronger_run_max_count"))
+    stronger_run_mean = _safe_float(evidence.get("stronger_run_mean"))
+    stronger_run_latest_count = _safe_int(evidence.get("stronger_run_latest_count"))
+    stronger_run_gap_from_mean = _safe_float(evidence.get("stronger_run_gap_from_mean"))
+    table_recent_count = max(0, int(evidence.get("table_recent_count") or 0))
+    recent_monthly_total = max(0, int(evidence.get("recent_monthly_total") or 0))
+    recent_support_strength = str(evidence.get("recent_support_strength") or "").strip()
+
+    if (
+        recent_position in {
+            "recently_lighter_than_long_run",
+            "very_sparse_recent_window",
+            "short_term_softening",
+            "longer_run_softening",
+        }
+        and stronger_run_label
+        and stronger_run_min_count is not None
+        and stronger_run_max_count is not None
+        and stronger_run_latest_count is not None
+    ):
+        count_band = _format_publication_volume_count_band(
+            stronger_run_min_count, stronger_run_max_count
+        )
+        first_sentence = (
+            f"Across {span_years_label}, publication volume moved into a stronger {stronger_run_label} run, "
+            f"with rolling annual output typically between {count_band} publication{'s' if count_band != '1' else ''}."
+        )
+        latest_count = recent_monthly_total or stronger_run_latest_count
+        latest_phrase = f"the latest 12 months contain {latest_count} publication{'s' if latest_count != 1 else ''}"
+        if volume_read_mode == "pause_below_band":
+            second_sentence = (
+                f"Both recent rolling views now sit below that band, and {latest_phrase}, "
+                "so the record currently looks paused rather than reset into a durable lower baseline."
+            )
+        elif volume_read_mode == "lower_recent_baseline":
+            second_sentence = (
+                f"Both recent rolling views now sit below that band, and {latest_phrase}, "
+                "so recent volume is now reading more like a lower current baseline than a brief wobble."
+            )
+        elif recent_support_strength == "thin":
+            second_sentence = (
+                f"Both recent rolling views now sit below that band, and {latest_phrase}, "
+                "so the ending reads as a softer patch below the recent run, with too little new depth to treat it as settled."
+            )
+        else:
+            second_sentence = (
+                f"Both recent rolling views now sit below that band, and {latest_phrase}, "
+                "so the ending now reads as a softer pause below that earlier band rather than continued build."
+            )
+        if overall_trajectory in {"early_high_then_softer", "higher_then_softer"}:
+            second_sentence = (
+                f"Both recent rolling views now sit below that band, and {latest_phrase}, "
+                "so recent volume now sits below that stronger band and looks more like a lower recent run than a brief interruption."
+            )
+        return f"{first_sentence} {second_sentence}"
+
+    return (
+        f"{_build_publication_volume_overall_clause(evidence)} "
+        f"{_build_publication_volume_recent_clause(evidence)}"
+    ).strip()
+
+
 def _build_publication_volume_over_time_fallback_payload(evidence: dict[str, Any]) -> dict[str, Any]:
     headline = _build_publication_volume_over_time_headline(evidence)
     overall_trajectory = str(evidence.get("overall_trajectory") or "").strip()
@@ -2986,15 +3738,38 @@ def _build_publication_volume_over_time_fallback_payload(evidence: dict[str, Any
     peak_years = [int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None]
     gap_years = max(0, int(evidence.get("gap_years") or 0))
     table_recent_count = max(0, int(evidence.get("table_recent_count") or 0))
+    stronger_run_label = str(evidence.get("stronger_run_label") or "").strip() or None
+    stronger_run_min_count = _safe_int(evidence.get("stronger_run_min_count"))
+    stronger_run_max_count = _safe_int(evidence.get("stronger_run_max_count"))
+    stronger_run_latest_count = _safe_int(evidence.get("stronger_run_latest_count"))
+    volume_read_mode = str(evidence.get("volume_read_mode") or "").strip()
+    recent_support_strength = str(evidence.get("recent_support_strength") or "").strip()
 
-    body = (
-        f"{_build_publication_volume_overall_clause(evidence)} "
-        f"{_build_publication_volume_recent_clause(evidence)}"
-    ).strip()
+    body = _build_publication_volume_over_time_body(evidence)
 
     if phase_confidence_low and phase_confidence_note:
         consideration_label = "Confidence"
         consideration = phase_confidence_note
+    elif (
+        volume_read_mode in {"pause_below_band", "lower_recent_baseline", "soft_patch_with_limited_support"}
+        and stronger_run_label
+        and stronger_run_min_count is not None
+        and stronger_run_max_count is not None
+        and stronger_run_latest_count is not None
+    ):
+        consideration_label = "Why it matters"
+        if volume_read_mode == "lower_recent_baseline":
+            consideration = (
+                "If that lighter run holds, near-term assessments of the portfolio will be shaped more by older strong years than by fresh output."
+            )
+        elif recent_support_strength == "thin":
+            consideration = (
+                "If this pause holds, near-term assessments of the portfolio will be driven more by earlier strong years than by fresh output."
+            )
+        else:
+            consideration = (
+                "If this softer patch holds, the record will lean more on older strong years than on fresh publication volume."
+            )
     elif recent_detail_pattern == "limited_recent_detail":
         consideration_label = "Date detail"
         consideration = (
@@ -3052,11 +3827,19 @@ def _build_publication_volume_over_time_fallback_payload(evidence: dict[str, Any
                     "recent_monthly_period_label": evidence.get("recent_monthly_period_label"),
                     "recent_monthly_total": evidence.get("recent_monthly_total"),
                     "rolling_3y_blocks": list(evidence.get("rolling_3y_blocks") or []),
-                    "rolling_5y_blocks": list(evidence.get("rolling_5y_blocks") or []),
-                    "table_recent_count": table_recent_count,
-                    "table_recent_range_label": evidence.get("table_recent_range_label"),
-                },
-            }
+                "rolling_5y_blocks": list(evidence.get("rolling_5y_blocks") or []),
+                "table_recent_count": table_recent_count,
+                "table_recent_range_label": evidence.get("table_recent_range_label"),
+                "stronger_run_label": evidence.get("stronger_run_label"),
+                "stronger_run_min_count": evidence.get("stronger_run_min_count"),
+                "stronger_run_max_count": evidence.get("stronger_run_max_count"),
+                "stronger_run_mean": evidence.get("stronger_run_mean"),
+                "stronger_run_latest_count": evidence.get("stronger_run_latest_count"),
+                "stronger_run_gap_from_mean": evidence.get("stronger_run_gap_from_mean"),
+                "recent_support_strength": evidence.get("recent_support_strength"),
+                "volume_read_mode": evidence.get("volume_read_mode"),
+            },
+        }
         ],
     }
 
@@ -3092,6 +3875,11 @@ def _build_publication_article_type_over_time_evidence(*, user_id: str) -> dict[
     publications = [
         dict(item) for item in (drilldown.get("publications") or []) if isinstance(item, dict)
     ]
+    portfolio_context = _build_portfolio_context(metrics)
+    publication_library = _build_publication_library_context(
+        publications,
+        as_of_date=as_of_date,
+    )
     years_with_data = sorted(
         {
             year
@@ -3107,6 +3895,8 @@ def _build_publication_article_type_over_time_evidence(*, user_id: str) -> dict[
             "window_label": "All",
             "window_phrase": "across the full article-type section",
             "data_sources": tile.get("data_source") or [],
+            "portfolio_context": portfolio_context,
+            "publication_library": publication_library,
             "total_publications": 0,
             "first_publication_year": None,
             "last_publication_year": None,
@@ -3293,6 +4083,8 @@ def _build_publication_article_type_over_time_evidence(*, user_id: str) -> dict[
         "window_label": "All",
         "window_phrase": "across the full article-type section",
         "data_sources": tile.get("data_source") or [],
+        "portfolio_context": portfolio_context,
+        "publication_library": publication_library,
         "total_publications": max(
             0, int((all_window_serialized or {}).get("total_count") or len(publications))
         ),
@@ -3321,35 +4113,164 @@ def _build_publication_article_type_over_time_evidence(*, user_id: str) -> dict[
     }
 
 
-def _build_publication_article_type_over_time_headline(evidence: dict[str, Any]) -> str:
+def _build_publication_mix_prompt_brief(
+    evidence: dict[str, Any], *, mix_name: str
+) -> dict[str, Any]:
+    full_record_read = _build_publication_mix_full_record_clause(
+        evidence,
+        mix_name=mix_name,
+    )
+    recent_read = _build_publication_mix_recent_clause(
+        evidence,
+        mix_name=mix_name,
+    )
+    note_label, note_text = _build_publication_mix_consideration(
+        evidence,
+        mix_name=mix_name,
+    )
+    return {
+        "full_record_read": full_record_read,
+        "recent_read": recent_read,
+        "preferred_evidence_order": "full record first, then 5-year and 3-year windows, with the newest 1-year slice only as support or caution when it is thin",
+        "avoid_stock_phrases": [
+            "anchors the full record",
+            "recent signal",
+            "latest view",
+            "centre of gravity",
+        ],
+        "suggested_follow_on": {
+            "label": note_label,
+            "text": note_text,
+        }
+        if note_label and note_text
+        else None,
+    }
+
+
+def _build_publication_mix_extra_guidance(mix_name: str) -> str:
+    return (
+        f"Treat this as a composition question about {mix_name}, not a rank-order summary.\n"
+        "Base the main reading on the full record plus the 5-year and 3-year windows unless the history is too short to do that sensibly.\n"
+        "Use the newest 1-year slice only to confirm or qualify the read unless it has enough volume to stand on its own.\n"
+        "Avoid stock phrases such as 'anchors the full record', 'recent signal', 'latest view', or 'centre of gravity'.\n"
+        "Name the relevant types directly and explain whether the newer mix looks steady, more contested, broader, or genuinely shifted.\n"
+    )
+
+
+def _preferred_publication_mix_window(evidence: dict[str, Any]) -> dict[str, Any]:
+    three_year_window = (
+        evidence.get("three_year_window")
+        if isinstance(evidence.get("three_year_window"), dict)
+        else {}
+    )
+    five_year_window = (
+        evidence.get("five_year_window")
+        if isinstance(evidence.get("five_year_window"), dict)
+        else {}
+    )
+    one_year_window = (
+        evidence.get("one_year_window")
+        if isinstance(evidence.get("one_year_window"), dict)
+        else {}
+    )
+    for window in (three_year_window, five_year_window, one_year_window):
+        if max(0, int(window.get("total_count") or 0)) > 0:
+            return window
+    latest_window = evidence.get("latest_window")
+    return latest_window if isinstance(latest_window, dict) else {}
+
+
+def _select_publication_mix_change_window(
+    evidence: dict[str, Any], *, change_kind: Literal["concentration", "narrower", "broader"]
+) -> dict[str, Any] | None:
+    all_window = evidence.get("all_window") if isinstance(evidence.get("all_window"), dict) else {}
+    recent_window_confidence = str(
+        evidence.get("recent_window_confidence") or ""
+    ).strip()
+    all_top_labels = sorted(str(label).strip() for label in (all_window.get("top_labels") or []) if str(label).strip())
+    all_top_share_pct = _safe_float(all_window.get("top_share_pct"))
+    all_distinct_type_count = max(0, int(all_window.get("distinct_type_count") or 0))
+    candidates = []
+    for window in (
+        evidence.get("three_year_window"),
+        evidence.get("five_year_window"),
+        evidence.get("one_year_window"),
+    ):
+        if not isinstance(window, dict):
+            continue
+        window_total = max(0, int(window.get("total_count") or 0))
+        if window_total <= 0:
+            continue
+        if (
+            str(window.get("window_id") or "").strip() == "1y"
+            and recent_window_confidence in {"too_thin", "thin", "partial_current_year"}
+        ):
+            continue
+        window_top_labels = sorted(
+            str(label).strip() for label in (window.get("top_labels") or []) if str(label).strip()
+        )
+        window_top_share_pct = _safe_float(window.get("top_share_pct"))
+        window_distinct_type_count = max(0, int(window.get("distinct_type_count") or 0))
+        same_leader = window_top_labels == all_top_labels
+        if change_kind == "concentration":
+            if (
+                same_leader
+                and all_top_share_pct is not None
+                and window_top_share_pct is not None
+                and window_top_share_pct > all_top_share_pct + 3.0
+            ):
+                candidates.append(window)
+        elif change_kind == "narrower":
+            if same_leader and window_distinct_type_count < all_distinct_type_count:
+                candidates.append(window)
+        elif change_kind == "broader":
+            if window_distinct_type_count > all_distinct_type_count:
+                candidates.append(window)
+    return candidates[0] if candidates else None
+
+
+def _build_publication_mix_headline(
+    evidence: dict[str, Any], *, mixed_label: str, stable_label: str
+) -> str:
     recent_window_change_state = str(
         evidence.get("recent_window_change_state") or ""
     ).strip()
     full_record_mix_state = str(evidence.get("full_record_mix_state") or "").strip()
+    all_window = evidence.get("all_window") if isinstance(evidence.get("all_window"), dict) else {}
+    preferred_window = _preferred_publication_mix_window(evidence)
+    all_leader = _format_period_list(list(all_window.get("top_labels") or []))
+    preferred_leader = _format_period_list(list(preferred_window.get("top_labels") or []))
+
     if recent_window_change_state == "short_record":
-        return "Early mix read"
+        return "Early composition read"
     if recent_window_change_state in {"late_leader_shift", "leader_shift"}:
-        return "Recent mix shift"
+        if preferred_leader and all_leader and preferred_leader != all_leader:
+            return f"{preferred_leader} is gaining ground"
+        return "Recent mix is shifting"
     if recent_window_change_state in {
         "same_leader_more_concentrated",
         "same_leader_narrower",
     }:
-        return "Tighter recent mix"
+        if all_leader:
+            return f"{all_leader} takes more of the newer share"
+        return "Recent mix is tighter"
     if recent_window_change_state == "broader_recent":
-        return "Broader recent mix"
+        return "Recent mix is broader"
     if full_record_mix_state in {"mixed", "tied_lead"}:
-        return "Mixed article mix"
-    return "Stable article mix"
+        return mixed_label
+    if all_leader:
+        return f"{all_leader} remains the main strand"
+    return stable_label
 
 
-def _build_publication_article_type_over_time_full_record_clause(
-    evidence: dict[str, Any]
+def _build_publication_mix_full_record_clause(
+    evidence: dict[str, Any], *, mix_name: str
 ) -> str:
     all_window = evidence.get("all_window") if isinstance(evidence.get("all_window"), dict) else {}
     span_years_label = str(evidence.get("span_years_label") or "").strip() or "the full record"
     top_labels = [str(label).strip() for label in (all_window.get("top_labels") or []) if str(label).strip()]
     if not top_labels:
-        return "Article-type data is not available yet."
+        return f"{mix_name.capitalize()} data is not available yet."
     top_label_text = _format_period_list(top_labels)
     top_count = max(0, int(all_window.get("top_count") or 0))
     total_count = max(0, int(all_window.get("total_count") or 0))
@@ -3359,28 +4280,28 @@ def _build_publication_article_type_over_time_full_record_clause(
     distinct_type_count = max(0, int(all_window.get("distinct_type_count") or 0))
     if len(top_labels) > 1:
         return (
-            f"Across {span_years_label}, the leading article types are {top_label_text}, "
+            f"Across {span_years_label}, {top_label_text} are joint largest, "
             f"with {top_count} publications each, so the long-run mix is shared rather than led by one type."
         )
-    if top_share_pct is not None and top_share_pct < 45:
+    if top_share_pct is not None and top_share_pct < 45 and second_label and second_share_pct is not None:
         return (
-            f"Across {span_years_label}, {top_label_text} is the largest article type at "
-            f"{round(top_share_pct)}% of publications, so the full record stays relatively broad."
+            f"Across {span_years_label}, the mix stays fairly spread: {top_label_text} is largest at "
+            f"{round(top_share_pct)}%, with {second_label} close behind at {round(second_share_pct)}% "
+            f"across {distinct_type_count} categories."
         )
     secondary_clause = (
-        f", ahead of {second_label} at {round(second_share_pct)}%"
+        f", with {second_label} next at {round(second_share_pct)}%"
         if second_label and second_share_pct is not None
         else ""
     )
     return (
-        f"Across {span_years_label}, {top_label_text} anchors the full record with "
-        f"{top_count} of {total_count} publications ({round(top_share_pct or 0)}%){secondary_clause}, "
-        f"and {distinct_type_count} visible article types appear overall."
+        f"Across {span_years_label}, {top_label_text} makes up {round(top_share_pct or 0)}% of the record "
+        f"({top_count} of {total_count}){secondary_clause}."
     )
 
 
-def _build_publication_article_type_over_time_recent_clause(
-    evidence: dict[str, Any]
+def _build_publication_mix_recent_clause(
+    evidence: dict[str, Any], *, mix_name: str
 ) -> str:
     all_window = evidence.get("all_window") if isinstance(evidence.get("all_window"), dict) else {}
     five_year_window = (
@@ -3392,89 +4313,215 @@ def _build_publication_article_type_over_time_recent_clause(
     one_year_window = (
         evidence.get("one_year_window") if isinstance(evidence.get("one_year_window"), dict) else {}
     )
-    latest_window = evidence.get("latest_window") if isinstance(evidence.get("latest_window"), dict) else {}
+    preferred_window = _preferred_publication_mix_window(evidence)
     recent_window_change_state = str(
         evidence.get("recent_window_change_state") or ""
     ).strip()
-    recent_window_confidence = str(
-        evidence.get("recent_window_confidence") or ""
-    ).strip()
     all_leader = _format_period_list(list(all_window.get("top_labels") or []))
-    latest_leader = _format_period_list(list(latest_window.get("top_labels") or []))
-    latest_top_share_pct = _safe_float(latest_window.get("top_share_pct"))
+    preferred_leader = _format_period_list(list(preferred_window.get("top_labels") or []))
+    preferred_label = str(preferred_window.get("range_label") or "").strip() or "the shorter recent window"
+    three_label = str(three_year_window.get("range_label") or "").strip() or preferred_label
+    five_label = str(five_year_window.get("range_label") or "").strip() or "the broader recent window"
+    preferred_top_share_pct = _safe_float(preferred_window.get("top_share_pct"))
     all_top_share_pct = _safe_float(all_window.get("top_share_pct"))
-    latest_range_label = str(latest_window.get("range_label") or "").strip() or "the latest window"
-    one_year_range_label = str(one_year_window.get("range_label") or "").strip() or None
-    one_year_view_label = (
-        f"the latest 1-year view ({one_year_range_label})"
-        if one_year_range_label
-        else "the latest 1-year view"
-    )
-    latest_distinct_type_count = max(0, int(latest_window.get("distinct_type_count") or 0))
+    preferred_second_label = str(preferred_window.get("second_label") or "").strip() or None
+    preferred_second_share_pct = _safe_float(preferred_window.get("second_share_pct"))
+    preferred_distinct_type_count = max(0, int(preferred_window.get("distinct_type_count") or 0))
     all_distinct_type_count = max(0, int(all_window.get("distinct_type_count") or 0))
     latest_window_total_count = max(0, int(evidence.get("latest_window_total_count") or 0))
-    latest_partial_year_label = str(evidence.get("latest_partial_year_label") or "").strip() or None
+
     if recent_window_change_state == "short_record":
-        sentence = (
-            "Recent windows still collapse into much the same years as the full record, "
-            "so there is not yet enough separation to call this a settled shift in article mix."
+        return (
+            f"The 5-year and 3-year cuts still overlap too heavily with the full span to call a settled change in {mix_name}."
         )
-    elif recent_window_change_state == "late_leader_shift":
-        five_label = str(five_year_window.get("range_label") or "").strip() or "the latest 5-year window"
-        three_label = str(three_year_window.get("range_label") or "").strip() or "the latest 3-year window"
-        sentence = (
-            f"The 5-year view ({five_label}) still keeps {all_leader} in front, but "
-            f"the 3-year ({three_label}) and {one_year_view_label} move toward {latest_leader}, "
-            "so the newer mix is tilting rather than simply shrinking."
+    if recent_window_change_state == "late_leader_shift":
+        return (
+            f"The clearer change sits in {three_label}: {preferred_leader or 'a different type'} now carries more of the mix there, "
+            f"while {five_label} still looks closer to the longer-run ordering led by {all_leader}."
         )
-    elif recent_window_change_state == "leader_shift":
-        sentence = (
-            f"The latest windows move toward {latest_leader} instead of the full-record lead of {all_leader}, "
-            "so the recent mix is not just a smaller copy of the longer-run portfolio."
+    if recent_window_change_state == "leader_shift":
+        if preferred_second_label and preferred_second_share_pct is not None:
+            return (
+                f"The recent change is broader than a single tie-break: in {preferred_label}, {preferred_leader or 'the newer leader'} leads, "
+                f"with {preferred_second_label} still substantial at {round(preferred_second_share_pct)}%."
+            )
+        return (
+            f"In {preferred_label}, the ordering now differs from the longer run, so the recent {mix_name} looks genuinely shifted rather than merely compressed."
         )
-    elif recent_window_change_state == "same_leader_more_concentrated":
-        sentence = (
-            f"{all_leader} still leads, but it rises to {round(latest_top_share_pct or 0)}% in "
-            f"{latest_range_label} versus {round(all_top_share_pct or 0)}% across the full record, "
-            "so the recent mix is tightening around one type."
+    if recent_window_change_state == "same_leader_more_concentrated":
+        concentration_window = _select_publication_mix_change_window(
+            evidence,
+            change_kind="concentration",
         )
-    elif recent_window_change_state == "same_leader_narrower":
-        sentence = (
-            f"{all_leader} still leads, but {one_year_view_label} narrows to "
-            f"{latest_distinct_type_count} visible type{'s' if latest_distinct_type_count != 1 else ''} "
-            f"rather than {all_distinct_type_count} across the full record."
+        concentration_label = (
+            str(concentration_window.get("range_label") or "").strip()
+            if isinstance(concentration_window, dict)
+            else None
         )
-    elif recent_window_change_state == "broader_recent":
-        sentence = (
-            f"{one_year_view_label} brings more secondary types into view than the full record, "
-            "so the latest mix looks broader rather than more concentrated."
+        concentration_top_share_pct = (
+            _safe_float(concentration_window.get("top_share_pct"))
+            if isinstance(concentration_window, dict)
+            else None
         )
-    else:
-        sentence = (
-            "The 5-year, 3-year, and 1-year views broadly preserve the same article-type centre of gravity "
-            "as the full record."
+        if (
+            concentration_window
+            and concentration_label
+            and concentration_top_share_pct is not None
+            and all_top_share_pct is not None
+        ):
+            return (
+                f"The main recent change is concentration rather than replacement: {all_leader} rises from "
+                f"{round(all_top_share_pct)}% across the whole record to {round(concentration_top_share_pct)}% in {concentration_label}, "
+                "while smaller categories recede."
+            )
+        return (
+            "The 5-year and 3-year windows still sit close to the broader mix. The only stronger concentration appears in the newest rolling year, which is too small to carry the interpretation by itself."
         )
-    if recent_window_confidence == "too_thin":
+    if recent_window_change_state == "same_leader_narrower":
+        narrower_window = _select_publication_mix_change_window(
+            evidence,
+            change_kind="narrower",
+        )
+        narrower_label = (
+            str(narrower_window.get("range_label") or "").strip()
+            if isinstance(narrower_window, dict)
+            else None
+        )
+        narrower_distinct_type_count = (
+            max(0, int(narrower_window.get("distinct_type_count") or 0))
+            if isinstance(narrower_window, dict)
+            else None
+        )
+        if narrower_window and narrower_label and narrower_distinct_type_count is not None:
+            return (
+                f"The main recent change is narrowing rather than replacement: {all_leader} still leads, but {narrower_label} contains "
+                f"{narrower_distinct_type_count} categories instead of {all_distinct_type_count}."
+            )
+        return (
+            "The 5-year and 3-year windows still look close to the broader mix. Only the newest rolling year narrows, and it is too small to treat as a reset."
+        )
+    if recent_window_change_state == "broader_recent":
+        broader_window = _select_publication_mix_change_window(
+            evidence,
+            change_kind="broader",
+        )
+        broader_label = (
+            str(broader_window.get("range_label") or "").strip()
+            if isinstance(broader_window, dict)
+            else None
+        )
+        broader_distinct_type_count = (
+            max(0, int(broader_window.get("distinct_type_count") or 0))
+            if isinstance(broader_window, dict)
+            else None
+        )
+        broader_second_label = (
+            str(broader_window.get("second_label") or "").strip() or None
+            if isinstance(broader_window, dict)
+            else None
+        )
+        broader_second_share_pct = (
+            _safe_float(broader_window.get("second_share_pct"))
+            if isinstance(broader_window, dict)
+            else None
+        )
+        if broader_window and broader_label and broader_distinct_type_count is not None:
+            broader_clause = (
+                f", with {broader_second_label} also taking a meaningful share"
+                if broader_second_label and broader_second_share_pct is not None
+                else ""
+            )
+            return (
+                f"The recent mix is broader than the long-run pattern: {broader_label} contains "
+                f"{broader_distinct_type_count} categories instead of {all_distinct_type_count}{broader_clause}."
+            )
+        broader_clause = (
+            f", with {preferred_second_label} also taking a meaningful share"
+            if preferred_second_label and preferred_second_share_pct is not None
+            else ""
+        )
+        return (
+            f"The recent mix is broader than the long-run pattern: {preferred_label} contains "
+            f"{preferred_distinct_type_count} categories instead of {all_distinct_type_count}{broader_clause}."
+        )
+    thin_suffix = (
+        f" The newest rolling year contains only {latest_window_total_count} publication{'s' if latest_window_total_count != 1 else ''}, so it is best used as a check on that read."
+        if latest_window_total_count <= 3
+        else ""
+    )
+    return (
+        f"The 5-year and 3-year windows stay close to the longer-run ordering, so the recent {mix_name} looks more persistent than remade.{thin_suffix}"
+    )
+
+
+def _build_publication_mix_consideration(
+    evidence: dict[str, Any], *, mix_name: str
+) -> tuple[str | None, str | None]:
+    recent_window_change_state = str(
+        evidence.get("recent_window_change_state") or ""
+    ).strip()
+    latest_window_total_count = max(0, int(evidence.get("latest_window_total_count") or 0))
+    latest_partial_year_label = str(evidence.get("latest_partial_year_label") or "").strip() or None
+    if latest_window_total_count <= 3:
         partial_clause = (
             f" and includes {latest_partial_year_label}"
             if latest_partial_year_label
             else ""
         )
-        sentence += (
-            f" Even so, {one_year_view_label} only contains {latest_window_total_count} "
-            f"publication{'s' if latest_window_total_count != 1 else ''}{partial_clause}, so that newest ordering is still thin."
+        return (
+            "Confidence",
+            f"The newest rolling year only contains {latest_window_total_count} publication{'s' if latest_window_total_count != 1 else ''}{partial_clause}, so it should confirm the 5-year and 3-year read, not override it.",
         )
-    elif recent_window_confidence == "partial_current_year" and latest_partial_year_label:
-        sentence += (
-            f" Because the latest 1-year view includes {latest_partial_year_label}, "
-            "that newest ordering can still move."
+    if latest_partial_year_label:
+        return (
+            "Confidence",
+            f"The newest rolling year includes {latest_partial_year_label}, so read it as an early check on the broader {mix_name}, not a reset on its own.",
         )
-    elif recent_window_confidence == "thin":
-        sentence += (
-            f" With only {latest_window_total_count} publications in the latest 1-year view, "
-            "that recent read is still relatively lightweight."
+    if recent_window_change_state in {"late_leader_shift", "leader_shift"}:
+        return (
+            "What to watch",
+            "If the same ordering persists beyond the shortest rolling slice, this starts to look like a real shift rather than a recent lean.",
         )
-    return sentence
+    if recent_window_change_state in {
+        "same_leader_more_concentrated",
+        "same_leader_narrower",
+    }:
+        return (
+            "What to watch",
+            "If smaller categories stay quieter for another cycle, this becomes a genuine concentration story rather than normal variation.",
+        )
+    if recent_window_change_state == "broader_recent":
+        return (
+            "What to watch",
+            "If those added categories keep appearing across the next rolling window, the mix is broadening rather than just having one unusually diverse year.",
+        )
+    return (None, None)
+
+
+def _build_publication_article_type_over_time_headline(evidence: dict[str, Any]) -> str:
+    return _build_publication_mix_headline(
+        evidence,
+        mixed_label="Article mix is shared",
+        stable_label="Article mix is stable",
+    )
+
+
+def _build_publication_article_type_over_time_full_record_clause(
+    evidence: dict[str, Any]
+) -> str:
+    return _build_publication_mix_full_record_clause(
+        evidence,
+        mix_name="article types",
+    )
+
+
+def _build_publication_article_type_over_time_recent_clause(
+    evidence: dict[str, Any]
+) -> str:
+    return _build_publication_mix_recent_clause(
+        evidence,
+        mix_name="article types",
+    )
 
 
 def _build_publication_article_type_over_time_fallback_payload(
@@ -3506,49 +4553,10 @@ def _build_publication_article_type_over_time_fallback_payload(
         f"{_build_publication_article_type_over_time_full_record_clause(evidence)} "
         f"{_build_publication_article_type_over_time_recent_clause(evidence)}"
     ).strip()
-    recent_window_change_state = str(
-        evidence.get("recent_window_change_state") or ""
-    ).strip()
-    latest_window_total_count = max(0, int(evidence.get("latest_window_total_count") or 0))
-    latest_partial_year_label = str(evidence.get("latest_partial_year_label") or "").strip() or None
-    if latest_window_total_count <= 3:
-        consideration_label = "Recent window"
-        partial_clause = (
-            f" and includes {latest_partial_year_label}"
-            if latest_partial_year_label
-            else ""
-        )
-        consideration = (
-            f"Because the latest 1-year view only contains {latest_window_total_count} "
-            f"publication{'s' if latest_window_total_count != 1 else ''}{partial_clause}, "
-            "treat that newest ordering as directional rather than settled."
-        )
-    elif latest_partial_year_label:
-        consideration_label = "Partial year"
-        consideration = (
-            f"The latest 1-year view includes {latest_partial_year_label}, so the newest ordering can still move as more publications land."
-        )
-    elif recent_window_change_state == "late_leader_shift":
-        consideration_label = "How to read it"
-        consideration = (
-            "The shift shows up mainly in the shorter recent windows, so read it as a newer tilt rather than a full replacement of the long-run mix."
-        )
-    elif recent_window_change_state == "broader_recent":
-        consideration_label = "Breadth"
-        consideration = (
-            "More secondary article types appear in the latest window, so the recent mix is broadening rather than simply flipping leaders."
-        )
-    elif recent_window_change_state in {
-        "same_leader_more_concentrated",
-        "same_leader_narrower",
-    }:
-        consideration_label = "Concentration"
-        consideration = (
-            "The leading type is still the same one, so the main change is how concentrated the recent mix has become."
-        )
-    else:
-        consideration_label = None
-        consideration = None
+    consideration_label, consideration = _build_publication_mix_consideration(
+        evidence,
+        mix_name="article types",
+    )
     return {
         "overall_summary": body,
         "sections": [
@@ -3593,7 +4601,7 @@ def _build_publication_insight_prompt_preamble(
         "Use only the evidence provided. Do not invent causes, mechanisms, advice, or future outcomes.\n"
         "Lead with the structural story, not the metric label.\n"
         "Prefer the fewest concrete numbers that materially change the interpretation.\n"
-        "Choose comparisons that earn their place: earlier versus later, anchor versus challenger, broad versus concentrated, persistent versus provisional.\n"
+        "Choose comparisons that earn their place: earlier versus later, established leader versus challenger, broad versus concentrated, persistent versus provisional.\n"
         "If a short recent window is thin, demote it to a qualifier rather than letting it carry the main claim.\n"
         "Do not narrate the interface or restate obvious section labels, charts, tables, toggles, or controls.\n"
         "Avoid product-copy phrases such as 'this means', 'current stage reads as', 'based on your metrics', or 'over time' in place of analysis.\n"
@@ -3605,371 +4613,172 @@ def _build_publication_insight_prompt_preamble(
 def _build_publication_insight_note_guidance() -> str:
     return (
         "Only include the follow-on note when it adds a distinct reading aid, caution, or confidence qualifier.\n"
-        "If you include a follow-on note, use a short specific label such as Signal strength, Live year, Coverage, Recent signal, Peak structure, or Read this.\n"
+        "If you include a follow-on note, use a short specific label such as Confidence, Live year, Coverage, Why it matters, What changes it, What to watch, Peak structure, or Read this.\n"
         "Do not default to a generic label if a sharper one is available.\n"
     )
 
 
-def _build_publication_output_pattern_prompt(evidence: dict[str, Any]) -> str:
-    compact_evidence = {
-        "total_publications": evidence.get("total_publications"),
-        "scoped_publications": evidence.get("scoped_publications"),
-        "first_publication_year": evidence.get("first_publication_year"),
-        "last_publication_year": evidence.get("last_publication_year"),
-        "span_years_label": evidence.get("span_years_label"),
-        "active_span": evidence.get("active_span"),
-        "years_with_output": evidence.get("years_with_output"),
-        "gap_years": evidence.get("gap_years"),
-        "longest_streak": evidence.get("longest_streak"),
-        "consistency_index": evidence.get("consistency_index"),
-        "consistency_label": evidence.get("consistency_label"),
-        "burstiness_score": evidence.get("burstiness_score"),
-        "burstiness_label": evidence.get("burstiness_label"),
-        "peak_year_share_pct": evidence.get("peak_year_share_pct"),
-        "peak_year_share_label": evidence.get("peak_year_share_label"),
-        "output_continuity_pct": evidence.get("output_continuity_pct"),
-        "output_continuity_label": evidence.get("output_continuity_label"),
-        "average_per_active_year": evidence.get("average_per_active_year"),
-        "slope": evidence.get("slope"),
-        "peak_years": evidence.get("peak_years") or [],
-        "peak_years_label": evidence.get("peak_years_label"),
-        "peak_year_count": evidence.get("peak_year_count"),
-        "peak_count": evidence.get("peak_count"),
-        "peak_vs_average_ratio": evidence.get("peak_vs_average_ratio"),
-        "low_years": evidence.get("low_years") or [],
-        "low_years_label": evidence.get("low_years_label"),
-        "low_count": evidence.get("low_count"),
-        "standout_years": evidence.get("standout_years") or [],
-        "low_year_position": evidence.get("low_year_position"),
-        "peak_year_position": evidence.get("peak_year_position"),
-        "even_annual_share_pct": evidence.get("even_annual_share_pct"),
-        "recent_mean": evidence.get("recent_mean"),
-        "earlier_mean": evidence.get("earlier_mean"),
-        "recent_output_count": evidence.get("recent_output_count"),
-        "earlier_output_count": evidence.get("earlier_output_count"),
-        "recent_share_pct": evidence.get("recent_share_pct"),
-        "expected_recent_share_pct": evidence.get("expected_recent_share_pct"),
-        "recent_share_vs_even_ratio": evidence.get("recent_share_vs_even_ratio"),
-        "recent_window_size": evidence.get("recent_window_size"),
-        "recent_years": evidence.get("recent_years") or [],
-        "recent_years_label": evidence.get("recent_years_label"),
-        "earlier_years": evidence.get("earlier_years") or [],
-        "earlier_years_label": evidence.get("earlier_years_label"),
-        "momentum": evidence.get("momentum"),
-        "phase_label": evidence.get("phase_label"),
-        "phase_interpretation": evidence.get("phase_interpretation"),
-        "phase_confidence_low": evidence.get("phase_confidence_low"),
-        "phase_confidence_note": evidence.get("phase_confidence_note"),
-        "historical_gap_years_present": evidence.get("historical_gap_years_present"),
-        "year_series": evidence.get("year_series") or [],
-        "portfolio_context": evidence.get("portfolio_context") or {},
-    }
-    evidence_json = json.dumps(compact_evidence, ensure_ascii=True)
+def _build_publication_section_prompt(
+    *,
+    request_line: str,
+    section_key: str,
+    section_question: str,
+    evidence_payload: dict[str, Any],
+    allow_wider_context: bool,
+    extra_guidance: str | None = None,
+) -> str:
+    evidence_json = json.dumps(evidence_payload, ensure_ascii=True, default=str)
     return (
         _build_publication_insight_prompt_preamble(
-            request_line="This request is for the Publication Production Pattern insight, using publication counts by year only.",
-            allow_wider_context=True,
+            request_line=request_line,
+            allow_wider_context=allow_wider_context,
         )
-        + "The user has already seen the tiles and metric labels. Do not repeat the labels back to them.\n"
-        "Your job is to synthesize the whole publication-output shape from the evidence bundle.\n"
-        "This section now stands in for the four tile explainers, so make clear what consistency, burstiness, peak-year share, and years-with-output are collectively saying.\n"
-        "Explain what is driving the pattern by combining phase, continuity, consistency, burstiness, concentration, peak years, quiet years, and recent-versus-earlier output.\n"
-        "Distinguish structural pattern from career-stage effects when the evidence supports that distinction.\n"
-        "If the quietest years are concentrated early in the span, say that explicitly and frame it as early build-up when supported.\n"
-        "If the quietest years are recent, say that explicitly and frame it as flattening or decline only when the recent mean and momentum support that.\n"
-        "If several peak years tie, say that explicitly and clarify that peak-year share is per tied peak year rather than one combined super-year.\n"
-        "If there are no gap years, say that explicitly. If there are gap years, explain whether they matter to the overall reading.\n"
-        "If the peak-year share is low, make clear that the record is not dominated by one isolated year even if output later steps up.\n"
-        "If recent output is stronger than an even spread across the span would suggest, use that to explain why the phase reads as scaling or rebuilding.\n"
-        "Do not speculate about a partial year, year-to-date data, or an incomplete current year unless the evidence explicitly says includes_partial_year is true.\n"
-        "Use actual years or year ranges when they help the interpretation.\n"
-        "Do not just say the record is steady or growing. Explain why it reads that way from the evidence.\n"
-        "The headline should summarize the shape in 2 to 4 words and should not be generic.\n"
-        "The body should be 2 short sentences, about 45 to 75 words total, and should integrate at least 3 distinct signals from the evidence.\n"
-        "The body should sound like an analyst's reading of the whole pattern, not a paraphrase of one metric.\n"
+        + f"Section question: {section_question}\n"
+        "Use one shared publication-insight reasoning style: find the deepest supported insight for this question, then present it clearly.\n"
+        "You are given four evidence layers: portfolio_context, publication_library, section_data, and optional analysis_brief or confidence_flags.\n"
+        "publication_library contains the user's publication library as a whole-record evidence layer, not just a recent slice.\n"
+        "Use the whole library when it sharpens the interpretation, but stay focused on the section question.\n"
+        "Treat analysis_brief as a starting point, not a script. You may go beyond it if the raw evidence supports a stronger insight.\n"
+        "Choose the evidence that matters most. Do not force every metric into the body.\n"
+        "Prefer the fewest concrete numbers that materially change the interpretation.\n"
+        "Do not define metrics back to the user unless that definition is necessary for the insight.\n"
+        "Do not narrate the interface or restate obvious labels, charts, tables, toggles, or controls.\n"
+        "If the evidence supports more than one useful follow-on angle, choose the single most valuable note for the current UI slot.\n"
+        "Prefer notes that answer why it matters, what changes it, what to watch, peak structure, or signal strength.\n"
+        "Return one section only. Use compact, high-value language for a highly capable academic reader.\n"
+        "Headline should be concise and non-generic.\n"
+        "Body should usually be 2 short sentences that sound like an analyst's reading, not a metric recap.\n"
+        + (f"{extra_guidance.rstrip()}\n" if extra_guidance else "")
         + _build_publication_insight_note_guidance()
-        + "The consideration should add one genuinely useful nuance, caution, or reading aid, not a repeat of the body.\n"
-        "Schema:\n"
+        + "Schema:\n"
         "{\n"
         '  "overall_summary": "string",\n'
         '  "sections": [\n'
         "    {\n"
-        '      "key": "publication_output_pattern",\n'
-        '      "headline": "2-4 words",\n'
-        '      "body": "2 sentences, about 45-75 words",\n'
+        f'      "key": "{section_key}",\n'
+        '      "headline": "string",\n'
+        '      "body": "string",\n'
         '      "consideration_label": "optional, max 4 words",\n'
         '      "consideration": "optional, max 35 words"\n'
         "    }\n"
         "  ]\n"
         "}\n"
-        "Return exactly one section: publication_output_pattern.\n"
+        f"Return exactly one section: {section_key}.\n"
         f"Evidence: {evidence_json}\n"
     )
 
 
-def _build_publication_production_phase_prompt(evidence: dict[str, Any]) -> str:
-    compact_evidence = {
-        "phase_label": evidence.get("phase_label"),
-        "phase_interpretation": evidence.get("phase_interpretation"),
-        "phase_confidence_low": evidence.get("phase_confidence_low"),
-        "phase_confidence_note": evidence.get("phase_confidence_note"),
-        "first_publication_year": evidence.get("first_publication_year"),
-        "last_publication_year": evidence.get("last_publication_year"),
-        "span_years_label": evidence.get("span_years_label"),
-        "active_span": evidence.get("active_span"),
-        "years_with_output": evidence.get("years_with_output"),
-        "gap_years": evidence.get("gap_years"),
-        "longest_streak": evidence.get("longest_streak"),
-        "slope": evidence.get("slope"),
-        "recent_mean": evidence.get("recent_mean"),
-        "earlier_mean": evidence.get("earlier_mean"),
-        "momentum": evidence.get("momentum"),
-        "recent_output_count": evidence.get("recent_output_count"),
-        "recent_share_pct": evidence.get("recent_share_pct"),
-        "recent_years_label": evidence.get("recent_years_label"),
-        "expected_recent_share_pct": evidence.get("expected_recent_share_pct"),
-        "recent_share_vs_even_ratio": evidence.get("recent_share_vs_even_ratio"),
-        "recent_trend_slope": evidence.get("recent_trend_slope"),
-        "latest_year": evidence.get("latest_year"),
-        "latest_output_count": evidence.get("latest_output_count"),
-        "latest_vs_peak_ratio": evidence.get("latest_vs_peak_ratio"),
-        "current_pace_year": evidence.get("current_pace_year"),
-        "current_pace_cutoff_label": evidence.get("current_pace_cutoff_label"),
-        "current_pace_count": evidence.get("current_pace_count"),
-        "current_pace_comparison_label": evidence.get("current_pace_comparison_label"),
-        "current_pace_comparison_mean": evidence.get("current_pace_comparison_mean"),
-        "current_pace_signal": evidence.get("current_pace_signal"),
-        "peak_years": evidence.get("peak_years") or [],
-        "peak_count": evidence.get("peak_count"),
-        "peak_year_share_pct": evidence.get("peak_year_share_pct"),
-        "peak_year_share_label": evidence.get("peak_year_share_label"),
-        "low_years": evidence.get("low_years") or [],
-        "low_year_position": evidence.get("low_year_position"),
-        "historical_gap_years_present": evidence.get("historical_gap_years_present"),
+def _build_publication_section_evidence_payload(
+    evidence: dict[str, Any],
+    *,
+    analysis_brief: dict[str, Any] | None = None,
+    confidence_flags: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "portfolio_context": (
+            evidence.get("portfolio_context")
+            if isinstance(evidence.get("portfolio_context"), dict)
+            else {}
+        ),
+        "publication_library": (
+            evidence.get("publication_library")
+            if isinstance(evidence.get("publication_library"), dict)
+            else {}
+        ),
+        "section_data": {
+            key: value
+            for key, value in evidence.items()
+            if key not in {"portfolio_context", "publication_library"}
+        },
     }
-    evidence_json = json.dumps(compact_evidence, ensure_ascii=True)
-    return (
-        _build_publication_insight_prompt_preamble(
-            request_line="This request is for the Production Phase insight, using publication counts by year only.",
-            allow_wider_context=False,
-        )
-        + "The user has already seen the phase label, slope, recent share, and peak-year support stats.\n"
-        "Your job is to explain why this publication stage fits their record.\n"
-        "The phase classification itself must stay anchored in complete publication years only.\n"
-        "If current-year pace through the last completed month is provided, you may mention it only as separate live context, and you must explicitly say it does not change the complete-year phase basis.\n"
-        "Explain the stage by combining phase, trend slope, recent-versus-earlier output, continuity or gaps, and peak structure when relevant.\n"
-        "Lead with the decisive structural contrast in the record, then support it with the strongest years, counts, or ranges.\n"
-        "Prefer language such as flattening, pullback, settled range, build-up, or recovery when the evidence supports it.\n"
-        "Do not say 'this means' or 'your current stage reads as' or repeat the metric labels verbatim.\n"
-        "If the long-run slope is positive but the recent complete years cool off a recent peak, frame that as flattening rather than ongoing acceleration.\n"
-        "If the quietest years sit early and the phase is scaling or emerging, explain that as build-up rather than instability.\n"
-        "If several peak years tie, say that explicitly.\n"
-        "If there are no gap years, say that explicitly when it helps explain the phase.\n"
-        "Use actual years, ranges, counts, or percentages when they strengthen the explanation.\n"
-        "Headline should be 2 to 4 words and should not just repeat the phase label alone.\n"
-        "Body should be 2 short sentences, about 45 to 75 words total, and should explain why the current phase fits.\n"
-        + _build_publication_insight_note_guidance()
-        + "Consideration should add one concise nuance, caution, or reading aid that is different from the body.\n"
-        "Good consideration labels include Live year, Recent signal, Early base, Peak structure, or Continuity.\n"
-        "Schema:\n"
-        "{\n"
-        '  "overall_summary": "string",\n'
-        '  "sections": [\n'
-        "    {\n"
-        '      "key": "publication_production_phase",\n'
-        '      "headline": "2-4 words",\n'
-        '      "body": "2 sentences, about 45-75 words",\n'
-        '      "consideration_label": "optional, max 4 words",\n'
-        '      "consideration": "optional, max 35 words"\n'
-        "    }\n"
-        "  ]\n"
-        "}\n"
-        "Return exactly one section: publication_production_phase.\n"
-        f"Evidence: {evidence_json}\n"
+    if analysis_brief:
+        payload["analysis_brief"] = analysis_brief
+    if confidence_flags:
+        payload["confidence_flags"] = confidence_flags
+    return payload
+
+
+def _build_publication_output_pattern_prompt(evidence: dict[str, Any]) -> str:
+    analysis_brief = _build_publication_output_pattern_prompt_brief(evidence)
+    evidence_payload = _build_publication_section_evidence_payload(
+        evidence,
+        analysis_brief=analysis_brief,
+        confidence_flags={
+            "phase_confidence_low": evidence.get("phase_confidence_low"),
+            "includes_partial_year": evidence.get("includes_partial_year"),
+        },
+    )
+    return _build_publication_section_prompt(
+        request_line="This request is for the Publication Production Pattern insight.",
+        section_key="publication_output_pattern",
+        section_question="What is the deepest insight about the steadiness of this publication record?",
+        evidence_payload=evidence_payload,
+        allow_wider_context=True,
+    )
+
+
+def _build_publication_production_phase_prompt(evidence: dict[str, Any]) -> str:
+    evidence_payload = _build_publication_section_evidence_payload(
+        evidence,
+        confidence_flags={
+            "phase_confidence_low": evidence.get("phase_confidence_low"),
+            "current_pace_signal": evidence.get("current_pace_signal"),
+        },
+    )
+    return _build_publication_section_prompt(
+        request_line="This request is for the Production Phase insight.",
+        section_key="publication_production_phase",
+        section_question="What stage is this publication record in, and why?",
+        evidence_payload=evidence_payload,
+        allow_wider_context=False,
     )
 
 
 def _build_publication_volume_over_time_prompt(evidence: dict[str, Any]) -> str:
     wider_context_hint = _build_publication_volume_context_sentence(evidence)
     recent_read_hint = _build_publication_volume_recent_clause(evidence)
-    compact_evidence = {
-        "total_publications": evidence.get("total_publications"),
-        "scoped_publications": evidence.get("scoped_publications"),
-        "first_publication_year": evidence.get("first_publication_year"),
-        "last_publication_year": evidence.get("last_publication_year"),
-        "span_years_label": evidence.get("span_years_label"),
-        "active_span": evidence.get("active_span"),
-        "phase_label": evidence.get("phase_label"),
-        "phase_interpretation": evidence.get("phase_interpretation"),
-        "phase_confidence_low": evidence.get("phase_confidence_low"),
-        "phase_confidence_note": evidence.get("phase_confidence_note"),
-        "slope": evidence.get("slope"),
-        "consistency_index": evidence.get("consistency_index"),
-        "consistency_label": evidence.get("consistency_label"),
-        "burstiness_score": evidence.get("burstiness_score"),
-        "burstiness_label": evidence.get("burstiness_label"),
-        "peak_year_share_pct": evidence.get("peak_year_share_pct"),
-        "output_continuity_pct": evidence.get("output_continuity_pct"),
-        "gap_years": evidence.get("gap_years"),
-        "longest_streak": evidence.get("longest_streak"),
-        "peak_years": evidence.get("peak_years") or [],
-        "peak_count": evidence.get("peak_count"),
-        "low_years": evidence.get("low_years") or [],
-        "low_count": evidence.get("low_count"),
-        "low_year_position": evidence.get("low_year_position"),
-        "peak_year_position": evidence.get("peak_year_position"),
-        "peak_vs_average_ratio": evidence.get("peak_vs_average_ratio"),
-        "recent_mean": evidence.get("recent_mean"),
-        "earlier_mean": evidence.get("earlier_mean"),
-        "momentum": evidence.get("momentum"),
-        "recent_years_label": evidence.get("recent_years_label"),
-        "earlier_years_label": evidence.get("earlier_years_label"),
-        "overall_trajectory": evidence.get("overall_trajectory"),
-        "recent_position": evidence.get("recent_position"),
-        "recent_detail_pattern": evidence.get("recent_detail_pattern"),
-        "recent_monthly_period_label": evidence.get("recent_monthly_period_label"),
-        "recent_monthly_period_end_label": evidence.get("recent_monthly_period_end_label"),
-        "recent_monthly_total": evidence.get("recent_monthly_total"),
-        "recent_monthly_active_months": evidence.get("recent_monthly_active_months"),
-        "recent_monthly_peak_count": evidence.get("recent_monthly_peak_count"),
-        "recent_monthly_peak_periods": evidence.get("recent_monthly_peak_periods") or [],
-        "rolling_3y_period_label": evidence.get("rolling_3y_period_label"),
-        "rolling_3y_start_count": evidence.get("rolling_3y_start_count"),
-        "rolling_3y_latest_count": evidence.get("rolling_3y_latest_count"),
-        "rolling_3y_material_direction": evidence.get("rolling_3y_material_direction"),
-        "rolling_3y_prior_peak_count": evidence.get("rolling_3y_prior_peak_count"),
-        "rolling_3y_prior_peak_label": evidence.get("rolling_3y_prior_peak_label"),
-        "rolling_3y_blocks": evidence.get("rolling_3y_blocks") or [],
-        "rolling_3y_direction": evidence.get("rolling_3y_direction"),
-        "rolling_5y_period_label": evidence.get("rolling_5y_period_label"),
-        "rolling_5y_start_count": evidence.get("rolling_5y_start_count"),
-        "rolling_5y_latest_count": evidence.get("rolling_5y_latest_count"),
-        "rolling_5y_material_direction": evidence.get("rolling_5y_material_direction"),
-        "rolling_5y_prior_peak_count": evidence.get("rolling_5y_prior_peak_count"),
-        "rolling_5y_prior_peak_label": evidence.get("rolling_5y_prior_peak_label"),
-        "rolling_5y_blocks": evidence.get("rolling_5y_blocks") or [],
-        "rolling_5y_direction": evidence.get("rolling_5y_direction"),
-        "table_counts_by_window": evidence.get("table_counts_by_window") or {},
-        "table_recent_count": evidence.get("table_recent_count"),
-        "table_recent_range_label": evidence.get("table_recent_range_label"),
-        "table_recent_titles": evidence.get("table_recent_titles") or [],
-        "table_recent_article_types": evidence.get("table_recent_article_types") or [],
-        "table_recent_precision_counts": evidence.get("table_recent_precision_counts") or {},
-        "table_most_recent_date": evidence.get("table_most_recent_date"),
-        "table_most_recent_title": evidence.get("table_most_recent_title"),
-        "as_of_date": evidence.get("as_of_date"),
-        "wider_context_hint": wider_context_hint,
-        "recent_read_hint": recent_read_hint,
-    }
-    evidence_json = json.dumps(compact_evidence, ensure_ascii=True)
-    return (
-        _build_publication_insight_prompt_preamble(
-            request_line="This request is for the Publication Volume Over Time insight.",
-            allow_wider_context=True,
-        )
-        + "The user has already seen the section title, chart views, and recent publication rows.\n"
-        "The insight must explain the whole section, not one active toggle.\n"
-        "The section combines the full-span yearly record, rolling 3-year and 5-year views, the latest 12 completed months, and the publication-level rows.\n"
-        "You are given three deterministic state labels in the evidence: overall_trajectory, recent_position, and recent_detail_pattern.\n"
-        "Use those labels as guardrails for the synthesis, but do not copy them verbatim into the prose.\n"
-        "This must add value beyond the tooltip. Do not simply restate yearly peaks, rolling-window counts, and the recent table range.\n"
-        "Answer two questions: what is the bigger story of this publication record, and do the recent windows materially change that story?\n"
-        "Treat the rolling 5-year and 3-year comparisons as the main recent evidence. Use the latest 12 completed months to refine cadence, confidence, or timing rather than to carry the whole thesis alone.\n"
-        "Sentence 1 should explain the full-record shape and what kind of record this is in context.\n"
-        "Sentence 2 should explain whether the latest 5-year, 3-year, and 12-month views reinforce, flatten, or undercut that broader story, and whether the recent publication rows make that read more or less trustworthy.\n"
-        "You may use actual years, counts, periods, or date ranges when they sharpen the reading, but use no more than two numeric comparisons in the body.\n"
-        "If the recent windows are lighter than the stronger part of the record, say that clearly without automatically calling it a long-run decline.\n"
-        "If the recent windows are reinforcing the broader pattern, say that clearly.\n"
-        "If multiple peak years exist, mention that.\n"
-        "If recent date detail is sparse or imprecise, say that explicitly.\n"
-        "Prefer meaning over inventory. Phrases like high-water mark, temporary lighter patch, reinforcing the longer-run build, broadly in line, or genuine recent slowdown are appropriate when supported by the evidence.\n"
-        "Do not describe controls, toggles, bars, or lines. Read the evidence as a publication-output pattern.\n"
-        "Avoid vague nouns like signal, activity, dynamics, or behaviour when a clearer phrase is available.\n"
-        "Headline should be 2 to 4 words and should not be generic.\n"
-        "Body should be 2 short sentences, about 55 to 95 words total, and should sound like an executive interpretation rather than a chart walk-through.\n"
-        + _build_publication_insight_note_guidance()
-        + "Consideration should add one concise caveat or reading aid that is different from the body, not a repeat.\n"
-        "Schema:\n"
-        "{\n"
-        '  \"overall_summary\": \"string\",\n'
-        '  \"sections\": [\n'
-        "    {\n"
-        '      \"key\": \"publication_volume_over_time\",\n'
-        '      \"headline\": \"2-4 words\",\n'
-        '      \"body\": \"2 sentences, about 50-85 words\",\n'
-        '      \"consideration_label\": \"optional, max 4 words\",\n'
-        '      \"consideration\": \"optional, max 35 words\"\n'
-        "    }\n"
-        "  ]\n"
-        "}\n"
-        "Return exactly one section: publication_volume_over_time.\n"
-        f"Evidence: {evidence_json}\n"
+    body_hint = _build_publication_volume_over_time_body(evidence)
+    evidence_payload = _build_publication_section_evidence_payload(
+        evidence,
+        analysis_brief={
+            "body_hint": body_hint,
+            "recent_read_hint": recent_read_hint,
+            "wider_context_hint": wider_context_hint,
+        },
+        confidence_flags={
+            "recent_support_strength": evidence.get("recent_support_strength"),
+            "phase_confidence_low": evidence.get("phase_confidence_low"),
+        },
+    )
+    return _build_publication_section_prompt(
+        request_line="This request is for the Publication Volume Over Time insight.",
+        section_key="publication_volume_over_time",
+        section_question="How has publication volume changed, and why does it matter?",
+        evidence_payload=evidence_payload,
+        allow_wider_context=True,
     )
 
 
 def _build_publication_article_type_over_time_prompt(evidence: dict[str, Any]) -> str:
-    compact_evidence = {
-        "total_publications": evidence.get("total_publications"),
-        "first_publication_year": evidence.get("first_publication_year"),
-        "last_publication_year": evidence.get("last_publication_year"),
-        "span_years_label": evidence.get("span_years_label"),
-        "all_window": evidence.get("all_window"),
-        "five_year_window": evidence.get("five_year_window"),
-        "three_year_window": evidence.get("three_year_window"),
-        "one_year_window": evidence.get("one_year_window"),
-        "latest_window": evidence.get("latest_window"),
-        "distinct_recent_windows": evidence.get("distinct_recent_windows") or [],
-        "full_record_mix_state": evidence.get("full_record_mix_state"),
-        "recent_window_change_state": evidence.get("recent_window_change_state"),
-        "recent_window_confidence": evidence.get("recent_window_confidence"),
-        "recent_breadth_direction": evidence.get("recent_breadth_direction"),
-        "five_matches_all": evidence.get("five_matches_all"),
-        "three_matches_all": evidence.get("three_matches_all"),
-        "one_matches_all": evidence.get("one_matches_all"),
-        "latest_year_is_partial": evidence.get("latest_year_is_partial"),
-        "latest_partial_year_label": evidence.get("latest_partial_year_label"),
-        "latest_window_total_count": evidence.get("latest_window_total_count"),
-        "as_of_date": evidence.get("as_of_date"),
-    }
-    evidence_json = json.dumps(compact_evidence, ensure_ascii=True)
-    return (
-        _build_publication_insight_prompt_preamble(
-            request_line="This request is for the Type of Articles Published Over Time insight.",
-            allow_wider_context=False,
-        )
-        + "The user has already seen the section title and supporting windows.\n"
-        "The insight must explain the whole section, not one active toggle.\n"
-        "The section combines the full-record article-type mix with the latest 5-year, 3-year, and 1-year windows.\n"
-        "You are given deterministic state labels in the evidence: full_record_mix_state, recent_window_change_state, recent_window_confidence, and recent_breadth_direction.\n"
-        "Use those labels as guardrails for synthesis, but do not copy them verbatim into the prose.\n"
-        "This must add value beyond the tooltip. Do not simply repeat the leading type in each window.\n"
-        "Answer two questions: what anchors the long-run article mix, and do the shorter recent windows meaningfully narrow, broaden, or change that mix?\n"
-        "Treat the 5-year and 3-year windows as the main recent evidence. Use the 1-year window only to confirm or qualify the read unless it has enough volume to stand on its own.\n"
-        "If the leader changes only in the shorter windows, explain that as a newer tilt rather than a full replacement of the long-run record.\n"
-        "If the same leader stays in place but the recent mix narrows or becomes more contested, say that clearly.\n"
-        "Do not over-focus on the top type if a secondary type is what makes the recent mix tighter, more contested, or genuinely reordered.\n"
-        "If the latest read is based on very few publications or a partial current year, keep that as a short confidence qualifier rather than the main analytical point.\n"
-        "Use actual years, ranges, labels, or percentages when they sharpen the interpretation, but avoid more than two numeric comparisons in the body.\n"
-        "Do not talk about charts, tables, toggles, bars, or controls. Read the evidence as a publication-mix pattern.\n"
-        "Headline should be 2 to 4 words and should not be generic.\n"
-        "Body should be 2 short sentences, about 55 to 95 words total, and should sound like an analyst's interpretation of the section rather than an inventory of counts.\n"
-        + _build_publication_insight_note_guidance()
-        + "Consideration should add one concise nuance, caution, or reading aid that is different from the body.\n"
-        "Schema:\n"
-        "{\n"
-        '  "overall_summary": "string",\n'
-        '  "sections": [\n'
-        "    {\n"
-        '      "key": "publication_article_type_over_time",\n'
-        '      "headline": "2-4 words",\n'
-        '      "body": "2 sentences, about 55-95 words",\n'
-        '      "consideration_label": "optional, max 4 words",\n'
-        '      "consideration": "optional, max 35 words"\n'
-        "    }\n"
-        "  ]\n"
-        "}\n"
-        "Return exactly one section: publication_article_type_over_time.\n"
-        f"Evidence: {evidence_json}\n"
+    analysis_brief = _build_publication_mix_prompt_brief(
+        evidence,
+        mix_name="article types",
+    )
+    evidence_payload = _build_publication_section_evidence_payload(
+        evidence,
+        analysis_brief=analysis_brief,
+        confidence_flags={
+            "recent_window_confidence": evidence.get("recent_window_confidence"),
+            "latest_year_is_partial": evidence.get("latest_year_is_partial"),
+        },
+    )
+    return _build_publication_section_prompt(
+        request_line="This request is for the Type of Articles Published Over Time insight.",
+        section_key="publication_article_type_over_time",
+        section_question="How has the mix of article types changed?",
+        evidence_payload=evidence_payload,
+        allow_wider_context=False,
+        extra_guidance=_build_publication_mix_extra_guidance("article types"),
     )
 
 
@@ -3985,6 +4794,11 @@ def _build_publication_type_over_time_evidence(*, user_id: str) -> dict[str, Any
     publications = [
         dict(item) for item in (drilldown.get("publications") or []) if isinstance(item, dict)
     ]
+    portfolio_context = _build_portfolio_context(metrics)
+    publication_library = _build_publication_library_context(
+        publications,
+        as_of_date=as_of_date,
+    )
     years_with_data = sorted(
         {
             year
@@ -4000,6 +4814,8 @@ def _build_publication_type_over_time_evidence(*, user_id: str) -> dict[str, Any
             "window_label": "All",
             "window_phrase": "across the full publication-type section",
             "data_sources": tile.get("data_source") or [],
+            "portfolio_context": portfolio_context,
+            "publication_library": publication_library,
             "total_publications": 0,
             "first_publication_year": None,
             "last_publication_year": None,
@@ -4186,6 +5002,8 @@ def _build_publication_type_over_time_evidence(*, user_id: str) -> dict[str, Any
         "window_label": "All",
         "window_phrase": "across the full publication-type section",
         "data_sources": tile.get("data_source") or [],
+        "portfolio_context": portfolio_context,
+        "publication_library": publication_library,
         "total_publications": max(
             0, int((all_window_serialized or {}).get("total_count") or len(publications))
         ),
@@ -4215,166 +5033,28 @@ def _build_publication_type_over_time_evidence(*, user_id: str) -> dict[str, Any
 
 
 def _build_publication_type_over_time_headline(evidence: dict[str, Any]) -> str:
-    recent_window_change_state = str(
-        evidence.get("recent_window_change_state") or ""
-    ).strip()
-    full_record_mix_state = str(evidence.get("full_record_mix_state") or "").strip()
-    if recent_window_change_state == "short_record":
-        return "Early mix read"
-    if recent_window_change_state in {"late_leader_shift", "leader_shift"}:
-        return "Recent mix shift"
-    if recent_window_change_state in {
-        "same_leader_more_concentrated",
-        "same_leader_narrower",
-    }:
-        return "Tighter recent mix"
-    if recent_window_change_state == "broader_recent":
-        return "Broader recent mix"
-    if full_record_mix_state in {"mixed", "tied_lead"}:
-        return "Mixed publication mix"
-    return "Stable publication mix"
+    return _build_publication_mix_headline(
+        evidence,
+        mixed_label="Publication mix is shared",
+        stable_label="Publication mix is stable",
+    )
 
 
 def _build_publication_type_over_time_full_record_clause(
     evidence: dict[str, Any]
 ) -> str:
-    all_window = evidence.get("all_window") if isinstance(evidence.get("all_window"), dict) else {}
-    span_years_label = str(evidence.get("span_years_label") or "").strip() or "the full record"
-    top_labels = [str(label).strip() for label in (all_window.get("top_labels") or []) if str(label).strip()]
-    if not top_labels:
-        return "Publication-type data is not available yet."
-    top_label_text = _format_period_list(top_labels)
-    top_count = max(0, int(all_window.get("top_count") or 0))
-    total_count = max(0, int(all_window.get("total_count") or 0))
-    top_share_pct = _safe_float(all_window.get("top_share_pct"))
-    second_label = str(all_window.get("second_label") or "").strip() or None
-    second_share_pct = _safe_float(all_window.get("second_share_pct"))
-    distinct_type_count = max(0, int(all_window.get("distinct_type_count") or 0))
-    if len(top_labels) > 1:
-        return (
-            f"Across {span_years_label}, the leading publication types are {top_label_text}, "
-            f"with {top_count} publications each, so the long-run mix is shared rather than led by one type."
-        )
-    if top_share_pct is not None and top_share_pct < 45:
-        return (
-            f"Across {span_years_label}, {top_label_text} is the largest publication type at "
-            f"{round(top_share_pct)}% of publications, so the full record stays relatively broad."
-        )
-    secondary_clause = (
-        f", ahead of {second_label} at {round(second_share_pct)}%"
-        if second_label and second_share_pct is not None
-        else ""
-    )
-    return (
-        f"Across {span_years_label}, {top_label_text} anchors the full record with "
-        f"{top_count} of {total_count} publications ({round(top_share_pct or 0)}%){secondary_clause}, "
-        f"and {distinct_type_count} visible publication types appear overall."
+    return _build_publication_mix_full_record_clause(
+        evidence,
+        mix_name="publication types",
     )
 
 
 def _build_publication_type_over_time_recent_clause(
     evidence: dict[str, Any]
 ) -> str:
-    all_window = evidence.get("all_window") if isinstance(evidence.get("all_window"), dict) else {}
-    five_year_window = (
-        evidence.get("five_year_window") if isinstance(evidence.get("five_year_window"), dict) else {}
-    )
-    three_year_window = (
-        evidence.get("three_year_window") if isinstance(evidence.get("three_year_window"), dict) else {}
-    )
-    one_year_window = (
-        evidence.get("one_year_window") if isinstance(evidence.get("one_year_window"), dict) else {}
-    )
-    latest_window = evidence.get("latest_window") if isinstance(evidence.get("latest_window"), dict) else {}
-    recent_window_change_state = str(
-        evidence.get("recent_window_change_state") or ""
-    ).strip()
-    recent_window_confidence = str(
-        evidence.get("recent_window_confidence") or ""
-    ).strip()
-    all_leader = _format_period_list(list(all_window.get("top_labels") or []))
-    latest_leader = _format_period_list(list(latest_window.get("top_labels") or []))
-    latest_top_share_pct = _safe_float(latest_window.get("top_share_pct"))
-    all_top_share_pct = _safe_float(all_window.get("top_share_pct"))
-    latest_range_label = str(latest_window.get("range_label") or "").strip() or "the latest window"
-    latest_view_label = (
-        f"the latest view ({latest_range_label})"
-        if latest_range_label != "the latest window"
-        else latest_range_label
-    )
-    latest_distinct_type_count = max(0, int(latest_window.get("distinct_type_count") or 0))
-    all_distinct_type_count = max(0, int(all_window.get("distinct_type_count") or 0))
-    latest_window_total_count = max(0, int(evidence.get("latest_window_total_count") or 0))
-    latest_partial_year_label = str(evidence.get("latest_partial_year_label") or "").strip() or None
-    distinct_recent_windows = [
-        str(item.get("range_label") or "").strip()
-        for item in (evidence.get("distinct_recent_windows") or [])
-        if isinstance(item, dict) and str(item.get("range_label") or "").strip()
-    ]
-    recent_windows_text = _format_period_list(distinct_recent_windows)
-    confidence_clause = ""
-    if recent_window_confidence == "too_thin":
-        confidence_clause = (
-            f" The latest read still only contains {latest_window_total_count} publications, "
-            "so treat that newest ordering as directional rather than settled."
-        )
-    elif recent_window_confidence == "thin":
-        confidence_clause = (
-            f" The latest read is still based on only {latest_window_total_count} publications, "
-            "so read it as an early tilt rather than a fixed new baseline."
-        )
-    elif recent_window_confidence == "partial_current_year" and latest_partial_year_label:
-        confidence_clause = (
-            f" The latest 1-year view includes {latest_partial_year_label}, "
-            "so that newest ordering can still move."
-        )
-
-    if recent_window_change_state == "short_record":
-        return (
-            "The recent 5-year, 3-year, and 1-year windows still overlap heavily with the full record, "
-            "so this section is mainly establishing the current publication-type baseline."
-        )
-    if (
-        recent_window_change_state == "late_leader_shift"
-        and _same_article_type_leader_set(five_year_window, all_window)
-        and not _same_article_type_leader_set(three_year_window, all_window)
-        and not _same_article_type_leader_set(one_year_window, all_window)
-    ):
-        return (
-            f"The latest 5-year view still looks like the full record, but the 3-year and 1-year views move toward "
-            f"{latest_leader} instead of the long-run lead of {all_leader}.{confidence_clause}"
-        )
-    if recent_window_change_state in {"late_leader_shift", "leader_shift"}:
-        return (
-            f"The shorter recent windows move toward {latest_leader} instead of the full-record lead of "
-            f"{all_leader}, so the newer mix is not just a smaller version of the whole portfolio.{confidence_clause}"
-        )
-    if (
-        recent_window_change_state == "same_leader_more_concentrated"
-        and latest_top_share_pct is not None
-        and all_top_share_pct is not None
-    ):
-        return (
-            f"The same leading type still anchors the newer windows, but its share rises from "
-            f"{round(all_top_share_pct)}% across the full record to {round(latest_top_share_pct)}% in {latest_view_label}.{confidence_clause}"
-        )
-    if recent_window_change_state == "same_leader_narrower":
-        return (
-            f"The same leading type still anchors the newer windows, but {latest_view_label} narrows to "
-            f"{latest_distinct_type_count} visible publication types instead of {all_distinct_type_count}.{confidence_clause}"
-        )
-    if recent_window_change_state == "broader_recent":
-        return (
-            f"{latest_view_label} brings {latest_distinct_type_count} visible publication types into view instead of "
-            f"{all_distinct_type_count}, so the recent mix looks broader rather than more concentrated.{confidence_clause}"
-        )
-    if recent_windows_text:
-        return (
-            f"Across {recent_windows_text}, the recent windows broadly preserve the same publication-type centre of gravity "
-            f"as the full record.{confidence_clause}"
-        )
-    return (
-        f"The latest windows broadly preserve the same publication-type centre of gravity as the full record.{confidence_clause}"
+    return _build_publication_mix_recent_clause(
+        evidence,
+        mix_name="publication types",
     )
 
 
@@ -4407,51 +5087,10 @@ def _build_publication_type_over_time_fallback_payload(
         f"{_build_publication_type_over_time_full_record_clause(evidence)} "
         f"{_build_publication_type_over_time_recent_clause(evidence)}"
     ).strip()
-    recent_window_change_state = str(
-        evidence.get("recent_window_change_state") or ""
-    ).strip()
-    latest_window_total_count = max(0, int(evidence.get("latest_window_total_count") or 0))
-    latest_partial_year_label = str(evidence.get("latest_partial_year_label") or "").strip() or None
-    if latest_window_total_count <= 3:
-        consideration_label = "Recent window"
-        partial_clause = (
-            f" and includes {latest_partial_year_label}"
-            if latest_partial_year_label
-            else ""
-        )
-        consideration = (
-            f"Because the latest 1-year view only contains {latest_window_total_count} "
-            f"publication{'s' if latest_window_total_count != 1 else ''}{partial_clause}, "
-            "treat that newest ordering as directional rather than settled."
-        )
-    elif latest_partial_year_label:
-        consideration_label = "Partial year"
-        consideration = (
-            f"The latest 1-year view includes {latest_partial_year_label}, so the newest ordering can still move as more publications land."
-        )
-    elif recent_window_change_state in {"late_leader_shift", "leader_shift"}:
-        consideration_label = "How to read it"
-        consideration = (
-            "Treat the newer leading type as a recent tilt unless it keeps holding beyond the shortest windows."
-        )
-    elif recent_window_change_state in {
-        "same_leader_more_concentrated",
-        "same_leader_narrower",
-    }:
-        consideration_label = "Concentration"
-        consideration = (
-            "Read the section as a tightening of the existing mix, not automatically as a new dominant publication model."
-        )
-    elif recent_window_change_state == "broader_recent":
-        consideration_label = "Breadth"
-        consideration = (
-            "Use the shorter windows to see whether recent diversity is sustained or just a small-sample expansion."
-        )
-    else:
-        consideration_label = "Coverage"
-        consideration = (
-            "Use the full record and recent windows together; neither alone captures how concentrated the mix really is."
-        )
+    consideration_label, consideration = _build_publication_mix_consideration(
+        evidence,
+        mix_name="publication types",
+    )
 
     return {
         "overall_summary": body,
@@ -4482,68 +5121,25 @@ def _build_publication_type_over_time_fallback_payload(
 
 
 def _build_publication_type_over_time_prompt(evidence: dict[str, Any]) -> str:
-    compact_evidence = {
-        "total_publications": evidence.get("total_publications"),
-        "first_publication_year": evidence.get("first_publication_year"),
-        "last_publication_year": evidence.get("last_publication_year"),
-        "span_years_label": evidence.get("span_years_label"),
-        "all_window": evidence.get("all_window"),
-        "five_year_window": evidence.get("five_year_window"),
-        "three_year_window": evidence.get("three_year_window"),
-        "one_year_window": evidence.get("one_year_window"),
-        "latest_window": evidence.get("latest_window"),
-        "distinct_recent_windows": evidence.get("distinct_recent_windows") or [],
-        "full_record_mix_state": evidence.get("full_record_mix_state"),
-        "recent_window_change_state": evidence.get("recent_window_change_state"),
-        "recent_window_confidence": evidence.get("recent_window_confidence"),
-        "recent_breadth_direction": evidence.get("recent_breadth_direction"),
-        "five_matches_all": evidence.get("five_matches_all"),
-        "three_matches_all": evidence.get("three_matches_all"),
-        "one_matches_all": evidence.get("one_matches_all"),
-        "latest_year_is_partial": evidence.get("latest_year_is_partial"),
-        "latest_partial_year_label": evidence.get("latest_partial_year_label"),
-        "latest_window_total_count": evidence.get("latest_window_total_count"),
-        "as_of_date": evidence.get("as_of_date"),
-    }
-    evidence_json = json.dumps(compact_evidence, ensure_ascii=True)
-    return (
-        _build_publication_insight_prompt_preamble(
-            request_line="This request is for the Type of Publications Published Over Time insight.",
-            allow_wider_context=False,
-        )
-        + "The user has already seen the section title and supporting windows.\n"
-        "The insight must explain the whole section, not one active toggle.\n"
-        "The section combines the full-record publication-type mix with the latest 5-year, 3-year, and 1-year windows.\n"
-        "You are given deterministic state labels in the evidence: full_record_mix_state, recent_window_change_state, recent_window_confidence, and recent_breadth_direction.\n"
-        "Use those labels as guardrails for synthesis, but do not copy them verbatim into the prose.\n"
-        "This must add value beyond the tooltip. Do not simply repeat the leading type in each window.\n"
-        "Answer two questions: what anchors the long-run publication mix, and do the shorter recent windows meaningfully narrow, broaden, or change that mix?\n"
-        "Treat the 5-year and 3-year windows as the main recent evidence. Use the 1-year window only to confirm or qualify the read unless it has enough volume to stand on its own.\n"
-        "If the leader changes only in the shorter windows, explain that as a newer tilt rather than a full replacement of the long-run record.\n"
-        "If the same leader stays in place but the recent mix narrows or becomes more contested, say that clearly.\n"
-        "Do not over-focus on the top type if a secondary type is what makes the recent mix tighter, more contested, or genuinely reordered.\n"
-        "If the latest read is based on very few publications or a partial current year, keep that as a short confidence qualifier rather than the main analytical point.\n"
-        "Use actual years, ranges, labels, or percentages when they sharpen the interpretation, but avoid more than two numeric comparisons in the body.\n"
-        "Do not talk about charts, tables, toggles, bars, or controls. Read the evidence as a publication-mix pattern.\n"
-        "Headline should be 2 to 4 words and should not be generic.\n"
-        "Body should be 2 short sentences, about 55 to 95 words total, and should sound like an analyst's interpretation of the section rather than an inventory of counts.\n"
-        + _build_publication_insight_note_guidance()
-        + "Consideration should add one concise nuance, caution, or reading aid that is different from the body.\n"
-        "Schema:\n"
-        "{\n"
-        '  "overall_summary": "string",\n'
-        '  "sections": [\n'
-        "    {\n"
-        '      "key": "publication_type_over_time",\n'
-        '      "headline": "2-4 words",\n'
-        '      "body": "2 sentences, about 55-95 words",\n'
-        '      "consideration_label": "optional, max 4 words",\n'
-        '      "consideration": "optional, max 35 words"\n'
-        "    }\n"
-        "  ]\n"
-        "}\n"
-        "Return exactly one section: publication_type_over_time.\n"
-        f"Evidence: {evidence_json}\n"
+    analysis_brief = _build_publication_mix_prompt_brief(
+        evidence,
+        mix_name="publication types",
+    )
+    evidence_payload = _build_publication_section_evidence_payload(
+        evidence,
+        analysis_brief=analysis_brief,
+        confidence_flags={
+            "recent_window_confidence": evidence.get("recent_window_confidence"),
+            "latest_year_is_partial": evidence.get("latest_year_is_partial"),
+        },
+    )
+    return _build_publication_section_prompt(
+        request_line="This request is for the Type of Publications Published Over Time insight.",
+        section_key="publication_type_over_time",
+        section_question="How has the mix of publication types changed?",
+        evidence_payload=evidence_payload,
+        allow_wider_context=False,
+        extra_guidance=_build_publication_mix_extra_guidance("publication types"),
     )
 
 
@@ -4564,6 +5160,10 @@ def _publication_type_over_time_body_is_too_generic(
         "publication mix over time",
         "different publication types",
         "shows the publication mix",
+        "anchors the full record",
+        "latest view",
+        "centre of gravity",
+        "center of gravity",
     )
     if any(phrase in normalized for phrase in generic_phrases):
         return True
@@ -4578,9 +5178,6 @@ def _publication_type_over_time_body_is_too_generic(
         str(((all_window.get("top_labels") or [None])[0]) or "").strip().lower(),
     )
     recent_signals = (
-        "recent",
-        "latest",
-        "1-year",
         "3-year",
         "5-year",
         str(latest_window.get("range_label") or "").strip().lower(),
@@ -4622,6 +5219,11 @@ def _publication_type_over_time_headline_is_too_generic(headline: str) -> bool:
         "publication type over time",
         "types over time",
         "recent change",
+        "recent mix shift",
+        "tighter recent mix",
+        "broader recent mix",
+        "stable publication mix",
+        "mixed publication mix",
     }
     return normalized in generic
 
@@ -4643,6 +5245,10 @@ def _publication_type_over_time_text_is_unsupported(text: str) -> bool:
         "line",
         "toggle",
         "control",
+        "recent signal",
+        "latest view",
+        "centre of gravity",
+        "center of gravity",
     )
     return any(token in normalized for token in unsupported_tokens)
 
@@ -4734,6 +5340,9 @@ def _publication_volume_over_time_body_is_too_generic(
         "publication trend",
         "shows publication volume",
         "publication activity",
+        "middle-to-late run",
+        "high-water mark",
+        "recent detail",
     )
     if any(phrase in normalized for phrase in generic_phrases):
         return True
@@ -4774,6 +5383,20 @@ def _publication_volume_over_time_body_is_too_generic(
     peak_years = [int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None]
     if peak_years and not any(str(year) in normalized for year in peak_years[:3]) and "peak" not in normalized:
         return True
+    stronger_run_label = str(evidence.get("stronger_run_label") or "").strip().lower()
+    if stronger_run_label and str(evidence.get("recent_position") or "").strip() in {
+        "recently_lighter_than_long_run",
+        "very_sparse_recent_window",
+        "short_term_softening",
+        "longer_run_softening",
+    }:
+        if stronger_run_label not in normalized:
+            return True
+        if not any(
+            signal in normalized
+            for signal in ("pause", "lower baseline", "softer patch", "softer run", "below")
+        ):
+            return True
     interpretive_signals = (
         "rather than",
         "which fits",
@@ -4810,6 +5433,10 @@ def _publication_article_type_over_time_body_is_too_generic(
         "article mix over time",
         "different article types",
         "shows the article mix",
+        "anchors the full record",
+        "latest view",
+        "centre of gravity",
+        "center of gravity",
     )
     if any(phrase in normalized for phrase in generic_phrases):
         return True
@@ -4827,17 +5454,12 @@ def _publication_article_type_over_time_body_is_too_generic(
         ],
     )
     recent_signals = (
-        "recent",
-        "latest",
-        "1-year",
         "3-year",
         "5-year",
-        "window",
         str(latest_window.get("range_label") or "").strip().lower(),
     )
     mix_signals = (
         "mix",
-        "anchor",
         "tilt",
         "shift",
         "narrow",
@@ -4845,7 +5467,8 @@ def _publication_article_type_over_time_body_is_too_generic(
         "concentrat",
         "lead",
         "ordering",
-        "not just",
+        "largest",
+        "replacement",
     )
     has_long_run = any(signal and signal in normalized for signal in long_run_signals)
     has_recent = any(signal and signal in normalized for signal in recent_signals)
@@ -4994,6 +5617,11 @@ def _publication_article_type_over_time_headline_is_too_generic(headline: str) -
         "article type over time",
         "types over time",
         "recent change",
+        "recent mix shift",
+        "tighter recent mix",
+        "broader recent mix",
+        "stable article mix",
+        "mixed article mix",
     }
     return normalized in generic
 
@@ -5030,6 +5658,36 @@ def _publication_output_pattern_text_is_unsupported(*, text: str, evidence: dict
     return False
 
 
+def _publication_output_pattern_consideration_is_too_generic(
+    *, label: str, consideration: str, evidence: dict[str, Any]
+) -> bool:
+    normalized = str(consideration or "").strip().lower()
+    label_normalized = str(label or "").strip().lower()
+    if not normalized:
+        return False
+    if label_normalized in {"peak share", "peak-year share"}:
+        return True
+    if "calculated per strongest year" in normalized:
+        return True
+    phase_label = str(evidence.get("phase_label") or "").strip()
+    peak_years = [int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None]
+    if phase_label in {"Plateauing", "Contracting"} and len(peak_years) > 1:
+        if not any(
+            signal in normalized
+            for signal in (
+                "shared",
+                "isolated",
+                "momentum",
+                "next complete year",
+                "another year",
+                "broader",
+                "record",
+            )
+        ):
+            return True
+    return False
+
+
 def _publication_volume_over_time_text_is_unsupported(text: str) -> bool:
     normalized = str(text or "").strip().lower()
     if not normalized:
@@ -5044,6 +5702,34 @@ def _publication_volume_over_time_text_is_unsupported(text: str) -> bool:
         "field normalized",
     )
     return any(phrase in normalized for phrase in forbidden_phrases)
+
+
+def _publication_volume_over_time_consideration_is_too_generic(
+    *, consideration_label: str, consideration: str, evidence: dict[str, Any]
+) -> bool:
+    label_normalized = str(consideration_label or "").strip().lower()
+    consideration_normalized = str(consideration or "").strip().lower()
+    if not consideration_normalized:
+        return False
+    if label_normalized in {"recent detail", "date detail"} and str(
+        evidence.get("volume_read_mode") or ""
+    ).strip() in {"pause_below_band", "lower_recent_baseline", "soft_patch_with_limited_support"}:
+        return True
+    if not any(
+        signal in consideration_normalized
+        for signal in (
+            "record",
+            "portfolio",
+            "recent face",
+            "older strong years",
+            "fresh publication volume",
+            "refreshed",
+            "reverse",
+            "rely",
+        )
+    ):
+        return True
+    return False
 
 
 def _publication_production_phase_text_is_unsupported(text: str) -> bool:
@@ -5083,8 +5769,57 @@ def _publication_article_type_over_time_text_is_unsupported(text: str) -> bool:
         "line",
         "toggle",
         "control",
+        "recent signal",
+        "latest view",
+        "centre of gravity",
+        "center of gravity",
     )
     return any(token in normalized for token in unsupported_tokens)
+
+
+def _publication_mix_consideration_is_too_generic(
+    *, consideration_label: str, consideration: str
+) -> bool:
+    label_normalized = str(consideration_label or "").strip().lower()
+    consideration_normalized = str(consideration or "").strip().lower()
+    if not consideration_normalized:
+        return False
+    if label_normalized in {"recent signal", "recent window"}:
+        return True
+    if any(
+        phrase in consideration_normalized
+        for phrase in (
+            "latest view",
+            "newest ordering",
+            "centre of gravity",
+            "center of gravity",
+        )
+    ):
+        return True
+    return False
+
+
+def _publication_mix_headline_is_inconsistent(
+    *, headline: str, evidence: dict[str, Any]
+) -> bool:
+    normalized = str(headline or "").strip().lower()
+    if not normalized:
+        return False
+    recent_window_change_state = str(
+        evidence.get("recent_window_change_state") or ""
+    ).strip()
+    if recent_window_change_state == "broader_recent" and any(
+        token in normalized for token in ("tighter", "narrow", "concentrat")
+    ):
+        return True
+    if recent_window_change_state in {
+        "same_leader_more_concentrated",
+        "same_leader_narrower",
+    } and any(token in normalized for token in ("broader", "broaden", "wider")):
+        return True
+    if recent_window_change_state in {"late_leader_shift", "leader_shift"} and "stable" in normalized:
+        return True
+    return False
 
 
 def _coerce_publication_volume_over_time_payload(payload: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
@@ -5121,7 +5856,11 @@ def _coerce_publication_volume_over_time_payload(payload: dict[str, Any], eviden
         max_chars=180,
         require_sentence_end=True,
     )
-    if _publication_volume_over_time_text_is_unsupported(consideration):
+    if _publication_volume_over_time_text_is_unsupported(consideration) or _publication_volume_over_time_consideration_is_too_generic(
+        consideration_label=consideration_label,
+        consideration=consideration,
+        evidence=evidence,
+    ):
         consideration_label = str(fallback_section.get("consideration_label") or "")
         consideration = str(fallback_section.get("consideration") or "")
     overall_summary = _trim_publication_output_pattern_text(
@@ -5165,7 +5904,12 @@ def _coerce_publication_article_type_over_time_payload(
     headline = str(model_section.get("headline") or "").strip() or str(
         fallback_section.get("headline") or ""
     )
-    if _publication_article_type_over_time_headline_is_too_generic(headline):
+    if _publication_article_type_over_time_headline_is_too_generic(
+        headline
+    ) or _publication_mix_headline_is_inconsistent(
+        headline=headline,
+        evidence=evidence,
+    ):
         headline = str(fallback_section.get("headline") or headline)
     body = str(model_section.get("body") or "").strip() or str(
         fallback_section.get("body") or ""
@@ -5195,7 +5939,12 @@ def _coerce_publication_article_type_over_time_payload(
         max_chars=180,
         require_sentence_end=True,
     )
-    if _publication_article_type_over_time_text_is_unsupported(consideration):
+    if _publication_article_type_over_time_text_is_unsupported(
+        consideration
+    ) or _publication_mix_consideration_is_too_generic(
+        consideration_label=consideration_label,
+        consideration=consideration,
+    ):
         consideration_label = str(fallback_section.get("consideration_label") or "")
         consideration = str(fallback_section.get("consideration") or "")
     overall_summary = _trim_publication_output_pattern_text(
@@ -5240,7 +5989,12 @@ def _coerce_publication_type_over_time_payload(
     headline = str(model_section.get("headline") or "").strip() or str(
         fallback_section.get("headline") or ""
     )
-    if _publication_type_over_time_headline_is_too_generic(headline):
+    if _publication_type_over_time_headline_is_too_generic(
+        headline
+    ) or _publication_mix_headline_is_inconsistent(
+        headline=headline,
+        evidence=evidence,
+    ):
         headline = str(fallback_section.get("headline") or headline)
     body = str(model_section.get("body") or "").strip() or str(
         fallback_section.get("body") or ""
@@ -5270,7 +6024,12 @@ def _coerce_publication_type_over_time_payload(
         max_chars=180,
         require_sentence_end=True,
     )
-    if _publication_type_over_time_text_is_unsupported(consideration):
+    if _publication_type_over_time_text_is_unsupported(
+        consideration
+    ) or _publication_mix_consideration_is_too_generic(
+        consideration_label=consideration_label,
+        consideration=consideration,
+    ):
         consideration_label = str(fallback_section.get("consideration_label") or "")
         consideration = str(fallback_section.get("consideration") or "")
     overall_summary = _trim_publication_output_pattern_text(
@@ -5314,7 +6073,7 @@ def _coerce_publication_output_pattern_payload(payload: dict[str, Any], evidence
     if _publication_output_pattern_headline_is_too_generic(headline):
         headline = str(fallback_section.get("headline") or headline)
     body = str(model_section.get("body") or "").strip() or str(fallback_section.get("body") or "")
-    body = _trim_publication_output_pattern_text(body, max_chars=240, require_sentence_end=True)
+    body = _trim_publication_output_pattern_text(body, max_chars=320, require_sentence_end=True)
     if _publication_output_pattern_body_is_too_generic(
         body=body,
         fallback_body=str(fallback_section.get("body") or ""),
@@ -5330,7 +6089,11 @@ def _coerce_publication_output_pattern_payload(payload: dict[str, Any], evidence
         max_chars=180,
         require_sentence_end=True,
     )
-    if _publication_output_pattern_text_is_unsupported(text=consideration, evidence=evidence):
+    if _publication_output_pattern_text_is_unsupported(text=consideration, evidence=evidence) or _publication_output_pattern_consideration_is_too_generic(
+        label=consideration_label,
+        consideration=consideration,
+        evidence=evidence,
+    ):
         consideration_label = str(fallback_section.get("consideration_label") or "")
         consideration = str(fallback_section.get("consideration") or "")
     overall_summary = _trim_publication_output_pattern_text(
@@ -5374,7 +6137,7 @@ def _coerce_publication_production_phase_payload(payload: dict[str, Any], eviden
     if _publication_production_phase_headline_is_too_generic(headline, phase_label):
         headline = str(fallback_section.get("headline") or headline)
     body = str(model_section.get("body") or "").strip() or str(fallback_section.get("body") or "")
-    body = _trim_publication_output_pattern_text(body, max_chars=240, require_sentence_end=True)
+    body = _trim_publication_output_pattern_text(body, max_chars=320, require_sentence_end=True)
     if _publication_production_phase_body_is_too_generic(
         body=body,
         fallback_body=str(fallback_section.get("body") or ""),
@@ -6449,6 +7212,15 @@ def _build_publication_insights_provenance_evidence(
             "current_pace_comparison_mean": evidence.get("current_pace_comparison_mean"),
             "current_pace_comparison_delta": evidence.get("current_pace_comparison_delta"),
             "current_pace_signal": evidence.get("current_pace_signal"),
+            "high_run_years": list(evidence.get("high_run_years") or []),
+            "high_run_label": evidence.get("high_run_label"),
+            "high_run_min_count": evidence.get("high_run_min_count"),
+            "high_run_max_count": evidence.get("high_run_max_count"),
+            "high_run_mean": evidence.get("high_run_mean"),
+            "last_peak_year": evidence.get("last_peak_year"),
+            "years_since_last_peak": evidence.get("years_since_last_peak"),
+            "post_peak_complete_years": evidence.get("post_peak_complete_years"),
+            "latest_gap_from_high_run_mean": evidence.get("latest_gap_from_high_run_mean"),
             "as_of_date": evidence.get("as_of_date"),
         }
     if section_key == "publication_volume_over_time":
@@ -6484,6 +7256,17 @@ def _build_publication_insights_provenance_evidence(
             "overall_trajectory": evidence.get("overall_trajectory"),
             "recent_position": evidence.get("recent_position"),
             "recent_detail_pattern": evidence.get("recent_detail_pattern"),
+            "stronger_run_label": evidence.get("stronger_run_label"),
+            "stronger_run_source": evidence.get("stronger_run_source"),
+            "stronger_run_block_count": evidence.get("stronger_run_block_count"),
+            "stronger_run_min_count": evidence.get("stronger_run_min_count"),
+            "stronger_run_max_count": evidence.get("stronger_run_max_count"),
+            "stronger_run_mean": evidence.get("stronger_run_mean"),
+            "stronger_run_latest_count": evidence.get("stronger_run_latest_count"),
+            "stronger_run_latest_label": evidence.get("stronger_run_latest_label"),
+            "stronger_run_gap_from_mean": evidence.get("stronger_run_gap_from_mean"),
+            "recent_support_strength": evidence.get("recent_support_strength"),
+            "volume_read_mode": evidence.get("volume_read_mode"),
             "recent_monthly_period_label": evidence.get("recent_monthly_period_label"),
             "recent_monthly_period_end_label": evidence.get("recent_monthly_period_end_label"),
             "recent_monthly_total": evidence.get("recent_monthly_total"),

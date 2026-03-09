@@ -695,6 +695,113 @@ def test_list_journals_prefers_metric_journal_name_over_stale_work_venue(
     assert payload["publication_count"] == 1
 
 
+def test_list_journals_ignores_placeholder_source_identity_for_grouping(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with session_scope() as session:
+        user = User(
+            email="persona-journal-rollup-placeholder-source@example.com",
+            password_hash="test-hash",
+            name="Persona Journal Rollup Placeholder Source",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        heart_work = Work(
+            user_id=user_id,
+            title="Heart supplement abstract",
+            title_lower="heart supplement abstract",
+            year=2024,
+            doi="10.1136/heartjnl-2024-bscmr.15",
+            work_type="conference-abstract",
+            publication_type="Original research",
+            venue_name="Heart",
+            journal="Heart",
+            publisher="BMJ",
+            abstract="",
+            keywords=[],
+            url="https://doi.org/10.1136/heartjnl-2024-bscmr.15",
+            provenance="manual",
+            openalex_source_id="S4306500044",
+            venue_type="journal",
+        )
+        flgastro_work = Work(
+            user_id=user_id,
+            title="Frontline Gastro supplement abstract",
+            title_lower="frontline gastro supplement abstract",
+            year=2024,
+            doi="10.1136/flgastro-2024-bspghan.50",
+            work_type="conference-abstract",
+            publication_type="Original research",
+            venue_name="Frontline Gastroenterology",
+            journal="Frontline Gastroenterology",
+            publisher="BMJ",
+            abstract="",
+            keywords=[],
+            url="https://doi.org/10.1136/flgastro-2024-bspghan.50",
+            provenance="manual",
+            openalex_source_id="S4306500044",
+            venue_type="journal",
+        )
+        session.add_all([heart_work, flgastro_work])
+        session.flush()
+
+        session.add(
+            JournalProfile(
+                provider="openalex",
+                provider_journal_id="S4306500044",
+                display_name="Abstracts",
+                venue_type="journal",
+            )
+        )
+        session.add_all(
+            [
+                MetricsSnapshot(
+                    work_id=str(heart_work.id),
+                    provider="openalex",
+                    citations_count=0,
+                    metric_payload={
+                        "journal_name": "Abstracts",
+                        "source": {
+                            "id": "https://openalex.org/S4306500044",
+                            "display_name": "Abstracts",
+                            "type": "journal",
+                        },
+                        "open_access": {
+                            "oa_url": "https://heart.bmj.com/content/heartjnl/110/Suppl_4/A13.full.pdf"
+                        },
+                        "doi": "10.1136/heartjnl-2024-bscmr.15",
+                    },
+                ),
+                MetricsSnapshot(
+                    work_id=str(flgastro_work.id),
+                    provider="openalex",
+                    citations_count=0,
+                    metric_payload={
+                        "journal_name": "Abstracts",
+                        "source": {
+                            "id": "https://openalex.org/S4306500044",
+                            "display_name": "Abstracts",
+                            "type": "journal",
+                        },
+                        "doi": "10.1136/flgastro-2024-bspghan.50",
+                    },
+                ),
+            ]
+        )
+
+    journals = list_journals(user_id=user_id)
+    display_names = {item["display_name"] for item in journals}
+    assert "Abstracts" not in display_names
+    assert "Heart" in display_names
+    assert "Frontline Gastroenterology" in display_names
+    assert len(journals) == 2
+
+
 def test_sync_metrics_reuses_pending_journal_profile_for_shared_source(
     monkeypatch, tmp_path
 ) -> None:

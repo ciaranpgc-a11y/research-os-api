@@ -1057,6 +1057,35 @@ class JournalProfile(Base):
     is_in_doaj: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     apc_usd: Mapped[int | None] = mapped_column(Integer, nullable=True)
     homepage_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    works_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cited_by_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    publisher_reported_impact_factor: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    publisher_reported_impact_factor_year: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    publisher_reported_impact_factor_label: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    publisher_reported_impact_factor_source_url: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    time_to_first_decision_days: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    time_to_publication_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    editor_in_chief_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    editorial_source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    editorial_source_title: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    editorial_confidence: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    editorial_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    editorial_raw_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    editorial_last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     raw_payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
     last_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -1969,6 +1998,105 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                 text("CREATE INDEX IF NOT EXISTS ix_works_issn_l ON works (issn_l)")
             )
 
+        if _sqlite_table_exists(connection, "journal_profiles"):
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="works_count",
+                column_sql="INTEGER",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="cited_by_count",
+                column_sql="INTEGER",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="publisher_reported_impact_factor",
+                column_sql="FLOAT",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="publisher_reported_impact_factor_year",
+                column_sql="INTEGER",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="publisher_reported_impact_factor_label",
+                column_sql="VARCHAR(64)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="publisher_reported_impact_factor_source_url",
+                column_sql="TEXT",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="time_to_first_decision_days",
+                column_sql="INTEGER",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="time_to_publication_days",
+                column_sql="INTEGER",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="editor_in_chief_name",
+                column_sql="VARCHAR(255)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="editorial_source_url",
+                column_sql="TEXT",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="editorial_source_title",
+                column_sql="VARCHAR(255)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="editorial_confidence",
+                column_sql="VARCHAR(32)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="editorial_notes",
+                column_sql="TEXT",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="editorial_raw_json",
+                column_sql="JSON",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="editorial_last_verified_at",
+                column_sql="DATETIME",
+            )
+            connection.execute(
+                text(
+                    "UPDATE journal_profiles "
+                    "SET editorial_raw_json = '{}' "
+                    "WHERE editorial_raw_json IS NULL"
+                )
+            )
+
         if _sqlite_table_exists(connection, "projects"):
             _sqlite_add_column_if_missing(
                 connection,
@@ -2294,6 +2422,103 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
         )
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_works_issn_l ON works (issn_l)")
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS works_count INTEGER"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS cited_by_count INTEGER"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS publisher_reported_impact_factor DOUBLE PRECISION"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS publisher_reported_impact_factor_year INTEGER"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS publisher_reported_impact_factor_label VARCHAR(64)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS publisher_reported_impact_factor_source_url TEXT"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS time_to_first_decision_days INTEGER"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS time_to_publication_days INTEGER"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS editor_in_chief_name VARCHAR(255)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS editorial_source_url TEXT"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS editorial_source_title VARCHAR(255)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS editorial_confidence VARCHAR(32)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS editorial_notes TEXT"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS editorial_raw_json JSON"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS editorial_last_verified_at TIMESTAMPTZ"
+            )
+        )
+        connection.execute(
+            text(
+                "UPDATE journal_profiles "
+                "SET editorial_raw_json = '{}'::json "
+                "WHERE editorial_raw_json IS NULL"
+            )
         )
 
 

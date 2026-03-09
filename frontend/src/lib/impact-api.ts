@@ -67,6 +67,7 @@ import type {
   PersonaEmbeddingsGeneratePayload,
   PersonaMetricsSyncPayload,
   PersonaJournal,
+  PersonaJournalRefreshPayload,
   PublicationsAnalyticsResponsePayload,
   PublicationsAnalyticsSummaryPayload,
   PublicationsAnalyticsTimeseriesPayload,
@@ -1094,6 +1095,31 @@ export async function listPersonaJournals(token: string): Promise<PersonaJournal
       headers: authHeaders(token),
     },
     'Journals lookup failed',
+  )
+}
+
+export async function refreshPersonaJournals(
+  token: string,
+  input: {
+    includeEditorialIntel?: boolean
+    force?: boolean
+  } = {},
+): Promise<PersonaJournalRefreshPayload> {
+  return requestJson<PersonaJournalRefreshPayload>(
+    `${API_BASE_URL}/v1/persona/journals/refresh`,
+    {
+      method: 'POST',
+      headers: {
+        ...authHeaders(token),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        include_editorial_intel: input.includeEditorialIntel ?? true,
+        force: input.force ?? false,
+      }),
+    },
+    'Journal intelligence refresh failed',
+    { timeoutMs: 120_000, retryCount: 1 },
   )
 }
 
