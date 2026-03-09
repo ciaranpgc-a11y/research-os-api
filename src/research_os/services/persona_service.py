@@ -8,7 +8,7 @@ import math
 import os
 import re
 import time
-from statistics import mean
+from statistics import mean, median
 from typing import Any
 import xml.etree.ElementTree as ET
 
@@ -22,12 +22,19 @@ from research_os.db import (
     CollaboratorEdge,
     Embedding,
     ImpactSnapshot,
+    JournalProfile,
     MetricsSnapshot,
     User,
     Work,
     WorkAuthorship,
     create_all_tables,
     session_scope,
+)
+from research_os.services.journal_identity import (
+    extract_openalex_source_id,
+    normalize_issn,
+    normalize_issns,
+    normalize_venue_type,
 )
 from research_os.services.metrics_provider_service import get_metrics_provider
 from research_os.services.api_telemetry_service import record_api_usage_event
@@ -81,6 +88,29 @@ MISSING_VENUE_VALUES = {
     "-",
     "—",
 }
+NON_JOURNAL_VENUE_TYPES = {
+    "book-series",
+    "conference",
+    "dataset",
+    "ebook-platform",
+    "metadata",
+    "other",
+    "preprint",
+    "repository",
+}
+NON_JOURNAL_VENUE_HINTS = (
+    "arxiv",
+    "biorxiv",
+    "dataverse",
+    "dryad",
+    "figshare",
+    "medrxiv",
+    "osf",
+    "research square",
+    "ssrn",
+    "zenodo",
+)
+JOURNAL_METRIC_LABEL = "2yr_mean_citedness"
 PMID_PATTERNS = [
     re.compile(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", re.IGNORECASE),
     re.compile(r"/pubmed/(\d+)", re.IGNORECASE),
@@ -106,15 +136,11 @@ ARTICLE_TYPE_EDITORIAL_PATTERN = re.compile(
     r"\b(editorial|commentary|perspective|viewpoint|opinion)\b",
     re.IGNORECASE,
 )
-ARTICLE_TYPE_CASE_PATTERN = re.compile(
-    r"\b(case report|case series)\b", re.IGNORECASE
-)
+ARTICLE_TYPE_CASE_PATTERN = re.compile(r"\b(case report|case series)\b", re.IGNORECASE)
 ARTICLE_TYPE_PROTOCOL_PATTERN = re.compile(
     r"\b(protocol|study protocol)\b", re.IGNORECASE
 )
-ARTICLE_TYPE_LETTER_PATTERN = re.compile(
-    r"\b(letter|correspondence)\b", re.IGNORECASE
-)
+ARTICLE_TYPE_LETTER_PATTERN = re.compile(r"\b(letter|correspondence)\b", re.IGNORECASE)
 WORK_TYPE_CONFERENCE_PATTERN = re.compile(
     r"\b(conference|congress|symposium|workshop|annual meeting|scientific sessions|proceedings|poster session)\b",
     re.IGNORECASE,
@@ -146,13 +172,17 @@ WORK_TYPE_FLGASTRO_SUPPLEMENT_ABSTRACT_DOI_PATTERN = re.compile(
     re.IGNORECASE,
 )
 WORK_TYPE_THESIS_PATTERN = re.compile(r"\b(thesis|dissertation)\b", re.IGNORECASE)
-WORK_TYPE_DATASET_PATTERN = re.compile(r"\b(dataset|data set|data-set)\b", re.IGNORECASE)
+WORK_TYPE_DATASET_PATTERN = re.compile(
+    r"\b(dataset|data set|data-set)\b", re.IGNORECASE
+)
 WORK_TYPE_SUPPLEMENTARY_PATTERN = re.compile(
     r"\b(additional file|supplementary|supplemental)\b", re.IGNORECASE
 )
 WORK_TYPE_BOOK_CHAPTER_PATTERN = re.compile(r"\bbook chapter\b", re.IGNORECASE)
 WORK_TYPE_BOOK_PATTERN = re.compile(r"\bbook\b", re.IGNORECASE)
-WORK_TYPE_REPORT_PATTERN = re.compile(r"\b(report|white paper|technical report)\b", re.IGNORECASE)
+WORK_TYPE_REPORT_PATTERN = re.compile(
+    r"\b(report|white paper|technical report)\b", re.IGNORECASE
+)
 
 WORK_TYPE_ALIASES = {
     "journal-article": "journal-article",
@@ -343,7 +373,7 @@ def _normalize_work_type(
 def _infer_article_type_from_title(title: str) -> str:
     clean_title = re.sub(r"\s+", " ", str(title or "").strip())
     if not clean_title:
-        return "Original"
+        return "Original research"
     if ARTICLE_TYPE_META_ANALYSIS_PATTERN.search(clean_title):
         return "Systematic review"
     if ARTICLE_TYPE_SCOPING_PATTERN.search(clean_title):
@@ -360,7 +390,7 @@ def _infer_article_type_from_title(title: str) -> str:
         return "Protocol"
     if ARTICLE_TYPE_LETTER_PATTERN.search(clean_title):
         return "Letter"
-    return "Original"
+    return "Original research"
 
 
 def _infer_article_type_for_work(
@@ -397,7 +427,12 @@ def _infer_article_type_for_work(
             if hint == "scoping-review":
                 return "Systematic review"
             return "Systematic review"
-        if hint in {"review", "review-article", "narrative-review", "literature-review"}:
+        if hint in {
+            "review",
+            "review-article",
+            "narrative-review",
+            "literature-review",
+        }:
             inferred = _infer_article_type_from_title(title)
             if inferred in {"Systematic review", "Literature review"}:
                 return inferred
@@ -603,21 +638,22 @@ def _classify_pubmed_publication_types(
         return "Literature review"
     if any("editorial" in item for item in lowered):
         return "Editorial"
-    if any(item in {"letter", "comment"} or "correspondence" in item for item in lowered):
+    if any(
+        item in {"letter", "comment"} or "correspondence" in item for item in lowered
+    ):
         return "Letter"
     if any("case reports" in item or "case report" in item for item in lowered):
         return "Case report"
     if any("protocol" in item for item in lowered):
         return "Protocol"
     if any(
-        "congresses" in item
-        or "conference" in item
-        or "meeting abstract" in item
+        "congresses" in item or "conference" in item or "meeting abstract" in item
         for item in lowered
     ):
         return "Conference abstract"
     if any(
-        item in {
+        item
+        in {
             "journal article",
             "clinical trial",
             "randomized controlled trial",
@@ -629,7 +665,7 @@ def _classify_pubmed_publication_types(
         }
         for item in lowered
     ):
-        return "Original"
+        return "Original research"
     return None
 
 
@@ -728,8 +764,210 @@ def _normalize_venue_candidate(value: Any) -> str | None:
     return text
 
 
+def _canonical_venue_key(value: Any) -> str | None:
+    clean = _normalize_venue_candidate(value)
+    if not clean:
+        return None
+    key = re.sub(r"[^a-z0-9]+", " ", clean.lower()).strip()
+    return key or None
+
+
+def _venue_display_quality(value: Any) -> tuple[int, int, int]:
+    clean = _normalize_venue_candidate(value)
+    if not clean:
+        return (0, 0, 0)
+    words = [word for word in re.split(r"\s+", clean) if word]
+    title_words = sum(
+        1
+        for word in words
+        if any(character.isalpha() for character in word)
+        and word[:1].isalpha()
+        and word[:1].upper() == word[:1]
+    )
+    uppercase_letters = sum(1 for character in clean if character.isupper())
+    return (title_words, uppercase_letters, len(clean))
+
+
+def _prefer_venue_display_name(current: Any, candidate: Any) -> str | None:
+    current_clean = _normalize_venue_candidate(current)
+    candidate_clean = _normalize_venue_candidate(candidate)
+    if not candidate_clean:
+        return current_clean
+    if not current_clean:
+        return candidate_clean
+    if _canonical_venue_key(current_clean) != _canonical_venue_key(candidate_clean):
+        return current_clean
+    if _venue_display_quality(candidate_clean) > _venue_display_quality(current_clean):
+        return candidate_clean
+    return current_clean
+
+
+def _normalize_work_issns(value: Any, *, issn_l: str | None = None) -> list[str]:
+    normalized = normalize_issns(value)
+    if issn_l and issn_l not in normalized:
+        normalized = [issn_l, *normalized]
+    return normalized
+
+
+def _extract_journal_identity(metric_payload: dict[str, Any]) -> dict[str, Any]:
+    source = metric_payload.get("source")
+    if not isinstance(source, dict):
+        primary_location = metric_payload.get("primary_location")
+        if isinstance(primary_location, dict):
+            source = (
+                primary_location.get("source")
+                if isinstance(primary_location.get("source"), dict)
+                else {}
+            )
+        else:
+            source = {}
+
+    issn_l = normalize_issn(metric_payload.get("issn_l") or source.get("issn_l"))
+    issns = _normalize_work_issns(
+        metric_payload.get("issn") or metric_payload.get("issns") or source.get("issn"),
+        issn_l=issn_l,
+    )
+    return {
+        "openalex_source_id": extract_openalex_source_id(
+            metric_payload.get("openalex_source_id") or source.get("id")
+        ),
+        "issn_l": issn_l,
+        "issns": issns,
+        "venue_type": normalize_venue_type(
+            metric_payload.get("source_type")
+            or metric_payload.get("venue_type")
+            or source.get("type")
+        ),
+        "source": source,
+    }
+
+
+def _apply_journal_identity_to_work(
+    work: Work,
+    *,
+    openalex_source_id: str | None,
+    issn_l: str | None,
+    issns: list[str],
+    venue_type: str | None,
+    overwrite_existing: bool,
+) -> None:
+    normalized_issns = _normalize_work_issns(issns, issn_l=issn_l)
+    if openalex_source_id and (
+        overwrite_existing or not str(work.openalex_source_id or "").strip()
+    ):
+        work.openalex_source_id = openalex_source_id
+    if issn_l and (overwrite_existing or not normalize_issn(work.issn_l)):
+        work.issn_l = issn_l
+    existing_issns = _normalize_work_issns(
+        work.issns_json, issn_l=normalize_issn(work.issn_l)
+    )
+    if normalized_issns:
+        if overwrite_existing or not existing_issns:
+            work.issns_json = list(normalized_issns)
+        else:
+            merged = list(existing_issns)
+            for candidate in normalized_issns:
+                if candidate not in merged:
+                    merged.append(candidate)
+            if merged != existing_issns:
+                work.issns_json = merged
+    if venue_type and (overwrite_existing or not normalize_venue_type(work.venue_type)):
+        work.venue_type = venue_type
+
+
+def _upsert_openalex_journal_profile(
+    session: Session, *, metric_payload: dict[str, Any]
+) -> None:
+    identity = _extract_journal_identity(metric_payload)
+    source = identity.get("source") if isinstance(identity.get("source"), dict) else {}
+    provider_journal_id = str(identity.get("openalex_source_id") or "").strip() or None
+    issn_l = str(identity.get("issn_l") or "").strip() or None
+    display_name = _normalize_venue_candidate(
+        source.get("display_name") or metric_payload.get("journal_name")
+    )
+    if not provider_journal_id and not issn_l and not display_name:
+        return
+
+    journal_profile: JournalProfile | None = None
+
+    def _matches_pending_profile(candidate: Any) -> bool:
+        if not isinstance(candidate, JournalProfile):
+            return False
+        if str(candidate.provider or "").strip().lower() != "openalex":
+            return False
+        candidate_provider_id = str(candidate.provider_journal_id or "").strip() or None
+        candidate_issn_l = normalize_issn(candidate.issn_l)
+        if provider_journal_id and candidate_provider_id == provider_journal_id:
+            return True
+        if issn_l and candidate_issn_l == issn_l:
+            return True
+        return False
+
+    for pending in list(session.new) + list(session.identity_map.values()):
+        if _matches_pending_profile(pending):
+            journal_profile = pending
+            break
+
+    if provider_journal_id:
+        if journal_profile is None:
+            journal_profile = session.scalars(
+                select(JournalProfile).where(
+                    JournalProfile.provider == "openalex",
+                    JournalProfile.provider_journal_id == provider_journal_id,
+                )
+            ).first()
+    if journal_profile is None and issn_l:
+        journal_profile = session.scalars(
+            select(JournalProfile).where(
+                JournalProfile.provider == "openalex",
+                JournalProfile.issn_l == issn_l,
+            )
+        ).first()
+    if journal_profile is None:
+        journal_profile = JournalProfile(provider="openalex")
+        session.add(journal_profile)
+
+    if provider_journal_id:
+        journal_profile.provider_journal_id = provider_journal_id
+    if issn_l:
+        journal_profile.issn_l = issn_l
+    issns = identity.get("issns") if isinstance(identity.get("issns"), list) else []
+    if issns:
+        journal_profile.issns_json = list(issns)
+    if display_name:
+        journal_profile.display_name = display_name
+    publisher = _normalize_venue_candidate(
+        source.get("host_organization_name") or source.get("publisher")
+    )
+    if publisher:
+        journal_profile.publisher = publisher
+    venue_type = str(identity.get("venue_type") or "").strip() or None
+    if venue_type:
+        journal_profile.venue_type = venue_type
+    summary_stats = source.get("summary_stats")
+    if isinstance(summary_stats, dict) and summary_stats:
+        journal_profile.summary_stats_json = dict(summary_stats)
+    counts_by_year = metric_payload.get("counts_by_year")
+    if isinstance(counts_by_year, list) and counts_by_year:
+        journal_profile.counts_by_year_json = list(counts_by_year)
+    if source.get("is_oa") is not None:
+        journal_profile.is_oa = bool(source.get("is_oa"))
+    if source.get("is_in_doaj") is not None:
+        journal_profile.is_in_doaj = bool(source.get("is_in_doaj"))
+    apc_usd = _safe_int(source.get("apc_usd"))
+    if apc_usd is not None:
+        journal_profile.apc_usd = apc_usd
+    homepage_url = str(source.get("homepage_url") or "").strip() or None
+    if homepage_url:
+        journal_profile.homepage_url = homepage_url
+    if isinstance(source, dict) and source:
+        journal_profile.raw_payload_json = dict(source)
+    journal_profile.last_synced_at = _utcnow()
+
+
 def _is_abstracts_placeholder_venue(value: Any) -> bool:
-    return str(value or "").strip().lower() == "abstracts"
+    key = _canonical_venue_key(value)
+    return key in {"abstract", "abstracts"}
 
 
 def _infer_venue_from_identifiers(*, doi: Any, url: Any) -> str | None:
@@ -832,6 +1070,57 @@ def _extract_pmid_and_journal_metric(
         if inferred_journal:
             journal_name = inferred_journal
     return pmid, impact_factor, journal_name
+
+
+def _journal_metric_from_profile(profile: JournalProfile | None) -> float | None:
+    if profile is None:
+        return None
+    summary_stats = (
+        dict(profile.summary_stats_json)
+        if isinstance(profile.summary_stats_json, dict)
+        else {}
+    )
+    return _safe_float(summary_stats.get("2yr_mean_citedness"))
+
+
+def _journal_metric_from_payload(metric_payload: dict[str, Any]) -> float | None:
+    _, derived_metric, _ = _extract_pmid_and_journal_metric(metric_payload)
+    if derived_metric is not None:
+        return derived_metric
+    return _safe_float(metric_payload.get("journal_2yr_mean_citedness"))
+
+
+def _is_non_journal_venue(
+    *,
+    venue_type: Any,
+    venue_name: Any,
+    publisher: Any,
+) -> bool:
+    normalized_type = normalize_venue_type(venue_type)
+    if normalized_type in NON_JOURNAL_VENUE_TYPES:
+        return True
+    haystack = " ".join(
+        str(item or "").strip().lower() for item in [venue_name, publisher]
+    )
+    if not haystack:
+        return False
+    return any(token in haystack for token in NON_JOURNAL_VENUE_HINTS)
+
+
+def _journal_group_key(
+    *,
+    openalex_source_id: str | None,
+    issn_l: str | None,
+    display_name: str | None,
+) -> str | None:
+    if openalex_source_id:
+        return f"openalex:{openalex_source_id}"
+    if issn_l:
+        return f"issn:{issn_l}"
+    canonical_name = _canonical_venue_key(display_name)
+    if canonical_name:
+        return f"name:{canonical_name}"
+    return None
 
 
 def _resolve_user_or_raise(session, user_id: str) -> User:
@@ -944,6 +1233,13 @@ def upsert_work(
     doi = _normalize_doi(work.get("doi"))
     url = str(work.get("url", "")).strip()
     pmid = _extract_pmid(work.get("pmid")) or _extract_pmid(url)
+    openalex_source_id = extract_openalex_source_id(work.get("openalex_source_id"))
+    issn_l = normalize_issn(work.get("issn_l"))
+    issns = _normalize_work_issns(
+        work.get("issns") or work.get("issns_json"),
+        issn_l=issn_l,
+    )
+    venue_type = normalize_venue_type(work.get("venue_type"))
     authors = work.get("authors", [])
     if not isinstance(authors, list):
         authors = []
@@ -974,13 +1270,17 @@ def upsert_work(
             venue_name = _normalize_venue_candidate(work.get("journal_name")) or ""
         if not venue_name:
             venue_name = _infer_venue_from_identifiers(doi=doi, url=url) or ""
+        journal_name = _normalize_venue_candidate(work.get("journal")) or venue_name
         publisher = re.sub(r"\s+", " ", str(work.get("publisher", "")).strip())
         raw_work_type = re.sub(r"\s+", " ", str(work.get("work_type", "")).strip())
         allow_llm = bool(
             str(os.getenv("OPENAI_API_KEY", "")).strip()
             and str(os.getenv("ENABLE_WORK_TYPE_LLM", "true")).strip().lower()
             in {"1", "true", "yes"}
-            and (not existing or str(existing.work_type_source or "").strip().lower() != "llm")
+            and (
+                not existing
+                or str(existing.work_type_source or "").strip().lower() != "llm"
+            )
             and (not raw_work_type or raw_work_type.strip().lower() == "other")
         )
         normalized_work_type, work_type_source = _normalize_work_type(
@@ -1000,6 +1300,7 @@ def upsert_work(
             "doi": doi,
             "pmid": pmid,
             "work_type": normalized_work_type,
+            "journal": journal_name,
             "venue_name": venue_name,
             "publisher": publisher,
             "abstract": re.sub(r"\s+", " ", str(work.get("abstract", "")).strip())
@@ -1007,6 +1308,10 @@ def upsert_work(
             "keywords": _normalize_keywords(work.get("keywords")),
             "url": url,
             "provenance": provenance,
+            "openalex_source_id": openalex_source_id,
+            "issn_l": issn_l,
+            "issns": issns,
+            "venue_type": venue_type,
         }
 
         if existing is None:
@@ -1018,6 +1323,7 @@ def upsert_work(
                 doi=mutable_fields["doi"],
                 pmid=mutable_fields["pmid"],
                 work_type=mutable_fields["work_type"],
+                journal=mutable_fields["journal"],
                 venue_name=mutable_fields["venue_name"],
                 publisher=mutable_fields["publisher"],
                 abstract=mutable_fields["abstract"],
@@ -1028,6 +1334,14 @@ def upsert_work(
             if work_type_source == "llm":
                 existing.work_type_source = "llm"
                 existing.work_type_llm_at = _utcnow()
+            _apply_journal_identity_to_work(
+                existing,
+                openalex_source_id=mutable_fields["openalex_source_id"],
+                issn_l=mutable_fields["issn_l"],
+                issns=mutable_fields["issns"],
+                venue_type=mutable_fields["venue_type"],
+                overwrite_existing=True,
+            )
             db_session.add(existing)
             db_session.flush()
         else:
@@ -1036,6 +1350,7 @@ def upsert_work(
                 existing.title_lower = mutable_fields["title_lower"]
                 existing.year = mutable_fields["year"]
                 existing.work_type = mutable_fields["work_type"]
+                existing.journal = mutable_fields["journal"]
                 existing.venue_name = mutable_fields["venue_name"]
                 existing.publisher = mutable_fields["publisher"]
                 existing.abstract = mutable_fields["abstract"]
@@ -1044,10 +1359,24 @@ def upsert_work(
                 if work_type_source == "llm":
                     existing.work_type_source = "llm"
                     existing.work_type_llm_at = _utcnow()
+            elif mutable_fields["journal"] and not _normalize_venue_candidate(
+                existing.journal
+            ):
+                existing.journal = mutable_fields["journal"]
             if doi and not existing.doi:
                 existing.doi = doi
             if mutable_fields["pmid"] and not _extract_pmid(existing.pmid):
                 existing.pmid = mutable_fields["pmid"]
+            _apply_journal_identity_to_work(
+                existing,
+                openalex_source_id=mutable_fields["openalex_source_id"],
+                issn_l=mutable_fields["issn_l"],
+                issns=mutable_fields["issns"],
+                venue_type=mutable_fields["venue_type"],
+                overwrite_existing=bool(
+                    overwrite_user_metadata or not existing.user_edited
+                ),
+            )
             existing.provenance = mutable_fields["provenance"] or existing.provenance
 
         if authors:
@@ -1075,9 +1404,9 @@ def upsert_work(
                     canonical_name=author_name,
                     orcid_id=author_orcid,
                 )
-                is_user_identity = bool(user.orcid_id and author.orcid_id == user.orcid_id) or (
-                    _author_name_key(author_name) == _author_name_key(user.name)
-                )
+                is_user_identity = bool(
+                    user.orcid_id and author.orcid_id == user.orcid_id
+                ) or (_author_name_key(author_name) == _author_name_key(user.name))
                 explicit_user_flag = bool(author_item.get("is_user"))
 
                 # ORCID/OpenAlex payloads can include the same person multiple times;
@@ -1085,7 +1414,9 @@ def upsert_work(
                 if author.id in seen_author_ids:
                     link = by_author_id.get(author.id)
                     if link is not None:
-                        link.is_user = bool(link.is_user or is_user_identity or explicit_user_flag)
+                        link.is_user = bool(
+                            link.is_user or is_user_identity or explicit_user_flag
+                        )
                     continue
 
                 seen_author_ids.add(author.id)
@@ -1094,7 +1425,9 @@ def upsert_work(
                     user_author_position_hint is not None
                     and author_order_position == user_author_position_hint
                 )
-                is_user = bool(is_user_identity or explicit_user_flag or is_user_from_hint)
+                is_user = bool(
+                    is_user_identity or explicit_user_flag or is_user_from_hint
+                )
                 link = by_author_id.get(author.id)
                 if link is None:
                     link = WorkAuthorship(
@@ -1127,7 +1460,9 @@ def upsert_work(
                     db_session.delete(link)
 
         db_session.flush()
-        current_abstract = re.sub(r"\s+", " ", str(existing.abstract or "").strip()) or None
+        current_abstract = (
+            re.sub(r"\s+", " ", str(existing.abstract or "").strip()) or None
+        )
         return {
             "id": existing.id,
             "title": existing.title,
@@ -1135,6 +1470,10 @@ def upsert_work(
             "doi": existing.doi,
             "work_type": existing.work_type,
             "provenance": existing.provenance,
+            "openalex_source_id": existing.openalex_source_id,
+            "issn_l": existing.issn_l,
+            "issns": list(existing.issns_json or []),
+            "venue_type": existing.venue_type,
             "updated_at": existing.updated_at,
             "structured_abstract_refresh_needed": previous_abstract != current_abstract,
         }
@@ -1212,8 +1551,8 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
             metric_payload = dict(snapshot.metric_payload or {}) if snapshot else {}
             pmid = _extract_pmid(work.pmid) or _extract_pmid(work.url)
             journal_metric = None
-            derived_pmid, derived_metric, _derived_journal = _extract_pmid_and_journal_metric(
-                metric_payload
+            derived_pmid, derived_metric, _derived_journal = (
+                _extract_pmid_and_journal_metric(metric_payload)
             )
             if not pmid:
                 pmid = derived_pmid
@@ -1242,10 +1581,287 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
                     "author_count": author_count if author_count > 0 else None,
                     "pmid": pmid,
                     "journal_impact_factor": journal_metric,
+                    "openalex_source_id": work.openalex_source_id,
+                    "issn_l": work.issn_l,
+                    "issns": list(work.issns_json or []),
+                    "venue_type": work.venue_type,
                     "created_at": work.created_at,
                     "updated_at": work.updated_at,
                 }
             )
+        return payload
+
+
+def _load_openalex_journal_profiles(
+    session: Session,
+    *,
+    works: list[Work],
+    latest_metrics: dict[str, MetricsSnapshot],
+) -> tuple[dict[str, JournalProfile], dict[str, JournalProfile]]:
+    source_ids: set[str] = set()
+    issn_ls: set[str] = set()
+    for work in works:
+        source_id = extract_openalex_source_id(work.openalex_source_id)
+        if source_id:
+            source_ids.add(source_id)
+        issn_l = normalize_issn(work.issn_l)
+        if issn_l:
+            issn_ls.add(issn_l)
+        snapshot = latest_metrics.get(work.id)
+        metric_payload = dict(snapshot.metric_payload or {}) if snapshot else {}
+        identity = _extract_journal_identity(metric_payload)
+        payload_source_id = extract_openalex_source_id(
+            identity.get("openalex_source_id")
+        )
+        if payload_source_id:
+            source_ids.add(payload_source_id)
+        payload_issn_l = normalize_issn(identity.get("issn_l"))
+        if payload_issn_l:
+            issn_ls.add(payload_issn_l)
+
+    by_source_id: dict[str, JournalProfile] = {}
+    if source_ids:
+        rows = session.scalars(
+            select(JournalProfile).where(
+                JournalProfile.provider == "openalex",
+                JournalProfile.provider_journal_id.in_(sorted(source_ids)),
+            )
+        ).all()
+        by_source_id = {
+            str(row.provider_journal_id).strip(): row
+            for row in rows
+            if str(row.provider_journal_id).strip()
+        }
+
+    by_issn_l: dict[str, JournalProfile] = {}
+    if issn_ls:
+        rows = session.scalars(
+            select(JournalProfile).where(
+                JournalProfile.provider == "openalex",
+                JournalProfile.issn_l.in_(sorted(issn_ls)),
+            )
+        ).all()
+        by_issn_l = {
+            normalized_issn: row
+            for row in rows
+            for normalized_issn in [normalize_issn(row.issn_l)]
+            if normalized_issn
+        }
+    return by_source_id, by_issn_l
+
+
+def list_journals(*, user_id: str) -> list[dict[str, Any]]:
+    create_all_tables()
+    with session_scope() as session:
+        _resolve_user_or_raise(session, user_id)
+        works = session.scalars(
+            select(Work)
+            .where(Work.user_id == user_id)
+            .order_by(Work.year.desc(), Work.updated_at.desc())
+        ).all()
+        works = primary_publication_records(works)
+        if not works:
+            return []
+
+        work_ids = [work.id for work in works]
+        latest_metrics = _latest_metrics_by_work(session, work_ids)
+        profiles_by_source_id, profiles_by_issn_l = _load_openalex_journal_profiles(
+            session,
+            works=works,
+            latest_metrics=latest_metrics,
+        )
+        total_works = len(works)
+        grouped: dict[str, dict[str, Any]] = {}
+
+        for work in works:
+            snapshot = latest_metrics.get(work.id)
+            metric_payload = dict(snapshot.metric_payload or {}) if snapshot else {}
+            identity = _extract_journal_identity(metric_payload)
+            source_id = extract_openalex_source_id(
+                work.openalex_source_id or identity.get("openalex_source_id")
+            )
+            issn_l = normalize_issn(work.issn_l or identity.get("issn_l"))
+            profile = profiles_by_source_id.get(
+                source_id or ""
+            ) or profiles_by_issn_l.get(issn_l or "")
+            source = (
+                identity.get("source")
+                if isinstance(identity.get("source"), dict)
+                else {}
+            )
+            display_name = next(
+                (
+                    candidate
+                    for candidate in [
+                        _normalize_venue_candidate(
+                            profile.display_name if profile is not None else None
+                        ),
+                        _normalize_venue_candidate(metric_payload.get("journal_name")),
+                        _normalize_venue_candidate(source.get("display_name")),
+                        _normalize_venue_candidate(work.journal),
+                        _normalize_venue_candidate(work.venue_name),
+                    ]
+                    if candidate
+                ),
+                None,
+            )
+            if not display_name:
+                continue
+            publisher = next(
+                (
+                    candidate
+                    for candidate in [
+                        _normalize_venue_candidate(
+                            profile.publisher if profile is not None else None
+                        ),
+                        _normalize_venue_candidate(work.publisher),
+                        _normalize_venue_candidate(
+                            source.get("host_organization_name")
+                        ),
+                        _normalize_venue_candidate(source.get("publisher")),
+                    ]
+                    if candidate
+                ),
+                None,
+            )
+            venue_type = next(
+                (
+                    candidate
+                    for candidate in [
+                        normalize_venue_type(work.venue_type),
+                        normalize_venue_type(identity.get("venue_type")),
+                        normalize_venue_type(
+                            profile.venue_type if profile is not None else None
+                        ),
+                    ]
+                    if candidate
+                ),
+                None,
+            )
+            if _is_non_journal_venue(
+                venue_type=venue_type,
+                venue_name=display_name,
+                publisher=publisher,
+            ):
+                continue
+
+            journal_key = _journal_group_key(
+                openalex_source_id=source_id,
+                issn_l=issn_l,
+                display_name=display_name,
+            )
+            if not journal_key:
+                continue
+
+            citations = max(0, int(snapshot.citations_count or 0)) if snapshot else 0
+            issns = _normalize_work_issns(
+                work.issns_json or identity.get("issns"),
+                issn_l=issn_l,
+            )
+            metric_value = _journal_metric_from_profile(profile)
+            if metric_value is None:
+                metric_value = _journal_metric_from_payload(metric_payload)
+
+            group = grouped.setdefault(
+                journal_key,
+                {
+                    "journal_key": journal_key,
+                    "display_name": display_name,
+                    "publisher": publisher or "",
+                    "openalex_source_id": source_id,
+                    "issn_l": issn_l,
+                    "issns": list(issns),
+                    "venue_type": venue_type,
+                    "publication_count": 0,
+                    "citation_values": [],
+                    "total_citations": 0,
+                    "latest_publication_year": None,
+                    "journal_metric_value": metric_value,
+                    "journal_metric_label": (
+                        JOURNAL_METRIC_LABEL if metric_value is not None else None
+                    ),
+                    "is_oa": profile.is_oa if profile is not None else None,
+                    "is_in_doaj": profile.is_in_doaj if profile is not None else None,
+                    "apc_usd": profile.apc_usd if profile is not None else None,
+                },
+            )
+            group["publication_count"] += 1
+            group["citation_values"].append(citations)
+            group["total_citations"] += citations
+            year = _safe_int(work.year)
+            if year is not None:
+                existing_year = _safe_int(group.get("latest_publication_year"))
+                if existing_year is None or year > existing_year:
+                    group["latest_publication_year"] = year
+            if not str(group.get("publisher") or "").strip() and publisher:
+                group["publisher"] = publisher
+            group["display_name"] = (
+                _prefer_venue_display_name(
+                    group.get("display_name"),
+                    display_name,
+                )
+                or ""
+            )
+            if not str(group.get("openalex_source_id") or "").strip() and source_id:
+                group["openalex_source_id"] = source_id
+            if not str(group.get("issn_l") or "").strip() and issn_l:
+                group["issn_l"] = issn_l
+            if not str(group.get("venue_type") or "").strip() and venue_type:
+                group["venue_type"] = venue_type
+            if issns:
+                merged_issns = list(group.get("issns") or [])
+                for candidate in issns:
+                    if candidate not in merged_issns:
+                        merged_issns.append(candidate)
+                group["issns"] = merged_issns
+            if group.get("journal_metric_value") is None and metric_value is not None:
+                group["journal_metric_value"] = metric_value
+                group["journal_metric_label"] = JOURNAL_METRIC_LABEL
+            if (
+                group.get("is_oa") is None
+                and profile is not None
+                and profile.is_oa is not None
+            ):
+                group["is_oa"] = profile.is_oa
+            if (
+                group.get("is_in_doaj") is None
+                and profile is not None
+                and profile.is_in_doaj is not None
+            ):
+                group["is_in_doaj"] = profile.is_in_doaj
+            if group.get("apc_usd") is None and profile is not None:
+                group["apc_usd"] = profile.apc_usd
+
+        payload: list[dict[str, Any]] = []
+        for row in grouped.values():
+            citation_values = [int(value) for value in row.pop("citation_values", [])]
+            publication_count = max(0, int(row["publication_count"]))
+            avg_citations = mean(citation_values) if citation_values else 0.0
+            median_citations = median(citation_values) if citation_values else 0.0
+            share_pct = (
+                (publication_count / total_works) * 100.0 if total_works > 0 else 0.0
+            )
+            payload.append(
+                {
+                    **row,
+                    "share_pct": round(share_pct, 1),
+                    "avg_citations": round(float(avg_citations), 1),
+                    "median_citations": round(float(median_citations), 1),
+                    "journal_metric_value": (
+                        round(float(row["journal_metric_value"]), 3)
+                        if row.get("journal_metric_value") is not None
+                        else None
+                    ),
+                }
+            )
+
+        payload.sort(
+            key=lambda item: (
+                -int(item["publication_count"]),
+                -int(item["total_citations"]),
+                str(item["display_name"]).lower(),
+            )
+        )
         return payload
 
 
@@ -1649,6 +2265,7 @@ def sync_metrics(
     best_pmid_by_work: dict[str, tuple[int, str]] = {}
     best_article_type_by_work: dict[str, tuple[int, str]] = {}
     best_journal_by_work: dict[str, tuple[int, str]] = {}
+    best_journal_identity_by_work: dict[str, tuple[int, dict[str, Any]]] = {}
     for row in metric_rows:
         work_id = str(row.get("work_id", "")).strip()
         if not work_id:
@@ -1658,6 +2275,7 @@ def sync_metrics(
         provider_name = str(row.get("provider", "")).strip().lower()
         priority = METRICS_PROVIDER_PRIORITY.get(provider_name, 0)
         payload_pmid, _, payload_journal = _extract_pmid_and_journal_metric(payload)
+        payload_identity = _extract_journal_identity(payload)
         if payload_pmid:
             existing_pmid = best_pmid_by_work.get(work_id)
             if existing_pmid is None or priority > existing_pmid[0]:
@@ -1666,6 +2284,13 @@ def sync_metrics(
             existing_journal = best_journal_by_work.get(work_id)
             if existing_journal is None or priority > existing_journal[0]:
                 best_journal_by_work[work_id] = (priority, payload_journal)
+        if any(
+            payload_identity.get(key)
+            for key in ["openalex_source_id", "issn_l", "issns", "venue_type"]
+        ):
+            existing_identity = best_journal_identity_by_work.get(work_id)
+            if existing_identity is None or priority > existing_identity[0]:
+                best_journal_identity_by_work[work_id] = (priority, payload_identity)
         article_type = _infer_article_type_for_work(
             work_payload=work_payload,
             metric_payload=payload,
@@ -1729,6 +2354,7 @@ def sync_metrics(
             set(best_abstract_by_work.keys())
             | set(best_article_type_by_work.keys())
             | set(best_journal_by_work.keys())
+            | set(best_journal_identity_by_work.keys())
             | set(resolved_pmid_by_work.keys())
             | set(work_payload_by_id.keys())
         )
@@ -1751,6 +2377,10 @@ def sync_metrics(
                 captured_at=_utcnow(),
             )
             session.add(snapshot)
+            if str(snapshot.provider or "").strip().lower() == "openalex":
+                _upsert_openalex_journal_profile(
+                    session, metric_payload=dict(row["metric_payload"] or {})
+                )
             synced += 1
             provider_counts[snapshot.provider] += 1
         for work_id, (_, abstract) in best_abstract_by_work.items():
@@ -1777,19 +2407,48 @@ def sync_metrics(
             if work is None:
                 continue
             current_venue = _normalize_venue_candidate(work.venue_name)
+            has_placeholder_venue = _is_abstracts_placeholder_venue(current_venue)
             pmid_value = resolved_pmid_by_work.get(work_id)
             should_override = _should_override_repository_metadata(
                 work=work,
                 pmid=pmid_value,
             )
-            if current_venue and not should_override:
+            if current_venue and not should_override and not has_placeholder_venue:
                 continue
-            if work.user_edited and str(work.venue_name or "").strip():
+            if (
+                work.user_edited
+                and str(work.venue_name or "").strip()
+                and not has_placeholder_venue
+                and not should_override
+            ):
                 continue
             work.venue_name = journal_name
             current_journal = _normalize_venue_candidate(work.journal)
-            if not current_journal or should_override:
+            if (
+                not current_journal
+                or should_override
+                or _is_abstracts_placeholder_venue(current_journal)
+            ):
                 work.journal = journal_name
+        for work_id, (_, journal_identity) in best_journal_identity_by_work.items():
+            work = works_by_id.get(work_id)
+            if work is None:
+                continue
+            overwrite_existing = bool(
+                journal_identity.get("venue_type")
+                and normalize_venue_type(work.venue_type)
+                in {"repository", "dataset", "data-set"}
+                and journal_identity.get("venue_type")
+                != normalize_venue_type(work.venue_type)
+            )
+            _apply_journal_identity_to_work(
+                work,
+                openalex_source_id=journal_identity.get("openalex_source_id"),
+                issn_l=journal_identity.get("issn_l"),
+                issns=list(journal_identity.get("issns") or []),
+                venue_type=journal_identity.get("venue_type"),
+                overwrite_existing=overwrite_existing,
+            )
         for work_id, pmid_value in resolved_pmid_by_work.items():
             work = works_by_id.get(work_id)
             if work is None:
@@ -1812,9 +2471,14 @@ def sync_metrics(
             ):
                 work.venue_name = inferred_venue
                 current_journal = _normalize_venue_candidate(work.journal)
-                if not current_journal or _is_abstracts_placeholder_venue(current_journal):
+                if not current_journal or _is_abstracts_placeholder_venue(
+                    current_journal
+                ):
                     work.journal = inferred_venue
-            if inferred_work_type and str(work.work_type or "").strip().lower() == "journal-article":
+            if (
+                inferred_work_type
+                and str(work.work_type or "").strip().lower() == "journal-article"
+            ):
                 work.work_type = inferred_work_type
         for work_id, work in works_by_id.items():
             pmid_value = resolved_pmid_by_work.get(work_id)

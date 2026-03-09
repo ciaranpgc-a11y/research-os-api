@@ -488,14 +488,19 @@ class LibraryAssetResponse(BaseModel):
     shared_with_user_ids: list[str] = Field(default_factory=list)
     shared_with: list[LibraryAssetAccessMemberResponse] = Field(default_factory=list)
     pending_with: list[LibraryAssetAccessMemberResponse] = Field(default_factory=list)
-    audit_log_entries: list[LibraryAssetAuditEntryResponse] = Field(default_factory=list)
+    audit_log_entries: list[LibraryAssetAuditEntryResponse] = Field(
+        default_factory=list
+    )
     current_user_role: Literal["owner", "editor", "viewer"] | None = None
-    current_user_access_source: Literal[
-        "owner",
-        "direct_share",
-        "workspace_member",
-        "project_collaborator",
-    ] | None = None
+    current_user_access_source: (
+        Literal[
+            "owner",
+            "direct_share",
+            "workspace_member",
+            "project_collaborator",
+        ]
+        | None
+    ) = None
     current_user_access_sources: list[
         Literal[
             "owner",
@@ -530,7 +535,9 @@ class LibraryAssetListResponse(BaseModel):
 
 
 class LibraryAssetAccessUpdateRequest(BaseModel):
-    collaborators: list[LibraryAssetAccessMemberUpdateRequest] = Field(default_factory=list)
+    collaborators: list[LibraryAssetAccessMemberUpdateRequest] = Field(
+        default_factory=list
+    )
     collaborator_user_ids: list[str] = Field(default_factory=list)
     collaborator_names: list[str] = Field(default_factory=list)
 
@@ -1789,7 +1796,9 @@ class PersonaGrantResponse(BaseModel):
     display_name: str | None = None
     description: str | None = None
     funder_award_id: str | None = None
-    funder: PersonaGrantFunderResponse = Field(default_factory=PersonaGrantFunderResponse)
+    funder: PersonaGrantFunderResponse = Field(
+        default_factory=PersonaGrantFunderResponse
+    )
     amount: float | None = None
     currency: str | None = None
     funding_type: str | None = None
@@ -1820,7 +1829,9 @@ class PersonaGrantsResponse(BaseModel):
     first_name: str
     last_name: str
     full_name: str
-    author: PersonaGrantsAuthorResponse = Field(default_factory=PersonaGrantsAuthorResponse)
+    author: PersonaGrantsAuthorResponse = Field(
+        default_factory=PersonaGrantsAuthorResponse
+    )
     items: list[PersonaGrantResponse] = Field(default_factory=list)
     total: int = 0
     relationship_filter: Literal["all", "won", "published_under"] = "all"
@@ -1875,8 +1886,33 @@ class PersonaWorkResponse(BaseModel):
     author_count: int | None = None
     pmid: str | None = None
     journal_impact_factor: float | None = None
+    openalex_source_id: str | None = None
+    issn_l: str | None = None
+    issns: list[str] = Field(default_factory=list)
+    venue_type: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class PersonaJournalResponse(BaseModel):
+    journal_key: str
+    display_name: str
+    publisher: str = ""
+    openalex_source_id: str | None = None
+    issn_l: str | None = None
+    issns: list[str] = Field(default_factory=list)
+    venue_type: str | None = None
+    publication_count: int
+    share_pct: float
+    avg_citations: float
+    median_citations: float
+    total_citations: int
+    latest_publication_year: int | None = None
+    journal_metric_value: float | None = None
+    journal_metric_label: str | None = None
+    is_oa: bool | None = None
+    is_in_doaj: bool | None = None
+    apc_usd: int | None = None
 
 
 class PersonaMetricsSyncRequest(BaseModel):
@@ -2201,7 +2237,17 @@ class PublicationAiInsightsResponse(BaseModel):
 
 
 class PublicationInsightsAgentSectionResponse(BaseModel):
-    key: Literal["uncited_works", "citation_drivers", "citation_activation", "citation_activation_history", "publication_output_pattern", "publication_production_phase", "publication_volume_over_time", "publication_article_type_over_time", "publication_type_over_time"]
+    key: Literal[
+        "uncited_works",
+        "citation_drivers",
+        "citation_activation",
+        "citation_activation_history",
+        "publication_output_pattern",
+        "publication_production_phase",
+        "publication_volume_over_time",
+        "publication_article_type_over_time",
+        "publication_type_over_time",
+    ]
     title: str
     headline: str
     body: str
@@ -2216,7 +2262,9 @@ class PublicationInsightsAgentResponse(BaseModel):
     window_id: Literal["1y", "3y", "5y", "all"] = "1y"
     window_label: str = "1y"
     overall_summary: str = ""
-    sections: list[PublicationInsightsAgentSectionResponse] = Field(default_factory=list)
+    sections: list[PublicationInsightsAgentSectionResponse] = Field(
+        default_factory=list
+    )
     provenance: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -2671,9 +2719,7 @@ class WorkspaceAuditLogEntryResponse(BaseModel):
         "invitation_decisions",
         "workspace_changes",
         "conversation",
-    ] = (
-        "collaborator_changes"
-    )
+    ] = "collaborator_changes"
     event_type: str | None = None
     actor_user_id: str | None = None
     actor_name: str | None = None
@@ -2698,21 +2744,27 @@ class WorkspaceRecordResponse(BaseModel):
     owner_name: str
     owner_user_id: str | None = None
     collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
-    pending_collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
+    pending_collaborators: list[WorkspaceParticipantResponse] = Field(
+        default_factory=list
+    )
     collaborator_roles: dict[str, Literal["editor", "reviewer", "viewer"]] = Field(
         default_factory=dict
     )
-    pending_collaborator_roles: dict[
-        str, Literal["editor", "reviewer", "viewer"]
-    ] = Field(default_factory=dict)
-    removed_collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
+    pending_collaborator_roles: dict[str, Literal["editor", "reviewer", "viewer"]] = (
+        Field(default_factory=dict)
+    )
+    removed_collaborators: list[WorkspaceParticipantResponse] = Field(
+        default_factory=list
+    )
     version: str = "0.1"
     health: Literal["green", "amber", "red"] = "amber"
     updated_at: str
     pinned: bool = False
     archived: bool = False
     owner_archived: bool = False
-    audit_log_entries: list[WorkspaceAuditLogEntryResponse] = Field(default_factory=list)
+    audit_log_entries: list[WorkspaceAuditLogEntryResponse] = Field(
+        default_factory=list
+    )
 
 
 class WorkspaceListResponse(BaseModel):
@@ -2726,21 +2778,27 @@ class WorkspaceCreateRequest(BaseModel):
     owner_name: str
     owner_user_id: str | None = None
     collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
-    pending_collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
+    pending_collaborators: list[WorkspaceParticipantResponse] = Field(
+        default_factory=list
+    )
     collaborator_roles: dict[str, Literal["editor", "reviewer", "viewer"]] = Field(
         default_factory=dict
     )
-    pending_collaborator_roles: dict[
-        str, Literal["editor", "reviewer", "viewer"]
-    ] = Field(default_factory=dict)
-    removed_collaborators: list[WorkspaceParticipantResponse] = Field(default_factory=list)
+    pending_collaborator_roles: dict[str, Literal["editor", "reviewer", "viewer"]] = (
+        Field(default_factory=dict)
+    )
+    removed_collaborators: list[WorkspaceParticipantResponse] = Field(
+        default_factory=list
+    )
     version: str = "0.1"
     health: Literal["green", "amber", "red"] = "amber"
     updated_at: str | None = None
     pinned: bool = False
     archived: bool = False
     owner_archived: bool = False
-    audit_log_entries: list[WorkspaceAuditLogEntryResponse] = Field(default_factory=list)
+    audit_log_entries: list[WorkspaceAuditLogEntryResponse] = Field(
+        default_factory=list
+    )
 
 
 class WorkspaceUpdateRequest(BaseModel):

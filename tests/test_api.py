@@ -553,7 +553,9 @@ def test_v1_sensitive_planning_routes_require_session_token(
     assert draft_methods_response.status_code == 401
 
 
-def test_v1_library_asset_routes_ignore_sentinel_project_ids(monkeypatch, tmp_path) -> None:
+def test_v1_library_asset_routes_ignore_sentinel_project_ids(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 
     encoded = base64.b64encode(b"a,b\n1,2\n").decode("ascii")
@@ -654,7 +656,9 @@ def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) ->
         assert outsider_register.status_code == 200
 
         owner_headers = _auth_headers(owner_register.json()["session_token"])
-        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+        collaborator_headers = _auth_headers(
+            collaborator_register.json()["session_token"]
+        )
         outsider_headers = _auth_headers(outsider_register.json()["session_token"])
 
         owner_me = client.get("/v1/auth/me", headers=owner_headers)
@@ -718,7 +722,10 @@ def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) ->
         assert owner_asset_payload["shared_with_user_ids"] == []
         assert owner_asset_payload["can_manage_access"] is True
         assert collaborator_asset_payload["can_manage_access"] is False
-        assert collaborator_asset_payload["current_user_access_source"] == "project_collaborator"
+        assert (
+            collaborator_asset_payload["current_user_access_source"]
+            == "project_collaborator"
+        )
 
         collaborator_patch_attempt = client.patch(
             f"/v1/library/assets/{asset_id}/access",
@@ -800,9 +807,13 @@ def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) ->
                 "author_user_id": owner_user_id,
                 "invitation_type": "data",
                 "collaborator_role": "viewer",
-                "invited_at": outsider_requests_after_share.json()["items"][0]["invited_at"],
+                "invited_at": outsider_requests_after_share.json()["items"][0][
+                    "invited_at"
+                ],
                 "source_inviter_user_id": owner_user_id,
-                "source_invitation_id": outsider_requests_after_share.json()["items"][0]["source_invitation_id"],
+                "source_invitation_id": outsider_requests_after_share.json()["items"][
+                    0
+                ]["source_invitation_id"],
             }
         ]
 
@@ -923,7 +934,12 @@ def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) ->
         assert collaborator_assets_after_add.status_code == 200
         assert collaborator_assets_after_add.json()["total"] == 1
         assert collaborator_assets_after_add.json()["items"][0]["id"] == asset_id
-        assert collaborator_assets_after_add.json()["items"][0]["current_user_access_source"] == "project_collaborator"
+        assert (
+            collaborator_assets_after_add.json()["items"][0][
+                "current_user_access_source"
+            ]
+            == "project_collaborator"
+        )
 
         collaborator_requests = client.get(
             "/v1/workspaces/author-requests",
@@ -954,13 +970,19 @@ def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) ->
         assert collaborator_assets_after_accept.status_code == 200
         assert collaborator_assets_after_accept.json()["total"] == 1
         assert collaborator_assets_after_accept.json()["items"][0]["id"] == asset_id
-        assert set(collaborator_assets_after_accept.json()["items"][0]["current_user_access_sources"]) == {
+        assert set(
+            collaborator_assets_after_accept.json()["items"][0][
+                "current_user_access_sources"
+            ]
+        ) == {
             "direct_share",
             "project_collaborator",
         }
         collaborator_accept_audit = [
             entry
-            for entry in collaborator_assets_after_accept.json()["items"][0]["audit_log_entries"]
+            for entry in collaborator_assets_after_accept.json()["items"][0][
+                "audit_log_entries"
+            ]
             if entry["event_type"] == "access_invitation_accepted"
             and entry["subject_user_id"] == collaborator_user_id
         ]
@@ -1059,7 +1081,9 @@ def test_v1_library_assets_track_origin_and_multiple_workspaces(
         initial_assets = client.get("/v1/library/assets", headers=headers)
         assert initial_assets.status_code == 200
         initial_payload = next(
-            item for item in initial_assets.json()["items"] if item["id"] == library_asset_id
+            item
+            for item in initial_assets.json()["items"]
+            if item["id"] == library_asset_id
         )
         assert initial_payload["origin"] == "library"
         assert initial_payload["origin_workspace_id"] is None
@@ -1075,7 +1099,9 @@ def test_v1_library_assets_track_origin_and_multiple_workspaces(
         assert assigned_payload["origin"] == "library"
         assert assigned_payload["origin_workspace_id"] is None
         assert assigned_payload["workspace_ids"] == ["analysis-hub", "registry-ops"]
-        assert [item["workspace_id"] for item in assigned_payload["workspace_placements"]] == [
+        assert [
+            item["workspace_id"] for item in assigned_payload["workspace_placements"]
+        ] == [
             "analysis-hub",
             "registry-ops",
         ]
@@ -1296,9 +1322,9 @@ def test_v1_library_assets_support_shared_by_me_filter_for_direct_and_workspace_
             },
         )
         assert workspace_member_assets.status_code == 200
-        assert [item["filename"] for item in workspace_member_assets.json()["items"]] == [
-            "workspace-shared.csv"
-        ]
+        assert [
+            item["filename"] for item in workspace_member_assets.json()["items"]
+        ] == ["workspace-shared.csv"]
         assert (
             workspace_member_assets.json()["items"][0]["current_user_access_source"]
             == "workspace_member"
@@ -1457,7 +1483,9 @@ def test_v1_library_asset_pending_data_invites_support_role_updates_and_cancella
         assert invitee_requests.json()["items"][0]["author_user_id"] == owner_user_id
         assert invitee_requests.json()["items"][0]["invitation_type"] == "data"
         assert invitee_requests.json()["items"][0]["workspace_id"] == asset_id
-        assert invitee_requests.json()["items"][0]["workspace_name"] == "pending-data.csv"
+        assert (
+            invitee_requests.json()["items"][0]["workspace_name"] == "pending-data.csv"
+        )
         assert invitee_requests.json()["items"][0]["collaborator_role"] == "editor"
 
         cancel_pending = client.patch(
@@ -1529,7 +1557,9 @@ def test_v1_library_asset_declined_data_invites_are_logged(
         invitee_headers = _auth_headers(invitee_register.json()["session_token"])
 
         owner_user_id = client.get("/v1/auth/me", headers=owner_headers).json()["id"]
-        invitee_user_id = client.get("/v1/auth/me", headers=invitee_headers).json()["id"]
+        invitee_user_id = client.get("/v1/auth/me", headers=invitee_headers).json()[
+            "id"
+        ]
 
         upload_response = client.post(
             "/v1/library/assets/upload",
@@ -1644,11 +1674,13 @@ def test_v1_library_assets_support_server_pagination_sort_and_filters(
         assert owner_register.status_code == 200
         assert collaborator_register.status_code == 200
         owner_headers = _auth_headers(owner_register.json()["session_token"])
-        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+        collaborator_headers = _auth_headers(
+            collaborator_register.json()["session_token"]
+        )
 
-        collaborator_user_id = client.get("/v1/auth/me", headers=collaborator_headers).json()[
-            "id"
-        ]
+        collaborator_user_id = client.get(
+            "/v1/auth/me", headers=collaborator_headers
+        ).json()["id"]
         project_response = client.post(
             "/v1/projects",
             headers=owner_headers,
@@ -1763,7 +1795,10 @@ def test_v1_library_assets_support_server_pagination_sort_and_filters(
         assert collaborator_shared.status_code == 200
         collaborator_shared_payload = collaborator_shared.json()
         assert collaborator_shared_payload["total"] == 4
-        assert all(item["can_manage_access"] is False for item in collaborator_shared_payload["items"])
+        assert all(
+            item["can_manage_access"] is False
+            for item in collaborator_shared_payload["items"]
+        )
 
         collaborator_owned = client.get(
             "/v1/library/assets",
@@ -1778,7 +1813,9 @@ def test_v1_library_assets_support_server_pagination_sort_and_filters(
         assert collaborator_owned.json()["items"] == []
 
 
-def test_v1_library_assets_persist_across_logout_and_login(monkeypatch, tmp_path) -> None:
+def test_v1_library_assets_persist_across_logout_and_login(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     encoded = base64.b64encode(b"col_a,col_b\n1,2\n").decode("ascii")
     email = "library-persist-user@example.com"
@@ -3194,7 +3231,9 @@ def test_v1_generation_job_id_endpoints_enforce_owner_collaborator_access(
         assert collaborator_register.status_code == 200
         assert outsider_register.status_code == 200
         owner_headers = _auth_headers(owner_register.json()["session_token"])
-        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+        collaborator_headers = _auth_headers(
+            collaborator_register.json()["session_token"]
+        )
         outsider_headers = _auth_headers(outsider_register.json()["session_token"])
 
         collaborator_me = client.get("/v1/auth/me", headers=collaborator_headers)
@@ -3237,7 +3276,9 @@ def test_v1_generation_job_id_endpoints_enforce_owner_collaborator_access(
         collaborator_get = client.get(
             f"/v1/generation-jobs/{job_id}", headers=collaborator_headers
         )
-        outsider_get = client.get(f"/v1/generation-jobs/{job_id}", headers=outsider_headers)
+        outsider_get = client.get(
+            f"/v1/generation-jobs/{job_id}", headers=outsider_headers
+        )
         anonymous_get = client.get(f"/v1/generation-jobs/{job_id}")
 
         assert owner_get.status_code == 200
@@ -3909,7 +3950,9 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
         assert register_response.status_code == 200
         token = register_response.json()["session_token"]
 
-        overview_response = client.get("/v1/admin/overview", headers=_auth_headers(token))
+        overview_response = client.get(
+            "/v1/admin/overview", headers=_auth_headers(token)
+        )
         users_response = client.get("/v1/admin/users", headers=_auth_headers(token))
         organisations_response = client.get(
             "/v1/admin/organisations",
@@ -4194,7 +4237,9 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
             stale_asset = session.get(DataLibraryAsset, str(uploaded_asset_ids[0]))
             assert stale_asset is not None
             stale_asset.storage_path = str(
-                (tmp_path / "missing-storage" / f"{uploaded_asset_ids[0]}.csv").resolve()
+                (
+                    tmp_path / "missing-storage" / f"{uploaded_asset_ids[0]}.csv"
+                ).resolve()
             )
         recover_storage_response = client.post(
             f"/v1/admin/users/{viewer_register_response.json()['user']['id']}/library/recover-storage",
@@ -4399,7 +4444,9 @@ def test_v1_admin_user_library_reconcile_failure_is_audited(
         assert viewer_register_response.status_code == 200
         viewer_user_id = viewer_register_response.json()["user"]["id"]
 
-        def _raise_reconcile_error(*, user_id: str | None, account_key_hint: str | None = None):
+        def _raise_reconcile_error(
+            *, user_id: str | None, account_key_hint: str | None = None
+        ):
             del user_id, account_key_hint
             raise RuntimeError("synthetic reconcile failure")
 
@@ -4574,9 +4621,9 @@ def test_v1_workspace_state_round_trip_persists_for_authenticated_user(
         get_inbox_state = client.get("/v1/workspaces/inbox/state", headers=headers)
         assert get_inbox_state.status_code == 200
         assert get_inbox_state.json()["messages"][0]["workspace_id"] == "hf-registry"
-        assert get_inbox_state.json()["reads"]["hf-registry"]["workspace user"].endswith(
-            "Z"
-        )
+        assert get_inbox_state.json()["reads"]["hf-registry"][
+            "workspace user"
+        ].endswith("Z")
 
 
 def test_v1_workspace_granular_endpoints_round_trip(monkeypatch, tmp_path) -> None:
@@ -4646,7 +4693,9 @@ def test_v1_workspace_granular_endpoints_round_trip(monkeypatch, tmp_path) -> No
         )
         assert patch_workspace.status_code == 200
         assert patch_workspace.json()["collaborators"] == ["Aisha Rahman"]
-        assert patch_workspace.json()["collaborator_roles"] == {"Aisha Rahman": "reviewer"}
+        assert patch_workspace.json()["collaborator_roles"] == {
+            "Aisha Rahman": "reviewer"
+        }
         assert patch_workspace.json()["removed_collaborators"] == ["Aisha Rahman"]
 
         create_invitation = client.post(
@@ -4674,12 +4723,16 @@ def test_v1_workspace_granular_endpoints_round_trip(monkeypatch, tmp_path) -> No
         assert workspace_record["pending_collaborators"] == ["Tom Price"]
         assert workspace_record["pending_collaborator_roles"] == {"Tom Price": "viewer"}
 
-        list_invitations = client.get("/v1/workspaces/invitations/sent", headers=headers)
+        list_invitations = client.get(
+            "/v1/workspaces/invitations/sent", headers=headers
+        )
         assert list_invitations.status_code == 200
         assert list_invitations.json()["items"][0]["id"] == invitation_id
         assert list_invitations.json()["items"][0]["role"] == "viewer"
 
-        list_author_requests = client.get("/v1/workspaces/author-requests", headers=headers)
+        list_author_requests = client.get(
+            "/v1/workspaces/author-requests", headers=headers
+        )
         assert list_author_requests.status_code == 200
         assert list_author_requests.json()["items"] == []
 
@@ -4721,7 +4774,9 @@ def test_v1_workspace_granular_endpoints_round_trip(monkeypatch, tmp_path) -> No
 
         list_reads = client.get("/v1/workspaces/inbox/reads", headers=headers)
         assert list_reads.status_code == 200
-        assert list_reads.json()["reads"]["hf-registry"]["workspace owner"].endswith("Z")
+        assert list_reads.json()["reads"]["hf-registry"]["workspace owner"].endswith(
+            "Z"
+        )
 
         delete_workspace = client.delete("/v1/workspaces/hf-registry", headers=headers)
         assert delete_workspace.status_code == 200
@@ -4928,7 +4983,9 @@ def test_v1_workspace_patch_audit_log_entries_are_append_only(
             for item in final_state.json()["items"]
             if item["id"] == "audit-append-workspace"
         )
-        final_ids = [entry["id"] for entry in final_workspace.get("audit_log_entries", [])]
+        final_ids = [
+            entry["id"] for entry in final_workspace.get("audit_log_entries", [])
+        ]
         assert "audit-append-1" in final_ids
         assert "audit-append-2" in final_ids
 
@@ -4992,7 +5049,9 @@ def test_v1_workspace_author_request_accept_updates_invitation_status(
         assert create_invitation.status_code == 200
         assert create_invitation.json()["role"] == "reviewer"
         invitation_id = create_invitation.json()["id"]
-        owner_workspaces_after_invite = client.get("/v1/workspaces", headers=owner_headers)
+        owner_workspaces_after_invite = client.get(
+            "/v1/workspaces", headers=owner_headers
+        )
         assert owner_workspaces_after_invite.status_code == 200
         owner_workspace_after_invite = next(
             item
@@ -5006,7 +5065,9 @@ def test_v1_workspace_author_request_accept_updates_invitation_status(
             invitee_user_id: "reviewer"
         }
 
-        invitee_requests = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        invitee_requests = client.get(
+            "/v1/workspaces/author-requests", headers=invitee_headers
+        )
         assert invitee_requests.status_code == 200
         assert len(invitee_requests.json()["items"]) == 1
         assert invitee_requests.json()["items"][0]["collaborator_role"] == "reviewer"
@@ -5036,7 +5097,9 @@ def test_v1_workspace_author_request_accept_updates_invitation_status(
             for message in invitee_audit_messages
         )
 
-        owner_invitations = client.get("/v1/workspaces/invitations/sent", headers=owner_headers)
+        owner_invitations = client.get(
+            "/v1/workspaces/invitations/sent", headers=owner_headers
+        )
         assert owner_invitations.status_code == 200
         matched = next(
             item
@@ -5152,8 +5215,12 @@ def test_v1_workspace_collaborator_audit_logs_are_scoped_by_user(
         )
         assert invite_beta.status_code == 200
 
-        alpha_requests = client.get("/v1/workspaces/author-requests", headers=alpha_headers)
-        beta_requests = client.get("/v1/workspaces/author-requests", headers=beta_headers)
+        alpha_requests = client.get(
+            "/v1/workspaces/author-requests", headers=alpha_headers
+        )
+        beta_requests = client.get(
+            "/v1/workspaces/author-requests", headers=beta_headers
+        )
         assert alpha_requests.status_code == 200
         assert beta_requests.status_code == 200
         alpha_request_id = alpha_requests.json()["items"][0]["id"]
@@ -5272,7 +5339,9 @@ def test_v1_workspace_removed_collaborator_archives_for_invitee_and_reaccept_reu
         )
         assert initial_invitation.status_code == 200
 
-        invitee_requests = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        invitee_requests = client.get(
+            "/v1/workspaces/author-requests", headers=invitee_headers
+        )
         assert invitee_requests.status_code == 200
         first_request_id = invitee_requests.json()["items"][0]["id"]
 
@@ -5320,7 +5389,10 @@ def test_v1_workspace_removed_collaborator_archives_for_invitee_and_reaccept_reu
         )
         assert invitee_restore_requests.status_code == 200
         assert len(invitee_restore_requests.json()["items"]) == 1
-        assert invitee_restore_requests.json()["items"][0]["collaborator_role"] == "reviewer"
+        assert (
+            invitee_restore_requests.json()["items"][0]["collaborator_role"]
+            == "reviewer"
+        )
         restore_request_id = invitee_restore_requests.json()["items"][0]["id"]
 
         restore_accept = client.post(
@@ -5360,7 +5432,9 @@ def test_v1_workspace_removed_collaborator_archives_for_invitee_and_reaccept_reu
         assert owner_workspace["removed_collaborators"] == []
         assert owner_workspace["collaborator_roles"] == {"Invitee User": "reviewer"}
 
-        owner_invitations = client.get("/v1/workspaces/invitations/sent", headers=owner_headers)
+        owner_invitations = client.get(
+            "/v1/workspaces/invitations/sent", headers=owner_headers
+        )
         assert owner_invitations.status_code == 200
         matched_invitation = next(
             item
@@ -5404,7 +5478,9 @@ def test_v1_workspace_invitation_requires_workspace_owner(
         assert collaborator_register.status_code == 200
         assert target_register.status_code == 200
         owner_headers = _auth_headers(owner_register.json()["session_token"])
-        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+        collaborator_headers = _auth_headers(
+            collaborator_register.json()["session_token"]
+        )
         collaborator_user_id = collaborator_register.json()["user"]["id"]
         target_user_id = target_register.json()["user"]["id"]
 
@@ -5521,7 +5597,9 @@ def test_v1_workspace_owner_transfer_promotes_new_owner_and_enforces_owner_contr
         assert collaborator_register.status_code == 200
         assert target_register.status_code == 200
         owner_headers = _auth_headers(owner_register.json()["session_token"])
-        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+        collaborator_headers = _auth_headers(
+            collaborator_register.json()["session_token"]
+        )
         target_user_id = target_register.json()["user"]["id"]
 
         create_workspace = client.post(
@@ -5574,7 +5652,9 @@ def test_v1_workspace_owner_transfer_promotes_new_owner_and_enforces_owner_contr
         assert owner_workspace["owner_name"] == "Collaborator User"
         assert owner_workspace["collaborators"] == ["Owner User"]
 
-        collaborator_workspaces = client.get("/v1/workspaces", headers=collaborator_headers)
+        collaborator_workspaces = client.get(
+            "/v1/workspaces", headers=collaborator_headers
+        )
         assert collaborator_workspaces.status_code == 200
         collaborator_workspace = next(
             item
@@ -5653,7 +5733,9 @@ def test_v1_workspace_inbox_messages_are_shared_with_workspace_collaborators(
         assert owner_register.status_code == 200
         assert collaborator_register.status_code == 200
         owner_headers = _auth_headers(owner_register.json()["session_token"])
-        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+        collaborator_headers = _auth_headers(
+            collaborator_register.json()["session_token"]
+        )
         collaborator_user_id = collaborator_register.json()["user"]["id"]
 
         create_workspace = client.post(
@@ -5878,13 +5960,11 @@ def test_v1_workspace_inbox_removed_collaborator_can_view_history_but_not_new_ch
             entry["message"] for entry in owner_workspace.get("audit_log_entries", [])
         ]
         assert any(
-            "Inbox message logged: id msg-owner-before-removal"
-            in message
+            "Inbox message logged: id msg-owner-before-removal" in message
             for message in owner_audit_messages
         )
         assert any(
-            "Inbox message logged: id msg-owner-after-removal"
-            in message
+            "Inbox message logged: id msg-owner-after-removal" in message
             for message in owner_audit_messages
         )
 
@@ -6054,9 +6134,7 @@ def test_v1_workspace_inbox_reaccept_clears_prior_history_for_readded_collaborat
         assert "msg-after-reaccept" in invitee_ids
 
 
-def test_v1_workspace_run_context_requires_session_token(
-    monkeypatch, tmp_path
-) -> None:
+def test_v1_workspace_run_context_requires_session_token(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 
     with TestClient(app) as client:
@@ -6248,7 +6326,9 @@ def test_v1_workspace_author_request_decline_updates_invitation_status(
         assert create_invitation.status_code == 200
         invitation_id = create_invitation.json()["id"]
 
-        invitee_requests = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        invitee_requests = client.get(
+            "/v1/workspaces/author-requests", headers=invitee_headers
+        )
         assert invitee_requests.status_code == 200
         assert len(invitee_requests.json()["items"]) == 1
         request_id = invitee_requests.json()["items"][0]["id"]
@@ -6261,11 +6341,15 @@ def test_v1_workspace_author_request_decline_updates_invitation_status(
         assert decline_request.json()["success"] is True
         assert decline_request.json()["removed_request_id"] == request_id
 
-        invitee_requests_after = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        invitee_requests_after = client.get(
+            "/v1/workspaces/author-requests", headers=invitee_headers
+        )
         assert invitee_requests_after.status_code == 200
         assert invitee_requests_after.json()["items"] == []
 
-        owner_invitations = client.get("/v1/workspaces/invitations/sent", headers=owner_headers)
+        owner_invitations = client.get(
+            "/v1/workspaces/invitations/sent", headers=owner_headers
+        )
         assert owner_invitations.status_code == 200
         matched = next(
             item
@@ -6334,7 +6418,9 @@ def test_v1_workspace_owner_cancel_pending_invitation_removes_invitee_request(
         assert create_invitation.status_code == 200
         invitation_id = create_invitation.json()["id"]
 
-        invitee_requests = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        invitee_requests = client.get(
+            "/v1/workspaces/author-requests", headers=invitee_headers
+        )
         assert invitee_requests.status_code == 200
         assert len(invitee_requests.json()["items"]) == 1
         request_id = invitee_requests.json()["items"][0]["id"]
@@ -6347,7 +6433,9 @@ def test_v1_workspace_owner_cancel_pending_invitation_removes_invitee_request(
         assert cancel_invitation.status_code == 200
         assert cancel_invitation.json()["status"] == "declined"
 
-        owner_invitations = client.get("/v1/workspaces/invitations/sent", headers=owner_headers)
+        owner_invitations = client.get(
+            "/v1/workspaces/invitations/sent", headers=owner_headers
+        )
         assert owner_invitations.status_code == 200
         matched = next(
             item
@@ -6374,7 +6462,9 @@ def test_v1_workspace_owner_cancel_pending_invitation_removes_invitee_request(
             for message in owner_audit_messages
         )
 
-        invitee_requests_after = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        invitee_requests_after = client.get(
+            "/v1/workspaces/author-requests", headers=invitee_headers
+        )
         assert invitee_requests_after.status_code == 200
         assert invitee_requests_after.json()["items"] == []
 
@@ -6447,7 +6537,9 @@ def test_v1_workspace_inbox_websocket_relays_typing_events(
         )
         assert create_invitation.status_code == 200
 
-        invitee_requests = client.get("/v1/workspaces/author-requests", headers=headers_b)
+        invitee_requests = client.get(
+            "/v1/workspaces/author-requests", headers=headers_b
+        )
         assert invitee_requests.status_code == 200
         request_id = invitee_requests.json()["items"][0]["id"]
         accept_request = client.post(
@@ -7023,6 +7115,7 @@ def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) ->
         report_response = client.post("/v1/impact/report", headers=headers, json={})
         context_response = client.get("/v1/persona/context", headers=headers)
         works_response = client.get("/v1/persona/works", headers=headers)
+        journals_response = client.get("/v1/persona/journals", headers=headers)
 
     assert metrics_response.status_code == 200
     assert metrics_response.json()["provider_attribution"]["manual"] >= 1
@@ -7052,6 +7145,8 @@ def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) ->
     assert "dominant_themes" in context_response.json()
     assert works_response.status_code == 200
     assert len(works_response.json()) == 2
+    assert journals_response.status_code == 200
+    assert len(journals_response.json()) == 2
 
 
 def test_v1_plan_sections_can_include_persona_context(monkeypatch, tmp_path) -> None:

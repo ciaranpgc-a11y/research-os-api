@@ -19,6 +19,12 @@ from research_os.services.persona_service import (
     recompute_collaborator_edges,
     upsert_work,
 )
+from research_os.services.journal_identity import (
+    extract_openalex_source_id,
+    normalize_issn,
+    normalize_issns,
+    normalize_venue_type,
+)
 from research_os.services.persona_sync_job_service import (
     PersonaSyncJobConflictError,
     PersonaSyncJobValidationError,
@@ -289,7 +295,7 @@ def _resolve_openalex_author_by_name(
     # Try to find exact or close match by name
     clean_target = re.sub(r"\s+", " ", clean_name.strip()).lower()
     selected: dict[str, Any] | None = None
-    
+
     # Pass 1: Exact match or strong containment
     for item in results:
         if not isinstance(item, dict):
@@ -309,18 +315,18 @@ def _resolve_openalex_author_by_name(
             # Strong match - prefer this over first result
             if selected is None:
                 selected = item
-    
+
     # Fall back to first result with works if no match found
     if selected is None:
         for item in results:
             if isinstance(item, dict) and item.get("works_count", 0) > 0:
                 selected = item
                 break
-    
+
     # Fall back to first result
     if selected is None:
         selected = results[0] if isinstance(results[0], dict) else None
-    
+
     if not selected:
         return None
 
@@ -451,6 +457,14 @@ def _work_from_openalex(
         if isinstance(work_payload.get("host_venue"), dict)
         else {}
     )
+    openalex_source_id = extract_openalex_source_id(
+        source.get("id") or host_venue.get("id")
+    )
+    issn_l = normalize_issn(source.get("issn_l") or host_venue.get("issn_l"))
+    issns = normalize_issns(source.get("issn") or host_venue.get("issn"))
+    if issn_l and issn_l not in issns:
+        issns = [issn_l, *issns]
+    venue_type = normalize_venue_type(source.get("type") or host_venue.get("type"))
     venue_name = re.sub(
         r"\s+",
         " ",
@@ -471,18 +485,20 @@ def _work_from_openalex(
     )
     work_id_url = str(work_payload.get("id") or "").strip()
     work_url = f"https://doi.org/{doi}" if doi else work_id_url
-    
+
     # Determine user's author position if author ID is provided
     user_author_position: int | None = None
     if user_openalex_author_id:
         # Normalize the user's author ID for comparison
         normalized_user_id = user_openalex_author_id.strip()
         if normalized_user_id.startswith("https://openalex.org/"):
-            normalized_user_id = normalized_user_id.removeprefix("https://openalex.org/")
+            normalized_user_id = normalized_user_id.removeprefix(
+                "https://openalex.org/"
+            )
         elif normalized_user_id.startswith("http://openalex.org/"):
             normalized_user_id = normalized_user_id.removeprefix("http://openalex.org/")
         normalized_user_id = normalized_user_id.strip("/").upper()
-        
+
         # Look through authorships to find user's position
         authorships = work_payload.get("authorships")
         if isinstance(authorships, list):
@@ -501,7 +517,7 @@ def _work_from_openalex(
                 if author_id == normalized_user_id:
                     user_author_position = idx
                     break
-    
+
     result = {
         "title": title,
         "year": _safe_int(work_payload.get("publication_year")),
@@ -514,11 +530,15 @@ def _work_from_openalex(
         "url": work_url,
         "authors": _extract_authors(work_payload),
         "openalex_work_id": _extract_openalex_work_id(work_id_url),
+        "openalex_source_id": openalex_source_id,
+        "issn_l": issn_l,
+        "issns": issns,
+        "venue_type": venue_type,
     }
-    
+
     if user_author_position is not None:
         result["user_author_position"] = user_author_position
-    
+
     return result
 
 
@@ -621,7 +641,9 @@ def bootstrap_publication_insights_from_orcid(
         for item in openalex_works:
             if not isinstance(item, dict):
                 continue
-            work_payload = _work_from_openalex(item, user_openalex_author_id=openalex_author_id)
+            work_payload = _work_from_openalex(
+                item, user_openalex_author_id=openalex_author_id
+            )
             if not work_payload.get("title"):
                 continue
             record = upsert_work(
@@ -717,12 +739,12 @@ def import_openalex_works_direct(
     overwrite_user_metadata: bool = False,
 ) -> dict[str, Any]:
     """Import publications directly from OpenAlex using a known author ID.
-    
+
     This bypasses ORCID and name resolution, using the author ID provided.
     Returns the same structure as import_orcid_works for consistency.
     """
     from research_os.services.orcid_service import _upsert_imported_orcid_work
-    
+
     # Normalize the author ID
     author_id = str(openalex_author_id).strip()
     if author_id.startswith("https://openalex.org/"):
@@ -730,20 +752,24 @@ def import_openalex_works_direct(
     elif author_id.startswith("http://openalex.org/"):
         author_id = author_id.removeprefix("http://openalex.org/")
     author_id = author_id.strip().strip("/")
-    
+
     if not author_id:
-        raise PublicationInsightsBootstrapValidationError("OpenAlex author ID is required")
-    
+        raise PublicationInsightsBootstrapValidationError(
+            "OpenAlex author ID is required"
+        )
+
     # Get user info
     create_all_tables()
     with session_scope() as session:
         user = session.get(User, user_id)
         if not user:
-            raise PublicationInsightsBootstrapNotFoundError(f"User '{user_id}' not found")
+            raise PublicationInsightsBootstrapNotFoundError(
+                f"User '{user_id}' not found"
+            )
         user_email = user.email
-    
+
     mailto = _openalex_mailto(fallback_email=user_email)
-    
+
     # Fetch publications from OpenAlex
     max_works = 2000
     openalex_works = _fetch_openalex_works_for_author(
@@ -751,7 +777,7 @@ def import_openalex_works_direct(
         mailto=mailto,
         max_works=max_works,
     )
-    
+
     # Transform OpenAlex payloads to work payloads
     imported: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -763,13 +789,15 @@ def import_openalex_works_direct(
             continue
         if work_id:
             seen_ids.add(work_id)
-        work_payload = _work_from_openalex(work_raw, user_openalex_author_id=openalex_author_id)
+        work_payload = _work_from_openalex(
+            work_raw, user_openalex_author_id=openalex_author_id
+        )
         if not work_payload.get("title"):
             continue
         if work_id and not work_payload.get("url"):
             work_payload["url"] = work_id
         imported.append(work_payload)
-    
+
     # Upsert all imported works
     upserted_ids: list[str] = []
     seen_upserted_ids: set[str] = set()
@@ -779,8 +807,10 @@ def import_openalex_works_direct(
     with session_scope() as session:
         user = session.get(User, user_id)
         if not user:
-            raise PublicationInsightsBootstrapNotFoundError(f"User '{user_id}' not found")
-        
+            raise PublicationInsightsBootstrapNotFoundError(
+                f"User '{user_id}' not found"
+            )
+
         existing_work_ids_before = {
             str(item)
             for item in session.scalars(
@@ -791,7 +821,7 @@ def import_openalex_works_direct(
             session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id))
             or 0
         )
-        
+
         for work in imported:
             record = _upsert_imported_orcid_work(
                 user_id=user_id,
@@ -804,10 +834,13 @@ def import_openalex_works_direct(
                 continue
             seen_upserted_ids.add(work_id)
             upserted_ids.append(work_id)
-            if work_id not in existing_work_ids_before and work_id not in seen_new_work_ids:
+            if (
+                work_id not in existing_work_ids_before
+                and work_id not in seen_new_work_ids
+            ):
                 seen_new_work_ids.add(work_id)
                 new_work_ids.append(work_id)
-        
+
         current_works_count = (
             session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id))
             or 0
@@ -816,7 +849,7 @@ def import_openalex_works_direct(
         user.openalex_author_id = author_id
         user.orcid_last_synced_at = _utcnow()
         session.flush()
-    
+
     # Trigger warmup for imported publications
     for work_id in upserted_ids:
         try:
@@ -827,15 +860,16 @@ def import_openalex_works_direct(
             )
         except Exception:
             pass
-    
+
     # Recompute collaborations
     collaboration = recompute_collaborator_edges(user_id=user_id)
-    
+
     # Trigger analytics recompute
     try:
         from research_os.services.publications_analytics_service import (
             enqueue_publications_analytics_recompute,
         )
+
         enqueue_publications_analytics_recompute(
             user_id=user_id,
             force=True,
@@ -843,12 +877,13 @@ def import_openalex_works_direct(
         )
     except Exception:
         pass
-    
+
     # Proactively trigger metrics computation
     try:
         from research_os.services.publication_metrics_service import (
             enqueue_publication_top_metrics_refresh,
         )
+
         enqueue_publication_top_metrics_refresh(
             user_id=user_id,
             force=True,
@@ -856,7 +891,7 @@ def import_openalex_works_direct(
         )
     except Exception:
         pass
-    
+
     return {
         "imported_count": len(upserted_ids),
         "work_ids": upserted_ids,

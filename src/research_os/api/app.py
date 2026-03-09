@@ -228,6 +228,7 @@ from research_os.api.schemas import (
     PublicationsAnalyticsTopDriversResponse,
     PersonaMetricsSyncRequest,
     PersonaMetricsSyncResponse,
+    PersonaJournalResponse,
     PersonaWorkResponse,
     PublicationInsightsAgentResponse,
     ProjectCreateRequest,
@@ -400,6 +401,7 @@ from research_os.services.persona_service import (
     get_persona_context,
     get_themes,
     list_collaborators,
+    list_journals,
     list_works,
     sync_metrics,
 )
@@ -756,9 +758,7 @@ class WorkspaceInboxRealtimeHub:
             ):
                 stale_targets.append(target)
                 try:
-                    await target.close(
-                        code=1008, reason="Workspace access denied."
-                    )
+                    await target.close(code=1008, reason="Workspace access denied.")
                 except Exception:
                     pass
                 continue
@@ -887,7 +887,9 @@ async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONR
         response.headers["Access-Control-Allow-Origin"] = allowed_origin
         existing_vary = str(response.headers.get("Vary") or "").strip()
         if existing_vary:
-            vary_values = {item.strip() for item in existing_vary.split(",") if item.strip()}
+            vary_values = {
+                item.strip() for item in existing_vary.split(",") if item.strip()
+            }
             if "Origin" not in vary_values:
                 response.headers["Vary"] = f"{existing_vary}, Origin"
         else:
@@ -984,11 +986,11 @@ def _build_attachment_content_disposition(filename: str) -> str:
     raw = str(filename or "").strip().replace("\r", " ").replace("\n", " ")
     if not raw:
         raw = "file.bin"
-    fallback = re.sub(r'[^A-Za-z0-9._ -]+', "_", raw).strip(" .")
+    fallback = re.sub(r"[^A-Za-z0-9._ -]+", "_", raw).strip(" .")
     if not fallback:
         fallback = "file.bin"
     encoded = quote(raw, safe="")
-    return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{encoded}'
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"
 
 
 def _build_forbidden_response(detail: str) -> JSONResponse:
@@ -2268,9 +2270,10 @@ def v1_openalex_search_authors(
         return _build_unauthorized_response("Session token is required.")
     try:
         get_user_by_session_token(token)  # Verify authentication
-        
+
         # Use the OpenAlex API to search for authors
         import httpx
+
         mailto = _openalex_mailto()
         params: dict[str, Any] = {
             "search": payload.query.strip(),
@@ -2279,7 +2282,7 @@ def v1_openalex_search_authors(
         }
         if mailto:
             params["mailto"] = mailto
-        
+
         response = httpx.get(
             "https://api.openalex.org/authors",
             params=params,
@@ -2287,7 +2290,7 @@ def v1_openalex_search_authors(
         )
         response.raise_for_status()
         data = response.json()
-        
+
         results = []
         for item in data.get("results", []):
             if not isinstance(item, dict):
@@ -2297,15 +2300,18 @@ def v1_openalex_search_authors(
                 author_id = author_id.removeprefix("https://openalex.org/")
             if not author_id:
                 continue
-            
-            results.append({
-                "id": author_id,
-                "display_name": str(item.get("display_name", "")).strip() or "Unknown",
-                "works_count": int(item.get("works_count", 0)),
-                "cited_by_count": int(item.get("cited_by_count", 0)),
-                "orcid": str(item.get("orcid", "")).strip() or None,
-            })
-        
+
+            results.append(
+                {
+                    "id": author_id,
+                    "display_name": str(item.get("display_name", "")).strip()
+                    or "Unknown",
+                    "works_count": int(item.get("works_count", 0)),
+                    "cited_by_count": int(item.get("cited_by_count", 0)),
+                    "orcid": str(item.get("orcid", "")).strip() or None,
+                }
+            )
+
         return OpenAlexAuthorSearchResponse(results=results)
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
@@ -2334,7 +2340,7 @@ def v1_openalex_import(
         return _build_unauthorized_response("Session token is required.")
     try:
         user = get_user_by_session_token(token)
-        
+
         # Normalize the author ID
         author_id = payload.openalex_author_id.strip()
         if author_id.startswith("https://openalex.org/"):
@@ -2342,7 +2348,7 @@ def v1_openalex_import(
         elif author_id.startswith("http://openalex.org/"):
             author_id = author_id.removeprefix("http://openalex.org/")
         author_id = author_id.strip().strip("/")
-        
+
         if not author_id:
             return _build_bad_request_response("Invalid OpenAlex author ID")
 
@@ -2351,7 +2357,7 @@ def v1_openalex_import(
             if user_row is not None:
                 user_row.openalex_author_id = author_id
                 session.flush()
-        
+
         # Create a sync job for the import
         job = enqueue_persona_sync_job(
             user_id=str(user["id"]),
@@ -2363,7 +2369,7 @@ def v1_openalex_import(
             refresh_metrics=payload.refresh_metrics,
             openalex_author_id=author_id,
         )
-        
+
         return OpenAlexImportResponse(
             job_id=str(job.id),
             openalex_author_id=author_id,
@@ -2477,6 +2483,28 @@ def v1_persona_list_works(request: Request) -> list[PersonaWorkResponse] | JSONR
         user = get_user_by_session_token(token)
         payload = list_works(user_id=str(user["id"]))
         return [PersonaWorkResponse(**item) for item in payload]
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PersonaNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.get(
+    "/v1/persona/journals",
+    response_model=list[PersonaJournalResponse],
+    responses=NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_persona_list_journals(
+    request: Request,
+) -> list[PersonaJournalResponse] | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_journals(user_id=str(user["id"]))
+        return [PersonaJournalResponse(**item) for item in payload]
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
     except PersonaNotFoundError as exc:
@@ -2655,7 +2683,17 @@ def v1_publications_ai_insights(
     request: Request,
     window_id: Literal["1y", "3y", "5y", "all"] = Query("1y"),
     scope: Literal["window", "section"] = Query("window"),
-    section_key: Literal["uncited_works", "citation_drivers", "citation_activation", "citation_activation_history", "publication_output_pattern", "publication_production_phase", "publication_volume_over_time", "publication_article_type_over_time", "publication_type_over_time"]
+    section_key: Literal[
+        "uncited_works",
+        "citation_drivers",
+        "citation_activation",
+        "citation_activation_history",
+        "publication_output_pattern",
+        "publication_production_phase",
+        "publication_volume_over_time",
+        "publication_article_type_over_time",
+        "publication_type_over_time",
+    ]
     | None = Query(None),
 ) -> PublicationInsightsAgentResponse | JSONResponse:
     token = _extract_session_token(request)
@@ -4200,7 +4238,9 @@ async def v1_workspace_inbox_ws(websocket: WebSocket) -> None:
                 )
                 continue
 
-            payload_workspace_id = str(payload.get("workspace_id") or workspace_id).strip()
+            payload_workspace_id = str(
+                payload.get("workspace_id") or workspace_id
+            ).strip()
             if payload_workspace_id != workspace_id:
                 continue
 
@@ -4221,7 +4261,10 @@ async def v1_workspace_inbox_ws(websocket: WebSocket) -> None:
                 if created_at:
                     event_payload["created_at"] = created_at
             if event_type == "read_marked":
-                reader_name = str(payload.get("reader_name") or sender_name).strip() or sender_name
+                reader_name = (
+                    str(payload.get("reader_name") or sender_name).strip()
+                    or sender_name
+                )
                 read_at = str(payload.get("read_at") or "").strip()
                 event_payload["reader_name"] = reader_name
                 if read_at:
@@ -4768,8 +4811,7 @@ def v1_update_library_asset_access(
             user_id=requesting_user_id or "",
             account_key_hint=account_key_hint,
             collaborators=[
-                member.model_dump(mode="python")
-                for member in payload.collaborators
+                member.model_dump(mode="python") for member in payload.collaborators
             ],
             collaborator_user_ids=payload.collaborator_user_ids,
             collaborator_names=payload.collaborator_names,
@@ -6032,9 +6074,7 @@ def v1_get_generation_job(
     if auth_error is not None:
         return auth_error
     try:
-        job = get_generation_job_record(
-            job_id, requesting_user_id=requesting_user_id
-        )
+        job = get_generation_job_record(job_id, requesting_user_id=requesting_user_id)
         return GenerationJobResponse(**serialize_generation_job(job))
     except GenerationJobNotFoundError as exc:
         return _build_not_found_response(str(exc))
@@ -6053,9 +6093,7 @@ def v1_cancel_generation_job(
     if auth_error is not None:
         return auth_error
     try:
-        job = cancel_generation_job(
-            job_id, requesting_user_id=requesting_user_id
-        )
+        job = cancel_generation_job(job_id, requesting_user_id=requesting_user_id)
         return GenerationJobResponse(**serialize_generation_job(job))
     except GenerationJobNotFoundError as exc:
         return _build_not_found_response(str(exc))

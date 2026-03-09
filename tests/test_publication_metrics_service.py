@@ -207,6 +207,21 @@ def test_metric_compute_helpers() -> None:
     )
 
 
+def test_normalize_article_type_label_maps_original_to_original_research() -> None:
+    assert (
+        publication_metrics_service._normalize_article_type_label("Original")
+        == "Original research"
+    )
+    assert (
+        publication_metrics_service._normalize_article_type_label("research-article")
+        == "Original research"
+    )
+    assert (
+        publication_metrics_service._normalize_article_type_label(None)
+        == "Original research"
+    )
+
+
 def test_h_index_projection_helper_is_deterministic() -> None:
     projection = project_h_index(
         current_h_index=18,

@@ -9,6 +9,13 @@ from urllib.parse import quote
 
 import httpx
 
+from research_os.services.journal_identity import (
+    extract_openalex_source_id,
+    normalize_issn,
+    normalize_issns,
+    normalize_venue_type,
+)
+
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 REQUEST_RETRY_COUNT = 2
 REQUEST_RETRY_BASE_DELAY_SECONDS = 0.35
@@ -266,27 +273,33 @@ class OpenAlexMetricsProvider(MetricsProvider):
         source = primary_location.get("source") or {}
         summary_stats = source.get("summary_stats") or {}
         journal_2yr_mean_citedness = summary_stats.get("2yr_mean_citedness")
+        source_issn_l = normalize_issn(source.get("issn_l"))
+        source_issns = normalize_issns(source.get("issn") or source.get("issns"))
+        if source_issn_l and source_issn_l not in source_issns:
+            source_issns = [source_issn_l, *source_issns]
         abstract = _openalex_abstract_from_inverted_index(
             candidate.get("abstract_inverted_index")
         )
         counts_by_year = _openalex_counts_by_year(candidate.get("counts_by_year"))
-        
+
         # Extract topics/concepts
         primary_topic = candidate.get("primary_topic") or {}
         topics = candidate.get("topics") or []
         keywords = candidate.get("keywords") or []
-        
+
         # Extract open access information
         open_access = candidate.get("open_access") or {}
         oa_status = str(open_access.get("oa_status") or "").strip() or None
         is_oa = bool(open_access.get("is_oa"))
         oa_url = str(open_access.get("oa_url") or "").strip() or None
-        any_repository_has_fulltext = bool(open_access.get("any_repository_has_fulltext"))
-        
+        any_repository_has_fulltext = bool(
+            open_access.get("any_repository_has_fulltext")
+        )
+
         # Extract APC information
         apc_list = candidate.get("apc_list") or {}
         apc_paid = candidate.get("apc_paid") or {}
-        
+
         return {
             "provider": self.provider_name,
             "citations_count": cited_by,
@@ -300,6 +313,23 @@ class OpenAlexMetricsProvider(MetricsProvider):
                 "pmid": pmid_value,
                 "journal_2yr_mean_citedness": journal_2yr_mean_citedness,
                 "journal_name": source.get("display_name"),
+                "openalex_source_id": extract_openalex_source_id(source.get("id")),
+                "issn_l": source_issn_l,
+                "issn": source_issns,
+                "source_type": normalize_venue_type(source.get("type")),
+                "source": {
+                    "id": extract_openalex_source_id(source.get("id")),
+                    "display_name": source.get("display_name"),
+                    "issn_l": source_issn_l,
+                    "issn": source_issns,
+                    "type": normalize_venue_type(source.get("type")),
+                    "host_organization_name": source.get("host_organization_name"),
+                    "summary_stats": summary_stats,
+                    "is_oa": source.get("is_oa"),
+                    "is_in_doaj": source.get("is_in_doaj"),
+                    "apc_usd": source.get("apc_usd"),
+                    "homepage_url": source.get("homepage_url"),
+                },
                 "type": candidate.get("type"),
                 "type_crossref": candidate.get("type_crossref"),
                 "publication_date": candidate.get("publication_date"),

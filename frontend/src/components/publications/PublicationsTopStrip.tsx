@@ -5,12 +5,13 @@ import { Button, Card, CardContent, DrilldownSheet, Tooltip, TooltipContent, Too
 import { HelpTooltipIconButton, InsightsGlyph, SectionTools } from '@/components/patterns'
 import { Section, SectionHeader } from '@/components/primitives'
 import { readAccountSettings } from '@/lib/account-preferences'
-import { fetchPublicationInsightsAgent, fetchPublicationMetricDetail } from '@/lib/impact-api'
+import { fetchPublicationInsightsAgent, fetchPublicationMetricDetail, pingApiHealth } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
 import type {
   PublicationMetricDetailPayload,
   PublicationMetricTilePayload,
   PublicationInsightsAgentPayload,
+  PublicationInsightsAgentSectionPayload,
   PublicationsTopMetricsPayload,
 } from '@/types/impact'
 
@@ -333,6 +334,8 @@ export type PublicationProductionPhaseLabel =
   | 'Contracting'
   | 'Rebuilding'
 
+type PublicationTrajectoryPhaseLabel = 'Expanding' | 'Stable' | 'Contracting'
+
 export type PublicationProductionPhaseStats = {
   phase: PublicationProductionPhaseLabel | null
   phaseLabel: string
@@ -350,8 +353,20 @@ export type PublicationProductionPhaseStats = {
   baselineMean: number | null
   momentum: number | null
   recentShare: number | null
+  recentTrendSlope: number | null
   peakYear: number | null
+  peakYears: number[]
   peakCount: number | null
+  latestYear: number | null
+  latestCount: number | null
+  latestVsPeakRatio: number | null
+  currentPaceYear: number | null
+  currentPaceCutoffLabel: string | null
+  currentPaceCount: number | null
+  currentPaceComparisonYears: number[]
+  currentPaceComparisonLabel: string | null
+  currentPaceComparisonMean: number | null
+  currentPaceComparisonDelta: number | null
   historicalGapYearsPresent: boolean
   emptyReason: string | null
 }
@@ -359,6 +374,16 @@ export type PublicationProductionPhaseStats = {
 type PublicationVolumeOverTimeRollingBlock = {
   label: string
   count: number
+}
+
+type PublicationProductionPhaseCurrentYearHighlight = {
+  year: number
+  value: number
+  cutoffLabel: string
+  comparisonLabel: string | null
+  comparisonMean: number | null
+  comparisonDelta: number | null
+  latestCompleteYear: number | null
 }
 
 type PublicationVolumeOverTimeInsightStats = {
@@ -396,6 +421,11 @@ type PublicationArticleTypeWindowInsightSummary = {
   secondLabel: string | null
   secondSharePct: number | null
   orderedLabels: string[]
+  entries: Array<{
+    label: string
+    count: number
+    sharePct: number
+  }>
 }
 
 type PublicationArticleTypeOverTimeInsightStats = {
@@ -410,6 +440,7 @@ type PublicationArticleTypeOverTimeInsightStats = {
   oneYearWindow: PublicationArticleTypeWindowInsightSummary | null
   latestYearIsPartial: boolean
   latestPartialYearLabel: string | null
+  latestWindowEndLabel: string | null
 }
 
 type PublicationPublicationTypeWindowInsightSummary = PublicationArticleTypeWindowInsightSummary
@@ -422,6 +453,88 @@ function parsePublicationProductionPatternAsOfDate(value: unknown): Date | null 
   }
   const parsed = new Date(`${clean}T00:00:00Z`)
   return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function buildPublicationProductionPhaseCurrentPaceStats(
+  tile: PublicationMetricTilePayload,
+  completedYears: number[],
+): Pick<
+  PublicationProductionPhaseStats,
+  | 'currentPaceYear'
+  | 'currentPaceCutoffLabel'
+  | 'currentPaceCount'
+  | 'currentPaceComparisonYears'
+  | 'currentPaceComparisonLabel'
+  | 'currentPaceComparisonMean'
+  | 'currentPaceComparisonDelta'
+> {
+  const emptyState = {
+    currentPaceYear: null,
+    currentPaceCutoffLabel: null,
+    currentPaceCount: null,
+    currentPaceComparisonYears: [],
+    currentPaceComparisonLabel: null,
+    currentPaceComparisonMean: null,
+    currentPaceComparisonDelta: null,
+  }
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+  const asOfDate = parsePublicationProductionPatternAsOfDate(drilldown.as_of_date) ?? new Date()
+  const lastCompleteMonthIndex = asOfDate.getUTCMonth() - 1
+  if (lastCompleteMonthIndex < 0) {
+    return emptyState
+  }
+
+  const currentYear = asOfDate.getUTCFullYear()
+  const lastCompleteYear = completedYears[completedYears.length - 1] ?? null
+  if (lastCompleteYear !== null && currentYear <= lastCompleteYear) {
+    return emptyState
+  }
+
+  const lifetimeValues = toNumberArray(chartData.monthly_values_lifetime).map((item) => Math.max(0, Math.round(item)))
+  if (!lifetimeValues.length) {
+    return emptyState
+  }
+  const lifetimeLabels = toStringArray(chartData.month_labels_lifetime)
+  const lifetimeStart = parseIsoPublicationDate(String(chartData.lifetime_month_start || '').trim())
+  const comparableCountsByYear = new Map<number, number>()
+  lifetimeValues.forEach((value, index) => {
+    const parsedMonthStart = parseIsoMonthStart(lifetimeLabels[index] || '')
+    const monthStart = parsedMonthStart || (lifetimeStart ? shiftUtcMonth(lifetimeStart, index) : null)
+    if (!monthStart || monthStart.getUTCMonth() > lastCompleteMonthIndex) {
+      return
+    }
+    const year = monthStart.getUTCFullYear()
+    comparableCountsByYear.set(year, (comparableCountsByYear.get(year) || 0) + Math.max(0, value))
+  })
+  if (!comparableCountsByYear.has(currentYear)) {
+    return emptyState
+  }
+
+  const comparisonYears = completedYears.slice(-3)
+  const comparisonMean = comparisonYears.length
+    ? comparisonYears.reduce((sum, year) => sum + Math.max(0, comparableCountsByYear.get(year) || 0), 0) / comparisonYears.length
+    : null
+  const currentPaceCount = Math.max(0, comparableCountsByYear.get(currentYear) || 0)
+  const currentPaceComparisonLabel = comparisonYears.length
+    ? comparisonYears[0] === comparisonYears[comparisonYears.length - 1]
+      ? String(comparisonYears[0])
+      : `${comparisonYears[0]}-${comparisonYears[comparisonYears.length - 1]}`
+    : null
+
+  return {
+    currentPaceYear: currentYear,
+    currentPaceCutoffLabel: new Date(Date.UTC(currentYear, lastCompleteMonthIndex, 1)).toLocaleString('en-GB', {
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }),
+    currentPaceCount,
+    currentPaceComparisonYears: comparisonYears,
+    currentPaceComparisonLabel,
+    currentPaceComparisonMean: comparisonMean === null ? null : Math.round(comparisonMean * 10) / 10,
+    currentPaceComparisonDelta: comparisonMean === null ? null : Math.round((currentPaceCount - comparisonMean) * 10) / 10,
+  }
 }
 
 function buildPublicationProductionYearSeries(
@@ -560,6 +673,53 @@ function buildPublicationProductionYearSeries(
     includesPartialYear,
     partialYear: includesPartialYear ? projectedYear : null,
     emptyReason: null,
+  }
+}
+
+function buildPublicationProductionYearSeriesScopeFromSeries({
+  years,
+  series,
+  includesPartialYear = false,
+  partialYear = null,
+}: {
+  years: number[]
+  series: number[]
+  includesPartialYear?: boolean
+  partialYear?: number | null
+}): PublicationProductionYearSeriesScope {
+  const pairCount = Math.min(years.length, series.length)
+  const safeYears = years.slice(0, pairCount).map((year) => Number(year))
+  const safeSeries = series.slice(0, pairCount).map((value) => Math.max(0, Number(value)))
+  const scopedPublicationCount = Math.round(safeSeries.reduce((sum, value) => sum + Math.max(0, value), 0))
+
+  if (!pairCount) {
+    return {
+      totalPublications: 0,
+      scopedPublicationCount: 0,
+      firstPublicationYear: null,
+      lastPublicationYear: null,
+      activeSpan: 0,
+      years: [],
+      series: [],
+      lowVolume: false,
+      includesPartialYear: false,
+      partialYear: null,
+      emptyReason: 'Publication year data is unavailable for the current range.',
+    }
+  }
+
+  return {
+    totalPublications: scopedPublicationCount,
+    scopedPublicationCount,
+    firstPublicationYear: safeYears[0] ?? null,
+    lastPublicationYear: safeYears[pairCount - 1] ?? null,
+    activeSpan: safeSeries.length,
+    years: safeYears,
+    series: safeSeries,
+    lowVolume: scopedPublicationCount > 0 && scopedPublicationCount < 10,
+    includesPartialYear,
+    partialYear: includesPartialYear ? partialYear : null,
+    emptyReason: scopedPublicationCount <= 0 ? 'No publications fall inside the current slider range.' : null,
   }
 }
 
@@ -847,6 +1007,9 @@ function formatPublicationBurstinessSpikePatternExplanation(stats: PublicationPr
   const first = standoutYears[0]!
   const second = standoutYears[1]!
   const leadLabel = burstinessValue <= 0.4 ? 'your main high-output years were' : 'your clearest spikes came in'
+  if (first.count === second.count) {
+    return `${leadLabel} ${first.year} and ${second.year} (both ${formatInt(first.count)} ${pluralize(first.count, 'publication')}), against a typical pace of ${typicalPaceText}.`
+  }
   return `${leadLabel} ${first.year} (${formatInt(first.count)} ${pluralize(first.count, 'publication')}) and ${second.year} (${formatInt(second.count)} ${pluralize(second.count, 'publication')}), against a typical pace of ${typicalPaceText}.`
 }
 
@@ -891,6 +1054,9 @@ function formatPublicationPeakYearSummary(details: {
   }
 
   if (tiedPeakYears.length > 1) {
+    if (tiedPeakYears.length === 2) {
+      return `your highest-output years were ${formatPublicationProductionPatternYearList(tiedPeakYears)} (both ${formatInt(peakCount)} ${pluralize(peakCount, 'publication')}).`
+    }
     return `your highest-output years were ${formatPublicationProductionPatternYearList(tiedPeakYears)}, with ${formatInt(peakCount)} ${pluralize(peakCount, 'publication')} each.`
   }
 
@@ -948,6 +1114,453 @@ function formatPublicationPeakYearEvenSpreadSummary(
     : ''
 
   return `across a ${formatPublicationProductionSpanLabel(stats.activeSpan)}, an even spread would be about ${formatRoundedOneDecimalTrimmed(evenSharePct)}% per year. ${perYearSubject} ${formatPercentWhole(peakSharePct)}.${multipleText}`
+}
+
+function calculatePublicationSeriesQuantile(values: number[], quantile: number): number | null {
+  const safeValues = values
+    .map((value) => Math.max(0, Number(value)))
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right)
+  if (!safeValues.length) {
+    return null
+  }
+  const boundedQuantile = Math.max(0, Math.min(1, quantile))
+  const position = (safeValues.length - 1) * boundedQuantile
+  const lowerIndex = Math.floor(position)
+  const upperIndex = Math.ceil(position)
+  const lowerValue = safeValues[lowerIndex] ?? safeValues[safeValues.length - 1] ?? 0
+  const upperValue = safeValues[upperIndex] ?? lowerValue
+  if (lowerIndex === upperIndex) {
+    return lowerValue
+  }
+  return lowerValue + ((upperValue - lowerValue) * (position - lowerIndex))
+}
+
+function buildPublicationProductionPatternDistributionStats(stats: PublicationProductionPatternStats): {
+  median: number | null
+  q1: number | null
+  q3: number | null
+  iqr: number | null
+} {
+  const median = calculatePublicationSeriesQuantile(stats.series, 0.5)
+  const q1 = calculatePublicationSeriesQuantile(stats.series, 0.25)
+  const q3 = calculatePublicationSeriesQuantile(stats.series, 0.75)
+  return {
+    median,
+    q1,
+    q3,
+    iqr: q1 === null || q3 === null ? null : q3 - q1,
+  }
+}
+
+function formatPublicationProductionPatternSpanLabel(stats: PublicationProductionPatternStats): string | null {
+  if (stats.firstPublicationYear === null || stats.lastPublicationYear === null) {
+    return null
+  }
+  return stats.firstPublicationYear === stats.lastPublicationYear
+    ? String(stats.firstPublicationYear)
+    : `${stats.firstPublicationYear}-${stats.lastPublicationYear}`
+}
+
+function formatPublicationDistributionCount(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return '\u2014'
+  }
+  return formatInt(value)
+}
+
+function formatPublicationDistributionSummary(distribution: {
+  median: number | null
+  q1: number | null
+  q3: number | null
+}): string {
+  if (distribution.median === null) {
+    return ''
+  }
+
+  const medianLabel = formatPublicationDistributionCount(distribution.median)
+  if (distribution.q1 === null || distribution.q3 === null) {
+    return `Median year: ${medianLabel} publications.`
+  }
+
+  const q1Label = formatPublicationDistributionCount(distribution.q1)
+  const q3Label = formatPublicationDistributionCount(distribution.q3)
+  if (q1Label === q3Label) {
+    return `Median year: ${medianLabel} publications.`
+  }
+
+  return `Median year: ${medianLabel} publications (IQR ${q1Label}-${q3Label}).`
+}
+
+type PublicationProductionPatternPeakPoint = {
+  year: number
+  count: number
+  index: number
+}
+
+function getPublicationProductionPatternLocalPeaks(
+  stats: PublicationProductionPatternStats,
+): PublicationProductionPatternPeakPoint[] {
+  if (!stats.years.length || stats.years.length !== stats.series.length) {
+    return []
+  }
+
+  return stats.years
+    .map((year, index) => ({
+      year,
+      count: Math.max(0, Number(stats.series[index] ?? 0)),
+      index,
+    }))
+    .filter((point, index, points) => {
+      const previous = points[index - 1]?.count ?? Number.NEGATIVE_INFINITY
+      const next = points[index + 1]?.count ?? Number.NEGATIVE_INFINITY
+      return point.count > 0 && point.count >= previous && point.count >= next && (point.count > previous || point.count > next)
+    })
+}
+
+function getPublicationProductionPatternSignificantPeaks(
+  stats: PublicationProductionPatternStats,
+  peakDetails: {
+    peakYear: number | null
+    peakCount: number | null
+    tiedPeakYears: number[]
+  },
+): PublicationProductionPatternPeakPoint[] {
+  if (!stats.years.length || stats.years.length !== stats.series.length) {
+    return []
+  }
+
+  const localPeaks = getPublicationProductionPatternLocalPeaks(stats)
+  const standoutYears = getPublicationBurstinessStandoutYears(stats)
+  const localPeakYearSet = new Set(localPeaks.map((peak) => peak.year))
+  const significantPeakYears = new Set<number>([
+    ...peakDetails.tiedPeakYears,
+    ...standoutYears.filter((entry) => localPeakYearSet.has(entry.year)).map((entry) => entry.year),
+  ])
+
+  if (peakDetails.peakCount !== null) {
+    localPeaks
+      .filter((point) => point.count >= peakDetails.peakCount * 0.8)
+      .forEach((point) => significantPeakYears.add(point.year))
+  }
+
+  if (!significantPeakYears.size && peakDetails.peakYear !== null) {
+    significantPeakYears.add(peakDetails.peakYear)
+  }
+
+  return stats.years
+    .map((year, index) => ({
+      year,
+      count: Math.max(0, Number(stats.series[index] ?? 0)),
+      index,
+    }))
+    .filter((point) => significantPeakYears.has(point.year))
+}
+
+function buildPublicationProductionPatternShapeContext(
+  stats: PublicationProductionPatternStats,
+  peakDetails: {
+    peakYear: number | null
+    peakCount: number | null
+    tiedPeakYears: number[]
+  },
+): {
+  slope: number | null
+  recentSlope: number | null
+  recentYears: number[]
+  recentMean: number | null
+  earlierMean: number | null
+  latestYear: number | null
+  latestCount: number | null
+  earlyQuietYears: number[]
+  recentSlump: boolean
+  repeatedPeaks: boolean
+  standoutYears: Array<{ year: number; count: number }>
+  significantPeaks: PublicationProductionPatternPeakPoint[]
+  distribution: {
+    median: number | null
+    q1: number | null
+    q3: number | null
+    iqr: number | null
+  }
+} {
+  const recentWindowSize = Math.max(1, Math.min(3, stats.series.length))
+  const recentYears = stats.years.slice(-recentWindowSize)
+  const recentSeries = stats.series.slice(-recentWindowSize)
+  const earlierSeries = stats.series.slice(0, Math.max(0, stats.series.length - recentWindowSize))
+  const latestCount = stats.series.length ? Math.max(0, Number(stats.series[stats.series.length - 1] ?? 0)) : null
+  const latestYear = stats.lastPublicationYear
+  const details = getPublicationProductionPatternRangeDetails(stats)
+  const firstYear = stats.firstPublicationYear
+  const earlyWindowEnd = firstYear === null ? null : firstYear + Math.max(1, Math.floor(Math.max(0, stats.activeSpan - 1) / 3))
+  const earlyQuietYears = details && earlyWindowEnd !== null
+    ? details.minYears.filter((year) => year <= earlyWindowEnd)
+    : []
+  const mostRecentPeakYear = peakDetails.tiedPeakYears.length
+    ? Math.max(...peakDetails.tiedPeakYears)
+    : peakDetails.peakYear
+
+  return {
+    slope: calculatePublicationProductionTrendSlope(stats.years, stats.series),
+    recentSlope: recentYears.length >= 2 ? calculatePublicationProductionTrendSlope(recentYears, recentSeries) : null,
+    recentYears,
+    recentMean: meanPublicationSeries(recentSeries),
+    earlierMean: earlierSeries.length ? meanPublicationSeries(earlierSeries) : null,
+    latestYear,
+    latestCount,
+    earlyQuietYears,
+    recentSlump: Boolean(
+      latestYear !== null
+      && latestCount !== null
+      && peakDetails.peakCount !== null
+      && mostRecentPeakYear !== null
+      && mostRecentPeakYear >= latestYear - 2
+      && !peakDetails.tiedPeakYears.includes(latestYear)
+      && latestCount <= peakDetails.peakCount * 0.45
+    ),
+    repeatedPeaks: peakDetails.tiedPeakYears.length > 1,
+    standoutYears: getPublicationBurstinessStandoutYears(stats),
+    significantPeaks: getPublicationProductionPatternSignificantPeaks(stats, peakDetails),
+    distribution: buildPublicationProductionPatternDistributionStats(stats),
+  }
+}
+
+function buildPublicationConsistencyHeading(stats: PublicationProductionPatternStats): string {
+  if (stats.consistencyIndex === null) {
+    return 'Consistency is still emerging'
+  }
+  return `Consistency is ${getPublicationConsistencyInterpretation(stats.consistencyIndex).toLowerCase()}`
+}
+
+function buildPublicationConsistencyDetail(
+  stats: PublicationProductionPatternStats,
+  peakDetails: {
+    peakYear: number | null
+    peakCount: number | null
+    tiedPeakYears: number[]
+  },
+): string {
+  if (stats.consistencyIndex === null) {
+    return 'Not enough complete-year history is available to estimate a stable consistency read yet.'
+  }
+
+  const shape = buildPublicationProductionPatternShapeContext(stats, peakDetails)
+  const gapYears = getPublicationProductionPatternGapYearCount(stats)
+  const distributionSummary = formatPublicationDistributionSummary(shape.distribution)
+  const driver = (() => {
+    if (gapYears > 0) {
+      return `${formatInt(gapYears)} of ${formatInt(stats.activeSpan)} complete years had no recorded publications, which widens the year-to-year spread.`
+    }
+    if (shape.earlyQuietYears.length > 0 && shape.recentSlump && shape.latestYear !== null && shape.latestCount !== null) {
+      return `What drives that variability is the move from quiet early years into repeated peaks, followed by a drop back to ${formatInt(shape.latestCount)} in ${shape.latestYear}.`
+    }
+    if (shape.earlyQuietYears.length > 0 && shape.repeatedPeaks) {
+      return 'What drives that variability is the shift from quiet early years into several later high-output years, rather than a smooth annual climb.'
+    }
+    if (shape.recentSlump && shape.latestYear !== null && shape.latestCount !== null) {
+      return `What drives that variability is that the latest complete year, ${shape.latestYear}, fell to ${formatInt(shape.latestCount)} after the earlier high years.`
+    }
+    if (shape.standoutYears.length > 1) {
+      return 'What drives that variability is a pattern of repeated peaks separated by softer years, rather than one steady yearly level.'
+    }
+    return 'What drives that variability is that output moves materially above and below its middle years rather than holding a narrow annual band.'
+  })()
+
+  return `Your lifetime consistency index is ${stats.consistencyIndex.toFixed(2)} (scale 0 to 1). ${distributionSummary} ${driver}`.trim()
+}
+
+function buildPublicationBurstinessHeading(stats: PublicationProductionPatternStats): string {
+  if (stats.burstinessScore === null) {
+    return 'Burstiness is still emerging'
+  }
+  return `Burstiness is ${getPublicationBurstinessInterpretation(stats.burstinessScore).toLowerCase()}`
+}
+
+function buildPublicationBurstinessDetail(
+  stats: PublicationProductionPatternStats,
+  peakDetails: {
+    peakYear: number | null
+    peakCount: number | null
+    tiedPeakYears: number[]
+  },
+): string {
+  if (stats.burstinessScore === null) {
+    return 'Not enough complete-year history is available to estimate whether output clusters into spikes yet.'
+  }
+
+  const shape = buildPublicationProductionPatternShapeContext(stats, peakDetails)
+  const peakCount = peakDetails.peakCount
+  const lowerQuartileCount = shape.distribution.q1 === null
+    ? 0
+    : stats.series.filter((value) => Math.max(0, Number(value ?? 0)) < shape.distribution.q1!).length
+  const upperQuartileCount = shape.distribution.q3 === null
+    ? 0
+    : stats.series.filter((value) => Math.max(0, Number(value ?? 0)) > shape.distribution.q3!).length
+  const bandSummary = shape.distribution.q1 === null || shape.distribution.q3 === null || shape.distribution.q1 === shape.distribution.q3
+    ? ''
+    : lowerQuartileCount > 0 && upperQuartileCount > 0
+      ? ` Only ${formatInt(lowerQuartileCount)} ${pluralize(lowerQuartileCount, 'complete year')} fell below ${formatPublicationDistributionCount(shape.distribution.q1)} publications, while ${formatInt(upperQuartileCount)} ${pluralize(upperQuartileCount, 'year')} rose above ${formatPublicationDistributionCount(shape.distribution.q3)}.`
+      : upperQuartileCount > 0
+        ? ` ${formatInt(upperQuartileCount)} ${pluralize(upperQuartileCount, 'complete year')} rose above ${formatPublicationDistributionCount(shape.distribution.q3)} publications.`
+        : lowerQuartileCount > 0
+          ? ` ${formatInt(lowerQuartileCount)} ${pluralize(lowerQuartileCount, 'complete year')} fell below ${formatPublicationDistributionCount(shape.distribution.q1)} publications.`
+          : ` The central band of the record sits between ${formatPublicationDistributionCount(shape.distribution.q1)} and ${formatPublicationDistributionCount(shape.distribution.q3)} publications.`
+  const peakComparison = peakCount !== null && shape.distribution.median !== null && shape.distribution.median > 0
+    ? ` Peak years ran at about ${formatRoundedOneDecimalTrimmed(peakCount / shape.distribution.median)}x a typical year in the record.`
+    : ''
+  const shapeRead = (() => {
+    if (shape.repeatedPeaks && shape.recentSlump && shape.latestYear !== null && shape.latestCount !== null) {
+      return `Burstiness stays moderate because the record rises into repeated peaks rather than one isolated spike, but then drops to ${formatInt(shape.latestCount)} in ${shape.latestYear}.`
+    }
+    if (shape.repeatedPeaks) {
+      return 'Burstiness stays moderate because several high years share the load rather than one isolated surge carrying the pattern.'
+    }
+    if (shape.standoutYears.length >= 3) {
+      return 'Burstiness is being created by a sequence of recurrent surges rather than by a perfectly even annual cadence.'
+    }
+    if (shape.standoutYears.length === 1 && peakDetails.peakYear !== null && peakCount !== null) {
+      return `Burstiness is being driven mainly by ${peakDetails.peakYear}, which stands clearly above the surrounding years.`
+    }
+    return 'Burstiness stays moderate because the stronger years are visible, but the rest of the record still carries substantial output.'
+  })()
+
+  return `Your lifetime burstiness score is ${stats.burstinessScore.toFixed(2)} (scale 0 to 1).${bandSummary}${peakComparison} ${shapeRead}`.trim()
+}
+
+function buildPublicationPeakShareHeading(
+  peakDetails: {
+    peakYear: number | null
+    peakCount: number | null
+    tiedPeakYears: number[]
+  },
+): string {
+  if (peakDetails.peakYear === null) {
+    return 'Peak years are not yet available'
+  }
+  return peakDetails.tiedPeakYears.length > 1
+    ? `${formatPublicationProductionPatternYearList(peakDetails.tiedPeakYears)} were your peak years`
+    : `${peakDetails.peakYear} was your peak year`
+}
+
+function buildPublicationPeakShareDetail(
+  stats: PublicationProductionPatternStats,
+  peakDetails: {
+    peakYear: number | null
+    peakCount: number | null
+    tiedPeakYears: number[]
+  },
+): string {
+  if (stats.peakYearShare === null || peakDetails.peakYear === null || peakDetails.peakCount === null) {
+    return 'Peak concentration is not yet available for this complete-year span.'
+  }
+
+  const shape = buildPublicationProductionPatternShapeContext(stats, peakDetails)
+  const significantPeaks = shape.significantPeaks
+  const significantPeakYearSet = new Set(significantPeaks.map((peak) => peak.year))
+  const evenSharePct = stats.activeSpan > 0 ? 100 / stats.activeSpan : null
+  const mostRecentPeakYear = significantPeaks.length
+    ? Math.max(...significantPeaks.map((peak) => peak.year))
+    : peakDetails.tiedPeakYears.length
+      ? Math.max(...peakDetails.tiedPeakYears)
+      : peakDetails.peakYear
+  const yearsSincePeak = stats.lastPublicationYear === null ? null : Math.max(0, stats.lastPublicationYear - mostRecentPeakYear)
+  const recencySentence = yearsSincePeak === null
+    ? ''
+    : yearsSincePeak === 0
+      ? ` Your last peak was in ${mostRecentPeakYear}.`
+      : ` Your last peak was in ${mostRecentPeakYear}.`
+
+  const shareSentence = peakDetails.tiedPeakYears.length > 1
+    ? `Each tied peak year contributes ${formatPercentWhole(stats.peakYearShare * 100)} of the record${evenSharePct !== null ? `, versus about ${formatRoundedOneDecimalTrimmed(evenSharePct)}% under an even annual spread` : ''}; together they account for ${formatPercentWhole(Math.min(100, stats.peakYearShare * peakDetails.tiedPeakYears.length * 100))}.`
+    : `${formatPercentWhole(stats.peakYearShare * 100)} of the record sits in that peak year${evenSharePct !== null ? `, versus about ${formatRoundedOneDecimalTrimmed(evenSharePct)}% under an even annual spread` : ''}.`
+
+  const broaderPeakSentence = (() => {
+    if (!significantPeaks.length) {
+      return ''
+    }
+
+    const otherYearValues = stats.years
+      .map((year, index) => ({
+        year,
+        count: Math.max(0, Number(stats.series[index] ?? 0)),
+      }))
+      .filter((entry) => !significantPeakYearSet.has(entry.year))
+      .map((entry) => entry.count)
+    const peakAverage = meanPublicationSeries(significantPeaks.map((peak) => peak.count))
+    const otherAverage = meanPublicationSeries(otherYearValues)
+    const peakYearsLabel = formatPublicationProductionPatternYearList(significantPeaks.map((peak) => peak.year))
+    const peakLead = significantPeaks.length >= 3
+      ? `The stronger runs came in ${peakYearsLabel}`
+      : significantPeaks.length === 2
+        ? `The two main high points were ${peakYearsLabel}`
+        : `The strongest run came in ${significantPeaks[0]?.year}`
+    const countComparison = peakAverage !== null
+      ? otherAverage !== null
+        ? `${peakLead}, averaging ${formatInt(peakAverage)} publications versus ${formatInt(otherAverage)} in the other years.`
+        : `${peakLead}, with ${formatInt(peakAverage)} publications.`
+      : `${peakLead}.`
+
+    const peakIntervals = significantPeaks.slice(1).map((peak, index) => peak.year - significantPeaks[index]!.year)
+    const averageInterval = peakIntervals.length ? Math.round(meanPublicationSeries(peakIntervals) ?? peakIntervals[0] ?? 0) : null
+    const spacingSentence = peakIntervals.length >= 2
+      ? Math.max(...peakIntervals) - Math.min(...peakIntervals) <= 1
+        ? averageInterval === 1
+          ? ' Those peaks arrive in back-to-back years.'
+          : ` The peaks return roughly every ${formatInt(averageInterval ?? 0)} years.`
+        : ' The gaps between those peaks are uneven rather than cyclical.'
+      : peakIntervals.length === 1
+        ? (peakIntervals[0] ?? 0) === 1
+          ? ' The second high point came the following year.'
+          : ` The second high point returned ${formatInt(peakIntervals[0] ?? 0)} years later.`
+        : ''
+
+    const followedYears = significantPeaks.filter((peak) => peak.index < stats.series.length - 1)
+    const followedByLowerCount = followedYears.filter((peak) => {
+      const nextCount = Math.max(0, Number(stats.series[peak.index + 1] ?? 0))
+      return nextCount < peak.count
+    }).length
+    const followSentence = followedYears.length === 0 || followedByLowerCount === 0
+      ? ''
+      : followedByLowerCount === followedYears.length
+        ? ` ${followedYears.length === 1 ? 'That high point was' : 'Each of those peaks was'} followed by a lower year.`
+        : ` ${formatInt(followedByLowerCount)} of ${formatInt(followedYears.length)} ${pluralize(followedYears.length, 'peak')} were followed by a lower year.`
+
+    return ` ${countComparison}${spacingSentence}${followSentence}`.trimEnd()
+  })()
+
+  return `${shareSentence} ${broaderPeakSentence}${recencySentence}`.replace(/\s+/g, ' ').trim()
+}
+
+function buildPublicationContinuityHeading(stats: PublicationProductionPatternStats): string {
+  if (stats.outputContinuity === null) {
+    return 'Continuity is still emerging'
+  }
+  const gapYears = getPublicationProductionPatternGapYearCount(stats)
+  if (gapYears === 0 && stats.outputContinuity >= 0.999) {
+    return 'You publish continuously'
+  }
+  if (stats.outputContinuity >= 0.7) {
+    return 'You publish in most years'
+  }
+  if (stats.outputContinuity >= 0.5) {
+    return 'Your output is intermittent'
+  }
+  return 'Your output is episodic'
+}
+
+function buildPublicationContinuityDetail(stats: PublicationProductionPatternStats): string {
+  if (stats.outputContinuity === null) {
+    return 'Not enough complete-year history is available to estimate continuity yet.'
+  }
+
+  const gapYears = getPublicationProductionPatternGapYearCount(stats)
+  const spanLabel = formatPublicationProductionPatternSpanLabel(stats)
+  if (gapYears === 0 && stats.outputContinuity >= 0.999) {
+    return `Continuity is 100%${spanLabel ? ` across ${spanLabel}` : ''}: all ${formatInt(stats.activeSpan)} complete years had at least one publication, so the pattern is being shaped by rises and pullbacks rather than by missing years.`
+  }
+
+  const gapShare = stats.activeSpan > 0 ? gapYears / stats.activeSpan : null
+  return `Continuity is ${formatPercentWhole(stats.outputContinuity * 100)}${spanLabel ? ` across ${spanLabel}` : ''}. ${formatInt(gapYears)} of ${formatInt(stats.activeSpan)} complete years had no recorded publications${gapShare !== null ? ` (${formatPercentWhole(gapShare * 100)})` : ''}, and the longest uninterrupted run lasted ${formatInt(stats.longestStreak)} ${pluralize(stats.longestStreak, 'year')}.`
 }
 
 function formatPublicationConsistencyPatternExplanation(stats: PublicationProductionPatternStats): string {
@@ -1196,6 +1809,13 @@ export function buildPublicationProductionPatternStats(
 ): PublicationProductionPatternStats {
   const yearSeries = buildPublicationProductionYearSeries(tile, yearScopeMode)
 
+  return buildPublicationProductionPatternStatsFromYearSeriesScope(yearSeries)
+}
+
+function buildPublicationProductionPatternStatsFromYearSeriesScope(
+  yearSeries: PublicationProductionYearSeriesScope,
+): PublicationProductionPatternStats {
+
   if (yearSeries.emptyReason) {
     return {
       totalPublications: yearSeries.totalPublications,
@@ -1287,7 +1907,7 @@ function getPublicationProductionPhaseUserMeaning(phase: PublicationProductionPh
     case 'Emerging':
       return 'This means your publication record is still in its early build-up phase.'
     case 'Scaling':
-      return 'This means your portfolio is in a growth phase, with annual output rising over time.'
+      return 'This means your portfolio is in a growth phase overall, even if year-to-year output still varies.'
     case 'Established':
       return 'This means your publication record is mature, with annual output staying broadly stable.'
     case 'Plateauing':
@@ -1314,14 +1934,103 @@ function formatPublicationProductionPhaseSlopeExplanation(
   const roundedSlope = absSlope.toFixed(1)
 
   if (absSlope < 0.05) {
-    return `your annual publication output was broadly flat ${periodText}, changing by less than 0.1 publications per year on average.`
+    return `your best-fit publication trend was broadly flat ${periodText}, changing by less than 0.1 publications per year on average.`
   }
 
   if (slope > 0) {
-    return `your annual publication output increased by an average of ${roundedSlope} publications per year ${periodText}.`
+    return `your best-fit publication trend rose by about ${roundedSlope} publications per year ${periodText}.`
   }
 
-  return `your annual publication output decreased by an average of ${roundedSlope} publications per year ${periodText}.`
+  return `your best-fit publication trend fell by about ${roundedSlope} publications per year ${periodText}.`
+}
+
+function buildPublicationProductionPhaseCurrentYearHighlight(
+  stats: PublicationProductionPhaseStats,
+): PublicationProductionPhaseCurrentYearHighlight | null {
+  if (
+    stats.currentPaceYear === null
+    || stats.currentPaceCutoffLabel === null
+    || stats.currentPaceCount === null
+  ) {
+    return null
+  }
+
+  return {
+    year: stats.currentPaceYear,
+    value: stats.currentPaceCount,
+    cutoffLabel: stats.currentPaceCutoffLabel,
+    comparisonLabel: stats.currentPaceComparisonLabel,
+    comparisonMean: stats.currentPaceComparisonMean,
+    comparisonDelta: stats.currentPaceComparisonDelta,
+    latestCompleteYear: stats.latestYear,
+  }
+}
+
+type PublicationProductionPhaseYearSlice = {
+  xPct: number
+  leftPct: number
+  widthPct: number
+}
+
+type PublicationProductionPhaseTooltipSlice = {
+  key: string
+  year: number
+  value: number
+  xPct: number
+  leftPct: number
+  widthPct: number
+  svgYPct: number
+  isLatestCompleteYear: boolean
+}
+
+function buildPublicationProductionPhaseYearSlice(
+  years: number[],
+  targetYear: number,
+): PublicationProductionPhaseYearSlice | null {
+  const targetIndex = years.findIndex((year) => year === targetYear)
+  if (targetIndex < 0 || !years.length) {
+    return null
+  }
+  if (years.length === 1) {
+    return {
+      xPct: 50,
+      leftPct: 0,
+      widthPct: 100,
+    }
+  }
+
+  const currentXPct = (targetIndex / Math.max(1, years.length - 1)) * 100
+  const previousXPct = targetIndex <= 0
+    ? 0
+    : ((targetIndex - 1) / Math.max(1, years.length - 1)) * 100
+  const nextXPct = targetIndex >= years.length - 1
+    ? 100
+    : ((targetIndex + 1) / Math.max(1, years.length - 1)) * 100
+  const leftPct = targetIndex <= 0 ? 0 : (previousXPct + currentXPct) / 2
+  const rightPct = targetIndex >= years.length - 1 ? 100 : (currentXPct + nextXPct) / 2
+
+  return {
+    xPct: currentXPct,
+    leftPct,
+    widthPct: Math.max(0, rightPct - leftPct),
+  }
+}
+
+function buildPublicationProductionPhaseTooltipAriaLabel(
+  slice: PublicationProductionPhaseTooltipSlice,
+): string {
+  return `Production phase in ${slice.year}: ${formatInt(slice.value)} ${pluralize(slice.value, 'publication')}`
+}
+
+function renderPublicationProductionPhaseYearTooltip(
+  slice: PublicationProductionPhaseTooltipSlice,
+): ReactNode {
+  return (
+    <div className="space-y-1">
+      <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{slice.year}</p>
+      <p>{`Publications: ${formatInt(slice.value)}`}</p>
+    </div>
+  )
 }
 
 function formatPublicationProductionSpanLabel(years: number): string {
@@ -1814,7 +2523,82 @@ function renderPublicationOutputContinuityTooltipContent(
   )
 }
 
-function getPublicationProductionPhaseTooltipLabelClass(phase: PublicationProductionPhaseLabel | null): string {
+function getPublicationProductionPhaseTooltipSurfaceClass(phase: PublicationProductionPhaseLabel | null): string {
+  switch (resolvePublicationProductionPhaseTone(phase)) {
+    case 'positive':
+      return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-positive-950)/0.09)]'
+    case 'accent':
+      return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-accent-950)/0.09)]'
+    case 'warning':
+      return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-warning-950)/0.09)]'
+    case 'danger':
+      return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-danger-950)/0.09)]'
+    default:
+      return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-neutral-950)/0.08)]'
+  }
+}
+
+function getPublicationProductionPhaseHelpButtonClass(phase: PublicationProductionPhaseLabel | null): string {
+  switch (resolvePublicationProductionPhaseTone(phase)) {
+    case 'positive':
+      return 'h-7 w-7 border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50)/0.78)] text-[hsl(var(--tone-positive-700))] shadow-[0_1px_2px_hsl(var(--tone-positive-950)/0.06)] hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-100)/0.9)] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+    case 'accent':
+      return 'h-7 w-7 border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.78)] text-[hsl(var(--tone-accent-800))] shadow-[0_1px_2px_hsl(var(--tone-accent-950)/0.06)] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-100)/0.9)] focus-visible:ring-[hsl(var(--tone-accent-200))]'
+    case 'warning':
+      return 'h-7 w-7 border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50)/0.82)] text-[hsl(var(--tone-warning-700))] shadow-[0_1px_2px_hsl(var(--tone-warning-950)/0.06)] hover:border-[hsl(var(--tone-warning-300))] hover:bg-[hsl(var(--tone-warning-100)/0.9)] focus-visible:ring-[hsl(var(--tone-warning-200))]'
+    case 'danger':
+      return 'h-7 w-7 border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50)/0.82)] text-[hsl(var(--tone-danger-700))] shadow-[0_1px_2px_hsl(var(--tone-danger-950)/0.06)] hover:border-[hsl(var(--tone-danger-300))] hover:bg-[hsl(var(--tone-danger-100)/0.9)] focus-visible:ring-[hsl(var(--tone-danger-200))]'
+    default:
+      return 'h-7 w-7 border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--tone-neutral-50)/0.82)] text-[hsl(var(--tone-neutral-700))] shadow-[0_1px_2px_hsl(var(--tone-neutral-950)/0.05)] hover:border-[hsl(var(--tone-neutral-300))] hover:bg-[hsl(var(--tone-neutral-100)/0.9)] focus-visible:ring-[hsl(var(--tone-neutral-200))]'
+  }
+}
+
+function getPublicationProductionPhaseHelpIconClass(phase: PublicationProductionPhaseLabel | null): string {
+  switch (resolvePublicationProductionPhaseTone(phase)) {
+    case 'positive':
+      return 'text-[1rem] text-[hsl(var(--tone-positive-700))] group-hover:text-[hsl(var(--tone-positive-800))] group-focus-visible:text-[hsl(var(--tone-positive-800))]'
+    case 'accent':
+      return 'text-[1rem] text-[hsl(var(--tone-accent-800))] group-hover:text-[hsl(var(--tone-accent-900))] group-focus-visible:text-[hsl(var(--tone-accent-900))]'
+    case 'warning':
+      return 'text-[1rem] text-[hsl(var(--tone-warning-700))] group-hover:text-[hsl(var(--tone-warning-800))] group-focus-visible:text-[hsl(var(--tone-warning-800))]'
+    case 'danger':
+      return 'text-[1rem] text-[hsl(var(--tone-danger-700))] group-hover:text-[hsl(var(--tone-danger-800))] group-focus-visible:text-[hsl(var(--tone-danger-800))]'
+    default:
+      return 'text-[1rem] text-[hsl(var(--tone-neutral-700))] group-hover:text-[hsl(var(--tone-neutral-900))] group-focus-visible:text-[hsl(var(--tone-neutral-900))]'
+  }
+}
+
+function getPublicationProductionPhaseInsightButtonClass(phase: PublicationProductionPhaseLabel | null): string {
+  switch (resolvePublicationProductionPhaseTone(phase)) {
+    case 'positive':
+      return 'h-7 w-7 border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50)/0.78)] text-[hsl(var(--tone-positive-700))] shadow-[0_1px_2px_hsl(var(--tone-positive-950)/0.06)] hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-100)/0.92)] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+    case 'accent':
+      return 'h-7 w-7 border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.78)] text-[hsl(var(--tone-accent-800))] shadow-[0_1px_2px_hsl(var(--tone-accent-950)/0.06)] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-100)/0.92)] focus-visible:ring-[hsl(var(--tone-accent-200))]'
+    case 'warning':
+      return 'h-7 w-7 border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50)/0.82)] text-[hsl(var(--tone-warning-700))] shadow-[0_1px_2px_hsl(var(--tone-warning-950)/0.06)] hover:border-[hsl(var(--tone-warning-300))] hover:bg-[hsl(var(--tone-warning-100)/0.92)] focus-visible:ring-[hsl(var(--tone-warning-200))]'
+    case 'danger':
+      return 'h-7 w-7 border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50)/0.82)] text-[hsl(var(--tone-danger-700))] shadow-[0_1px_2px_hsl(var(--tone-danger-950)/0.06)] hover:border-[hsl(var(--tone-danger-300))] hover:bg-[hsl(var(--tone-danger-100)/0.92)] focus-visible:ring-[hsl(var(--tone-danger-200))]'
+    default:
+      return 'h-7 w-7 border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--tone-neutral-50)/0.82)] text-[hsl(var(--tone-neutral-700))] shadow-[0_1px_2px_hsl(var(--tone-neutral-950)/0.05)] hover:border-[hsl(var(--tone-neutral-300))] hover:bg-[hsl(var(--tone-neutral-100)/0.92)] focus-visible:ring-[hsl(var(--tone-neutral-200))]'
+  }
+}
+
+function getPublicationProductionPhaseInsightActiveButtonClass(phase: PublicationProductionPhaseLabel | null): string {
+  switch (resolvePublicationProductionPhaseTone(phase)) {
+    case 'positive':
+      return 'border-[hsl(var(--tone-positive-400))] bg-[hsl(var(--tone-positive-100)/0.96)] text-[hsl(var(--tone-positive-800))]'
+    case 'accent':
+      return 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-100)/0.96)] text-[hsl(var(--tone-accent-900))]'
+    case 'warning':
+      return 'border-[hsl(var(--tone-warning-400))] bg-[hsl(var(--tone-warning-100)/0.96)] text-[hsl(var(--tone-warning-800))]'
+    case 'danger':
+      return 'border-[hsl(var(--tone-danger-400))] bg-[hsl(var(--tone-danger-100)/0.96)] text-[hsl(var(--tone-danger-800))]'
+    default:
+      return 'border-[hsl(var(--tone-neutral-350))] bg-[hsl(var(--tone-neutral-100)/0.96)] text-[hsl(var(--tone-neutral-900))]'
+  }
+}
+
+function getPublicationProductionPhaseInsightIconClass(phase: PublicationProductionPhaseLabel | null): string {
   switch (resolvePublicationProductionPhaseTone(phase)) {
     case 'positive':
       return 'text-[hsl(var(--tone-positive-700))]'
@@ -1825,12 +2609,505 @@ function getPublicationProductionPhaseTooltipLabelClass(phase: PublicationProduc
     case 'danger':
       return 'text-[hsl(var(--tone-danger-700))]'
     default:
+      return 'text-[hsl(var(--tone-neutral-700))]'
+  }
+}
+
+function getPublicationProductionPhaseInsightActiveIconClass(phase: PublicationProductionPhaseLabel | null): string {
+  switch (resolvePublicationProductionPhaseTone(phase)) {
+    case 'positive':
+      return 'text-[hsl(var(--tone-positive-800))]'
+    case 'accent':
+      return 'text-[hsl(var(--tone-accent-900))]'
+    case 'warning':
+      return 'text-[hsl(var(--tone-warning-800))]'
+    case 'danger':
+      return 'text-[hsl(var(--tone-danger-800))]'
+    default:
       return 'text-[hsl(var(--tone-neutral-900))]'
   }
 }
 
+function getPublicationProductionPatternTooltipSurfaceClass(): string {
+  return 'w-[calc(100vw-1.25rem)] sm:w-[36rem] lg:w-[40rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-accent-200)/0.96)] bg-[hsl(var(--background)/0.99)] p-0 shadow-[0_24px_56px_hsl(var(--tone-accent-950)/0.11)]'
+}
+
+function resolvePublicationVolumeOverTimeTone(stats: PublicationVolumeOverTimeInsightStats): PublicationProductionPatternTone {
+  const peakAveragePosition = stats.peakYears.length
+    ? stats.peakYears.reduce((sum, year) => sum + year, 0) / stats.peakYears.length
+    : null
+  const spanMidpoint = stats.firstPublicationYear !== null && stats.lastPublicationYear !== null
+    ? (stats.firstPublicationYear + stats.lastPublicationYear) / 2
+    : null
+  const peakPosition = peakAveragePosition === null || spanMidpoint === null
+    ? 'mixed'
+    : peakAveragePosition > spanMidpoint + 0.5
+      ? 'later'
+      : peakAveragePosition < spanMidpoint - 0.5
+        ? 'earlier'
+        : 'mixed'
+  const previousThreeYearBlock = stats.threeYearBlocks.length >= 2 ? stats.threeYearBlocks[stats.threeYearBlocks.length - 2] : null
+  const latestThreeYearBlock = stats.threeYearBlocks.length >= 1 ? stats.threeYearBlocks[stats.threeYearBlocks.length - 1] : null
+  const recentCooling = previousThreeYearBlock !== null && latestThreeYearBlock !== null
+    ? latestThreeYearBlock.count < previousThreeYearBlock.count
+    : false
+  const recentStrengthening = previousThreeYearBlock !== null && latestThreeYearBlock !== null
+    ? latestThreeYearBlock.count > previousThreeYearBlock.count
+    : false
+
+  if (peakPosition === 'earlier' && !recentStrengthening) {
+    return 'danger'
+  }
+  if (peakPosition === 'later' && recentCooling) {
+    return 'warning'
+  }
+  if (peakPosition === 'later' && recentStrengthening) {
+    return 'positive'
+  }
+  if (peakPosition === 'later') {
+    return 'accent'
+  }
+  if (recentCooling) {
+    return 'warning'
+  }
+  if (recentStrengthening) {
+    return 'accent'
+  }
+  return 'neutral'
+}
+
+function getPublicationVolumeOverTimeTooltipSurfaceClass(stats: PublicationVolumeOverTimeInsightStats): string {
+  switch (resolvePublicationVolumeOverTimeTone(stats)) {
+    case 'positive':
+      return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-positive-950)/0.09)]'
+    case 'warning':
+      return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-warning-950)/0.09)]'
+    case 'danger':
+      return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-danger-950)/0.09)]'
+    case 'neutral':
+      return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-neutral-950)/0.08)]'
+    default:
+      return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-accent-950)/0.09)]'
+  }
+}
+
+function getPublicationVolumeOverTimeHelpButtonClass(stats: PublicationVolumeOverTimeInsightStats): string {
+  switch (resolvePublicationVolumeOverTimeTone(stats)) {
+    case 'positive':
+      return 'h-7 w-7 border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50)/0.78)] text-[hsl(var(--tone-positive-700))] shadow-[0_1px_2px_hsl(var(--tone-positive-950)/0.06)] hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-100)/0.9)] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+    case 'warning':
+      return 'h-7 w-7 border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50)/0.82)] text-[hsl(var(--tone-warning-700))] shadow-[0_1px_2px_hsl(var(--tone-warning-950)/0.06)] hover:border-[hsl(var(--tone-warning-300))] hover:bg-[hsl(var(--tone-warning-100)/0.9)] focus-visible:ring-[hsl(var(--tone-warning-200))]'
+    case 'danger':
+      return 'h-7 w-7 border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50)/0.82)] text-[hsl(var(--tone-danger-700))] shadow-[0_1px_2px_hsl(var(--tone-danger-950)/0.06)] hover:border-[hsl(var(--tone-danger-300))] hover:bg-[hsl(var(--tone-danger-100)/0.9)] focus-visible:ring-[hsl(var(--tone-danger-200))]'
+    case 'neutral':
+      return 'h-7 w-7 border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--tone-neutral-50)/0.82)] text-[hsl(var(--tone-neutral-700))] shadow-[0_1px_2px_hsl(var(--tone-neutral-950)/0.05)] hover:border-[hsl(var(--tone-neutral-300))] hover:bg-[hsl(var(--tone-neutral-100)/0.9)] focus-visible:ring-[hsl(var(--tone-neutral-200))]'
+    default:
+      return 'h-7 w-7 border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.78)] text-[hsl(var(--tone-accent-800))] shadow-[0_1px_2px_hsl(var(--tone-accent-950)/0.06)] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-100)/0.9)] focus-visible:ring-[hsl(var(--tone-accent-200))]'
+  }
+}
+
+function getPublicationVolumeOverTimeHelpIconClass(stats: PublicationVolumeOverTimeInsightStats): string {
+  switch (resolvePublicationVolumeOverTimeTone(stats)) {
+    case 'positive':
+      return 'text-[1rem] text-[hsl(var(--tone-positive-700))] group-hover:text-[hsl(var(--tone-positive-800))] group-focus-visible:text-[hsl(var(--tone-positive-800))]'
+    case 'warning':
+      return 'text-[1rem] text-[hsl(var(--tone-warning-700))] group-hover:text-[hsl(var(--tone-warning-800))] group-focus-visible:text-[hsl(var(--tone-warning-800))]'
+    case 'danger':
+      return 'text-[1rem] text-[hsl(var(--tone-danger-700))] group-hover:text-[hsl(var(--tone-danger-800))] group-focus-visible:text-[hsl(var(--tone-danger-800))]'
+    case 'neutral':
+      return 'text-[1rem] text-[hsl(var(--tone-neutral-700))] group-hover:text-[hsl(var(--tone-neutral-900))] group-focus-visible:text-[hsl(var(--tone-neutral-900))]'
+    default:
+      return 'text-[1rem] text-[hsl(var(--tone-accent-800))] group-hover:text-[hsl(var(--tone-accent-900))] group-focus-visible:text-[hsl(var(--tone-accent-900))]'
+  }
+}
+
+function getPublicationArticleTypeOverTimeTooltipSurfaceClass(): string {
+  return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-positive-950)/0.09)]'
+}
+
+function getPublicationArticleTypeOverTimeHelpButtonClass(): string {
+  return 'h-7 w-7 border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50)/0.78)] text-[hsl(var(--tone-positive-700))] shadow-[0_1px_2px_hsl(var(--tone-positive-950)/0.06)] hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-100)/0.9)] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+}
+
+function getPublicationArticleTypeOverTimeHelpIconClass(): string {
+  return 'text-[1rem] text-[hsl(var(--tone-positive-700))] group-hover:text-[hsl(var(--tone-positive-800))] group-focus-visible:text-[hsl(var(--tone-positive-800))]'
+}
+
+function getPublicationPublicationTypeOverTimeTooltipSurfaceClass(): string {
+  return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-positive-950)/0.09)]'
+}
+
+function getPublicationPublicationTypeOverTimeHelpButtonClass(): string {
+  return 'h-7 w-7 border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50)/0.78)] text-[hsl(var(--tone-positive-700))] shadow-[0_1px_2px_hsl(var(--tone-positive-950)/0.06)] hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-100)/0.9)] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+}
+
+function getPublicationPublicationTypeOverTimeHelpIconClass(): string {
+  return 'text-[1rem] text-[hsl(var(--tone-positive-700))] group-hover:text-[hsl(var(--tone-positive-800))] group-focus-visible:text-[hsl(var(--tone-positive-800))]'
+}
+
+function resolveTrajectoryPhaseTone(phase: PublicationTrajectoryPhaseLabel): PublicationProductionPatternTone {
+  switch (phase) {
+    case 'Expanding':
+      return 'positive'
+    case 'Contracting':
+      return 'danger'
+    default:
+      return 'accent'
+  }
+}
+
+function getPublicationTrajectoryTooltipSurfaceClass(phase: PublicationTrajectoryPhaseLabel): string {
+  switch (resolveTrajectoryPhaseTone(phase)) {
+    case 'positive':
+      return 'w-[calc(100vw-1.25rem)] sm:w-[34rem] lg:w-[38rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-positive-200)/0.96)] bg-[hsl(var(--background)/0.99)] p-0 shadow-[0_24px_56px_hsl(var(--tone-positive-950)/0.11)]'
+    case 'danger':
+      return 'w-[calc(100vw-1.25rem)] sm:w-[34rem] lg:w-[38rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-danger-200)/0.96)] bg-[hsl(var(--background)/0.99)] p-0 shadow-[0_24px_56px_hsl(var(--tone-danger-950)/0.11)]'
+    default:
+      return 'w-[calc(100vw-1.25rem)] sm:w-[34rem] lg:w-[38rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-accent-200)/0.96)] bg-[hsl(var(--background)/0.99)] p-0 shadow-[0_24px_56px_hsl(var(--tone-accent-950)/0.11)]'
+  }
+}
+
+function getPublicationTrajectoryHelpButtonClass(phase: PublicationTrajectoryPhaseLabel): string {
+  switch (resolveTrajectoryPhaseTone(phase)) {
+    case 'positive':
+      return 'h-7 w-7 border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50)/0.78)] text-[hsl(var(--tone-positive-800))] shadow-[0_1px_2px_hsl(var(--tone-positive-950)/0.06)] hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-100)/0.9)] focus-visible:ring-[hsl(var(--tone-positive-200))]'
+    case 'danger':
+      return 'h-7 w-7 border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50)/0.82)] text-[hsl(var(--tone-danger-800))] shadow-[0_1px_2px_hsl(var(--tone-danger-950)/0.06)] hover:border-[hsl(var(--tone-danger-300))] hover:bg-[hsl(var(--tone-danger-100)/0.9)] focus-visible:ring-[hsl(var(--tone-danger-200))]'
+    default:
+      return 'h-7 w-7 border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.78)] text-[hsl(var(--tone-accent-800))] shadow-[0_1px_2px_hsl(var(--tone-accent-950)/0.06)] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-100)/0.9)] focus-visible:ring-[hsl(var(--tone-accent-200))]'
+  }
+}
+
+function getPublicationTrajectoryHelpIconClass(phase: PublicationTrajectoryPhaseLabel): string {
+  switch (resolveTrajectoryPhaseTone(phase)) {
+    case 'positive':
+      return 'text-[1rem] text-[hsl(var(--tone-positive-800))] group-hover:text-[hsl(var(--tone-positive-900))] group-focus-visible:text-[hsl(var(--tone-positive-900))]'
+    case 'danger':
+      return 'text-[1rem] text-[hsl(var(--tone-danger-800))] group-hover:text-[hsl(var(--tone-danger-900))] group-focus-visible:text-[hsl(var(--tone-danger-900))]'
+    default:
+      return 'text-[1rem] text-[hsl(var(--tone-accent-800))] group-hover:text-[hsl(var(--tone-accent-900))] group-focus-visible:text-[hsl(var(--tone-accent-900))]'
+  }
+}
+
+function getPublicationProductionPatternHelpButtonClass(): string {
+  return 'h-7 w-7 border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.78)] text-[hsl(var(--tone-accent-800))] shadow-[0_1px_2px_hsl(var(--tone-accent-950)/0.06)] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-100)/0.9)] focus-visible:ring-[hsl(var(--tone-accent-200))]'
+}
+
+function getPublicationProductionPatternHelpIconClass(): string {
+  return 'text-[1rem] text-[hsl(var(--tone-accent-800))] group-hover:text-[hsl(var(--tone-accent-900))] group-focus-visible:text-[hsl(var(--tone-accent-900))]'
+}
+
+function getPublicationProductionPatternInsightButtonClass(): string {
+  return 'h-7 w-7 border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.78)] text-[hsl(var(--tone-accent-800))] shadow-[0_1px_2px_hsl(var(--tone-accent-950)/0.06)] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-100)/0.92)] focus-visible:ring-[hsl(var(--tone-accent-200))]'
+}
+
+function getPublicationProductionPatternInsightActiveButtonClass(): string {
+  return 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-100)/0.96)] text-[hsl(var(--tone-accent-900))]'
+}
+
+function getPublicationProductionPatternInsightIconClass(): string {
+  return 'text-[hsl(var(--tone-accent-800))]'
+}
+
+function getPublicationProductionPatternInsightActiveIconClass(): string {
+  return 'text-[hsl(var(--tone-accent-900))]'
+}
+
+function getPublicationProductionPhaseTooltipLead(stats: PublicationProductionPhaseStats): string {
+  switch (stats.phase) {
+    case 'Emerging':
+      return 'The complete-year record is still short, but output is building up.'
+    case 'Scaling':
+      return 'Output is still climbing across the full record.'
+    case 'Established':
+      return 'Output has settled into a relatively steady range.'
+    case 'Plateauing':
+      return 'Growth has cooled after recent peak years.'
+    case 'Contracting':
+      return 'Output has fallen back from earlier levels.'
+    case 'Rebuilding':
+      return 'Output is recovering after an earlier lull.'
+    default:
+      return 'The current stage cannot yet be interpreted reliably.'
+  }
+}
+
+function formatPublicationProductionPhaseDecisionSummary(stats: PublicationProductionPhaseStats): string {
+  const peakYearsLabel = stats.peakYears.length
+    ? formatPublicationProductionPatternYearList(stats.peakYears)
+    : stats.peakYear !== null
+      ? String(stats.peakYear)
+      : null
+  const peakLevelLabel = stats.peakCount !== null ? formatInt(stats.peakCount) : null
+
+  switch (stats.phase) {
+    case 'Plateauing':
+      if (peakYearsLabel && peakLevelLabel && stats.latestYear !== null && stats.latestCount !== null) {
+        return stats.peakYears.length > 1
+          ? `Output peaked in ${peakYearsLabel} (${peakLevelLabel} each), then fell to ${formatInt(stats.latestCount)} in ${stats.latestYear}.`
+          : `Output peaked in ${peakYearsLabel} (${peakLevelLabel}), then fell to ${formatInt(stats.latestCount)} in ${stats.latestYear}.`
+      }
+      return 'The latest complete years are no longer strengthening against the earlier baseline.'
+    case 'Scaling':
+      return 'Recent complete years remain above the earlier baseline, and output is still rising.'
+    case 'Established':
+      return 'Recent complete years remain close to the earlier baseline, without a strong directional shift.'
+    case 'Contracting':
+      if (stats.latestYear !== null && stats.latestCount !== null && peakYearsLabel && peakLevelLabel) {
+        return `Output has fallen from the earlier peak of ${peakLevelLabel} in ${peakYearsLabel} to ${formatInt(stats.latestCount)} in ${stats.latestYear}.`
+      }
+      return 'Recent complete years are sitting below the earlier baseline.'
+    case 'Rebuilding':
+      return 'Output is rising again after earlier low-output or inactive years.'
+    case 'Emerging':
+      return 'The complete-year history is still short, but output is building rather than fading.'
+    default:
+      return 'More complete-year history is needed before the label can be interpreted.'
+  }
+}
+
+function formatPublicationProductionPhaseCompactTrendSummary(
+  stats: PublicationProductionPhaseStats,
+  firstYear: number | null,
+  lastYear: number | null,
+): string {
+  const periodText = firstYear === null || lastYear === null
+    ? null
+    : firstYear === lastYear
+      ? `${firstYear}`
+      : `${firstYear} to ${lastYear}`
+  const slope = stats.slope
+  if (slope === null) {
+    return 'The long-run trend is not available.'
+  }
+  if (Math.abs(slope) < 0.05) {
+    if (stats.phase === 'Established') {
+      return `The fitted slope is essentially flat${periodText ? ` from ${periodText}` : ''}, which matches a settled output level.`
+    }
+    return `The fitted slope is essentially flat${periodText ? ` from ${periodText}` : ''}.`
+  }
+  const roundedMagnitude = formatRoundedOneDecimalTrimmed(Math.abs(slope))
+  const roundedSlopeLabel = `${slope >= 0 ? '+' : '-'}${roundedMagnitude}`
+  const paperUnit = Math.abs(parseFloat(roundedMagnitude) - 1) < 0.05 ? 'paper' : 'papers'
+  const base = `The fitted slope ${slope >= 0 ? 'points upward' : 'is downward'} at ${roundedSlopeLabel} ${paperUnit} per year${periodText ? ` from ${periodText}` : ''}`
+
+  switch (stats.phase) {
+    case 'Plateauing':
+      return `${base}, so this reads as cooling after growth rather than a full decline.`
+    case 'Scaling':
+      return `${base}, consistent with continued build-up across the record.`
+    case 'Established':
+      return `${base}, but the overall level stays close enough to the earlier baseline to read as settled.`
+    case 'Contracting':
+      return `${base}, consistent with output falling back from earlier levels.`
+    case 'Rebuilding':
+      return stats.historicalGapYearsPresent
+        ? `${base}, but earlier low-output or gap years make this a recovery rather than uninterrupted build-up.`
+        : `${base}, which is why the record reads as rebuilding rather than flat.`
+    case 'Emerging':
+      return `${base}, but the complete-year span is still short.`
+    default:
+      return `${base}.`
+  }
+}
+
+function formatPublicationProductionPhaseCompactRecentWindowSummary(
+  stats: PublicationProductionPhaseStats,
+  recentPeriodText: string | null,
+): string {
+  if (stats.recentShare === null || stats.recentMean === null) {
+    return 'Recent-window concentration is not available yet.'
+  }
+
+  const periodLabel = recentPeriodText
+    ? recentPeriodText
+      .replace(/^between /, '')
+      .replace(/^in /, '')
+      .replace(' and ', '-')
+    : 'recent complete years'
+  const periodLead = periodLabel === 'recent complete years' ? 'Recent complete years' : `Across ${periodLabel}`
+  const shareLabel = formatPercentWhole(stats.recentShare * 100)
+  const recentCooling = stats.recentTrendSlope !== null && stats.recentTrendSlope < -0.75
+  const recentMeanRoundedValue = Math.max(0, Math.round(stats.recentMean))
+  const recentMeanRounded = formatInt(recentMeanRoundedValue)
+  const baselineMeanRoundedValue = stats.baselineMean === null ? null : Math.max(0, Math.round(stats.baselineMean))
+  const baselineMeanRounded = baselineMeanRoundedValue === null ? null : formatInt(baselineMeanRoundedValue)
+  const earlierYearCount = Math.max(0, stats.usableYears - Math.max(1, Math.min(3, stats.usableYears || stats.years.length || 1)))
+  const averageClause = baselineMeanRounded === null || earlierYearCount <= 0
+    ? `${periodLead} already contain ${shareLabel} of the observed complete-year history.`
+    : stats.baselineMean !== null && stats.baselineMean < 0.5
+      ? `${periodLead}, output averaged ${recentMeanRounded} ${pluralize(Math.max(1, recentMeanRoundedValue), 'publication')} per year against a near-zero earlier baseline`
+      : `${periodLead}, output averaged ${recentMeanRounded} ${pluralize(Math.max(1, recentMeanRoundedValue), 'publication')} per year versus ${baselineMeanRounded} earlier`
+
+  if (baselineMeanRounded === null || earlierYearCount <= 0) {
+    return averageClause
+  }
+
+  if (stats.phase === 'Plateauing' && recentCooling) {
+    return `${averageClause} and still accounted for ${shareLabel} of the record, but it cooled at the end.`
+  }
+  if (stats.phase === 'Contracting' || (stats.momentum ?? 0) < -0.5) {
+    return `${averageClause} and accounted for ${shareLabel} of the record, leaving recent years below the earlier baseline.`
+  }
+  if (stats.phase === 'Scaling' || (stats.momentum ?? 0) > 0.5) {
+    return `${averageClause} and accounted for ${shareLabel} of the record, keeping recent years above the earlier baseline.`
+  }
+  if (stats.phase === 'Rebuilding') {
+    return `${averageClause} and accounted for ${shareLabel} of the record, showing recovery from earlier low-output years.`
+  }
+  if (stats.phase === 'Emerging') {
+    return `${averageClause} and already accounted for ${shareLabel} of the record across a short complete-year span.`
+  }
+  return `${averageClause} and accounted for ${shareLabel} of the record, leaving recent years close to the earlier baseline.`
+}
+
+function formatPublicationProductionPhaseCompactRecentWindowHeading(recentPeriodText: string | null): string {
+  if (!recentPeriodText) {
+    return 'Recent years'
+  }
+  return recentPeriodText
+    .replace(/^between /, '')
+    .replace(/^in /, '')
+    .replace(' and ', '-')
+}
+
+function formatPublicationProductionPhaseScopeSummary(stats: PublicationProductionPhaseStats): string {
+  if (stats.latestYear === null) {
+    return 'Based on complete years only.'
+  }
+  return `Based on complete years to end of ${stats.latestYear}.`
+}
+
+function PublicationProductionPatternTooltipFact({
+  heading,
+  value,
+  tone,
+  toneColor,
+}: {
+  heading: string
+  value: string
+  tone: PublicationProductionPatternTone
+  toneColor: string
+}) {
+  const borderMix = tone === 'danger'
+    ? 42
+    : tone === 'warning'
+      ? 38
+      : tone === 'accent'
+        ? 34
+        : tone === 'positive'
+          ? 32
+          : 28
+  const backgroundMix = tone === 'danger'
+    ? 18
+    : tone === 'warning'
+      ? 16
+      : tone === 'accent'
+        ? 15
+        : tone === 'positive'
+          ? 14
+          : 11
+  const surfaceStyle: CSSProperties = {
+    borderColor: `color-mix(in srgb, ${toneColor} ${borderMix}%, hsl(var(--tone-neutral-200)) ${100 - borderMix}%)`,
+    backgroundColor: `color-mix(in srgb, ${toneColor} ${backgroundMix}%, hsl(var(--background)) ${100 - backgroundMix}%)`,
+    boxShadow: 'inset 0 1px 0 hsl(var(--background)/0.92)',
+  }
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-[1rem] border px-4 py-3.5"
+      style={surfaceStyle}
+    >
+      <span
+        aria-hidden="true"
+        className="absolute inset-x-0 top-0 h-[2px]"
+        style={{ backgroundColor: toneColor }}
+      />
+      <div className="flex items-center gap-2">
+        <span
+          aria-hidden="true"
+          className="h-2.5 w-2.5 rounded-full shadow-[0_0_0_1px_hsl(var(--background)/0.85)]"
+          style={{ backgroundColor: toneColor }}
+        />
+        <p className="text-[0.96rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-950))]">
+          {heading}
+        </p>
+      </div>
+      <p className="mt-2 text-[0.82rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function formatPublicationTooltipSentence(value: string): string {
+  const normalized = String(value || '').trim()
+  if (!normalized) {
+    return ''
+  }
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
+
+function buildPublicationProductionPatternSectionConclusion(
+  stats: PublicationProductionPatternStats,
+  peakDetails: {
+    peakYear: number | null
+    peakCount: number | null
+    tiedPeakYears: number[]
+  },
+): string {
+  const gapYears = getPublicationProductionPatternGapYearCount(stats)
+  const shape = buildPublicationProductionPatternShapeContext(stats, peakDetails)
+  if (gapYears === 0 && shape.slope !== null && shape.slope > 0.2 && shape.repeatedPeaks && shape.recentSlump) {
+    return 'Output rises through repeated peaks rather than a smooth climb, and the latest complete year pulls back from that higher run.'
+  }
+  if (gapYears === 0 && shape.slope !== null && shape.slope > 0.2 && shape.repeatedPeaks) {
+    return 'Output rises over time through repeated peaks rather than one isolated spike.'
+  }
+  if (gapYears === 0 && shape.slope !== null && shape.slope > 0.2) {
+    return 'Output trends upward overall, but it does not do so at a single steady annual level.'
+  }
+  if (gapYears > 0 && shape.repeatedPeaks) {
+    return 'Output is being shaped by bursts of strong years separated by quieter gaps.'
+  }
+  const continuityPhrase = stats.outputContinuity === null
+    ? 'Output steadiness is still emerging'
+    : stats.outputContinuity >= 0.85
+      ? 'Output is continuous across the span'
+      : stats.outputContinuity >= 0.7
+        ? 'Output is present in most years'
+        : stats.outputContinuity >= 0.5
+          ? 'Output is intermittent across the span'
+          : 'Output is episodic across the span'
+  const variabilityPhrase = stats.consistencyIndex === null
+    ? null
+    : stats.consistencyIndex >= 0.55
+      ? 'fairly even year to year'
+      : stats.consistencyIndex >= 0.35
+        ? 'moderately variable year to year'
+        : 'uneven year to year'
+  const concentrationPhrase = stats.peakYearShare === null
+    ? null
+    : peakDetails.tiedPeakYears.length > 1
+      ? stats.peakYearShare < 0.2
+        ? 'with shared peaks rather than one dominant year'
+        : 'with concentration spread across shared peak years'
+      : stats.peakYearShare < 0.2
+        ? 'without one dominant peak year'
+        : stats.peakYearShare < 0.3
+          ? 'with some concentration in the strongest year'
+          : 'with a substantial share concentrated in the strongest year'
+
+  return [
+    continuityPhrase,
+    variabilityPhrase,
+    concentrationPhrase,
+  ].filter(Boolean).join(', ') + '.'
+}
+
 export function buildPublicationProductionPhaseStats(tile: PublicationMetricTilePayload): PublicationProductionPhaseStats {
   const yearSeries = buildPublicationProductionYearSeries(tile, 'complete')
+  const currentPaceStats = buildPublicationProductionPhaseCurrentPaceStats(tile, yearSeries.years)
 
   if (yearSeries.emptyReason) {
     return {
@@ -1850,8 +3127,14 @@ export function buildPublicationProductionPhaseStats(tile: PublicationMetricTile
       baselineMean: null,
       momentum: null,
       recentShare: null,
+      recentTrendSlope: null,
       peakYear: null,
+      peakYears: [],
       peakCount: null,
+      latestYear: null,
+      latestCount: null,
+      latestVsPeakRatio: null,
+      ...currentPaceStats,
       historicalGapYearsPresent: false,
       emptyReason: yearSeries.emptyReason,
     }
@@ -1863,6 +3146,7 @@ export function buildPublicationProductionPhaseStats(tile: PublicationMetricTile
   const usableYears = series.length
   const recentWindowSize = Math.max(1, Math.min(3, usableYears))
   const recentSeries = series.slice(-recentWindowSize)
+  const recentYears = years.slice(-recentWindowSize)
   const baselineSeries = series.slice(0, Math.max(0, usableYears - recentWindowSize))
   const recentMean = meanPublicationSeries(recentSeries)
   const baselineMean = baselineSeries.length ? meanPublicationSeries(baselineSeries) : 0
@@ -1871,16 +3155,27 @@ export function buildPublicationProductionPhaseStats(tile: PublicationMetricTile
     ? recentSeries.reduce((sum, value) => sum + Math.max(0, value), 0) / yearSeries.scopedPublicationCount
     : null
   const slope = calculatePublicationProductionTrendSlope(years, series)
+  const recentTrendSlope = recentYears.length >= 2 ? calculatePublicationProductionTrendSlope(recentYears, recentSeries) : null
   const historicalGapYearsPresent = baselineSeries.some((value) => value <= 0)
-  const peakIndex = series.length
-    ? series.reduce((selectedIndex, value, index, collection) => (
-      value > (collection[selectedIndex] ?? -1)
-        ? index
-        : selectedIndex
-    ), 0)
+  const peakCount = series.length ? Math.max(...series) : null
+  const peakYears = peakCount === null
+    ? []
+    : years.filter((year, index) => (series[index] ?? -1) === peakCount)
+  const peakIndex = peakYears.length
+    ? years.findIndex((year) => year === peakYears[0])
     : -1
   const peakYear = peakIndex >= 0 ? (years[peakIndex] ?? null) : null
-  const peakCount = peakIndex >= 0 ? (series[peakIndex] ?? null) : null
+  const latestYear = usableYears > 0 ? (years[usableYears - 1] ?? null) : null
+  const latestCount = usableYears > 0 ? Math.max(0, Number(series[usableYears - 1] || 0)) : null
+  const latestVsPeakRatio = latestCount !== null && peakCount !== null && peakCount > 0
+    ? latestCount / peakCount
+    : null
+  const recentCooling = recentTrendSlope !== null && recentTrendSlope < -0.75
+  const recentPeakFade = peakYears.some((year) => recentYears.includes(year))
+    && latestVsPeakRatio !== null
+    && latestVsPeakRatio < 0.6
+    && latestYear !== null
+    && !peakYears.includes(latestYear)
   const careerLength = activeSpan
   const lowConfidence = yearSeries.totalPublications < 10 || activeSpan < 4 || usableYears < 4
   const confidenceNote = lowConfidence
@@ -1905,8 +3200,14 @@ export function buildPublicationProductionPhaseStats(tile: PublicationMetricTile
       baselineMean,
       momentum,
       recentShare,
+      recentTrendSlope,
       peakYear,
+      peakYears,
       peakCount,
+      latestYear,
+      latestCount,
+      latestVsPeakRatio,
+      ...currentPaceStats,
       historicalGapYearsPresent,
       emptyReason: null,
     }
@@ -1917,26 +3218,28 @@ export function buildPublicationProductionPhaseStats(tile: PublicationMetricTile
   const safeRecentShare = recentShare ?? 0
   let phase: PublicationProductionPhaseLabel
 
-  if (safeMomentum > 1 && safeRecentShare > 0.35 && historicalGapYearsPresent) {
+  if (safeMomentum > 1 && safeRecentShare > 0.35 && historicalGapYearsPresent && !recentCooling) {
     phase = 'Rebuilding'
   } else if (safeSlope < -0.3 && safeMomentum < 0 && safeRecentShare < 0.2) {
     phase = 'Contracting'
+  } else if (careerLength > 6 && (recentCooling || recentPeakFade) && !historicalGapYearsPresent) {
+    phase = 'Plateauing'
   } else if (careerLength > 8 && Math.abs(safeSlope) < 0.3 && safeMomentum < 0) {
     phase = 'Plateauing'
   } else if (careerLength > 8 && Math.abs(safeSlope) < 0.3 && safeRecentShare >= 0.2 && safeRecentShare <= 0.4) {
     phase = 'Established'
   } else if (careerLength <= 5 && (recentMean ?? 0) >= (baselineMean ?? 0)) {
     phase = 'Emerging'
-  } else if (safeSlope > 0.3 && safeMomentum > 0 && safeRecentShare > 0.3) {
+  } else if (safeSlope > 0.3 && safeMomentum > 0 && safeRecentShare > 0.3 && !recentCooling && !recentPeakFade) {
     phase = 'Scaling'
-  } else if (historicalGapYearsPresent && safeMomentum > 0) {
+  } else if (historicalGapYearsPresent && safeMomentum > 0 && !recentCooling) {
     phase = 'Rebuilding'
   } else if (careerLength <= 5) {
     phase = 'Emerging'
   } else if (safeSlope < -0.1 || safeMomentum < -0.5) {
     phase = safeRecentShare < 0.2 ? 'Contracting' : 'Plateauing'
   } else if (safeSlope > 0.1 || safeMomentum > 0.5) {
-    phase = 'Scaling'
+    phase = recentCooling || recentPeakFade ? 'Plateauing' : 'Scaling'
   } else {
     phase = 'Established'
   }
@@ -1958,8 +3261,14 @@ export function buildPublicationProductionPhaseStats(tile: PublicationMetricTile
     baselineMean,
     momentum,
     recentShare,
+    recentTrendSlope,
     peakYear,
+    peakYears,
     peakCount,
+    latestYear,
+    latestCount,
+    latestVsPeakRatio,
+    ...currentPaceStats,
     historicalGapYearsPresent,
     emptyReason: null,
   }
@@ -2149,7 +3458,7 @@ function renderHIndexOutlookPill(label: string): ReactNode {
   )
 }
 
-function renderTrajectoryPhaseBadge(label: string): ReactNode {
+function renderTrajectoryPhaseBadge(label: PublicationTrajectoryPhaseLabel): ReactNode {
   let toneClass: string = HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
   switch (label) {
     case 'Expanding':
@@ -2167,6 +3476,35 @@ function renderTrajectoryPhaseBadge(label: string): ReactNode {
       {label}
     </span>
   )
+}
+
+function getTrajectoryVolatilityTone(value: number): PublicationProductionPatternTone {
+  if (value <= 0.35) {
+    return 'positive'
+  }
+  if (value > 0.75) {
+    return 'warning'
+  }
+  return 'accent'
+}
+
+function getTrajectoryVolatilityLabel(value: number): string {
+  if (value <= 0.35) {
+    return 'Low volatility'
+  }
+  if (value > 0.75) {
+    return 'High volatility'
+  }
+  return 'Moderate volatility'
+}
+
+function formatTrajectoryRangeLabel(years: number[]): string {
+  if (!years.length) {
+    return 'the selected range'
+  }
+  return years[0] === years[years.length - 1]
+    ? String(years[0])
+    : `${years[0]}-${years[years.length - 1]}`
 }
 
 function renderPublicationConsistencyBadge(value: number): ReactNode {
@@ -2249,7 +3587,6 @@ type PublicationProductionPatternCardProps = {
   primaryValue: string
   secondaryValue?: string
   semanticLabel: ReactNode
-  tooltip: ReactNode
   meterValue?: number | null
   meterTone?: PublicationProductionPatternTone
   meterIndex?: number
@@ -2261,7 +3598,6 @@ function PublicationProductionPatternCard({
   primaryValue,
   secondaryValue,
   semanticLabel,
-  tooltip,
   meterValue,
   meterTone = 'accent',
   meterIndex = 0,
@@ -2289,14 +3625,6 @@ function PublicationProductionPatternCard({
         <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS, 'min-h-0 justify-start text-left')}>
           {title}
         </p>
-        <HelpTooltipIconButton
-          ariaLabel={`Explain ${title}`}
-          content={tooltip}
-          align="end"
-          side="top"
-          buttonClassName="h-6 w-6 shrink-0"
-          iconClassName="text-[0.82rem]"
-        />
       </div>
 
       <div className="flex w-full flex-col gap-2">
@@ -2338,26 +3666,39 @@ function PublicationProductionPhaseChart({
   years,
   values,
   tone,
+  currentYearHighlight,
 }: {
   years: number[]
   values: number[]
   tone: PublicationProductionPatternTone
+  currentYearHighlight?: PublicationProductionPhaseCurrentYearHighlight | null
 }) {
   const [lineRevealProgress, setLineRevealProgress] = useState(0)
+  const [tooltipYear, setTooltipYear] = useState<number | null>(null)
   const phaseRevealIdBase = useId().replace(/:/g, '')
   const phaseRevealMaskId = `${phaseRevealIdBase}-mask`
   const phaseRevealGradientId = `${phaseRevealIdBase}-gradient`
-  const bars = useMemo(() => (
+  const historyBars = useMemo(() => (
     years.map((year, index) => ({
       key: `publication-production-phase-${year}-${index}`,
       year,
       value: Math.max(0, Number(values[index] || 0)),
     }))
   ), [values, years])
-  const hasBars = bars.length > 0
+  const displayYears = useMemo(() => {
+    if (
+      !currentYearHighlight
+      || years.includes(currentYearHighlight.year)
+      || (years[years.length - 1] ?? null) === currentYearHighlight.year
+    ) {
+      return years
+    }
+    return [...years, currentYearHighlight.year]
+  }, [currentYearHighlight, years])
+  const hasBars = historyBars.length > 0
   const animationKey = useMemo(
-    () => `publication-production-phase-chart:${bars.map((bar) => `${bar.year}-${bar.value}`).join('|') || 'empty'}`,
-    [bars],
+    () => `publication-production-phase-chart:${historyBars.map((bar) => `${bar.year}-${bar.value}`).join('|') || 'empty'}|${currentYearHighlight ? `${currentYearHighlight.year}-${currentYearHighlight.value}` : 'no-current'}`,
+    [currentYearHighlight, historyBars],
   )
   const lineEntryCycle = useIsFirstChartEntry(`${animationKey}|phase-line`, hasBars)
   const lineAnimationProfileRef = useRef<{ key: string, delayMs: number, durationMs: number } | null>(null)
@@ -2371,8 +3712,8 @@ function PublicationProductionPhaseChart({
   const lineAnimationDelayMs = lineAnimationProfileRef.current.delayMs
   const lineAnimationDurationMs = lineAnimationProfileRef.current.durationMs
   const axisScale = useMemo(
-    () => buildNiceAxis(Math.max(1, ...bars.map((bar) => bar.value))),
-    [bars],
+    () => buildNiceAxis(Math.max(1, ...historyBars.map((bar) => bar.value), Math.max(0, Number(currentYearHighlight?.value || 0)))),
+    [currentYearHighlight?.value, historyBars],
   )
   const axisMax = Math.max(1, axisScale.axisMax)
   const yAxisTickValues = axisScale.ticks
@@ -2383,20 +3724,20 @@ function PublicationProductionPhaseChart({
   const gridTickRatiosWithoutTop = yAxisTickRatios.filter((ratio) => ratio < 0.999)
   const hasTopYAxisTick = yAxisTickRatios.some((ratio) => ratio >= 0.999)
   const positionedTicks = useMemo(() => {
-    const rawTicks = buildTrajectoryYearTicks(years)
+    const rawTicks = buildTrajectoryYearTicks(displayYears)
     return rawTicks.map((tick) => {
       const tickYear = Number(tick.label)
-      const tickIndex = years.findIndex((year) => year === tickYear)
+      const tickIndex = displayYears.findIndex((year) => year === tickYear)
       return {
         ...tick,
-        leftPct: years.length <= 1
+        leftPct: displayYears.length <= 1
           ? 50
           : tickIndex < 0
             ? 50
-            : (tickIndex / Math.max(1, years.length - 1)) * 100,
+            : (tickIndex / Math.max(1, displayYears.length - 1)) * 100,
       }
     })
-  }, [years])
+  }, [displayYears])
   const verticalGridPercents = useMemo(
     () => positionedTicks
       .map((tick) => Math.max(0, Math.min(100, tick.leftPct)))
@@ -2439,37 +3780,85 @@ function PublicationProductionPhaseChart({
   const yAxisTitleLeft = '36%'
   const yAxisLabel = 'Publications (per year)'
   const toneColor = resolvePublicationProductionPatternToneColor(tone)
-  const points = useMemo(() => (
-    bars.map((bar, index) => ({
+  const historyPoints = useMemo(() => (
+    historyBars.map((bar) => ({
       ...bar,
-      xPct: bars.length <= 1 ? 50 : (index / Math.max(1, bars.length - 1)) * 100,
+      xPct: displayYears.length <= 1
+        ? 50
+        : (displayYears.findIndex((year) => year === bar.year) / Math.max(1, displayYears.length - 1)) * 100,
       yPct: Math.max(0, Math.min(100, (bar.value / axisMax) * 100)),
     }))
-  ), [axisMax, bars])
+  ), [axisMax, displayYears, historyBars])
+  const currentYearPoint = useMemo(() => {
+    if (!currentYearHighlight) {
+      return null
+    }
+    const yearIndex = displayYears.findIndex((year) => year === currentYearHighlight.year)
+    if (yearIndex < 0) {
+      return null
+    }
+    return {
+      ...currentYearHighlight,
+      xPct: displayYears.length <= 1 ? 50 : (yearIndex / Math.max(1, displayYears.length - 1)) * 100,
+      yPct: Math.max(0, Math.min(100, (currentYearHighlight.value / axisMax) * 100)),
+    }
+  }, [axisMax, currentYearHighlight, displayYears])
+  const tooltipSlices = useMemo<PublicationProductionPhaseTooltipSlice[]>(() => (
+    historyPoints.map((point) => {
+      const slice = buildPublicationProductionPhaseYearSlice(displayYears, point.year)
+      if (!slice) {
+        return null
+      }
+      return {
+        key: point.key,
+        year: point.year,
+        value: point.value,
+        xPct: slice.xPct,
+        leftPct: slice.leftPct,
+        widthPct: slice.widthPct,
+        svgYPct: 100 - point.yPct,
+        isLatestCompleteYear: point.year === (historyBars[historyBars.length - 1]?.year ?? null),
+      }
+    }).filter((slice): slice is PublicationProductionPhaseTooltipSlice => slice !== null)
+  ), [displayYears, historyBars, historyPoints])
+  const activeTooltipSlice = useMemo(
+    () => tooltipSlices.find((slice) => slice.year === tooltipYear) || null,
+    [tooltipSlices, tooltipYear],
+  )
   const linePath = useMemo(() => {
-    if (!points.length) {
+    if (!historyPoints.length) {
       return ''
     }
-    if (points.length === 1) {
-      const point = points[0]
+    if (historyPoints.length === 1) {
+      const point = historyPoints[0]
       return point ? `M ${point.xPct} ${100 - point.yPct}` : ''
     }
-    return monotonePathFromPoints(points.map((point) => ({
+    return monotonePathFromPoints(historyPoints.map((point) => ({
       x: point.xPct,
       y: 100 - point.yPct,
     })))
-  }, [points])
+  }, [historyPoints])
   const areaPath = useMemo(() => {
-    if (points.length < 2 || !linePath) {
+    if (historyPoints.length < 2 || !linePath) {
       return ''
     }
-    const firstPoint = points[0]
-    const lastPoint = points[points.length - 1]
+    const firstPoint = historyPoints[0]
+    const lastPoint = historyPoints[historyPoints.length - 1]
     if (!firstPoint || !lastPoint) {
       return ''
     }
     return `${linePath} L ${lastPoint.xPct} 100 L ${firstPoint.xPct} 100 Z`
-  }, [linePath, points])
+  }, [historyPoints, linePath])
+  const currentYearSegmentPath = useMemo(() => {
+    if (!currentYearPoint || historyPoints.length <= 0) {
+      return ''
+    }
+    const lastCompletePoint = historyPoints[historyPoints.length - 1]
+    if (!lastCompletePoint) {
+      return ''
+    }
+    return `M ${lastCompletePoint.xPct} ${100 - lastCompletePoint.yPct} L ${currentYearPoint.xPct} ${100 - currentYearPoint.yPct}`
+  }, [currentYearPoint, historyPoints])
   const revealLeadPct = Math.max(0, Math.min(100, lineRevealProgress * 100))
   const revealRemainingPct = Math.max(0, 100 - revealLeadPct)
   const revealFeatherPct = lineRevealProgress >= 0.999
@@ -2513,6 +3902,14 @@ function PublicationProductionPhaseChart({
       window.cancelAnimationFrame(raf)
     }
   }, [animationKey, hasBars, lineAnimationDelayMs, lineAnimationDurationMs, linePath])
+  useEffect(() => {
+    if (tooltipYear === null) {
+      return
+    }
+    if (!tooltipSlices.some((slice) => slice.year === tooltipYear)) {
+      setTooltipYear(null)
+    }
+  }, [tooltipSlices, tooltipYear])
 
   if (!hasBars) {
     return null
@@ -2530,6 +3927,18 @@ function PublicationProductionPhaseChart({
       data-house-role="chart-frame"
     >
       <div className="absolute overflow-visible" style={plotAreaStyle}>
+        {activeTooltipSlice ? (
+          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+            <div
+              className="absolute inset-y-0 rounded-[0.2rem] bg-[hsl(var(--tone-accent-200)/0.16)]"
+              style={{
+                left: `${activeTooltipSlice.leftPct}%`,
+                width: `${activeTooltipSlice.widthPct}%`,
+              }}
+              data-ui="publication-production-phase-active-year-band"
+            />
+          </div>
+        ) : null}
         <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
           <div
             className="absolute inset-y-0 left-0"
@@ -2602,7 +4011,7 @@ function PublicationProductionPhaseChart({
               mask={`url(#${phaseRevealMaskId})`}
             />
           ) : null}
-          {linePath && points.length > 1 ? (
+          {linePath && historyPoints.length > 1 ? (
             <path
               d={linePath}
               fill="none"
@@ -2614,7 +4023,98 @@ function PublicationProductionPhaseChart({
               mask={`url(#${phaseRevealMaskId})`}
             />
           ) : null}
+          {currentYearSegmentPath ? (
+            <path
+              d={currentYearSegmentPath}
+              fill="none"
+              stroke={toneColor}
+              strokeOpacity="0.48"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="4 3"
+              vectorEffect="non-scaling-stroke"
+            />
+          ) : null}
+          {currentYearPoint ? (
+            null
+          ) : null}
         </svg>
+        {currentYearPoint ? (
+          <div className="pointer-events-none absolute inset-0 z-[2] overflow-hidden" aria-hidden="true">
+            <div
+                  className="absolute h-[0.45rem] w-[0.45rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/90 shadow-[0_0_0_1px_hsl(var(--background)/0.5),0_1px_4px_hsl(var(--tone-neutral-950)/0.14)]"
+              style={{
+                left: `${currentYearPoint.xPct}%`,
+                top: `${100 - currentYearPoint.yPct}%`,
+                backgroundColor: toneColor,
+                opacity: 0.8,
+              }}
+            />
+          </div>
+        ) : null}
+        {activeTooltipSlice ? (
+          <div className="pointer-events-none absolute inset-0 z-[3] overflow-hidden" aria-hidden="true">
+            <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <line
+                x1={String(activeTooltipSlice.xPct)}
+                y1="0"
+                x2={String(activeTooltipSlice.xPct)}
+                y2="100"
+                stroke="hsl(var(--tone-accent-500) / 0.9)"
+                strokeWidth="1"
+                strokeDasharray="4 3"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+            <div
+                  className="absolute h-[0.62rem] w-[0.62rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white shadow-[0_0_0_1px_hsl(var(--background)/0.6),0_2px_6px_hsl(var(--tone-neutral-950)/0.16)]"
+              style={{
+                left: `${activeTooltipSlice.xPct}%`,
+                top: `${activeTooltipSlice.svgYPct}%`,
+                backgroundColor: toneColor,
+              }}
+            />
+          </div>
+        ) : null}
+        {tooltipSlices.length ? (
+          <TooltipProvider delayDuration={120}>
+            <div className="absolute inset-0 z-[4]" data-ui="publication-production-phase-tooltip-overlay">
+              {tooltipSlices.map((slice) => (
+                <Tooltip key={slice.key}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 block rounded-[0.2rem] bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-200))]"
+                      style={{
+                        left: `${slice.leftPct}%`,
+                        width: `${slice.widthPct}%`,
+                      }}
+                      data-ui="publication-production-phase-tooltip-slice"
+                      aria-label={buildPublicationProductionPhaseTooltipAriaLabel(slice)}
+                      onMouseEnter={() => setTooltipYear(slice.year)}
+                      onMouseLeave={() => {
+                        setTooltipYear((currentValue) => (currentValue === slice.year ? null : currentValue))
+                      }}
+                      onFocus={() => setTooltipYear(slice.year)}
+                      onBlur={() => {
+                        setTooltipYear((currentValue) => (currentValue === slice.year ? null : currentValue))
+                      }}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    align="center"
+                    sideOffset={8}
+                    className="house-approved-tooltip z-[80] max-w-[18rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                  >
+                    {renderPublicationProductionPhaseYearTooltip(slice)}
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+          </TooltipProvider>
+        ) : null}
       </div>
 
       <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
@@ -2651,6 +4151,7 @@ function PublicationProductionPhaseChart({
           const tickAnchor = getTrajectoryYearTickAnchor(tick.leftPct)
           const isFirst = index === 0
           const isLast = index === positionedTicks.length - 1
+          const isActiveHighlightTick = !!activeTooltipSlice && Number(tick.label) === activeTooltipSlice.year
           return (
             <div
               key={tick.key}
@@ -2669,7 +4170,13 @@ function PublicationProductionPhaseChart({
               }}
               aria-label={`${isFirst ? 'Start' : isLast ? 'End' : 'Middle'} phase year: ${tick.label}`}
             >
-              <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+              <p
+                className={cn(
+                  HOUSE_CHART_AXIS_TEXT_TREND_CLASS,
+                  'break-words px-0.5 leading-[1.05]',
+                  isActiveHighlightTick ? 'font-semibold text-[hsl(var(--tone-accent-700))]' : null,
+                )}
+              >
                 {tick.label}
               </p>
             </div>
@@ -2696,74 +4203,275 @@ function PublicationProductionPhaseChart({
 
 function renderPublicationProductionPhaseTooltipContent(stats: PublicationProductionPhaseStats) {
   const recentWindowSize = Math.max(1, Math.min(3, stats.usableYears || stats.years.length || 1))
+  const tone = resolvePublicationProductionPhaseTone(stats.phase)
+  const toneColor = resolvePublicationProductionPatternToneColor(tone)
   const firstYear = stats.years[0] ?? null
   const lastYear = stats.years[stats.years.length - 1] ?? null
   const recentYears = stats.years.slice(-recentWindowSize)
-  const recentSeries = stats.series.slice(-recentWindowSize)
-  const recentPublicationCount = recentSeries.reduce((sum, value) => sum + Math.max(0, value), 0)
   const recentStartYear = recentYears[0] ?? null
   const recentEndYear = recentYears[recentYears.length - 1] ?? null
-  const slopePeriodText = firstYear === null || lastYear === null
-    ? null
-    : firstYear === lastYear
-      ? `in ${firstYear}`
-      : `between ${firstYear} and ${lastYear}`
   const recentPeriodText = recentStartYear === null || recentEndYear === null
     ? null
     : recentStartYear === recentEndYear
       ? `in ${recentStartYear}`
       : `between ${recentStartYear} and ${recentEndYear}`
+  const lead = getPublicationProductionPhaseTooltipLead(stats)
+  const decisionSummary = formatPublicationProductionPhaseDecisionSummary(stats)
+  const trendSummary = formatPublicationProductionPhaseCompactTrendSummary(stats, firstYear, lastYear)
+  const recentWindowSummary = formatPublicationProductionPhaseCompactRecentWindowSummary(stats, recentPeriodText)
+  const scopeSummary = formatPublicationProductionPhaseScopeSummary(stats)
+  const supportingStatements = [trendSummary, recentWindowSummary].filter(Boolean)
+  return (
+    <div className="relative overflow-hidden px-4 py-4">
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[4px]"
+        style={{ backgroundColor: toneColor }}
+      />
+      <div className="space-y-3">
+      <div className="space-y-2 border-b border-[hsl(var(--tone-neutral-200)/0.85)] pb-3">
+        <p className="text-[1.08rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+          What stage is my publication output in?
+        </p>
+      </div>
+      {stats.emptyReason ? (
+        <div className="space-y-2">
+          <p className="rounded-[0.95rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--background)/0.72)] px-3 py-2.5 text-[0.79rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+            {stats.emptyReason}
+          </p>
+        </div>
+      ) : stats.insufficientHistory ? (
+        <div className="space-y-3">
+          <div className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--background)/0.78)] px-3.5 py-3 shadow-[inset_0_1px_0_hsl(var(--background)/0.8)]">
+            <p className="text-[0.9rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">
+              More complete-year history is needed.
+            </p>
+            <p className="mt-1.5 text-[0.79rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+              There is not enough complete-year history to classify the stage reliably yet.
+            </p>
+          </div>
+          {stats.confidenceNote ? (
+            <p className="rounded-[0.95rem] border border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50)/0.8)] px-3 py-2.5 text-[0.76rem] leading-relaxed text-[hsl(var(--tone-warning-900))]">
+              {stats.confidenceNote}
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div
+            className="rounded-[1.05rem] border px-3.5 py-3.5 shadow-[0_12px_26px_hsl(var(--tone-neutral-950)/0.05)]"
+            style={{
+              borderColor: `color-mix(in srgb, ${toneColor} 30%, hsl(var(--tone-neutral-200)) 70%)`,
+              backgroundColor: `color-mix(in srgb, ${toneColor} 14%, hsl(var(--background)) 86%)`,
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: toneColor }}
+              />
+              <p className="text-[1.02rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+                {stats.phaseLabel}
+              </p>
+            </div>
+            <p className="mt-2 text-[0.9rem] font-medium leading-relaxed text-[hsl(var(--tone-neutral-900))]">
+              {lead}
+            </p>
+            <p className="mt-2 text-[0.81rem] leading-relaxed text-[hsl(var(--tone-neutral-700))]">
+              {decisionSummary}
+            </p>
+          </div>
+          <div className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200)/0.9)] bg-[hsl(var(--tone-neutral-50)/0.78)] px-3.5 py-1.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.88)]">
+            <ul className="m-0 list-none">
+              {supportingStatements.map((statement, index) => (
+                <li
+                  key={`${index}-${statement}`}
+                  className={cn(
+                    'flex gap-2.5 py-2.5',
+                    index > 0 ? 'border-t border-[hsl(var(--tone-neutral-200)/0.78)]' : '',
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: `color-mix(in srgb, ${toneColor} 62%, hsl(var(--tone-neutral-500)) 38%)` }}
+                  />
+                  <p className="text-[0.84rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+                    {statement}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="border-t border-[hsl(var(--tone-neutral-200)/0.85)] pt-2">
+            <p className="text-[0.77rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+              {scopeSummary}
+            </p>
+          </div>
+          {stats.confidenceNote ? (
+            <p className="rounded-[0.95rem] border border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50)/0.8)] px-3 py-2.5 text-[0.76rem] leading-relaxed text-[hsl(var(--tone-warning-900))]">
+              {stats.confidenceNote}
+            </p>
+          ) : null}
+        </div>
+      )}
+      </div>
+    </div>
+  )
+}
+
+function formatPublicationProductionPatternSectionScopeSummary(
+  completeStats: PublicationProductionPatternStats,
+): string {
+  const stableEndYear = completeStats.lastPublicationYear
+  return stableEndYear === null
+    ? 'Complete years are the stable baseline for this section.'
+    : `Complete years to end of ${stableEndYear}.`
+}
+
+function renderPublicationProductionPatternSectionTooltipContent(
+  completeStats: PublicationProductionPatternStats,
+  currentStats: PublicationProductionPatternStats = completeStats,
+  asOfDate: Date | null = null,
+) {
+  const toneColor = resolvePublicationProductionPatternToneColor('accent')
+  const consistencyTone = completeStats.consistencyIndex === null
+    ? 'neutral'
+    : getPublicationConsistencyTone(completeStats.consistencyIndex)
+  const consistencyHeading = buildPublicationConsistencyHeading(completeStats)
+  const consistencyToneColor = resolvePublicationProductionPatternToneColor(consistencyTone)
+  const burstinessTone = completeStats.burstinessScore === null
+    ? 'neutral'
+    : getPublicationBurstinessTone(completeStats.burstinessScore)
+  const burstinessHeading = buildPublicationBurstinessHeading(completeStats)
+  const burstinessToneColor = resolvePublicationProductionPatternToneColor(burstinessTone)
+  const peakTone = completeStats.peakYearShare === null
+    ? 'neutral'
+    : getPublicationPeakYearShareTone(completeStats.peakYearShare)
+  const peakToneColor = resolvePublicationProductionPatternToneColor(peakTone)
+  const continuityHeading = buildPublicationContinuityHeading(completeStats)
+  const continuityTone = completeStats.outputContinuity === null
+    ? 'neutral'
+    : getPublicationOutputContinuityTone(completeStats.outputContinuity)
+  const continuityToneColor = resolvePublicationProductionPatternToneColor(continuityTone)
+  const lowVolumeNote = completeStats.lowVolume
+    ? getPublicationProductionPatternLowVolumeNote(completeStats.totalPublications)
+    : null
+  const insufficientHistory = completeStats.series.length < 2 || completeStats.activeSpan < 2
+  const peakDetails = getPublicationProductionPatternPeakYearDetails(completeStats)
+  const conclusion = buildPublicationProductionPatternSectionConclusion(completeStats, peakDetails)
+  const peakHeading = buildPublicationPeakShareHeading(peakDetails)
+  const consistencySummary = buildPublicationConsistencyDetail(completeStats, peakDetails)
+  const burstinessSummary = buildPublicationBurstinessDetail(completeStats, peakDetails)
+  const peakSummary = buildPublicationPeakShareDetail(completeStats, peakDetails)
+  const continuitySummary = buildPublicationContinuityDetail(completeStats)
+  void currentStats
+  void asOfDate
+  const scopeSummary = formatPublicationProductionPatternSectionScopeSummary(completeStats)
 
   return (
-    <div className="space-y-2.5">
-      {stats.emptyReason ? (
-        <p>{stats.emptyReason}</p>
-      ) : stats.insufficientHistory ? (
-        <>
-          <p>
-            <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">
-              Your publication-output stage cannot yet be estimated confidently.
-            </span>
-            {' '}
-            There is not enough complete-year history to classify it reliably.
+    <div className="relative overflow-hidden px-4 py-4">
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[4px]"
+        style={{ backgroundColor: toneColor }}
+      />
+      <div className="space-y-3">
+      <div className="space-y-2 border-b border-[hsl(var(--tone-neutral-200)/0.85)] pb-3">
+        <p className="text-[1.08rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+          How steady is my publication output?
+        </p>
+        {!completeStats.emptyReason && !insufficientHistory ? (
+          <p className="max-w-[34rem] text-[0.92rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+            {conclusion}
           </p>
-          {stats.confidenceNote ? <p>{stats.confidenceNote}</p> : null}
-        </>
-      ) : (
-        <>
-          <div className="space-y-1">
-            <p className="text-[hsl(var(--tone-neutral-600))]">Your publication-output stage is:</p>
-            <p className={cn('text-center text-sm font-semibold leading-tight', getPublicationProductionPhaseTooltipLabelClass(stats.phase))}>
-              {stats.phaseLabel}
+        ) : null}
+      </div>
+      {completeStats.emptyReason ? (
+        <div className="space-y-2">
+          <div className="relative overflow-hidden rounded-[1rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--background)/0.84)] px-3.5 py-3.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.86)]">
+            <span
+              aria-hidden="true"
+              className="absolute inset-x-0 top-0 h-1"
+              style={{ backgroundColor: toneColor }}
+            />
+            <p className="text-[0.92rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-950))]">
+              {completeStats.emptyReason}
             </p>
-            <p>{getPublicationProductionPhaseUserMeaning(stats.phase)}</p>
           </div>
-          <ul className="ml-4 list-disc space-y-1.5">
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Trend slope:</span>
-              {' '}
-              {formatPublicationProductionPhaseSlopeExplanation(stats.slope, slopePeriodText)}
-            </li>
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Recent share:</span>
-              {' '}
-              {stats.recentShare !== null
-                ? `${formatInt(recentPublicationCount)} of your ${formatInt(stats.totalPublications)} publications (${Math.round(stats.recentShare * 100)}%) came ${recentPeriodText ?? 'in your recent complete years'}, within a ${formatPublicationProductionSpanLabel(stats.activeSpan)}.`
-                : 'your recent-share context is not available yet.'}
-            </li>
-            <li>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Peak year:</span>
-              {' '}
-              {stats.peakYear !== null
-                ? stats.peakCount !== null
-                  ? `your highest-output year was ${stats.peakYear}, with ${formatInt(stats.peakCount)} publications.`
-                  : `your highest-output year was ${stats.peakYear}.`
-                : 'your peak-year context is not available yet.'}
-            </li>
-          </ul>
-          {stats.confidenceNote ? <p>{stats.confidenceNote}</p> : null}
-        </>
+        </div>
+      ) : insufficientHistory ? (
+        <div className="space-y-3">
+          <div className="relative overflow-hidden rounded-[1rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--background)/0.84)] px-3.5 py-3.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.86)]">
+            <span
+              aria-hidden="true"
+              className="absolute inset-x-0 top-0 h-1"
+              style={{ backgroundColor: toneColor }}
+            />
+            <p className="text-[0.98rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+              More year-by-year history is needed.
+            </p>
+            <p className="mt-1.5 text-[0.82rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+              This section compares variation, peaks, and continuity across years, so it becomes more informative once there are at least two active publication years to compare.
+            </p>
+          </div>
+          <PublicationProductionPatternTooltipFact
+            heading="Coverage is still limited"
+            value={formatPublicationTooltipSentence(formatPublicationProductionCoverageSummary(completeStats))}
+            tone={continuityTone}
+            toneColor={continuityToneColor}
+          />
+          <p className="px-1 text-[0.77rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+            {scopeSummary}
+          </p>
+          {lowVolumeNote ? (
+            <p className="rounded-[0.95rem] border border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50)/0.8)] px-3 py-2.5 text-[0.76rem] leading-relaxed text-[hsl(var(--tone-warning-900))]">
+              {lowVolumeNote}
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <PublicationProductionPatternTooltipFact
+              heading={consistencyHeading}
+              value={consistencySummary}
+              tone={consistencyTone}
+              toneColor={consistencyToneColor}
+            />
+            <PublicationProductionPatternTooltipFact
+              heading={burstinessHeading}
+              value={burstinessSummary}
+              tone={burstinessTone}
+              toneColor={burstinessToneColor}
+            />
+            <PublicationProductionPatternTooltipFact
+              heading={peakHeading}
+              value={peakSummary}
+              tone={peakTone}
+              toneColor={peakToneColor}
+            />
+            <PublicationProductionPatternTooltipFact
+              heading={continuityHeading}
+              value={continuitySummary}
+              tone={continuityTone}
+              toneColor={continuityToneColor}
+            />
+          </div>
+          <div className="border-t border-[hsl(var(--tone-neutral-200)/0.85)] pt-2">
+            <p className="text-[0.77rem] leading-relaxed text-[hsl(var(--tone-neutral-650))]">
+              {scopeSummary}
+            </p>
+          </div>
+          {lowVolumeNote ? (
+            <p className="rounded-[0.95rem] border border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50)/0.8)] px-3 py-2.5 text-[0.76rem] leading-relaxed text-[hsl(var(--tone-warning-900))]">
+              {lowVolumeNote}
+            </p>
+          ) : null}
+        </div>
       )}
+      </div>
     </div>
   )
 }
@@ -2797,6 +4505,14 @@ function formatPublicationInsightMonthWindowLabel(start: Date | null, end: Date 
   const startLabel = formatPublicationMonthYear(start)
   const endLabel = formatPublicationMonthYear(end)
   return startLabel === endLabel ? startLabel : `${startLabel}-${endLabel}`
+}
+
+function pickDeterministicPublicationTooltipVariant<T>(seed: number, variants: readonly T[]): T {
+  if (!variants.length) {
+    throw new Error('At least one tooltip variant is required.')
+  }
+  const safeSeed = Number.isFinite(seed) ? Math.abs(Math.round(seed)) : 0
+  return variants[safeSeed % variants.length]
 }
 
 function resolvePublicationInsightRecordDateLabel(record: PublicationDrilldownRecord): string | null {
@@ -2997,6 +4713,387 @@ function formatPublicationInsightLabelList(labels: string[]): string {
   return `${safeLabels.slice(0, -1).join(', ')}, and ${safeLabels[safeLabels.length - 1]}`
 }
 
+function toInlinePublicationInsightLabel(value: string): string {
+  const clean = String(value || '').trim()
+  if (!clean) {
+    return 'unspecified'
+  }
+  return clean.charAt(0).toLowerCase() + clean.slice(1)
+}
+
+function formatInlinePublicationInsightLabelList(labels: string[]): string {
+  const safeLabels = labels.map((label) => toInlinePublicationInsightLabel(label)).filter(Boolean)
+  if (!safeLabels.length) {
+    return 'unspecified'
+  }
+  if (safeLabels.length === 1) {
+    return safeLabels[0]
+  }
+  if (safeLabels.length === 2) {
+    return `${safeLabels[0]} and ${safeLabels[1]}`
+  }
+  return `${safeLabels.slice(0, -1).join(', ')}, and ${safeLabels[safeLabels.length - 1]}`
+}
+
+function capitalizePublicationInsightSentenceStart(value: string): string {
+  const clean = String(value || '')
+  if (!clean) {
+    return clean
+  }
+  return clean.charAt(0).toUpperCase() + clean.slice(1)
+}
+
+const PUBLICATION_MIX_RECENT_WINDOW_MIN_PUBLICATIONS = 5
+const PUBLICATION_MIX_MEANINGFUL_ENTRY_MIN_COUNT = 2
+const PUBLICATION_MIX_MEANINGFUL_ENTRY_MIN_SHARE_PCT = 10
+const PUBLICATION_MIX_NOTABLE_ENTRY_MIN_SHARE_PCT = 12
+const PUBLICATION_MIX_NOTABLE_DELTA_PCT = 6
+const PUBLICATION_MIX_THIN_ONE_YEAR_MAX_PUBLICATIONS = 2
+const PUBLICATION_MIX_PARTIAL_YEAR_LIGHT_MAX_PUBLICATIONS = 3
+
+type PublicationMixOverTimeMode =
+  | 'stable'
+  | 'narrowing'
+  | 'broadening'
+  | 'contested'
+  | 'gradual_shift'
+  | 'reordered'
+  | 'insufficient_recent'
+
+type PublicationMixOverTimeCopyConfig = {
+  mixDescriptor: string
+  typeSingular: string
+  typePlural: string
+}
+
+type PublicationMixOverTimeRead = {
+  mode: PublicationMixOverTimeMode
+  openingSummary: string
+  overallSummary: string
+  recentSummary: string
+  latestWindowSummary: string | null
+  scopeSummary: string
+}
+
+function hasRobustPublicationMixWindow(
+  summary: PublicationArticleTypeWindowInsightSummary | null,
+  minimumPublications = PUBLICATION_MIX_RECENT_WINDOW_MIN_PUBLICATIONS,
+): summary is PublicationArticleTypeWindowInsightSummary {
+  return Boolean(summary && summary.totalCount >= minimumPublications)
+}
+
+function findPublicationMixEntry(
+  summary: PublicationArticleTypeWindowInsightSummary | null,
+  label: string | null,
+): { label: string, count: number, sharePct: number } | null {
+  if (!summary || !label) {
+    return null
+  }
+  return summary.entries.find((entry) => entry.label === label) || null
+}
+
+function getMeaningfulPublicationMixEntries(
+  summary: PublicationArticleTypeWindowInsightSummary | null,
+): Array<{ label: string, count: number, sharePct: number }> {
+  if (!summary) {
+    return []
+  }
+  return summary.entries.filter((entry, index) => (
+    entry.count >= PUBLICATION_MIX_MEANINGFUL_ENTRY_MIN_COUNT
+    || entry.sharePct >= PUBLICATION_MIX_MEANINGFUL_ENTRY_MIN_SHARE_PCT
+    || index === 0
+  ))
+}
+
+function publicationMixWindowsShareLeader(
+  left: PublicationArticleTypeWindowInsightSummary | null,
+  right: PublicationArticleTypeWindowInsightSummary | null,
+): boolean {
+  if (!left || !right) {
+    return true
+  }
+  if (left.topLabels.length !== right.topLabels.length) {
+    return false
+  }
+  return left.topLabels.every((label) => right.topLabels.includes(label))
+}
+
+function formatPublicationMixWindowLabel(
+  summary: PublicationArticleTypeWindowInsightSummary | null,
+  includeLatest = false,
+): string {
+  if (!summary) {
+    return includeLatest ? 'the latest window' : 'the recent window'
+  }
+  if (summary.windowId === '3y') {
+    return includeLatest ? 'the latest 3-year window' : 'the 3-year window'
+  }
+  if (summary.windowId === '5y') {
+    return includeLatest ? 'the latest 5-year window' : 'the 5-year window'
+  }
+  if (summary.windowId === '1y') {
+    return includeLatest ? 'the latest 1-year window' : 'the 1-year window'
+  }
+  return includeLatest ? 'the latest window' : 'the recent window'
+}
+
+function buildPublicationMixOverTimeRead(
+  stats: PublicationArticleTypeOverTimeInsightStats,
+  copy: PublicationMixOverTimeCopyConfig,
+): PublicationMixOverTimeRead {
+  const allWindow = stats.allWindow
+  if (stats.emptyReason || !allWindow) {
+    return {
+      mode: 'insufficient_recent',
+      openingSummary: stats.emptyReason || `No ${copy.typeSingular} data is available yet.`,
+      overallSummary: '',
+      recentSummary: '',
+      latestWindowSummary: null,
+      scopeSummary: stats.latestWindowEndLabel
+        ? `Using rolling data to the end of ${stats.latestWindowEndLabel}.`
+        : 'Using rolling data from the latest available windows.',
+    }
+  }
+
+  const fiveYearWindow = stats.fiveYearWindow
+  const threeYearWindow = stats.threeYearWindow
+  const oneYearWindow = stats.oneYearWindow
+  const allLeaderLabel = formatPublicationInsightLabelList(allWindow.topLabels)
+  const allLeaderInlineLabel = formatInlinePublicationInsightLabelList(allWindow.topLabels)
+  const fullShareRounded = allWindow.topSharePct === null || allWindow.topSharePct === undefined
+    ? null
+    : Math.round(allWindow.topSharePct)
+  const distinctRecentWindows = [fiveYearWindow, threeYearWindow, oneYearWindow]
+    .filter((summary): summary is PublicationArticleTypeWindowInsightSummary => Boolean(summary))
+    .filter((summary, index, array) => (
+      summary.rangeLabel !== allWindow.rangeLabel
+      && array.findIndex((candidate) => candidate.rangeLabel === summary.rangeLabel) === index
+    ))
+  const latestWindow = oneYearWindow || threeYearWindow || fiveYearWindow || allWindow
+  const latestWindowLabel = formatPublicationMixWindowLabel(latestWindow, true)
+  const robustFiveYearWindow = hasRobustPublicationMixWindow(fiveYearWindow)
+  const robustThreeYearWindow = hasRobustPublicationMixWindow(threeYearWindow)
+  const preferredRecentWindow = robustThreeYearWindow
+    ? threeYearWindow
+    : robustFiveYearWindow
+      ? fiveYearWindow
+      : threeYearWindow || fiveYearWindow || latestWindow
+  const preferredRecentWindowLabel = formatPublicationMixWindowLabel(preferredRecentWindow)
+  const preferredRecentWindowSentenceLabel = capitalizePublicationInsightSentenceStart(preferredRecentWindowLabel)
+  const preferredRecentLeaderLabel = formatPublicationInsightLabelList(preferredRecentWindow?.topLabels || [])
+  const preferredRecentLeaderInlineLabel = formatInlinePublicationInsightLabelList(preferredRecentWindow?.topLabels || [])
+  const fiveYearMatchesFull = publicationMixWindowsShareLeader(fiveYearWindow, allWindow)
+  const threeYearMatchesFull = publicationMixWindowsShareLeader(threeYearWindow, allWindow)
+  const preferredRecentMatchesFull = publicationMixWindowsShareLeader(preferredRecentWindow, allWindow)
+  const recentWindowNarrows = Boolean(
+    preferredRecentWindow
+    && preferredRecentWindow.rangeLabel !== allWindow.rangeLabel
+    && preferredRecentWindow.distinctTypeCount < allWindow.distinctTypeCount
+  )
+  const recentWindowBroadens = Boolean(
+    preferredRecentWindow
+    && preferredRecentWindow.rangeLabel !== allWindow.rangeLabel
+    && preferredRecentWindow.distinctTypeCount > allWindow.distinctTypeCount
+  )
+  const preferredRecentEntries = getMeaningfulPublicationMixEntries(preferredRecentWindow)
+  const preferredRecentRunnerUp = preferredRecentEntries.find((entry) => !preferredRecentWindow?.topLabels.includes(entry.label)) || null
+  const challengerLabel = preferredRecentWindow?.topLabels.some((label) => allWindow.topLabels.includes(label))
+    ? preferredRecentWindow?.topLabels.find((label) => !allWindow.topLabels.includes(label))
+        || preferredRecentRunnerUp?.label
+        || null
+    : preferredRecentLeaderLabel !== allLeaderLabel
+      ? preferredRecentWindow?.topLabels[0] || null
+      : preferredRecentRunnerUp?.label || null
+  const challengerEntry = findPublicationMixEntry(preferredRecentWindow, challengerLabel)
+  const challengerFullEntry = findPublicationMixEntry(allWindow, challengerLabel)
+  const challengerIsMeaningful = Boolean(
+    challengerEntry
+    && (challengerEntry.count >= PUBLICATION_MIX_MEANINGFUL_ENTRY_MIN_COUNT || challengerEntry.sharePct >= PUBLICATION_MIX_NOTABLE_ENTRY_MIN_SHARE_PCT)
+  )
+  const challengerShareDelta = challengerEntry && challengerFullEntry
+    ? challengerEntry.sharePct - challengerFullEntry.sharePct
+    : null
+  const oneYearIsThin = Boolean(
+    oneYearWindow
+    && (
+      oneYearWindow.totalCount <= PUBLICATION_MIX_THIN_ONE_YEAR_MAX_PUBLICATIONS
+      || (stats.latestYearIsPartial && oneYearWindow.totalCount <= PUBLICATION_MIX_PARTIAL_YEAR_LIGHT_MAX_PUBLICATIONS)
+    )
+  )
+
+  const mode: PublicationMixOverTimeMode = (() => {
+    if (!distinctRecentWindows.length || (!robustFiveYearWindow && !robustThreeYearWindow)) {
+      return 'insufficient_recent'
+    }
+    if (
+      robustFiveYearWindow
+      && robustThreeYearWindow
+      && !fiveYearMatchesFull
+      && !threeYearMatchesFull
+      && publicationMixWindowsShareLeader(fiveYearWindow, threeYearWindow)
+    ) {
+      return 'reordered'
+    }
+    if (
+      robustFiveYearWindow
+      && robustThreeYearWindow
+      && (
+        (fiveYearMatchesFull && !threeYearMatchesFull)
+        || (!fiveYearMatchesFull && !threeYearMatchesFull && !publicationMixWindowsShareLeader(fiveYearWindow, threeYearWindow))
+      )
+    ) {
+      return 'gradual_shift'
+    }
+    if (!preferredRecentMatchesFull && preferredRecentWindow?.topLabels.includes(allLeaderLabel)) {
+      return 'contested'
+    }
+    if (!preferredRecentMatchesFull) {
+      return 'reordered'
+    }
+    if (recentWindowBroadens) {
+      return 'broadening'
+    }
+    if (recentWindowNarrows || (challengerShareDelta !== null && challengerShareDelta < -PUBLICATION_MIX_NOTABLE_DELTA_PCT)) {
+      return 'narrowing'
+    }
+    return 'stable'
+  })()
+
+  const openingSummary = (() => {
+    if (!distinctRecentWindows.length) {
+      return `The ${copy.mixDescriptor} is still too short to show a distinct recent shift away from ${allLeaderLabel}.`
+    }
+    if (mode === 'gradual_shift') {
+      return `${allLeaderLabel} anchors the full record, but the recent multi-year windows lean progressively away from it.`
+    }
+    if (mode === 'contested' && challengerLabel) {
+      return `${allLeaderLabel} stays central, but ${toInlinePublicationInsightLabel(challengerLabel)} now runs much closer in the recent windows.`
+    }
+    if (mode === 'reordered') {
+      return `${allLeaderLabel} anchors the full record, but ${preferredRecentWindowLabel} leans toward ${preferredRecentLeaderInlineLabel}.`
+    }
+    if (mode === 'narrowing') {
+      return `${allLeaderLabel} stays central, and the recent windows are narrower than the full record.`
+    }
+    if (mode === 'broadening') {
+      return `The recent windows are bringing more ${copy.typePlural} into view than the full record usually shows.`
+    }
+    if ((allWindow.topSharePct || 0) < 45) {
+      return `The ${copy.mixDescriptor} stays fairly balanced across the publication span, rather than being dominated by one format.`
+    }
+    return `${allLeaderLabel} stays the main ${copy.typeSingular} across both the full record and the recent windows.`
+  })()
+
+  const overallSummary = (() => {
+    if (allWindow.topLabels.length > 1) {
+      return `Across ${stats.spanLabel || 'the full record'}, ${allLeaderLabel} share the top position, with ${formatInt(allWindow.topCount)} publications each. The wider mix still spans ${formatInt(allWindow.distinctTypeCount)} ${copy.typePlural}.`
+    }
+    const shareLabel = fullShareRounded === null ? null : `${fullShareRounded}%`
+    if (allWindow.secondLabel && allWindow.secondSharePct !== null) {
+      return `${allLeaderLabel} leads the full record with ${formatInt(allWindow.topCount)} of ${formatInt(allWindow.totalCount)} publications${shareLabel ? ` (${shareLabel})` : ''}, ahead of ${toInlinePublicationInsightLabel(allWindow.secondLabel)} at ${Math.round(allWindow.secondSharePct)}%.`
+    }
+    return `${allLeaderLabel} leads the full record with ${formatInt(allWindow.topCount)} of ${formatInt(allWindow.totalCount)} publications${shareLabel ? ` (${shareLabel})` : ''}.`
+  })()
+
+  const recentSummary = (() => {
+    if (mode === 'insufficient_recent') {
+      return 'Recent windows do not yet separate enough from the full record to support a stronger directional read.'
+    }
+    if (
+      fiveYearWindow
+      && threeYearWindow
+      && robustFiveYearWindow
+      && robustThreeYearWindow
+      && fiveYearWindow.topLabels.length > 1
+      && !publicationMixWindowsShareLeader(threeYearWindow, fiveYearWindow)
+    ) {
+      return `The 5-year window is already split between ${formatInlinePublicationInsightLabelList(fiveYearWindow.topLabels)}, and the 3-year window then tips toward ${formatInlinePublicationInsightLabelList(threeYearWindow.topLabels)}, so the recent mix is shifting gradually rather than all at once.`
+    }
+    if (
+      fiveYearWindow
+      && threeYearWindow
+      && robustFiveYearWindow
+      && robustThreeYearWindow
+      && fiveYearMatchesFull
+      && !threeYearMatchesFull
+    ) {
+      return `The 5-year window still looks much like the full record, but the 3-year window leans toward ${formatInlinePublicationInsightLabelList(threeYearWindow.topLabels)}, which is the clearer recent shift in the mix.`
+    }
+    if (
+      fiveYearWindow
+      && threeYearWindow
+      && robustFiveYearWindow
+      && robustThreeYearWindow
+      && !fiveYearMatchesFull
+      && !threeYearMatchesFull
+      && publicationMixWindowsShareLeader(fiveYearWindow, threeYearWindow)
+    ) {
+      return `Both the 5-year and 3-year windows lean toward ${formatInlinePublicationInsightLabelList(threeYearWindow.topLabels)} rather than the long-run lead of ${allLeaderInlineLabel}, so the recent change extends beyond a single year.`
+    }
+    if (
+      preferredRecentMatchesFull
+      && preferredRecentRunnerUp
+      && challengerIsMeaningful
+      && challengerShareDelta !== null
+      && Math.abs(challengerShareDelta) >= PUBLICATION_MIX_NOTABLE_DELTA_PCT
+      && challengerFullEntry
+    ) {
+      const direction = challengerShareDelta > 0 ? 'has become more prominent' : 'has receded'
+      return `${preferredRecentWindowSentenceLabel} still keeps ${allLeaderInlineLabel} first, but ${toInlinePublicationInsightLabel(preferredRecentRunnerUp.label)} ${direction} there at ${Math.round(preferredRecentRunnerUp.sharePct)}% versus ${Math.round(challengerFullEntry.sharePct)}% across the full record.`
+    }
+    if (preferredRecentMatchesFull && preferredRecentWindow && preferredRecentWindow.distinctTypeCount < allWindow.distinctTypeCount) {
+      return `${preferredRecentWindowSentenceLabel} still keeps ${allLeaderInlineLabel} first, but fewer secondary ${copy.typePlural} stay visible there than across the full record, so the mix is narrowing rather than changing hands.`
+    }
+    if (preferredRecentMatchesFull && preferredRecentWindow && preferredRecentWindow.distinctTypeCount > allWindow.distinctTypeCount) {
+      return `${preferredRecentWindowSentenceLabel} brings more secondary ${copy.typePlural} into view than the full record usually does, so the recent mix looks broader rather than more concentrated.`
+    }
+    if (
+      preferredRecentWindow
+      && !preferredRecentMatchesFull
+      && preferredRecentWindow.topLabels.includes(allLeaderLabel)
+      && challengerLabel
+    ) {
+      return `${preferredRecentWindowSentenceLabel} still keeps ${allLeaderInlineLabel} at the top, but ${toInlinePublicationInsightLabel(challengerLabel)} now runs alongside it much more closely than across the full record.`
+    }
+    if (!preferredRecentMatchesFull && preferredRecentWindow) {
+      return `${preferredRecentWindowSentenceLabel} shifts toward ${preferredRecentLeaderInlineLabel} rather than the long-run lead of ${allLeaderInlineLabel}, so the recent mix is not just a smaller copy of the whole record.`
+    }
+    return `Across the recent windows, the same ${copy.mixDescriptor} broadly holds, without a decisive recent reorder.`
+  })()
+
+  const latestWindowSummary = (() => {
+    if (!oneYearWindow) {
+      return null
+    }
+    const partialYearNote = stats.latestYearIsPartial
+      ? ' Because it includes the current partial year, treat it as a live signal rather than the main basis for the mix read.'
+      : ''
+    if (oneYearIsThin) {
+      return robustFiveYearWindow || robustThreeYearWindow
+        ? null
+        : `The latest 1-year window is quiet, with only ${formatInt(oneYearWindow.totalCount)} publication${oneYearWindow.totalCount === 1 ? '' : 's'} in view, so the recent mix still needs more signal before it can be read confidently.${partialYearNote}`
+    }
+    if (!publicationMixWindowsShareLeader(oneYearWindow, preferredRecentWindow)) {
+      return `${formatPublicationInsightLabelList(oneYearWindow.topLabels)} lean furthest in the latest 1-year window, but that newest window should be read alongside the broader recent windows rather than on its own.${partialYearNote}`
+    }
+    if (preferredRecentWindow && oneYearWindow.distinctTypeCount < preferredRecentWindow.distinctTypeCount) {
+      return `The latest 1-year view points the same way as the broader recent windows, but on a narrower set of ${copy.typePlural}.${partialYearNote}`
+    }
+    return `The latest 1-year view broadly supports the same read as the broader recent windows.${partialYearNote}`
+  })()
+
+  return {
+    mode,
+    openingSummary,
+    overallSummary,
+    recentSummary,
+    latestWindowSummary,
+    scopeSummary: stats.latestWindowEndLabel
+      ? `Using rolling data to the end of ${stats.latestWindowEndLabel}.`
+      : 'Using rolling data from the latest available windows.',
+  }
+}
+
 function buildPublicationArticleTypeWindowInsightSummary({
   publicationRecords,
   fullYears,
@@ -3055,6 +5152,11 @@ function buildPublicationArticleTypeWindowInsightSummary({
     secondLabel: secondEntry?.[0] || null,
     secondSharePct: totalCount > 0 && secondEntry ? (secondEntry[1] / totalCount) * 100 : null,
     orderedLabels: sortedEntries.slice(0, 4).map(([label]) => label),
+    entries: sortedEntries.slice(0, 4).map(([label, count]) => ({
+      label,
+      count,
+      sharePct: totalCount > 0 ? (count / totalCount) * 100 : 0,
+    })),
   }
 }
 
@@ -3079,6 +5181,7 @@ function buildPublicationArticleTypeOverTimeInsightStats(
       oneYearWindow: null,
       latestYearIsPartial: false,
       latestPartialYearLabel: null,
+      latestWindowEndLabel: null,
     }
   }
   const firstPublicationYear = yearsWithData[0]
@@ -3112,6 +5215,9 @@ function buildPublicationArticleTypeOverTimeInsightStats(
     && lastPublicationYear === asOfDate.getUTCFullYear()
     && (asOfDate.getUTCMonth() < 11 || asOfDate.getUTCDate() < 31),
   )
+  const latestWindowEndLabel = asOfDate
+    ? formatPublicationMonthYear(shiftUtcMonth(new Date(Date.UTC(asOfDate.getUTCFullYear(), asOfDate.getUTCMonth(), 1)), -1))
+    : null
   return {
     emptyReason: allWindow?.totalCount ? null : 'No article type data is available yet.',
     spanLabel: firstPublicationYear === lastPublicationYear ? `${firstPublicationYear}` : `${firstPublicationYear}-${lastPublicationYear}`,
@@ -3126,6 +5232,7 @@ function buildPublicationArticleTypeOverTimeInsightStats(
     latestPartialYearLabel: latestYearIsPartial && asOfDate
       ? `${lastPublicationYear} (through ${formatPublicationInsightFullDate(asOfDate)})`
       : null,
+    latestWindowEndLabel,
   }
 }
 
@@ -3187,6 +5294,11 @@ function buildPublicationPublicationTypeWindowInsightSummary({
     secondLabel: secondEntry?.[0] || null,
     secondSharePct: totalCount > 0 && secondEntry ? (secondEntry[1] / totalCount) * 100 : null,
     orderedLabels: sortedEntries.slice(0, 4).map(([label]) => label),
+    entries: sortedEntries.slice(0, 4).map(([label, count]) => ({
+      label,
+      count,
+      sharePct: totalCount > 0 ? (count / totalCount) * 100 : 0,
+    })),
   }
 }
 
@@ -3211,6 +5323,7 @@ function buildPublicationPublicationTypeOverTimeInsightStats(
       oneYearWindow: null,
       latestYearIsPartial: false,
       latestPartialYearLabel: null,
+      latestWindowEndLabel: null,
     }
   }
   const firstPublicationYear = yearsWithData[0]
@@ -3244,6 +5357,9 @@ function buildPublicationPublicationTypeOverTimeInsightStats(
     && lastPublicationYear === asOfDate.getUTCFullYear()
     && (asOfDate.getUTCMonth() < 11 || asOfDate.getUTCDate() < 31),
   )
+  const latestWindowEndLabel = asOfDate
+    ? formatPublicationMonthYear(shiftUtcMonth(new Date(Date.UTC(asOfDate.getUTCFullYear(), asOfDate.getUTCMonth(), 1)), -1))
+    : null
   return {
     emptyReason: allWindow?.totalCount ? null : 'No publication type data is available yet.',
     spanLabel: firstPublicationYear === lastPublicationYear ? `${firstPublicationYear}` : `${firstPublicationYear}-${lastPublicationYear}`,
@@ -3258,20 +5374,51 @@ function buildPublicationPublicationTypeOverTimeInsightStats(
     latestPartialYearLabel: latestYearIsPartial && asOfDate
       ? `${lastPublicationYear} (through ${formatPublicationInsightFullDate(asOfDate)})`
       : null,
+    latestWindowEndLabel,
   }
 }
 
 function renderPublicationVolumeOverTimeTooltipContent(stats: PublicationVolumeOverTimeInsightStats) {
+  // Shared publication explainer rules live in docs/publication-insights-guidelines.md.
+  const tone = resolvePublicationVolumeOverTimeTone(stats)
+  const toneColor = resolvePublicationProductionPatternToneColor(tone)
+  const rollingEndLabel = stats.recentWindowEndLabel
+    ? stats.recentWindowEndLabel.replace(/^\d{1,2}\s+/, '')
+    : null
+  const scopeSummary = rollingEndLabel
+    ? `Using rolling data to the end of ${rollingEndLabel}.`
+    : 'Using rolling data from the latest available rolling windows.'
+  if (
+    stats.totalPublications <= 0
+    || stats.firstPublicationYear === null
+    || stats.lastPublicationYear === null
+  ) {
+    return (
+      <div className="relative overflow-hidden px-4 py-4">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[4px]"
+          style={{ backgroundColor: toneColor }}
+        />
+        <div className="space-y-3">
+          <div className="space-y-2 border-b border-[hsl(var(--tone-neutral-200)/0.85)] pb-3">
+            <p className="text-[1.08rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+              How has my publication volume changed over time?
+            </p>
+          </div>
+          <p className="rounded-[0.95rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--background)/0.72)] px-3 py-2.5 text-[0.79rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+            Publication-volume data is not available yet.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   const spanLabel = stats.spanLabel
     ? stats.firstPublicationYear === stats.lastPublicationYear
       ? `${stats.spanLabel}`
       : `${stats.spanLabel}`
     : 'your full publication record'
-  const earlyLowYears = stats.lowYears.filter((year) => (
-    stats.firstPublicationYear !== null
-      ? year <= stats.firstPublicationYear + 2
-      : false
-  ))
   const peakAveragePosition = stats.peakYears.length
     ? stats.peakYears.reduce((sum, year) => sum + year, 0) / stats.peakYears.length
     : null
@@ -3285,421 +5432,585 @@ function renderPublicationVolumeOverTimeTooltipContent(stats: PublicationVolumeO
       : peakAveragePosition < spanMidpoint - 0.5
         ? 'earlier'
         : 'mixed'
-  const allSummary = stats.peakYears.length === 0
-    ? `Across ${spanLabel}, the full record does not yet isolate a clear peak year.`
-    : peakPosition === 'later' && stats.lowCount !== null && earlyLowYears.length > 0 && stats.peakCount !== null
-      ? `Between ${spanLabel}, annual output rises from ${formatInt(stats.lowCount)} in the opening years to ${formatInt(stats.peakCount)} in ${formatPublicationInsightYearList(stats.peakYears)}.`
-      : peakPosition === 'earlier' && stats.peakCount !== null
-        ? `Between ${spanLabel}, the strongest publication years come earlier in the record, reaching ${formatInt(stats.peakCount)} in ${formatPublicationInsightYearList(stats.peakYears)}.`
-        : stats.peakCount !== null
-          ? `Between ${spanLabel}, the strongest years reach ${formatInt(stats.peakCount)} in ${formatPublicationInsightYearList(stats.peakYears)} rather than staying flat across the record.`
-          : `Between ${spanLabel}, the strongest publication years occur in ${formatPublicationInsightYearList(stats.peakYears)}.`
 
   const firstFiveYearBlock = stats.fiveYearBlocks[0] ?? null
   const lastFiveYearBlock = stats.fiveYearBlocks[stats.fiveYearBlocks.length - 1] ?? null
-  const firstFiveYearPeriod = formatPublicationInsightPeriodLabel(firstFiveYearBlock?.label ?? null)
-  const lastFiveYearPeriod = formatPublicationInsightPeriodLabel(lastFiveYearBlock?.label ?? null)
-  const fiveYearSummary = firstFiveYearBlock && lastFiveYearBlock && stats.fiveYearBlocks.length >= 2
-    ? lastFiveYearBlock.count > firstFiveYearBlock.count
-      ? `Across the latest rolling 5-year view, annual output rises from ${formatInt(firstFiveYearBlock.count)} in the ${firstFiveYearPeriod ?? 'earliest period'} to ${formatInt(lastFiveYearBlock.count)} in the ${lastFiveYearPeriod ?? 'latest period'}.`
-      : lastFiveYearBlock.count < firstFiveYearBlock.count
-        ? `Across the latest rolling 5-year view, annual output softens from ${formatInt(firstFiveYearBlock.count)} in the ${firstFiveYearPeriod ?? 'earliest period'} to ${formatInt(lastFiveYearBlock.count)} in the ${lastFiveYearPeriod ?? 'latest period'}.`
-        : `Across the latest rolling 5-year view, annual output is broadly level at around ${formatInt(lastFiveYearBlock.count)} publications per year-sized period.`
-    : 'The 5y view is not yet available.'
-
   const previousThreeYearBlock = stats.threeYearBlocks.length >= 2 ? stats.threeYearBlocks[stats.threeYearBlocks.length - 2] : null
   const latestThreeYearBlock = stats.threeYearBlocks.length >= 1 ? stats.threeYearBlocks[stats.threeYearBlocks.length - 1] : null
-  const previousThreeYearPeriod = formatPublicationInsightPeriodLabel(previousThreeYearBlock?.label ?? null)
-  const latestThreeYearPeriod = formatPublicationInsightPeriodLabel(latestThreeYearBlock?.label ?? null)
-  const threeYearSummary = previousThreeYearBlock && latestThreeYearBlock
-    ? latestThreeYearBlock.count > previousThreeYearBlock.count
-      ? `Within the latest rolling 3-year view, output steps up from ${formatInt(previousThreeYearBlock.count)} in the ${previousThreeYearPeriod ?? 'earlier period'} to ${formatInt(latestThreeYearBlock.count)} in the ${latestThreeYearPeriod ?? 'latest period'}, so recent volume is still strengthening.`
-      : latestThreeYearBlock.count < previousThreeYearBlock.count
-        ? `Within the latest rolling 3-year view, output softens from ${formatInt(previousThreeYearBlock.count)} in the ${previousThreeYearPeriod ?? 'earlier period'} to ${formatInt(latestThreeYearBlock.count)} in the ${latestThreeYearPeriod ?? 'latest period'}, so the newest period is lighter than the recent high point.`
-        : `Within the latest rolling 3-year view, output is broadly steady at ${formatInt(latestThreeYearBlock.count)} publications across its recent periods.`
-    : 'The 3y view is not yet available.'
-
-  const recentPeriodLabel = formatPublicationInsightPeriodLabel(stats.recentWindowLabel)
-  const recentWindowSummary = stats.recentWindowTotal > 0
-    ? stats.recentWindowActiveMonths <= 3
-      ? `The latest 12-month window${recentPeriodLabel ? ` (${recentPeriodLabel})` : ''} contains only ${formatInt(stats.recentWindowTotal)} publications, concentrated into ${formatInt(stats.recentWindowActiveMonths)} active months.`
-      : `The latest 12-month window${recentPeriodLabel ? ` (${recentPeriodLabel})` : ''} contains ${formatInt(stats.recentWindowTotal)} publications across ${formatInt(stats.recentWindowActiveMonths)} active months.`
-    : 'The latest 12-month period contains no publications.'
-
-  const tableSummary = stats.recentDetailCount > 0
-    ? stats.recentDetailCount <= 3
-      ? `Only ${formatInt(stats.recentDetailCount)} dated publication${stats.recentDetailCount === 1 ? '' : 's'} appear in that recent window${stats.recentDetailRangeLabel ? `, spanning ${stats.recentDetailRangeLabel}` : ''}.`
-      : `The table lists ${formatInt(stats.recentDetailCount)} dated publications in that recent window${stats.recentDetailRangeLabel ? `, spanning ${stats.recentDetailRangeLabel}` : ''}.`
-    : 'Dated-publication detail is limited for the most recent period.'
-
-  const openingSummary = previousThreeYearBlock && latestThreeYearBlock
+  const recentCooling = previousThreeYearBlock !== null && latestThreeYearBlock !== null
     ? latestThreeYearBlock.count < previousThreeYearBlock.count
-      ? 'Your publication volume rose to stronger years, but the latest 3-year and 12-month windows are now lighter.'
-      : latestThreeYearBlock.count > previousThreeYearBlock.count
-        ? 'Your publication volume rose to stronger years and is still holding up in the latest 3-year window.'
-        : 'Your publication volume rose over time and is now broadly holding in the latest windows.'
-    : 'This section shows how your publication volume changes across the full record and the latest windows.'
-
-  const recentComparisonSummary = (() => {
-    if (!firstFiveYearBlock || !lastFiveYearBlock || !previousThreeYearBlock || !latestThreeYearBlock) {
-      return `${fiveYearSummary} ${threeYearSummary}`.trim()
+    : false
+  const recentStrengthening = previousThreeYearBlock !== null && latestThreeYearBlock !== null
+    ? latestThreeYearBlock.count > previousThreeYearBlock.count
+    : false
+  const recentSparse = stats.recentWindowTotal <= 2 || stats.recentWindowActiveMonths <= 2 || (stats.recentDetailCount > 0 && stats.recentDetailCount <= 3)
+  const openingSummary = (() => {
+    if (peakPosition === 'later') {
+      if (recentCooling) {
+        return recentSparse
+          ? 'Volume built into stronger later years, but the latest window is now very light.'
+          : 'Volume built into stronger later years, but the latest windows have softened.'
+      }
+      if (recentStrengthening) {
+        return 'Volume built into stronger later years and is still holding there.'
+      }
+      return 'Volume built into stronger later years and is now broadly stable.'
     }
-    if (lastFiveYearBlock.count > firstFiveYearBlock.count && latestThreeYearBlock.count < previousThreeYearBlock.count) {
-      return `The latest 5-year window still sits above your earlier baseline, but the latest 3-year window has dropped below the recent high point. ${recentWindowSummary}`
+    if (peakPosition === 'earlier') {
+      if (recentStrengthening) {
+        return 'Earlier years were stronger, but the latest window is rebuilding.'
+      }
+      return 'Earlier years were stronger, and recent volume is now lighter.'
     }
-    if (lastFiveYearBlock.count > firstFiveYearBlock.count && latestThreeYearBlock.count >= previousThreeYearBlock.count) {
-      return `The latest 5-year and 3-year windows both remain stronger than the early part of the record. ${recentWindowSummary}`
+    if (recentCooling) {
+      return 'Volume is uneven across the record, and the latest window is softer.'
     }
-    if (lastFiveYearBlock.count < firstFiveYearBlock.count && latestThreeYearBlock.count < previousThreeYearBlock.count) {
-      return `Both the latest 5-year and 3-year windows are softer than earlier periods, so the recent part of the record is lighter than the longer-run pattern. ${recentWindowSummary}`
+    if (recentStrengthening) {
+      return 'Volume is uneven across the record, but the latest window is strengthening again.'
     }
-    return `${threeYearSummary} ${recentWindowSummary}`.trim()
+    return 'Volume shifts across the record rather than staying flat.'
+  })()
+  const decisionSummary = (() => {
+    if (!stats.peakYears.length || stats.peakCount === null) {
+      return `Across ${spanLabel}, the full record does not yet isolate a clear high point.`
+    }
+    const peakYearsLabel = formatPublicationInsightYearList(stats.peakYears)
+    const peakCountLabel = formatInt(stats.peakCount)
+    if (peakPosition === 'later' && stats.peakYears.length > 1) {
+      return recentCooling
+        ? `The stronger run sat in ${peakYearsLabel}, when annual output reached ${peakCountLabel} in both years; the latest window has not sustained that level.`
+        : `The stronger run sat in ${peakYearsLabel}, when annual output reached ${peakCountLabel} in both years.`
+    }
+    if (peakPosition === 'later') {
+      return recentCooling
+        ? `The strongest part of the record built toward ${peakCountLabel} in ${peakYearsLabel}, but the latest window has fallen back from that level.`
+        : `The strongest part of the record built toward ${peakCountLabel} in ${peakYearsLabel}.`
+    }
+    if (peakPosition === 'earlier') {
+      return stats.peakYears.length > 1
+        ? `The strongest run came earlier, reaching ${peakCountLabel} in ${peakYearsLabel}, and later years have not fully returned to that level.`
+        : `The strongest year came earlier, reaching ${peakCountLabel} in ${peakYearsLabel}, and later years have not fully returned to that level.`
+    }
+    return stats.peakYears.length > 1
+      ? `The record has repeated highs of ${peakCountLabel} in ${peakYearsLabel}, rather than one isolated peak.`
+      : `The strongest year reached ${peakCountLabel} in ${peakYearsLabel}.`
+  })()
+  const rollingWindowSummary = (() => {
+    const averageAnnualCount = (blocks: PublicationVolumeOverTimeRollingBlock[]) => (
+      blocks.length
+        ? Math.round(blocks.reduce((sum, block) => sum + Math.max(0, block.count), 0) / blocks.length)
+        : null
+    )
+    const fiveYearAverage = averageAnnualCount(stats.fiveYearBlocks)
+    const threeYearAverage = averageAnnualCount(stats.threeYearBlocks)
+    const rollingSeed = fiveYearAverage === null || threeYearAverage === null
+      ? stats.recentWindowTotal
+      : fiveYearAverage + threeYearAverage + stats.recentWindowTotal
+    if (fiveYearAverage !== null && threeYearAverage !== null) {
+      if (recentCooling) {
+        return pickDeterministicPublicationTooltipVariant(rollingSeed, [
+          `Over the latest 5- and 3-year views, annual counts averaged ${formatInt(fiveYearAverage)} and ${formatInt(threeYearAverage)} per year, versus ${formatInt(stats.recentWindowTotal)} in the latest 12 months. That is why the headline reads as a softer recent window rather than a flat continuation.`,
+          `The rolling windows still describe a stronger recent run than the current one: about ${formatInt(fiveYearAverage)} per year across 5 years and ${formatInt(threeYearAverage)} across 3 years, against ${formatInt(stats.recentWindowTotal)} in the latest 12 months.`,
+          `Recent volume has slipped below its rolling backdrop. The latest 5- and 3-year views sit at roughly ${formatInt(fiveYearAverage)} and ${formatInt(threeYearAverage)} per year, while the latest 12 months contribute ${formatInt(stats.recentWindowTotal)}.`,
+        ] as const)
+      }
+      if (recentStrengthening) {
+        return pickDeterministicPublicationTooltipVariant(rollingSeed, [
+          `Over the latest 5- and 3-year views, annual counts averaged ${formatInt(fiveYearAverage)} and ${formatInt(threeYearAverage)} per year, and the latest 12 months are still holding within that stronger recent run.`,
+          `The rolling windows and the latest 12 months still point in the same direction: about ${formatInt(fiveYearAverage)} per year over 5 years, ${formatInt(threeYearAverage)} over 3 years, and no clear break in the latest 12 months.`,
+        ] as const)
+      }
+      return pickDeterministicPublicationTooltipVariant(rollingSeed, [
+        `Over the latest 5- and 3-year views, annual counts averaged ${formatInt(fiveYearAverage)} and ${formatInt(threeYearAverage)} per year, with the latest 12 months at ${formatInt(stats.recentWindowTotal)}.`,
+        `The rolling views place recent volume at about ${formatInt(fiveYearAverage)} per year over 5 years and ${formatInt(threeYearAverage)} over 3 years, with the latest 12 months landing at ${formatInt(stats.recentWindowTotal)}.`,
+      ] as const)
+    }
+    if (fiveYearAverage !== null) {
+      return `Across the latest 5-year view, annual counts averaged ${formatInt(fiveYearAverage)} per year, with the latest 12 months at ${formatInt(stats.recentWindowTotal)}.`
+    }
+    if (threeYearAverage !== null) {
+      return `Across the latest 3-year view, annual counts averaged ${formatInt(threeYearAverage)} per year, with the latest 12 months at ${formatInt(stats.recentWindowTotal)}.`
+    }
+    return 'Rolling annual windows are not available yet.'
+  })()
+  const recentDetailSummary = (() => {
+    const detailSeed = stats.recentWindowTotal + stats.recentWindowActiveMonths + stats.recentDetailCount + (stats.lastPublicationYear ?? 0)
+    if (stats.recentWindowTotal <= 0) {
+      return 'Recent activity is absent in the latest 12-month window, so the current lull is not just a timing wobble.'
+    }
+    if (stats.recentDetailCount > 0 && stats.recentDetailCount <= 3) {
+      return pickDeterministicPublicationTooltipVariant(detailSeed, [
+        `Recent activity is clustered rather than broad: only ${formatInt(stats.recentWindowActiveMonths)} active ${pluralize(stats.recentWindowActiveMonths, 'month')} and ${formatInt(stats.recentDetailCount)} recorded ${pluralize(stats.recentDetailCount, 'publication')} sit in the latest window, so this softer read can still move quickly.`,
+        `Recent activity is arriving in short bursts: the latest window only spans ${formatInt(stats.recentWindowActiveMonths)} active ${pluralize(stats.recentWindowActiveMonths, 'month')} and ${formatInt(stats.recentDetailCount)} recorded ${pluralize(stats.recentDetailCount, 'publication')}, so this quieter read may still shift quickly.`,
+        `The latest window is thinly spread rather than broad-based: just ${formatInt(stats.recentWindowActiveMonths)} active ${pluralize(stats.recentWindowActiveMonths, 'month')} and ${formatInt(stats.recentDetailCount)} recorded ${pluralize(stats.recentDetailCount, 'publication')} underpin it, so the current softness is still quite movable.`,
+      ] as const)
+    }
+    if (stats.recentDetailCount > 0) {
+      return pickDeterministicPublicationTooltipVariant(detailSeed, [
+        `Recent activity is thinner than the earlier run, but it is not just one isolated gap: the latest window still spans ${formatInt(stats.recentWindowActiveMonths)} active ${pluralize(stats.recentWindowActiveMonths, 'month')} and ${formatInt(stats.recentDetailCount)} recorded ${pluralize(stats.recentDetailCount, 'publication')}, so this reads as a genuine slowdown in cadence.`,
+        `The recent window is quieter, not empty: ${formatInt(stats.recentWindowActiveMonths)} active ${pluralize(stats.recentWindowActiveMonths, 'month')} and ${formatInt(stats.recentDetailCount)} recorded ${pluralize(stats.recentDetailCount, 'publication')} still support it, which points to a broader easing in pace rather than one-off timing noise.`,
+        `Recent output has narrowed but not disappeared. With ${formatInt(stats.recentWindowActiveMonths)} active ${pluralize(stats.recentWindowActiveMonths, 'month')} and ${formatInt(stats.recentDetailCount)} recorded ${pluralize(stats.recentDetailCount, 'publication')} in the latest window, this looks more like a real slowdown in cadence than a missing-date artefact.`,
+      ] as const)
+    }
+    return pickDeterministicPublicationTooltipVariant(detailSeed, [
+      `Recent activity is present but still thin, with ${formatInt(stats.recentWindowActiveMonths)} active ${pluralize(stats.recentWindowActiveMonths, 'month')} in the latest window.`,
+      `Recent activity is still light, appearing across ${formatInt(stats.recentWindowActiveMonths)} active ${pluralize(stats.recentWindowActiveMonths, 'month')} in the latest window.`,
+    ] as const)
   })()
 
-  const tableSupportSummary = stats.recentDetailCount > 0
-    ? stats.recentDetailCount <= 3
-      ? `The table supports that reading because recent output really is sparse, not just unevenly timed: ${tableSummary}`
-      : `The table supports that reading because recent output is spread across multiple dated publications: ${tableSummary}`
-    : tableSummary
-
   return (
-    <div className="space-y-2.5">
-      <p>{openingSummary}</p>
-      <ul className="ml-4 list-disc space-y-1.5">
-        <li>
-          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Overall trajectory:</span>
-          {' '}
-          {allSummary}
-        </li>
-        <li>
-          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Recent position:</span>
-          {' '}
-          {recentComparisonSummary}
-        </li>
-        <li>
-          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Recent publication detail:</span>
-          {' '}
-          {tableSupportSummary}
-        </li>
-      </ul>
+    <div className="relative overflow-hidden px-4 py-4">
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[4px]"
+        style={{ backgroundColor: toneColor }}
+      />
+      <div className="space-y-3">
+        <div className="space-y-2 border-b border-[hsl(var(--tone-neutral-200)/0.85)] pb-3">
+          <p className="text-[1.08rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+            How has my publication volume changed over time?
+          </p>
+        </div>
+        <div
+          className="rounded-[1.05rem] border px-3.5 py-3.5 shadow-[0_12px_26px_hsl(var(--tone-neutral-950)/0.05)]"
+          style={{
+            borderColor: `color-mix(in srgb, ${toneColor} 30%, hsl(var(--tone-neutral-200)) 70%)`,
+            backgroundColor: `color-mix(in srgb, ${toneColor} 12%, hsl(var(--background)) 88%)`,
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: toneColor }}
+            />
+            <p className="text-[1.02rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+              {openingSummary}
+            </p>
+          </div>
+          <p className="mt-2 text-[0.81rem] leading-relaxed text-[hsl(var(--tone-neutral-700))]">
+            {decisionSummary}
+          </p>
+        </div>
+        <div className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200)/0.9)] bg-[hsl(var(--tone-neutral-50)/0.78)] px-3.5 py-1.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.88)]">
+          <ul className="m-0 list-none">
+            {[rollingWindowSummary, recentDetailSummary].map((statement, index) => (
+              <li
+                key={`${index}-${statement}`}
+                className={cn(
+                  'flex gap-2.5 py-2.5',
+                  index > 0 ? 'border-t border-[hsl(var(--tone-neutral-200)/0.78)]' : '',
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: `color-mix(in srgb, ${toneColor} 62%, hsl(var(--tone-neutral-500)) 38%)` }}
+                />
+                <p className="text-[0.84rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+                  {statement}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="border-t border-[hsl(var(--tone-neutral-200)/0.85)] pt-2">
+          <p className="text-[0.77rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+            {scopeSummary}
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
 
 function renderPublicationArticleTypeOverTimeTooltipContent(stats: PublicationArticleTypeOverTimeInsightStats) {
+  const toneColor = resolvePublicationProductionPatternToneColor('positive')
   if (stats.emptyReason || !stats.allWindow) {
-    return <p>{stats.emptyReason || 'No article type data is available yet.'}</p>
+    return (
+      <div className="relative overflow-hidden px-4 py-4">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[4px]"
+          style={{ backgroundColor: toneColor }}
+        />
+        <div className="space-y-3">
+          <div className="space-y-2 border-b border-[hsl(var(--tone-neutral-200)/0.85)] pb-3">
+            <p className="text-[1.08rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+              How has my mix of article types changed over time?
+            </p>
+          </div>
+          <p className="rounded-[0.95rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--background)/0.72)] px-3 py-2.5 text-[0.79rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+            {stats.emptyReason || 'No article type data is available yet.'}
+          </p>
+        </div>
+      </div>
+    )
   }
-  const allWindow = stats.allWindow
-  const fiveYearWindow = stats.fiveYearWindow
-  const threeYearWindow = stats.threeYearWindow
-  const oneYearWindow = stats.oneYearWindow
-  const allLeaderLabel = formatPublicationInsightLabelList(allWindow.topLabels)
-  const latestWindow = oneYearWindow || threeYearWindow || fiveYearWindow || allWindow
-  const latestLeaderLabel = formatPublicationInsightLabelList(latestWindow?.topLabels || [])
-  const sameLeaderSet = (
-    left: PublicationArticleTypeWindowInsightSummary | null,
-    right: PublicationArticleTypeWindowInsightSummary | null,
-  ) => {
-    if (!left || !right) {
-      return true
-    }
-    if (left.topLabels.length !== right.topLabels.length) {
-      return false
-    }
-    return left.topLabels.every((label) => right.topLabels.includes(label))
-  }
-  const distinctRecentWindows = [fiveYearWindow, threeYearWindow, oneYearWindow]
-    .filter((summary): summary is PublicationArticleTypeWindowInsightSummary => Boolean(summary))
-    .filter((summary, index, array) => (
-      summary.rangeLabel !== allWindow.rangeLabel
-      && array.findIndex((candidate) => candidate.rangeLabel === summary.rangeLabel) === index
-    ))
-  const allComparableWindowsKeepLeader = distinctRecentWindows.every((summary) => sameLeaderSet(summary, allWindow))
-  const recentWindowsShiftLeader = distinctRecentWindows.some((summary) => !sameLeaderSet(summary, allWindow))
-  const latestShareRounded = latestWindow?.topSharePct === null || latestWindow?.topSharePct === undefined
-    ? null
-    : Math.round(latestWindow.topSharePct)
-  const openingSummary = (() => {
-    if (!distinctRecentWindows.length) {
-      return `Your article-type mix is currently led by ${allLeaderLabel}, and the publication span is still short enough that the recent windows mostly collapse into the same record.`
-    }
-    if (recentWindowsShiftLeader && latestLeaderLabel !== allLeaderLabel) {
-      return `Your full record is led by ${allLeaderLabel}, but the latest windows tilt toward ${latestLeaderLabel}.`
-    }
-    if (
-      allComparableWindowsKeepLeader
-      && latestShareRounded !== null
-      && (allWindow.topSharePct || 0) > 0
-      && latestShareRounded >= Math.round((allWindow.topSharePct || 0) + 12)
-    ) {
-      return `Your article-type mix stays anchored in ${allLeaderLabel}, and the latest windows are even more concentrated there.`
-    }
-    if (
-      latestWindow
-      && latestWindow.distinctTypeCount > allWindow.distinctTypeCount
-      && latestWindow.rangeLabel !== allWindow.rangeLabel
-    ) {
-      return 'Your article-type mix is broader in the latest windows than it is across the full record.'
-    }
-    if ((allWindow.topSharePct || 0) < 45) {
-      return 'Your article-type mix stays fairly mixed across the publication span, rather than being dominated by one article type.'
-    }
-    return `Your article-type mix stays anchored in ${allLeaderLabel} across the full record and the recent windows.`
-  })()
-  const overallSummary = (() => {
-    if (allWindow.topLabels.length > 1) {
-      return `Across ${stats.spanLabel || 'the full record'}, the largest article types are ${allLeaderLabel}, with ${formatInt(allWindow.topCount)} publications each. The full record contains ${formatInt(allWindow.distinctTypeCount)} visible article ${pluralize(allWindow.distinctTypeCount, 'type')}.`
-    }
-    const shareLabel = allWindow.topSharePct === null ? '' : ` (${Math.round(allWindow.topSharePct)}%)`
-    const secondarySentence = allWindow.secondLabel && allWindow.secondSharePct !== null
-      ? ` The next largest type is ${allWindow.secondLabel} at ${Math.round(allWindow.secondSharePct)}%.`
-      : ''
-    return `Across ${stats.spanLabel || 'the full record'}, ${allLeaderLabel} is the main article type, with ${formatInt(allWindow.topCount)} of ${formatInt(allWindow.totalCount)} publications${shareLabel}.${secondarySentence}`
-  })()
-  const recentSummary = (() => {
-    if (!distinctRecentWindows.length) {
-      return 'Recent windows do not yet separate much from the full record, so this section is mainly showing the current article-type mix rather than a settled shift over time.'
-    }
-    const fiveLabel = fiveYearWindow?.rangeLabel ? `the latest 5-year period (${fiveYearWindow.rangeLabel})` : 'the latest 5-year period'
-    const threeLabel = threeYearWindow?.rangeLabel ? `the latest 3-year period (${threeYearWindow.rangeLabel})` : 'the latest 3-year period'
-    const oneLabel = oneYearWindow?.rangeLabel ? `the latest 1-year period (${oneYearWindow.rangeLabel})` : 'the latest 1-year period'
-    if (
-      fiveYearWindow
-      && threeYearWindow
-      && oneYearWindow
-      && sameLeaderSet(fiveYearWindow, allWindow)
-      && !sameLeaderSet(threeYearWindow, allWindow)
-      && !sameLeaderSet(oneYearWindow, allWindow)
-    ) {
-      return `${fiveLabel} still looks like the full record, but ${threeLabel} and ${oneLabel} shift toward ${formatPublicationInsightLabelList(oneYearWindow.topLabels)}.`
-    }
-    if (recentWindowsShiftLeader && latestLeaderLabel !== allLeaderLabel) {
-      return `${oneYearWindow ? oneLabel : 'The latest window'} moves toward ${latestLeaderLabel} rather than the full-record lead of ${allLeaderLabel}, so the recent mix is not just a smaller version of the whole portfolio.`
-    }
-    if (
-      oneYearWindow
-      && sameLeaderSet(oneYearWindow, allWindow)
-      && latestShareRounded !== null
-      && allWindow.topSharePct !== null
-      && latestShareRounded >= Math.round(allWindow.topSharePct + 12)
-    ) {
-      return `The same core type still leads in ${fiveYearWindow?.rangeLabel !== allWindow.rangeLabel ? fiveLabel : 'the longer recent periods'} and ${threeYearWindow?.rangeLabel !== allWindow.rangeLabel ? threeLabel : 'the shorter recent periods'}, and it rises to ${latestShareRounded}% of publications in ${oneLabel}.`
-    }
-    if (
-      oneYearWindow
-      && oneYearWindow.distinctTypeCount < allWindow.distinctTypeCount
-      && sameLeaderSet(oneYearWindow, allWindow)
-    ) {
-      return `${oneLabel} is narrower than the full record, with ${formatInt(oneYearWindow.distinctTypeCount)} visible article ${pluralize(oneYearWindow.distinctTypeCount, 'type')} rather than ${formatInt(allWindow.distinctTypeCount)}.`
-    }
-    if (
-      oneYearWindow
-      && oneYearWindow.distinctTypeCount > allWindow.distinctTypeCount
-    ) {
-      return `${oneLabel} brings more secondary types into view than the full record, so the recent mix looks broader rather than more concentrated.`
-    }
-    return `Across ${distinctRecentWindows.map((summary) => summary.rangeLabel).filter(Boolean).join(', ')}, the recent windows broadly preserve the same article-type centre of gravity as the full record.`
-  })()
-  const orderingSummary = (() => {
-    if (!oneYearWindow) {
-      return 'The ordering is still mainly being set by the full record because the latest 1-year view does not yet add much separate information.'
-    }
-    const oneLabel = oneYearWindow.rangeLabel ? `the latest 1-year period (${oneYearWindow.rangeLabel})` : 'the latest 1-year period'
-    const partialYearNote = stats.latestYearIsPartial && stats.latestPartialYearLabel
-      ? ` Because this latest 1-year view includes the current partial year (${stats.latestPartialYearLabel}), that newest ordering can still move.`
-      : ''
-    if (oneYearWindow.totalCount <= 3) {
-      return `Only ${formatInt(oneYearWindow.totalCount)} publication${oneYearWindow.totalCount === 1 ? '' : 's'} sit in ${oneLabel}, so the newest ordering is still thin rather than settled.${partialYearNote}`
-    }
-    if (!sameLeaderSet(oneYearWindow, allWindow)) {
-      return `In ${oneLabel}, ${formatPublicationInsightLabelList(oneYearWindow.topLabels)} moves ahead of the full-record lead of ${allLeaderLabel}.${partialYearNote}`
-    }
-    if (oneYearWindow.orderedLabels.length <= 2) {
-      return `${oneLabel} has narrowed to ${formatPublicationInsightLabelList(oneYearWindow.orderedLabels)} as the only visible article ${pluralize(oneYearWindow.orderedLabels.length, 'type')}.${partialYearNote}`
-    }
-    return `In ${oneLabel}, ${formatPublicationInsightLabelList(oneYearWindow.topLabels)} stays first, followed by ${oneYearWindow.secondLabel || oneYearWindow.orderedLabels[1] || 'other smaller types'}.${partialYearNote}`
-  })()
+  const read = buildPublicationMixOverTimeRead(stats, {
+    mixDescriptor: 'article-type mix',
+    typeSingular: 'article type',
+    typePlural: 'article types',
+  })
+  const supportingStatements = [read.recentSummary, read.latestWindowSummary].filter((statement): statement is string => Boolean(statement))
 
   return (
-    <div className="space-y-2.5">
-      <p>{openingSummary}</p>
-      <ul className="ml-4 list-disc space-y-1.5">
-        <li>
-          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Overall mix:</span>
-          {' '}
-          {overallSummary}
-        </li>
-        <li>
-          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">How it changes:</span>
-          {' '}
-          {recentSummary}
-        </li>
-        <li>
-          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Ordering:</span>
-          {' '}
-          {orderingSummary}
-        </li>
-      </ul>
+    <div className="relative overflow-hidden px-4 py-4">
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[4px]"
+        style={{ backgroundColor: toneColor }}
+      />
+      <div className="space-y-3">
+        <div className="space-y-2 border-b border-[hsl(var(--tone-neutral-200)/0.85)] pb-3">
+          <p className="text-[1.08rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+            How has my mix of article types changed over time?
+          </p>
+        </div>
+        <div
+          className="rounded-[1.05rem] border px-3.5 py-3.5 shadow-[0_12px_26px_hsl(var(--tone-neutral-950)/0.05)]"
+          style={{
+            borderColor: `color-mix(in srgb, ${toneColor} 30%, hsl(var(--tone-neutral-200)) 70%)`,
+            backgroundColor: `color-mix(in srgb, ${toneColor} 12%, hsl(var(--background)) 88%)`,
+          }}
+        >
+          <div className="flex items-stretch gap-3">
+            <span
+              aria-hidden="true"
+              className="w-[0.3rem] shrink-0 rounded-full"
+              style={{ backgroundColor: toneColor }}
+            />
+            <div className="min-w-0">
+              <p className="text-[1.02rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+                {read.openingSummary}
+              </p>
+              <p className="mt-2 text-[0.81rem] leading-relaxed text-[hsl(var(--tone-neutral-700))]">
+                {read.overallSummary}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200)/0.9)] bg-[hsl(var(--tone-neutral-50)/0.78)] px-3.5 py-1.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.88)]">
+          <ul className="m-0 list-none">
+            {supportingStatements.map((statement, index) => (
+              <li
+                key={`${index}-${statement}`}
+                className={cn(
+                  'flex gap-2.5 py-2.5',
+                  index > 0 ? 'border-t border-[hsl(var(--tone-neutral-200)/0.78)]' : '',
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: `color-mix(in srgb, ${toneColor} 62%, hsl(var(--tone-neutral-500)) 38%)` }}
+                />
+                <p className="text-[0.84rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+                  {statement}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="border-t border-[hsl(var(--tone-neutral-200)/0.85)] pt-2">
+          <p className="text-[0.77rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+            {read.scopeSummary}
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
 
 function renderPublicationPublicationTypeOverTimeTooltipContent(stats: PublicationPublicationTypeOverTimeInsightStats) {
+  const toneColor = resolvePublicationProductionPatternToneColor('positive')
   if (stats.emptyReason || !stats.allWindow) {
-    return <p>{stats.emptyReason || 'No publication type data is available yet.'}</p>
+    return (
+      <div className="relative overflow-hidden px-4 py-4">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[4px]"
+          style={{ backgroundColor: toneColor }}
+        />
+        <div className="space-y-3">
+          <div className="space-y-2 border-b border-[hsl(var(--tone-neutral-200)/0.85)] pb-3">
+            <p className="text-[1.08rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+              How has my mix of publication types changed over time?
+            </p>
+          </div>
+          <p className="rounded-[0.95rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--background)/0.72)] px-3 py-2.5 text-[0.79rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+            {stats.emptyReason || 'No publication type data is available yet.'}
+          </p>
+        </div>
+      </div>
+    )
   }
-  const allWindow = stats.allWindow
-  const fiveYearWindow = stats.fiveYearWindow
-  const threeYearWindow = stats.threeYearWindow
-  const oneYearWindow = stats.oneYearWindow
-  const allLeaderLabel = formatPublicationInsightLabelList(allWindow.topLabels)
-  const latestWindow = oneYearWindow || threeYearWindow || fiveYearWindow || allWindow
-  const latestLeaderLabel = formatPublicationInsightLabelList(latestWindow?.topLabels || [])
-  const sameLeaderSet = (
-    left: PublicationPublicationTypeWindowInsightSummary | null,
-    right: PublicationPublicationTypeWindowInsightSummary | null,
-  ) => {
-    if (!left || !right) {
-      return true
-    }
-    if (left.topLabels.length !== right.topLabels.length) {
-      return false
-    }
-    return left.topLabels.every((label) => right.topLabels.includes(label))
-  }
-  const distinctRecentWindows = [fiveYearWindow, threeYearWindow, oneYearWindow]
-    .filter((summary): summary is PublicationPublicationTypeWindowInsightSummary => Boolean(summary))
-    .filter((summary, index, array) => (
-      summary.rangeLabel !== allWindow.rangeLabel
-      && array.findIndex((candidate) => candidate.rangeLabel === summary.rangeLabel) === index
-    ))
-  const allComparableWindowsKeepLeader = distinctRecentWindows.every((summary) => sameLeaderSet(summary, allWindow))
-  const recentWindowsShiftLeader = distinctRecentWindows.some((summary) => !sameLeaderSet(summary, allWindow))
-  const latestShareRounded = latestWindow?.topSharePct === null || latestWindow?.topSharePct === undefined
-    ? null
-    : Math.round(latestWindow.topSharePct)
-  const openingSummary = (() => {
-    if (!distinctRecentWindows.length) {
-      return `Your publication-type mix is currently led by ${allLeaderLabel}, and the publication span is still short enough that the recent windows mostly collapse into the same record.`
-    }
-    if (recentWindowsShiftLeader && latestLeaderLabel !== allLeaderLabel) {
-      return `Your full record is led by ${allLeaderLabel}, but the latest windows tilt toward ${latestLeaderLabel}.`
-    }
-    if (
-      allComparableWindowsKeepLeader
-      && latestShareRounded !== null
-      && (allWindow.topSharePct || 0) > 0
-      && latestShareRounded >= Math.round((allWindow.topSharePct || 0) + 12)
-    ) {
-      return `Your publication-type mix stays anchored in ${allLeaderLabel}, and the latest windows are even more concentrated there.`
-    }
-    if (
-      latestWindow
-      && latestWindow.distinctTypeCount > allWindow.distinctTypeCount
-      && latestWindow.rangeLabel !== allWindow.rangeLabel
-    ) {
-      return 'Your publication-type mix is broader in the latest windows than it is across the full record.'
-    }
-    if ((allWindow.topSharePct || 0) < 45) {
-      return 'Your publication-type mix stays fairly mixed across the publication span, rather than being dominated by one publication type.'
-    }
-    return `Your publication-type mix stays anchored in ${allLeaderLabel} across the full record and the recent windows.`
-  })()
-  const overallSummary = (() => {
-    if (allWindow.topLabels.length > 1) {
-      return `Across ${stats.spanLabel || 'the full record'}, the largest publication types are ${allLeaderLabel}, with ${formatInt(allWindow.topCount)} publications each. The full record contains ${formatInt(allWindow.distinctTypeCount)} visible publication ${pluralize(allWindow.distinctTypeCount, 'type')}.`
-    }
-    const shareLabel = allWindow.topSharePct === null ? '' : ` (${Math.round(allWindow.topSharePct)}%)`
-    const secondarySentence = allWindow.secondLabel && allWindow.secondSharePct !== null
-      ? ` The next largest type is ${allWindow.secondLabel} at ${Math.round(allWindow.secondSharePct)}%.`
-      : ''
-    return `Across ${stats.spanLabel || 'the full record'}, ${allLeaderLabel} is the main publication type, with ${formatInt(allWindow.topCount)} of ${formatInt(allWindow.totalCount)} publications${shareLabel}.${secondarySentence}`
-  })()
-  const recentSummary = (() => {
-    if (!distinctRecentWindows.length) {
-      return 'Recent windows do not yet separate much from the full record, so this section is mainly showing the current publication-type mix rather than a settled shift over time.'
-    }
-    const fiveLabel = fiveYearWindow?.rangeLabel ? `the latest 5-year period (${fiveYearWindow.rangeLabel})` : 'the latest 5-year period'
-    const threeLabel = threeYearWindow?.rangeLabel ? `the latest 3-year period (${threeYearWindow.rangeLabel})` : 'the latest 3-year period'
-    const oneLabel = oneYearWindow?.rangeLabel ? `the latest 1-year period (${oneYearWindow.rangeLabel})` : 'the latest 1-year period'
-    if (
-      fiveYearWindow
-      && threeYearWindow
-      && oneYearWindow
-      && sameLeaderSet(fiveYearWindow, allWindow)
-      && !sameLeaderSet(threeYearWindow, allWindow)
-      && !sameLeaderSet(oneYearWindow, allWindow)
-    ) {
-      return `${fiveLabel} still looks like the full record, but ${threeLabel} and ${oneLabel} shift toward ${formatPublicationInsightLabelList(oneYearWindow.topLabels)}.`
-    }
-    if (recentWindowsShiftLeader && latestLeaderLabel !== allLeaderLabel) {
-      return `${oneYearWindow ? oneLabel : 'The latest window'} moves toward ${latestLeaderLabel} rather than the full-record lead of ${allLeaderLabel}, so the recent mix is not just a smaller version of the whole portfolio.`
-    }
-    if (
-      oneYearWindow
-      && sameLeaderSet(oneYearWindow, allWindow)
-      && latestShareRounded !== null
-      && allWindow.topSharePct !== null
-      && latestShareRounded >= Math.round(allWindow.topSharePct + 12)
-    ) {
-      return `The same core type still leads in ${fiveYearWindow?.rangeLabel !== allWindow.rangeLabel ? fiveLabel : 'the longer recent periods'} and ${threeYearWindow?.rangeLabel !== allWindow.rangeLabel ? threeLabel : 'the shorter recent periods'}, and it rises to ${latestShareRounded}% of publications in ${oneLabel}.`
-    }
-    if (
-      oneYearWindow
-      && oneYearWindow.distinctTypeCount < allWindow.distinctTypeCount
-      && sameLeaderSet(oneYearWindow, allWindow)
-    ) {
-      return `${oneLabel} is narrower than the full record, with ${formatInt(oneYearWindow.distinctTypeCount)} visible publication ${pluralize(oneYearWindow.distinctTypeCount, 'type')} rather than ${formatInt(allWindow.distinctTypeCount)}.`
-    }
-    if (
-      oneYearWindow
-      && oneYearWindow.distinctTypeCount > allWindow.distinctTypeCount
-    ) {
-      return `${oneLabel} brings more secondary types into view than the full record, so the recent mix looks broader rather than more concentrated.`
-    }
-    return `Across ${distinctRecentWindows.map((summary) => summary.rangeLabel).filter(Boolean).join(', ')}, the recent windows broadly preserve the same publication-type centre of gravity as the full record.`
-  })()
-  const orderingSummary = (() => {
-    if (!oneYearWindow) {
-      return 'The ordering is still mainly being set by the full record because the latest 1-year view does not yet add much separate information.'
-    }
-    const oneLabel = oneYearWindow.rangeLabel ? `the latest 1-year period (${oneYearWindow.rangeLabel})` : 'the latest 1-year period'
-    const partialYearNote = stats.latestYearIsPartial && stats.latestPartialYearLabel
-      ? ` Because this latest 1-year view includes the current partial year (${stats.latestPartialYearLabel}), that newest ordering can still move.`
-      : ''
-    if (oneYearWindow.totalCount <= 3) {
-      return `Only ${formatInt(oneYearWindow.totalCount)} publication${oneYearWindow.totalCount === 1 ? '' : 's'} sit in ${oneLabel}, so the newest ordering is still thin rather than settled.${partialYearNote}`
-    }
-    if (!sameLeaderSet(oneYearWindow, allWindow)) {
-      return `In ${oneLabel}, ${formatPublicationInsightLabelList(oneYearWindow.topLabels)} moves ahead of the full-record lead of ${allLeaderLabel}.${partialYearNote}`
-    }
-    if (oneYearWindow.orderedLabels.length <= 2) {
-      return `${oneLabel} has narrowed to ${formatPublicationInsightLabelList(oneYearWindow.orderedLabels)} as the only visible publication ${pluralize(oneYearWindow.orderedLabels.length, 'type')}.${partialYearNote}`
-    }
-    return `In ${oneLabel}, ${formatPublicationInsightLabelList(oneYearWindow.topLabels)} stays first, followed by ${oneYearWindow.secondLabel || oneYearWindow.orderedLabels[1] || 'other smaller types'}.${partialYearNote}`
-  })()
+  const read = buildPublicationMixOverTimeRead(stats, {
+    mixDescriptor: 'publication-type mix',
+    typeSingular: 'publication type',
+    typePlural: 'publication types',
+  })
+  const supportingStatements = [read.recentSummary, read.latestWindowSummary].filter((statement): statement is string => Boolean(statement))
 
   return (
-    <div className="space-y-2.5">
-      <p>{openingSummary}</p>
-      <ul className="ml-4 list-disc space-y-1.5">
-        <li>
-          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Overall mix:</span>
-          {' '}
-          {overallSummary}
-        </li>
-        <li>
-          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">How it changes:</span>
-          {' '}
-          {recentSummary}
-        </li>
-        <li>
-          <span className="font-semibold text-[hsl(var(--tone-neutral-900))]">Ordering:</span>
-          {' '}
-          {orderingSummary}
-        </li>
-      </ul>
+    <div className="relative overflow-hidden px-4 py-4">
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[4px]"
+        style={{ backgroundColor: toneColor }}
+      />
+      <div className="space-y-3">
+        <div className="space-y-2 border-b border-[hsl(var(--tone-neutral-200)/0.85)] pb-3">
+          <p className="text-[1.08rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+            How has my mix of publication types changed over time?
+          </p>
+        </div>
+        <div
+          className="rounded-[1.05rem] border px-3.5 py-3.5 shadow-[0_12px_26px_hsl(var(--tone-neutral-950)/0.05)]"
+          style={{
+            borderColor: `color-mix(in srgb, ${toneColor} 30%, hsl(var(--tone-neutral-200)) 70%)`,
+            backgroundColor: `color-mix(in srgb, ${toneColor} 12%, hsl(var(--background)) 88%)`,
+          }}
+        >
+          <div className="flex items-stretch gap-3">
+            <span
+              aria-hidden="true"
+              className="w-[0.3rem] shrink-0 rounded-full"
+              style={{ backgroundColor: toneColor }}
+            />
+            <div className="min-w-0">
+              <p className="text-[1.02rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+                {read.openingSummary}
+              </p>
+              <p className="mt-2 text-[0.81rem] leading-relaxed text-[hsl(var(--tone-neutral-700))]">
+                {read.overallSummary}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200)/0.9)] bg-[hsl(var(--tone-neutral-50)/0.78)] px-3.5 py-1.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.88)]">
+          <ul className="m-0 list-none">
+            {supportingStatements.map((statement, index) => (
+              <li
+                key={`${index}-${statement}`}
+                className={cn(
+                  'flex gap-2.5 py-2.5',
+                  index > 0 ? 'border-t border-[hsl(var(--tone-neutral-200)/0.78)]' : '',
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: `color-mix(in srgb, ${toneColor} 62%, hsl(var(--tone-neutral-500)) 38%)` }}
+                />
+                <p className="text-[0.84rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+                  {statement}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="border-t border-[hsl(var(--tone-neutral-200)/0.85)] pt-2">
+          <p className="text-[0.77rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+            {read.scopeSummary}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function renderPublicationTrajectoryTooltipContent({
+  years,
+  rawValues,
+  focusRangeLabel,
+  volatilityIndex,
+  growthSlope,
+  phase,
+}: {
+  years: number[]
+  rawValues: number[]
+  focusRangeLabel: string
+  volatilityIndex: number
+  growthSlope: number
+  phase: PublicationTrajectoryPhaseLabel
+}) {
+  const tone = resolveTrajectoryPhaseTone(phase)
+  const toneColor = resolvePublicationProductionPatternToneColor(tone)
+  if (!years.length || !rawValues.length) {
+    return (
+      <div className="relative overflow-hidden px-4 py-4">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[4px]"
+          style={{ backgroundColor: toneColor }}
+        />
+        <div className="space-y-3">
+          <div className="space-y-2 border-b border-[hsl(var(--tone-neutral-200)/0.85)] pb-3">
+            <p className="text-[1.08rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+              How should I read my year-over-year trajectory?
+            </p>
+          </div>
+          <p className="rounded-[0.95rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--background)/0.72)] px-3 py-2.5 text-[0.79rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+            No year-over-year trajectory data is available yet.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const visibleStats = buildPublicationProductionPatternStatsFromYearSeriesScope(
+    buildPublicationProductionYearSeriesScopeFromSeries({
+      years,
+      series: rawValues,
+    }),
+  )
+  const peakDetails = getPublicationProductionPatternPeakYearDetails(visibleStats)
+  const shape = buildPublicationProductionPatternShapeContext(visibleStats, peakDetails)
+  const rangeDetails = getPublicationProductionPatternRangeDetails(visibleStats)
+  const spanLabel = focusRangeLabel || formatTrajectoryRangeLabel(years)
+  const topPeakYearsLabel = peakDetails.tiedPeakYears.length
+    ? formatPublicationProductionPatternYearList(peakDetails.tiedPeakYears)
+    : peakDetails.peakYear !== null
+      ? String(peakDetails.peakYear)
+      : null
+  const minCount = rawValues.length ? Math.min(...rawValues) : 0
+  const maxCount = rawValues.length ? Math.max(...rawValues) : 0
+  const recentYears = shape.recentYears
+  const earlierYears = visibleStats.years.slice(0, Math.max(0, visibleStats.years.length - recentYears.length))
+  const recentSpanLabel = formatTrajectoryRangeLabel(recentYears)
+  const earlierSpanLabel = formatTrajectoryRangeLabel(earlierYears)
+  const phaseHeading = `${phase} over ${spanLabel}`
+  const phaseSummary = (() => {
+    if (phase === 'Contracting') {
+      if (peakDetails.peakCount !== null && topPeakYearsLabel && shape.latestYear !== null && shape.latestCount !== null) {
+        return peakDetails.tiedPeakYears.length > 1
+          ? `Across ${spanLabel}, output peaked at ${formatInt(peakDetails.peakCount)} in ${topPeakYearsLabel}, then fell to ${formatInt(shape.latestCount)} in ${shape.latestYear}.`
+          : `Across ${spanLabel}, output peaked at ${formatInt(peakDetails.peakCount)} in ${topPeakYearsLabel}, then fell to ${formatInt(shape.latestCount)} in ${shape.latestYear}.`
+      }
+      return `Across ${spanLabel}, the later years are now pulling below the earlier part of the series.`
+    }
+    if (phase === 'Expanding') {
+      if (topPeakYearsLabel && peakDetails.peakCount !== null && shape.latestYear !== null && shape.latestCount !== null) {
+        return `Across ${spanLabel}, output built toward ${formatInt(peakDetails.peakCount)} in ${topPeakYearsLabel}, with the latest year still at ${formatInt(shape.latestCount)} in ${shape.latestYear}.`
+      }
+      return `Across ${spanLabel}, the later years sit above the earlier part of the series.`
+    }
+    return `Across ${spanLabel}, output stays broadly level overall, so the main story is year-to-year swing rather than a strong directional push.`
+  })()
+  const volatilityHeading = volatilityIndex <= 0.35
+    ? 'Volatility is low'
+    : volatilityIndex > 0.75
+      ? 'Volatility is high'
+      : 'Volatility is moderate'
+  const volatilitySummary = (() => {
+    const valueLabel = volatilityIndex.toFixed(2)
+    if (peakDetails.peakYear !== null && shape.latestYear !== null && maxCount > minCount) {
+      return `${valueLabel}. Counts ranged from ${formatInt(minCount)} to ${formatInt(maxCount)} across ${spanLabel}, with the sharpest swing coming after the ${peakDetails.peakYear} peak.`
+    }
+    if (rangeDetails) {
+      return `${valueLabel}. Counts ranged from ${formatInt(minCount)} to ${formatInt(maxCount)} across ${spanLabel}, so this read is being shaped by variation rather than by a flat annual run.`
+    }
+    return `${valueLabel}. Year-to-year counts stayed close enough together across ${spanLabel} that direction matters more than large swings.`
+  })()
+  const growthHeading = Math.abs(growthSlope) < 0.1
+    ? 'Slope is near flat'
+    : growthSlope > 0
+      ? 'Slope is rising'
+      : 'Slope is falling'
+  const growthSummary = (() => {
+    const valueLabel = `${growthSlope >= 0 ? '+' : ''}${growthSlope.toFixed(1)}/year`
+    if (Math.abs(growthSlope) < 0.1) {
+      return `${valueLabel}. The fitted line is essentially flat across ${spanLabel}, so the story here is variation rather than trend.`
+    }
+    if (growthSlope > 0) {
+      if (shape.earlierMean !== null && shape.recentMean !== null && earlierYears.length && recentYears.length) {
+        return `${valueLabel}. ${recentSpanLabel} averaged ${formatInt(Math.round(shape.recentMean))} publications per year versus ${formatInt(Math.round(shape.earlierMean))} in ${earlierSpanLabel}, so the fitted line still points upward.`
+      }
+      return `${valueLabel}. The fitted line still rises across ${spanLabel}, even if that climb arrives in uneven steps rather than a smooth annual build.`
+    }
+    if (shape.earlierMean !== null && shape.recentMean !== null && earlierYears.length && recentYears.length) {
+      return `${valueLabel}. ${recentSpanLabel} averaged ${formatInt(Math.round(shape.recentMean))} publications per year versus ${formatInt(Math.round(shape.earlierMean))} in ${earlierSpanLabel}, so the later years now sit below the earlier run.`
+    }
+    return `${valueLabel}. The fitted line slopes downward across ${spanLabel}, so the later years now sit below the earlier run.`
+  })()
+  const supportingStatements = [
+    { heading: volatilityHeading, value: volatilitySummary, tone: getTrajectoryVolatilityTone(volatilityIndex) },
+    {
+      heading: growthHeading,
+      value: growthSummary,
+      tone: growthSlope > 0.2 ? 'positive' : growthSlope < -0.2 ? 'danger' : 'neutral',
+    },
+  ] as const
+
+  return (
+    <div className="relative overflow-hidden px-4 py-4">
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[4px]"
+        style={{ backgroundColor: toneColor }}
+      />
+      <div className="space-y-3">
+        <div className="space-y-2 border-b border-[hsl(var(--tone-neutral-200)/0.85)] pb-3">
+          <p className="text-[1.08rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+            How should I read my year-over-year trajectory?
+          </p>
+        </div>
+        <div
+          className="rounded-[1.05rem] border px-3.5 py-3.5 shadow-[0_12px_26px_hsl(var(--tone-neutral-950)/0.05)]"
+          style={{
+            borderColor: `color-mix(in srgb, ${toneColor} 32%, hsl(var(--tone-neutral-200)) 68%)`,
+            backgroundColor: `color-mix(in srgb, ${toneColor} 12%, hsl(var(--background)) 88%)`,
+          }}
+        >
+          <div className="flex items-stretch gap-3">
+            <span
+              aria-hidden="true"
+              className="w-[0.3rem] shrink-0 rounded-full"
+              style={{ backgroundColor: toneColor }}
+            />
+            <div className="min-w-0">
+              <p className="text-[1.02rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+                {phaseHeading}
+              </p>
+              <p className="mt-2 text-[0.81rem] leading-relaxed text-[hsl(var(--tone-neutral-700))]">
+                {phaseSummary}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200)/0.9)] bg-[hsl(var(--tone-neutral-50)/0.78)] px-3.5 py-1.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.88)]">
+          <ul className="m-0 list-none">
+            {supportingStatements.map((statement, index) => {
+              const bulletToneColor = resolvePublicationProductionPatternToneColor(statement.tone)
+              return (
+                <li
+                  key={`${statement.heading}-${statement.value}`}
+                  className={cn(
+                    'flex gap-2.5 py-2.5',
+                    index > 0 ? 'border-t border-[hsl(var(--tone-neutral-200)/0.78)]' : '',
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: `color-mix(in srgb, ${bulletToneColor} 62%, hsl(var(--tone-neutral-500)) 38%)` }}
+                  />
+                  <p className="text-[0.84rem] leading-relaxed text-[hsl(var(--tone-neutral-800))]">
+                    <span className="font-semibold text-[hsl(var(--tone-neutral-950))]">{statement.heading}.</span>{' '}
+                    {statement.value}
+                  </p>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+        <div className="border-t border-[hsl(var(--tone-neutral-200)/0.85)] pt-2">
+          <p className="text-[0.77rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+            {`Using ${spanLabel} from the slider. Raw, moving average, and cumulative all update together.`}
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
@@ -3716,11 +6027,17 @@ function PublicationProductionPhaseSummary({
   const recentShareLabel = stats.recentShare === null
     ? '\u2014'
     : `${Math.round(stats.recentShare * 100)}%`
+  const peakYearTitle = stats.peakYears.length > 1 ? 'Peak Years' : 'Peak Year'
   const peakYearLabel = stats.peakYear === null
     ? '\u2014'
-    : stats.peakCount === null
-      ? `${stats.peakYear}`
-      : `${formatInt(stats.peakCount)} (${stats.peakYear})`
+    : stats.peakYears.length > 1
+      ? stats.peakCount === null
+        ? stats.peakYears.join(', ')
+        : `${formatInt(stats.peakCount)} (${stats.peakYears.join(', ')})`
+      : stats.peakCount === null
+        ? `${stats.peakYear}`
+        : `${formatInt(stats.peakCount)} (${stats.peakYear})`
+  const currentYearHighlight = buildPublicationProductionPhaseCurrentYearHighlight(stats)
   const showSummaryTiles = !stats.emptyReason && !stats.insufficientHistory
 
   return (
@@ -3766,7 +6083,7 @@ function PublicationProductionPhaseSummary({
               <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')}>{recentShareLabel}</p>
             </div>
             <div className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_SMALL_CLASS, 'min-h-0 items-start gap-2 px-4 py-3 text-left')}>
-              <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Peak year</p>
+              <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{peakYearTitle}</p>
               <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')}>{peakYearLabel}</p>
             </div>
           </div>
@@ -3776,6 +6093,7 @@ function PublicationProductionPhaseSummary({
               years={stats.years}
               values={stats.series}
               tone={tone}
+              currentYearHighlight={currentYearHighlight}
             />
           </div>
         </>
@@ -4153,6 +6471,7 @@ const PUBLICATION_CITATION_VALUE_MODE_OPTIONS: Array<{ value: PublicationCategor
 ]
 const PUBLICATION_INSIGHTS_TITLE = 'Publication insights'
 const PUBLICATION_INSIGHTS_LABEL = 'publication insights'
+const PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS = 'fixed inset-0 z-40 cursor-default bg-transparent'
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
 const HOUSE_METRIC_SUBTITLE_CLASS = publicationsHouseHeadings.metricSubtitle
 const HOUSE_METRIC_DETAIL_CLASS = publicationsHouseHeadings.metricDetail
@@ -9672,7 +11991,7 @@ const ARTICLE_TYPE_PUBLICATION_ONLY_KEYS = new Set([
 function inferArticleTypeFromText(value: string | null | undefined): string {
   const clean = String(value || '').trim()
   if (!clean) {
-    return 'Original'
+    return 'Original research'
   }
   if (ARTICLE_TYPE_META_ANALYSIS_PATTERN.test(clean)) {
     return 'Systematic review'
@@ -9698,7 +12017,7 @@ function inferArticleTypeFromText(value: string | null | undefined): string {
   if (ARTICLE_TYPE_LETTER_PATTERN.test(clean)) {
     return 'Letter'
   }
-  return 'Original'
+  return 'Original research'
 }
 
 function formatArticleCategoryLabel(
@@ -9726,8 +12045,13 @@ function formatArticleCategoryLabel(
   if (articleKey === 'literature-review' || articleKey === 'narrative-review') {
     return 'Literature review'
   }
-  if (articleKey === 'original' || articleKey === 'original-article' || articleKey === 'research-article') {
-    return 'Original'
+  if (
+    articleKey === 'original' ||
+    articleKey === 'original-article' ||
+    articleKey === 'original-research' ||
+    articleKey === 'research-article'
+  ) {
+    return 'Original research'
   }
   if (articleKey === 'editorial' || articleKey === 'commentary' || articleKey === 'perspective' || articleKey === 'opinion') {
     return 'Editorial'
@@ -10969,61 +13293,6 @@ function CitationActivationHistorySeriesToggle({
   )
 }
 
-function PublicationProductionYearScopeToggle({
-  value,
-  onChange,
-}: {
-  value: PublicationProductionYearScopeMode
-  onChange: (mode: PublicationProductionYearScopeMode) => void
-}) {
-  return (
-    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
-      <div className="house-segmented-auto-toggle" data-stop-tile-open="true">
-        <button
-          type="button"
-          data-stop-tile-open="true"
-          className={cn(
-            HOUSE_TOGGLE_BUTTON_CLASS,
-            'house-segmented-fill-toggle-button !rounded-l-full !rounded-r-none px-3.5',
-            value === 'complete' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-          )}
-          aria-pressed={value === 'complete'}
-          onClick={(event) => {
-            event.stopPropagation()
-            if (value === 'complete') {
-              return
-            }
-            onChange('complete')
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          Full years
-        </button>
-        <button
-          type="button"
-          data-stop-tile-open="true"
-          className={cn(
-            HOUSE_TOGGLE_BUTTON_CLASS,
-            'house-segmented-fill-toggle-button !rounded-l-none !rounded-r-full px-3.5',
-            value === 'include_current' ? 'bg-foreground text-background' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-          )}
-          aria-pressed={value === 'include_current'}
-          onClick={(event) => {
-            event.stopPropagation()
-            if (value === 'include_current') {
-              return
-            }
-            onChange('include_current')
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          YTD
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function CitationMomentumViewToggle({
   value,
   onChange,
@@ -11273,6 +13542,7 @@ function TotalPublicationsDrilldownWorkspace({
   activeTab,
   animateCharts = true,
   token = null,
+  publicationInsightsAvailable = false,
   onOpenPublication: _onOpenPublication,
   onDrilldownTabChange,
 }: {
@@ -11280,6 +13550,7 @@ function TotalPublicationsDrilldownWorkspace({
   activeTab: DrilldownTab
   animateCharts?: boolean
   token?: string | null
+  publicationInsightsAvailable?: boolean
   onOpenPublication?: (workId: string) => void
   onDrilldownTabChange?: (tab: DrilldownTab) => void
 }) {
@@ -11287,7 +13558,6 @@ function TotalPublicationsDrilldownWorkspace({
   const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('all')
   const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const [publicationVolumeTableDateSortMode, setPublicationVolumeTableDateSortMode] = useState<PublicationVolumeTableDateSortMode>('newest')
-  const [publicationProductionYearScopeMode, setPublicationProductionYearScopeMode] = useState<PublicationProductionYearScopeMode>('complete')
   const [publicationTrendsExpanded, setPublicationTrendsExpanded] = useState(true)
   const [publicationProductionPhaseExpanded, setPublicationProductionPhaseExpanded] = useState(true)
   const [publicationProductionPatternExpanded, setPublicationProductionPatternExpanded] = useState(true)
@@ -11337,7 +13607,6 @@ function TotalPublicationsDrilldownWorkspace({
   useEffect(() => {
     setPublicationTrendsWindowMode('all')
     setPublicationTrendsVisualMode('bars')
-    setPublicationProductionYearScopeMode('complete')
     setPublicationTrendsExpanded(true)
     setPublicationProductionPhaseExpanded(true)
     setPublicationProductionPatternExpanded(true)
@@ -11363,6 +13632,17 @@ function TotalPublicationsDrilldownWorkspace({
     setPublicationTypeOverTimeInsightOpen(false)
   }, [tile.key])
 
+  useEffect(() => {
+    if (publicationInsightsAvailable) {
+      return
+    }
+    setPublicationProductionPhaseInsightOpen(false)
+    setPublicationProductionPatternInsightOpen(false)
+    setPublicationVolumeOverTimeInsightOpen(false)
+    setPublicationArticleTypeOverTimeInsightOpen(false)
+    setPublicationTypeOverTimeInsightOpen(false)
+  }, [publicationInsightsAvailable])
+
   const requestPublicationInsights = useCallback(
     async ({
       windowId,
@@ -11381,8 +13661,10 @@ function TotalPublicationsDrilldownWorkspace({
       if (publicationInsightsInFlightRef.current[requestKey]) {
         return publicationInsightsInFlightRef.current[requestKey]
       }
-      if (!token) {
-        const message = 'Session token is required to generate publication insights.'
+      if (!publicationInsightsAvailable) {
+        const message = token
+          ? 'Publication insights are unavailable right now.'
+          : 'Session token is required to generate publication insights.'
         setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
         return null
       }
@@ -11409,7 +13691,7 @@ function TotalPublicationsDrilldownWorkspace({
       publicationInsightsInFlightRef.current[requestKey] = requestPromise
       return requestPromise
     },
-    [publicationInsightsByRequestKey, token],
+    [publicationInsightsAvailable, publicationInsightsByRequestKey, token],
   )
 
   const onTogglePublicationProductionPatternInsight = useCallback(() => {
@@ -11759,7 +14041,10 @@ function TotalPublicationsDrilldownWorkspace({
   }, [trajectoryYearSeriesRaw])
 
   const trajectoryMaxIndex = Math.max(0, trajectoryFullYears.length - 1)
-  const trajectoryMinSpan = Math.min(6, Math.max(1, trajectoryFullYears.length))
+  const trajectoryMinSpan = Math.min(5, Math.max(1, trajectoryFullYears.length))
+  const trajectoryDefaultVisibleCount = trajectoryFullYears.length >= 8
+    ? 5
+    : Math.max(1, trajectoryFullYears.length)
 
   useEffect(() => {
     if (!trajectoryFullYears.length) {
@@ -11767,10 +14052,10 @@ function TotalPublicationsDrilldownWorkspace({
       setTrajectoryRangeEnd(0)
       return
     }
-    const initialCount = Math.max(trajectoryMinSpan, Math.min(12, trajectoryFullYears.length))
+    const initialCount = Math.max(trajectoryMinSpan, Math.min(trajectoryDefaultVisibleCount, trajectoryFullYears.length))
     setTrajectoryRangeStart(Math.max(0, trajectoryFullYears.length - initialCount))
     setTrajectoryRangeEnd(trajectoryMaxIndex)
-  }, [trajectoryFullYears.length, trajectoryMaxIndex, trajectoryMinSpan])
+  }, [trajectoryDefaultVisibleCount, trajectoryFullYears.length, trajectoryMaxIndex, trajectoryMinSpan])
 
   const trajectoryVisibleRange = useMemo(() => {
     if (!trajectoryFullYears.length) {
@@ -12033,24 +14318,14 @@ function TotalPublicationsDrilldownWorkspace({
   }, [trajectoryVisibleRaw])
 
   const trajectoryGrowthSlope = useMemo(() => {
-    if (trajectoryVisibleRaw.length <= 1) {
+    const slope = calculatePublicationProductionTrendSlope(trajectoryVisibleYears, trajectoryVisibleRaw)
+    if (slope === null) {
       return 0
     }
-    const n = trajectoryVisibleRaw.length
-    const xs = Array.from({ length: n }, (_, index) => index + 1)
-    const sumX = xs.reduce((sum, value) => sum + value, 0)
-    const sumY = trajectoryVisibleRaw.reduce((sum, value) => sum + value, 0)
-    const sumXY = trajectoryVisibleRaw.reduce((sum, value, index) => sum + (value * xs[index]), 0)
-    const sumXX = xs.reduce((sum, value) => sum + (value * value), 0)
-    const numerator = (n * sumXY) - (sumX * sumY)
-    const denominator = (n * sumXX) - (sumX * sumX)
-    if (Math.abs(denominator) <= 1e-9) {
-      return 0
-    }
-    return numerator / denominator
-  }, [trajectoryVisibleRaw])
+    return slope
+  }, [trajectoryVisibleRaw, trajectoryVisibleYears])
 
-  const trajectoryPhase = trajectoryGrowthSlope > 0.2
+  const trajectoryPhase: PublicationTrajectoryPhaseLabel = trajectoryGrowthSlope > 0.2
     ? 'Expanding'
     : trajectoryGrowthSlope < -0.2
       ? 'Contracting'
@@ -12237,10 +14512,7 @@ function TotalPublicationsDrilldownWorkspace({
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
     return parsePublicationProductionPatternAsOfDate(drilldown.as_of_date) ?? null
   }, [tile])
-  const publicationProductionPatternStats = useMemo(
-    () => buildPublicationProductionPatternStats(tile, publicationProductionYearScopeMode),
-    [publicationProductionYearScopeMode, tile],
-  )
+  const publicationProductionPatternStats = publicationProductionPatternCompleteStats
   const publicationProductionPhaseStats = useMemo(
     () => buildPublicationProductionPhaseStats(tile),
     [tile],
@@ -12588,7 +14860,7 @@ function TotalPublicationsDrilldownWorkspace({
             <button
               type="button"
               aria-label="Close production phase insight"
-              className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
               onClick={closePublicationProductionPhaseInsight}
             />
             <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -12599,6 +14871,7 @@ function TotalPublicationsDrilldownWorkspace({
                   loading={publicationProductionPhaseInsightsLoading}
                   error={publicationProductionPhaseInsightsError}
                   actions={publicationProductionPhaseInsightActions}
+                  loadingTone={resolvePublicationProductionPhaseInsightTone(publicationProductionPhaseStats.phase)}
                   onClose={closePublicationProductionPhaseInsight}
                 />
               </div>
@@ -12608,7 +14881,7 @@ function TotalPublicationsDrilldownWorkspace({
         <div className="house-drilldown-heading-block">
           <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <div className="flex min-w-0 items-center gap-2">
-              <p className="house-drilldown-heading-block-title">Production Phase</p>
+              <p className="house-drilldown-heading-block-title">What stage is my publication output in?</p>
               <DrilldownSheet.HeadingToggle
                 expanded={publicationProductionPhaseExpanded}
                 onClick={(event) => {
@@ -12622,14 +14895,22 @@ function TotalPublicationsDrilldownWorkspace({
               <HelpTooltipIconButton
                 ariaLabel="Explain Production Phase"
                 content={renderPublicationProductionPhaseTooltipContent(publicationProductionPhaseStats)}
-                className="max-w-[20rem] px-3 py-2"
+                className={getPublicationProductionPhaseTooltipSurfaceClass(publicationProductionPhaseStats.phase)}
+                buttonClassName={getPublicationProductionPhaseHelpButtonClass(publicationProductionPhaseStats.phase)}
+                iconClassName={getPublicationProductionPhaseHelpIconClass(publicationProductionPhaseStats.phase)}
                 align="end"
                 side="top"
               />
-              <PublicationInsightsTriggerButton
+              <LivePublicationInsightsTriggerButton
+                available={publicationInsightsAvailable}
                 ariaLabel="Open production phase insight"
                 active={publicationProductionPhaseInsightOpen}
                 onClick={onTogglePublicationProductionPhaseInsight}
+                buttonClassName={getPublicationProductionPhaseInsightButtonClass(publicationProductionPhaseStats.phase)}
+                activeButtonClassName={getPublicationProductionPhaseInsightActiveButtonClass(publicationProductionPhaseStats.phase)}
+                iconClassName={getPublicationProductionPhaseInsightIconClass(publicationProductionPhaseStats.phase)}
+                activeIconClassName={getPublicationProductionPhaseInsightActiveIconClass(publicationProductionPhaseStats.phase)}
+                useCurrentColorIcon
               />
             </div>
           </div>
@@ -12647,7 +14928,7 @@ function TotalPublicationsDrilldownWorkspace({
             <button
               type="button"
               aria-label="Close publication output pattern insight"
-              className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
               onClick={closePublicationProductionPatternInsight}
             />
             <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -12665,9 +14946,9 @@ function TotalPublicationsDrilldownWorkspace({
           </>
         ) : null}
         <div className="house-drilldown-heading-block">
-          <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3">
-            <div className="inline-flex items-start gap-2 justify-self-start">
-              <p className="house-drilldown-heading-block-title">Publication Production Pattern</p>
+          <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="house-drilldown-heading-block-title">How steady is my publication output?</p>
               <DrilldownSheet.HeadingToggle
                 expanded={publicationProductionPatternExpanded}
                 onClick={(event) => {
@@ -12677,17 +14958,31 @@ function TotalPublicationsDrilldownWorkspace({
                 onMouseDown={(event) => event.stopPropagation()}
               />
             </div>
-            <div className="flex justify-center self-start">
-              <PublicationProductionYearScopeToggle
-                value={publicationProductionYearScopeMode}
-                onChange={setPublicationProductionYearScopeMode}
-              />
-            </div>
-            <div className="justify-self-end self-start">
-              <PublicationInsightsTriggerButton
+            <div className="flex items-center justify-self-end gap-2">
+              <HelpTooltipIconButton
+                ariaLabel="Explain publication output steadiness"
+                content={renderPublicationProductionPatternSectionTooltipContent(
+                  publicationProductionPatternCompleteStats,
+                  publicationProductionPatternStats,
+                  publicationProductionPatternAsOfDate,
+                )}
+              className={getPublicationProductionPatternTooltipSurfaceClass()}
+              buttonClassName={getPublicationProductionPatternHelpButtonClass()}
+              iconClassName={getPublicationProductionPatternHelpIconClass()}
+              align="start"
+              side="left"
+              sideOffset={10}
+            />
+              <LivePublicationInsightsTriggerButton
+                available={publicationInsightsAvailable}
                 ariaLabel="Open publication output pattern insight"
                 active={publicationProductionPatternInsightOpen}
                 onClick={onTogglePublicationProductionPatternInsight}
+                buttonClassName={getPublicationProductionPatternInsightButtonClass()}
+                activeButtonClassName={getPublicationProductionPatternInsightActiveButtonClass()}
+                iconClassName={getPublicationProductionPatternInsightIconClass()}
+                activeIconClassName={getPublicationProductionPatternInsightActiveIconClass()}
+                useCurrentColorIcon
               />
             </div>
           </div>
@@ -12718,17 +15013,12 @@ function TotalPublicationsDrilldownWorkspace({
                 >
                   <PublicationProductionPatternCard
                     dataUi="publication-production-pattern-card-consistency"
-                    title="Consistency Index"
+                    title="Consistency index"
                     meterIndex={0}
                     primaryValue={publicationProductionPatternStats.consistencyIndex === null ? '\u2014' : publicationProductionPatternStats.consistencyIndex.toFixed(2)}
                     semanticLabel={publicationProductionPatternStats.consistencyIndex === null
                       ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Insufficient history</span>
                       : renderPublicationConsistencyBadge(publicationProductionPatternStats.consistencyIndex)}
-                    tooltip={renderPublicationConsistencyTooltipContent(
-                      publicationProductionPatternCompleteStats,
-                      publicationProductionPatternStats,
-                      publicationProductionPatternAsOfDate,
-                    )}
                     meterValue={publicationProductionPatternStats.consistencyIndex}
                     meterTone={publicationProductionPatternStats.consistencyIndex === null
                       ? 'neutral'
@@ -12737,17 +15027,12 @@ function TotalPublicationsDrilldownWorkspace({
 
                   <PublicationProductionPatternCard
                     dataUi="publication-production-pattern-card-burstiness"
-                    title="Burstiness Score"
+                    title="Burstiness score"
                     meterIndex={1}
                     primaryValue={publicationProductionPatternStats.burstinessScore === null ? '\u2014' : publicationProductionPatternStats.burstinessScore.toFixed(2)}
                     semanticLabel={publicationProductionPatternStats.burstinessScore === null
                       ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Insufficient history</span>
                       : renderPublicationBurstinessBadge(publicationProductionPatternStats.burstinessScore)}
-                    tooltip={renderPublicationBurstinessTooltipContent(
-                      publicationProductionPatternCompleteStats,
-                      publicationProductionPatternStats,
-                      publicationProductionPatternAsOfDate,
-                    )}
                     meterValue={publicationProductionPatternStats.burstinessScore}
                     meterTone={publicationProductionPatternStats.burstinessScore === null
                       ? 'neutral'
@@ -12756,17 +15041,12 @@ function TotalPublicationsDrilldownWorkspace({
 
                   <PublicationProductionPatternCard
                     dataUi="publication-production-pattern-card-peak-year-share"
-                    title="Peak-year Share"
+                    title="Peak-year share"
                     meterIndex={2}
                     primaryValue={publicationProductionPatternStats.peakYearShare === null ? '\u2014' : `${Math.round(publicationProductionPatternStats.peakYearShare * 100)}%`}
                     semanticLabel={publicationProductionPatternStats.peakYearShare === null
                       ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Not available</span>
                       : renderPublicationPeakYearShareBadge(publicationProductionPatternStats.peakYearShare)}
-                    tooltip={renderPublicationPeakYearShareTooltipContent(
-                      publicationProductionPatternCompleteStats,
-                      publicationProductionPatternStats,
-                      publicationProductionPatternAsOfDate,
-                    )}
                     meterValue={publicationProductionPatternStats.peakYearShare}
                     meterTone={publicationProductionPatternStats.peakYearShare === null
                       ? 'neutral'
@@ -12775,17 +15055,12 @@ function TotalPublicationsDrilldownWorkspace({
 
                   <PublicationProductionPatternCard
                     dataUi="publication-production-pattern-card-years-with-output"
-                    title="Years with Output"
+                    title="Years with output"
                     meterIndex={3}
                     primaryValue={`${formatInt(publicationProductionPatternStats.yearsWithOutput)} / ${formatInt(publicationProductionPatternStats.activeSpan)}`}
                     semanticLabel={publicationProductionPatternStats.outputContinuity === null
                       ? <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS, 'whitespace-nowrap')}>Not available</span>
                       : renderPublicationOutputContinuityBadge(publicationProductionPatternStats.outputContinuity)}
-                    tooltip={renderPublicationOutputContinuityTooltipContent(
-                      publicationProductionPatternCompleteStats,
-                      publicationProductionPatternStats,
-                      publicationProductionPatternAsOfDate,
-                    )}
                     meterValue={publicationProductionPatternStats.outputContinuity}
                     meterTone={publicationProductionPatternStats.outputContinuity === null
                       ? 'neutral'
@@ -12831,7 +15106,7 @@ function TotalPublicationsDrilldownWorkspace({
                   <button
                     type="button"
                     aria-label="Close publication volume over time insight"
-                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
                     onClick={closePublicationVolumeOverTimeInsight}
                   />
                   <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -12865,11 +15140,14 @@ function TotalPublicationsDrilldownWorkspace({
                     <HelpTooltipIconButton
                       ariaLabel="Explain Publication Volume Over Time"
                       content={renderPublicationVolumeOverTimeTooltipContent(publicationVolumeOverTimeInsightStats)}
-                      className="max-w-[22rem] px-3 py-2"
+                      className={getPublicationVolumeOverTimeTooltipSurfaceClass(publicationVolumeOverTimeInsightStats)}
+                      buttonClassName={getPublicationVolumeOverTimeHelpButtonClass(publicationVolumeOverTimeInsightStats)}
+                      iconClassName={getPublicationVolumeOverTimeHelpIconClass(publicationVolumeOverTimeInsightStats)}
                       align="end"
                       side="top"
                     />
-                    <PublicationInsightsTriggerButton
+                    <LivePublicationInsightsTriggerButton
+                      available={publicationInsightsAvailable}
                       ariaLabel="Open publication volume over time insight"
                       active={publicationVolumeOverTimeInsightOpen}
                       onClick={onTogglePublicationVolumeOverTimeInsight}
@@ -12989,7 +15267,7 @@ function TotalPublicationsDrilldownWorkspace({
                   <button
                     type="button"
                     aria-label="Close publication article type over time insight"
-                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
                     onClick={closePublicationArticleTypeOverTimeInsight}
                   />
                   <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -13023,11 +15301,14 @@ function TotalPublicationsDrilldownWorkspace({
                     <HelpTooltipIconButton
                       ariaLabel="Explain Type of Articles Published Over Time"
                       content={renderPublicationArticleTypeOverTimeTooltipContent(publicationArticleTypeOverTimeInsightStats)}
-                      className="max-w-[22rem] px-3 py-2"
+                      className={getPublicationArticleTypeOverTimeTooltipSurfaceClass()}
+                      buttonClassName={getPublicationArticleTypeOverTimeHelpButtonClass()}
+                      iconClassName={getPublicationArticleTypeOverTimeHelpIconClass()}
                       align="end"
                       side="top"
                     />
-                    <PublicationInsightsTriggerButton
+                    <LivePublicationInsightsTriggerButton
+                      available={publicationInsightsAvailable}
                       ariaLabel="Open publication article type over time insight"
                       active={publicationArticleTypeOverTimeInsightOpen}
                       onClick={onTogglePublicationArticleTypeOverTimeInsight}
@@ -13058,7 +15339,7 @@ function TotalPublicationsDrilldownWorkspace({
                   <button
                     type="button"
                     aria-label="Close publication type over time insight"
-                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
                     onClick={closePublicationTypeOverTimeInsight}
                   />
                   <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -13092,11 +15373,14 @@ function TotalPublicationsDrilldownWorkspace({
                     <HelpTooltipIconButton
                       ariaLabel="Explain Type of Publications Published Over Time"
                       content={renderPublicationPublicationTypeOverTimeTooltipContent(publicationTypeOverTimeInsightStats)}
-                      className="max-w-[22rem] px-3 py-2"
+                      className={getPublicationPublicationTypeOverTimeTooltipSurfaceClass()}
+                      buttonClassName={getPublicationPublicationTypeOverTimeHelpButtonClass()}
+                      iconClassName={getPublicationPublicationTypeOverTimeHelpIconClass()}
                       align="end"
                       side="top"
                     />
-                    <PublicationInsightsTriggerButton
+                    <LivePublicationInsightsTriggerButton
+                      available={publicationInsightsAvailable}
                       ariaLabel="Open publication type over time insight"
                       active={publicationTypeOverTimeInsightOpen}
                       onClick={onTogglePublicationTypeOverTimeInsight}
@@ -13353,9 +15637,27 @@ function TotalPublicationsDrilldownWorkspace({
         ) : null}
 
         {activeTab === 'trajectory' ? (
-          <div className="house-publications-drilldown-bounded-section">
+          <div className="house-publications-drilldown-bounded-section" data-ui="publication-year-over-year-trajectory">
             <div className="house-drilldown-heading-block">
-              <p className="house-drilldown-heading-block-title">Year-over-year trajectory</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="house-drilldown-heading-block-title">Year-over-year trajectory</p>
+                <HelpTooltipIconButton
+                  ariaLabel="Explain year-over-year trajectory"
+                  content={renderPublicationTrajectoryTooltipContent({
+                    years: trajectoryVisibleYears,
+                    rawValues: trajectoryVisibleRaw,
+                    focusRangeLabel: trajectoryFocusRangeLabel,
+                    volatilityIndex: trajectoryVolatilityIndex,
+                    growthSlope: trajectoryGrowthSlope,
+                    phase: trajectoryPhase,
+                  })}
+                  className={getPublicationTrajectoryTooltipSurfaceClass(trajectoryPhase)}
+                  buttonClassName={getPublicationTrajectoryHelpButtonClass(trajectoryPhase)}
+                  iconClassName={getPublicationTrajectoryHelpIconClass(trajectoryPhase)}
+                  align="end"
+                  side="top"
+                />
+              </div>
             </div>
             <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
               {trajectoryVisibleYears.length ? (
@@ -13697,7 +15999,7 @@ function TotalPublicationsDrilldownWorkspace({
                     </div>
                     <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_SMALL_CLASS}>
                       <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>
-                        Phase marker
+                        Phase
                       </p>
                       <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
                         <div className="flex w-full justify-center">
@@ -13913,6 +16215,7 @@ function GenericMetricDrilldownWorkspace({
   activeTab,
   animateCharts = true,
   token = null,
+  publicationInsightsAvailable = false,
   onOpenPublication,
   onDrilldownTabChange,
   totalCitationsTile,
@@ -13921,6 +16224,7 @@ function GenericMetricDrilldownWorkspace({
   activeTab: DrilldownTab
   animateCharts?: boolean
   token?: string | null
+  publicationInsightsAvailable?: boolean
   onOpenPublication?: (workId: string) => void
   onDrilldownTabChange?: (tab: DrilldownTab) => void
   totalCitationsTile: PublicationMetricTilePayload | null
@@ -14010,6 +16314,18 @@ function GenericMetricDrilldownWorkspace({
     setHIndexSummaryThresholdTableMode('next')
   }, [tile.key])
 
+  useEffect(() => {
+    if (publicationInsightsAvailable) {
+      return
+    }
+    setUncitedInsightOpen(false)
+    setRecentConcentrationInsightOpen(false)
+    setCitationHistogramInsightOpen(false)
+    setCitationActivationInsightOpen(false)
+    setCitationActivationHistoryInsightOpen(false)
+    setCitationMomentumInsightOpen(false)
+  }, [publicationInsightsAvailable])
+
   const requestPublicationInsights = useCallback(
     async ({
       windowId,
@@ -14028,8 +16344,10 @@ function GenericMetricDrilldownWorkspace({
       if (publicationInsightsInFlightRef.current[requestKey]) {
         return publicationInsightsInFlightRef.current[requestKey]
       }
-      if (!token) {
-        const message = 'Session token is required to generate publication insights.'
+      if (!publicationInsightsAvailable) {
+        const message = token
+          ? 'Publication insights are unavailable right now.'
+          : 'Session token is required to generate publication insights.'
         setPublicationInsightsErrorByRequestKey((current) => ({ ...current, [requestKey]: message }))
         return null
       }
@@ -14056,7 +16374,7 @@ function GenericMetricDrilldownWorkspace({
       publicationInsightsInFlightRef.current[requestKey] = requestPromise
       return requestPromise
     },
-    [publicationInsightsByRequestKey, token],
+    [publicationInsightsAvailable, publicationInsightsByRequestKey, token],
   )
 
   const onToggleUncitedInsight = useCallback(() => {
@@ -15614,7 +17932,8 @@ function GenericMetricDrilldownWorkspace({
                       : formatUncitedPapersTooltip(totalCitationsHeadlineStats)
                   }
                 />
-                <PublicationInsightsTriggerButton
+                <LivePublicationInsightsTriggerButton
+                  available={publicationInsightsAvailable}
                   ariaLabel="Open uncited publications insight"
                   active={uncitedInsightOpen}
                   onClick={onToggleUncitedInsight}
@@ -15625,7 +17944,7 @@ function GenericMetricDrilldownWorkspace({
                   <button
                     type="button"
                     aria-label="Close uncited insight"
-                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
                     onClick={closeUncitedInsight}
                   />
                   <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -15712,7 +18031,8 @@ function GenericMetricDrilldownWorkspace({
                       })
                   }
                 />
-                <PublicationInsightsTriggerButton
+                <LivePublicationInsightsTriggerButton
+                  available={publicationInsightsAvailable}
                   ariaLabel="Open citation driver insight"
                   active={recentConcentrationInsightOpen}
                   onClick={onToggleRecentConcentrationInsight}
@@ -15723,7 +18043,7 @@ function GenericMetricDrilldownWorkspace({
                   <button
                     type="button"
                     aria-label="Close citation insight"
-                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
                     onClick={closeRecentConcentrationInsight}
                   />
                   <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -15808,7 +18128,8 @@ function GenericMetricDrilldownWorkspace({
                   ariaLabel="Explain citation distribution"
                   content={formatCitationHistogramTooltip(publicationDrilldownRecords.length, citationHistogramMaxCitations)}
                 />
-                <PublicationInsightsTriggerButton
+                <LivePublicationInsightsTriggerButton
+                  available={publicationInsightsAvailable}
                   ariaLabel="Open citation distribution insight"
                   active={citationHistogramInsightOpen}
                   onClick={onToggleCitationHistogramInsight}
@@ -15819,7 +18140,7 @@ function GenericMetricDrilldownWorkspace({
                   <button
                     type="button"
                     aria-label="Close citation distribution insight"
-                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
                     onClick={closeCitationHistogramInsight}
                   />
                   <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -16061,7 +18382,8 @@ function GenericMetricDrilldownWorkspace({
                       })
                   }
                 />
-                <PublicationInsightsTriggerButton
+                <LivePublicationInsightsTriggerButton
+                  available={publicationInsightsAvailable}
                   ariaLabel="Open citation activation insight"
                   active={citationActivationInsightOpen}
                   onClick={onToggleCitationActivationInsight}
@@ -16072,7 +18394,7 @@ function GenericMetricDrilldownWorkspace({
                   <button
                     type="button"
                     aria-label="Close citation activation insight"
-                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
                     onClick={closeCitationActivationInsight}
                   />
                   <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -16174,7 +18496,8 @@ function GenericMetricDrilldownWorkspace({
                   ariaLabel="Explain citation activity over time"
                   content={formatCitationActivationHistoryTooltip(citationActivationHistoryLastCompleteYear, citationActivationHistoryFocusRangeLabel)}
                 />
-                <PublicationInsightsTriggerButton
+                <LivePublicationInsightsTriggerButton
+                  available={publicationInsightsAvailable}
                   ariaLabel="Open citation activity over time insight"
                   active={citationActivationHistoryInsightOpen}
                   onClick={onToggleCitationActivationHistoryInsight}
@@ -16185,7 +18508,7 @@ function GenericMetricDrilldownWorkspace({
                   <button
                     type="button"
                     aria-label="Close citation activity over time insight"
-                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
                     onClick={closeCitationActivationHistoryInsight}
                   />
                   <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -16256,7 +18579,8 @@ function GenericMetricDrilldownWorkspace({
                     freshPickupCount: freshPickupPublicationRecords.length,
                   })}
                 />
-                <PublicationInsightsTriggerButton
+                <LivePublicationInsightsTriggerButton
+                  available={publicationInsightsAvailable}
                   ariaLabel="Open sleeping and fresh pickup insight"
                   active={citationMomentumInsightOpen}
                   onClick={onToggleCitationMomentumInsight}
@@ -16267,7 +18591,7 @@ function GenericMetricDrilldownWorkspace({
                   <button
                     type="button"
                     aria-label="Close sleeping and fresh pickup insight"
-                    className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+              className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
                     onClick={closeCitationMomentumInsight}
                   />
                   <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -18281,8 +20605,8 @@ function CompletedPeriodRangeSlider({
     beginDrag('end', event.clientX)
   }
   const sliderHandleClassName = cn(
-    'absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[hsl(var(--tone-positive-300))] bg-white shadow-[0_0_0_2px_hsl(var(--tone-neutral-0)),0_1px_4px_hsl(var(--tone-neutral-950)/0.14)] transition-[border-color,box-shadow,transform] duration-[var(--motion-duration-ui)] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-positive-200)/0.78)]',
-    isAdjustable ? 'cursor-ew-resize hover:border-[hsl(var(--tone-positive-400))] hover:shadow-[0_0_0_2px_hsl(var(--tone-neutral-0)),0_2px_6px_hsl(var(--tone-neutral-950)/0.16)]' : 'cursor-default',
+                      'absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[hsl(var(--tone-positive-300))] bg-white shadow-[0_0_0_2px_hsl(var(--background)),0_1px_4px_hsl(var(--tone-neutral-950)/0.14)] transition-[border-color,box-shadow,transform] duration-[var(--motion-duration-ui)] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-positive-200)/0.78)]',
+                      isAdjustable ? 'cursor-ew-resize hover:border-[hsl(var(--tone-positive-400))] hover:shadow-[0_0_0_2px_hsl(var(--background)),0_2px_6px_hsl(var(--tone-neutral-950)/0.16)]' : 'cursor-default',
   )
 
   return (
@@ -18948,6 +21272,232 @@ function getPublicationInsightsSection(
   return match || null
 }
 
+type PublicationInsightTone = 'positive' | 'accent' | 'warning' | 'danger' | 'neutral'
+
+const PUBLICATION_INSIGHT_LOADING_MESSAGE_LIBRARY: Record<PublicationInsightsSectionKey, string[]> = {
+  uncited_works: [
+    'Checking which publications are still waiting on their first citation. Almost done.',
+    'Looking for the quiet edges of your publication record. Please wait.',
+    'Finding the papers that have yet to join the citation conversation. Insight is on the way.',
+  ],
+  citation_drivers: [
+    'Counting citations and following the strongest signals. Insight is on the way.',
+    'Sorting where your citation pull is most concentrated. Almost done.',
+    'Tracing the publications carrying the heaviest citation weight. Please wait.',
+  ],
+  citation_activation: [
+    'Tracing where citations are waking up across the portfolio. Almost done.',
+    'Reading which publications are still active, newly active, or quiet. Please wait.',
+    'Checking the recent life signs in your citation record. Insight is on the way.',
+  ],
+  citation_activation_history: [
+    'Plotting the tempo of citation activity across time. Almost done.',
+    'Reading how citation activity has shifted year by year. Please wait.',
+    'Tracing the longer arc of your citation history. Insight is on the way.',
+  ],
+  publication_output_pattern: [
+    'Reading the rhythm of your research output. Almost done.',
+    'Tracing how steady or spiky your publication record has been. Please wait.',
+    'Sorting the cadence of your publication history. Insight is on the way.',
+  ],
+  publication_production_phase: [
+    'Delving deeper into your publication history. Please wait.',
+    'Plotting the patterns of your research output. Almost done.',
+    'Reading the shape of your publication record. Insight is on the way.',
+  ],
+  publication_volume_over_time: [
+    'Plotting the patterns of your research output. Almost done.',
+    'Tracing the longer arc of your publication volume. Please wait.',
+    'Reading where your output accelerates, softens, or steadies. Insight is on the way.',
+  ],
+  publication_article_type_over_time: [
+    'Sorting the mix of article formats across time. Almost done.',
+    'Comparing recent article-type shifts with your full record. Please wait.',
+    'Reading how your article mix changes across the publication timeline. Insight is on the way.',
+  ],
+  publication_type_over_time: [
+    'Mapping the mix of publication types across time. Almost done.',
+    'Comparing recent publication-type shifts with the wider record. Please wait.',
+    'Reading how your publication formats move across the full span. Insight is on the way.',
+  ],
+}
+
+const PUBLICATION_INSIGHT_LOADING_RAIL_ANIMATION = `
+@keyframes publication-insight-loading-rail-sweep {
+  0% {
+    transform: translateX(-110%);
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(235%);
+    opacity: 0.42;
+  }
+}
+`
+
+function getPublicationInsightDefaultTitle(key: PublicationInsightsSectionKey): string {
+  switch (key) {
+    case 'uncited_works':
+      return 'Uncited publications'
+    case 'citation_activation':
+      return 'Citation activation'
+    case 'citation_activation_history':
+      return 'Activation over time'
+    case 'publication_production_phase':
+      return 'Production phase'
+    case 'publication_volume_over_time':
+      return 'Publication volume over time'
+    case 'publication_article_type_over_time':
+      return 'Type of articles published over time'
+    case 'publication_type_over_time':
+      return 'Type of publications published over time'
+    case 'publication_output_pattern':
+      return 'Publication output pattern'
+    default:
+      return 'Citation concentration'
+  }
+}
+
+function resolvePublicationInsightTone(
+  sectionKey: PublicationInsightsSectionKey,
+  section: PublicationInsightsAgentSectionPayload | null,
+): PublicationInsightTone {
+  if (sectionKey === 'publication_production_phase') {
+    const phaseLabel = String((section?.evidence as Record<string, unknown> | undefined)?.phase_label || '').trim()
+    switch (phaseLabel) {
+      case 'Scaling':
+        return 'positive'
+      case 'Plateauing':
+        return 'warning'
+      case 'Contracting':
+        return 'danger'
+      case 'Rebuilding':
+        return 'accent'
+      case 'Established':
+        return 'neutral'
+      default:
+        return 'accent'
+    }
+  }
+  if (sectionKey === 'citation_activation' || sectionKey === 'citation_activation_history') {
+    return 'positive'
+  }
+  return 'accent'
+}
+
+function getPublicationInsightToneClasses(tone: PublicationInsightTone) {
+  switch (tone) {
+    case 'positive':
+      return {
+        rail: 'bg-[hsl(var(--tone-positive-400))]',
+        badge: 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]',
+        shellStyle: {
+          backgroundColor: 'hsl(var(--background))',
+        } satisfies CSSProperties,
+        hero: 'border-[hsl(var(--tone-positive-200))]',
+        heroStyle: {
+          backgroundColor: 'hsl(var(--tone-positive-50))',
+        } satisfies CSSProperties,
+        close: 'hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-50))] hover:text-[hsl(var(--tone-positive-700))] focus-visible:ring-[hsl(var(--tone-positive-200))]',
+        consideration: 'border-[hsl(var(--tone-positive-200))]',
+        considerationStyle: {
+          backgroundColor: 'hsl(var(--tone-positive-50) / 0.9)',
+        } satisfies CSSProperties,
+        considerationRule: 'border-[hsl(var(--tone-positive-400))]',
+        considerationLabel: 'text-[hsl(var(--tone-neutral-900))]',
+        action: 'hover:border-[hsl(var(--tone-neutral-300))] hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:ring-[hsl(var(--tone-positive-200))]',
+        actionBadge: 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--background))] text-[hsl(var(--tone-positive-700))] group-hover:border-[hsl(var(--tone-positive-300))] group-hover:bg-[hsl(var(--tone-positive-50))]',
+      }
+    case 'warning':
+      return {
+        rail: 'bg-[hsl(var(--tone-warning-400))]',
+        badge: 'border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--background))] text-[hsl(var(--tone-warning-900))]',
+        shellStyle: {
+          backgroundColor: 'hsl(var(--background))',
+        } satisfies CSSProperties,
+        hero: 'border-[hsl(var(--tone-warning-200))]',
+        heroStyle: {
+          backgroundColor: 'hsl(var(--tone-warning-50))',
+        } satisfies CSSProperties,
+        close: 'hover:border-[hsl(var(--tone-warning-300))] hover:bg-[hsl(var(--tone-warning-50))] hover:text-[hsl(var(--tone-warning-800))] focus-visible:ring-[hsl(var(--tone-warning-200))]',
+        consideration: 'border-[hsl(var(--tone-warning-200))]',
+        considerationStyle: {
+          backgroundColor: 'hsl(var(--tone-warning-50) / 0.84)',
+        } satisfies CSSProperties,
+        considerationRule: 'border-[hsl(var(--tone-warning-400))]',
+        considerationLabel: 'text-[hsl(var(--tone-neutral-900))]',
+        action: 'hover:border-[hsl(var(--tone-neutral-300))] hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:ring-[hsl(var(--tone-warning-200))]',
+        actionBadge: 'border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--background))] text-[hsl(var(--tone-warning-800))] group-hover:border-[hsl(var(--tone-warning-300))] group-hover:bg-[hsl(var(--tone-warning-50))]',
+      }
+    case 'danger':
+      return {
+        rail: 'bg-[hsl(var(--tone-danger-400))]',
+        badge: 'border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]',
+        shellStyle: {
+          backgroundColor: 'hsl(var(--background))',
+        } satisfies CSSProperties,
+        hero: 'border-[hsl(var(--tone-danger-200))]',
+        heroStyle: {
+          backgroundColor: 'hsl(var(--tone-danger-50))',
+        } satisfies CSSProperties,
+        close: 'hover:border-[hsl(var(--tone-danger-300))] hover:bg-[hsl(var(--tone-danger-50))] hover:text-[hsl(var(--tone-danger-700))] focus-visible:ring-[hsl(var(--tone-danger-200))]',
+        consideration: 'border-[hsl(var(--tone-danger-200))]',
+        considerationStyle: {
+          backgroundColor: 'hsl(var(--tone-danger-50) / 0.9)',
+        } satisfies CSSProperties,
+        considerationRule: 'border-[hsl(var(--tone-danger-400))]',
+        considerationLabel: 'text-[hsl(var(--tone-neutral-900))]',
+        action: 'hover:border-[hsl(var(--tone-neutral-300))] hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:ring-[hsl(var(--tone-danger-200))]',
+        actionBadge: 'border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--background))] text-[hsl(var(--tone-danger-700))] group-hover:border-[hsl(var(--tone-danger-300))] group-hover:bg-[hsl(var(--tone-danger-50))]',
+      }
+    case 'neutral':
+      return {
+        rail: 'bg-[hsl(var(--tone-neutral-350))]',
+        badge: 'border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-800))]',
+        shellStyle: {
+          backgroundColor: 'hsl(var(--background))',
+        } satisfies CSSProperties,
+        hero: 'border-[hsl(var(--tone-neutral-250))]',
+        heroStyle: {
+          backgroundColor: 'hsl(var(--tone-neutral-50))',
+        } satisfies CSSProperties,
+        close: 'hover:border-[hsl(var(--tone-neutral-300))] hover:bg-[hsl(var(--tone-neutral-50))] hover:text-[hsl(var(--tone-neutral-800))] focus-visible:ring-[hsl(var(--tone-neutral-200))]',
+        consideration: 'border-[hsl(var(--tone-neutral-250))]',
+        considerationStyle: {
+          backgroundColor: 'hsl(var(--tone-neutral-50) / 0.92)',
+        } satisfies CSSProperties,
+        considerationRule: 'border-[hsl(var(--tone-neutral-400))]',
+        considerationLabel: 'text-[hsl(var(--tone-neutral-900))]',
+        action: 'hover:border-[hsl(var(--tone-neutral-300))] hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:ring-[hsl(var(--tone-neutral-200))]',
+        actionBadge: 'border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--background))] text-[hsl(var(--tone-neutral-700))] group-hover:border-[hsl(var(--tone-neutral-300))] group-hover:bg-[hsl(var(--tone-neutral-50))]',
+      }
+    default:
+      return {
+        rail: 'bg-[hsl(var(--tone-accent-400))]',
+        badge: 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-900))]',
+        shellStyle: {
+          backgroundColor: 'hsl(var(--background))',
+        } satisfies CSSProperties,
+        hero: 'border-[hsl(var(--tone-accent-200))]',
+        heroStyle: {
+          backgroundColor: 'hsl(var(--tone-accent-50))',
+        } satisfies CSSProperties,
+        close: 'hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-700))] focus-visible:ring-[hsl(var(--tone-accent-200))]',
+        consideration: 'border-[hsl(var(--tone-accent-200))]',
+        considerationStyle: {
+          backgroundColor: 'hsl(var(--tone-accent-50) / 0.9)',
+        } satisfies CSSProperties,
+        considerationRule: 'border-[hsl(var(--tone-accent-400))]',
+        considerationLabel: 'text-[hsl(var(--tone-neutral-900))]',
+        action: 'hover:border-[hsl(var(--tone-neutral-300))] hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:ring-[hsl(var(--tone-accent-200))]',
+        actionBadge: 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--background))] text-[hsl(var(--tone-accent-700))] group-hover:border-[hsl(var(--tone-accent-300))] group-hover:bg-[hsl(var(--tone-accent-50))]',
+      }
+  }
+}
+
 function readInsightEvidenceNumber(
   payload: PublicationInsightsAgentPayload | null | undefined,
   key: PublicationInsightsSectionKey,
@@ -18980,10 +21530,22 @@ function PublicationInsightsTriggerButton({
   ariaLabel,
   active = false,
   onClick,
+  buttonClassName,
+  activeButtonClassName,
+  iconClassName,
+  activeIconClassName,
+  useCurrentColorIcon = false,
+  animateIcon = true,
 }: {
   ariaLabel: string
   active?: boolean
   onClick: () => void
+  buttonClassName?: string
+  activeButtonClassName?: string
+  iconClassName?: string
+  activeIconClassName?: string
+  useCurrentColorIcon?: boolean
+  animateIcon?: boolean
 }) {
   return (
     <button
@@ -19001,11 +21563,101 @@ function PublicationInsightsTriggerButton({
         active
           ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-100)/0.95)]'
           : 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-50)/0.96)] hover:border-[hsl(var(--tone-accent-400))] hover:bg-[hsl(var(--tone-accent-50)/0.96)]',
+        buttonClassName,
+        active ? activeButtonClassName : null,
       )}
     >
-      <InsightsGlyph className="h-4 w-4" />
+      <InsightsGlyph
+        className={cn('h-4 w-4', iconClassName, active ? activeIconClassName : null)}
+        useCurrentColor={useCurrentColorIcon}
+        animateTwinkle={animateIcon && !active}
+      />
     </button>
   )
+}
+
+function LivePublicationInsightsTriggerButton({
+  available,
+  ariaLabel,
+  active = false,
+  onClick,
+  buttonClassName,
+  activeButtonClassName,
+  iconClassName,
+  activeIconClassName,
+  useCurrentColorIcon = false,
+  animateIcon = true,
+}: {
+  available: boolean
+  ariaLabel: string
+  active?: boolean
+  onClick: () => void
+  buttonClassName?: string
+  activeButtonClassName?: string
+  iconClassName?: string
+  activeIconClassName?: string
+  useCurrentColorIcon?: boolean
+  animateIcon?: boolean
+}) {
+  if (!available) {
+    return null
+  }
+  return (
+    <PublicationInsightsTriggerButton
+      ariaLabel={ariaLabel}
+      active={active}
+      onClick={onClick}
+      buttonClassName={buttonClassName}
+      activeButtonClassName={activeButtonClassName}
+      iconClassName={iconClassName}
+      activeIconClassName={activeIconClassName}
+      useCurrentColorIcon={useCurrentColorIcon}
+      animateIcon={animateIcon}
+    />
+  )
+}
+
+function splitPublicationInsightNarrative(text: string): { lead: string; supporting: string[] } {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) {
+    return { lead: '', supporting: [] }
+  }
+  const sentences = normalized
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+  if (sentences.length <= 1) {
+    return { lead: normalized, supporting: [] }
+  }
+  return {
+    lead: sentences[0] || normalized,
+    supporting: sentences.slice(1),
+  }
+}
+
+function getPublicationInsightLoadingMessages(sectionKey: PublicationInsightsSectionKey): string[] {
+  return PUBLICATION_INSIGHT_LOADING_MESSAGE_LIBRARY[sectionKey] || [
+    'Delving deeper into this section. Please wait.',
+    'Reading the patterns in your record. Almost done.',
+    'Insight is on the way.',
+  ]
+}
+
+function resolvePublicationProductionPhaseInsightTone(
+  phase: PublicationProductionPhaseLabel | null,
+): PublicationInsightTone {
+  switch (resolvePublicationProductionPhaseTone(phase)) {
+    case 'positive':
+      return 'positive'
+    case 'accent':
+      return 'accent'
+    case 'warning':
+      return 'warning'
+    case 'danger':
+      return 'danger'
+    default:
+      return 'neutral'
+  }
 }
 
 function PublicationInsightsCallout({
@@ -19014,6 +21666,7 @@ function PublicationInsightsCallout({
   loading = false,
   error = '',
   actions = [],
+  loadingTone,
   onClose,
 }: {
   payload: PublicationInsightsAgentPayload | null
@@ -19021,35 +21674,21 @@ function PublicationInsightsCallout({
   loading?: boolean
   error?: string
   actions?: PublicationInsightAction[]
+  loadingTone?: PublicationInsightTone
   onClose: () => void
 }) {
   const section = getPublicationInsightsSection(payload, sectionKey)
-  const usesPositiveTone = sectionKey === 'uncited_works' || sectionKey === 'citation_activation' || sectionKey === 'citation_activation_history'
-  const title = String(
-    section?.headline
-    || section?.title
-    || (sectionKey === 'uncited_works'
-      ? 'Uncited publications'
-      : sectionKey === 'citation_activation'
-        ? 'Citation activation'
-        : sectionKey === 'citation_activation_history'
-          ? 'Activation over time'
-          : sectionKey === 'publication_production_phase'
-            ? 'Production phase'
-          : sectionKey === 'publication_volume_over_time'
-            ? 'Publication volume over time'
-          : sectionKey === 'publication_article_type_over_time'
-            ? 'Type of articles published over time'
-          : sectionKey === 'publication_type_over_time'
-            ? 'Type of publications published over time'
-          : sectionKey === 'publication_output_pattern'
-            ? 'Publication output pattern'
-            : 'Citation concentration'),
-  ).trim()
+  const tone = section ? resolvePublicationInsightTone(sectionKey, section) : (loadingTone ?? resolvePublicationInsightTone(sectionKey, null))
+  const toneClasses = getPublicationInsightToneClasses(tone)
+  const sectionTitle = String(section?.title || getPublicationInsightDefaultTitle(sectionKey)).trim()
+  const title = String(section?.headline || sectionTitle).trim()
   const considerationLabel = String(section?.consideration_label || '').trim() || 'Why this matters'
   const consideration = String(section?.consideration || '').trim()
-  const generatedAt = String(((payload?.provenance as Record<string, unknown> | undefined) || {})['generated_at'] || '').trim()
   const showLoading = loading && !section && !error
+  const heroNarrative = splitPublicationInsightNarrative(String(section?.body || ''))
+  const loadingMessages = useMemo(() => getPublicationInsightLoadingMessages(sectionKey), [sectionKey])
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0)
+  const loadingMessage = loadingMessages[loadingMessageIndex] || loadingMessages[0] || 'Insight is on the way.'
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -19063,34 +21702,62 @@ function PublicationInsightsCallout({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
+  useEffect(() => {
+    setLoadingMessageIndex(0)
+  }, [sectionKey, showLoading])
+
+  useEffect(() => {
+    if (!showLoading || loadingMessages.length <= 1) {
+      return
+    }
+    const intervalId = window.setInterval(() => {
+      setLoadingMessageIndex((current) => (current + 1) % loadingMessages.length)
+    }, 2200)
+    return () => window.clearInterval(intervalId)
+  }, [loadingMessages, showLoading])
+
   return (
     <div
       className={cn(
-        'relative w-full overflow-hidden rounded-[1.1rem] border px-4 py-4',
-        'border-[hsl(var(--tone-neutral-250))] bg-white',
+        'relative w-full overflow-hidden rounded-[1.15rem] border px-4 py-[1.05rem]',
+        'border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--background))]',
         'shadow-[0_30px_70px_-34px_rgba(15,23,42,0.42)]',
       )}
+      style={toneClasses.shellStyle}
       role="dialog"
       aria-label="Deeper insights"
     >
+      {showLoading ? <style>{PUBLICATION_INSIGHT_LOADING_RAIL_ANIMATION}</style> : null}
       <div
         aria-hidden="true"
-        className={cn(
-          'pointer-events-none absolute inset-x-0 top-0 h-1',
-          usesPositiveTone ? 'bg-[hsl(var(--tone-positive-400))]' : 'bg-[hsl(var(--tone-accent-400))]',
+        className="pointer-events-none absolute inset-x-0 top-0 h-1 overflow-hidden"
+      >
+        <span className={cn('absolute inset-0 opacity-25', toneClasses.rail)} />
+        {showLoading ? (
+          <span
+            className={cn('absolute inset-y-0 left-0 w-[34%] rounded-full', toneClasses.rail)}
+            style={{ animation: 'publication-insight-loading-rail-sweep 1.45s ease-in-out infinite' }}
+          />
+        ) : (
+          <span className={cn('absolute inset-0', toneClasses.rail)} />
         )}
-      />
+      </div>
       <div className="space-y-3.5">
-        <div className="flex items-start justify-between gap-3 border-b border-[hsl(var(--tone-neutral-200))] pb-2.5">
-          <div className="space-y-1">
-            <p className="text-[1rem] font-semibold leading-6 text-[hsl(var(--tone-neutral-950))]">{title}</p>
-            <p className="max-w-[20rem] text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
-              {generatedAt
-                ? 'Based on your latest publication metrics.'
-                : 'Based on your current publication metrics.'}
-            </p>
+        <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+          <div className="min-w-0 flex-1">
+            <span
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full border px-2.5 py-1',
+                toneClasses.badge,
+              )}
+            >
+              <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', toneClasses.rail)} />
+              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.16em]">
+                {sectionTitle}
+              </span>
+            </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={(event) => {
@@ -19098,22 +21765,35 @@ function PublicationInsightsCallout({
                 onClose()
               }}
               className={cn(
-                'inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-700))] transition-colors focus-visible:outline-none focus-visible:ring-2',
-                usesPositiveTone
-                  ? 'hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-50))] hover:text-[hsl(var(--tone-positive-700))] focus-visible:ring-[hsl(var(--tone-positive-200))]'
-                  : 'hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-700))] focus-visible:ring-[hsl(var(--tone-accent-200))]',
+                'inline-flex h-7 w-7 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-700))] transition-colors focus-visible:outline-none focus-visible:ring-2',
+                toneClasses.close,
               )}
               aria-label="Close deeper insights"
             >
-              <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+              <X className="h-3 w-3" strokeWidth={2} />
             </button>
           </div>
         </div>
         {showLoading ? (
-          <div className="space-y-2.5 py-1">
-            <div className="h-3 w-4/5 rounded-full bg-[hsl(var(--tone-neutral-200))]" />
-            <div className="h-3 w-full rounded-full bg-[hsl(var(--tone-neutral-200))]" />
-            <div className="h-3 w-3/4 rounded-full bg-[hsl(var(--tone-neutral-200))]" />
+          <div
+            className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--background))] px-4 py-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.9)]"
+            data-ui="publication-insight-loading-panel"
+          >
+            <div className="space-y-3">
+              <div data-ui="publication-insight-loading-bar" className="space-y-2.5">
+                <p
+                  className="text-[0.98rem] font-medium leading-6 text-[hsl(var(--tone-neutral-900))]"
+                  data-ui="publication-insight-loading-message"
+                >
+                  {loadingMessage}
+                </p>
+                <div className="space-y-2 animate-pulse">
+                  <div className="h-3 w-full rounded-full bg-[hsl(var(--tone-neutral-200))]" />
+                  <div className="h-3 w-[88%] rounded-full bg-[hsl(var(--tone-neutral-200))]" />
+                  <div className="h-3 w-[72%] rounded-full bg-[hsl(var(--tone-neutral-200))]" />
+                </div>
+              </div>
+            </div>
           </div>
         ) : error ? (
           <div className="rounded-xl border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2.5">
@@ -19121,31 +21801,52 @@ function PublicationInsightsCallout({
           </div>
         ) : section ? (
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <p className={cn(HOUSE_METRIC_NARRATIVE_CLASS, 'text-[0.94rem] leading-7 text-[hsl(var(--tone-neutral-800))]')}>{section.body}</p>
+            <div
+              className={cn('rounded-[1rem] border px-4 py-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.88)]', toneClasses.hero)}
+              style={toneClasses.heroStyle}
+            >
+              <p className="text-[1.16rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-950))]">
+                {title}
+              </p>
+              {heroNarrative.lead ? (
+                <p className="mt-2.5 text-[0.97rem] font-medium leading-6 text-[hsl(var(--tone-neutral-900))]">
+                  {heroNarrative.lead}
+                </p>
+              ) : null}
+              {heroNarrative.supporting.length ? (
+                <div className="mt-2.5 space-y-2">
+                  {heroNarrative.supporting.map((sentence) => (
+                    <p
+                      key={sentence}
+                      className={cn(HOUSE_METRIC_NARRATIVE_CLASS, 'text-[0.9rem] leading-6 text-[hsl(var(--tone-neutral-700))]')}
+                    >
+                      {sentence}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
             </div>
             {consideration ? (
               <div
                 className={cn(
-                  'rounded-[0.95rem] border px-3.5 py-3',
-                  usesPositiveTone
-                    ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))]'
-                    : 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]',
+                  'rounded-[1rem] border px-4 py-3.5',
+                  toneClasses.consideration,
                 )}
+                style={toneClasses.considerationStyle}
               >
                 <div
                   className={cn(
-                    'space-y-1 border-l-2 pl-3',
-                    usesPositiveTone ? 'border-[hsl(var(--tone-positive-400))]' : 'border-[hsl(var(--tone-accent-400))]',
+                    'space-y-1.5 border-l-2 pl-3.5',
+                    toneClasses.considerationRule,
                   )}
                 >
-                  <p className={cn(HOUSE_DRILLDOWN_STAT_TITLE_CLASS, usesPositiveTone ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-accent-700))]')}>{considerationLabel}</p>
+                  <p className={cn('text-[0.8rem] font-semibold leading-tight tracking-[0.02em]', toneClasses.considerationLabel)}>{considerationLabel}</p>
                   <p className={cn(HOUSE_METRIC_NARRATIVE_CLASS, 'text-sm leading-6 text-[hsl(var(--tone-neutral-700))]')}>{consideration}</p>
                 </div>
               </div>
             ) : null}
             {actions.length ? (
-              <div className="space-y-1.5 border-t border-[hsl(var(--tone-neutral-200))] pt-3.5">
+              <div className="space-y-2 border-t border-[hsl(var(--tone-neutral-200))] pt-3.5">
                 <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[hsl(var(--tone-neutral-500))]">Explore next</p>
                 <div className="grid gap-2">
                   {actions.map((action) => (
@@ -19157,24 +21858,20 @@ function PublicationInsightsCallout({
                         action.onSelect()
                       }}
                       className={cn(
-                        'group flex items-center justify-between gap-3 rounded-[0.95rem] border px-3 py-2.5 text-left transition-colors',
+                        'group flex items-start justify-between gap-3 rounded-[1rem] border px-3.5 py-3 text-left transition-colors',
                         'border-[hsl(var(--tone-neutral-200))] bg-white',
-                        usesPositiveTone
-                          ? 'hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-50))] focus-visible:ring-[hsl(var(--tone-positive-200))]'
-                          : 'hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] focus-visible:ring-[hsl(var(--tone-accent-200))]',
+                        toneClasses.action,
                         'focus-visible:outline-none focus-visible:ring-2',
                       )}
                     >
-                      <div className="space-y-0.5 pr-2">
+                      <div className="space-y-1 pr-3">
                         <p className="text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))]">{action.label}</p>
                         <p className="text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">{action.description}</p>
                       </div>
                       <span
                         className={cn(
-                          'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors',
-                          usesPositiveTone
-                            ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))] group-hover:border-[hsl(var(--tone-positive-300))] group-hover:bg-[hsl(var(--tone-positive-100))]'
-                            : 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-700))] group-hover:border-[hsl(var(--tone-accent-300))] group-hover:bg-[hsl(var(--tone-accent-100))]',
+                          'mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors',
+                          toneClasses.actionBadge,
                         )}
                       >
                         <ArrowUpRight className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -19224,32 +21921,40 @@ function StaticPublicationInsightsCallout({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
+  const toneClasses = getPublicationInsightToneClasses(usesPositiveTone ? 'positive' : 'accent')
+  const heroNarrative = splitPublicationInsightNarrative(body)
+
   return (
     <div
       className={cn(
-        'relative w-full overflow-hidden rounded-[1.1rem] border px-4 py-4',
-        'border-[hsl(var(--tone-neutral-250))] bg-white',
+        'relative w-full overflow-hidden rounded-[1.15rem] border px-4 py-[1.05rem]',
+        'border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--background))]',
         'shadow-[0_30px_70px_-34px_rgba(15,23,42,0.42)]',
       )}
+      style={toneClasses.shellStyle}
       role="dialog"
       aria-label="Deeper insights"
     >
       <div
         aria-hidden="true"
-        className={cn(
-          'pointer-events-none absolute inset-x-0 top-0 h-1',
-          usesPositiveTone ? 'bg-[hsl(var(--tone-positive-400))]' : 'bg-[hsl(var(--tone-accent-400))]',
-        )}
-      />
+        className="pointer-events-none absolute inset-x-0 top-0 h-1 overflow-hidden"
+      >
+        <span className={cn('absolute inset-0', toneClasses.rail)} />
+      </div>
       <div className="space-y-3.5">
-        <div className="flex items-start justify-between gap-3 border-b border-[hsl(var(--tone-neutral-200))] pb-2.5">
-          <div className="space-y-1">
-            <p className="text-[1rem] font-semibold leading-6 text-[hsl(var(--tone-neutral-950))]">{title}</p>
-            <p className="max-w-[20rem] text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">
-              Based on your current h-index metrics.
-            </p>
+        <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+          <div className="min-w-0 flex-1">
+            <span
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full border px-2.5 py-1',
+                toneClasses.badge,
+              )}
+            >
+              <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', toneClasses.rail)} />
+              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.16em]">{title}</span>
+            </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={(event) => {
@@ -19257,43 +21962,72 @@ function StaticPublicationInsightsCallout({
                 onClose()
               }}
               className={cn(
-                'inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-700))] transition-colors focus-visible:outline-none focus-visible:ring-2',
-                usesPositiveTone
-                  ? 'hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-50))] hover:text-[hsl(var(--tone-positive-700))] focus-visible:ring-[hsl(var(--tone-positive-200))]'
-                  : 'hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-700))] focus-visible:ring-[hsl(var(--tone-accent-200))]',
+                'inline-flex h-7 w-7 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-700))] transition-colors focus-visible:outline-none focus-visible:ring-2',
+                toneClasses.close,
               )}
               aria-label="Close deeper insights"
             >
-              <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+              <X className="h-3 w-3" strokeWidth={2} />
             </button>
           </div>
         </div>
         <div className="space-y-3">
-          <div className="space-y-1.5">
-            <p className={cn(HOUSE_METRIC_NARRATIVE_CLASS, 'text-[0.94rem] leading-7 text-[hsl(var(--tone-neutral-800))]')}>{body}</p>
+          <div
+            className={cn(
+              'rounded-[1rem] border px-4 py-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.88)]',
+              toneClasses.hero,
+            )}
+            style={toneClasses.heroStyle}
+          >
+            {heroNarrative.lead ? (
+              <p className="text-[0.97rem] font-medium leading-6 text-[hsl(var(--tone-neutral-900))]">
+                {heroNarrative.lead}
+              </p>
+            ) : null}
+            {heroNarrative.supporting.length ? (
+              <div className="mt-2.5 space-y-2">
+                {heroNarrative.supporting.map((sentence) => (
+                  <p
+                    key={sentence}
+                    className={cn(
+                      HOUSE_METRIC_NARRATIVE_CLASS,
+                      'text-[0.9rem] leading-6 text-[hsl(var(--tone-neutral-700))]',
+                    )}
+                  >
+                    {sentence}
+                  </p>
+                ))}
+              </div>
+            ) : null}
           </div>
           {consideration ? (
             <div
               className={cn(
-                'rounded-[0.95rem] border px-3.5 py-3',
-                usesPositiveTone
-                  ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))]'
-                  : 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]',
+                'rounded-[1rem] border px-4 py-3.5',
+                toneClasses.consideration,
               )}
+              style={toneClasses.considerationStyle}
             >
               <div
                 className={cn(
-                  'space-y-1 border-l-2 pl-3',
-                  usesPositiveTone ? 'border-[hsl(var(--tone-positive-400))]' : 'border-[hsl(var(--tone-accent-400))]',
+                  'space-y-1.5 border-l-2 pl-3.5',
+                  toneClasses.considerationRule,
                 )}
               >
-                <p className={cn(HOUSE_DRILLDOWN_STAT_TITLE_CLASS, usesPositiveTone ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-accent-700))]')}>{considerationLabel}</p>
+                <p
+                  className={cn(
+                    'text-[0.8rem] font-semibold leading-tight tracking-[0.02em]',
+                    toneClasses.considerationLabel,
+                  )}
+                >
+                  {considerationLabel}
+                </p>
                 <p className={cn(HOUSE_METRIC_NARRATIVE_CLASS, 'text-sm leading-6 text-[hsl(var(--tone-neutral-700))]')}>{consideration}</p>
               </div>
             </div>
           ) : null}
           {actions.length ? (
-            <div className="space-y-1.5 border-t border-[hsl(var(--tone-neutral-200))] pt-3.5">
+            <div className="space-y-2 border-t border-[hsl(var(--tone-neutral-200))] pt-3.5">
               <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[hsl(var(--tone-neutral-500))]">Explore next</p>
               <div className="grid gap-2">
                 {actions.map((action) => (
@@ -19305,24 +22039,20 @@ function StaticPublicationInsightsCallout({
                       action.onSelect()
                     }}
                     className={cn(
-                      'group flex items-center justify-between gap-3 rounded-[0.95rem] border px-3 py-2.5 text-left transition-colors',
+                      'group flex items-start justify-between gap-3 rounded-[1rem] border px-3.5 py-3 text-left transition-colors',
                       'border-[hsl(var(--tone-neutral-200))] bg-white',
-                      usesPositiveTone
-                        ? 'hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-50))] focus-visible:ring-[hsl(var(--tone-positive-200))]'
-                        : 'hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] focus-visible:ring-[hsl(var(--tone-accent-200))]',
+                      toneClasses.action,
                       'focus-visible:outline-none focus-visible:ring-2',
                     )}
                   >
-                    <div className="space-y-0.5 pr-2">
+                    <div className="space-y-1 pr-3">
                       <p className="text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-900))]">{action.label}</p>
                       <p className="text-[0.72rem] leading-5 text-[hsl(var(--tone-neutral-600))]">{action.description}</p>
                     </div>
                     <span
                       className={cn(
-                        'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors',
-                        usesPositiveTone
-                          ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))] group-hover:border-[hsl(var(--tone-positive-300))] group-hover:bg-[hsl(var(--tone-positive-100))]'
-                          : 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-700))] group-hover:border-[hsl(var(--tone-accent-300))] group-hover:bg-[hsl(var(--tone-accent-100))]',
+                        'mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors',
+                        toneClasses.actionBadge,
                       )}
                     >
                       <ArrowUpRight className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -19365,7 +22095,7 @@ function StaticPublicationInsightsOverlay({
       <button
         type="button"
         aria-label="Close deeper insights"
-        className="fixed inset-0 z-40 cursor-default bg-[hsl(var(--tone-neutral-950)/0.08)] backdrop-blur-[1px]"
+        className={PUBLICATION_INSIGHTS_OVERLAY_BACKDROP_CLASS}
         onClick={onClose}
       />
       <div className="fixed inset-x-0 top-24 z-[70] flex justify-center px-4">
@@ -21846,6 +24576,7 @@ export function PublicationsTopStrip({
   const [insightsVisible, setInsightsVisible] = useState(
     () => forceInsightsVisible || readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
+  const [publicationInsightsApiReady, setPublicationInsightsApiReady] = useState(false)
   const [toolboxOpen, setToolboxOpen] = useState(false)
   const [chartRefreshCycle, setChartRefreshCycle] = useState(0)
 
@@ -21929,6 +24660,53 @@ export function PublicationsTopStrip({
       setToolboxOpen(false)
     }
   }, [forceInsightsVisible])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const refreshPublicationInsightsHealth = async () => {
+      try {
+        await pingApiHealth()
+        if (!cancelled) {
+          setPublicationInsightsApiReady(true)
+        }
+      } catch {
+        if (!cancelled) {
+          setPublicationInsightsApiReady(false)
+        }
+      }
+    }
+
+    if (!token) {
+      setPublicationInsightsApiReady(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setPublicationInsightsApiReady(false)
+    void refreshPublicationInsightsHealth()
+
+    const handleWindowFocus = () => {
+      void refreshPublicationInsightsHealth()
+    }
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void refreshPublicationInsightsHealth()
+      }
+    }
+
+    window.addEventListener('focus', handleWindowFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', handleWindowFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [token])
+
+  const publicationInsightsAvailable = Boolean(token) && publicationInsightsApiReady
 
   // Refresh settings when page becomes visible (user navigates back from settings)
   useEffect(() => {
@@ -22605,6 +25383,7 @@ export function PublicationsTopStrip({
                   activeTab={activeDrilldownTab}
                   animateCharts={drawerOpen}
                   token={token}
+                  publicationInsightsAvailable={publicationInsightsAvailable}
                   onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
                   onDrilldownTabChange={setActiveDrilldownTab}
                 />
@@ -22614,6 +25393,7 @@ export function PublicationsTopStrip({
                   activeTab={activeDrilldownTab}
                   animateCharts={drawerOpen}
                   token={token}
+                  publicationInsightsAvailable={publicationInsightsAvailable}
                   onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
                   onDrilldownTabChange={setActiveDrilldownTab}
                   totalCitationsTile={totalCitationsTile}

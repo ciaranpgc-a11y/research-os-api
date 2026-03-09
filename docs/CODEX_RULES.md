@@ -35,6 +35,14 @@
 - Backend API/services: `src/research_os`
 - Workspace automation/docs: `.vscode`, `docs`, `.codex`
 
+## Publication drilldown guidance
+
+- For publication `?` explainers and live insight cards, follow `docs/publication-insights-guidelines.md`.
+- Preserve the two explainer patterns:
+  - `Deep ?`
+  - `Compact ?`
+- New publication explainers should match the documented writing, tone, and scope-note rules instead of inventing a third style ad hoc.
+
 ## Command conventions
 
 - Backend dev server:

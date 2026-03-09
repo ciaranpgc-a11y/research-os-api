@@ -58,7 +58,11 @@ def test_openalex_provider_matches_with_pmid(monkeypatch) -> None:
                         "ids": {"pmid": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"},
                         "primary_location": {
                             "source": {
+                                "id": "https://openalex.org/S4210189124",
                                 "display_name": "Test Journal",
+                                "issn_l": "1234-5678",
+                                "issn": ["1234-5678", "8765-4321"],
+                                "type": "journal",
                                 "summary_stats": {"2yr_mean_citedness": 3.1},
                             }
                         },
@@ -88,6 +92,8 @@ def test_openalex_provider_matches_with_pmid(monkeypatch) -> None:
         {"year": 2024, "cited_by_count": 30},
         {"year": 2025, "cited_by_count": 58},
     ]
+    assert payload["payload_subset"]["source"]["id"] == "S4210189124"
+    assert payload["payload_subset"]["issn_l"] == "1234-5678"
 
 
 def test_semantic_scholar_provider_matches_with_pmid(monkeypatch) -> None:

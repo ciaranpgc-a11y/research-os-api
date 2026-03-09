@@ -24,6 +24,7 @@ import {
   fetchPersonaState,
   fetchPublicationsAnalytics,
   fetchPublicationsTopMetrics,
+  listPersonaJournals,
   triggerPublicationsTopMetricsRefresh,
   linkPublicationOpenAccessPdf,
   listPersonaSyncJobs,
@@ -42,6 +43,7 @@ import type {
   PublicationFilesListPayload,
   PublicationImpactResponsePayload,
   PublicationMetricTilePayload,
+  PersonaJournal,
   PersonaWork,
   PersonaStatePayload,
   PersonaSyncJobPayload,
@@ -51,7 +53,18 @@ import type {
   PublicationsTopMetricsPayload,
 } from '@/types/impact'
 
+type PublicationLibraryViewMode = 'publications' | 'journals'
 type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
+type JournalSortField =
+  | 'journal'
+  | 'publication_count'
+  | 'share_pct'
+  | 'avg_citations'
+  | 'median_citations'
+  | 'journal_metric'
+  | 'is_oa'
+  | 'latest_publication_year'
+type LibrarySortField = PublicationSortField | JournalSortField
 type SortDirection = 'asc' | 'desc'
 type PublicationDetailTab = 'overview' | 'content' | 'impact' | 'files' | 'ai'
 type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
@@ -339,7 +352,7 @@ function normalizeCompactText(value: string | null | undefined): string {
 function inferArticleTypeFromTitle(title: string | null | undefined): string {
   const clean = normalizeCompactText(title)
   if (!clean) {
-    return 'Original'
+    return 'Original research'
   }
   if (ARTICLE_TYPE_META_ANALYSIS_PATTERN.test(clean)) {
     return 'Systematic review'
@@ -365,7 +378,7 @@ function inferArticleTypeFromTitle(title: string | null | undefined): string {
   if (ARTICLE_TYPE_LETTER_PATTERN.test(clean)) {
     return 'Letter'
   }
-  return 'Original'
+  return 'Original research'
 }
 
 function deriveArticleTypeLabel(work: {
@@ -376,7 +389,11 @@ function deriveArticleTypeLabel(work: {
 }): string {
   const classification = String(work.publication_type || '').trim()
   if (classification) {
-    const normalizedClassification = classification.toLowerCase()
+    const normalizedClassification = classification
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
     if (normalizedClassification === 'review') {
       return inferArticleTypeFromTitle(work.title)
     }
@@ -397,6 +414,14 @@ function deriveArticleTypeLabel(work: {
     }
     if (normalizedClassification === 'systematic review') {
       return 'Systematic review'
+    }
+    if (
+      normalizedClassification === 'original' ||
+      normalizedClassification === 'original article' ||
+      normalizedClassification === 'original research' ||
+      normalizedClassification === 'research article'
+    ) {
+      return 'Original research'
     }
     if (
       normalizedClassification === 'literature review' ||
@@ -2174,11 +2199,11 @@ function SortHeader({
   onSort,
 }: {
   label: string
-  column: PublicationSortField
-  sortField: PublicationSortField
+  column: LibrarySortField
+  sortField: LibrarySortField
   sortDirection: SortDirection
   align?: PublicationTableColumnAlign
-  onSort: (column: PublicationSortField) => void
+  onSort: (column: LibrarySortField) => void
 }) {
   const active = sortField === column
   const alignClass =
@@ -2270,8 +2295,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         : createDefaultPublicationTableColumnPreferences()
     ),
   )
+  const [publicationLibraryViewMode, setPublicationLibraryViewMode] = useState<PublicationLibraryViewMode>('publications')
   const [sortField, setSortField] = useState<PublicationSortField>('year')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [journalSortField, setJournalSortField] = useState<JournalSortField>('publication_count')
+  const [journalSortDirection, setJournalSortDirection] = useState<SortDirection>('desc')
+  const [personaJournals, setPersonaJournals] = useState<PersonaJournal[]>([])
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [richImporting, setRichImporting] = useState(false)
@@ -2377,6 +2406,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     try {
       const personaPromise = fetchPersonaState(sessionToken)
+      const journalsPromise = listPersonaJournals(sessionToken)
       const userPromise = fetchMe(sessionToken)
       const jobsPromise = listPersonaSyncJobs(sessionToken, 5)
       const analyticsPromise = fetchPublicationsAnalytics(sessionToken)
@@ -2395,12 +2425,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
       const settled = await Promise.allSettled([
         personaPromise,
+        journalsPromise,
         userPromise,
         jobsPromise,
         analyticsPromise,
         topMetricsPromise,
       ])
-      const [stateResult, userResult, jobsResult, analyticsResult, topMetricsResult] = settled
+      const [stateResult, journalsResult, userResult, jobsResult, analyticsResult, topMetricsResult] = settled
       if (userResult.status === 'rejected') {
         const reason = userResult.reason
         const message = reason instanceof Error ? reason.message : String(reason || '')
@@ -2427,6 +2458,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         if (cached) {
           setStatus('Showing cached publications while live data reloads.')
         }
+      }
+      if (journalsResult.status === 'fulfilled') {
+        setPersonaJournals(journalsResult.value)
+      } else if (!background) {
+        setPersonaJournals([])
       }
       if (userResult.status === 'fulfilled') {
         setUser(userResult.value)
@@ -3210,10 +3246,68 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return filtered
   }, [metricsByWorkId, personaState?.works, query, selectedArticleTypes, selectedPublicationTypes, sortDirection, sortField])
 
+  const filteredJournals = useMemo(() => {
+    const cleanQuery = query.trim().toLowerCase()
+    const journals = [...personaJournals]
+    const filtered = journals.filter((journal) => {
+      if (!cleanQuery) {
+        return true
+      }
+      return [
+        journal.display_name,
+        journal.publisher,
+        journal.issn_l,
+        journal.openalex_source_id,
+        ...(journal.issns || []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(cleanQuery)
+    })
+
+    const direction = journalSortDirection === 'asc' ? 1 : -1
+    filtered.sort((left, right) => {
+      if (journalSortField === 'publication_count') {
+        return (left.publication_count - right.publication_count) * direction
+      }
+      if (journalSortField === 'share_pct') {
+        return (left.share_pct - right.share_pct) * direction
+      }
+      if (journalSortField === 'avg_citations') {
+        return (left.avg_citations - right.avg_citations) * direction
+      }
+      if (journalSortField === 'median_citations') {
+        return (left.median_citations - right.median_citations) * direction
+      }
+      if (journalSortField === 'journal_metric') {
+        return ((left.journal_metric_value || 0) - (right.journal_metric_value || 0)) * direction
+      }
+      if (journalSortField === 'is_oa') {
+        return ((Number(left.is_oa) || 0) - (Number(right.is_oa) || 0)) * direction
+      }
+      if (journalSortField === 'latest_publication_year') {
+        return ((left.latest_publication_year || 0) - (right.latest_publication_year || 0)) * direction
+      }
+      return left.display_name.localeCompare(right.display_name) * direction
+    })
+    return filtered
+  }, [journalSortDirection, journalSortField, personaJournals, query])
+
   const publicationLibraryEmptyState = useMemo(() => {
-    const hasWorks = Boolean((personaState?.works ?? []).length)
-    if (hasWorks || filteredWorks.length > 0) {
+    const totalWorks = (personaState?.works ?? []).length
+    if (filteredWorks.length > 0) {
       return null
+    }
+    if (totalWorks > 0) {
+      return {
+        title: 'No publications match your current view.',
+        steps: [
+          'Adjust the library search.',
+          'Clear publication or article-type filters.',
+          'Switch to My journals to review venue-level rollups.',
+        ],
+      }
     }
     if (loading) {
       return {
@@ -3251,7 +3345,53 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }, [filteredWorks.length, loading, personaState?.works, status, topMetricsResponse?.last_error, topMetricsResponse?.status])
 
-  const totalFilteredPublicationWorks = filteredWorks.length
+  const journalLibraryEmptyState = useMemo(() => {
+    if (filteredJournals.length > 0) {
+      return null
+    }
+    if (personaJournals.length > 0) {
+      return {
+        title: 'No journals match your current view.',
+        steps: [
+          'Adjust the library search.',
+          'Switch back to My publications to inspect individual records.',
+          'Resync publications if venue metadata looks incomplete.',
+        ],
+      }
+    }
+    if (loading) {
+      return {
+        title: 'Loading journal view...',
+        steps: [
+          'Checking your publication venues.',
+          'Resolving journal-level identifiers and metrics.',
+          'This should resolve automatically if data is available.',
+        ],
+      }
+    }
+    if ((personaState?.works ?? []).length > 0) {
+      return {
+        title: 'No journal rollups available yet.',
+        steps: [
+          'Run a publications metrics sync to backfill venue metadata.',
+          'Check that imported works have journal venues rather than repository-only records.',
+          'Refresh the page after the sync completes.',
+        ],
+      }
+    }
+    return {
+      title: 'No journals in your library yet.',
+      steps: [
+        'Connect ORCID in Integrations.',
+        'Run ORCID sync from the top-right actions.',
+        'Return here once your publication library has loaded.',
+      ],
+    }
+  }, [filteredJournals.length, loading, personaJournals.length, personaState?.works])
+
+  const totalFilteredPublicationWorks = publicationLibraryViewMode === 'journals'
+    ? filteredJournals.length
+    : filteredWorks.length
   const publicationLibraryTotalPages = useMemo(() => {
     if (publicationLibraryPageSize === 'all') {
       return 1
@@ -3277,6 +3417,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const startIndex = (safePage - 1) * publicationLibraryPageSize
     return filteredWorks.slice(startIndex, startIndex + publicationLibraryPageSize)
   }, [filteredWorks, publicationLibraryPage, publicationLibraryPageSize, publicationLibraryTotalPages])
+
+  const pagedFilteredJournals = useMemo(() => {
+    if (publicationLibraryPageSize === 'all') {
+      return filteredJournals
+    }
+    const safePage = Math.max(1, Math.min(publicationLibraryPage, publicationLibraryTotalPages))
+    const startIndex = (safePage - 1) * publicationLibraryPageSize
+    return filteredJournals.slice(startIndex, startIndex + publicationLibraryPageSize)
+  }, [filteredJournals, publicationLibraryPage, publicationLibraryPageSize, publicationLibraryTotalPages])
 
   const publicationLibraryRangeStart = totalFilteredPublicationWorks === 0
     ? 0
@@ -3333,6 +3482,19 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return null
     })
   }, [filteredWorks])
+
+  useEffect(() => {
+    if (publicationLibraryViewMode === 'publications') {
+      return
+    }
+    setSelectedWorkId(null)
+    setSelectedPublicationTypes([])
+    setSelectedArticleTypes([])
+    setPublicationLibraryFiltersVisible(false)
+    setPublicationLibraryDownloadVisible(false)
+    setPublicationLibrarySettingsVisible(false)
+    setPublicationLibraryToolsOpen(false)
+  }, [publicationLibraryViewMode])
 
   useEffect(() => {
     if (publicationLibraryDownloadScope !== 'selected_rows') {
@@ -3875,13 +4037,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
   const hIndex = analyticsSummary?.h_index ?? 0
 
-  const onSortColumn = (column: PublicationSortField) => {
-    if (sortField === column) {
+  const onSortColumn = (column: LibrarySortField) => {
+    const nextColumn = column as PublicationSortField
+    if (sortField === nextColumn) {
       setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))
       return
     }
-    setSortField(column)
+    setSortField(nextColumn)
     setSortDirection('desc')
+  }
+
+  const onSortJournalColumn = (column: JournalSortField) => {
+    if (journalSortField === column) {
+      setJournalSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))
+      return
+    }
+    setJournalSortField(column)
+    setJournalSortDirection(column === 'journal' || column === 'is_oa' ? 'asc' : 'desc')
   }
 
   const onReorderPublicationColumn = useCallback((fromColumn: PublicationTableColumnKey, toColumn: PublicationTableColumnKey) => {
@@ -4707,6 +4879,33 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           className="house-publications-toolbar-header house-publications-library-toolbar-header"
           actions={(
             <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
+            <div className="order-0 inline-flex h-8 shrink-0 items-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-0.5 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+              {([
+                { value: 'publications', label: 'My publications' },
+                { value: 'journals', label: 'My journals' },
+              ] as Array<{ value: PublicationLibraryViewMode; label: string }>).map((option) => {
+                const active = publicationLibraryViewMode === option.value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={cn(
+                      'inline-flex h-6 items-center rounded-full px-3 text-[0.68rem] font-semibold tracking-[0.04em] transition-colors',
+                      active
+                        ? 'bg-[hsl(var(--foreground))] text-[hsl(var(--background))]'
+                        : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]',
+                    )}
+                    aria-pressed={active}
+                    onClick={() => {
+                      setPublicationLibraryViewMode(option.value)
+                      setPublicationLibraryPage(1)
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
             <SectionTools tone="publications" framed={false} className="order-1">
             {publicationLibraryVisible ? (
               <div className="relative order-1 shrink-0">
@@ -4753,7 +4952,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       autoFocus
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Search by publication name, author, PMID, DOI, journal..."
+                      placeholder={publicationLibraryViewMode === 'journals'
+                        ? 'Search by journal, publisher, ISSN, OpenAlex source...'
+                        : 'Search by publication name, author, PMID, DOI, journal...'}
                       className="house-publications-search-input"
                     />
                   </div>,
@@ -4761,7 +4962,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 ) : null}
               </div>
             ) : null}
-            {publicationLibraryVisible ? (
+            {publicationLibraryVisible && publicationLibraryViewMode === 'publications' ? (
               <div className="relative order-2 shrink-0">
                 <button
                   ref={publicationLibraryFilterButtonRef}
@@ -4878,11 +5079,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             <div
               className={cn(
                 'relative order-2 overflow-visible transition-[max-width,opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
-                publicationLibraryVisible && publicationLibraryToolsOpen
+                publicationLibraryVisible && publicationLibraryViewMode === 'publications' && publicationLibraryToolsOpen
                   ? 'z-30 max-w-[20rem] translate-x-0 opacity-100'
                   : 'pointer-events-none z-0 max-w-0 translate-x-1 opacity-0',
               )}
-              aria-hidden={!publicationLibraryVisible || !publicationLibraryToolsOpen}
+              aria-hidden={!publicationLibraryVisible || publicationLibraryViewMode !== 'publications' || !publicationLibraryToolsOpen}
             >
               <div className="flex min-w-0 flex-nowrap whitespace-nowrap gap-1">
                 <div className="relative inline-flex">
@@ -5085,7 +5286,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               </div>
             </div>
             <SectionTools tone="publications" framed={false} className="order-3">
-            {publicationLibraryVisible ? (
+            {publicationLibraryVisible && publicationLibraryViewMode === 'publications' ? (
               <button
                 type="button"
                 data-state={publicationLibraryToolsOpen ? 'open' : 'closed'}
@@ -5109,7 +5310,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 <Hammer className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
               </button>
             ) : null}
-            {publicationLibraryVisible ? (
+            {publicationLibraryVisible && publicationLibraryViewMode === 'publications' ? (
               <div className="relative order-5 shrink-0">
                 <button
                   ref={publicationLibrarySettingsButtonRef}
@@ -5319,11 +5520,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           <div className="grid grid-cols-1 items-start gap-4">
             <div className="space-y-1">
 
-              {filteredWorks.length === 0 ? (
+              {(publicationLibraryViewMode === 'journals' ? filteredJournals.length === 0 : filteredWorks.length === 0) ? (
                 <div className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  <p className="mb-2 text-foreground">{publicationLibraryEmptyState?.title || 'No works in your library yet.'}</p>
+                  <p className="mb-2 text-foreground">
+                    {publicationLibraryViewMode === 'journals'
+                      ? (journalLibraryEmptyState?.title || 'No journals in your library yet.')
+                      : (publicationLibraryEmptyState?.title || 'No works in your library yet.')}
+                  </p>
                   <ol className="list-decimal space-y-1 pl-5">
-                    {(publicationLibraryEmptyState?.steps || [
+                    {((publicationLibraryViewMode === 'journals'
+                      ? journalLibraryEmptyState?.steps
+                      : publicationLibraryEmptyState?.steps) || [
                       'Connect ORCID in Integrations.',
                       'Run ORCID sync from the top-right actions.',
                       'Select any row to inspect publication details.',
@@ -5331,6 +5538,179 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       <li key={step}>{step}</li>
                     ))}
                   </ol>
+                </div>
+              ) : publicationLibraryViewMode === 'journals' ? (
+                <div className="w-full house-table-context-profile">
+                  <Table
+                    className={cn(
+                      'w-full table-fixed',
+                      publicationTableDensity === 'compact' && 'house-publications-table-density-compact',
+                      publicationTableDensity === 'comfortable' && 'house-publications-table-density-comfortable',
+                    )}
+                  >
+                    <TableHeader className="house-table-head text-left">
+                      <TableRow style={{ backgroundColor: 'transparent' }}>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                          <SortHeader
+                            label="Journal"
+                            column="journal"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="left"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                          <SortHeader
+                            label="Count"
+                            column="publication_count"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="left"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                          <SortHeader
+                            label="Share"
+                            column="share_pct"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="left"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                          <SortHeader
+                            label="Avg cites"
+                            column="avg_citations"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="left"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                          <SortHeader
+                            label="Median cites"
+                            column="median_citations"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="left"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                          <SortHeader
+                            label="Journal metric"
+                            column="journal_metric"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="left"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                          <SortHeader
+                            label="OA"
+                            column="is_oa"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="left"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pagedFilteredJournals.map((journal) => (
+                        <TableRow
+                          key={journal.journal_key}
+                          className={cn(
+                            publicationTableAlternateRowColoring && 'odd:bg-[hsl(var(--tone-neutral-50))] even:bg-[hsl(var(--tone-neutral-100))]',
+                          )}
+                        >
+                          <TableCell className={`align-top font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS}`}>
+                            <div className="grid gap-1">
+                              <span className="min-w-0 whitespace-normal break-words leading-tight">
+                                {formatJournalName(journal.display_name) || 'n/a'}
+                              </span>
+                              {journal.publisher ? (
+                                <span className="text-[0.68rem] font-medium uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
+                                  {journal.publisher}
+                                </span>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                            {journal.publication_count}
+                          </TableCell>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                            {journal.share_pct.toFixed(1)}%
+                          </TableCell>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                            {journal.avg_citations.toFixed(1)}
+                          </TableCell>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                            {journal.median_citations.toFixed(1)}
+                          </TableCell>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                            <div className="grid gap-1">
+                              <span>
+                                {journal.journal_metric_value == null ? 'n/a' : journal.journal_metric_value.toFixed(2)}
+                              </span>
+                              {journal.journal_metric_label ? (
+                                <span className="text-[0.65rem] uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
+                                  {journal.journal_metric_label.replace(/_/g, ' ')}
+                                </span>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                            {journal.is_oa == null ? 'Unknown' : journal.is_oa ? 'Yes' : 'No'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <div className="mt-1 flex items-center justify-between gap-2 px-1">
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
+                      Showing {publicationLibraryRangeStart}-{publicationLibraryRangeEnd} of {totalFilteredPublicationWorks}
+                    </p>
+                    {publicationLibraryPageSize === 'all' ? null : (
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          className={cn(
+                            'house-section-tool-button inline-flex h-7 items-center justify-center px-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em]',
+                            publicationLibraryPage <= 1 && 'pointer-events-none opacity-50',
+                          )}
+                          onClick={() => {
+                            setPublicationLibraryPage((current) => Math.max(1, current - 1))
+                          }}
+                          aria-label="Go to previous page"
+                        >
+                          Prev
+                        </button>
+                        <span className="min-w-[4.2rem] text-center text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-700))]">
+                          {publicationLibraryPage}/{publicationLibraryTotalPages}
+                        </span>
+                        <button
+                          type="button"
+                          className={cn(
+                            'house-section-tool-button inline-flex h-7 items-center justify-center px-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em]',
+                            publicationLibraryPage >= publicationLibraryTotalPages && 'pointer-events-none opacity-50',
+                          )}
+                          onClick={() => {
+                            setPublicationLibraryPage((current) => Math.min(publicationLibraryTotalPages, current + 1))
+                          }}
+                          aria-label="Go to next page"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div ref={publicationTableLayoutRef} className="w-full house-table-context-profile">

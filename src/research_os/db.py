@@ -114,7 +114,9 @@ def _copy_legacy_sqlite_if_needed(stable_path: Path) -> None:
         return bool(known) and all(value == 0 for value in known)
 
     def _replace_with_legacy(legacy_path: Path) -> None:
-        backup_path = stable_path.with_name(f"{stable_path.stem}.pre-legacy-recovery{stable_path.suffix}")
+        backup_path = stable_path.with_name(
+            f"{stable_path.stem}.pre-legacy-recovery{stable_path.suffix}"
+        )
         try:
             shutil.copy2(stable_path, backup_path)
         except Exception:
@@ -148,7 +150,9 @@ def _copy_legacy_sqlite_if_needed(stable_path: Path) -> None:
         return
 
 
-def _copy_sqlite_database_with_sidecars(*, source_path: Path, target_path: Path) -> None:
+def _copy_sqlite_database_with_sidecars(
+    *, source_path: Path, target_path: Path
+) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_path, target_path)
     for suffix in ("-wal", "-shm"):
@@ -183,7 +187,9 @@ def _resolve_explicit_database_url(database_url: str) -> str:
         return clean
 
     sqlite_prefixes = ("sqlite+pysqlite:///", "sqlite:///")
-    prefix = next((candidate for candidate in sqlite_prefixes if clean.startswith(candidate)), "")
+    prefix = next(
+        (candidate for candidate in sqlite_prefixes if clean.startswith(candidate)), ""
+    )
     if not prefix:
         return clean
 
@@ -234,10 +240,15 @@ class Project(Base):
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
     owner_user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     collaborator_user_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
-    workspace_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(255))
     target_journal: Mapped[str] = mapped_column(String(128))
     journal_voice: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -281,9 +292,7 @@ class User(Base):
     openalex_author_id: Mapped[str | None] = mapped_column(
         String(128), nullable=True, index=True
     )
-    openalex_integration_approved: Mapped[bool] = mapped_column(
-        Boolean, default=False
-    )
+    openalex_integration_approved: Mapped[bool] = mapped_column(Boolean, default=False)
     openalex_auto_update_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     google_sub: Mapped[str | None] = mapped_column(
         String(128), nullable=True, index=True
@@ -357,8 +366,8 @@ class User(Base):
     collaboration_metrics: Mapped[list["CollaborationMetric"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
     )
-    collaboration_landing_caches: Mapped[list["CollaborationLandingCache"]] = relationship(
-        back_populates="owner_user", cascade="all, delete-orphan"
+    collaboration_landing_caches: Mapped[list["CollaborationLandingCache"]] = (
+        relationship(back_populates="owner_user", cascade="all, delete-orphan")
     )
     manuscript_authors: Mapped[list["ManuscriptAuthor"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
@@ -429,7 +438,9 @@ class WorkspaceStateCache(Base):
 class PersonaGrantRecord(Base):
     __tablename__ = "persona_grant_records"
     __table_args__ = (
-        UniqueConstraint("user_id", "grant_key", name="uq_persona_grant_records_user_key"),
+        UniqueConstraint(
+            "user_id", "grant_key", name="uq_persona_grant_records_user_key"
+        ),
         Index("ix_persona_grant_records_user_source", "user_id", "source_provider"),
     )
 
@@ -440,7 +451,9 @@ class PersonaGrantRecord(Base):
         String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     grant_key: Mapped[str] = mapped_column(String(512), index=True)
-    source_provider: Mapped[str] = mapped_column(String(64), default="openalex", index=True)
+    source_provider: Mapped[str] = mapped_column(
+        String(64), default="openalex", index=True
+    )
     funder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     funder_identifier: Mapped[str | None] = mapped_column(String(255), nullable=True)
     award_identifier: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -450,9 +463,13 @@ class PersonaGrantRecord(Base):
     end_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     amount: Mapped[float | None] = mapped_column(Float, nullable=True)
     currency: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    source_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    source_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
     raw_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
@@ -664,7 +681,10 @@ class DataLibraryAsset(Base):
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
     owner_user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     project_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
@@ -674,9 +694,7 @@ class DataLibraryAsset(Base):
     )
     workspace_ids_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     origin_workspace_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    shared_with_user_ids: Mapped[list[str] | None] = mapped_column(
-        JSON, nullable=True
-    )
+    shared_with_user_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     shared_with_roles_json: Mapped[dict[str, str] | None] = mapped_column(
         JSON, nullable=True
     )
@@ -686,9 +704,7 @@ class DataLibraryAsset(Base):
     archived_by_user_ids_json: Mapped[list[str] | None] = mapped_column(
         JSON, nullable=True
     )
-    audit_log_json: Mapped[list[dict] | None] = mapped_column(
-        JSON, nullable=True
-    )
+    audit_log_json: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     filename: Mapped[str] = mapped_column(String(255))
     kind: Mapped[str] = mapped_column(String(32), default="unknown")
     mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -753,6 +769,12 @@ class Work(Base):
     openalex_work_id: Mapped[str | None] = mapped_column(
         String(128), nullable=True, index=True
     )
+    openalex_source_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    issn_l: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    issns_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    venue_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     journal: Mapped[str] = mapped_column(String(255), default="")
     publication_type: Mapped[str] = mapped_column(String(128), default="")
     citations_total: Mapped[int] = mapped_column(Integer, default=0)
@@ -799,9 +821,9 @@ class Work(Base):
     ai_cache_rows: Mapped[list["PublicationAiCache"]] = relationship(
         back_populates="publication", cascade="all, delete-orphan"
     )
-    structured_abstract_cache_rows: Mapped[list["PublicationStructuredAbstractCache"]] = (
-        relationship(back_populates="publication", cascade="all, delete-orphan")
-    )
+    structured_abstract_cache_rows: Mapped[
+        list["PublicationStructuredAbstractCache"]
+    ] = relationship(back_populates="publication", cascade="all, delete-orphan")
     files: Mapped[list["PublicationFile"]] = relationship(
         back_populates="publication", cascade="all, delete-orphan"
     )
@@ -1007,6 +1029,46 @@ class PublicationMetricsSourceCache(Base):
     )
 
 
+class JournalProfile(Base):
+    __tablename__ = "journal_profiles"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "provider_journal_id",
+            name="uq_journal_profiles_provider_journal_id",
+        ),
+        Index("ix_journal_profiles_provider_issn_l", "provider", "issn_l"),
+        Index("ix_journal_profiles_display_name", "display_name"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    provider: Mapped[str] = mapped_column(String(64), default="openalex")
+    provider_journal_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    issn_l: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    issns_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    display_name: Mapped[str] = mapped_column(String(255), default="")
+    publisher: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    venue_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    summary_stats_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    counts_by_year_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    is_oa: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_in_doaj: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    apc_usd: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    homepage_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class PublicationImpactCache(Base):
     __tablename__ = "publication_impact_cache"
     __table_args__ = (
@@ -1106,7 +1168,9 @@ class PublicationStructuredAbstractCache(Base):
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
 
-    publication: Mapped[Work] = relationship(back_populates="structured_abstract_cache_rows")
+    publication: Mapped[Work] = relationship(
+        back_populates="structured_abstract_cache_rows"
+    )
     owner_user: Mapped[User] = relationship(
         back_populates="publication_structured_abstract_caches"
     )
@@ -1163,10 +1227,14 @@ class Collaborator(Base):
     secondary_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     contact_salutation: Mapped[str | None] = mapped_column(String(64), nullable=True)
     contact_first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    contact_middle_initial: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    contact_middle_initial: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
     contact_surname: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
-    contact_secondary_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    contact_secondary_email: Mapped[str | None] = mapped_column(
+        String(320), nullable=True
+    )
     orcid_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     openalex_author_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     primary_institution: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -1496,7 +1564,10 @@ class DataProfile(Base):
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
     owner_user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     asset_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     data_profile_json: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -1599,7 +1670,10 @@ class AdminAuditEvent(Base):
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
     actor_user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     action: Mapped[str] = mapped_column(String(96), index=True, default="")
     target_type: Mapped[str] = mapped_column(String(64), index=True, default="")
@@ -1780,9 +1854,7 @@ def _sqlite_add_column_if_missing(
     if column_name in columns:
         return False
     connection.execute(
-        text(
-            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}"
-        )
+        text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
     )
     return True
 
@@ -1857,6 +1929,44 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                     "CREATE INDEX IF NOT EXISTS ix_users_openalex_author_id "
                     "ON users (openalex_author_id)"
                 )
+            )
+
+        if _sqlite_table_exists(connection, "works"):
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="works",
+                column_name="openalex_source_id",
+                column_sql="VARCHAR(128)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="works",
+                column_name="issn_l",
+                column_sql="VARCHAR(32)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="works",
+                column_name="issns_json",
+                column_sql="JSON",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="works",
+                column_name="venue_type",
+                column_sql="VARCHAR(64)",
+            )
+            connection.execute(
+                text("UPDATE works SET issns_json = '[]' WHERE issns_json IS NULL")
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_works_openalex_source_id "
+                    "ON works (openalex_source_id)"
+                )
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_works_issn_l ON works (issn_l)")
             )
 
         if _sqlite_table_exists(connection, "projects"):
@@ -1982,7 +2092,7 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                         "      AND projects.owner_user_id IS NOT NULL"
                         "  )"
                     )
-                        )
+                )
 
             if _sqlite_table_exists(connection, "users"):
                 user_count_row = connection.execute(
@@ -1993,7 +2103,9 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                     owner_row = connection.execute(
                         text("SELECT id FROM users LIMIT 1")
                     ).first()
-                    only_user_id = str(owner_row[0]) if owner_row and owner_row[0] else ""
+                    only_user_id = (
+                        str(owner_row[0]) if owner_row and owner_row[0] else ""
+                    )
                     if only_user_id:
                         connection.execute(
                             text(
@@ -2070,7 +2182,9 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                     owner_row = connection.execute(
                         text("SELECT id FROM users LIMIT 1")
                     ).first()
-                    only_user_id = str(owner_row[0]) if owner_row and owner_row[0] else ""
+                    only_user_id = (
+                        str(owner_row[0]) if owner_row and owner_row[0] else ""
+                    )
                     if only_user_id:
                         connection.execute(
                             text(
@@ -2133,11 +2247,7 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
             if not user_id:
                 continue
             connection.execute(
-                text(
-                    "UPDATE users "
-                    "SET account_key = :account_key "
-                    "WHERE id = :user_id"
-                ),
+                text("UPDATE users SET account_key = :account_key WHERE id = :user_id"),
                 {"account_key": str(uuid4()), "user_id": user_id},
             )
         connection.execute(
@@ -2151,6 +2261,39 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_users_openalex_author_id "
                 "ON users (openalex_author_id)"
             )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS works "
+                "ADD COLUMN IF NOT EXISTS openalex_source_id VARCHAR(128)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS works "
+                "ADD COLUMN IF NOT EXISTS issn_l VARCHAR(32)"
+            )
+        )
+        connection.execute(
+            text("ALTER TABLE IF EXISTS works ADD COLUMN IF NOT EXISTS issns_json JSON")
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS works "
+                "ADD COLUMN IF NOT EXISTS venue_type VARCHAR(64)"
+            )
+        )
+        connection.execute(
+            text("UPDATE works SET issns_json = '[]'::json WHERE issns_json IS NULL")
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_works_openalex_source_id "
+                "ON works (openalex_source_id)"
+            )
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_works_issn_l ON works (issn_l)")
         )
 
 

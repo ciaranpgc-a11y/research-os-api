@@ -196,6 +196,29 @@ const personaStateFixture = {
   },
 }
 
+const personaJournalsFixture = [
+  {
+    journal_key: 'name:cardio imaging journal',
+    display_name: 'Cardio Imaging Journal',
+    publisher: 'Test Publisher',
+    openalex_source_id: null,
+    issn_l: null,
+    issns: [],
+    venue_type: 'journal',
+    publication_count: 1,
+    share_pct: 100,
+    avg_citations: 32,
+    median_citations: 32,
+    total_citations: 32,
+    latest_publication_year: 2024,
+    journal_metric_value: 4.2,
+    journal_metric_label: '2yr_mean_citedness',
+    is_oa: true,
+    is_in_doaj: false,
+    apc_usd: 3000,
+  },
+]
+
 const analyticsFixture = {
   payload: {
     schema_version: 1,
@@ -295,6 +318,9 @@ test('renders citation momentum tile on Publications page', async ({ page }) => 
   await page.route('**/v1/persona/state', async (route) => {
     await route.fulfill(jsonResponse(personaStateFixture))
   })
+  await page.route('**/v1/persona/journals', async (route) => {
+    await route.fulfill(jsonResponse(personaJournalsFixture))
+  })
   await page.route('**/v1/auth/me', async (route) => {
     await route.fulfill(jsonResponse(userFixture))
   })
@@ -336,6 +362,9 @@ test('opens selected drilldown paper in right panel files tab', async ({ page })
 
   await page.route('**/v1/persona/state', async (route) => {
     await route.fulfill(jsonResponse(personaStateFixture))
+  })
+  await page.route('**/v1/persona/journals', async (route) => {
+    await route.fulfill(jsonResponse(personaJournalsFixture))
   })
   await page.route('**/v1/auth/me', async (route) => {
     await route.fulfill(jsonResponse(userFixture))

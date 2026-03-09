@@ -176,7 +176,9 @@ def _normalize_status(value: str | None) -> str:
     return READY_STATUS
 
 
-def _normalize_article_type_label(value: Any, *, default: str = "Original") -> str:
+def _normalize_article_type_label(
+    value: Any, *, default: str = "Original research"
+) -> str:
     clean = str(value or "").strip()
     if not clean:
         return default
@@ -188,6 +190,13 @@ def _normalize_article_type_label(value: Any, *, default: str = "Original") -> s
     normalized = " ".join(normalized.split())
     if normalized in {"scoping", "scoping review", "evidence map"}:
         return "Systematic review"
+    if normalized in {
+        "original",
+        "original article",
+        "original research",
+        "research article",
+    }:
+        return "Original research"
     return clean
 
 

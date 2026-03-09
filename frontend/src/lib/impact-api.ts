@@ -66,6 +66,7 @@ import type {
   PersonaGrantsPayload,
   PersonaEmbeddingsGeneratePayload,
   PersonaMetricsSyncPayload,
+  PersonaJournal,
   PublicationsAnalyticsResponsePayload,
   PublicationsAnalyticsSummaryPayload,
   PublicationsAnalyticsTimeseriesPayload,
@@ -1082,6 +1083,17 @@ export async function listPersonaWorks(token: string): Promise<PersonaWork[]> {
       headers: authHeaders(token),
     },
     'Works lookup failed',
+  )
+}
+
+export async function listPersonaJournals(token: string): Promise<PersonaJournal[]> {
+  return requestJson<PersonaJournal[]>(
+    `${API_BASE_URL}/v1/persona/journals`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Journals lookup failed',
   )
 }
 

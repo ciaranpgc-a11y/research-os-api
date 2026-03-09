@@ -64,9 +64,16 @@ def test_alembic_upgrade_head_creates_schema_for_fresh_database(
     assert "publication_ai_cache" in table_names
     assert "publication_files" in table_names
     assert "publication_metrics_source_cache" in table_names
+    assert "journal_profiles" in table_names
     assert "workspace_state_cache" in table_names
     assert "workspace_inbox_state_cache" in table_names
     assert "alembic_version" in table_names
+
+    work_columns = {column["name"] for column in inspector.get_columns("works")}
+    assert "openalex_source_id" in work_columns
+    assert "issn_l" in work_columns
+    assert "issns_json" in work_columns
+    assert "venue_type" in work_columns
 
 
 def test_alembic_upgrade_head_adds_missing_columns_for_legacy_generation_jobs(

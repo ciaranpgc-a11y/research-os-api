@@ -504,14 +504,16 @@ def test_generate_publication_insights_agent_draft_builds_richer_publication_out
 
     assert payload["status"] == "draft"
     assert payload["provenance"]["generation_mode"] == "deterministic_fallback"
-    assert payload["provenance"]["evidence"]["phase_label"] == "Scaling"
+    assert payload["provenance"]["evidence"]["phase_label"] == "Plateauing"
     assert payload["provenance"]["evidence"]["recent_years_label"] == "2023-2025"
     section = payload["sections"][0]
-    assert section["headline"] == "Continuous growth"
+    assert section["headline"] == "Growth flattening"
     assert "every year from 2016 to 2025" in section["body"]
+    assert "recent pattern looks softer than earlier output" in section["body"]
     assert "2021 and 2024" in section["body"]
-    assert section["consideration_label"] == "Recent build"
-    assert "2023-2025" in str(section["consideration"] or "")
+    assert section["consideration_label"] == "Peak share"
+    assert "calculated per strongest year" in str(section["consideration"] or "")
+    assert "together those peaks account for about" in str(section["consideration"] or "")
 
 
 def test_generate_publication_insights_agent_draft_uses_stronger_openai_publication_output_pattern_read(
@@ -529,12 +531,12 @@ def test_generate_publication_insights_agent_draft_uses_stronger_openai_publicat
         "create_response",
         lambda **kwargs: SimpleNamespace(
             output_text=(
-                '{"overall_summary":"Your record is continuous and growth-led, with the quietest years concentrated early and the strongest output shared by two later peaks.",'
+                '{"overall_summary":"Your record remains continuous, but the later pattern is no longer building on earlier gains in the same way.",'
                 '"sections":['
-                '{"key":"publication_output_pattern","headline":"Expansion with breadth",'
-                '"body":"You published in every year from 2016 to 2025, and the quieter years are concentrated at the start rather than the recent end. Peak output is shared by 2021 and 2024 at 19 publications each, so the pattern reads as sustained scaling rather than dependence on one isolated spike.",'
-                '"consideration_label":"Career timing",'
-                '"consideration":"Because the weakest years are early, the unevenness looks more like portfolio build-up than recent instability."}'
+                '{"key":"publication_output_pattern","headline":"Breadth, then easing",'
+                '"body":"You published in every year from 2016 to 2025, but the later years no longer extend the earlier rise in the way a scaling pattern would. Output still spans the full record, and peak output is shared by 2021 and 2024 at 19 publications each, so the pattern looks broad rather than dependent on one isolated spike.",'
+                '"consideration_label":"Peak share",'
+                '"consideration":"Peak-year share is calculated per strongest year. With tied peaks in 2021 and 2024, each year contributes 19 publications, and together those peaks account for about 38% of the record."}'
                 "]}"
             )
         ),
@@ -548,13 +550,13 @@ def test_generate_publication_insights_agent_draft_uses_stronger_openai_publicat
     )
 
     assert payload["provenance"]["generation_mode"] == "openai"
-    assert payload["provenance"]["evidence"]["phase_label"] == "Scaling"
+    assert payload["provenance"]["evidence"]["phase_label"] == "Plateauing"
     section = payload["sections"][0]
-    assert section["headline"] == "Expansion with breadth"
+    assert section["headline"] == "Breadth, then easing"
     assert "every year from 2016 to 2025" in section["body"]
     assert "2021 and 2024" in section["body"]
-    assert section["consideration_label"] == "Career timing"
-    assert "build-up" in str(section["consideration"] or "")
+    assert section["consideration_label"] == "Peak share"
+    assert "calculated per strongest year" in str(section["consideration"] or "")
 
 
 def test_generate_publication_insights_agent_draft_rejects_unsupported_publication_output_pattern_partial_year_note(
@@ -594,8 +596,8 @@ def test_generate_publication_insights_agent_draft_rejects_unsupported_publicati
     assert section["headline"] == "Continuous, later surge"
     assert section["body"].endswith(".")
     assert "partial-year" not in str(section["consideration"] or "").lower()
-    assert section["consideration_label"] == "Recent build"
-    assert "2023-2025" in str(section["consideration"] or "")
+    assert section["consideration_label"] == "Peak share"
+    assert "calculated per strongest year" in str(section["consideration"] or "")
 
 
 def test_generate_publication_insights_agent_draft_builds_publication_production_phase_fallback(
@@ -627,21 +629,31 @@ def test_generate_publication_insights_agent_draft_builds_publication_production
 
     assert payload["status"] == "draft"
     assert payload["provenance"]["generation_mode"] == "deterministic_fallback"
-    assert payload["provenance"]["evidence"]["phase_label"] == "Scaling"
+    evidence = payload["provenance"]["evidence"]
+    assert evidence["phase_label"] == "Plateauing"
+    assert evidence["current_pace_cutoff_label"] == "Feb 2026"
+    assert evidence["current_pace_count"] == 1
+    assert evidence["current_pace_comparison_label"] == "2023-2025"
+    assert evidence["current_pace_comparison_mean"] == 3.7
+    assert evidence["current_pace_signal"] == "behind"
     section = payload["sections"][0]
     assert section["key"] == "publication_production_phase"
-    assert section["headline"] == "Scaling from early base"
-    assert "2016-2025" in section["body"]
-    assert "2023-2025" in section["body"]
-    assert "2021 and 2024" in section["body"]
-    assert section["consideration_label"] == "Recent build"
-    assert "even spread" in str(section["consideration"] or "")
+    assert section["headline"] == "Rise, then flattening"
+    assert "+1 publication per year from 2016 to 2025" in section["body"]
+    assert "joint peaks of 19 in 2021 and 2024" in section["body"]
+    assert "4 in 2025" in section["body"]
+    assert section["consideration_label"] == "Live year"
+    assert "The phase is fixed on complete years through 2025." in str(section["consideration"] or "")
+    assert "Through Feb 2026, 2026 has 1 publication." in str(section["consideration"] or "")
+    assert "The same cutoff averaged 3.7 publications across 2023-2025." in str(section["consideration"] or "")
+    assert "The live year is currently behind recent pace." in str(section["consideration"] or "")
 
 
 def test_generate_publication_insights_agent_draft_uses_openai_publication_production_phase_read(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
+    captured_kwargs: dict[str, object] = {}
 
     monkeypatch.setattr(
         publication_insights_agent_service,
@@ -651,14 +663,14 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_produ
     monkeypatch.setattr(
         publication_insights_agent_service,
         "create_response",
-        lambda **kwargs: SimpleNamespace(
+        lambda **kwargs: captured_kwargs.update(kwargs) or SimpleNamespace(
             output_text=(
-                '{"overall_summary":"The record currently reads as scaling because recent years are carrying more output than the earlier baseline without relying on one isolated peak.",'
+                '{"overall_summary":"The record currently reads as plateauing because the long-run trend is still positive, but the latest complete years cool off a recent shared peak.",'
                 '"sections":['
-                '{"key":"publication_production_phase","headline":"Scaling from early base",'
-                '"body":"Your stage reads as scaling because output rises by 1.0 publications per year across 2016 to 2025 and there are no gap years. The quietest years sit early, while 2021 and 2024 share the peak at 19 each.",'
-                '"consideration_label":"Recent build",'
-                '"consideration":"The recent window contributes more output than an even spread across the full span would suggest."}'
+                '{"key":"publication_production_phase","headline":"Rise, then flattening",'
+                '"body":"The fitted slope remains upward at +1 publication per year from 2016 to 2025, but the record is no longer converting that rise into stronger recent years. Joint peaks of 19 in 2021 and 2024 were followed by 4 in 2025, so the recent complete window now reads as flattening rather than continued scaling.",'
+                '"consideration_label":"Live year",'
+                '"consideration":"The phase is fixed on complete years through 2025. Through Feb 2026, 2026 has 1 publication. The same cutoff averaged 3.7 publications across 2023-2025. The live year is currently behind recent pace."}'
                 "]}",
             )
         ),
@@ -674,12 +686,17 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_produ
     assert payload["provenance"]["generation_mode"] == "openai"
     section = payload["sections"][0]
     assert section["key"] == "publication_production_phase"
-    assert section["headline"] == "Scaling from early base"
-    assert "2016-2025" in section["body"]
-    assert "2023-2025" in section["body"]
+    assert section["headline"] == "Rise, then flattening"
+    assert "+1 publication per year from 2016 to 2025" in section["body"]
+    assert "4 in 2025" in section["body"]
     assert "2021 and 2024" in section["body"]
-    assert section["consideration_label"] == "Recent build"
-    assert "even spread" in str(section["consideration"] or "")
+    assert section["consideration_label"] == "Live year"
+    assert "The phase is fixed on complete years through 2025." in str(section["consideration"] or "")
+    assert "Through Feb 2026, 2026 has 1 publication" in str(section["consideration"] or "")
+    prompt_text = str(captured_kwargs["input"])
+    assert "highly capable academic reader" in prompt_text
+    assert "The phase classification itself must stay anchored in complete publication years only." in prompt_text
+    assert "Only include the follow-on note when it adds a distinct reading aid" in prompt_text
 
 
 def test_generate_publication_insights_agent_draft_builds_publication_volume_over_time_fallback(
@@ -712,17 +729,17 @@ def test_generate_publication_insights_agent_draft_builds_publication_volume_ove
     assert payload["status"] == "draft"
     assert payload["provenance"]["generation_mode"] == "deterministic_fallback"
     evidence = payload["provenance"]["evidence"]
-    assert evidence["overall_trajectory"] == "rise_from_quiet_start"
+    assert evidence["overall_trajectory"] == "build_then_flatter"
     assert evidence["recent_position"] == "recently_lighter_than_long_run"
     assert evidence["recent_detail_pattern"] == "small_dated_set"
     assert evidence["recent_monthly_period_label"] == "Mar 2025-Feb 2026"
     assert evidence["table_recent_range_label"] == "12 Apr 2025 to 15 Feb 2026"
     section = payload["sections"][0]
     assert section["key"] == "publication_volume_over_time"
-    assert section["headline"] == "Rise then ease"
+    assert section["headline"] == "Earlier high, softer"
     assert "2016-2025" in section["body"]
-    assert "continuous scaling record rather than a flat annual baseline" in section["body"]
-    assert "pause below your earlier high-water mark" in section["body"]
+    assert "stronger middle-to-late run" in section["body"]
+    assert "recent volume currently looks more like a pause" in section["body"]
     assert "small dated set of 4 publications" in section["body"]
     assert section["consideration_label"] == "Recent detail"
     assert "this recent read can still shift quickly" in str(section["consideration"] or "")
@@ -732,6 +749,7 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_volum
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
+    captured_kwargs: dict[str, object] = {}
 
     monkeypatch.setattr(
         publication_insights_agent_service,
@@ -741,7 +759,7 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_volum
     monkeypatch.setattr(
         publication_insights_agent_service,
         "create_response",
-        lambda **kwargs: SimpleNamespace(
+        lambda **kwargs: captured_kwargs.update(kwargs) or SimpleNamespace(
             output_text=(
                 '{"overall_summary":"The record builds into stronger later years, but the latest windows now sit below that earlier high-water mark and are being read from a small recent set.",'
                 '"sections":['
@@ -762,16 +780,20 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_volum
     )
 
     assert payload["provenance"]["generation_mode"] == "openai"
-    assert payload["provenance"]["evidence"]["overall_trajectory"] == "rise_from_quiet_start"
+    assert payload["provenance"]["evidence"]["overall_trajectory"] == "build_then_flatter"
     assert payload["provenance"]["evidence"]["recent_position"] == "recently_lighter_than_long_run"
     section = payload["sections"][0]
     assert section["key"] == "publication_volume_over_time"
     assert section["headline"] == "Build then pause"
     assert "2016-2025" in section["body"]
-    assert "continuous scaling record rather than a flat annual baseline" in section["body"]
-    assert "pause below your earlier high-water mark" in section["body"]
+    assert "stronger middle-to-late run" in section["body"]
+    assert "recent volume currently looks more like a pause" in section["body"]
     assert section["consideration_label"] == "Recent detail"
     assert "this recent read can still shift quickly" in str(section["consideration"] or "")
+    prompt_text = str(captured_kwargs["input"])
+    assert "highly capable academic reader" in prompt_text
+    assert "Treat the rolling 5-year and 3-year comparisons as the main recent evidence." in prompt_text
+    assert "Use the latest 12 completed months to refine cadence, confidence, or timing" in prompt_text
 
 
 def test_generate_publication_insights_agent_draft_builds_publication_article_type_over_time_fallback(
@@ -812,7 +834,7 @@ def test_generate_publication_insights_agent_draft_builds_publication_article_ty
     assert section["key"] == "publication_article_type_over_time"
     assert section["headline"] == "Recent mix shift"
     assert "Across 2016-2026" in section["body"]
-    assert "Original anchors the full record" in section["body"]
+    assert "Original research anchors the full record" in section["body"]
     assert "move toward Review article" in section["body"]
     assert "only contains 2 publications" in section["body"]
     assert section["consideration_label"] == "Recent window"
@@ -835,10 +857,10 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_artic
         "create_response",
         lambda **kwargs: captured_kwargs.update(kwargs) or SimpleNamespace(
             output_text=(
-                '{"overall_summary":"Original articles still anchor the long-run record, but the shorter recent windows tilt more toward review-led output and do so from a thin current-year set.",'
+                '{"overall_summary":"Original research articles still anchor the long-run record, but the shorter recent windows tilt more toward review-led output and do so from a thin current-year set.",'
                 '"sections":['
                 '{"key":"publication_article_type_over_time","headline":"Recent mix shift",'
-                '"body":"Across 2016-2026, Original still anchors the full record, but the latest 3-year and 1-year windows move more toward Review article than the longer span does. That newer tilt is still narrow and provisional because the 2026 view contains only 2 publications and includes a partial year.",'
+                '"body":"Across 2016-2026, Original research still anchors the full record, but the latest 3-year and 1-year windows move more toward Review article than the longer span does. That newer tilt is still narrow and provisional because the 2026 view contains only 2 publications and includes a partial year.",'
                 '"consideration_label":"Recent window",'
                 '"consideration":"Treat the newest ordering as directional rather than settled until the partial 2026 window fills out."}'
                 "]}",
@@ -866,6 +888,10 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_artic
     assert "directional rather than settled" in str(section["consideration"] or "")
     assert captured_kwargs["timeout"] == 20.0
     assert captured_kwargs["max_retries"] == 0
+    prompt_text = str(captured_kwargs["input"])
+    assert "highly capable academic reader" in prompt_text
+    assert "Treat the 5-year and 3-year windows as the main recent evidence." in prompt_text
+    assert "Do not over-focus on the top type if a secondary type is what makes the recent mix tighter, more contested, or genuinely reordered." in prompt_text
 
 
 def test_generate_publication_insights_agent_draft_builds_publication_type_over_time_fallback(
@@ -960,6 +986,30 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_type_
     assert "directional rather than settled" in str(section["consideration"] or "")
     assert captured_kwargs["timeout"] == 20.0
     assert captured_kwargs["max_retries"] == 0
+    prompt_text = str(captured_kwargs["input"])
+    assert "highly capable academic reader" in prompt_text
+    assert "Treat the 5-year and 3-year windows as the main recent evidence." in prompt_text
+    assert "Do not over-focus on the top type if a secondary type is what makes the recent mix tighter, more contested, or genuinely reordered." in prompt_text
+
+
+def test_build_prompt_uses_shared_citation_insight_guidance() -> None:
+    prompt = publication_insights_agent_service._build_prompt(
+        {
+            "citation_scope": "all",
+            "window_phrase": "across the full citation section",
+            "uncited_publications_pct": 20.0,
+            "driver_share_pct": 42.0,
+            "top_publication_share_pct": 30.0,
+            "activation_publication_pct": 18.0,
+            "portfolio_context": {},
+        }
+    )
+
+    assert "highly capable academic reader" in prompt
+    assert "where citation attention concentrates" in prompt
+    assert "whether activation is renewing or narrowing" in prompt
+    assert "old tail, a recent lag, or a broader problem" in prompt
+    assert "Only include the follow-on note when it adds a distinct reading aid" in prompt
 
 
 def test_publication_insights_agent_api_returns_payload(monkeypatch, tmp_path) -> None:

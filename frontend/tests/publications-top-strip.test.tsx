@@ -549,6 +549,117 @@ describe('buildPublicationProductionPhaseStats', () => {
     expect(stats.confidenceLow).toBe(false)
   })
 
+  it('classifies a recent cooldown after a shared peak as Plateauing', () => {
+    const stats = buildPublicationProductionPhaseStats({
+      id: 'tile-total-publications',
+      key: 'this_year_vs_last',
+      label: 'Total publications',
+      main_value: 101,
+      value: 101,
+      main_value_display: '101',
+      value_display: '101',
+      delta_value: null,
+      delta_display: null,
+      delta_direction: 'na',
+      delta_tone: 'neutral',
+      delta_color_code: '#475569',
+      unit: 'publications',
+      subtext: 'Lifetime publications',
+      badge: {},
+      chart_type: 'bar_year_5',
+      chart_data: {
+        years: [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026],
+        values: [1, 1, 16, 8, 8, 19, 11, 14, 19, 4, 1],
+        projected_year: 2026,
+        current_year_ytd: 1,
+      },
+      sparkline: [1, 1, 16, 8, 8, 19, 11, 14, 19, 4, 1],
+      sparkline_overlay: [],
+      tooltip: 'Total publications',
+      tooltip_details: {},
+      data_source: ['ORCID', 'OpenAlex'],
+      confidence_score: 0.92,
+      stability: 'stable',
+      drilldown: {
+        title: 'Total publications',
+        definition: 'Counts authored publications and groups them by publication year.',
+        formula: 'count(publications) by year',
+        confidence_note: 'Confidence based on provider match quality.',
+        as_of_date: '2026-03-08',
+        publications: [],
+        metadata: {},
+      },
+    })
+
+    expect(stats.phase).toBe('Plateauing')
+    expect(stats.peakYears).toEqual([2021, 2024])
+    expect(stats.recentTrendSlope).toBeLessThan(0)
+    expect(stats.latestVsPeakRatio).toBeCloseTo(4 / 19, 5)
+  })
+
+  it('adds current-year pace through the last completed month beside the complete-year phase read', () => {
+    const lifetimeMonthLabels = Array.from({ length: 38 }, (_value, index) => {
+      const month = new Date(Date.UTC(2023, index, 1))
+      return month.toISOString().slice(0, 10)
+    })
+    const monthlyValuesLifetime = Array.from({ length: 38 }, () => 0)
+    monthlyValuesLifetime[1] = 1
+    monthlyValuesLifetime[12] = 1
+    monthlyValuesLifetime[25] = 1
+    monthlyValuesLifetime[36] = 1
+    monthlyValuesLifetime[37] = 1
+
+    const stats = buildPublicationProductionPhaseStats({
+      id: 'tile-total-publications',
+      key: 'this_year_vs_last',
+      label: 'Total publications',
+      main_value: 26,
+      value: 26,
+      main_value_display: '26',
+      value_display: '26',
+      delta_value: null,
+      delta_display: null,
+      delta_direction: 'na',
+      delta_tone: 'neutral',
+      delta_color_code: '#475569',
+      unit: 'publications',
+      subtext: 'Lifetime publications',
+      badge: {},
+      chart_type: 'bar_year_5',
+      chart_data: {
+        years: [2023, 2024, 2025, 2026],
+        values: [5, 8, 10, 2],
+        monthly_values_lifetime: monthlyValuesLifetime,
+        month_labels_lifetime: lifetimeMonthLabels,
+        lifetime_month_start: '2023-01-01',
+        projected_year: 2026,
+        current_year_ytd: 2,
+      },
+      sparkline: [5, 8, 10, 2],
+      sparkline_overlay: [],
+      tooltip: 'Total publications',
+      tooltip_details: {},
+      data_source: ['ORCID', 'OpenAlex'],
+      confidence_score: 0.92,
+      stability: 'stable',
+      drilldown: {
+        title: 'Total publications',
+        definition: 'Counts authored publications and groups them by publication year.',
+        formula: 'count(publications) by year',
+        confidence_note: 'Confidence based on provider match quality.',
+        as_of_date: '2026-03-08',
+        publications: [],
+        metadata: {},
+      },
+    })
+
+    expect(stats.currentPaceCutoffLabel).toBe('Feb 2026')
+    expect(stats.currentPaceCount).toBe(2)
+    expect(stats.currentPaceComparisonYears).toEqual([2023, 2024, 2025])
+    expect(stats.currentPaceComparisonMean).toBeCloseTo(1, 5)
+    expect(stats.currentPaceComparisonDelta).toBeCloseTo(1, 5)
+  })
+
   it('uses the earliest highest-output year when multiple years tie for the peak', () => {
     const stats = buildPublicationProductionPhaseStats({
       id: 'tile-total-publications',

@@ -623,8 +623,33 @@ export type PersonaWork = {
   author_count?: number | null
   pmid: string | null
   journal_impact_factor: number | null
+  openalex_source_id?: string | null
+  issn_l?: string | null
+  issns?: string[]
+  venue_type?: string | null
   created_at: string
   updated_at: string
+}
+
+export type PersonaJournal = {
+  journal_key: string
+  display_name: string
+  publisher: string
+  openalex_source_id?: string | null
+  issn_l?: string | null
+  issns?: string[]
+  venue_type?: string | null
+  publication_count: number
+  share_pct: number
+  avg_citations: number
+  median_citations: number
+  total_citations: number
+  latest_publication_year?: number | null
+  journal_metric_value?: number | null
+  journal_metric_label?: string | null
+  is_oa?: boolean | null
+  is_in_doaj?: boolean | null
+  apc_usd?: number | null
 }
 
 export type PersonaMetricsSyncPayload = {
