@@ -34,6 +34,9 @@ from research_os.services.publication_metrics_service import (
     compute_publication_top_metrics,
     enqueue_publication_top_metrics_refresh,
 )
+from research_os.services.journal_csv_import_service import (
+    import_journal_profiles_from_csv_bytes,
+)
 from research_os.services.publications_analytics_service import (
     compute_publications_analytics,
     enqueue_publications_analytics_recompute,
@@ -1870,6 +1873,65 @@ def admin_run_publications_sync_for_all_users(
         "skipped_not_due": int(summary.get("skipped_not_due") or 0),
         "conflict_users": int(summary.get("conflict_users") or 0),
         "failed_users": int(summary.get("failed_users") or 0),
+        "audit_event": audit_event,
+    }
+
+
+def admin_import_journal_profiles_csv(
+    *,
+    actor_user_id: str,
+    content: bytes,
+    filename: str = "",
+    source_label: str = "",
+    impact_factor_label: str = "Impact Factor",
+    default_metric_year: int | None = None,
+    reason: str = "",
+) -> dict[str, object]:
+    clean_actor_user_id = str(actor_user_id or "").strip()
+    if not clean_actor_user_id:
+        raise AdminValidationError("Actor user id is required.")
+    if not isinstance(content, (bytes, bytearray)) or not bytes(content):
+        raise AdminValidationError("CSV content is required.")
+
+    summary = import_journal_profiles_from_csv_bytes(
+        content=bytes(content),
+        filename=filename,
+        source_label=source_label,
+        impact_factor_label=impact_factor_label,
+        default_metric_year=default_metric_year,
+    )
+    clean_reason = str(reason or "").strip()
+    audit_event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id,
+        action="journal_profiles_csv_import",
+        target_type="journal_profile_cache",
+        target_id=str(summary.get("file_name") or "journal-impact-factors.csv"),
+        status="success",
+        metadata={
+            "reason": clean_reason,
+            "source_label": str(summary.get("source_label") or ""),
+            "impact_factor_label": str(summary.get("impact_factor_label") or ""),
+            "rows_read": int(summary.get("rows_read") or 0),
+            "rows_applied": int(summary.get("rows_applied") or 0),
+            "created_profiles": int(summary.get("created_profiles") or 0),
+            "updated_profiles": int(summary.get("updated_profiles") or 0),
+            "matched_by_source_id": int(summary.get("matched_by_source_id") or 0),
+            "matched_by_issn_l": int(summary.get("matched_by_issn_l") or 0),
+            "matched_by_issn": int(summary.get("matched_by_issn") or 0),
+            "matched_by_display_name": int(
+                summary.get("matched_by_display_name") or 0
+            ),
+            "skipped_rows": int(summary.get("skipped_rows") or 0),
+        },
+    )
+    return {
+        "message": (
+            f"Imported journal cache data from {summary.get('file_name')}. "
+            f"Applied {int(summary.get('rows_applied') or 0)} row(s), "
+            f"created {int(summary.get('created_profiles') or 0)} profile(s), "
+            f"updated {int(summary.get('updated_profiles') or 0)} profile(s)."
+        ),
+        **summary,
         "audit_event": audit_event,
     }
 

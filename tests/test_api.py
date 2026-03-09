@@ -3883,6 +3883,10 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
         workspaces_response = client.get("/v1/admin/workspaces")
         usage_costs_response = client.get("/v1/admin/usage-costs")
         journals_response = client.get("/v1/admin/journals")
+        journal_import_response = client.post(
+            "/v1/admin/journals/import-impact-factors",
+            json={"filename": "impact-factors.csv", "content_base64": ""},
+        )
         jobs_response = client.get("/v1/admin/jobs")
         delete_user_response = client.request(
             "DELETE",
@@ -3920,6 +3924,8 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
     assert usage_costs_response.json()["error"]["type"] == "unauthorized"
     assert journals_response.status_code == 401
     assert journals_response.json()["error"]["type"] == "unauthorized"
+    assert journal_import_response.status_code == 401
+    assert journal_import_response.json()["error"]["type"] == "unauthorized"
     assert jobs_response.status_code == 401
     assert jobs_response.json()["error"]["type"] == "unauthorized"
     assert delete_user_response.status_code == 401
@@ -3974,6 +3980,11 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
         journals_response = client.get(
             "/v1/admin/journals",
             headers=_auth_headers(token),
+        )
+        journal_import_response = client.post(
+            "/v1/admin/journals/import-impact-factors",
+            headers=_auth_headers(token),
+            json={"filename": "impact-factors.csv", "content_base64": ""},
         )
         jobs_response = client.get(
             "/v1/admin/jobs",
@@ -4031,6 +4042,8 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
     assert usage_costs_response.json()["error"]["type"] == "forbidden"
     assert journals_response.status_code == 403
     assert journals_response.json()["error"]["type"] == "forbidden"
+    assert journal_import_response.status_code == 403
+    assert journal_import_response.json()["error"]["type"] == "forbidden"
     assert jobs_response.status_code == 403
     assert jobs_response.json()["error"]["type"] == "forbidden"
     assert delete_user_response.status_code == 403
@@ -4486,6 +4499,77 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert "admin_job_cancel" in actions
     assert "admin_job_retry" in actions
     assert "admin_org_impersonation_start" in actions
+
+
+def test_v1_admin_journal_import_endpoint(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    csv_payload = base64.b64encode(
+        (
+            b"Journal,ISSN-L,Impact Factor,Impact Factor Year,Publisher,Source URL\n"
+            b"Heart,1355-6037,6.7,2024,BMJ,https://example.com/heart-if\n"
+        )
+    ).decode("ascii")
+
+    with TestClient(app) as client:
+        admin_register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "admin-journal-import@example.com",
+                "password": "StrongPassword123",
+                "name": "Admin Journal Import",
+            },
+        )
+        assert admin_register_response.status_code == 200
+        admin_user_payload = admin_register_response.json()["user"]
+        _promote_user_to_admin(admin_user_payload["id"])
+        admin_token = admin_register_response.json()["session_token"]
+
+        import_response = client.post(
+            "/v1/admin/journals/import-impact-factors",
+            headers=_auth_headers(admin_token),
+            json={
+                "filename": "impact-factors.csv",
+                "source_label": "Clarivate master CSV",
+                "impact_factor_label": "Journal Impact Factor",
+                "content_base64": csv_payload,
+                "reason": "Seed latest IF values",
+            },
+        )
+        journals_response = client.get(
+            "/v1/admin/journals",
+            headers=_auth_headers(admin_token),
+            params={"query": "heart", "limit": 20, "offset": 0},
+        )
+        audit_response = client.get(
+            "/v1/admin/audit/events",
+            headers=_auth_headers(admin_token),
+            params={"action": "journal_profiles_csv_import", "limit": 20, "offset": 0},
+        )
+
+    assert import_response.status_code == 200
+    import_payload = import_response.json()
+    assert import_payload["file_name"] == "impact-factors.csv"
+    assert import_payload["rows_read"] == 1
+    assert import_payload["rows_applied"] == 1
+    assert import_payload["created_profiles"] == 1
+    assert import_payload["updated_profiles"] == 0
+    assert import_payload["audit_event"]["action"] == "journal_profiles_csv_import"
+    assert import_payload["audit_event"]["status"] == "success"
+
+    assert journals_response.status_code == 200
+    journals_payload = journals_response.json()
+    assert journals_payload["total"] >= 1
+    journal = journals_payload["items"][0]
+    assert journal["display_name"] == "Heart"
+    assert journal["publisher_reported_impact_factor"] == 6.7
+    assert journal["publisher_reported_impact_factor_year"] == 2024
+    assert journal["publisher_reported_impact_factor_label"] == "Journal Impact Factor"
+
+    assert audit_response.status_code == 200
+    audit_items = audit_response.json()["items"]
+    assert len(audit_items) >= 1
+    assert audit_items[0]["action"] == "journal_profiles_csv_import"
 
 
 def test_v1_admin_user_library_reconcile_failure_is_audited(

@@ -57,6 +57,7 @@ from research_os.api.schemas import (
     AdminCollaborationMetricsRecomputeAllResponse,
     AdminPublicationsSyncRunAllRequest,
     AdminPublicationsSyncRunAllResponse,
+    AdminJournalProfilesCsvImportResponse,
     AdminJournalProfilesListResponse,
     AdminWorkTypeLlmSettingUpdateRequest,
     AdminWorkTypeLlmSettingUpdateResponse,
@@ -261,6 +262,7 @@ from research_os.services.admin_service import (
     AdminNotFoundError,
     AdminStateError,
     AdminValidationError,
+    admin_import_journal_profiles_csv,
     admin_run_collaboration_metrics_recompute_for_all_users,
     admin_run_publications_sync_for_all_users,
     admin_cancel_job,
@@ -1768,6 +1770,102 @@ def v1_admin_journals(
         offset=offset,
     )
     return AdminJournalProfilesListResponse(**payload)
+
+
+@app.post(
+    "/v1/admin/journals/import-impact-factors",
+    response_model=AdminJournalProfilesCsvImportResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+async def v1_admin_import_journal_impact_factors(
+    request: Request,
+) -> AdminJournalProfilesCsvImportResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+
+    def _optional_metric_year(value: Any) -> int | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            return int(float(text))
+        except Exception:
+            match = re.search(r"\d{4}|\d+", text)
+            if not match:
+                return None
+            try:
+                return int(match.group(0))
+            except Exception:
+                return None
+
+    content_type = str(request.headers.get("content-type") or "").lower()
+    file_name = "journal-impact-factors.csv"
+    source_label = ""
+    impact_factor_label = "Impact Factor"
+    default_metric_year: int | None = None
+    reason = ""
+    file_bytes: bytes | None = None
+
+    if "application/json" in content_type:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            return _build_bad_request_response("JSON payload must be an object.")
+        encoded = str(payload.get("content_base64") or "").strip()
+        if not encoded:
+            return _build_bad_request_response("content_base64 is required.")
+        try:
+            file_bytes = base64.b64decode(encoded, validate=False)
+        except Exception:
+            return _build_bad_request_response("content_base64 is invalid.")
+        file_name = str(payload.get("filename") or file_name).strip() or file_name
+        source_label = str(payload.get("source_label") or "").strip()
+        impact_factor_label = (
+            str(payload.get("impact_factor_label") or impact_factor_label).strip()
+            or impact_factor_label
+        )
+        default_metric_year = _optional_metric_year(payload.get("default_metric_year"))
+        reason = str(payload.get("reason") or "").strip()
+    else:
+        try:
+            form = await request.form()
+        except (RuntimeError, AssertionError):
+            return _build_bad_request_response(
+                (
+                    "Multipart parsing is unavailable in this deployment. "
+                    "Install python-multipart or send JSON fallback payload."
+                )
+            )
+        upload = form.get("file")
+        if upload is None or not hasattr(upload, "read"):
+            return _build_bad_request_response("No upload file was provided.")
+        file_name = str(getattr(upload, "filename", "") or file_name).strip() or file_name
+        file_bytes = await upload.read()
+        source_label = str(form.get("source_label") or "").strip()
+        impact_factor_label = (
+            str(form.get("impact_factor_label") or impact_factor_label).strip()
+            or impact_factor_label
+        )
+        default_metric_year = _optional_metric_year(form.get("default_metric_year"))
+        reason = str(form.get("reason") or "").strip()
+
+    if not file_bytes:
+        return _build_bad_request_response("No CSV content was provided.")
+
+    try:
+        payload = admin_import_journal_profiles_csv(
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            content=file_bytes,
+            filename=file_name,
+            source_label=source_label,
+            impact_factor_label=impact_factor_label,
+            default_metric_year=default_metric_year,
+            reason=reason,
+        )
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    return AdminJournalProfilesCsvImportResponse(**payload)
 
 
 @app.get(

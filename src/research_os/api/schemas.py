@@ -1259,6 +1259,26 @@ class AdminJournalProfilesListResponse(BaseModel):
     )
 
 
+class AdminJournalProfilesCsvImportResponse(BaseModel):
+    message: str
+    file_name: str
+    source_label: str
+    impact_factor_label: str
+    detected_columns: list[str] = Field(default_factory=list)
+    rows_read: int = 0
+    rows_applied: int = 0
+    created_profiles: int = 0
+    updated_profiles: int = 0
+    matched_by_source_id: int = 0
+    matched_by_issn_l: int = 0
+    matched_by_issn: int = 0
+    matched_by_display_name: int = 0
+    skipped_rows: int = 0
+    warnings: list[str] = Field(default_factory=list)
+    generated_at: datetime
+    audit_event: "AdminAuditEventResponse"
+
+
 class AdminJobSummaryResponse(BaseModel):
     id: str
     status: str

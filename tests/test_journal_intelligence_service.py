@@ -17,6 +17,9 @@ from research_os.services.journal_intelligence_service import (
     _apply_editorial_payload,
     refresh_persona_journal_intelligence,
 )
+from research_os.services.journal_csv_import_service import (
+    import_journal_profiles_from_csv_bytes,
+)
 from research_os.services.persona_service import list_journals
 
 
@@ -373,3 +376,56 @@ def test_apply_editorial_payload_overwrites_older_impact_factor_with_newer_year(
             profile.publisher_reported_impact_factor_source_url
             == "https://heart.bmj.com/current"
         )
+
+
+def test_import_journal_profiles_from_csv_bytes_updates_profile_by_issn_l(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with session_scope() as session:
+        session.add(
+            JournalProfile(
+                provider="openalex",
+                provider_journal_id="S4210189124",
+                issn_l="1355-6037",
+                display_name="Heart",
+                publisher="BMJ",
+                publisher_reported_impact_factor=5.9,
+                publisher_reported_impact_factor_year=2023,
+            )
+        )
+
+    result = import_journal_profiles_from_csv_bytes(
+        content=(
+            b"Journal,ISSN-L,Impact Factor,Impact Factor Year,Publisher,Source URL\n"
+            b"Heart,1355-6037,6.7,2024,BMJ,https://example.com/heart-if\n"
+        ),
+        filename="journal-impact-factors.csv",
+        source_label="Clarivate master CSV",
+        impact_factor_label="Journal Impact Factor",
+    )
+
+    assert result["rows_read"] == 1
+    assert result["rows_applied"] == 1
+    assert result["matched_by_issn_l"] == 1
+    assert result["updated_profiles"] == 1
+    assert result["created_profiles"] == 0
+
+    with session_scope() as session:
+        profile = session.scalars(
+            select(JournalProfile).where(
+                JournalProfile.provider == "openalex",
+                JournalProfile.issn_l == "1355-6037",
+            )
+        ).first()
+        assert profile is not None
+        assert profile.publisher_reported_impact_factor == 6.7
+        assert profile.publisher_reported_impact_factor_year == 2024
+        assert profile.publisher_reported_impact_factor_label == "Journal Impact Factor"
+        assert (
+            profile.publisher_reported_impact_factor_source_url
+            == "https://example.com/heart-if"
+        )
+        assert profile.editorial_source_title == "Clarivate master CSV"
