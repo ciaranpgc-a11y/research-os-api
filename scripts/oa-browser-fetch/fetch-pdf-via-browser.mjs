@@ -2,6 +2,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
 function parseArgs(argv) {
   const args = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -158,6 +161,41 @@ async function fetchPdfBase64(page, targetUrl) {
   }, targetUrl);
 }
 
+async function fetchPdfWithBrowserSession(context, targetUrl) {
+  const cookies = await context.cookies(targetUrl).catch(() => []);
+  const cookieHeader = cookies
+    .map((cookie) => `${cookie.name}=${cookie.value}`)
+    .filter(Boolean)
+    .join("; ");
+  const url = new URL(targetUrl);
+  const response = await fetch(targetUrl, {
+    redirect: "follow",
+    headers: {
+      "User-Agent": BROWSER_USER_AGENT,
+      Accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-GB,en;q=0.9,en-US;q=0.8",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+      Referer: `${url.origin}/`,
+      Origin: url.origin,
+      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Session fetch failed with status ${response.status}`);
+  }
+  const contentType = response.headers.get("content-type") || "";
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!looksLikePdfBytes(buffer, contentType)) {
+    throw new Error("Session fetch did not return PDF bytes");
+  }
+  return {
+    buffer,
+    contentType: contentType || "application/pdf",
+    sourceUrl: response.url || targetUrl,
+  };
+}
+
 async function clickPdfAffordance(page) {
   const roleQueries = [
     { role: "link", name: /pdf|download pdf|view pdf|full text pdf|open pdf/i },
@@ -225,8 +263,7 @@ async function main() {
     const context = await browser.newContext({
       acceptDownloads: true,
       ignoreHTTPSErrors: true,
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      userAgent: BROWSER_USER_AGENT,
       extraHTTPHeaders: {
         "Accept-Language": "en-GB,en;q=0.9,en-US;q=0.8",
       },
@@ -311,6 +348,26 @@ async function main() {
       }
     }
 
+    const sessionTargetPayload = await fetchPdfWithBrowserSession(
+      context,
+      targetUrl,
+    ).catch(() => null);
+    if (sessionTargetPayload) {
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      await fs.writeFile(outputPath, sessionTargetPayload.buffer);
+      process.stdout.write(
+        JSON.stringify({
+          ok: true,
+          output: outputPath,
+          bytes: sessionTargetPayload.buffer.length,
+          contentType: sessionTargetPayload.contentType,
+          sourceUrl: sessionTargetPayload.sourceUrl,
+          strategy: "session-fetch-target",
+        }),
+      );
+      return;
+    }
+
     const clicked = await clickPdfAffordance(page);
     if (clicked) {
       await page.waitForTimeout(1500);
@@ -352,6 +409,28 @@ async function main() {
 
     const pdfCandidates = await findPdfCandidates(page, targetUrl);
     for (const candidateUrl of pdfCandidates) {
+      const sessionPayload = await fetchPdfWithBrowserSession(
+        context,
+        candidateUrl,
+      ).catch(() => null);
+      if (sessionPayload) {
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        await fs.writeFile(outputPath, sessionPayload.buffer);
+        process.stdout.write(
+          JSON.stringify({
+            ok: true,
+            output: outputPath,
+            bytes: sessionPayload.buffer.length,
+            contentType: sessionPayload.contentType,
+            sourceUrl: sessionPayload.sourceUrl,
+            strategy:
+              candidateUrl === targetUrl
+                ? "session-fetch-target"
+                : "session-fetch-candidate",
+          }),
+        );
+        return;
+      }
       const payload = await fetchPdfBase64(page, candidateUrl).catch(() => null);
       if (!payload) {
         continue;

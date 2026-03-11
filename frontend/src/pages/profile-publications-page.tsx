@@ -426,6 +426,39 @@ function publicationFileDirectUrl(file: Pick<PublicationFilePayload, 'download_u
   return String(file.download_url || file.oa_url || '').trim()
 }
 
+function publicationFileOpenAccessSourceLabel(
+  file: Pick<PublicationFilePayload, 'source' | 'oa_url'>,
+): string | null {
+  if (file.source !== 'OA_LINK') {
+    return null
+  }
+  const rawUrl = String(file.oa_url || '').trim()
+  if (!rawUrl) {
+    return 'Open access'
+  }
+  try {
+    const host = new URL(rawUrl).hostname.toLowerCase()
+    if (host === 'pmc.ncbi.nlm.nih.gov' || host === 'ftp.ncbi.nlm.nih.gov') {
+      return 'PMC'
+    }
+    if (host === 'pubmed.ncbi.nlm.nih.gov') {
+      return 'PubMed'
+    }
+    if (host === 'doi.org') {
+      return 'DOI'
+    }
+    if (host.endsWith('tandfonline.com')) {
+      return 'Taylor & Francis'
+    }
+    if (host.startsWith('www.')) {
+      return host.slice(4)
+    }
+    return host
+  } catch {
+    return 'Open access'
+  }
+}
+
 function resolvePublicationAssetUrl(value: string | null | undefined): string {
   const trimmed = String(value || '').trim()
   if (!trimmed) {
@@ -6568,6 +6601,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           const isDownloadingFile = !canOpenExternalFile && downloadingFileId === file.id
           const isFileBusy = isDeletingFile || isDownloadingFile || isSavingFile
           const openFileLabel = canOpenExternalFile ? `Open ${file.file_name}` : `Download ${file.file_name}`
+          const openAccessSourceLabel = publicationFileOpenAccessSourceLabel(file)
           const persistedClassificationOption = publicationFileClassificationOption(file.classification)
           const persistedClassificationLabel = String(file.classification_label || persistedClassificationOption?.label || '').trim()
           const isEditingTagFile = publicationFileTagEditorState?.fileId === file.id
@@ -6663,6 +6697,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       >
                         {file.file_name}
                       </span>
+                      {openAccessSourceLabel ? (
+                        <Badge
+                          size="sm"
+                          variant="outline"
+                          className="ml-2 shrink-0 border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--tone-neutral-600))]"
+                        >
+                          {openAccessSourceLabel}
+                        </Badge>
+                      ) : null}
                     </button>
                     {showPersistedClassificationBadge ? (
                       <button
