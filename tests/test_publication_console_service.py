@@ -3236,6 +3236,98 @@ def test_deleted_open_access_link_stays_suppressed_until_explicit_readd(
             assert restored_rows[0].source == "OA_LINK"
 
 
+def test_explicit_readd_requires_a_local_pdf_copy(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    monkeypatch.setattr(
+        publication_console_service,
+        "_find_unpaywall_pdf_url",
+        lambda **kwargs: "https://example.org/files/paper.pdf",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes",
+        lambda *args, **kwargs: (b"", None),
+    )
+
+    with TestClient(app) as client:
+        owner_id, token = _register(client, email="oa-restore-external-only@example.com")
+
+        with session_scope() as session:
+            work = Work(
+                user_id=owner_id,
+                title="Restore external-only OA work",
+                title_lower="restore external-only oa work",
+                year=2026,
+                doi="10.1000/restore-external-only-oa-work",
+                pmid=None,
+                work_type="journal-article",
+                venue_name="Test Journal",
+                publisher="Test Publisher",
+                abstract="Abstract",
+                keywords=[],
+                url="",
+                authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+                provenance="manual",
+                oa_link_suppressed=True,
+            )
+            session.add(work)
+            session.flush()
+            work_id = str(work.id)
+
+            oa_row = PublicationFile(
+                publication_id=work_id,
+                owner_user_id=owner_id,
+                file_name="open-access.pdf",
+                file_type="PDF",
+                storage_key="",
+                source="OA_LINK",
+                oa_url="https://example.org/files/paper.pdf",
+                checksum=None,
+                deleted=True,
+                created_at=publication_console_service._utcnow(),
+            )
+            session.add(oa_row)
+            session.flush()
+
+        explicit_response = client.post(
+            f"/v1/publications/{work_id}/files/link-oa",
+            headers=_auth_headers(token),
+            json={"allow_suppressed": True},
+        )
+        assert explicit_response.status_code == 200
+        assert explicit_response.json()["created"] is False
+        assert explicit_response.json()["file"] is None
+        assert (
+            explicit_response.json()["message"]
+            == "Open-access PDF was found, but a local stored copy could not be recovered for the reader."
+        )
+
+        restored_list_response = client.get(
+            f"/v1/publications/{work_id}/files",
+            headers=_auth_headers(token),
+        )
+        assert restored_list_response.status_code == 200
+        assert restored_list_response.json()["items"] == []
+        assert restored_list_response.json()["has_deleted_oa_file"] is True
+
+        with session_scope() as session:
+            refreshed_work = session.get(Work, work_id)
+            assert refreshed_work is not None
+            assert refreshed_work.oa_link_suppressed is True
+            restored = session.scalars(
+                select(PublicationFile).where(
+                    PublicationFile.owner_user_id == owner_id,
+                    PublicationFile.publication_id == work_id,
+                    PublicationFile.source == "OA_LINK",
+                )
+            ).first()
+            assert restored is not None
+            assert restored.deleted is True
+
+
 def test_structured_abstract_payload_uses_model_when_quality_guard_passes(
     monkeypatch, tmp_path
 ) -> None:

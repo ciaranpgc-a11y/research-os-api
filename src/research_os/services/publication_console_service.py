@@ -8363,22 +8363,29 @@ def link_publication_open_access_pdf(
             )
             .order_by(PublicationFile.created_at.desc())
         ).first()
+        deleted_restore_failed = False
         if allow_suppressed and deleted_oa_row is not None:
-            if not _ensure_open_access_publication_file_local_copy(deleted_oa_row):
-                return {
-                    "created": False,
-                    "file": _serialize_file(publication_id, deleted_oa_row),
-                    "message": "Open-access PDF link is available, but local download failed. Use the external link.",
-                }
-            deleted_oa_row.deleted = False
-            work.oa_link_suppressed = False
-            session.flush()
-            session.refresh(deleted_oa_row)
-            return {
-                "created": False,
-                "file": _serialize_file(publication_id, deleted_oa_row),
-                "message": "Deleted open-access PDF restored.",
-            }
+            try:
+                if _ensure_open_access_publication_file_local_copy(deleted_oa_row):
+                    deleted_oa_row.deleted = False
+                    work.oa_link_suppressed = False
+                    session.flush()
+                    session.refresh(deleted_oa_row)
+                    return {
+                        "created": False,
+                        "file": _serialize_file(publication_id, deleted_oa_row),
+                        "message": "Deleted open-access PDF restored.",
+                    }
+            except Exception:
+                logger.exception(
+                    "publication_open_access_restore_failed",
+                    extra={
+                        "user_id": user_id,
+                        "publication_id": publication_id,
+                        "file_id": str(deleted_oa_row.id),
+                    },
+                )
+            deleted_restore_failed = True
         if bool(work.oa_link_suppressed) and not allow_suppressed:
             return {
                 "created": False,
@@ -8406,7 +8413,11 @@ def link_publication_open_access_pdf(
             return {
                 "created": False,
                 "file": None,
-                "message": "No open access PDF found.",
+                "message": (
+                    "Deleted open-access PDF could not be restored to a local stored copy, and no new open-access PDF was found."
+                    if deleted_restore_failed
+                    else "No open access PDF found."
+                ),
             }
 
         existing = session.scalars(
@@ -8420,6 +8431,12 @@ def link_publication_open_access_pdf(
         ).first()
         if existing is not None:
             if not _ensure_open_access_publication_file_local_copy(existing):
+                if allow_suppressed:
+                    return {
+                        "created": False,
+                        "file": None,
+                        "message": "Open-access PDF was found, but a local stored copy could not be recovered for the reader.",
+                    }
                 return {
                     "created": False,
                     "file": _serialize_file(publication_id, existing),
@@ -8432,6 +8449,40 @@ def link_publication_open_access_pdf(
                 "created": False,
                 "file": _serialize_file(publication_id, existing),
                 "message": "Open-access PDF link already exists.",
+            }
+
+        matching_deleted = session.scalars(
+            select(PublicationFile)
+            .where(
+                PublicationFile.owner_user_id == user_id,
+                PublicationFile.publication_id == publication_id,
+                PublicationFile.source == FILE_SOURCE_OA_LINK,
+                PublicationFile.oa_url == pdf_url,
+                PublicationFile.deleted.is_(True),
+            )
+            .order_by(PublicationFile.created_at.desc())
+        ).first()
+        if matching_deleted is not None:
+            if not _ensure_open_access_publication_file_local_copy(matching_deleted):
+                if allow_suppressed:
+                    return {
+                        "created": False,
+                        "file": None,
+                        "message": "Open-access PDF was found, but a local stored copy could not be recovered for the reader.",
+                    }
+                return {
+                    "created": False,
+                    "file": _serialize_file(publication_id, matching_deleted),
+                    "message": "Open-access PDF link is available, but local download failed. Use the external link.",
+                }
+            matching_deleted.deleted = False
+            work.oa_link_suppressed = False
+            session.flush()
+            session.refresh(matching_deleted)
+            return {
+                "created": False,
+                "file": _serialize_file(publication_id, matching_deleted),
+                "message": "Deleted open-access PDF restored.",
             }
 
         row = PublicationFile(
@@ -8452,6 +8503,14 @@ def link_publication_open_access_pdf(
         session.add(row)
         session.flush()
         if not _ensure_open_access_publication_file_local_copy(row):
+            if allow_suppressed:
+                session.delete(row)
+                session.flush()
+                return {
+                    "created": False,
+                    "file": None,
+                    "message": "Open-access PDF was found, but a local stored copy could not be recovered for the reader.",
+                }
             work.oa_link_suppressed = False
             session.flush()
             session.refresh(row)
