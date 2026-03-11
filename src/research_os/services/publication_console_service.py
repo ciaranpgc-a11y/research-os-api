@@ -81,9 +81,7 @@ TRAJECTORY_VALUES = {
 FILE_SOURCE_OA_LINK = "OA_LINK"
 FILE_SOURCE_SUPPLEMENTARY_LINK = "SUPPLEMENTARY_LINK"
 FILE_SOURCE_USER_UPLOAD = "USER_UPLOAD"
-OA_LOCAL_COPY_REQUIRED_MESSAGE = (
-    "Open-access PDF was found, but a local stored copy could not be recovered for the reader."
-)
+OA_LOCAL_COPY_REQUIRED_MESSAGE = "Open-access PDF was found, but a local stored copy could not be recovered for the reader."
 PAPER_MODEL_ASSET_SOURCE_PARSED = "PARSED"
 FILE_TYPE_PDF = "PDF"
 FILE_TYPE_DOCX = "DOCX"
@@ -280,10 +278,9 @@ def _structured_abstract_fallback_model() -> str:
 
 
 def _structured_abstract_llm_enabled() -> bool:
-    enabled = (
-        str(os.getenv("PUB_STRUCTURED_ABSTRACT_USE_LLM", "true")).strip().lower()
-        in {"1", "true", "yes", "on"}
-    )
+    enabled = str(
+        os.getenv("PUB_STRUCTURED_ABSTRACT_USE_LLM", "true")
+    ).strip().lower() in {"1", "true", "yes", "on"}
     if not enabled:
         return False
     return bool(str(os.getenv("OPENAI_API_KEY", "")).strip())
@@ -391,7 +388,9 @@ def _probe_grobid_availability() -> bool:
     endpoint = f"{base_url}/api/isalive"
     timeout_seconds = min(3.0, max(1.0, _grobid_timeout_seconds()))
     try:
-        with httpx.Client(timeout=httpx.Timeout(timeout_seconds), follow_redirects=True) as client:
+        with httpx.Client(
+            timeout=httpx.Timeout(timeout_seconds), follow_redirects=True
+        ) as client:
             response = client.get(endpoint)
     except Exception:
         return False
@@ -515,7 +514,9 @@ def _request_bytes_with_retry(
                     continue
                 return b"", None
             if response.status_code < 400:
-                content_type = str(response.headers.get("content-type") or "").strip() or None
+                content_type = (
+                    str(response.headers.get("content-type") or "").strip() or None
+                )
                 return bytes(response.content or b""), content_type
             if response.status_code not in RETRYABLE_STATUS_CODES or attempt >= retries:
                 return b"", None
@@ -599,23 +600,19 @@ def _extract_author_surname(author_value: Any) -> str | None:
     explicit_surname = ""
     display_name = ""
     if isinstance(author_value, dict):
-        explicit_surname = (
-            str(
-                author_value.get("surname")
-                or author_value.get("family_name")
-                or author_value.get("family")
-                or author_value.get("last_name")
-                or ""
-            ).strip()
-        )
-        display_name = (
-            str(
-                author_value.get("name")
-                or author_value.get("display_name")
-                or author_value.get("canonical_name")
-                or ""
-            ).strip()
-        )
+        explicit_surname = str(
+            author_value.get("surname")
+            or author_value.get("family_name")
+            or author_value.get("family")
+            or author_value.get("last_name")
+            or ""
+        ).strip()
+        display_name = str(
+            author_value.get("name")
+            or author_value.get("display_name")
+            or author_value.get("canonical_name")
+            or ""
+        ).strip()
     else:
         display_name = str(author_value or "").strip()
 
@@ -670,7 +667,9 @@ def _resolve_first_author_surname(work: Work) -> str | None:
 
 def _resolve_publication_file_display_name(work: Work) -> str:
     surname = _resolve_first_author_surname(work) or "Publication"
-    year_value = work.year if isinstance(work.year, int) and 1000 <= work.year <= 9999 else None
+    year_value = (
+        work.year if isinstance(work.year, int) and 1000 <= work.year <= 9999 else None
+    )
     year_label = str(year_value) if year_value is not None else "n.d."
     pmid = _normalize_pmid(work.pmid) or _extract_pmid_from_text(work.url)
     display_name = f"{surname} ({year_label})"
@@ -687,7 +686,9 @@ def _infer_storage_suffix(
     if suffix and re.fullmatch(r"\.[a-z0-9]{1,16}", suffix):
         return suffix
 
-    inferred_type = str(file_type or _infer_file_type(filename=clean_name, content_type=content_type)).upper()
+    inferred_type = str(
+        file_type or _infer_file_type(filename=clean_name, content_type=content_type)
+    ).upper()
     if inferred_type == FILE_TYPE_PDF:
         return ".pdf"
     if inferred_type == FILE_TYPE_DOCX:
@@ -752,7 +753,7 @@ def _resolve_pubmed_pmid(
 
     normalized_doi = _normalize_doi(doi)
     if normalized_doi:
-        by_doi = _search_pubmed_ids(f"\"{normalized_doi}\"[AID]", max_results=3)
+        by_doi = _search_pubmed_ids(f'"{normalized_doi}"[AID]', max_results=3)
         if by_doi:
             return by_doi[0]
 
@@ -763,9 +764,9 @@ def _resolve_pubmed_pmid(
     if not safe_title:
         return None
     if isinstance(year, int) and 1800 <= year <= 2100:
-        term = f"\"{safe_title}\"[Title] AND ({year}[DP] OR {year}[PDAT])"
+        term = f'"{safe_title}"[Title] AND ({year}[DP] OR {year}[PDAT])'
     else:
-        term = f"\"{safe_title}\"[Title]"
+        term = f'"{safe_title}"[Title]'
     by_title = _search_pubmed_ids(term, max_results=1)
     if by_title:
         return by_title[0]
@@ -969,7 +970,9 @@ def _slugify_filename(value: str) -> str:
     return clean
 
 
-def _coerce_download_filename(*, file_name: str | None, path: Path | None = None) -> str:
+def _coerce_download_filename(
+    *, file_name: str | None, path: Path | None = None
+) -> str:
     clean = str(file_name or "").strip().replace("\r", " ").replace("\n", " ")
     if not clean:
         clean = "file.bin"
@@ -1237,7 +1240,9 @@ def _reuse_existing_open_access_publication_file_local_copy(
             file_name=str(row.file_name or donor.file_name or "open-access.pdf"),
             path=donor_path,
         )
-        content_type = "application/pdf" if donor_path.suffix.lower() == ".pdf" else None
+        content_type = (
+            "application/pdf" if donor_path.suffix.lower() == ".pdf" else None
+        )
         _persist_publication_file_content(
             row,
             content=content,
@@ -1320,7 +1325,9 @@ def _serialize_file(publication_id: str, row: PublicationFile) -> dict[str, Any]
     download_url: str | None = None
     source = str(row.source or FILE_SOURCE_USER_UPLOAD).upper()
     classification = (
-        _normalize_publication_file_classification(str(row.classification or "").strip() or None)
+        _normalize_publication_file_classification(
+            str(row.classification or "").strip() or None
+        )
         if bool(row.classification_custom)
         else None
     )
@@ -1348,11 +1355,14 @@ def _serialize_file(publication_id: str, row: PublicationFile) -> dict[str, Any]
         "checksum": str(row.checksum or "").strip() or None,
         "created_at": row.created_at,
         "download_url": download_url,
-        "label": "OA Manuscript Download" if source == FILE_SOURCE_OA_LINK else "Uploaded file",
+        "label": "OA Manuscript Download"
+        if source == FILE_SOURCE_OA_LINK
+        else "Uploaded file",
         "classification": classification,
         "classification_label": (
             classification_other_label
-            if classification == FILE_CLASSIFICATION_OTHER and classification_other_label
+            if classification == FILE_CLASSIFICATION_OTHER
+            and classification_other_label
             else FILE_CLASSIFICATION_LABELS.get(classification)
             if classification
             else None
@@ -1628,9 +1638,9 @@ def _extract_structured_abstract_from_pubmed(
         content = re.sub(r"\s+", " ", str("".join(node.itertext()) or "").strip())
         if not content:
             continue
-        raw_label = (
-            str(node.attrib.get("Label") or node.attrib.get("NlmCategory") or "").strip()
-        )
+        raw_label = str(
+            node.attrib.get("Label") or node.attrib.get("NlmCategory") or ""
+        ).strip()
         label = _normalize_heading_label(raw_label) if raw_label else "Summary"
         key = _canonical_structured_section_key(raw_label or label) or "other"
         if raw_label:
@@ -2502,9 +2512,7 @@ def _structured_abstract_seed_hash(
     normalized_doi = _normalize_abstract_text(doi)
     normalized_title = _normalize_abstract_text(title)
     normalized_year = (
-        str(year)
-        if isinstance(year, int) and 1800 <= year <= 2100
-        else ""
+        str(year) if isinstance(year, int) and 1800 <= year <= 2100 else ""
     )
     seed = "|".join(
         [
@@ -2566,9 +2574,7 @@ def _canonical_structured_section_key(value: str) -> str:
         for token in ["result", "finding", "outcome", "observation", "analysis"]
     ):
         return "results"
-    if any(
-        token in clean for token in ["conclusion", "interpretation", "implication"]
-    ):
+    if any(token in clean for token in ["conclusion", "interpretation", "implication"]):
         return "conclusions"
     return "other"
 
@@ -2644,7 +2650,9 @@ def _structured_abstract_quality_report(
     source_markers = _extract_quantitative_markers(source_text)
     output_markers_blob = _normalize_quantitative_marker(output_text)
     missing_markers = [
-        marker for marker in source_markers if marker and marker not in output_markers_blob
+        marker
+        for marker in source_markers
+        if marker and marker not in output_markers_blob
     ]
     if source_markers:
         marker_recall = round(
@@ -2682,14 +2690,16 @@ def _coerce_structured_sections(payload: dict[str, Any]) -> list[dict[str, str]]
                 or item.get("key")
             )
             content = _normalize_structured_content(
-                item.get("content") if item.get("content") is not None else item.get("text")
+                item.get("content")
+                if item.get("content") is not None
+                else item.get("text")
             )
             if not content:
                 continue
             key = _canonical_structured_section_key(str(heading_hint or ""))
-            label = _normalize_heading_label(str(heading_hint or "")) or _structured_section_label(
-                key or "other"
-            )
+            label = _normalize_heading_label(
+                str(heading_hint or "")
+            ) or _structured_section_label(key or "other")
             result.append(
                 {
                     "key": key or "other",
@@ -2769,7 +2779,9 @@ def _extract_inline_heading_sections(text: str | None) -> list[dict[str, str]]:
     for index, match in enumerate(matches):
         raw_label = str(match.group(1) or "").strip()
         start = match.end()
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(clean_text)
+        end = (
+            matches[index + 1].start() if index + 1 < len(matches) else len(clean_text)
+        )
         content = clean_text[start:end].strip(" ;")
         if not content:
             continue
@@ -2818,12 +2830,16 @@ def _extract_publication_paper_inline_subsections(
     for index, match in enumerate(matches):
         raw_label = str(match.group(1) or "").strip()
         start = match.end()
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(clean_text)
+        end = (
+            matches[index + 1].start() if index + 1 < len(matches) else len(clean_text)
+        )
         content = clean_text[start:end].strip(" ;")
         if not content:
             continue
         key = _normalize_publication_paper_section_kind(raw_label)
-        label = _normalize_heading_label(raw_label) or _publication_paper_section_label(key)
+        label = _normalize_heading_label(raw_label) or _publication_paper_section_label(
+            key
+        )
         sections.append({"key": key or "section", "label": label, "content": content})
     if len(sections) < 2:
         return "", []
@@ -2873,7 +2889,9 @@ def _extract_publication_paper_leading_heading_block(
     return {"key": key, "label": label, "content": content}
 
 
-def _fallback_structured_sections(abstract: str | None) -> tuple[str, list[dict[str, str]]]:
+def _fallback_structured_sections(
+    abstract: str | None,
+) -> tuple[str, list[dict[str, str]]]:
     text = _normalize_abstract_text(abstract)
     if not text:
         return "UNAVAILABLE", []
@@ -3158,7 +3176,9 @@ def _structured_abstract_view_payload(
 
     if row is not None:
         payload = row.payload_json if isinstance(row.payload_json, dict) else {}
-        row_hash = _normalize_abstract_text(str(row.source_abstract_sha256 or "")) or None
+        row_hash = (
+            _normalize_abstract_text(str(row.source_abstract_sha256 or "")) or None
+        )
         status = _normalize_status(row.status, fallback=RUNNING_STATUS)
         computed_at = _coerce_utc_or_none(row.computed_at)
         last_error = _normalize_abstract_text(str(row.last_error or "")) or None
@@ -3215,14 +3235,12 @@ def _normalize_publication_author_names(values: Any) -> list[str]:
     seen: set[str] = set()
     for item in values:
         if isinstance(item, dict):
-            raw_name = (
-                str(
-                    item.get("name")
-                    or item.get("full_name")
-                    or item.get("display_name")
-                    or ""
-                ).strip()
-            )
+            raw_name = str(
+                item.get("name")
+                or item.get("full_name")
+                or item.get("display_name")
+                or ""
+            ).strip()
         else:
             raw_name = str(item or "").strip()
         if not raw_name:
@@ -3244,7 +3262,9 @@ def _publication_file_direct_url(value: dict[str, Any]) -> str | None:
 
 
 def _publication_paper_section_id(*, order: int, key: str, title: str) -> str:
-    base = (str(key or "").strip() or str(title or "").strip() or f"section-{order + 1}").lower()
+    base = (
+        str(key or "").strip() or str(title or "").strip() or f"section-{order + 1}"
+    ).lower()
     slug = re.sub(r"[^a-z0-9]+", "-", base).strip("-") or f"section-{order + 1}"
     return f"paper-section-{order + 1}-{slug}"
 
@@ -3408,7 +3428,11 @@ def _normalize_publication_paper_section_kind(value: str | None) -> str:
         return "methods"
     if any(
         token in clean
-        for token in ["patient and public involvement", "patient involvement", "public involvement"]
+        for token in [
+            "patient and public involvement",
+            "patient involvement",
+            "public involvement",
+        ]
     ):
         return "patient_involvement"
     if any(token in clean for token in ["results", "findings", "outcomes"]):
@@ -3448,12 +3472,15 @@ def _normalize_publication_paper_section_kind(value: str | None) -> str:
         return "conflicts"
     if "provenance and peer review" in clean:
         return "provenance"
-    if any(token in clean for token in ["reference", "bibliography", "literature cited"]):
+    if any(
+        token in clean for token in ["reference", "bibliography", "literature cited"]
+    ):
         return "references"
     if any(token in clean for token in ["appendix", "appendices"]):
         return "appendix"
     if any(
-        token in clean for token in ["supplementary", "supporting information", "supplements"]
+        token in clean
+        for token in ["supplementary", "supporting information", "supplements"]
     ):
         return "supplementary_materials"
     if re.match(r"^(figure|fig)\b", clean):
@@ -3514,9 +3541,7 @@ def _publication_paper_title_cleanup(
         return ""
     clean = clean.strip(" :-")
     lowered = clean.casefold()
-    normalized_kind = _normalize_publication_paper_section_kind(
-        canonical_kind or clean
-    )
+    normalized_kind = _normalize_publication_paper_section_kind(canonical_kind or clean)
     if lowered.endswith(" not applicable.") or lowered.endswith(" not applicable"):
         for prefix in (
             "patient consent for publication",
@@ -3760,7 +3785,10 @@ def _publication_paper_section_role(
         return "asset"
     if normalized_map == "abstract":
         return "major"
-    if normalized_kind in PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS or normalized_zone == "front":
+    if (
+        normalized_kind in PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS
+        or normalized_zone == "front"
+    ):
         return "summary_box"
     if is_explicit_major_heading:
         return "major"
@@ -3803,9 +3831,7 @@ def _split_publication_paper_editorial_overflow(
     clean_content = _publication_paper_content_cleanup(content)
     if not clean_content:
         return "", None, None
-    normalized_kind = _normalize_publication_paper_section_kind(
-        canonical_kind or title
-    )
+    normalized_kind = _normalize_publication_paper_section_kind(canonical_kind or title)
     if normalized_kind not in PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS:
         return clean_content, None, None
     if (
@@ -3880,11 +3906,15 @@ def _refine_publication_paper_sections(
             or ""
         ).strip()
         raw_label = str(refined.get("raw_label") or raw_title).strip()
-        section_id = str(refined.get("id") or "").strip() or f"paper-section-refined-{index + 1}"
+        section_id = (
+            str(refined.get("id") or "").strip() or f"paper-section-refined-{index + 1}"
+        )
         canonical_kind = _normalize_publication_paper_section_kind(
             refined.get("canonical_kind") or refined.get("kind") or raw_title
         )
-        document_zone = str(refined.get("document_zone") or "").strip().lower() or "body"
+        document_zone = (
+            str(refined.get("document_zone") or "").strip().lower() or "body"
+        )
         if document_zone == "body":
             raw_title_marker = re.sub(r"[\s_-]+", " ", raw_title.casefold()).strip()
             if raw_title_marker in {
@@ -3905,10 +3935,13 @@ def _refine_publication_paper_sections(
             raw_title or raw_label,
             canonical_kind=canonical_kind,
         ) or _publication_paper_section_label(canonical_kind)
-        clean_raw_label = _publication_paper_title_cleanup(
-            raw_label or clean_title,
-            canonical_kind=canonical_kind,
-        ) or clean_title
+        clean_raw_label = (
+            _publication_paper_title_cleanup(
+                raw_label or clean_title,
+                canonical_kind=canonical_kind,
+            )
+            or clean_title
+        )
         future_titles = [
             str(
                 candidate.get("raw_label")
@@ -3998,8 +4031,8 @@ def _refine_publication_paper_sections(
         )
         if not can_split_inline:
             continue
-        leading_text, inline_subsections = _extract_publication_paper_inline_subsections(
-            refined.get("content")
+        leading_text, inline_subsections = (
+            _extract_publication_paper_inline_subsections(refined.get("content"))
         )
         if len(inline_subsections) < 2:
             continue
@@ -4007,17 +4040,28 @@ def _refine_publication_paper_sections(
         refined["word_count"] = len(
             re.findall(r"[A-Za-z0-9][A-Za-z0-9'/-]*", leading_text)
         )
-        refined["paragraph_count"] = len(_publication_paper_section_paragraphs(leading_text))
+        refined["paragraph_count"] = len(
+            _publication_paper_section_paragraphs(leading_text)
+        )
         for child_index, inline_section in enumerate(inline_subsections):
-            child_title = _publication_paper_title_cleanup(
-                inline_section.get("label"),
-                canonical_kind=inline_section.get("key"),
-            ) or _normalize_heading_label(inline_section.get("label")) or "Subsection"
+            child_title = (
+                _publication_paper_title_cleanup(
+                    inline_section.get("label"),
+                    canonical_kind=inline_section.get("key"),
+                )
+                or _normalize_heading_label(inline_section.get("label"))
+                or "Subsection"
+            )
             child_kind = _normalize_publication_paper_section_kind(
                 inline_section.get("key") or child_title
             )
-            child_map = _normalize_publication_paper_section_kind(child_kind or child_title)
-            child_slug = re.sub(r"[^a-z0-9]+", "-", child_title.lower()).strip("-") or f"subsection-{child_index + 1}"
+            child_map = _normalize_publication_paper_section_kind(
+                child_kind or child_title
+            )
+            child_slug = (
+                re.sub(r"[^a-z0-9]+", "-", child_title.lower()).strip("-")
+                or f"subsection-{child_index + 1}"
+            )
             child_content = _publication_paper_content_cleanup(
                 inline_section.get("content")
             )
@@ -4045,7 +4089,9 @@ def _refine_publication_paper_sections(
                 "word_count": len(
                     re.findall(r"[A-Za-z0-9][A-Za-z0-9'/-]*", child_content)
                 ),
-                "paragraph_count": len(_publication_paper_section_paragraphs(child_content)),
+                "paragraph_count": len(
+                    _publication_paper_section_paragraphs(child_content)
+                ),
                 "document_zone": document_zone,
                 "section_role": "subsection",
                 "journal_section_family": refined.get("journal_section_family"),
@@ -4097,7 +4143,14 @@ def _dedupe_publication_paper_sections(
                     and (
                         current_map == "introduction"
                         or title_marker
-                        in {"objective", "objectives", "aim", "aims", "purpose", "background"}
+                        in {
+                            "objective",
+                            "objectives",
+                            "aim",
+                            "aims",
+                            "purpose",
+                            "background",
+                        }
                     )
                     and previous_map in {"abstract", "introduction"}
                 ):
@@ -4170,10 +4223,9 @@ def _serialize_publication_paper_section(
     normalized_kind = _normalize_publication_paper_section_kind(
         canonical_kind or raw_label or title or ""
     )
-    normalized_title = (
-        _normalize_heading_label(title or raw_label or "")
-        or _publication_paper_section_label(normalized_kind)
-    )
+    normalized_title = _normalize_heading_label(
+        title or raw_label or ""
+    ) or _publication_paper_section_label(normalized_kind)
     normalized_raw_label = (
         _normalize_heading_label(raw_label or normalized_title) or None
     )
@@ -4267,7 +4319,9 @@ def _serialize_publication_paper_asset(value: dict[str, Any]) -> dict[str, Any]:
     classification: str | None = None
     if raw_classification:
         try:
-            classification = _normalize_publication_file_classification(raw_classification)
+            classification = _normalize_publication_file_classification(
+                raw_classification
+            )
         except PublicationConsoleValidationError:
             classification = None
     classification_label = str(value.get("classification_label") or "").strip() or None
@@ -4320,7 +4374,9 @@ def _build_parsed_publication_paper_asset(
     coords: str | None = None,
     graphic_coords: str | None = None,
 ) -> dict[str, Any]:
-    normalized_classification = _normalize_publication_file_classification(classification)
+    normalized_classification = _normalize_publication_file_classification(
+        classification
+    )
     asset_kind = (
         "figure"
         if normalized_classification == FILE_CLASSIFICATION_FIGURE
@@ -4336,7 +4392,9 @@ def _build_parsed_publication_paper_asset(
         "source": PAPER_MODEL_ASSET_SOURCE_PARSED,
         "download_url": None,
         "classification": normalized_classification,
-        "classification_label": FILE_CLASSIFICATION_LABELS.get(normalized_classification),
+        "classification_label": FILE_CLASSIFICATION_LABELS.get(
+            normalized_classification
+        ),
         "is_pdf": False,
         "caption": str(caption or "").strip() or None,
         "page_start": page_start,
@@ -4588,7 +4646,11 @@ def _build_publication_paper_outline(
         existing_node_id = synthetic_main_text_node_ids.get(canonical_map)
         if existing_node_id:
             existing_node = node_by_id.get(existing_node_id)
-            if existing_node is not None and existing_node.get("target_page") is None and target_page:
+            if (
+                existing_node is not None
+                and existing_node.get("target_page") is None
+                and target_page
+            ):
                 existing_node["target_page"] = target_page
                 existing_node["page_start"] = target_page
                 existing_node["page_end"] = target_page
@@ -4604,7 +4666,10 @@ def _build_publication_paper_outline(
             "section_type": "canonical",
             "canonical_map": canonical_map,
             "level": 2,
-            "order_index": PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER.get(canonical_map, 90) * 100,
+            "order_index": PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER.get(
+                canonical_map, 90
+            )
+            * 100,
             "page_start": target_page,
             "page_end": target_page,
             "bounding_boxes": [],
@@ -4633,7 +4698,11 @@ def _build_publication_paper_outline(
         section_id = str(section.get("id") or "").strip() or None
         section_level = max(1, int(_safe_int(section.get("level")) or 1))
         canonical_map = _normalize_publication_paper_section_kind(
-            str(section.get("canonical_map") or section.get("canonical_kind") or "section")
+            str(
+                section.get("canonical_map")
+                or section.get("canonical_kind")
+                or "section"
+            )
         )
         parent_outline_id = f"outline-group-{group_id}"
         parent_section_id = str(section.get("parent_id") or "").strip() or None
@@ -4643,18 +4712,19 @@ def _build_publication_paper_outline(
             and section_node_id_by_section_id.get(parent_section_id)
         ):
             parent_outline_id = section_node_id_by_section_id[parent_section_id]
-        elif group_id == "main_text" and canonical_map in PUBLICATION_PAPER_MAJOR_MAIN_SECTION_KINDS:
-            explicit_main_section_id = explicit_main_section_id_by_map.get(canonical_map)
+        elif (
+            group_id == "main_text"
+            and canonical_map in PUBLICATION_PAPER_MAJOR_MAIN_SECTION_KINDS
+        ):
+            explicit_main_section_id = explicit_main_section_id_by_map.get(
+                canonical_map
+            )
             explicit_outline_id = (
                 f"outline-node-{explicit_main_section_id}"
                 if explicit_main_section_id
                 else None
             )
-            current_outline_id = (
-                f"outline-node-{section_id}"
-                if section_id
-                else None
-            )
+            current_outline_id = f"outline-node-{section_id}" if section_id else None
             title_hint = str(
                 section.get("label_normalized")
                 or section.get("title")
@@ -4683,7 +4753,9 @@ def _build_publication_paper_outline(
         node_id = f"outline-node-{section.get('id')}"
         parent_level = 1
         if parent_outline_id in node_by_id:
-            parent_level = max(1, int(_safe_int(node_by_id[parent_outline_id].get("level")) or 1))
+            parent_level = max(
+                1, int(_safe_int(node_by_id[parent_outline_id].get("level")) or 1)
+            )
         section_node = {
             "id": node_id,
             "parent_id": parent_outline_id,
@@ -4748,7 +4820,9 @@ def _build_publication_paper_outline(
     for asset in asset_items:
         if not isinstance(asset, dict):
             continue
-        asset_group_id, asset_group_label = _publication_paper_outline_asset_group(asset)
+        asset_group_id, asset_group_label = _publication_paper_outline_asset_group(
+            asset
+        )
         asset_group_children.setdefault(asset_group_id, [])
         asset_group_children[asset_group_id].append(
             {
@@ -5032,11 +5106,7 @@ def _build_publication_paper_payload(
             else seed_sections
         )
     references = (
-        [
-            item
-            for item in parsed_payload.get("references")
-            if isinstance(item, dict)
-        ]
+        [item for item in parsed_payload.get("references") if isinstance(item, dict)]
         if isinstance(parsed_payload.get("references"), list)
         else []
     )
@@ -5068,7 +5138,8 @@ def _build_publication_paper_payload(
     )
     page_count = _safe_int(parsed_payload.get("page_count"))
     has_full_text_sections = any(
-        str(section.get("source") or "").strip() == STRUCTURED_PAPER_SECTION_SOURCE_GROBID
+        str(section.get("source") or "").strip()
+        == STRUCTURED_PAPER_SECTION_SOURCE_GROBID
         for section in sections
         if isinstance(section, dict)
     )
@@ -5092,9 +5163,7 @@ def _build_publication_paper_payload(
         )
     )
     reader_entry_available = bool(
-        primary_pdf is not None
-        or has_full_text_sections
-        or can_auto_attach_reader_pdf
+        primary_pdf is not None or has_full_text_sections or can_auto_attach_reader_pdf
     )
     outline = _build_publication_paper_outline(
         publication=publication,
@@ -5139,8 +5208,7 @@ def _build_publication_paper_payload(
         "metadata": {
             "publication_id": str(publication.get("id") or "").strip(),
             "title": str(publication.get("title") or "").strip(),
-            "journal": str(publication.get("journal") or "").strip()
-            or "Not available",
+            "journal": str(publication.get("journal") or "").strip() or "Not available",
             "year": _safe_int(publication.get("year")),
             "publication_type": str(publication.get("publication_type") or "").strip()
             or "Not available",
@@ -5164,7 +5232,8 @@ def _build_publication_paper_payload(
             "parser_status": effective_parser_status,
             "parser_version": STRUCTURED_PAPER_CACHE_VERSION,
             "generation_method": str(
-                parsed_payload.get("generation_method") or "metadata_abstract_files_seed"
+                parsed_payload.get("generation_method")
+                or "metadata_abstract_files_seed"
             ),
             "has_full_text_sections": has_full_text_sections,
             "total_file_count": len(serialized_assets),
@@ -5268,11 +5337,7 @@ def _is_publication_paper_boilerplate_block(value: str | None) -> bool:
         return True
     if "downloaded from" in lowered and "bmj" in lowered:
         return True
-    if (
-        "bmj open" in lowered
-        and "doi:" in lowered
-        and len(clean) < 220
-    ):
+    if "bmj open" in lowered and "doi:" in lowered and len(clean) < 220:
         return True
     if lowered in {"open access", "original research"}:
         return True
@@ -5354,7 +5419,9 @@ def _find_publication_paper_section_anchor_page(
 ) -> int | None:
     if not page_search_texts:
         return None
-    start_index = max(0, min(len(page_search_texts) - 1, int(preferred_start_index or 0)))
+    start_index = max(
+        0, min(len(page_search_texts) - 1, int(preferred_start_index or 0))
+    )
     search_ranges = [range(start_index, len(page_search_texts))]
     if start_index > 0:
         search_ranges.append(range(0, start_index))
@@ -5672,7 +5739,9 @@ def _tei_page_count(root: ET.Element) -> int | None:
     for node in root.iter():
         if _xml_local_name(getattr(node, "tag", "")) != "extent":
             continue
-        match = re.search(r"(\d+)\s+pages?\b", _tei_node_text(node), flags=re.IGNORECASE)
+        match = re.search(
+            r"(\d+)\s+pages?\b", _tei_node_text(node), flags=re.IGNORECASE
+        )
         if match:
             page_count = _safe_int(match.group(1))
             if page_count is not None:
@@ -5830,9 +5899,7 @@ def _request_grobid_fulltext_tei(*, content: bytes, file_name: str) -> str:
     endpoint = f"{base_url}/api/processFulltextDocument"
     timeout = httpx.Timeout(_grobid_timeout_seconds())
     retries = _grobid_retry_count()
-    last_error = (
-        f"GROBID is required for full-paper parsing and could not be reached at {endpoint}."
-    )
+    last_error = f"GROBID is required for full-paper parsing and could not be reached at {endpoint}."
     with httpx.Client(
         timeout=timeout,
         follow_redirects=True,
@@ -5858,9 +5925,7 @@ def _request_grobid_fulltext_tei(*, content: bytes, file_name: str) -> str:
                     },
                 )
             except Exception as exc:
-                last_error = (
-                    f"GROBID is required for full-paper parsing and could not be reached at {endpoint}: {exc}"
-                )
+                last_error = f"GROBID is required for full-paper parsing and could not be reached at {endpoint}: {exc}"
                 if attempt < retries:
                     time.sleep(0.5 * (attempt + 1))
                     continue
@@ -5931,7 +5996,9 @@ def _publication_paper_asset_display_title(
     classification: str,
     index: int,
 ) -> str:
-    default_label = "Figure" if classification == FILE_CLASSIFICATION_FIGURE else "Table"
+    default_label = (
+        "Figure" if classification == FILE_CLASSIFICATION_FIGURE else "Table"
+    )
     for candidate in (label_text, head_text):
         clean = _normalize_heading_label(candidate)
         if not clean:
@@ -6026,7 +6093,12 @@ def _publication_paper_asset_caption_text(
         marker = part.casefold()
         if marker in seen or marker == label_marker:
             continue
-        if head_marker and marker == head_marker and label_marker and head_marker == label_marker:
+        if (
+            head_marker
+            and marker == head_marker
+            and label_marker
+            and head_marker == label_marker
+        ):
             continue
         seen.add(marker)
         deduped.append(part)
@@ -6079,18 +6151,24 @@ def _merge_publication_paper_asset_candidate(
     merged = dict(existing)
     existing_source = str(existing.get("source") or "").strip()
     candidate_source = str(candidate.get("source") or "").strip()
-    if _publication_paper_asset_title_score(candidate.get("title")) > _publication_paper_asset_title_score(
-        existing.get("title")
-    ):
+    if _publication_paper_asset_title_score(
+        candidate.get("title")
+    ) > _publication_paper_asset_title_score(existing.get("title")):
         merged["title"] = candidate.get("title")
         merged["file_name"] = candidate.get("file_name") or candidate.get("title")
     existing_caption = str(existing.get("caption") or "").strip()
     candidate_caption = str(candidate.get("caption") or "").strip()
     if len(candidate_caption) > len(existing_caption):
         merged["caption"] = candidate_caption or None
-    if _safe_int(merged.get("page_start")) is None and _safe_int(candidate.get("page_start")) is not None:
+    if (
+        _safe_int(merged.get("page_start")) is None
+        and _safe_int(candidate.get("page_start")) is not None
+    ):
         merged["page_start"] = _safe_int(candidate.get("page_start"))
-    if _safe_int(merged.get("page_end")) is None and _safe_int(candidate.get("page_end")) is not None:
+    if (
+        _safe_int(merged.get("page_end")) is None
+        and _safe_int(candidate.get("page_end")) is not None
+    ):
         merged["page_end"] = _safe_int(candidate.get("page_end"))
     if (
         existing_source == PAPER_MODEL_ASSET_SOURCE_PARSED
@@ -6144,10 +6222,18 @@ def _extract_publication_paper_assets_from_tei(
         is_table = (
             tag_name == "table"
             or node_type == "table"
-            or bool(re.match(r"^table\b", str(label_text or "").strip(), flags=re.IGNORECASE))
-            or bool(re.match(r"^table\b", str(head_text or "").strip(), flags=re.IGNORECASE))
+            or bool(
+                re.match(
+                    r"^table\b", str(label_text or "").strip(), flags=re.IGNORECASE
+                )
+            )
+            or bool(
+                re.match(r"^table\b", str(head_text or "").strip(), flags=re.IGNORECASE)
+            )
         )
-        classification = FILE_CLASSIFICATION_TABLE if is_table else FILE_CLASSIFICATION_FIGURE
+        classification = (
+            FILE_CLASSIFICATION_TABLE if is_table else FILE_CLASSIFICATION_FIGURE
+        )
         if classification == FILE_CLASSIFICATION_TABLE:
             table_index += 1
             asset_index = table_index
@@ -6171,7 +6257,9 @@ def _extract_publication_paper_assets_from_tei(
         graphic_coords: str | None = None
         for graphic_child in node:
             if _xml_local_name(getattr(graphic_child, "tag", "")) == "graphic":
-                graphic_coords = str(graphic_child.attrib.get("coords") or "").strip() or None
+                graphic_coords = (
+                    str(graphic_child.attrib.get("coords") or "").strip() or None
+                )
                 break
         parsed_asset = _build_parsed_publication_paper_asset(
             asset_id=f"parsed-{'table' if is_table else 'figure'}-{asset_index}",
@@ -6320,7 +6408,9 @@ def _parse_grobid_tei_into_structured_paper(
         if not extra_content:
             return False
         existing_section = sections[index]
-        existing_content = _publication_paper_content_cleanup(existing_section.get("content"))
+        existing_content = _publication_paper_content_cleanup(
+            existing_section.get("content")
+        )
         combined_content = (
             f"{existing_content}\n\n{extra_content}".strip()
             if existing_content
@@ -6354,7 +6444,9 @@ def _parse_grobid_tei_into_structured_paper(
             continue
         abstract_blocks = _tei_section_blocks(abstract_node)
         abstract_content = (
-            "\n\n".join(abstract_blocks) if abstract_blocks else _tei_node_text(abstract_node)
+            "\n\n".join(abstract_blocks)
+            if abstract_blocks
+            else _tei_node_text(abstract_node)
         )
         if not abstract_content:
             continue
@@ -6362,7 +6454,9 @@ def _parse_grobid_tei_into_structured_paper(
         if marker in abstract_markers:
             continue
         abstract_markers.add(marker)
-        abstract_heading = _tei_node_text(_tei_first_direct_child(abstract_node, "head"))
+        abstract_heading = _tei_node_text(
+            _tei_first_direct_child(abstract_node, "head")
+        )
         abstract_type = str(abstract_node.attrib.get("type") or "").strip() or None
         page_start, page_end = _tei_page_range(abstract_node)
         abstract_kind = _normalize_publication_paper_section_kind(
@@ -6371,8 +6465,10 @@ def _parse_grobid_tei_into_structured_paper(
         if abstract_kind not in PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS:
             abstract_kind = "abstract"
         append_section(
-            title_value=abstract_heading or _publication_paper_section_label(abstract_kind),
-            raw_label=abstract_heading or _publication_paper_section_label(abstract_kind),
+            title_value=abstract_heading
+            or _publication_paper_section_label(abstract_kind),
+            raw_label=abstract_heading
+            or _publication_paper_section_label(abstract_kind),
             canonical_kind=abstract_kind,
             content=abstract_content,
             page_start=page_start,
@@ -6448,7 +6544,11 @@ def _parse_grobid_tei_into_structured_paper(
         structured_split_inputs = [
             candidate
             for candidate in (
-                ([heading_text] if heading_text and document_zone == "back" and not child_divs else [])
+                (
+                    [heading_text]
+                    if heading_text and document_zone == "back" and not child_divs
+                    else []
+                )
                 + blocks
             )
             if candidate
@@ -6464,13 +6564,10 @@ def _parse_grobid_tei_into_structured_paper(
             recognized_split_blocks = sum(
                 1 for _, parsed in structured_split_pairs if isinstance(parsed, dict)
             )
-            should_split_structured_blocks = (
-                recognized_split_blocks >= 2
-                or (
-                    document_zone == "back"
-                    and bool(heading_text)
-                    and recognized_split_blocks >= 1
-                )
+            should_split_structured_blocks = recognized_split_blocks >= 2 or (
+                document_zone == "back"
+                and bool(heading_text)
+                and recognized_split_blocks >= 1
             )
             if should_split_structured_blocks:
                 handled_blocks = False
@@ -6512,7 +6609,9 @@ def _parse_grobid_tei_into_structured_paper(
                     blocks = remaining_blocks
                     section_content = "\n\n".join(blocks)
                     leading_heading_block = (
-                        _extract_publication_paper_leading_heading_block(section_content)
+                        _extract_publication_paper_leading_heading_block(
+                            section_content
+                        )
                         if not heading_text and section_content
                         else None
                     )
@@ -6554,8 +6653,8 @@ def _parse_grobid_tei_into_structured_paper(
             if handled_blocks:
                 blocks = remaining_blocks
                 section_content = "\n\n".join(blocks)
-                leading_heading_block = _extract_publication_paper_leading_heading_block(
-                    section_content
+                leading_heading_block = (
+                    _extract_publication_paper_leading_heading_block(section_content)
                 )
         if not heading_text and child_divs:
             if not section_content:
@@ -6575,7 +6674,8 @@ def _parse_grobid_tei_into_structured_paper(
                 current_main_kind=contextual_main_kind
                 or (
                     fallback_canonical_kind
-                    if fallback_canonical_kind in PUBLICATION_PAPER_MAJOR_MAIN_SECTION_KINDS
+                    if fallback_canonical_kind
+                    in PUBLICATION_PAPER_MAJOR_MAIN_SECTION_KINDS
                     else None
                 ),
                 future_titles=[item for item in future_titles if item],
@@ -6583,15 +6683,11 @@ def _parse_grobid_tei_into_structured_paper(
             generated_kind = _normalize_publication_paper_section_kind(
                 inferred_map or fallback_canonical_kind
             )
-            can_create_generated_wrapper = (
-                not parent_id
-                and generated_kind
-                in (
-                    *PUBLICATION_PAPER_MAJOR_MAIN_SECTION_KINDS,
-                    *PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS,
-                    *PUBLICATION_PAPER_METADATA_SECTION_KINDS,
-                    *PUBLICATION_PAPER_REFERENCE_SECTION_KINDS,
-                )
+            can_create_generated_wrapper = not parent_id and generated_kind in (
+                *PUBLICATION_PAPER_MAJOR_MAIN_SECTION_KINDS,
+                *PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS,
+                *PUBLICATION_PAPER_METADATA_SECTION_KINDS,
+                *PUBLICATION_PAPER_REFERENCE_SECTION_KINDS,
             )
             if not can_create_generated_wrapper:
                 for child_index, child_div in enumerate(child_divs):
@@ -6615,8 +6711,7 @@ def _parse_grobid_tei_into_structured_paper(
                         or fallback_canonical_kind
                     ),
                     content=(
-                        (leading_heading_block or {}).get("content")
-                        or section_content
+                        (leading_heading_block or {}).get("content") or section_content
                     ),
                     current_main_kind=contextual_main_kind,
                     future_titles=[item for item in future_titles if item],
@@ -6652,11 +6747,15 @@ def _parse_grobid_tei_into_structured_paper(
                 or (
                     _publication_paper_section_label(canonical_kind)
                     if canonical_kind not in {"section", "appendix"}
-                    else _publication_paper_section_label(contextual_main_kind or canonical_kind)
+                    else _publication_paper_section_label(
+                        contextual_main_kind or canonical_kind
+                    )
                 )
             )
             if leading_heading_block:
-                section_content = str(leading_heading_block.get("content") or "").strip()
+                section_content = str(
+                    leading_heading_block.get("content") or ""
+                ).strip()
         is_explicit_major_heading = _publication_paper_explicit_major_heading(
             title=section_title or heading_text,
             canonical_map=canonical_kind,
@@ -6671,7 +6770,8 @@ def _parse_grobid_tei_into_structured_paper(
             page_end=page_end,
             level=max(1, min(level, 4)),
             parent_id=parent_id,
-            allow_empty=bool(child_divs) or (document_zone == "body" and is_explicit_major_heading),
+            allow_empty=bool(child_divs)
+            or (document_zone == "body" and is_explicit_major_heading),
             is_generated_heading=not bool(heading_text),
             document_zone=document_zone,
         )
@@ -6691,7 +6791,9 @@ def _parse_grobid_tei_into_structured_paper(
             last_body_major_kind = inferred_section_map
             if created_section_id:
                 last_body_major_section_id = created_section_id
-                last_body_major_section_id_by_kind[inferred_section_map] = created_section_id
+                last_body_major_section_id_by_kind[inferred_section_map] = (
+                    created_section_id
+                )
         for child_div in child_divs:
             walk_div(
                 child_div,
@@ -6745,7 +6847,9 @@ def _parse_grobid_tei_into_structured_paper(
                 if _extract_publication_paper_leading_heading_block(block) is None
             ]
         container_parent_id: str | None = None
-        leading_blocks_for_first_child = container_blocks if container_child_divs else []
+        leading_blocks_for_first_child = (
+            container_blocks if container_child_divs else []
+        )
         if container_blocks and not container_child_divs:
             container_parent_id = append_section(
                 title_value=fallback_title,
@@ -6797,7 +6901,9 @@ def _parse_grobid_tei_into_structured_paper(
                 level=2 if container_parent_id else 1,
                 fallback_kind=fallback_kind,
                 document_zone=document_zone,
-                prefixed_blocks=leading_blocks_for_first_child if div_index == 0 else None,
+                prefixed_blocks=leading_blocks_for_first_child
+                if div_index == 0
+                else None,
             )
 
     if not sections:
@@ -6828,7 +6934,9 @@ _FIGURE_CROP_MIN_BYTES = 2048
 _FIGURE_CROP_SCALE = 2.0
 
 
-def _parse_grobid_coords(coords_str: str | None) -> list[tuple[int, float, float, float, float]]:
+def _parse_grobid_coords(
+    coords_str: str | None,
+) -> list[tuple[int, float, float, float, float]]:
     entries: list[tuple[int, float, float, float, float]] = []
     raw = str(coords_str or "").strip()
     if not raw:
@@ -6839,7 +6947,12 @@ def _parse_grobid_coords(coords_str: str | None) -> list[tuple[int, float, float
             continue
         try:
             page = int(tokens[0])
-            x1, y1, x2, y2 = float(tokens[1]), float(tokens[2]), float(tokens[3]), float(tokens[4])
+            x1, y1, x2, y2 = (
+                float(tokens[1]),
+                float(tokens[2]),
+                float(tokens[3]),
+                float(tokens[4]),
+            )
             entries.append((page, x1, y1, x2, y2))
         except (ValueError, IndexError):
             continue
@@ -6929,12 +7042,14 @@ def _extract_docling_tables_html(content: bytes) -> list[dict[str, Any]]:
                 num_rows = len(grid)
                 if num_rows > 0:
                     num_cols = len(grid[0])
-            tables_out.append({
-                "html": html_text,
-                "page": page_no,
-                "num_rows": num_rows,
-                "num_cols": num_cols,
-            })
+            tables_out.append(
+                {
+                    "html": html_text,
+                    "page": page_no,
+                    "num_rows": num_rows,
+                    "num_cols": num_cols,
+                }
+            )
         return tables_out
     except Exception as exc:
         logger.warning("Docling table extraction failed: %s", exc)
@@ -6965,7 +7080,11 @@ def _match_docling_tables_to_assets(
                 continue
             docling_page = dt.get("page")
             score = 0
-            if asset_page is not None and docling_page is not None and asset_page == docling_page:
+            if (
+                asset_page is not None
+                and docling_page is not None
+                and asset_page == docling_page
+            ):
                 score += 10
             if dt.get("num_rows", 0) > 1:
                 score += 5
@@ -6986,14 +7105,18 @@ def _extract_structured_publication_paper_with_grobid(
         content=content,
         file_name=file_name or "publication.pdf",
     )
-    parsed_payload = _parse_grobid_tei_into_structured_paper(tei_xml=tei_xml, title=title)
-    aligned_sections, aligned_page_count = _align_structured_publication_sections_to_pdf_pages(
-        sections=(
-            parsed_payload.get("sections")
-            if isinstance(parsed_payload.get("sections"), list)
-            else []
-        ),
-        content=content,
+    parsed_payload = _parse_grobid_tei_into_structured_paper(
+        tei_xml=tei_xml, title=title
+    )
+    aligned_sections, aligned_page_count = (
+        _align_structured_publication_sections_to_pdf_pages(
+            sections=(
+                parsed_payload.get("sections")
+                if isinstance(parsed_payload.get("sections"), list)
+                else []
+            ),
+            content=content,
+        )
     )
     parsed_payload["sections"] = aligned_sections
     parsed_payload["figures"] = _align_structured_publication_assets_to_pdf_pages(
@@ -7151,14 +7274,18 @@ def _load_publication_paper_source_state(
     *, user_id: str, publication_id: str
 ) -> dict[str, Any]:
     with session_scope() as session:
-        work = _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
+        work = _resolve_work_or_raise(
+            session, user_id=user_id, publication_id=publication_id
+        )
         latest = _latest_metric_for_work(session, work_id=publication_id)
         citations_total = (
             int(latest.citations_count or 0)
             if latest is not None
             else int(work.citations_total or 0)
         )
-        summary = _build_publication_summary(work, citations_total=max(0, citations_total))
+        summary = _build_publication_summary(
+            work, citations_total=max(0, citations_total)
+        )
         structured_row = _load_structured_abstract_cache(
             session, user_id=user_id, publication_id=publication_id
         )
@@ -7175,7 +7302,9 @@ def _load_publication_paper_source_state(
             title=summary.get("title"),
             year=_safe_int(summary.get("year")),
         )
-    files_payload = list_publication_files(user_id=user_id, publication_id=publication_id)
+    files_payload = list_publication_files(
+        user_id=user_id, publication_id=publication_id
+    )
     active_files = (
         files_payload.get("items")
         if isinstance(files_payload.get("items"), list)
@@ -7337,7 +7466,9 @@ def _enqueue_structured_abstract_if_needed(
             row = PublicationStructuredAbstractCache(
                 owner_user_id=user_id,
                 publication_id=publication_id,
-                payload_json={} if has_source_seed else _empty_structured_abstract_payload(),
+                payload_json={}
+                if has_source_seed
+                else _empty_structured_abstract_payload(),
                 source_abstract_sha256=abstract_seed_hash,
                 parser_version=parser_version,
                 model_name=None,
@@ -7358,7 +7489,8 @@ def _enqueue_structured_abstract_if_needed(
                 abstract_seed_hash or ""
             )
             version_changed = (
-                _normalize_abstract_text(str(row.parser_version or "")) != parser_version
+                _normalize_abstract_text(str(row.parser_version or ""))
+                != parser_version
             )
             should_enqueue = has_source_seed and (
                 force or not payload or hash_changed or version_changed
@@ -7606,7 +7738,9 @@ def _run_structured_abstract_compute_job(
             )
             parser_version = STRUCTURED_ABSTRACT_CACHE_VERSION
 
-            existing_payload = row.payload_json if isinstance(row.payload_json, dict) else {}
+            existing_payload = (
+                row.payload_json if isinstance(row.payload_json, dict) else {}
+            )
             if (
                 not force
                 and has_source_seed
@@ -7642,7 +7776,9 @@ def _run_structured_abstract_compute_job(
             session.flush()
     except Exception as exc:
         with session_scope() as session:
-            _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
+            _resolve_work_or_raise(
+                session, user_id=user_id, publication_id=publication_id
+            )
             row = _load_structured_abstract_cache(
                 session, user_id=user_id, publication_id=publication_id, for_update=True
             )
@@ -7726,7 +7862,9 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
             parser_status=STRUCTURED_PAPER_STATUS_FULL_TEXT_READY,
         )
         with session_scope() as session:
-            _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
+            _resolve_work_or_raise(
+                session, user_id=user_id, publication_id=publication_id
+            )
             row = _load_structured_paper_cache(
                 session, user_id=user_id, publication_id=publication_id, for_update=True
             )
@@ -7764,7 +7902,9 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
                 parser_last_error=failure_message,
             )
         with session_scope() as session:
-            _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
+            _resolve_work_or_raise(
+                session, user_id=user_id, publication_id=publication_id
+            )
             row = _load_structured_paper_cache(
                 session, user_id=user_id, publication_id=publication_id, for_update=True
             )
@@ -7807,7 +7947,9 @@ def _enqueue_drilldown_warmup_if_needed(
         "impact": bool(
             _enqueue_impact_if_needed(user_id=user_id, publication_id=publication_id)
         ),
-        "ai": bool(_enqueue_ai_if_needed(user_id=user_id, publication_id=publication_id)),
+        "ai": bool(
+            _enqueue_ai_if_needed(user_id=user_id, publication_id=publication_id)
+        ),
         "structured_abstract": bool(
             _enqueue_structured_abstract_if_needed(
                 user_id=user_id,
@@ -7927,7 +8069,9 @@ def get_publication_paper_model(
         structured_abstract_status=source_state["structured_abstract_status"],
         files=source_state["files"],
     )
-    has_viewable_pdf = bool((seed_payload.get("document") or {}).get("has_viewable_pdf"))
+    has_viewable_pdf = bool(
+        (seed_payload.get("document") or {}).get("has_viewable_pdf")
+    )
     if not has_viewable_pdf and _ensure_publication_reader_pdf_attached(
         user_id=user_id,
         publication_id=publication_id,
@@ -7987,15 +8131,17 @@ def get_publication_paper_model(
                 _normalize_abstract_text(str(row.source_signature_sha256 or "")) or None
             )
             current_status = _normalize_status(row.status, fallback=READY_STATUS)
-            cached_payload = row.payload_json if isinstance(row.payload_json, dict) else {}
+            cached_payload = (
+                row.payload_json if isinstance(row.payload_json, dict) else {}
+            )
             cached_document = (
                 cached_payload.get("document")
                 if isinstance(cached_payload.get("document"), dict)
                 else {}
             )
-            cached_parser_status = str(
-                cached_document.get("parser_status") or ""
-            ).strip().upper()
+            cached_parser_status = (
+                str(cached_document.get("parser_status") or "").strip().upper()
+            )
             needs_reseed = (
                 current_hash != source_signature
                 or row.parser_version != STRUCTURED_PAPER_CACHE_VERSION
@@ -8013,15 +8159,21 @@ def get_publication_paper_model(
                     else source_state["structured_abstract_last_error"]
                 )
                 session.flush()
-                cached_payload = row.payload_json if isinstance(row.payload_json, dict) else {}
-                cached_parser_status = str(
-                    (
-                        (cached_payload.get("document") or {})
-                        if isinstance(cached_payload.get("document"), dict)
-                        else {}
-                    ).get("parser_status")
-                    or ""
-                ).strip().upper()
+                cached_payload = (
+                    row.payload_json if isinstance(row.payload_json, dict) else {}
+                )
+                cached_parser_status = (
+                    str(
+                        (
+                            (cached_payload.get("document") or {})
+                            if isinstance(cached_payload.get("document"), dict)
+                            else {}
+                        ).get("parser_status")
+                        or ""
+                    )
+                    .strip()
+                    .upper()
+                )
                 should_enqueue_structured_paper = has_viewable_pdf
             elif force_reparse and has_viewable_pdf:
                 row.payload_json = parsing_payload
@@ -8032,14 +8184,18 @@ def get_publication_paper_model(
                 cached_payload = (
                     row.payload_json if isinstance(row.payload_json, dict) else {}
                 )
-                cached_parser_status = str(
-                    (
-                        (cached_payload.get("document") or {})
-                        if isinstance(cached_payload.get("document"), dict)
-                        else {}
-                    ).get("parser_status")
-                    or ""
-                ).strip().upper()
+                cached_parser_status = (
+                    str(
+                        (
+                            (cached_payload.get("document") or {})
+                            if isinstance(cached_payload.get("document"), dict)
+                            else {}
+                        ).get("parser_status")
+                        or ""
+                    )
+                    .strip()
+                    .upper()
+                )
                 should_enqueue_structured_paper = True
             elif (
                 has_viewable_pdf
@@ -8051,7 +8207,9 @@ def get_publication_paper_model(
                 row.last_error = None
                 row.computed_at = now
                 session.flush()
-                cached_payload = row.payload_json if isinstance(row.payload_json, dict) else {}
+                cached_payload = (
+                    row.payload_json if isinstance(row.payload_json, dict) else {}
+                )
                 should_enqueue_structured_paper = True
             elif not has_viewable_pdf and current_status != READY_STATUS:
                 row.payload_json = seed_payload
@@ -8059,9 +8217,13 @@ def get_publication_paper_model(
                 row.last_error = source_state["structured_abstract_last_error"]
                 row.computed_at = now
                 session.flush()
-                cached_payload = row.payload_json if isinstance(row.payload_json, dict) else {}
+                cached_payload = (
+                    row.payload_json if isinstance(row.payload_json, dict) else {}
+                )
 
-            payload = cached_payload or (parsing_payload if has_viewable_pdf else seed_payload)
+            payload = cached_payload or (
+                parsing_payload if has_viewable_pdf else seed_payload
+            )
         response_payload = {
             "payload": payload,
             "computed_at": _coerce_utc_or_none(row.computed_at),
@@ -8098,7 +8260,9 @@ def get_publication_details(*, user_id: str, publication_id: str) -> dict[str, A
             if latest is not None
             else int(work.citations_total or 0)
         )
-        summary = _build_publication_summary(work, citations_total=max(0, citations_total))
+        summary = _build_publication_summary(
+            work, citations_total=max(0, citations_total)
+        )
         structured_row = _load_structured_abstract_cache(
             session, user_id=user_id, publication_id=publication_id
         )
@@ -8122,7 +8286,9 @@ def get_publication_details(*, user_id: str, publication_id: str) -> dict[str, A
         response_payload = summary
 
     if response_payload is None:
-        raise PublicationConsoleNotFoundError("Publication details could not be loaded.")
+        raise PublicationConsoleNotFoundError(
+            "Publication details could not be loaded."
+        )
     _enqueue_drilldown_warmup_if_needed(
         user_id=user_id,
         publication_id=publication_id,
@@ -8283,12 +8449,17 @@ def list_publication_files(*, user_id: str, publication_id: str) -> dict[str, An
         default_file_name = _resolve_publication_file_display_name(publication)
         active_rows: list[PublicationFile] = []
         for row in rows:
-            if not bool(row.custom_name) and str(row.file_name or "").strip() != default_file_name:
+            if (
+                not bool(row.custom_name)
+                and str(row.file_name or "").strip() != default_file_name
+            ):
                 row.file_name = default_file_name
             if str(row.source or "").upper() == FILE_SOURCE_OA_LINK:
                 has_local_copy = False
                 try:
-                    has_local_copy = _ensure_open_access_publication_file_local_copy(row)
+                    has_local_copy = _ensure_open_access_publication_file_local_copy(
+                        row
+                    )
                 except Exception:
                     logger.exception(
                         "publication_open_access_file_cache_failed",
@@ -8375,7 +8546,9 @@ def upload_publication_file(
     checksum = hashlib.sha256(content).hexdigest()
 
     with session_scope() as session:
-        work = _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
+        work = _resolve_work_or_raise(
+            session, user_id=user_id, publication_id=publication_id
+        )
         display_name = _resolve_publication_file_display_name(work)
         row = PublicationFile(
             publication_id=publication_id,
@@ -8676,7 +8849,9 @@ def update_publication_file(
         raise PublicationConsoleValidationError("File name is required.")
 
     with session_scope() as session:
-        work = _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
+        work = _resolve_work_or_raise(
+            session, user_id=user_id, publication_id=publication_id
+        )
         row = session.scalars(
             select(PublicationFile).where(
                 PublicationFile.id == file_id,
@@ -8786,9 +8961,7 @@ def _resolve_publication_file_binary_payload(
             if lower.endswith(".pdf"):
                 content_type = "application/pdf"
             elif lower.endswith(".docx"):
-                content_type = (
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
+                content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             else:
                 content_type = "application/octet-stream"
             return {
@@ -8843,9 +9016,7 @@ def _resolve_publication_file_binary_payload(
         if lower.endswith(".pdf"):
             content_type = "application/pdf"
         elif lower.endswith(".docx"):
-            content_type = (
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
+            content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         else:
             content_type = "application/octet-stream"
 

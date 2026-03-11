@@ -193,12 +193,18 @@ def test_publication_paper_model_endpoint_returns_structured_reader_payload(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
+        lambda *args, **kwargs: (
+            b"%PDF-1.7 locally cached oa payload",
+            "application/pdf",
+        ),
     )
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
+        lambda *args, **kwargs: (
+            b"%PDF-1.7 locally cached oa payload",
+            "application/pdf",
+        ),
     )
     monkeypatch.setattr(
         publication_console_service,
@@ -393,7 +399,9 @@ def test_publication_paper_model_endpoint_returns_structured_reader_payload(
         assert payload["payload"]["sections"][0]["canonical_kind"] == "introduction"
         assert payload["payload"]["figures"][0]["classification"] == "FIGURE"
         assert payload["payload"]["figures"][0]["origin"] == "parsed"
-        assert payload["payload"]["figures"][0]["caption"] == "Recruitment flow diagram."
+        assert (
+            payload["payload"]["figures"][0]["caption"] == "Recruitment flow diagram."
+        )
         assert payload["payload"]["tables"][0]["page_start"] == 4
         assert payload["payload"]["outline"][0]["label_normalized"] == "Overview"
         assert any(
@@ -552,14 +560,10 @@ def test_parse_grobid_tei_refines_section_context_and_dedupes_assets() -> None:
     assert study_population_sections[1]["canonical_map"] == "results"
 
     discussion_section = next(
-        section
-        for section in payload["sections"]
-        if section["title"] == "Discussion"
+        section for section in payload["sections"] if section["title"] == "Discussion"
     )
     limitations_section = next(
-        section
-        for section in payload["sections"]
-        if section["title"] == "Limitations"
+        section for section in payload["sections"] if section["title"] == "Limitations"
     )
     consent_section = next(
         section
@@ -605,10 +609,15 @@ def test_parse_grobid_tei_preserves_headingless_wrapper_and_container_content() 
         if isinstance(section, dict)
     )
     assert "Lead paragraph before the named manuscript sections." in combined_content
-    assert "Unheaded methods lead-in content should still be preserved." in combined_content
+    assert (
+        "Unheaded methods lead-in content should still be preserved."
+        in combined_content
+    )
 
 
-def test_parse_grobid_tei_recovers_open_access_wrappers_and_direct_back_matter_blocks() -> None:
+def test_parse_grobid_tei_recovers_open_access_wrappers_and_direct_back_matter_blocks() -> (
+    None
+):
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <text>
@@ -648,18 +657,22 @@ def test_parse_grobid_tei_recovers_open_access_wrappers_and_direct_back_matter_b
         if isinstance(section, dict)
     )
     assert "Additional results detail should not be dropped" in combined_content
-    assert "Additional discussion interpretation should also be preserved" in combined_content
+    assert (
+        "Additional discussion interpretation should also be preserved"
+        in combined_content
+    )
     assert any(
         section["canonical_kind"] == "data_availability"
         for section in payload["sections"]
     )
     assert any(
-        section["canonical_kind"] == "conflicts"
-        for section in payload["sections"]
+        section["canonical_kind"] == "conflicts" for section in payload["sections"]
     )
 
 
-def test_refine_publication_paper_sections_creates_inline_subsections_for_major_sections() -> None:
+def test_refine_publication_paper_sections_creates_inline_subsections_for_major_sections() -> (
+    None
+):
     refined_sections = publication_console_service._refine_publication_paper_sections(
         [
             {
@@ -704,10 +717,14 @@ def test_refine_publication_paper_sections_creates_inline_subsections_for_major_
     )
 
     abstract_section = next(
-        section for section in refined_sections if section["id"] == "paper-section-abstract"
+        section
+        for section in refined_sections
+        if section["id"] == "paper-section-abstract"
     )
     methods_section = next(
-        section for section in refined_sections if section["id"] == "paper-section-methods"
+        section
+        for section in refined_sections
+        if section["id"] == "paper-section-methods"
     )
     abstract_children = [
         section
@@ -728,7 +745,9 @@ def test_refine_publication_paper_sections_creates_inline_subsections_for_major_
         "Results",
         "Conclusion",
     ]
-    assert all(section["major_section_key"] == "overview" for section in abstract_children)
+    assert all(
+        section["major_section_key"] == "overview" for section in abstract_children
+    )
     assert methods_section["major_section_key"] == "methods"
     assert methods_section["section_role"] == "major"
     assert [section["title"] for section in methods_children] == [
@@ -736,11 +755,15 @@ def test_refine_publication_paper_sections_creates_inline_subsections_for_major_
         "Setting",
         "Main outcome measures",
     ]
-    assert all(section["major_section_key"] == "methods" for section in methods_children)
+    assert all(
+        section["major_section_key"] == "methods" for section in methods_children
+    )
     assert all(section["section_role"] == "subsection" for section in methods_children)
 
 
-def test_refine_publication_paper_sections_dedupes_exact_repeated_leaf_sections() -> None:
+def test_refine_publication_paper_sections_dedupes_exact_repeated_leaf_sections() -> (
+    None
+):
     refined_sections = publication_console_service._refine_publication_paper_sections(
         [
             {
@@ -817,7 +840,9 @@ def test_refine_publication_paper_sections_dedupes_exact_repeated_leaf_sections(
     assert len(objective_sections) == 1
 
 
-def test_refine_publication_paper_sections_does_not_attach_body_subsections_to_future_back_heading() -> None:
+def test_refine_publication_paper_sections_does_not_attach_body_subsections_to_future_back_heading() -> (
+    None
+):
     refined_sections = publication_console_service._refine_publication_paper_sections(
         [
             {
@@ -870,16 +895,22 @@ def test_refine_publication_paper_sections_does_not_attach_body_subsections_to_f
     )
 
     study_population = next(
-        section for section in refined_sections if section["id"] == "paper-section-study-population"
+        section
+        for section in refined_sections
+        if section["id"] == "paper-section-study-population"
     )
     statistical_analysis = next(
-        section for section in refined_sections if section["id"] == "paper-section-statistical-analysis"
+        section
+        for section in refined_sections
+        if section["id"] == "paper-section-statistical-analysis"
     )
     assert study_population["parent_id"] is None
     assert statistical_analysis["parent_id"] is None
 
 
-def test_parse_grobid_tei_merges_headingless_body_continuation_into_current_major_section() -> None:
+def test_parse_grobid_tei_merges_headingless_body_continuation_into_current_major_section() -> (
+    None
+):
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <text>
@@ -903,15 +934,19 @@ def test_parse_grobid_tei_merges_headingless_body_continuation_into_current_majo
     results_sections = [
         section
         for section in payload["sections"]
-        if section["canonical_map"] == "results"
-        and section["document_zone"] == "body"
+        if section["canonical_map"] == "results" and section["document_zone"] == "body"
     ]
     assert len(results_sections) == 1
     assert "Primary results text is presented here." in results_sections[0]["content"]
-    assert "Additional results detail should stay under the existing results section." in results_sections[0]["content"]
+    assert (
+        "Additional results detail should stay under the existing results section."
+        in results_sections[0]["content"]
+    )
 
 
-def test_parse_grobid_tei_splits_headingless_back_matter_blocks_into_separate_sections() -> None:
+def test_parse_grobid_tei_splits_headingless_back_matter_blocks_into_separate_sections() -> (
+    None
+):
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <text>
@@ -934,7 +969,9 @@ def test_parse_grobid_tei_splits_headingless_back_matter_blocks_into_separate_se
     assert "Patient and public involvement" in titles
 
 
-def test_parse_grobid_tei_preserves_empty_explicit_major_wrappers_for_body_subsections() -> None:
+def test_parse_grobid_tei_preserves_empty_explicit_major_wrappers_for_body_subsections() -> (
+    None
+):
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <text>
@@ -1016,7 +1053,9 @@ def test_parse_grobid_tei_ignores_body_note_blocks_when_div_sections_exist() -> 
     assert titles == ["Introduction"]
 
 
-def test_parse_grobid_tei_splits_headed_back_matter_blocks_without_duplicate_listorg_noise() -> None:
+def test_parse_grobid_tei_splits_headed_back_matter_blocks_without_duplicate_listorg_noise() -> (
+    None
+):
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <text>
@@ -1056,7 +1095,9 @@ def test_parse_grobid_tei_splits_headed_back_matter_blocks_without_duplicate_lis
     assert "Provenance and peer review" in titles
 
 
-def test_extract_publication_paper_reference_entries_from_tei_ignores_source_desc_biblstruct() -> None:
+def test_extract_publication_paper_reference_entries_from_tei_ignores_source_desc_biblstruct() -> (
+    None
+):
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <teiHeader>
@@ -1095,7 +1136,9 @@ def test_extract_publication_paper_reference_entries_from_tei_ignores_source_des
     assert references[0]["raw_text"] == "Real reference"
 
 
-def test_build_publication_paper_payload_preserves_prestructured_section_hierarchy() -> None:
+def test_build_publication_paper_payload_preserves_prestructured_section_hierarchy() -> (
+    None
+):
     payload, _ = publication_console_service._build_publication_paper_payload(
         publication={
             "title": "Structured paper",
@@ -1315,7 +1358,10 @@ def test_publication_paper_model_endpoint_fails_when_grobid_is_unavailable(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
+        lambda *args, **kwargs: (
+            b"%PDF-1.7 locally cached oa payload",
+            "application/pdf",
+        ),
     )
 
     def _raise_grobid_unavailable(**kwargs):  # noqa: ANN003
@@ -1390,8 +1436,13 @@ def test_publication_paper_model_endpoint_fails_when_grobid_is_unavailable(
         assert payload["payload"]["document"]["parser_status"] == "FAILED"
         assert payload["payload"]["document"]["has_full_text_sections"] is False
         assert payload["payload"]["document"]["reader_entry_available"] is True
-        assert "GROBID" in str(payload["payload"]["document"]["parser_last_error"] or "")
-        assert payload["payload"]["sections"][0]["source"] in {"structured_abstract", "abstract"}
+        assert "GROBID" in str(
+            payload["payload"]["document"]["parser_last_error"] or ""
+        )
+        assert payload["payload"]["sections"][0]["source"] in {
+            "structured_abstract",
+            "abstract",
+        }
 
 
 def test_publication_paper_model_force_reparse_retries_failed_cache(
@@ -1421,7 +1472,10 @@ def test_publication_paper_model_force_reparse_retries_failed_cache(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
+        lambda *args, **kwargs: (
+            b"%PDF-1.7 locally cached oa payload",
+            "application/pdf",
+        ),
     )
 
     attempts = {"count": 0}
@@ -1740,8 +1794,12 @@ def test_align_structured_publication_sections_to_pdf_pages_uses_stored_pdf_text
         def __init__(self, _stream) -> None:  # noqa: ANN001
             self.pages = [
                 _FakePage("Abstract Objectives evaluate incremental diagnostic value."),
-                _FakePage("Introduction Cardiovascular diseases remain a leading cause."),
-                _FakePage("Study population Adults referred for imaging were enrolled."),
+                _FakePage(
+                    "Introduction Cardiovascular diseases remain a leading cause."
+                ),
+                _FakePage(
+                    "Study population Adults referred for imaging were enrolled."
+                ),
                 _FakePage("Results CMR demonstrated diagnostic discordance with TTE."),
             ]
 
@@ -1845,28 +1903,30 @@ def test_align_structured_publication_assets_to_pdf_pages_uses_stored_pdf_text(
 
     monkeypatch.setattr(publication_console_service, "PdfReader", _FakePdfReader)
 
-    aligned_assets = publication_console_service._align_structured_publication_assets_to_pdf_pages(
-        assets=[
-            {
-                "id": "parsed-figure-1",
-                "title": "Figure 1",
-                "file_name": "Figure 1",
-                "caption": "Recruitment flow diagram.",
-                "classification": "FIGURE",
-                "page_start": None,
-                "page_end": None,
-            },
-            {
-                "id": "parsed-table-1",
-                "title": "Table 1",
-                "file_name": "Table 1",
-                "caption": "Baseline cohort characteristics.",
-                "classification": "TABLE",
-                "page_start": None,
-                "page_end": None,
-            },
-        ],
-        content=b"%PDF-1.7 asset anchor test",
+    aligned_assets = (
+        publication_console_service._align_structured_publication_assets_to_pdf_pages(
+            assets=[
+                {
+                    "id": "parsed-figure-1",
+                    "title": "Figure 1",
+                    "file_name": "Figure 1",
+                    "caption": "Recruitment flow diagram.",
+                    "classification": "FIGURE",
+                    "page_start": None,
+                    "page_end": None,
+                },
+                {
+                    "id": "parsed-table-1",
+                    "title": "Table 1",
+                    "file_name": "Table 1",
+                    "caption": "Baseline cohort characteristics.",
+                    "classification": "TABLE",
+                    "page_start": None,
+                    "page_end": None,
+                },
+            ],
+            content=b"%PDF-1.7 asset anchor test",
+        )
     )
 
     assert [asset["page_start"] for asset in aligned_assets] == [1, 2]
@@ -1889,7 +1949,10 @@ def test_publication_paper_model_auto_links_oa_pdf_for_reader(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
+        lambda *args, **kwargs: (
+            b"%PDF-1.7 locally cached oa payload",
+            "application/pdf",
+        ),
     )
     monkeypatch.setattr(
         publication_console_service,
@@ -1981,7 +2044,9 @@ def test_publication_paper_model_auto_links_oa_pdf_for_reader(
 
         assert second_payload is not None
         assert second_payload["status"] == "READY"
-        assert second_payload["payload"]["document"]["parser_status"] == "FULL_TEXT_READY"
+        assert (
+            second_payload["payload"]["document"]["parser_status"] == "FULL_TEXT_READY"
+        )
         assert second_payload["payload"]["document"]["has_viewable_pdf"] is True
         assert len(second_payload["payload"]["sections"]) == 1
         assert second_payload["payload"]["sections"][0]["source"] == "grobid"
@@ -2019,7 +2084,10 @@ def test_publication_paper_model_auto_links_oa_pdf_when_only_non_pdf_files_exist
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"%PDF-1.7 auto-linked reader bytes", "application/pdf"),
+        lambda *args, **kwargs: (
+            b"%PDF-1.7 auto-linked reader bytes",
+            "application/pdf",
+        ),
     )
     monkeypatch.setattr(
         publication_console_service,
@@ -2123,7 +2191,9 @@ def test_publication_paper_model_auto_links_oa_pdf_when_only_non_pdf_files_exist
 
         assert second_payload is not None
         assert second_payload["status"] == "READY"
-        assert second_payload["payload"]["document"]["parser_status"] == "FULL_TEXT_READY"
+        assert (
+            second_payload["payload"]["document"]["parser_status"] == "FULL_TEXT_READY"
+        )
         assert second_payload["payload"]["document"]["has_viewable_pdf"] is True
 
         with session_scope() as session:
@@ -2554,9 +2624,9 @@ def test_publication_file_upload_preserves_filename_and_download_header(
             json={
                 "filename": upload_filename,
                 "mime_type": "application/pdf",
-                "content_base64": base64.b64encode(
-                    b"%PDF-1.7 test payload"
-                ).decode("ascii"),
+                "content_base64": base64.b64encode(b"%PDF-1.7 test payload").decode(
+                    "ascii"
+                ),
             },
         )
         assert upload_response.status_code == 200
@@ -2616,9 +2686,9 @@ def test_publication_file_download_restores_extension_for_legacy_filename(
             json={
                 "filename": "legacy-final.pdf",
                 "mime_type": "application/pdf",
-                "content_base64": base64.b64encode(
-                    b"%PDF-1.7 legacy payload"
-                ).decode("ascii"),
+                "content_base64": base64.b64encode(b"%PDF-1.7 legacy payload").decode(
+                    "ascii"
+                ),
             },
         )
         assert upload_response.status_code == 200
@@ -2847,7 +2917,10 @@ def test_open_access_link_uses_default_publication_file_name(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
+        lambda *args, **kwargs: (
+            b"%PDF-1.7 locally cached oa payload",
+            "application/pdf",
+        ),
     )
 
     with TestClient(app) as client:
@@ -2974,9 +3047,12 @@ def test_open_access_link_uses_browser_fallback_when_http_fetch_is_blocked(
         ).first()
         assert stored_row is not None
         assert stored_row.storage_key
-        assert publication_console_service._publication_file_storage_path(
-            str(stored_row.storage_key)
-        ).read_bytes() == browser_bytes
+        assert (
+            publication_console_service._publication_file_storage_path(
+                str(stored_row.storage_key)
+            ).read_bytes()
+            == browser_bytes
+        )
 
 
 def test_fetch_open_access_pdf_bytes_uses_browser_like_headers(
@@ -3030,9 +3106,7 @@ def test_open_access_browser_fetch_script_path_prefers_packaged_script(
     assert resolved == packaged
 
 
-def test_open_access_link_requires_local_cache_download(
-    monkeypatch, tmp_path
-) -> None:
+def test_open_access_link_requires_local_cache_download(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     monkeypatch.setattr(
@@ -3364,7 +3438,10 @@ def test_publication_file_rename_persists_for_open_access_link(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
+        lambda *args, **kwargs: (
+            b"%PDF-1.7 locally cached oa payload",
+            "application/pdf",
+        ),
     )
 
     with TestClient(app) as client:
@@ -3531,7 +3608,10 @@ def test_deleted_open_access_link_stays_suppressed_until_explicit_readd(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
+        lambda *args, **kwargs: (
+            b"%PDF-1.7 locally cached oa payload",
+            "application/pdf",
+        ),
     )
 
     with TestClient(app) as client:
@@ -3602,7 +3682,9 @@ def test_deleted_open_access_link_stays_suppressed_until_explicit_readd(
         assert explicit_response.status_code == 200
         assert explicit_response.json()["created"] is False
         assert explicit_response.json()["file"] is not None
-        assert explicit_response.json()["message"] == "Deleted open-access PDF restored."
+        assert (
+            explicit_response.json()["message"] == "Deleted open-access PDF restored."
+        )
 
         restored_list_response = client.get(
             f"/v1/publications/{work_id}/files",
@@ -3626,9 +3708,7 @@ def test_deleted_open_access_link_stays_suppressed_until_explicit_readd(
             assert restored_rows[0].source == "OA_LINK"
 
 
-def test_explicit_readd_requires_a_local_pdf_copy(
-    monkeypatch, tmp_path
-) -> None:
+def test_explicit_readd_requires_a_local_pdf_copy(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     monkeypatch.setattr(
@@ -3643,7 +3723,9 @@ def test_explicit_readd_requires_a_local_pdf_copy(
     )
 
     with TestClient(app) as client:
-        owner_id, token = _register(client, email="oa-restore-external-only@example.com")
+        owner_id, token = _register(
+            client, email="oa-restore-external-only@example.com"
+        )
 
         with session_scope() as session:
             work = Work(
@@ -3768,22 +3850,24 @@ def test_structured_abstract_payload_uses_model_when_quality_guard_passes(
         ),
     )
 
-    payload, model_name = publication_console_service._build_structured_abstract_payload(
-        publication={
-            "title": "Cardiac MRI-derived mean right atrial pressure and outcomes",
-            "journal": "Open Heart",
-            "year": 2025,
-            "doi": None,
-            "pmid": None,
-            "keywords_json": ["heart failure"],
-            "abstract": (
-                "Background: Right atrial pressure is prognostic in heart failure. "
-                "Purpose: Develop and validate a CMR-derived mRAP model. "
-                "Methods: Cohort n=672 with regression analyses. "
-                "Results: AUC 0.93 with p<0.01 for hospitalisation outcomes. "
-                "Conclusion: CMR-derived mRAP supports risk stratification."
-            ),
-        }
+    payload, model_name = (
+        publication_console_service._build_structured_abstract_payload(
+            publication={
+                "title": "Cardiac MRI-derived mean right atrial pressure and outcomes",
+                "journal": "Open Heart",
+                "year": 2025,
+                "doi": None,
+                "pmid": None,
+                "keywords_json": ["heart failure"],
+                "abstract": (
+                    "Background: Right atrial pressure is prognostic in heart failure. "
+                    "Purpose: Develop and validate a CMR-derived mRAP model. "
+                    "Methods: Cohort n=672 with regression analyses. "
+                    "Results: AUC 0.93 with p<0.01 for hospitalisation outcomes. "
+                    "Conclusion: CMR-derived mRAP supports risk stratification."
+                ),
+            }
+        )
     )
 
     assert model_name == "gpt-4.1-mini"
@@ -3822,19 +3906,21 @@ def test_structured_abstract_payload_falls_back_when_model_quality_guard_fails(
         ),
     )
 
-    payload, model_name = publication_console_service._build_structured_abstract_payload(
-        publication={
-            "title": "Structured abstract fidelity guard",
-            "journal": "Test Journal",
-            "year": 2026,
-            "doi": None,
-            "pmid": None,
-            "keywords_json": [],
-            "abstract": (
-                "Background: Cohort n=101 was studied. "
-                "Results: AUC 0.75 and p<0.01 were observed."
-            ),
-        }
+    payload, model_name = (
+        publication_console_service._build_structured_abstract_payload(
+            publication={
+                "title": "Structured abstract fidelity guard",
+                "journal": "Test Journal",
+                "year": 2026,
+                "doi": None,
+                "pmid": None,
+                "keywords_json": [],
+                "abstract": (
+                    "Background: Cohort n=101 was studied. "
+                    "Results: AUC 0.75 and p<0.01 were observed."
+                ),
+            }
+        )
     )
 
     assert model_name is None
@@ -3849,41 +3935,63 @@ def test_structured_abstract_payload_falls_back_when_model_quality_guard_fails(
 
 
 def test_is_figure_legend_paragraph_detects_captions() -> None:
-    from research_os.services.publication_console_service import _is_figure_legend_paragraph
+    from research_os.services.publication_console_service import (
+        _is_figure_legend_paragraph,
+    )
 
-    assert _is_figure_legend_paragraph(
-        "Figure 5 Multimodal cardiac assessment of a 39-year-old female patient "
-        "with confirmed acute myocarditis showing diffuse edema and late gadolinium enhancement."
-    ) is True
+    assert (
+        _is_figure_legend_paragraph(
+            "Figure 5 Multimodal cardiac assessment of a 39-year-old female patient "
+            "with confirmed acute myocarditis showing diffuse edema and late gadolinium enhancement."
+        )
+        is True
+    )
 
-    assert _is_figure_legend_paragraph(
-        "Table 2 Baseline characteristics of the study population stratified by "
-        "treatment group showing demographics, comorbidities, and laboratory results."
-    ) is True
+    assert (
+        _is_figure_legend_paragraph(
+            "Table 2 Baseline characteristics of the study population stratified by "
+            "treatment group showing demographics, comorbidities, and laboratory results."
+        )
+        is True
+    )
 
-    assert _is_figure_legend_paragraph(
-        "Fig. 3 Kaplan-Meier survival curves for the primary endpoint of all-cause "
-        "mortality stratified by baseline left ventricular ejection fraction."
-    ) is True
+    assert (
+        _is_figure_legend_paragraph(
+            "Fig. 3 Kaplan-Meier survival curves for the primary endpoint of all-cause "
+            "mortality stratified by baseline left ventricular ejection fraction."
+        )
+        is True
+    )
 
 
 def test_is_figure_legend_paragraph_preserves_sentences() -> None:
-    from research_os.services.publication_console_service import _is_figure_legend_paragraph
+    from research_os.services.publication_console_service import (
+        _is_figure_legend_paragraph,
+    )
 
-    assert _is_figure_legend_paragraph(
-        "Figure 1 shows the echocardiographic features of our cohort including "
-        "ventricular dimensions and systolic function assessment at baseline."
-    ) is False
+    assert (
+        _is_figure_legend_paragraph(
+            "Figure 1 shows the echocardiographic features of our cohort including "
+            "ventricular dimensions and systolic function assessment at baseline."
+        )
+        is False
+    )
 
-    assert _is_figure_legend_paragraph(
-        "Figure 2 demonstrates the relationship between cardiac biomarkers and "
-        "clinical outcomes over the 12-month follow-up period in our population."
-    ) is False
+    assert (
+        _is_figure_legend_paragraph(
+            "Figure 2 demonstrates the relationship between cardiac biomarkers and "
+            "clinical outcomes over the 12-month follow-up period in our population."
+        )
+        is False
+    )
 
-    assert _is_figure_legend_paragraph(
-        "Table 1 presents the results of multivariate regression analysis with "
-        "adjustment for age, sex, and baseline disease severity across subgroups."
-    ) is False
+    assert (
+        _is_figure_legend_paragraph(
+            "Table 1 presents the results of multivariate regression analysis with "
+            "adjustment for age, sex, and baseline disease severity across subgroups."
+        )
+        is False
+    )
 
     assert _is_figure_legend_paragraph("Figure 1") is False
     assert _is_figure_legend_paragraph("") is False
@@ -3923,7 +4031,9 @@ def test_parse_grobid_coords_handles_empty_and_invalid() -> None:
 
 
 def test_crop_figure_images_returns_unchanged_without_fitz() -> None:
-    from research_os.services.publication_console_service import _crop_figure_images_from_pdf
+    from research_os.services.publication_console_service import (
+        _crop_figure_images_from_pdf,
+    )
 
     figures = [{"id": "fig-1", "coords": "0,10,20,30,40", "image_data": None}]
     result = _crop_figure_images_from_pdf(b"", figures)
@@ -3939,11 +4049,23 @@ def test_crop_figure_images_returns_unchanged_without_fitz() -> None:
 
 
 def test_match_docling_tables_to_assets_matches_by_page() -> None:
-    from research_os.services.publication_console_service import _match_docling_tables_to_assets
+    from research_os.services.publication_console_service import (
+        _match_docling_tables_to_assets,
+    )
 
     docling_tables = [
-        {"html": "<table><tr><td>A</td></tr></table>", "page": 3, "num_rows": 5, "num_cols": 3},
-        {"html": "<table><tr><td>B</td></tr></table>", "page": 7, "num_rows": 10, "num_cols": 4},
+        {
+            "html": "<table><tr><td>A</td></tr></table>",
+            "page": 3,
+            "num_rows": 5,
+            "num_cols": 3,
+        },
+        {
+            "html": "<table><tr><td>B</td></tr></table>",
+            "page": 7,
+            "num_rows": 10,
+            "num_cols": 4,
+        },
     ]
     table_assets = [
         {"id": "t1", "page_start": 3, "structured_html": None},
@@ -3956,16 +4078,22 @@ def test_match_docling_tables_to_assets_matches_by_page() -> None:
 
 
 def test_match_docling_tables_returns_unchanged_when_empty() -> None:
-    from research_os.services.publication_console_service import _match_docling_tables_to_assets
+    from research_os.services.publication_console_service import (
+        _match_docling_tables_to_assets,
+    )
 
     assets = [{"id": "t1", "page_start": 5, "structured_html": None}]
     result = _match_docling_tables_to_assets([], assets)
     assert result == assets
-    result2 = _match_docling_tables_to_assets([{"html": "<table/>", "page": 5, "num_rows": 2, "num_cols": 2}], [])
+    result2 = _match_docling_tables_to_assets(
+        [{"html": "<table/>", "page": 5, "num_rows": 2, "num_cols": 2}], []
+    )
     assert result2 == []
 
 
-def test_extract_docling_tables_html_passes_document_to_html_export(monkeypatch) -> None:
+def test_extract_docling_tables_html_passes_document_to_html_export(
+    monkeypatch,
+) -> None:
     import sys
     import types
 
@@ -4024,7 +4152,9 @@ def test_extract_docling_tables_html_passes_document_to_html_export(monkeypatch)
 
 
 def test_build_parsed_asset_includes_new_fields() -> None:
-    from research_os.services.publication_console_service import _build_parsed_publication_paper_asset
+    from research_os.services.publication_console_service import (
+        _build_parsed_publication_paper_asset,
+    )
 
     asset = _build_parsed_publication_paper_asset(
         asset_id="parsed-figure-1",
@@ -4090,7 +4220,9 @@ def test_extract_assets_from_tei_captures_coords() -> None:
 
 
 def test_content_cleanup_strips_figure_legend_captions() -> None:
-    from research_os.services.publication_console_service import _publication_paper_content_cleanup
+    from research_os.services.publication_console_service import (
+        _publication_paper_content_cleanup,
+    )
 
     text = (
         "The patient underwent cardiac MRI. "
@@ -4105,8 +4237,12 @@ def test_content_cleanup_strips_figure_legend_captions() -> None:
 
 
 def test_content_cleanup_preserves_figure_references() -> None:
-    from research_os.services.publication_console_service import _publication_paper_content_cleanup
+    from research_os.services.publication_console_service import (
+        _publication_paper_content_cleanup,
+    )
 
-    text = "Figure 1 shows the distribution of cardiac biomarkers across all study groups."
+    text = (
+        "Figure 1 shows the distribution of cardiac biomarkers across all study groups."
+    )
     result = _publication_paper_content_cleanup(text)
     assert "Figure 1 shows" in result
