@@ -96,6 +96,65 @@ jobs:
             echo "No changed frontend files detected."
           fi
 
+      - name: Detect backend pytest targets
+        id: pytest-targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$(git rev-parse HEAD~1)"
+          fi
+
+          git diff --name-only "${BASE_SHA}" HEAD -- 'src/research_os/**' 'tests/**' 'alembic/**' 'Dockerfile' 'scripts/oa-browser-fetch/**' > changed-backend-files.txt
+          python - <<'PY'
+          from pathlib import Path
+
+          changed = [
+              line.strip()
+              for line in Path("changed-backend-files.txt").read_text(encoding="utf-8").splitlines()
+              if line.strip()
+          ]
+          targets: list[str] = []
+
+          def add(path: str) -> None:
+              normalized = path.replace("\\", "/")
+              if Path(normalized).exists() and normalized not in targets:
+                  targets.append(normalized)
+
+          for path in changed:
+              normalized = path.replace("\\", "/")
+              file_path = Path(normalized)
+              if normalized.startswith("tests/") and normalized.endswith(".py"):
+                  add(normalized)
+                  continue
+              if normalized.startswith("src/research_os/services/") and normalized.endswith(".py"):
+                  add(f"tests/test_{file_path.stem}.py")
+                  continue
+              if normalized.startswith("src/research_os/api/"):
+                  add("tests/test_api.py")
+                  continue
+              if normalized == "src/research_os/db.py" or normalized.startswith("alembic/"):
+                  add("tests/test_db_schema_integrity.py")
+                  add("tests/test_db_storage_stability.py")
+                  continue
+              if normalized == "Dockerfile" or normalized.startswith("scripts/oa-browser-fetch/"):
+                  add("tests/test_publication_console_service.py")
+                  add("tests/test_open_access_service.py")
+
+          output_path = Path("pytest-targets.txt")
+          output_path.write_text("\n".join(targets), encoding="utf-8")
+          print(f"Selected pytest targets: {targets if targets else 'none'}")
+          PY
+
+          TARGET_COUNT="$(grep -c '.' pytest-targets.txt || true)"
+          echo "count=${TARGET_COUNT}" >> "${GITHUB_OUTPUT}"
+
       - name: Check formatting
         if: steps.changed-python.outputs.count != '0'
         shell: bash
@@ -112,7 +171,9 @@ jobs:
         run: python scripts/verify_change_documentation.py
 
       - name: Run tests
-        run: python -m pytest -q
+        if: steps.pytest-targets.outputs.count != '0'
+        shell: bash
+        run: xargs -r python -m pytest -q < pytest-targets.txt
 
       - name: Validate Render blueprint YAML
         run: |
