@@ -748,11 +748,12 @@ const PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX = 'aawe_publications_library_c
 const PUBLICATIONS_LIBRARY_PAGE_SIZE_STORAGE_PREFIX = 'aawe_publications_library_page_size:'
 const PUBLICATIONS_LIBRARY_COLUMN_ORDER_STORAGE_PREFIX = 'aawe_publications_library_column_order:'
 const PUBLICATIONS_LIBRARY_VISUAL_SETTINGS_STORAGE_PREFIX = 'aawe_publications_library_visual_settings:'
-const PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX = 'aawe_publications_oa_auto_attempted:'
 const PUBLICATIONS_OA_STATUS_STORAGE_PREFIX = 'aawe_publications_oa_status:'
 const PUBLICATIONS_OA_AUTO_MAX_PER_PASS = 60
 const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
 const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
+const PUBLICATIONS_OA_AUTO_MISSING_RETRY_MS = 6 * 60 * 60 * 1000
+const PUBLICATIONS_OA_AUTO_CHECKING_STALE_MS = 5 * 60 * 1000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
@@ -2128,42 +2129,8 @@ function autoFitPublicationTableColumns(input: {
   return next
 }
 
-function publicationsOaAutoAttemptedStorageKey(userId: string): string {
-  return `${PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX}${userId}`
-}
-
 function publicationsOaStatusStorageKey(userId: string): string {
   return `${PUBLICATIONS_OA_STATUS_STORAGE_PREFIX}${userId}`
-}
-
-function loadPublicationsOaAutoAttempted(userId: string): Set<string> {
-  if (typeof window === 'undefined') {
-    return new Set<string>()
-  }
-  const raw = window.localStorage.getItem(publicationsOaAutoAttemptedStorageKey(userId))
-  if (!raw) {
-    return new Set<string>()
-  }
-  try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
-      return new Set<string>()
-    }
-    const values = parsed
-      .map((item) => String(item || '').trim())
-      .filter(Boolean)
-    return new Set<string>(values)
-  } catch {
-    return new Set<string>()
-  }
-}
-
-function savePublicationsOaAutoAttempted(userId: string, attempted: Set<string>): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-  const values = Array.from(attempted).slice(-4000)
-  window.localStorage.setItem(publicationsOaAutoAttemptedStorageKey(userId), JSON.stringify(values))
 }
 
 function loadPublicationsOaStatus(userId: string): Record<string, PublicationOaPdfStatusRecord> {
@@ -2253,6 +2220,33 @@ function publicationOaStatusLabel(status: PublicationOaPdfStatus, hasDoi: boolea
     return 'Open-access PDF not found'
   }
   return 'Open-access PDF pending background check'
+}
+
+function publicationOaStatusUpdatedAtMs(
+  record: PublicationOaPdfStatusRecord | null | undefined,
+): number {
+  const value = Date.parse(String(record?.updatedAt || ''))
+  return Number.isFinite(value) ? value : 0
+}
+
+function publicationShouldAutoCheckOa(
+  record: PublicationOaPdfStatusRecord | null | undefined,
+  nowMs: number,
+): boolean {
+  if (!record) {
+    return true
+  }
+  if (record.status === 'available') {
+    return false
+  }
+  const updatedAtMs = publicationOaStatusUpdatedAtMs(record)
+  if (record.status === 'checking') {
+    return nowMs - updatedAtMs >= PUBLICATIONS_OA_AUTO_CHECKING_STALE_MS
+  }
+  if (record.status === 'missing') {
+    return nowMs - updatedAtMs >= PUBLICATIONS_OA_AUTO_MISSING_RETRY_MS
+  }
+  return true
 }
 
 function loadActivePublicationDetailTab(): PublicationDetailTab {
@@ -4255,11 +4249,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (works.length === 0) {
       return
     }
-
-    const attempted = loadPublicationsOaAutoAttempted(user.id)
+    const nowMs = Date.now()
     const candidates = works
       .filter((work) => Boolean((work.doi || '').trim()))
-      .filter((work) => !attempted.has(work.id))
+      .filter((work) => publicationShouldAutoCheckOa(oaPdfStatusByWorkId[work.id], nowMs))
+      .sort((left, right) => {
+        const leftUpdatedAt = publicationOaStatusUpdatedAtMs(oaPdfStatusByWorkId[left.id])
+        const rightUpdatedAt = publicationOaStatusUpdatedAtMs(oaPdfStatusByWorkId[right.id])
+        return leftUpdatedAt - rightUpdatedAt
+      })
       .slice(0, PUBLICATIONS_OA_AUTO_MAX_PER_PASS)
     if (candidates.length === 0) {
       return
@@ -4293,7 +4291,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               updatedAt: new Date().toISOString(),
             },
           }))
-          attempted.add(work.id)
           try {
             const payload = await linkPublicationOpenAccessPdf(token, work.id)
             if (payload.file) {
@@ -4349,7 +4346,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             unavailable += 1
           }
           checked += 1
-          savePublicationsOaAutoAttempted(user.id, attempted)
           if (cancelled) {
             break
           }
@@ -4361,7 +4357,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           }
         }
       } finally {
-        savePublicationsOaAutoAttempted(user.id, attempted)
         autoOaInFlightRef.current = false
         setAutoOaFinding(false)
         if (!cancelled) {
@@ -4380,7 +4375,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return () => {
       cancelled = true
     }
-  }, [isFixtureMode, personaState?.works, token, user?.id])
+  }, [isFixtureMode, oaPdfStatusByWorkId, personaState?.works, token, user?.id])
 
   useEffect(() => {
     if (isFixtureMode || !token) {
@@ -6034,11 +6029,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setStatus('')
     try {
       const payload = await linkPublicationOpenAccessPdf(token, selectedWorkId, { allowSuppressed: true })
-      if (user?.id) {
-        const attempted = loadPublicationsOaAutoAttempted(user.id)
-        attempted.add(selectedWorkId)
-        savePublicationsOaAutoAttempted(user.id, attempted)
-      }
       if (!payload.file) {
         setOaPdfStatusByWorkId((current) => ({
           ...current,
