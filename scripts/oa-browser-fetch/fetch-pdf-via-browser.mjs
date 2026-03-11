@@ -1,5 +1,7 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const BROWSER_USER_AGENT =
@@ -58,6 +60,35 @@ function parseArgs(argv) {
     index += 1;
   }
   return args;
+}
+
+function tryHeadedFallback(targetUrl, outputPath, timeoutMs) {
+  const scriptPath = fileURLToPath(import.meta.url);
+  const fallback = spawnSync(
+    "xvfb-run",
+    [
+      "-a",
+      "node",
+      scriptPath,
+      "--url",
+      targetUrl,
+      "--output",
+      outputPath,
+      "--timeout-ms",
+      String(timeoutMs),
+      "--headed",
+      "true",
+    ],
+    {
+      encoding: "utf8",
+      timeout: timeoutMs + 15000,
+    },
+  );
+  if (fallback.status === 0 && fallback.stdout?.trim()) {
+    process.stdout.write(fallback.stdout.trim());
+    return true;
+  }
+  return false;
 }
 
 function looksLikePdfBytes(content, contentType = "") {
@@ -381,6 +412,7 @@ async function main() {
   const targetUrl = String(args.url || "").trim();
   const outputPath = String(args.output || "").trim();
   const timeoutMs = Math.max(15000, Number(args["timeout-ms"] || 45000));
+  const headed = String(args.headed || "false").toLowerCase() === "true";
 
   if (!targetUrl || !outputPath) {
     console.error("Usage: fetch-pdf-via-browser.mjs --url <url> --output <path> [--timeout-ms <ms>]");
@@ -388,7 +420,7 @@ async function main() {
   }
 
   const browser = await chromium.launch({
-    headless: true,
+    headless: !headed,
     args: [
       "--disable-blink-features=AutomationControlled",
       "--disable-dev-shm-usage",
@@ -644,6 +676,10 @@ async function main() {
           strategy: candidateUrl === targetUrl ? "fetch-target" : "fetch-candidate",
         }),
       );
+      return;
+    }
+
+    if (!headed && tryHeadedFallback(targetUrl, outputPath, timeoutMs)) {
       return;
     }
 

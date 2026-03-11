@@ -10,7 +10,7 @@ COPY pyproject.toml ./
 COPY scripts/oa-browser-fetch/package.json ./scripts/oa-browser-fetch/package.json
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends nodejs npm && \
+    apt-get install -y --no-install-recommends nodejs npm xauth && \
     npm install --prefix ./scripts/oa-browser-fetch && \
     npx --prefix ./scripts/oa-browser-fetch playwright install --with-deps chromium && \
     rm -rf /var/lib/apt/lists/*
