@@ -2979,6 +2979,57 @@ def test_open_access_link_uses_browser_fallback_when_http_fetch_is_blocked(
         ).read_bytes() == browser_bytes
 
 
+def test_fetch_open_access_pdf_bytes_uses_browser_like_headers(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    seen_headers: dict[str, str] = {}
+
+    def _request_bytes(**kwargs):  # noqa: ANN003
+        seen_headers.update(kwargs.get("headers") or {})
+        return b"%PDF-1.7 direct payload", "application/pdf"
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_bytes_with_retry",
+        _request_bytes,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes_via_browser",
+        lambda *args, **kwargs: (b"", None),
+    )
+
+    content, content_type = publication_console_service._fetch_open_access_pdf_bytes(
+        "https://example.org/files/paper.pdf"
+    )
+
+    assert content == b"%PDF-1.7 direct payload"
+    assert content_type == "application/pdf"
+    assert "Mozilla/5.0" in str(seen_headers.get("User-Agent") or "")
+    assert seen_headers.get("Origin") == "https://example.org"
+    assert seen_headers.get("Referer") == "https://example.org/"
+    assert "application/pdf" in str(seen_headers.get("Accept") or "")
+    assert "en-GB" in str(seen_headers.get("Accept-Language") or "")
+
+
+def test_open_access_browser_fetch_script_path_prefers_packaged_script(
+    monkeypatch, tmp_path
+) -> None:
+    packaged = tmp_path / "scripts" / "oa-browser-fetch" / "fetch-pdf-via-browser.mjs"
+    legacy = tmp_path / "frontend" / "scripts" / "fetch-pdf-via-browser.mjs"
+    packaged.parent.mkdir(parents=True, exist_ok=True)
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    packaged.write_text("// packaged fetcher\n", encoding="utf-8")
+    legacy.write_text("// legacy fetcher\n", encoding="utf-8")
+
+    monkeypatch.setattr(publication_console_service, "_repo_root", lambda: tmp_path)
+
+    resolved = publication_console_service._open_access_browser_fetch_script_path()
+
+    assert resolved == packaged
+
+
 def test_open_access_link_requires_local_cache_download(
     monkeypatch, tmp_path
 ) -> None:

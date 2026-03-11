@@ -63,6 +63,11 @@ FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 HTTP_URL_SCHEME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
+OPEN_ACCESS_FETCH_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36"
+)
 
 TRAJECTORY_VALUES = {
     "EARLY_SPIKE",
@@ -1003,8 +1008,20 @@ def _open_access_browser_fetch_enabled() -> bool:
 
 
 def _open_access_browser_fetch_script_path() -> Path | None:
-    script = _repo_root() / "frontend" / "scripts" / "fetch-pdf-via-browser.mjs"
-    return script if script.exists() and script.is_file() else None
+    configured = str(os.getenv("PUBLICATION_OA_BROWSER_FETCH_SCRIPT", "")).strip()
+    candidates: list[Path] = []
+    if configured:
+        candidates.append(Path(configured))
+    candidates.extend(
+        [
+            _repo_root() / "scripts" / "oa-browser-fetch" / "fetch-pdf-via-browser.mjs",
+            _repo_root() / "frontend" / "scripts" / "fetch-pdf-via-browser.mjs",
+        ]
+    )
+    for script in candidates:
+        if script.exists() and script.is_file():
+            return script
+    return None
 
 
 def _looks_like_pdf_payload(content: bytes, content_type: str | None = None) -> bool:
@@ -1152,14 +1169,31 @@ def _persist_publication_file_content(
     return path
 
 
+def _open_access_pdf_request_headers(oa_url: str) -> dict[str, str]:
+    clean_url = str(oa_url or "").strip()
+    parsed = urlsplit(clean_url)
+    origin = ""
+    if parsed.scheme and parsed.netloc:
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+    headers = {
+        "Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-GB,en;q=0.9,en-US;q=0.8",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "User-Agent": OPEN_ACCESS_FETCH_USER_AGENT,
+    }
+    if origin:
+        headers["Origin"] = origin
+        headers["Referer"] = f"{origin}/"
+    return headers
+
+
 def _fetch_open_access_pdf_bytes(oa_url: str) -> tuple[bytes, str | None]:
     content, content_type = _request_bytes_with_retry(
         url=str(oa_url),
         timeout_seconds=_unpaywall_timeout_seconds(),
         retries=max(1, _unpaywall_retry_count()),
-        headers={
-            "Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8"
-        },
+        headers=_open_access_pdf_request_headers(str(oa_url)),
     )
     if _looks_like_pdf_payload(content, content_type):
         return content, content_type
