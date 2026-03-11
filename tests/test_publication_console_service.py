@@ -3634,6 +3634,145 @@ def test_open_access_link_tries_multiple_candidates_until_one_is_stored(
         assert stored_row.storage_key
 
 
+def test_resolve_openalex_content_url_uses_doi_lookup(monkeypatch) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_json_with_retry",
+        lambda **kwargs: {
+            "id": "https://openalex.org/W1234567890",
+            "content_url": "https://content.openalex.org/works/W1234567890",
+        },
+    )
+
+    work = Work(
+        title="OpenAlex DOI work",
+        title_lower="openalex doi work",
+        year=2026,
+        doi="10.1000/openalex-doi-work",
+        pmid=None,
+        work_type="journal-article",
+        venue_name="Test Journal",
+        publisher="Test Publisher",
+        abstract="Abstract",
+        keywords=[],
+        url="https://example.org/article",
+        authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+        provenance="manual",
+    )
+
+    resolved = publication_console_service._resolve_openalex_content_url(
+        work=work,
+        user_email="owner@example.com",
+    )
+
+    assert resolved == "https://content.openalex.org/works/W1234567890"
+
+
+def test_fetch_openalex_pdf_bytes_uses_content_api(monkeypatch) -> None:
+    monkeypatch.setenv("OPENALEX_API_KEY", "test-openalex-key")
+    monkeypatch.setattr(
+        publication_console_service,
+        "_resolve_openalex_content_url",
+        lambda **kwargs: "https://content.openalex.org/works/W1234567890",
+    )
+    captured: dict[str, Any] = {}
+
+    def _request_bytes(**kwargs):
+        captured.update(kwargs)
+        return (
+            b"%PDF-1.7 openalex manuscript",
+            "application/pdf",
+            "https://content.openalex.org/works/W1234567890.pdf",
+        )
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_bytes_with_final_url_retry",
+        _request_bytes,
+    )
+
+    content, content_type, pdf_url = publication_console_service._fetch_openalex_pdf_bytes(
+        work=Work(title="Test", title_lower="test", provenance="manual"),
+        user_email="owner@example.com",
+    )
+
+    assert content == b"%PDF-1.7 openalex manuscript"
+    assert content_type == "application/pdf"
+    assert pdf_url == "https://content.openalex.org/works/W1234567890.pdf"
+    assert captured["params"] == {"api_key": "test-openalex-key"}
+
+
+def test_link_publication_open_access_pdf_falls_back_to_openalex_content_api(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    monkeypatch.setattr(
+        publication_console_service,
+        "_find_open_access_pdf_candidates",
+        lambda **kwargs: ["https://example.org/blocked"],
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes",
+        lambda *_args, **_kwargs: (b"", None),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_openalex_pdf_bytes",
+        lambda **kwargs: (
+            b"%PDF-1.7 openalex fallback",
+            "application/pdf",
+            "https://content.openalex.org/works/W1234567890.pdf",
+        ),
+    )
+
+    with TestClient(app) as client:
+        owner_id, token = _register(client, email="oa-openalex-fallback@example.com")
+
+        with session_scope() as session:
+            work = Work(
+                user_id=owner_id,
+                title="OpenAlex fallback OA work",
+                title_lower="openalex fallback oa work",
+                year=2026,
+                doi="10.1000/openalex-fallback-oa-work",
+                pmid=None,
+                work_type="journal-article",
+                venue_name="Test Journal",
+                publisher="Test Publisher",
+                abstract="Abstract",
+                keywords=[],
+                url="https://example.org/article",
+                authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+                provenance="manual",
+            )
+            session.add(work)
+            session.flush()
+            work_id = str(work.id)
+
+        response = client.post(
+            f"/v1/publications/{work_id}/files/link-oa",
+            headers=_auth_headers(token),
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created"] is True
+
+    with session_scope() as session:
+        stored_row = session.scalars(
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == owner_id,
+                PublicationFile.publication_id == work_id,
+                PublicationFile.deleted.is_(False),
+            )
+        ).first()
+        assert stored_row is not None
+        assert stored_row.oa_url == "https://content.openalex.org/works/W1234567890.pdf"
+        assert stored_row.storage_key
+
+
 def test_listing_publication_files_prunes_active_oa_link_without_local_copy(
     monkeypatch, tmp_path
 ) -> None:

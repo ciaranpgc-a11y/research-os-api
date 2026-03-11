@@ -585,6 +585,81 @@ def _unpaywall_email(*, user_email: str | None = None) -> str | None:
     return None
 
 
+def _openalex_pdf_api_key() -> str | None:
+    value = str(os.getenv("OPENALEX_API_KEY", "")).strip()
+    return value or None
+
+
+def _normalize_openalex_work_id(value: str | None) -> str | None:
+    clean = str(value or "").strip()
+    if clean.startswith("https://openalex.org/"):
+        clean = clean.removeprefix("https://openalex.org/")
+    elif clean.startswith("http://openalex.org/"):
+        clean = clean.removeprefix("http://openalex.org/")
+    clean = clean.strip()
+    return clean if re.fullmatch(r"W\d+", clean) else None
+
+
+def _resolve_openalex_content_url(*, work: Work, user_email: str | None) -> str | None:
+    identifiers: list[str] = []
+    openalex_work_id = _normalize_openalex_work_id(work.openalex_work_id)
+    if openalex_work_id:
+        identifiers.append(openalex_work_id)
+    doi = _normalize_doi(work.doi)
+    if doi:
+        identifiers.append(f"https://doi.org/{doi}")
+
+    seen: set[str] = set()
+    mailto = _openalex_mailto(user_email=user_email)
+    for identifier in identifiers:
+        if identifier in seen:
+            continue
+        seen.add(identifier)
+        params: dict[str, Any] = {"select": "id,content_url"}
+        if mailto:
+            params["mailto"] = mailto
+        payload = _request_json_with_retry(
+            url=f"https://api.openalex.org/works/{quote(identifier, safe='')}",
+            params=params,
+            timeout_seconds=_unpaywall_timeout_seconds(),
+            retries=max(1, _unpaywall_retry_count()),
+            headers={"User-Agent": OPEN_ACCESS_FETCH_USER_AGENT},
+        )
+        if not payload:
+            continue
+        content_url = str(payload.get("content_url") or "").strip()
+        if content_url:
+            return content_url.removesuffix(".pdf")
+        resolved_work_id = _normalize_openalex_work_id(payload.get("id"))
+        if resolved_work_id:
+            return f"https://content.openalex.org/works/{resolved_work_id}"
+    return None
+
+
+def _fetch_openalex_pdf_bytes(
+    *, work: Work, user_email: str | None
+) -> tuple[bytes, str | None, str | None]:
+    api_key = _openalex_pdf_api_key()
+    if not api_key:
+        return b"", None, None
+    content_url = _resolve_openalex_content_url(work=work, user_email=user_email)
+    if not content_url:
+        return b"", None, None
+    pdf_url = (
+        content_url if content_url.lower().endswith(".pdf") else f"{content_url}.pdf"
+    )
+    content, content_type, final_url = _request_bytes_with_final_url_retry(
+        url=pdf_url,
+        params={"api_key": api_key},
+        timeout_seconds=_unpaywall_timeout_seconds(),
+        retries=max(1, _unpaywall_retry_count()),
+        headers={"User-Agent": OPEN_ACCESS_FETCH_USER_AGENT},
+    )
+    if not _looks_like_pdf_payload(content, content_type):
+        return b"", None, None
+    return content, content_type or "application/pdf", final_url or pdf_url
+
+
 def _normalize_orcid_id(value: str | None) -> str | None:
     clean = str(value or "").strip()
     if not clean:
@@ -9600,6 +9675,44 @@ def link_publication_open_access_pdf(
                 session.delete(row)
                 session.flush()
                 continue
+            work.oa_link_suppressed = False
+            session.flush()
+            session.refresh(row)
+            return {
+                "created": True,
+                "file": _serialize_file(publication_id, row),
+                "message": "Open-access PDF downloaded and stored.",
+            }
+        openalex_content, openalex_content_type, openalex_pdf_url = (
+            _fetch_openalex_pdf_bytes(work=work, user_email=user.email)
+        )
+        if (
+            openalex_pdf_url
+            and _looks_like_pdf_payload(openalex_content, openalex_content_type)
+        ):
+            row = PublicationFile(
+                publication_id=publication_id,
+                owner_user_id=user_id,
+                file_name=_resolve_publication_file_display_name(work),
+                file_type=FILE_TYPE_PDF,
+                storage_key="",
+                source=FILE_SOURCE_OA_LINK,
+                oa_url=openalex_pdf_url,
+                checksum=None,
+                custom_name=False,
+                classification=None,
+                classification_custom=False,
+                deleted=False,
+                created_at=_utcnow(),
+            )
+            session.add(row)
+            session.flush()
+            _persist_publication_file_content(
+                row,
+                content=openalex_content,
+                content_type=openalex_content_type,
+                preferred_filename=_resolve_publication_file_display_name(work),
+            )
             work.oa_link_suppressed = False
             session.flush()
             session.refresh(row)

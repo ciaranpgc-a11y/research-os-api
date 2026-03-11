@@ -14,6 +14,8 @@ services:
         sync: false
       - key: OPENALEX_MAILTO
         sync: false
+      - key: OPENALEX_API_KEY
+        sync: false
       - key: CROSSREF_MAILTO
         sync: false
       - key: DATABASE_URL
