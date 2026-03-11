@@ -1405,6 +1405,7 @@ def _build_publication_summary(work: Work, *, citations_total: int) -> dict[str,
         "affiliations_json": work.affiliations_json
         if isinstance(work.affiliations_json, list)
         else [],
+        "oa_link_suppressed": bool(work.oa_link_suppressed),
         "created_at": work.created_at,
         "updated_at": work.updated_at,
     }
@@ -5015,10 +5016,29 @@ def _build_publication_paper_payload(
         for section in sections
         if isinstance(section, dict)
     )
+    parser_available = grobid_available()
+    has_attachable_oa_pdf_candidate = any(
+        bool(asset.get("is_pdf"))
+        and bool(asset.get("download_url"))
+        and str(asset.get("source") or "").strip().upper() == FILE_SOURCE_OA_LINK
+        for asset in serialized_assets
+    )
+    can_auto_attach_reader_pdf = bool(
+        parser_available
+        and primary_pdf is None
+        and not has_full_text_sections
+        and (
+            has_attachable_oa_pdf_candidate
+            or (
+                not bool(publication.get("oa_link_suppressed"))
+                and bool(_normalize_doi(publication.get("doi")))
+            )
+        )
+    )
     reader_entry_available = bool(
         primary_pdf is not None
         or has_full_text_sections
-        or grobid_available()
+        or can_auto_attach_reader_pdf
     )
     outline = _build_publication_paper_outline(
         publication=publication,
@@ -7784,10 +7804,6 @@ def _ensure_publication_reader_pdf_attached(
         work = _resolve_work_or_raise(
             session, user_id=user_id, publication_id=publication_id
         )
-        if bool(work.oa_link_suppressed):
-            return False
-        if not _normalize_doi(work.doi):
-            return False
         existing_files = session.scalars(
             select(PublicationFile).where(
                 PublicationFile.owner_user_id == user_id,
@@ -7796,6 +7812,26 @@ def _ensure_publication_reader_pdf_attached(
             )
         ).all()
         if any(_publication_file_is_viewable_pdf(row) for row in existing_files):
+            return False
+        for row in existing_files:
+            if str(row.source or "").strip().upper() != FILE_SOURCE_OA_LINK:
+                continue
+            try:
+                if _ensure_open_access_publication_file_local_copy(row):
+                    session.flush()
+                    return True
+            except Exception:
+                logger.exception(
+                    "publication_reader_existing_oa_pdf_attach_failed",
+                    extra={
+                        "user_id": user_id,
+                        "publication_id": publication_id,
+                        "file_id": str(row.id),
+                    },
+                )
+        if bool(work.oa_link_suppressed):
+            return False
+        if not _normalize_doi(work.doi):
             return False
     try:
         payload = link_publication_open_access_pdf(
@@ -7809,7 +7845,17 @@ def _ensure_publication_reader_pdf_attached(
             extra={"user_id": user_id, "publication_id": publication_id},
         )
         return False
-    return bool(isinstance(payload, dict) and payload.get("file"))
+    if not (isinstance(payload, dict) and payload.get("file")):
+        return False
+    with session_scope() as session:
+        existing_files = session.scalars(
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == user_id,
+                PublicationFile.publication_id == publication_id,
+                PublicationFile.deleted.is_(False),
+            )
+        ).all()
+        return any(_publication_file_is_viewable_pdf(row) for row in existing_files)
 
 
 def get_publication_paper_model(*, user_id: str, publication_id: str) -> dict[str, Any]:

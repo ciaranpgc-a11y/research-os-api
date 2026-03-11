@@ -2914,6 +2914,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationReaderActiveSectionId, setPublicationReaderActiveSectionId] = useState<string | null>(null)
   const [publicationReaderPdfPage, setPublicationReaderPdfPage] = useState(1)
   const [publicationReaderViewMode, setPublicationReaderViewMode] = useState<PublicationReaderViewMode>('structured')
+  const [publicationReaderAwaitingPdfUpgrade, setPublicationReaderAwaitingPdfUpgrade] = useState(false)
   const [publicationReaderCollapsedNodeIds, setPublicationReaderCollapsedNodeIds] = useState<Record<string, boolean>>({})
   const [publicationReaderInspectorOpen, setPublicationReaderInspectorOpen] = useState(false)
   const [filesDragOver, setFilesDragOver] = useState(false)
@@ -4389,7 +4390,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedAiResponse = selectedWorkId ? aiCacheByWorkId[selectedWorkId] || null : null
   const selectedPaperModelResponse = selectedWorkId ? paperModelCacheByWorkId[selectedWorkId] || null : null
   const selectedFilesPayload = selectedWorkId ? filesCacheByWorkId[selectedWorkId] || null : null
-  const selectedHasRecoverableDeletedOaFile = Boolean(selectedFilesPayload?.has_recoverable_deleted_oa_file)
+  const selectedHasDeletedOaFile = Boolean(selectedFilesPayload?.has_deleted_oa_file)
   const selectedFiles = useMemo(() => {
     const files = [...(selectedFilesPayload?.items || [])]
     files.sort((left, right) => {
@@ -4403,7 +4404,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedOpenAccessFiles = useMemo(() => selectedFiles.filter((file) => file.source === 'OA_LINK'), [selectedFiles])
   const selectedAdditionalFiles = useMemo(() => selectedFiles.filter((file) => file.source !== 'OA_LINK'), [selectedFiles])
   const selectedHasActiveOaFile = selectedOpenAccessFiles.length > 0
-  const selectedHasRetrievableDeletedOaFile = selectedHasRecoverableDeletedOaFile && !selectedHasActiveOaFile
+  const selectedHasRetrievableDeletedOaFile = selectedHasDeletedOaFile && !selectedHasActiveOaFile
   const selectedPaperModel = selectedPaperModelResponse?.payload || null
   const selectedPaperSections = selectedPaperModel?.sections || []
   const selectedPaperMetadata = selectedPaperModel?.metadata || null
@@ -4736,6 +4737,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderActiveSectionId(null)
     setPublicationReaderPdfPage(1)
     setPublicationReaderViewMode('structured')
+    setPublicationReaderAwaitingPdfUpgrade(false)
     setPublicationReaderCollapsedNodeIds({})
     setPublicationReaderInspectorOpen(false)
     publicationReaderSectionRefs.current = {}
@@ -4808,6 +4810,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       setPublicationReaderViewMode('structured')
     }
   }, [publicationReaderOpen, publicationReaderViewMode, selectedPaperPrimaryPdfContentFileId])
+
+  useEffect(() => {
+    if (!publicationReaderOpen || !publicationReaderAwaitingPdfUpgrade || !selectedPaperPrimaryPdfContentFileId) {
+      return
+    }
+    setPublicationReaderPdfPage(selectedReaderActiveSectionAnchorPage || 1)
+    setPublicationReaderViewMode('pdf')
+    setPublicationReaderAwaitingPdfUpgrade(false)
+  }, [
+    publicationReaderAwaitingPdfUpgrade,
+    publicationReaderOpen,
+    selectedPaperPrimaryPdfContentFileId,
+    selectedReaderActiveSectionAnchorPage,
+  ])
 
   useEffect(() => {
     if (!publicationReaderOpen || !selectedWorkId) {
@@ -5886,6 +5902,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderInspectorOpen(false)
     setPublicationReaderPdfPage(initialPdfPage)
     setPublicationReaderViewMode(selectedPaperPrimaryPdfContentFileId ? 'pdf' : 'structured')
+    setPublicationReaderAwaitingPdfUpgrade(!selectedPaperPrimaryPdfContentFileId)
     setPublicationReaderActiveSectionId(initialSection?.id || null)
     void loadPublicationPaperModelData(selectedWorkId, true)
   }, [loadPublicationPaperModelData, selectedPaperFirstReaderSection, selectedPaperPrimaryPdfContentFileId, selectedPublicationReaderEntryAvailable, selectedWorkId])
@@ -6047,7 +6064,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         [selectedWorkId]: {
           items: remainingFiles,
           has_deleted_oa_file: current[selectedWorkId]?.has_deleted_oa_file || deletedFile?.source === 'OA_LINK',
-          has_recoverable_deleted_oa_file: current[selectedWorkId]?.has_recoverable_deleted_oa_file || false,
+          has_recoverable_deleted_oa_file:
+            current[selectedWorkId]?.has_recoverable_deleted_oa_file
+            || Boolean(deletedFile?.source === 'OA_LINK' && deletedFile?.is_stored_locally),
         },
       }))
       invalidatePublicationPaperModelCache(selectedWorkId)
@@ -6074,7 +6093,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         }))
       }
       if (deletedFile?.source === 'OA_LINK') {
-        setStatus('Open-access file removed. Use the retrieve icon to restore it.')
+        setStatus('Open-access file removed. Use retrieve to restore or relink it.')
       }
       await refreshFilesTab(selectedWorkId)
     } catch (deleteError) {
@@ -8428,7 +8447,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
                                         {selectedPaperPrimaryPdfContentFileId
                                           ? 'Open the continuous-scroll PDF reader with the structured outline alongside it.'
-                                          : 'Open the structured reader for this paper now. It will automatically pick up the PDF view when one is attached.'}
+                                          : 'Open the structured reader for this paper now. If a PDF becomes available, the reader will switch into PDF view automatically.'}
                                       </p>
                                     </div>
                                     <Button

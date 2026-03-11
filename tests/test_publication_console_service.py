@@ -1426,7 +1426,7 @@ def test_publication_paper_model_hides_reader_entry_without_pdf_when_grobid_is_u
     assert payload["payload"]["document"]["reader_entry_available"] is False
 
 
-def test_publication_paper_model_keeps_reader_entry_without_pdf_when_grobid_is_available(
+def test_publication_paper_model_keeps_reader_entry_without_pdf_when_grobid_is_available_and_pdf_can_be_attached(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -1442,15 +1442,113 @@ def test_publication_paper_model_keeps_reader_entry_without_pdf_when_grobid_is_a
         "_enqueue_structured_abstract_if_needed",
         lambda **kwargs: False,
     )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_ensure_publication_reader_pdf_attached",
+        lambda **kwargs: False,
+    )
 
     user_id, work_id = _seed_user_and_work(
         email="reader-no-pdf-available@example.com",
         title="Reader visible without parser input",
     )
+
+    payload = publication_console_service.get_publication_paper_model(
+        user_id=user_id,
+        publication_id=work_id,
+    )
+    assert payload["status"] == "READY"
+    assert payload["payload"]["document"]["has_viewable_pdf"] is False
+    assert payload["payload"]["document"]["parser_status"] == "STRUCTURE_ONLY"
+    assert payload["payload"]["document"]["reader_entry_available"] is True
+
+
+def test_publication_paper_model_hides_reader_entry_when_oa_attach_is_suppressed(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "grobid_available",
+        lambda **kwargs: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_enqueue_structured_abstract_if_needed",
+        lambda **kwargs: False,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_ensure_publication_reader_pdf_attached",
+        lambda **kwargs: False,
+    )
+
+    user_id, work_id = _seed_user_and_work(
+        email="reader-suppressed@example.com",
+        title="Reader hidden when OA relinking is suppressed",
+    )
+    with session_scope() as session:
+        work = session.get(Work, work_id)
+        assert work is not None
+        work.oa_link_suppressed = True
+        session.flush()
+
+    payload = publication_console_service.get_publication_paper_model(
+        user_id=user_id,
+        publication_id=work_id,
+    )
+    assert payload["status"] == "READY"
+    assert payload["payload"]["document"]["has_viewable_pdf"] is False
+    assert payload["payload"]["document"]["parser_status"] == "STRUCTURE_ONLY"
+    assert payload["payload"]["document"]["reader_entry_available"] is False
+
+
+def test_publication_paper_model_keeps_reader_entry_for_existing_oa_link_candidate(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "grobid_available",
+        lambda **kwargs: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_enqueue_structured_abstract_if_needed",
+        lambda **kwargs: False,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_ensure_publication_reader_pdf_attached",
+        lambda **kwargs: False,
+    )
+
+    user_id, work_id = _seed_user_and_work(
+        email="reader-existing-oa-link@example.com",
+        title="Reader visible when an OA link can still be hydrated",
+    )
     with session_scope() as session:
         work = session.get(Work, work_id)
         assert work is not None
         work.doi = None
+        session.add(
+            PublicationFile(
+                publication_id=work_id,
+                owner_user_id=user_id,
+                file_name="Open access paper",
+                file_type="PDF",
+                storage_key="",
+                source="OA_LINK",
+                oa_url="https://example.org/existing-oa-link.pdf",
+                checksum=None,
+                deleted=False,
+                created_at=publication_console_service._utcnow(),
+            )
+        )
         session.flush()
 
     payload = publication_console_service.get_publication_paper_model(
