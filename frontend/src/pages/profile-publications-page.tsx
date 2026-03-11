@@ -6242,7 +6242,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [])
 
   const onOpenPublicationFile = (file: PublicationFilePayload) => {
-    if (isLinkedPublicationFile(file) && publicationFileDirectUrl(file)) {
+    if (isLinkedPublicationFile(file) && publicationFileDirectUrl(file) && !(file.source === 'OA_LINK' && file.is_stored_locally)) {
       onOpenLinkedPublicationFile(file)
       return
     }
