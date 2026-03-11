@@ -2570,6 +2570,7 @@ class PublicationFileResponse(BaseModel):
     ] | None = None
     classification_label: str | None = None
     classification_other_label: str | None = None
+    is_stored_locally: bool = False
     can_delete: bool = True
     can_rename: bool = True
     can_classify: bool = True
