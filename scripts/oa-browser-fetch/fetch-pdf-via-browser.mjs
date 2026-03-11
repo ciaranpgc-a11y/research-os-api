@@ -104,6 +104,28 @@ async function waitForClearance(page, timeoutMs) {
   }
 }
 
+async function waitForMetaRefresh(page, timeoutMs) {
+  const refreshInfo = await page
+    .evaluate(() => {
+      const meta = document.querySelector('meta[http-equiv="refresh" i]');
+      const content = meta?.getAttribute("content") || "";
+      const match = content.match(/^\s*(\d+(?:\.\d+)?)\s*;\s*url\s*=/i);
+      if (!match) {
+        return null;
+      }
+      return { seconds: Number(match[1]) };
+    })
+    .catch(() => null);
+  if (!refreshInfo || !Number.isFinite(refreshInfo.seconds)) {
+    return;
+  }
+  const waitMs = Math.max(
+    1000,
+    Math.min(timeoutMs, Math.round(refreshInfo.seconds * 1000) + 750),
+  );
+  await page.waitForTimeout(waitMs);
+}
+
 async function findPdfCandidates(page, targetUrl) {
   return page
     .evaluate((initialTargetUrl) => {
@@ -114,11 +136,18 @@ async function findPdfCandidates(page, targetUrl) {
           return "";
         }
       };
+      const isLikelyFollowCandidate = (value) =>
+        /doi\.org\/|linkinghub\.|science\/article\/|\/retrieve\/|full[- ]?text|article|pii\/|doaj\.org\/article\/|pmc\.ncbi\.nlm\.nih\.gov\/articles\//i.test(
+          value,
+        );
       const nodes = Array.from(
         document.querySelectorAll(
-          'meta[name="citation_pdf_url"], meta[property="citation_pdf_url"], link[href][type="application/pdf"], a[href], iframe[src], embed[src], object[data]',
+          'meta[name="citation_pdf_url"], meta[property="citation_pdf_url"], meta[property="og:url"], link[href][type="application/pdf"], link[rel="canonical"][href], a[href], iframe[src], embed[src], object[data]',
         ),
       );
+      const refreshMeta =
+        document.querySelector('meta[http-equiv="refresh" i]')?.getAttribute("content") || "";
+      const refreshMatch = refreshMeta.match(/url\s*=\s*(.+)$/i);
       const candidates = nodes
         .map(
           (node) =>
@@ -130,8 +159,18 @@ async function findPdfCandidates(page, targetUrl) {
         )
         .map((value) => absolute(value))
         .filter(Boolean);
+      if (refreshMatch?.[1]) {
+        candidates.unshift(
+          absolute(refreshMatch[1].trim().replace(/^['"]|['"]$/g, "")),
+        );
+      }
       candidates.unshift(initialTargetUrl);
-      return Array.from(new Set(candidates)).filter((value) => /\.pdf([?#].*)?$/i.test(value) || /pdf/i.test(value));
+      return Array.from(new Set(candidates)).filter(
+        (value) =>
+          /\.pdf([?#].*)?$/i.test(value) ||
+          /pdf/i.test(value) ||
+          isLikelyFollowCandidate(value),
+      );
     }, targetUrl)
     .catch(() => [targetUrl]);
 }
@@ -310,6 +349,7 @@ async function main() {
 
     await clickConsent(page);
     await waitForClearance(page, timeoutMs);
+    await waitForMetaRefresh(page, timeoutMs);
     await page.waitForTimeout(1200);
 
     const responseCandidate = capturedResponses[0];

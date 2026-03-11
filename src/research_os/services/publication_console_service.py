@@ -531,6 +531,38 @@ def _request_bytes_with_retry(
     return b"", None
 
 
+def _request_bytes_with_final_url_retry(
+    *,
+    url: str,
+    params: dict[str, Any] | None = None,
+    timeout_seconds: float,
+    retries: int,
+    headers: dict[str, str] | None = None,
+) -> tuple[bytes, str | None, str | None]:
+    timeout = httpx.Timeout(timeout_seconds)
+    with httpx.Client(
+        timeout=timeout, follow_redirects=True, headers=headers or {}
+    ) as client:
+        for attempt in range(retries + 1):
+            try:
+                response = client.get(url, params=params)
+            except Exception:
+                if attempt < retries:
+                    time.sleep(0.35 * (attempt + 1))
+                    continue
+                return b"", None, None
+            if response.status_code < 400:
+                content_type = (
+                    str(response.headers.get("content-type") or "").strip() or None
+                )
+                final_url = str(response.url or "").strip() or None
+                return bytes(response.content or b""), content_type, final_url
+            if response.status_code not in RETRYABLE_STATUS_CODES or attempt >= retries:
+                return b"", None, None
+            time.sleep(0.35 * (attempt + 1))
+    return b"", None, None
+
+
 def _openalex_mailto(*, user_email: str | None = None) -> str | None:
     explicit = str(os.getenv("OPENALEX_MAILTO", "")).strip()
     if explicit and "@" in explicit:
@@ -1097,6 +1129,19 @@ def _looks_like_html_payload(content: bytes, content_type: str | None = None) ->
     return prefix.startswith(b"<!doctype html") or prefix.startswith(b"<html")
 
 
+def _normalize_open_access_html_candidate(
+    raw_value: str | None, *, base_url: str
+) -> str | None:
+    candidate = html.unescape(str(raw_value or "").strip())
+    if not candidate:
+        return None
+    absolute = urljoin(base_url, candidate)
+    parsed = urlsplit(absolute)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return None
+    return absolute.strip() or None
+
+
 def _extract_open_access_pdf_urls_from_html(
     html_text: str, *, base_url: str
 ) -> list[str]:
@@ -1107,28 +1152,28 @@ def _extract_open_access_pdf_urls_from_html(
 
     patterns = (
         re.compile(
-            r"""<meta[^>]+(?:name|property)\s*=\s*["']citation_pdf_url["'][^>]+content\s*=\s*["']([^"']+)["']""",
-            re.IGNORECASE,
+            r"""<meta[^>]+(?:name|property)\s*=\s*(["'])citation_pdf_url\1[^>]+content\s*=\s*(["'])(.*?)\2""",
+            re.IGNORECASE | re.DOTALL,
         ),
         re.compile(
-            r"""<link[^>]+type\s*=\s*["']application/pdf["'][^>]+href\s*=\s*["']([^"']+)["']""",
-            re.IGNORECASE,
+            r"""<link[^>]+type\s*=\s*(["'])application/pdf\1[^>]+href\s*=\s*(["'])(.*?)\2""",
+            re.IGNORECASE | re.DOTALL,
         ),
         re.compile(
-            r"""<(?:a|iframe|embed|object)[^>]+(?:href|src|data)\s*=\s*["']([^"']+)["']""",
-            re.IGNORECASE,
+            r"""<(?:a|iframe|embed|object)[^>]+(?:href|src|data)\s*=\s*(["'])(.*?)\1""",
+            re.IGNORECASE | re.DOTALL,
         ),
     )
     candidates: list[str] = []
     seen: set[str] = set()
     for pattern in patterns:
         for raw_match in pattern.findall(clean_html):
-            candidate = html.unescape(str(raw_match or "").strip())
-            if not candidate:
-                continue
-            absolute = urljoin(clean_base_url, candidate)
-            parsed = urlsplit(absolute)
-            if parsed.scheme.lower() not in {"http", "https"}:
+            candidate_raw = raw_match[-1] if isinstance(raw_match, tuple) else raw_match
+            absolute = _normalize_open_access_html_candidate(
+                candidate_raw,
+                base_url=clean_base_url,
+            )
+            if not absolute:
                 continue
             normalized = absolute.strip()
             normalized_lower = normalized.lower()
@@ -1142,6 +1187,93 @@ def _extract_open_access_pdf_urls_from_html(
                 continue
             seen.add(normalized)
             candidates.append(normalized)
+    return candidates
+
+
+def _extract_open_access_follow_urls_from_html(
+    html_text: str, *, base_url: str
+) -> list[str]:
+    clean_html = str(html_text or "").strip()
+    clean_base_url = str(base_url or "").strip()
+    if not clean_html or not clean_base_url:
+        return []
+
+    base_host = urlsplit(clean_base_url).netloc.lower()
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _append(raw_value: str | None) -> None:
+        absolute = _normalize_open_access_html_candidate(raw_value, base_url=clean_base_url)
+        if not absolute or absolute in seen:
+            return
+        absolute_lower = absolute.lower()
+        if not any(
+            marker in absolute_lower
+            for marker in (
+                "doi.org/",
+                "linkinghub.",
+                "science/article/",
+                "/retrieve/",
+                "fulltext",
+                "full-text",
+                "pii/",
+                "pmc.ncbi.nlm.nih.gov/articles/",
+                "pubmed.ncbi.nlm.nih.gov/",
+                "doaj.org/article/",
+            )
+        ):
+            return
+        if any(
+            absolute_lower.endswith(suffix)
+            for suffix in (
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".gif",
+                ".svg",
+                ".css",
+                ".js",
+                ".ico",
+                ".webmanifest",
+            )
+        ):
+            return
+        if any(
+            marker in absolute_lower
+            for marker in ("/static/", "/assets/", "/privacy", "/terms")
+        ):
+            return
+        seen.add(absolute)
+        candidates.append(absolute)
+
+    meta_refresh_pattern = re.compile(
+        r"""<meta[^>]+http-equiv\s*=\s*(["'])refresh\1[^>]+content\s*=\s*(["'])(.*?)\2""",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for _quote_one, _quote_two, content_value in meta_refresh_pattern.findall(clean_html):
+        refresh_content = html.unescape(str(content_value or "").strip())
+        match = re.search(r"""url\s*=\s*(.+)$""", refresh_content, flags=re.IGNORECASE)
+        if match:
+            _append(match.group(1).strip().strip("\"'"))
+
+    patterns = (
+        re.compile(
+            r"""<meta[^>]+(?:property|name)\s*=\s*(["'])(?:og:url|citation_abstract_html_url)\1[^>]+content\s*=\s*(["'])(.*?)\2""",
+            re.IGNORECASE | re.DOTALL,
+        ),
+        re.compile(
+            r"""<link[^>]+rel\s*=\s*(["'])canonical\1[^>]+href\s*=\s*(["'])(.*?)\2""",
+            re.IGNORECASE | re.DOTALL,
+        ),
+        re.compile(
+            r"""<(?:a|link|iframe|embed|object)[^>]+(?:href|src|data)\s*=\s*(["'])(.*?)\1""",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    )
+    for pattern in patterns:
+        for raw_match in pattern.findall(clean_html):
+            candidate_raw = raw_match[-1] if isinstance(raw_match, tuple) else raw_match
+            _append(candidate_raw)
     return candidates
 
 
@@ -1303,16 +1435,18 @@ def _open_access_pdf_request_headers(oa_url: str) -> dict[str, str]:
 
 def _fetch_open_access_pdf_bytes_from_candidate_urls(
     candidate_urls: list[str],
+    *,
+    _visited: set[str] | None = None,
+    _depth: int = 0,
 ) -> tuple[bytes, str | None]:
     for candidate_url in candidate_urls:
         clean_candidate_url = str(candidate_url or "").strip()
         if not clean_candidate_url:
             continue
-        content, content_type = _request_bytes_with_retry(
-            url=clean_candidate_url,
-            timeout_seconds=_unpaywall_timeout_seconds(),
-            retries=max(1, _unpaywall_retry_count()),
-            headers=_open_access_pdf_request_headers(clean_candidate_url),
+        content, content_type = _fetch_open_access_pdf_bytes(
+            clean_candidate_url,
+            _visited=_visited,
+            _depth=_depth + 1,
         )
         if _looks_like_pdf_payload(content, content_type):
             return content, content_type
@@ -1344,11 +1478,22 @@ def _extract_open_access_pdf_bytes_from_archive(
     return b"", None
 
 
-def _fetch_open_access_pdf_bytes(oa_url: str) -> tuple[bytes, str | None]:
+def _fetch_open_access_pdf_bytes(
+    oa_url: str,
+    *,
+    _visited: set[str] | None = None,
+    _depth: int = 0,
+) -> tuple[bytes, str | None]:
     clean_oa_url = str(oa_url or "").strip()
     if not clean_oa_url:
         return b"", None
-    content, content_type = _request_bytes_with_retry(
+    if _depth > 3:
+        return b"", None
+    visited = _visited if _visited is not None else set()
+    if clean_oa_url in visited:
+        return b"", None
+    visited.add(clean_oa_url)
+    content, content_type, final_url = _request_bytes_with_final_url_retry(
         url=clean_oa_url,
         timeout_seconds=_unpaywall_timeout_seconds(),
         retries=max(1, _unpaywall_retry_count()),
@@ -1366,15 +1511,31 @@ def _fetch_open_access_pdf_bytes(oa_url: str) -> tuple[bytes, str | None]:
             return archive_content, archive_content_type
     if _looks_like_html_payload(content, content_type):
         html_text = content.decode("utf-8", errors="ignore")
+        html_base_url = str(final_url or clean_oa_url).strip() or clean_oa_url
         html_candidates = _extract_open_access_pdf_urls_from_html(
             html_text,
-            base_url=clean_oa_url,
+            base_url=html_base_url,
         )
         candidate_content, candidate_content_type = (
-            _fetch_open_access_pdf_bytes_from_candidate_urls(html_candidates)
+            _fetch_open_access_pdf_bytes_from_candidate_urls(
+                html_candidates,
+                _visited=visited,
+                _depth=_depth,
+            )
         )
         if _looks_like_pdf_payload(candidate_content, candidate_content_type):
             return candidate_content, candidate_content_type
+        follow_candidates = _extract_open_access_follow_urls_from_html(
+            html_text,
+            base_url=html_base_url,
+        )
+        follow_content, follow_content_type = _fetch_open_access_pdf_bytes_from_candidate_urls(
+            follow_candidates,
+            _visited=visited,
+            _depth=_depth,
+        )
+        if _looks_like_pdf_payload(follow_content, follow_content_type):
+            return follow_content, follow_content_type
     browser_content, browser_content_type = _fetch_open_access_pdf_bytes_via_browser(
         clean_oa_url
     )

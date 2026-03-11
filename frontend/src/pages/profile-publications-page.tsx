@@ -749,11 +749,6 @@ const PUBLICATIONS_LIBRARY_PAGE_SIZE_STORAGE_PREFIX = 'aawe_publications_library
 const PUBLICATIONS_LIBRARY_COLUMN_ORDER_STORAGE_PREFIX = 'aawe_publications_library_column_order:'
 const PUBLICATIONS_LIBRARY_VISUAL_SETTINGS_STORAGE_PREFIX = 'aawe_publications_library_visual_settings:'
 const PUBLICATIONS_OA_STATUS_STORAGE_PREFIX = 'aawe_publications_oa_status:'
-const PUBLICATIONS_OA_AUTO_MAX_PER_PASS = 60
-const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
-const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
-const PUBLICATIONS_OA_AUTO_MISSING_RETRY_MS = 6 * 60 * 60 * 1000
-const PUBLICATIONS_OA_AUTO_CHECKING_STALE_MS = 5 * 60 * 1000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
@@ -2222,33 +2217,6 @@ function publicationOaStatusLabel(status: PublicationOaPdfStatus, hasDoi: boolea
   return 'Open-access PDF pending background check'
 }
 
-function publicationOaStatusUpdatedAtMs(
-  record: PublicationOaPdfStatusRecord | null | undefined,
-): number {
-  const value = Date.parse(String(record?.updatedAt || ''))
-  return Number.isFinite(value) ? value : 0
-}
-
-function publicationShouldAutoCheckOa(
-  record: PublicationOaPdfStatusRecord | null | undefined,
-  nowMs: number,
-): boolean {
-  if (!record) {
-    return true
-  }
-  if (record.status === 'available') {
-    return false
-  }
-  const updatedAtMs = publicationOaStatusUpdatedAtMs(record)
-  if (record.status === 'checking') {
-    return nowMs - updatedAtMs >= PUBLICATIONS_OA_AUTO_CHECKING_STALE_MS
-  }
-  if (record.status === 'missing') {
-    return nowMs - updatedAtMs >= PUBLICATIONS_OA_AUTO_MISSING_RETRY_MS
-  }
-  return true
-}
-
 function loadActivePublicationDetailTab(): PublicationDetailTab {
   if (typeof window === 'undefined') {
     return 'overview'
@@ -2935,8 +2903,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [uploadingFile, setUploadingFile] = useState(false)
   const [findingOaFile, setFindingOaFile] = useState(false)
   const [oaPdfStatusByWorkId, setOaPdfStatusByWorkId] = useState<Record<string, PublicationOaPdfStatusRecord>>({})
-  const [autoOaFinding, setAutoOaFinding] = useState(false)
-  const [autoOaStatus, setAutoOaStatus] = useState('')
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null)
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
   const [savingPublicationFileId, setSavingPublicationFileId] = useState<string | null>(null)
@@ -2980,7 +2946,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [selectedPublicationTypes, setSelectedPublicationTypes] = useState<string[]>([])
   const [selectedArticleTypes, setSelectedArticleTypes] = useState<string[]>([])
   const [publicationLibraryToolsOpen, setPublicationLibraryToolsOpen] = useState(false)
-  const autoOaInFlightRef = useRef(false)
   const detailWarmupInFlightRef = useRef<Set<string>>(new Set())
   const authorsWarmupInFlightRef = useRef<Set<string>>(new Set())
   const filesWarmupInFlightRef = useRef<Set<string>>(new Set())
@@ -2988,7 +2953,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const paperModelRequestCountByWorkIdRef = useRef<Map<string, number>>(new Map())
   const paperModelLatestRequestTokenByWorkIdRef = useRef<Map<string, number>>(new Map())
   const filesWarmupCompletedRef = useRef<Set<string>>(new Set())
-  const autoOaStatusClearTimerRef = useRef<number | null>(null)
   const localTopMetricsBootstrapAttemptedRef = useRef(false)
   const publicationTableLayoutRef = useRef<HTMLDivElement | null>(null)
   const publicationLibraryFilterButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -3167,13 +3131,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   useEffect(() => {
     saveActivePublicationDetailTab(activeDetailTab)
   }, [activeDetailTab])
-
-  useEffect(() => () => {
-    if (autoOaStatusClearTimerRef.current !== null) {
-      window.clearTimeout(autoOaStatusClearTimerRef.current)
-      autoOaStatusClearTimerRef.current = null
-    }
-  }, [])
 
   useEffect(() => {
     if (!user?.id) {
@@ -4240,142 +4197,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     setPublicationLibraryDownloadScope('filtered_results')
   }, [publicationLibraryDownloadScope, selectedWorkId])
-
-  useEffect(() => {
-    if (isFixtureMode || !token || !user?.id || autoOaInFlightRef.current) {
-      return
-    }
-    const works = personaState?.works ?? []
-    if (works.length === 0) {
-      return
-    }
-    const nowMs = Date.now()
-    const candidates = works
-      .filter((work) => Boolean((work.doi || '').trim()))
-      .filter((work) => publicationShouldAutoCheckOa(oaPdfStatusByWorkId[work.id], nowMs))
-      .sort((left, right) => {
-        const leftUpdatedAt = publicationOaStatusUpdatedAtMs(oaPdfStatusByWorkId[left.id])
-        const rightUpdatedAt = publicationOaStatusUpdatedAtMs(oaPdfStatusByWorkId[right.id])
-        return leftUpdatedAt - rightUpdatedAt
-      })
-      .slice(0, PUBLICATIONS_OA_AUTO_MAX_PER_PASS)
-    if (candidates.length === 0) {
-      return
-    }
-
-    let cancelled = false
-    autoOaInFlightRef.current = true
-    setAutoOaFinding(true)
-    setAutoOaStatus(`Background PDF ingest: 0/${candidates.length}`)
-    if (autoOaStatusClearTimerRef.current !== null) {
-      window.clearTimeout(autoOaStatusClearTimerRef.current)
-      autoOaStatusClearTimerRef.current = null
-    }
-
-    const run = async () => {
-      let checked = 0
-      let linked = 0
-      let unchanged = 0
-      let unavailable = 0
-      try {
-        for (const work of candidates) {
-          if (cancelled) {
-            break
-          }
-          setOaPdfStatusByWorkId((current) => ({
-            ...current,
-            [work.id]: {
-              status: 'checking',
-              downloadUrl: current[work.id]?.downloadUrl || null,
-              fileName: current[work.id]?.fileName || null,
-              updatedAt: new Date().toISOString(),
-            },
-          }))
-          try {
-            const payload = await linkPublicationOpenAccessPdf(token, work.id)
-            if (payload.file) {
-              const linkedFile = payload.file
-              const downloadUrl = linkedFile.download_url || linkedFile.oa_url || null
-              setFilesCacheByWorkId((current) => {
-                const existing = current[work.id]?.items || []
-                if (existing.some((item) => item.id === linkedFile.id)) {
-                  return current
-                }
-                return {
-                  ...current,
-                  [work.id]: {
-                    items: [linkedFile, ...existing],
-                  },
-                }
-              })
-              setOaPdfStatusByWorkId((current) => ({
-                ...current,
-                [work.id]: {
-                  status: 'available',
-                  downloadUrl,
-                  fileName: linkedFile.file_name || null,
-                  updatedAt: new Date().toISOString(),
-                },
-              }))
-            } else {
-              setOaPdfStatusByWorkId((current) => ({
-                ...current,
-                [work.id]: {
-                  status: 'missing',
-                  downloadUrl: null,
-                  fileName: null,
-                  updatedAt: new Date().toISOString(),
-                },
-              }))
-            }
-            if (payload.created && payload.file) {
-              linked += 1
-            } else {
-              unchanged += 1
-            }
-          } catch {
-            setOaPdfStatusByWorkId((current) => ({
-              ...current,
-              [work.id]: {
-                status: 'missing',
-                downloadUrl: null,
-                fileName: null,
-                updatedAt: new Date().toISOString(),
-              },
-            }))
-            unavailable += 1
-          }
-          checked += 1
-          if (cancelled) {
-            break
-          }
-          setAutoOaStatus(`Background PDF ingest: ${checked}/${candidates.length} checked`)
-          if (checked < candidates.length) {
-            await new Promise<void>((resolve) => {
-              window.setTimeout(resolve, PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS)
-            })
-          }
-        }
-      } finally {
-        autoOaInFlightRef.current = false
-        setAutoOaFinding(false)
-        if (!cancelled) {
-          setAutoOaStatus(
-            `Background PDF ingest complete: ${linked} linked, ${unchanged} already linked, ${unavailable} unavailable.`,
-          )
-          autoOaStatusClearTimerRef.current = window.setTimeout(() => {
-            setAutoOaStatus('')
-            autoOaStatusClearTimerRef.current = null
-          }, PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS)
-        }
-      }
-    }
-
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [isFixtureMode, oaPdfStatusByWorkId, personaState?.works, token, user?.id])
 
   useEffect(() => {
     if (isFixtureMode || !token) {
@@ -9563,12 +9384,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       {error ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_DANGER_CLASS}`}>{error}</p> : null}
       {(loading || richImporting || syncing || fullSyncing) ? (
         <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>Working...</p>
-      ) : null}
-      {autoOaStatus ? (
-        <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>
-          {autoOaStatus}
-          {autoOaFinding ? ' (running in background)' : ''}
-        </p>
       ) : null}
     </Stack>
   )

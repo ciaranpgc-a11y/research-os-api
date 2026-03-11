@@ -2755,8 +2755,12 @@ def test_publication_file_content_route_proxies_open_access_pdf(
     create_all_tables()
     monkeypatch.setattr(
         publication_console_service,
-        "_request_bytes_with_retry",
-        lambda **kwargs: (b"%PDF-1.7 proxied oa payload", "application/pdf"),
+        "_request_bytes_with_final_url_retry",
+        lambda **kwargs: (
+            b"%PDF-1.7 proxied oa payload",
+            "application/pdf",
+            str(kwargs.get("url") or ""),
+        ),
     )
 
     with TestClient(app) as client:
@@ -3102,11 +3106,11 @@ def test_fetch_open_access_pdf_bytes_uses_browser_like_headers(
 
     def _request_bytes(**kwargs):  # noqa: ANN003
         seen_headers.update(kwargs.get("headers") or {})
-        return b"%PDF-1.7 direct payload", "application/pdf"
+        return b"%PDF-1.7 direct payload", "application/pdf", str(kwargs.get("url") or "")
 
     monkeypatch.setattr(
         publication_console_service,
-        "_request_bytes_with_retry",
+        "_request_bytes_with_final_url_retry",
         _request_bytes,
     )
     monkeypatch.setattr(
@@ -3141,14 +3145,15 @@ def test_fetch_open_access_pdf_bytes_extracts_pdf_from_html_landing_page(
             return (
                 b'<html><head><meta name="citation_pdf_url" content="/files/paper.pdf"></head></html>',
                 "text/html; charset=utf-8",
+                url,
             )
         if url == "https://example.org/files/paper.pdf":
-            return b"%PDF-1.7 landing page payload", "application/pdf"
-        return b"", None
+            return b"%PDF-1.7 landing page payload", "application/pdf", url
+        return b"", None, None
 
     monkeypatch.setattr(
         publication_console_service,
-        "_request_bytes_with_retry",
+        "_request_bytes_with_final_url_retry",
         _request_bytes,
     )
     monkeypatch.setattr(
@@ -3169,6 +3174,58 @@ def test_fetch_open_access_pdf_bytes_extracts_pdf_from_html_landing_page(
     ]
 
 
+def test_fetch_open_access_pdf_bytes_follows_meta_refresh_landing_page(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    requested_urls: list[str] = []
+
+    def _request_bytes(**kwargs):  # noqa: ANN003
+        url = str(kwargs.get("url") or "")
+        requested_urls.append(url)
+        if url == "https://doi.org/10.1000/example":
+            return (
+                b"""<html><head><meta http-equiv="REFRESH" content="2; url='/retrieve/article?target=https%3A%2F%2Fpublisher.example%2Farticle'" /></head></html>""",
+                "text/html; charset=utf-8",
+                "https://linkinghub.example/retrieve/doi",
+            )
+        if (
+            url
+            == "https://linkinghub.example/retrieve/article?target=https%3A%2F%2Fpublisher.example%2Farticle"
+        ):
+            return (
+                b'<html><head><meta name="citation_pdf_url" content="https://publisher.example/files/paper.pdf"></head></html>',
+                "text/html; charset=utf-8",
+                "https://publisher.example/article",
+            )
+        if url == "https://publisher.example/files/paper.pdf":
+            return b"%PDF-1.7 meta refresh landing page payload", "application/pdf", url
+        return b"", None, None
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_bytes_with_final_url_retry",
+        _request_bytes,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes_via_browser",
+        lambda *args, **kwargs: (b"", None),
+    )
+
+    content, content_type = publication_console_service._fetch_open_access_pdf_bytes(
+        "https://doi.org/10.1000/example"
+    )
+
+    assert content == b"%PDF-1.7 meta refresh landing page payload"
+    assert content_type == "application/pdf"
+    assert requested_urls == [
+        "https://doi.org/10.1000/example",
+        "https://linkinghub.example/retrieve/article?target=https%3A%2F%2Fpublisher.example%2Farticle",
+        "https://publisher.example/files/paper.pdf",
+    ]
+
+
 def test_fetch_open_access_pdf_bytes_extracts_pdf_from_pmc_archive(
     monkeypatch, tmp_path
 ) -> None:
@@ -3182,8 +3239,12 @@ def test_fetch_open_access_pdf_bytes_extracts_pdf_from_pmc_archive(
 
     monkeypatch.setattr(
         publication_console_service,
-        "_request_bytes_with_retry",
-        lambda **kwargs: (archive_buffer.getvalue(), "application/x-gzip"),
+        "_request_bytes_with_final_url_retry",
+        lambda **kwargs: (
+            archive_buffer.getvalue(),
+            "application/x-gzip",
+            "https://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_package/ab/cd/PMC1234567.tar.gz",
+        ),
     )
     monkeypatch.setattr(
         publication_console_service,
