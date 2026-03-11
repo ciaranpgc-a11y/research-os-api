@@ -376,6 +376,7 @@ def import_journal_profiles_from_csv_bytes(
                 _row_value(
                     row,
                     "jif_quartile",
+                        "if_quartile",
                     "quartile",
                     "journal_quartile",
                 ),
