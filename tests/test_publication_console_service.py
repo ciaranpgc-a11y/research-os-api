@@ -2627,7 +2627,9 @@ def test_open_access_link_uses_default_publication_file_name(
         ).first()
         assert stored_row is not None
         assert stored_row.storage_key
-        assert Path(str(stored_row.storage_key)).exists()
+        assert publication_console_service._publication_file_storage_path(
+            str(stored_row.storage_key)
+        ).exists()
         assert stored_row.checksum is not None
 
 
@@ -2704,7 +2706,9 @@ def test_open_access_link_uses_browser_fallback_when_http_fetch_is_blocked(
         ).first()
         assert stored_row is not None
         assert stored_row.storage_key
-        assert Path(str(stored_row.storage_key)).read_bytes() == browser_bytes
+        assert publication_console_service._publication_file_storage_path(
+            str(stored_row.storage_key)
+        ).read_bytes() == browser_bytes
 
 
 def test_open_access_link_keeps_external_link_when_local_cache_download_fails(
@@ -2777,6 +2781,86 @@ def test_open_access_link_keeps_external_link_when_local_cache_download_fails(
         assert stored_row.oa_url == "https://example.org/files/paper.pdf"
         assert stored_row.storage_key == ""
         assert stored_row.deleted is False
+
+
+def test_deleted_open_access_file_restore_uses_remapped_persisted_local_copy(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with session_scope() as session:
+        user = User(
+            email="oa-remap@example.com",
+            password_hash="test-hash",
+            name="oa-remap",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work = Work(
+            user_id=user_id,
+            title="OA remap work",
+            title_lower="oa remap work",
+            year=2026,
+            doi="10.1000/oa-remap-work",
+            work_type="journal-article",
+            venue_name="Test Journal",
+            publisher="Test Publisher",
+            abstract="Abstract",
+            keywords=[],
+            url="",
+            authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+            provenance="manual",
+            oa_link_suppressed=True,
+        )
+        session.add(work)
+        session.flush()
+        work_id = str(work.id)
+
+        stored_path = tmp_path / "publication-files" / user_id / work_id / "oa-file.pdf"
+        stored_path.parent.mkdir(parents=True, exist_ok=True)
+        stored_path.write_bytes(b"%PDF-1.7 restored persisted payload")
+
+        legacy_root = tmp_path / "old-release-root" / "legacy-publication-files"
+        legacy_storage_key = legacy_root / user_id / work_id / "oa-file.pdf"
+        oa_row = PublicationFile(
+            publication_id=work_id,
+            owner_user_id=user_id,
+            file_name="open-access.pdf",
+            file_type="PDF",
+            storage_key=str(legacy_storage_key),
+            source="OA_LINK",
+            oa_url="https://example.org/files/paper.pdf",
+            checksum=None,
+            deleted=True,
+            created_at=publication_console_service._utcnow(),
+        )
+        session.add(oa_row)
+        session.flush()
+
+    payload = publication_console_service.link_publication_open_access_pdf(
+        user_id=user_id,
+        publication_id=work_id,
+        allow_suppressed=True,
+    )
+
+    assert payload["created"] is False
+    assert payload["file"] is not None
+    assert payload["file"]["download_url"].endswith("/download")
+    assert payload["message"] == "Deleted open-access PDF restored."
+
+    with session_scope() as session:
+        restored = session.scalars(
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == user_id,
+                PublicationFile.publication_id == work_id,
+                PublicationFile.source == "OA_LINK",
+            )
+        ).first()
+        assert restored is not None
+        assert restored.deleted is False
 
 
 def test_publication_file_rename_persists_for_open_access_link(

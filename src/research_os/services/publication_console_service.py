@@ -978,7 +978,16 @@ def _coerce_download_filename(*, file_name: str | None, path: Path | None = None
 def _file_storage_root() -> Path:
     root = Path(os.getenv("PUBLICATION_FILES_ROOT", "./publication_files_store"))
     root.mkdir(parents=True, exist_ok=True)
-    return root
+    return root.resolve()
+
+
+def _storage_key_from_path(path: Path) -> str:
+    resolved_path = path.resolve()
+    root = _file_storage_root()
+    try:
+        return str(resolved_path.relative_to(root))
+    except ValueError:
+        return str(resolved_path)
 
 
 def _repo_root() -> Path:
@@ -1078,7 +1087,23 @@ def _publication_file_storage_path(value: str | None) -> Path | None:
     clean = str(value or "").strip()
     if not clean or _storage_key_is_remote_url(clean):
         return None
-    return Path(clean)
+    normalized = clean.replace("\\", "/")
+    path = Path(normalized)
+    root = _file_storage_root()
+    if path.is_absolute():
+        if path.exists() and path.is_file():
+            return path
+        root_marker = root.name
+        parts = list(path.parts)
+        if root_marker in parts:
+            marker_index = parts.index(root_marker)
+            relative_tail = parts[marker_index + 1 :]
+            if relative_tail:
+                return root.joinpath(*relative_tail)
+        if len(parts) >= 3:
+            return root.joinpath(*parts[-3:])
+        return path
+    return root / path
 
 
 def _publication_file_has_local_copy(row: PublicationFile) -> bool:
@@ -1118,7 +1143,7 @@ def _persist_publication_file_content(
     )
     path = folder / f"{row.id}{storage_suffix}"
     path.write_bytes(content)
-    row.storage_key = str(path.resolve())
+    row.storage_key = _storage_key_from_path(path)
     row.checksum = hashlib.sha256(content).hexdigest()
     row.file_type = resolved_file_type
     return path
@@ -8227,7 +8252,7 @@ def upload_publication_file(
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{row.id}{storage_suffix}"
         path.write_bytes(content)
-        row.storage_key = str(path.resolve())
+        row.storage_key = _storage_key_from_path(path)
         session.flush()
         session.refresh(row)
         return _serialize_file(publication_id, row)
