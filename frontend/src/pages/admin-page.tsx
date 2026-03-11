@@ -2174,7 +2174,7 @@ export function AdminPage() {
                             ref={journalFileInputRef}
                             id="journal-import-file"
                             type="file"
-                            accept=".csv,.xlsx,.xls"
+                            accept=".csv,.xlsx,.xlsm,.xltx,.xltm"
                             disabled={importingJournals}
                             onChange={onImportJournalFile}
                             className="block w-full text-sm text-[hsl(var(--tone-neutral-700))] file:mr-3 file:rounded-md file:border file:border-[hsl(var(--tone-neutral-300))] file:bg-[hsl(var(--tone-neutral-50))] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[hsl(var(--tone-neutral-900))] hover:file:bg-[hsl(var(--tone-neutral-100))] disabled:opacity-50"
