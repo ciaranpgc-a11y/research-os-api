@@ -62,6 +62,17 @@ async function readPdfResponse(response) {
   };
 }
 
+function looksLikePdfUrl(value) {
+  const url = String(value || "").toLowerCase();
+  return (
+    url.includes(".pdf") ||
+    url.includes("/pdfft") ||
+    url.includes("pdf.sciencedirectassets.com") ||
+    url.includes("downloadpdf") ||
+    url.includes("download-pdf")
+  );
+}
+
 async function clickConsent(page) {
   const labels = [
     "I Accept",
@@ -270,6 +281,35 @@ async function clickPdfAffordance(page) {
   return false;
 }
 
+async function capturePdfFromPopup(context, popup) {
+  if (!popup) {
+    return null;
+  }
+  const popupResponses = [];
+  popup.on("response", async (response) => {
+    if (popupResponses.length) {
+      return;
+    }
+    const payload = await readPdfResponse(response);
+    if (payload) {
+      popupResponses.push(payload);
+    }
+  });
+  await popup.waitForLoadState("domcontentloaded").catch(() => {});
+  await popup.waitForTimeout(1200).catch(() => {});
+  if (popupResponses.length) {
+    return popupResponses[0];
+  }
+  const popupUrl = popup.url();
+  if (looksLikePdfUrl(popupUrl)) {
+    const sessionPayload = await fetchPdfWithBrowserSession(context, popupUrl).catch(() => null);
+    if (sessionPayload) {
+      return sessionPayload;
+    }
+  }
+  return null;
+}
+
 async function consumeDownload(download) {
   const downloadPath = await download.path().catch(() => null);
   if (!downloadPath) {
@@ -408,8 +448,13 @@ async function main() {
       return;
     }
 
+    const popupPromise = page
+      .context()
+      .waitForEvent("page", { timeout: 4000 })
+      .catch(() => null);
     const clicked = await clickPdfAffordance(page);
     if (clicked) {
+      const popup = popupPromise ? await popupPromise.catch(() => null) : null;
       await page.waitForTimeout(1500);
       const clickedResponse = capturedResponses[0];
       if (clickedResponse) {
@@ -423,6 +468,22 @@ async function main() {
             contentType: clickedResponse.contentType,
             sourceUrl: clickedResponse.sourceUrl,
             strategy: "clicked-response",
+          }),
+        );
+        return;
+      }
+      const popupPayload = await capturePdfFromPopup(context, popup);
+      if (popupPayload) {
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        await fs.writeFile(outputPath, popupPayload.buffer);
+        process.stdout.write(
+          JSON.stringify({
+            ok: true,
+            output: outputPath,
+            bytes: popupPayload.buffer.length,
+            contentType: popupPayload.contentType,
+            sourceUrl: popupPayload.sourceUrl,
+            strategy: "popup-response",
           }),
         );
         return;
