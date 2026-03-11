@@ -1969,6 +1969,7 @@ class PersonaWorkResponse(BaseModel):
     issn_l: str | None = None
     issns: list[str] = Field(default_factory=list)
     venue_type: str | None = None
+    has_open_access_pdf: bool = False
     created_at: datetime
     updated_at: datetime
 

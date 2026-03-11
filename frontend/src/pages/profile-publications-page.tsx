@@ -2180,17 +2180,20 @@ function savePublicationsOaStatus(
 }
 
 function publicationOaStatusVisualStatus(
-  work: { doi?: string | null },
+  work: { doi?: string | null; has_open_access_pdf?: boolean | null },
   record: PublicationOaPdfStatusRecord | null | undefined,
 ): PublicationOaPdfStatus {
   if (record?.status) {
     return record.status
   }
+  if (work.has_open_access_pdf) {
+    return 'available'
+  }
   const hasDoi = Boolean((work.doi || '').trim())
   if (!hasDoi) {
     return 'missing'
   }
-  return 'unknown'
+  return 'missing'
 }
 
 function publicationOaStatusToneClass(status: PublicationOaPdfStatus): string {
@@ -3207,6 +3210,35 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     setOaPdfStatusByWorkId(loadPublicationsOaStatus(user.id))
   }, [user?.id])
+
+  useEffect(() => {
+    const works = personaState?.works || []
+    if (!works.length) {
+      return
+    }
+    setOaPdfStatusByWorkId((current) => {
+      let changed = false
+      const next = { ...current }
+      for (const work of works) {
+        const existing = current[work.id]
+        const nextStatus: PublicationOaPdfStatus = work.has_open_access_pdf ? 'available' : 'missing'
+        if (
+          existing?.status === nextStatus
+          && (nextStatus !== 'missing' || (!existing.downloadUrl && !existing.fileName))
+        ) {
+          continue
+        }
+        next[work.id] = {
+          status: nextStatus,
+          downloadUrl: nextStatus === 'available' ? existing?.downloadUrl || null : null,
+          fileName: nextStatus === 'available' ? existing?.fileName || null : null,
+          updatedAt: new Date().toISOString(),
+        }
+        changed = true
+      }
+      return changed ? next : current
+    })
+  }, [personaState?.works])
 
   useEffect(() => {
     if (!user?.id) {

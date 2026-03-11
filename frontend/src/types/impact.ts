@@ -700,6 +700,7 @@ export type PersonaWork = {
   issn_l?: string | null
   issns?: string[]
   venue_type?: string | null
+  has_open_access_pdf?: boolean
   created_at: string
   updated_at: string
 }
