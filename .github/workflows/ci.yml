@@ -70,6 +70,32 @@ jobs:
             echo "No changed Python files detected."
           fi
 
+      - name: Detect changed frontend files
+        id: changed-frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$(git rev-parse HEAD~1)"
+          fi
+
+          git diff --name-only "${BASE_SHA}" HEAD -- 'frontend/**' > changed-frontend-files.txt
+          CHANGED_COUNT="$(grep -c '.' changed-frontend-files.txt || true)"
+          echo "count=${CHANGED_COUNT}" >> "${GITHUB_OUTPUT}"
+
+          if [ "${CHANGED_COUNT}" -gt 0 ]; then
+            echo "Changed frontend files:"
+            cat changed-frontend-files.txt
+          else
+            echo "No changed frontend files detected."
+          fi
+
       - name: Check formatting
         if: steps.changed-python.outputs.count != '0'
         shell: bash
@@ -104,9 +130,14 @@ jobs:
 
       - name: Build frontend
         working-directory: frontend
+        shell: bash
         run: |
           npm ci
-          npm run design:governance
+          if [ "${{ steps.changed-frontend.outputs.count }}" != "0" ]; then
+            npm run design:governance
+          else
+            echo "Skipping design governance: no frontend files changed."
+          fi
           npm run build
           test -f dist/index.html
           test -f dist/404.html
