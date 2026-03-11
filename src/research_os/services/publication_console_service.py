@@ -7858,7 +7858,9 @@ def _ensure_publication_reader_pdf_attached(
         return any(_publication_file_is_viewable_pdf(row) for row in existing_files)
 
 
-def get_publication_paper_model(*, user_id: str, publication_id: str) -> dict[str, Any]:
+def get_publication_paper_model(
+    *, user_id: str, publication_id: str, force_reparse: bool = False
+) -> dict[str, Any]:
     create_all_tables()
     source_state = _load_publication_paper_source_state(
         user_id=user_id, publication_id=publication_id
@@ -7965,6 +7967,24 @@ def get_publication_paper_model(*, user_id: str, publication_id: str) -> dict[st
                     or ""
                 ).strip().upper()
                 should_enqueue_structured_paper = has_viewable_pdf
+            elif force_reparse and has_viewable_pdf:
+                row.payload_json = parsing_payload
+                row.status = RUNNING_STATUS
+                row.last_error = None
+                row.computed_at = now
+                session.flush()
+                cached_payload = (
+                    row.payload_json if isinstance(row.payload_json, dict) else {}
+                )
+                cached_parser_status = str(
+                    (
+                        (cached_payload.get("document") or {})
+                        if isinstance(cached_payload.get("document"), dict)
+                        else {}
+                    ).get("parser_status")
+                    or ""
+                ).strip().upper()
+                should_enqueue_structured_paper = True
             elif (
                 has_viewable_pdf
                 and current_status not in {RUNNING_STATUS, FAILED_STATUS}

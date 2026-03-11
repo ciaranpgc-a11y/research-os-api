@@ -3082,6 +3082,7 @@ def v1_publication_structured_abstract_refresh(
 def v1_publication_paper_model(
     request: Request,
     publication_id: str,
+    force: bool = Query(default=False),
 ) -> PublicationPaperModelResponse | JSONResponse:
     token = _extract_session_token(request)
     if not token:
@@ -3091,6 +3092,7 @@ def v1_publication_paper_model(
         payload = get_publication_paper_model(
             user_id=str(user["id"]),
             publication_id=publication_id,
+            force_reparse=force,
         )
         return PublicationPaperModelResponse(**payload)
     except AuthNotFoundError as exc:

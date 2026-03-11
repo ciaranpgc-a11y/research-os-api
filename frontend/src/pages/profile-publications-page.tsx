@@ -3477,7 +3477,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const loadPublicationPaperModelData = useCallback(async (
     workId: string,
     force = false,
-    options?: { silent?: boolean },
+    options?: { silent?: boolean; forceReparse?: boolean },
   ) => {
     if (!token || !workId) {
       return null
@@ -3495,7 +3495,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       setPublicationReaderError('')
     }
     try {
-      const payload = await fetchPublicationPaperModel(token, workId)
+      const payload = await fetchPublicationPaperModel(token, workId, {
+        forceReparse: Boolean(options?.forceReparse),
+      })
       setPaperModelCacheByWorkId((current) => ({ ...current, [workId]: payload }))
       return payload
     } catch (loadError) {
@@ -4419,6 +4421,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   )
   const selectedPaperPrimaryPdfContentFileId = selectedPaperDocument?.primary_pdf_file_id || selectedPaperPrimaryFile?.id || null
   const selectedPublicationReaderEntryAvailable = selectedPaperDocument?.reader_entry_available ?? true
+  const onRetryPublicationReaderParse = useCallback(() => {
+    if (!selectedWorkId || !selectedPaperPrimaryPdfContentFileId) {
+      return
+    }
+    setPublicationReaderError('')
+    void loadPublicationPaperModelData(selectedWorkId, true, { forceReparse: true })
+  }, [loadPublicationPaperModelData, selectedPaperPrimaryPdfContentFileId, selectedWorkId])
   const selectedPaperPrimaryPdfExternalUrl = useMemo(() => {
     const primaryFileUrl = selectedPaperPrimaryFile ? publicationFileDirectUrl(selectedPaperPrimaryFile) : ''
     return resolvePublicationPdfViewerUrl(primaryFileUrl || selectedPaperDocument?.primary_pdf_download_url || '')
@@ -5904,8 +5913,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderViewMode(selectedPaperPrimaryPdfContentFileId ? 'pdf' : 'structured')
     setPublicationReaderAwaitingPdfUpgrade(!selectedPaperPrimaryPdfContentFileId)
     setPublicationReaderActiveSectionId(initialSection?.id || null)
-    void loadPublicationPaperModelData(selectedWorkId, true)
-  }, [loadPublicationPaperModelData, selectedPaperFirstReaderSection, selectedPaperPrimaryPdfContentFileId, selectedPublicationReaderEntryAvailable, selectedWorkId])
+    void loadPublicationPaperModelData(selectedWorkId, true, {
+      forceReparse: Boolean(
+        selectedPaperPrimaryPdfContentFileId && selectedPaperDocument?.parser_status === 'FAILED',
+      ),
+    })
+  }, [loadPublicationPaperModelData, selectedPaperDocument?.parser_status, selectedPaperFirstReaderSection, selectedPaperPrimaryPdfContentFileId, selectedPublicationReaderEntryAvailable, selectedWorkId])
 
   const onSelectPublicationReaderSection = useCallback((sectionId: string) => {
     const selectedSection = selectedPaperSections.find((section) => section.id === sectionId) || null
@@ -9307,9 +9320,28 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">References:</span> {selectedPaperComponentSummary?.reference_count ?? selectedPaperModel?.references?.length ?? 0}</p>
                             </div>
                             {selectedPaperDocument?.parser_last_error ? (
-                              <p className="mt-3 text-sm leading-relaxed text-[hsl(var(--tone-danger-700))]">
-                                {selectedPaperDocument.parser_last_error}
-                              </p>
+                              <>
+                                <p className="mt-3 text-sm leading-relaxed text-[hsl(var(--tone-danger-700))]">
+                                  {selectedPaperDocument.parser_last_error}
+                                </p>
+                                {selectedPaperPrimaryPdfContentFileId && selectedPaperDocument?.parser_status === 'FAILED' ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-3 w-full gap-2 rounded-full"
+                                    disabled={publicationReaderLoading}
+                                    onClick={onRetryPublicationReaderParse}
+                                  >
+                                    {publicationReaderLoading ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Hammer className="h-4 w-4" />
+                                    )}
+                                    <span>Retry full-paper parse</span>
+                                  </Button>
+                                ) : null}
+                              </>
                             ) : null}
                           </section>
 
