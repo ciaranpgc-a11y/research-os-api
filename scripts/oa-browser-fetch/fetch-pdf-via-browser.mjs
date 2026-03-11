@@ -303,11 +303,18 @@ async function capturePdfFromPopup(context, popup) {
     }
   });
   await popup.waitForLoadState("domcontentloaded").catch(() => {});
-  await popup.waitForTimeout(1200).catch(() => {});
+  await popup.waitForTimeout(2500).catch(() => {});
   if (popupResponses.length) {
     return popupResponses[0];
   }
-  const popupUrl = popup.url();
+  let popupUrl = popup.url();
+  for (let index = 0; index < 5; index += 1) {
+    if (looksLikePdfUrl(popupUrl)) {
+      break;
+    }
+    await popup.waitForTimeout(400).catch(() => {});
+    popupUrl = popup.url();
+  }
   if (looksLikePdfUrl(popupUrl)) {
     const sessionPayload = await fetchPdfWithBrowserSession(context, popupUrl).catch(() => null);
     if (sessionPayload) {
@@ -345,6 +352,7 @@ async function main() {
   }
 
   const browser = await chromium.launch({ headless: true });
+  let contextResponseHandler = null;
   try {
     const context = await browser.newContext({
       acceptDownloads: true,
@@ -357,6 +365,7 @@ async function main() {
     const page = await context.newPage();
 
     const capturedResponses = [];
+    const contextCapturedResponses = [];
     const capturedDownloads = [];
     page.on("response", async (response) => {
       if (capturedResponses.length) {
@@ -367,6 +376,16 @@ async function main() {
         capturedResponses.push(pdfPayload);
       }
     });
+    contextResponseHandler = async (response) => {
+      if (contextCapturedResponses.length) {
+        return;
+      }
+      const pdfPayload = await readPdfResponse(response);
+      if (pdfPayload) {
+        contextCapturedResponses.push(pdfPayload);
+      }
+    };
+    context.on("response", contextResponseHandler);
     page.on("download", (download) => {
       capturedDownloads.push(download);
     });
@@ -479,6 +498,22 @@ async function main() {
         );
         return;
       }
+      const contextPdfResponse = contextCapturedResponses[0];
+      if (contextPdfResponse) {
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        await fs.writeFile(outputPath, contextPdfResponse.buffer);
+        process.stdout.write(
+          JSON.stringify({
+            ok: true,
+            output: outputPath,
+            bytes: contextPdfResponse.buffer.length,
+            contentType: contextPdfResponse.contentType,
+            sourceUrl: contextPdfResponse.sourceUrl,
+            strategy: "context-response",
+          }),
+        );
+        return;
+      }
       const popupPayload = await capturePdfFromPopup(context, popup);
       if (popupPayload) {
         await fs.mkdir(path.dirname(outputPath), { recursive: true });
@@ -564,6 +599,9 @@ async function main() {
 
     throw new Error("No PDF payload could be recovered from the page or its download links.");
   } finally {
+    if (contextResponseHandler) {
+      context?.off?.("response", contextResponseHandler);
+    }
     await browser.close();
   }
 }
