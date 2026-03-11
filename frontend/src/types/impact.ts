@@ -1216,6 +1216,7 @@ export type PublicationFilePayload = {
 export type PublicationFilesListPayload = {
   items: PublicationFilePayload[]
   has_deleted_oa_file?: boolean
+  has_recoverable_deleted_oa_file?: boolean
 }
 
 export type PublicationFileLinkPayload = {

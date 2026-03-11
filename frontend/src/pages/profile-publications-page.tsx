@@ -4389,7 +4389,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedAiResponse = selectedWorkId ? aiCacheByWorkId[selectedWorkId] || null : null
   const selectedPaperModelResponse = selectedWorkId ? paperModelCacheByWorkId[selectedWorkId] || null : null
   const selectedFilesPayload = selectedWorkId ? filesCacheByWorkId[selectedWorkId] || null : null
-  const selectedHasDeletedOaFile = Boolean(selectedFilesPayload?.has_deleted_oa_file)
+  const selectedHasRecoverableDeletedOaFile = Boolean(selectedFilesPayload?.has_recoverable_deleted_oa_file)
   const selectedFiles = useMemo(() => {
     const files = [...(selectedFilesPayload?.items || [])]
     files.sort((left, right) => {
@@ -4403,7 +4403,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedOpenAccessFiles = useMemo(() => selectedFiles.filter((file) => file.source === 'OA_LINK'), [selectedFiles])
   const selectedAdditionalFiles = useMemo(() => selectedFiles.filter((file) => file.source !== 'OA_LINK'), [selectedFiles])
   const selectedHasActiveOaFile = selectedOpenAccessFiles.length > 0
-  const selectedHasRetrievableDeletedOaFile = selectedHasDeletedOaFile && !selectedHasActiveOaFile
+  const selectedHasRetrievableDeletedOaFile = selectedHasRecoverableDeletedOaFile && !selectedHasActiveOaFile
   const selectedPaperModel = selectedPaperModelResponse?.payload || null
   const selectedPaperSections = selectedPaperModel?.sections || []
   const selectedPaperMetadata = selectedPaperModel?.metadata || null
@@ -5960,21 +5960,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
 
       const linkedFile = payload.file
-      setFilesCacheByWorkId((current) => {
-        const existing = current[selectedWorkId]?.items || []
-        const existingById = new Map(existing.map((item) => [item.id, item]))
-        existingById.set(linkedFile.id, linkedFile)
-        const nextItems = Array.from(existingById.values()).sort(
-          (left, right) => Date.parse(String(right.created_at || '')) - Date.parse(String(left.created_at || '')),
-        )
-        return {
-          ...current,
-          [selectedWorkId]: {
-            items: nextItems,
-            has_deleted_oa_file: false,
-          },
-        }
-      })
       invalidatePublicationPaperModelCache(selectedWorkId)
       setOaPdfStatusByWorkId((current) => ({
         ...current,
@@ -6062,6 +6047,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         [selectedWorkId]: {
           items: remainingFiles,
           has_deleted_oa_file: current[selectedWorkId]?.has_deleted_oa_file || deletedFile?.source === 'OA_LINK',
+          has_recoverable_deleted_oa_file: current[selectedWorkId]?.has_recoverable_deleted_oa_file || false,
         },
       }))
       invalidatePublicationPaperModelCache(selectedWorkId)

@@ -8202,7 +8202,22 @@ def list_publication_files(*, user_id: str, publication_id: str) -> dict[str, An
             ).first()
             is not None
         )
-        return {"items": items, "has_deleted_oa_file": has_deleted_oa_file}
+        deleted_oa_rows = session.scalars(
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == user_id,
+                PublicationFile.publication_id == publication_id,
+                PublicationFile.source == FILE_SOURCE_OA_LINK,
+                PublicationFile.deleted.is_(True),
+            )
+        ).all()
+        has_recoverable_deleted_oa_file = any(
+            _publication_file_has_local_copy(row) for row in deleted_oa_rows
+        )
+        return {
+            "items": items,
+            "has_deleted_oa_file": has_deleted_oa_file,
+            "has_recoverable_deleted_oa_file": has_recoverable_deleted_oa_file,
+        }
 
 
 def upload_publication_file(

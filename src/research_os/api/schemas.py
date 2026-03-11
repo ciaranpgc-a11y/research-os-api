@@ -2578,6 +2578,7 @@ class PublicationFileResponse(BaseModel):
 class PublicationFilesListResponse(BaseModel):
     items: list[PublicationFileResponse] = Field(default_factory=list)
     has_deleted_oa_file: bool = False
+    has_recoverable_deleted_oa_file: bool = False
 
 
 class PublicationFileLinkResponse(BaseModel):

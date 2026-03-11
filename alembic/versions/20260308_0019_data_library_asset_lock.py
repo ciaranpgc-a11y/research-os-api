@@ -17,12 +17,19 @@ branch_labels = None
 depends_on = None
 
 
+def _table_exists(table_name: str) -> bool:
+    inspector = sa.inspect(op.get_bind())
+    return table_name in inspector.get_table_names()
+
+
 def _column_names(table_name: str) -> set[str]:
     inspector = sa.inspect(op.get_bind())
     return {column["name"] for column in inspector.get_columns(table_name)}
 
 
 def upgrade() -> None:
+    if not _table_exists("data_library_assets"):
+        return
     existing = _column_names("data_library_assets")
     if "locked_for_team_members" not in existing:
         op.add_column(
@@ -37,6 +44,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if not _table_exists("data_library_assets"):
+        return
     existing = _column_names("data_library_assets")
     if "locked_for_team_members" in existing:
         op.drop_column("data_library_assets", "locked_for_team_members")
