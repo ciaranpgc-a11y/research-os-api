@@ -352,9 +352,10 @@ async function main() {
   }
 
   const browser = await chromium.launch({ headless: true });
+  let context = null;
   let contextResponseHandler = null;
   try {
-    const context = await browser.newContext({
+    context = await browser.newContext({
       acceptDownloads: true,
       ignoreHTTPSErrors: true,
       userAgent: BROWSER_USER_AGENT,
