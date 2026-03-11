@@ -24,6 +24,7 @@ from research_os.db import (
     ImpactSnapshot,
     JournalProfile,
     MetricsSnapshot,
+    PublicationFile,
     User,
     Work,
     WorkAuthorship,
@@ -44,6 +45,10 @@ from research_os.services.journal_intelligence_service import (
 from research_os.services.supplementary_work_service import (
     is_supplementary_material_work,
     primary_publication_records,
+)
+from research_os.services.publication_console_service import (
+    FILE_SOURCE_OA_LINK,
+    _publication_file_has_local_copy,
 )
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
@@ -1583,6 +1588,21 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
         works = primary_publication_records(works)
         work_ids = [work.id for work in works]
         latest_metrics = _latest_metrics_by_work(session, work_ids)
+        oa_rows = session.scalars(
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == user_id,
+                PublicationFile.publication_id.in_(work_ids or [""]),
+                PublicationFile.source == FILE_SOURCE_OA_LINK,
+                PublicationFile.deleted.is_(False),
+            )
+        ).all()
+        active_local_oa_by_work_id: dict[str, bool] = {}
+        for row in oa_rows:
+            work_id = str(row.publication_id or "").strip()
+            if not work_id or active_local_oa_by_work_id.get(work_id):
+                continue
+            if _publication_file_has_local_copy(row):
+                active_local_oa_by_work_id[work_id] = True
         authorship_rows = session.scalars(
             select(WorkAuthorship)
             .where(WorkAuthorship.work_id.in_(work_ids or [""]))
@@ -1655,6 +1675,7 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
                     "issn_l": work.issn_l,
                     "issns": list(work.issns_json or []),
                     "venue_type": work.venue_type,
+                    "has_open_access_pdf": bool(active_local_oa_by_work_id.get(work.id)),
                     "created_at": work.created_at,
                     "updated_at": work.updated_at,
                 }
