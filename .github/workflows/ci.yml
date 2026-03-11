@@ -10,6 +10,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Enforce Node dependency boundaries
         run: |
@@ -42,11 +44,41 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
+      - name: Detect changed Python files
+        id: changed-python
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$(git rev-parse HEAD~1)"
+          fi
+
+          git diff --name-only "${BASE_SHA}" HEAD -- '*.py' > changed-python-files.txt
+          CHANGED_COUNT="$(grep -c '.' changed-python-files.txt || true)"
+          echo "count=${CHANGED_COUNT}" >> "${GITHUB_OUTPUT}"
+
+          if [ "${CHANGED_COUNT}" -gt 0 ]; then
+            echo "Changed Python files:"
+            cat changed-python-files.txt
+          else
+            echo "No changed Python files detected."
+          fi
+
       - name: Check formatting
-        run: ruff format --check .
+        if: steps.changed-python.outputs.count != '0'
+        shell: bash
+        run: xargs -r ruff format --check < changed-python-files.txt
 
       - name: Run lint checks
-        run: ruff check .
+        if: steps.changed-python.outputs.count != '0'
+        shell: bash
+        run: xargs -r ruff check < changed-python-files.txt
 
       - name: Enforce documentation updates for major changes
         env:
