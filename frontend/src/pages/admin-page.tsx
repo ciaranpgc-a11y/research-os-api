@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import {
   Activity,
@@ -7,6 +7,7 @@ import {
   Building2,
   CheckCircle2,
   Database,
+  Flag,
   Globe2,
   HardDrive,
   KeyRound,
@@ -265,7 +266,7 @@ function formatInteger(value: number | null | undefined): string {
 function formatCurrency(value: number | null | undefined): string {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) {
-    return '£0.00'
+    return 'Â£0.00'
   }
   return new Intl.NumberFormat('en-GB', {
     style: 'currency',
@@ -563,32 +564,7 @@ export function AdminPage() {
     void loadData('', '', '', '', '', '', 'all')
   }, [loadData])
 
-  const onUsersSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
-  }
-
-  const onOrganisationsSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
-  }
-
-  const onWorkspacesSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
-  }
-
-  const onUsageSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
-  }
-
-  const onJournalSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
-  }
-
-  const onJobsSearch = (event: FormEvent<HTMLFormElement>) => {
+  const onSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, journalQuery, jobsQuery, jobStatus)
   }
@@ -1198,7 +1174,7 @@ export function AdminPage() {
                     <CardDescription>Search tenants by domain/plan and inspect control-plane readiness.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <form className="flex flex-wrap items-center gap-2" onSubmit={onOrganisationsSearch}>
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={onSearch}>
                       <div className="relative w-full max-w-md">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -1218,13 +1194,13 @@ export function AdminPage() {
                         <table className="w-full min-w-full text-left text-sm">
                           <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                             <tr>
-                              <th className="px-3 py-2">Organisation</th>
-                              <th className="px-3 py-2">Plan</th>
-                              <th className="px-3 py-2">Members</th>
-                              <th className="px-3 py-2">Workspaces</th>
-                              <th className="px-3 py-2">Projects</th>
-                              <th className="px-3 py-2">Month spend</th>
-                              <th className="px-3 py-2">Token trend</th>
+                              <th scope="col" className="px-3 py-2">Organisation</th>
+                              <th scope="col" className="px-3 py-2">Plan</th>
+                              <th scope="col" className="px-3 py-2">Members</th>
+                              <th scope="col" className="px-3 py-2">Workspaces</th>
+                              <th scope="col" className="px-3 py-2">Projects</th>
+                              <th scope="col" className="px-3 py-2">Month spend</th>
+                              <th scope="col" className="px-3 py-2">Token trend</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1482,7 +1458,7 @@ export function AdminPage() {
                     <CardDescription>Search by workspace slug, owner, or project title.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <form className="flex flex-wrap items-center gap-2" onSubmit={onWorkspacesSearch}>
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={onSearch}>
                       <div className="relative w-full max-w-md">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -1502,14 +1478,14 @@ export function AdminPage() {
                         <table className="w-full min-w-full text-left text-sm">
                           <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                             <tr>
-                              <th className="px-3 py-2">Workspace</th>
-                              <th className="px-3 py-2">Owner</th>
-                              <th className="px-3 py-2">Members</th>
-                              <th className="px-3 py-2">Projects</th>
-                              <th className="px-3 py-2">Data sources</th>
-                              <th className="px-3 py-2">Active jobs</th>
-                              <th className="px-3 py-2">Failed (7d)</th>
-                              <th className="px-3 py-2">Last activity</th>
+                              <th scope="col" className="px-3 py-2">Workspace</th>
+                              <th scope="col" className="px-3 py-2">Owner</th>
+                              <th scope="col" className="px-3 py-2">Members</th>
+                              <th scope="col" className="px-3 py-2">Projects</th>
+                              <th scope="col" className="px-3 py-2">Data sources</th>
+                              <th scope="col" className="px-3 py-2">Active jobs</th>
+                              <th scope="col" className="px-3 py-2">Failed (7d)</th>
+                              <th scope="col" className="px-3 py-2">Last activity</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1640,13 +1616,13 @@ export function AdminPage() {
                             <table className="w-full min-w-full text-left text-sm">
                               <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                                 <tr>
-                                  <th className="px-3 py-2">Project</th>
-                                  <th className="px-3 py-2">Owner</th>
-                                  <th className="px-3 py-2">Collaborators</th>
-                                  <th className="px-3 py-2">Manuscripts</th>
-                                  <th className="px-3 py-2">Data sources</th>
-                                  <th className="px-3 py-2">Job runs</th>
-                                  <th className="px-3 py-2">Last run</th>
+                                  <th scope="col" className="px-3 py-2">Project</th>
+                                  <th scope="col" className="px-3 py-2">Owner</th>
+                                  <th scope="col" className="px-3 py-2">Collaborators</th>
+                                  <th scope="col" className="px-3 py-2">Manuscripts</th>
+                                  <th scope="col" className="px-3 py-2">Data sources</th>
+                                  <th scope="col" className="px-3 py-2">Job runs</th>
+                                  <th scope="col" className="px-3 py-2">Last run</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -1685,7 +1661,7 @@ export function AdminPage() {
                     <CardDescription>Search and inspect account status across the system.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <form className="flex flex-wrap items-center gap-2" onSubmit={onUsersSearch}>
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={onSearch}>
                       <div className="relative w-full max-w-md">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -1705,15 +1681,15 @@ export function AdminPage() {
                         <table className="w-full min-w-full text-left text-sm">
                           <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                             <tr>
-                              <th className="px-3 py-2">Name</th>
-                              <th className="px-3 py-2">User ID</th>
-                              <th className="px-3 py-2">Account key</th>
-                              <th className="px-3 py-2">Email</th>
-                              <th className="px-3 py-2">Role</th>
-                              <th className="px-3 py-2">Status</th>
-                              <th className="px-3 py-2">Last sign-in</th>
-                              <th className="px-3 py-2">Created</th>
-                              <th className="px-3 py-2 text-right">Actions</th>
+                              <th scope="col" className="px-3 py-2">Name</th>
+                              <th scope="col" className="px-3 py-2">User ID</th>
+                              <th scope="col" className="px-3 py-2">Account key</th>
+                              <th scope="col" className="px-3 py-2">Email</th>
+                              <th scope="col" className="px-3 py-2">Role</th>
+                              <th scope="col" className="px-3 py-2">Status</th>
+                              <th scope="col" className="px-3 py-2">Last sign-in</th>
+                              <th scope="col" className="px-3 py-2">Created</th>
+                              <th scope="col" className="px-3 py-2 text-right">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1835,10 +1811,10 @@ export function AdminPage() {
                         <table className="w-full min-w-full text-left text-sm">
                           <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                             <tr>
-                              <th className="px-3 py-2">When</th>
-                              <th className="px-3 py-2">User</th>
-                              <th className="px-3 py-2">Status</th>
-                              <th className="px-3 py-2">Details</th>
+                              <th scope="col" className="px-3 py-2">When</th>
+                              <th scope="col" className="px-3 py-2">User</th>
+                              <th scope="col" className="px-3 py-2">Status</th>
+                              <th scope="col" className="px-3 py-2">Details</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1882,7 +1858,7 @@ export function AdminPage() {
                     <CardDescription>Live token, call, cost, quota, and run-health telemetry.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <form className="flex flex-wrap items-center gap-2" onSubmit={onUsageSearch}>
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={onSearch}>
                       <div className="relative w-full max-w-md">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -1941,10 +1917,10 @@ export function AdminPage() {
                             <table className="w-full min-w-full text-left text-sm">
                               <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                                 <tr>
-                                  <th className="px-3 py-2">Model</th>
-                                  <th className="px-3 py-2">Tokens</th>
-                                  <th className="px-3 py-2">Calls</th>
-                                  <th className="px-3 py-2">Cost</th>
+                                  <th scope="col" className="px-3 py-2">Model</th>
+                                  <th scope="col" className="px-3 py-2">Tokens</th>
+                                  <th scope="col" className="px-3 py-2">Calls</th>
+                                  <th scope="col" className="px-3 py-2">Cost</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -2022,11 +1998,11 @@ export function AdminPage() {
                               <table className="w-full min-w-full text-left text-sm">
                                 <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                                   <tr>
-                                    <th className="px-3 py-2">Org</th>
-                                    <th className="px-3 py-2">Plan</th>
-                                    <th className="px-3 py-2">Tokens</th>
-                                    <th className="px-3 py-2">Cost</th>
-                                    <th className="px-3 py-2">Quota used</th>
+                                    <th scope="col" className="px-3 py-2">Org</th>
+                                    <th scope="col" className="px-3 py-2">Plan</th>
+                                    <th scope="col" className="px-3 py-2">Tokens</th>
+                                    <th scope="col" className="px-3 py-2">Cost</th>
+                                    <th scope="col" className="px-3 py-2">Quota used</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -2061,10 +2037,10 @@ export function AdminPage() {
                               <table className="w-full min-w-full text-left text-sm">
                                 <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                                   <tr>
-                                    <th className="px-3 py-2">User</th>
-                                    <th className="px-3 py-2">Tokens</th>
-                                    <th className="px-3 py-2">Calls</th>
-                                    <th className="px-3 py-2">Cost</th>
+                                    <th scope="col" className="px-3 py-2">User</th>
+                                    <th scope="col" className="px-3 py-2">Tokens</th>
+                                    <th scope="col" className="px-3 py-2">Calls</th>
+                                    <th scope="col" className="px-3 py-2">Cost</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -2102,7 +2078,7 @@ export function AdminPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <form className="flex flex-wrap items-center gap-2" onSubmit={onJournalSearch}>
+                  <form className="flex flex-wrap items-center gap-2" onSubmit={onSearch}>
                     <div className="relative w-full max-w-md">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -2244,13 +2220,13 @@ export function AdminPage() {
                       <table className="w-full min-w-full text-left text-sm">
                         <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                           <tr>
-                            <th className="px-3 py-2">Journal</th>
-                            <th className="px-3 py-2">Source</th>
-                            <th className="px-3 py-2">OpenAlex</th>
-                            <th className="px-3 py-2">Impact factor</th>
-                            <th className="px-3 py-2">Editor</th>
-                            <th className="px-3 py-2">Decision</th>
-                            <th className="px-3 py-2">Cache</th>
+                            <th scope="col" className="px-3 py-2">Journal</th>
+                            <th scope="col" className="px-3 py-2">Source</th>
+                            <th scope="col" className="px-3 py-2">OpenAlex</th>
+                            <th scope="col" className="px-3 py-2">Impact factor</th>
+                            <th scope="col" className="px-3 py-2">Editor</th>
+                            <th scope="col" className="px-3 py-2">Decision</th>
+                            <th scope="col" className="px-3 py-2">Cache</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2313,7 +2289,7 @@ export function AdminPage() {
                     <CardDescription>Live queue backlog, status split, and internal retry/cancel controls.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <form className="flex flex-wrap items-center gap-2" onSubmit={onJobsSearch}>
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={onSearch}>
                       <div className="relative w-full max-w-sm">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -2384,14 +2360,14 @@ export function AdminPage() {
                         <table className="w-full min-w-full text-left text-sm">
                           <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                             <tr>
-                              <th className="px-3 py-2">Job</th>
-                              <th className="px-3 py-2">Workspace / Project</th>
-                              <th className="px-3 py-2">Owner</th>
-                              <th className="px-3 py-2">Status</th>
-                              <th className="px-3 py-2">Run</th>
-                              <th className="px-3 py-2">Estimates</th>
-                              <th className="px-3 py-2">Created</th>
-                              <th className="px-3 py-2">Actions</th>
+                              <th scope="col" className="px-3 py-2">Job</th>
+                              <th scope="col" className="px-3 py-2">Workspace / Project</th>
+                              <th scope="col" className="px-3 py-2">Owner</th>
+                              <th scope="col" className="px-3 py-2">Status</th>
+                              <th scope="col" className="px-3 py-2">Run</th>
+                              <th scope="col" className="px-3 py-2">Estimates</th>
+                              <th scope="col" className="px-3 py-2">Created</th>
+                              <th scope="col" className="px-3 py-2">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2487,12 +2463,12 @@ export function AdminPage() {
                       <table className="w-full min-w-full text-left text-sm">
                         <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                           <tr>
-                            <th className="px-3 py-2">When</th>
-                            <th className="px-3 py-2">Action</th>
-                            <th className="px-3 py-2">Target</th>
-                            <th className="px-3 py-2">Actor</th>
-                            <th className="px-3 py-2">Status</th>
-                            <th className="px-3 py-2">Details</th>
+                            <th scope="col" className="px-3 py-2">When</th>
+                            <th scope="col" className="px-3 py-2">Action</th>
+                            <th scope="col" className="px-3 py-2">Target</th>
+                            <th scope="col" className="px-3 py-2">Actor</th>
+                            <th scope="col" className="px-3 py-2">Status</th>
+                            <th scope="col" className="px-3 py-2">Details</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2565,11 +2541,11 @@ export function AdminPage() {
                         <table className="w-full min-w-full text-left text-sm">
                           <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                             <tr>
-                              <th className="px-3 py-2">Provider</th>
-                              <th className="px-3 py-2">Configured</th>
-                              <th className="px-3 py-2">Connected</th>
-                              <th className="px-3 py-2">Degraded</th>
-                              <th className="px-3 py-2">Not configured</th>
+                              <th scope="col" className="px-3 py-2">Provider</th>
+                              <th scope="col" className="px-3 py-2">Configured</th>
+                              <th scope="col" className="px-3 py-2">Connected</th>
+                              <th scope="col" className="px-3 py-2">Degraded</th>
+                              <th scope="col" className="px-3 py-2">Not configured</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2780,16 +2756,16 @@ export function AdminPage() {
                         <table className="w-full min-w-full text-left text-sm">
                           <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                             <tr>
-                              <th className="px-3 py-2">Provider</th>
-                              <th className="px-3 py-2">Category</th>
-                              <th className="px-3 py-2">Configured</th>
-                              <th className="px-3 py-2">Health</th>
-                              <th className="px-3 py-2">Reason</th>
-                              <th className="px-3 py-2">Calls</th>
-                              <th className="px-3 py-2">Errors</th>
-                              <th className="px-3 py-2">Latency</th>
-                              <th className="px-3 py-2">Cost</th>
-                              <th className="px-3 py-2">Last call</th>
+                              <th scope="col" className="px-3 py-2">Provider</th>
+                              <th scope="col" className="px-3 py-2">Category</th>
+                              <th scope="col" className="px-3 py-2">Configured</th>
+                              <th scope="col" className="px-3 py-2">Health</th>
+                              <th scope="col" className="px-3 py-2">Reason</th>
+                              <th scope="col" className="px-3 py-2">Calls</th>
+                              <th scope="col" className="px-3 py-2">Errors</th>
+                              <th scope="col" className="px-3 py-2">Latency</th>
+                              <th scope="col" className="px-3 py-2">Cost</th>
+                              <th scope="col" className="px-3 py-2">Last call</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2803,7 +2779,7 @@ export function AdminPage() {
                                     {row.health}
                                   </span>
                                 </td>
-                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{row.health_reason || '—'}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{row.health_reason || 'â€”'}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.calls_current_month)}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.errors_current_month)}</td>
                                 <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.avg_latency_ms_current_month)} ms</td>
