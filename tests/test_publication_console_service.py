@@ -2707,6 +2707,78 @@ def test_open_access_link_uses_browser_fallback_when_http_fetch_is_blocked(
         assert Path(str(stored_row.storage_key)).read_bytes() == browser_bytes
 
 
+def test_open_access_link_keeps_external_link_when_local_cache_download_fails(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    monkeypatch.setattr(
+        publication_console_service,
+        "_find_unpaywall_pdf_url",
+        lambda **kwargs: "https://example.org/files/paper.pdf",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes",
+        lambda *args, **kwargs: (b"", None),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes_via_browser",
+        lambda *args, **kwargs: (b"", None),
+    )
+
+    with TestClient(app) as client:
+        owner_id, token = _register(client, email="oa-link-fallback@example.com")
+
+        with session_scope() as session:
+            work = Work(
+                user_id=owner_id,
+                title="Open access fallback work",
+                title_lower="open access fallback work",
+                year=2026,
+                doi="10.1000/open-access-fallback-work",
+                pmid=None,
+                work_type="journal-article",
+                venue_name="Test Journal",
+                publisher="Test Publisher",
+                abstract="Abstract",
+                keywords=[],
+                url="",
+                authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+                provenance="manual",
+            )
+            session.add(work)
+            session.flush()
+            work_id = str(work.id)
+
+        response = client.post(
+            f"/v1/publications/{work_id}/files/link-oa",
+            headers=_auth_headers(token),
+        )
+        assert response.status_code == 200
+        payload = response.json()
+
+    assert payload["created"] is True
+    assert payload["file"] is not None
+    assert payload["file"]["source"] == "OA_LINK"
+    assert payload["file"]["oa_url"] == "https://example.org/files/paper.pdf"
+    assert payload["file"]["download_url"] == "https://example.org/files/paper.pdf"
+    assert payload["message"] == "Open-access PDF link added, but local download failed. Use the external link."
+
+    with session_scope() as session:
+        stored_row = session.scalars(
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == owner_id,
+                PublicationFile.publication_id == work_id,
+            )
+        ).first()
+        assert stored_row is not None
+        assert stored_row.oa_url == "https://example.org/files/paper.pdf"
+        assert stored_row.storage_key == ""
+        assert stored_row.deleted is False
+
+
 def test_publication_file_rename_persists_for_open_access_link(
     monkeypatch, tmp_path
 ) -> None:

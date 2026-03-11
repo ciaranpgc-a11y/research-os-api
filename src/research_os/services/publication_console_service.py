@@ -8281,8 +8281,8 @@ def link_publication_open_access_pdf(
             if not _ensure_open_access_publication_file_local_copy(deleted_oa_row):
                 return {
                     "created": False,
-                    "file": None,
-                    "message": "Open-access PDF was found but could not be downloaded for local storage.",
+                    "file": _serialize_file(publication_id, deleted_oa_row),
+                    "message": "Open-access PDF link is available, but local download failed. Use the external link.",
                 }
             deleted_oa_row.deleted = False
             work.oa_link_suppressed = False
@@ -8336,8 +8336,8 @@ def link_publication_open_access_pdf(
             if not _ensure_open_access_publication_file_local_copy(existing):
                 return {
                     "created": False,
-                    "file": None,
-                    "message": "Open-access PDF was found but could not be downloaded for local storage.",
+                    "file": _serialize_file(publication_id, existing),
+                    "message": "Open-access PDF link is available, but local download failed. Use the external link.",
                 }
             if bool(work.oa_link_suppressed):
                 work.oa_link_suppressed = False
@@ -8366,12 +8366,13 @@ def link_publication_open_access_pdf(
         session.add(row)
         session.flush()
         if not _ensure_open_access_publication_file_local_copy(row):
-            session.delete(row)
+            work.oa_link_suppressed = False
             session.flush()
+            session.refresh(row)
             return {
-                "created": False,
-                "file": None,
-                "message": "Open-access PDF was found but could not be downloaded for local storage.",
+                "created": True,
+                "file": _serialize_file(publication_id, row),
+                "message": "Open-access PDF link added, but local download failed. Use the external link.",
             }
         work.oa_link_suppressed = False
         session.flush()
