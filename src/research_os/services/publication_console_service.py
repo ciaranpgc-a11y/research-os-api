@@ -172,8 +172,14 @@ STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
 STRUCTURED_PAPER_STATUS_FULL_TEXT_READY = "FULL_TEXT_READY"
 STRUCTURED_PAPER_STATUS_FAILED = "FAILED"
 STRUCTURED_PAPER_SECTION_SOURCE_GROBID = "grobid"
+STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC = "pmc_bioc"
 STRUCTURED_PAPER_PARSER_PROVIDER_GROBID = "GROBID"
+STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC = "PMC_BIOC"
 GROBID_AVAILABILITY_CACHE_TTL_SECONDS = 60
+STRUCTURED_PAPER_FULL_TEXT_SECTION_SOURCES = {
+    STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+    STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+}
 
 _executor_lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
@@ -770,6 +776,51 @@ def _resolve_pubmed_pmid(
     by_title = _search_pubmed_ids(term, max_results=1)
     if by_title:
         return by_title[0]
+    return None
+
+
+def _fetch_pubmed_article_xml_root(pmid: str) -> ET.Element | None:
+    normalized_pmid = _normalize_pmid(pmid)
+    if not normalized_pmid:
+        return None
+    xml_text = _request_text_with_retry(
+        url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
+        params={"db": "pubmed", "id": normalized_pmid, "retmode": "xml"},
+        timeout_seconds=_pubmed_timeout_seconds(),
+        retries=_pubmed_retry_count(),
+    )
+    if not xml_text.strip():
+        return None
+    try:
+        return ET.fromstring(xml_text)
+    except Exception:
+        return None
+
+
+def _resolve_pmcid(
+    *,
+    pmid: str | None,
+    doi: str | None,
+    title: str | None,
+    year: int | None,
+) -> str | None:
+    resolved_pmid = _resolve_pubmed_pmid(
+        pmid=pmid,
+        doi=doi,
+        title=title,
+        year=year,
+    )
+    if not resolved_pmid:
+        return None
+    root = _fetch_pubmed_article_xml_root(resolved_pmid)
+    if root is None:
+        return None
+    for node in root.findall(".//PubmedData/ArticleIdList/ArticleId"):
+        if str(node.attrib.get("IdType") or "").strip().lower() != "pmc":
+            continue
+        clean = str(node.text or "").strip().upper()
+        if clean.startswith("PMC"):
+            return clean
     return None
 
 
@@ -1638,17 +1689,8 @@ def _extract_openalex_work_record(
 def _extract_authors_from_pubmed(
     pmid: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    xml_text = _request_text_with_retry(
-        url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
-        params={"db": "pubmed", "id": pmid, "retmode": "xml"},
-        timeout_seconds=_pubmed_timeout_seconds(),
-        retries=_pubmed_retry_count(),
-    )
-    if not xml_text.strip():
-        return [], []
-    try:
-        root = ET.fromstring(xml_text)
-    except Exception:
+    root = _fetch_pubmed_article_xml_root(pmid)
+    if root is None:
         return [], []
 
     authors: list[dict[str, Any]] = []
@@ -1697,17 +1739,8 @@ def _extract_authors_from_pubmed(
 def _extract_structured_abstract_from_pubmed(
     pmid: str,
 ) -> tuple[str | None, list[dict[str, str]], list[str]]:
-    xml_text = _request_text_with_retry(
-        url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
-        params={"db": "pubmed", "id": pmid, "retmode": "xml"},
-        timeout_seconds=_pubmed_timeout_seconds(),
-        retries=_pubmed_retry_count(),
-    )
-    if not xml_text.strip():
-        return None, [], []
-    try:
-        root = ET.fromstring(xml_text)
-    except Exception:
+    root = _fetch_pubmed_article_xml_root(pmid)
+    if root is None:
         return None, [], []
 
     sections: list[dict[str, str]] = []
@@ -4463,6 +4496,7 @@ def _build_parsed_publication_paper_asset(
     page_end: int | None = None,
     coords: str | None = None,
     graphic_coords: str | None = None,
+    source_parser: str = STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
 ) -> dict[str, Any]:
     normalized_classification = _normalize_publication_file_classification(
         classification
@@ -4491,7 +4525,7 @@ def _build_parsed_publication_paper_asset(
         "page_end": page_end,
         "asset_kind": asset_kind,
         "origin": "parsed",
-        "source_parser": STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+        "source_parser": str(source_parser or STRUCTURED_PAPER_SECTION_SOURCE_GROBID),
         "coords": str(coords or "").strip() or None,
         "graphic_coords": str(graphic_coords or "").strip() or None,
         "image_data": None,
@@ -4589,7 +4623,7 @@ def _publication_paper_component_summary(
             1
             for section in sections
             if str(section.get("source") or "").strip()
-            == STRUCTURED_PAPER_SECTION_SOURCE_GROBID
+            in STRUCTURED_PAPER_FULL_TEXT_SECTION_SOURCES
         ),
         "reference_count": len(references),
         "figure_asset_count": len(figures),
@@ -5229,7 +5263,7 @@ def _build_publication_paper_payload(
     page_count = _safe_int(parsed_payload.get("page_count"))
     has_full_text_sections = any(
         str(section.get("source") or "").strip()
-        == STRUCTURED_PAPER_SECTION_SOURCE_GROBID
+        in STRUCTURED_PAPER_FULL_TEXT_SECTION_SOURCES
         for section in sections
         if isinstance(section, dict)
     )
@@ -7254,6 +7288,350 @@ def _extract_structured_publication_paper_with_grobid(
     return parsed_payload
 
 
+def _request_pmc_bioc_payload(pmcid: str) -> Any:
+    clean_pmcid = str(pmcid or "").strip().upper()
+    if not clean_pmcid.startswith("PMC"):
+        return None
+    json_text = _request_text_with_retry(
+        url=(
+            "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/"
+            f"BioC_json/{clean_pmcid}/unicode"
+        ),
+        timeout_seconds=_unpaywall_timeout_seconds(),
+        retries=max(1, _unpaywall_retry_count()),
+        headers={
+            "Accept": "application/json",
+            "User-Agent": OPEN_ACCESS_FETCH_USER_AGENT,
+        },
+    )
+    if not json_text.strip():
+        return None
+    try:
+        return json.loads(json_text)
+    except Exception:
+        return None
+
+
+def _pmc_bioc_document_zone(section_type: str | None) -> str | None:
+    clean = str(section_type or "").strip().upper()
+    if clean in {"TITLE", "ABSTRACT"}:
+        return "front"
+    if clean in {"REF", "ACK_FUND", "SUPPL"}:
+        return "back"
+    if clean:
+        return "body"
+    return None
+
+
+def _pmc_bioc_canonical_kind(section_type: str | None, title: str | None) -> str:
+    clean = str(section_type or "").strip().upper()
+    mapping = {
+        "INTRO": "introduction",
+        "METHODS": "methods",
+        "RESULTS": "results",
+        "DISCUSS": "discussion",
+        "CONCL": "conclusions",
+        "REF": "references",
+        "SUPPL": "supplementary_materials",
+        "FIG": "figure",
+        "TABLE": "table",
+    }
+    if clean == "ACK_FUND":
+        guessed = _normalize_publication_paper_section_kind(title or "Funding")
+        if guessed in {"funding", "acknowledgements", "conflicts", "data_availability"}:
+            return guessed
+        return "funding"
+    if clean in mapping:
+        return mapping[clean]
+    return _normalize_publication_paper_section_kind(title or clean or "section")
+
+
+def _pmc_bioc_default_title(section_type: str | None) -> str:
+    return _publication_paper_section_label(
+        _pmc_bioc_canonical_kind(section_type, section_type)
+    )
+
+
+def _pmc_bioc_asset_title(
+    *, caption: str, default_label: str, index: int
+) -> str:
+    clean_caption = _normalize_abstract_text(caption)
+    match = re.match(
+        r"^(?:figure|fig\.?|table)\s+(\d+[A-Za-z]?)\b",
+        clean_caption,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return f"{default_label} {match.group(1).upper()}"
+    return f"{default_label} {index}"
+
+
+def _parse_pmc_bioc_into_structured_paper(
+    *, payload: Any, title: str | None = None
+) -> dict[str, Any]:
+    collections = payload if isinstance(payload, list) else [payload]
+    document = None
+    for collection in collections:
+        if not isinstance(collection, dict):
+            continue
+        documents = collection.get("documents")
+        if isinstance(documents, list) and documents:
+            for candidate in documents:
+                if isinstance(candidate, dict):
+                    document = candidate
+                    break
+        if document is not None:
+            break
+    if document is None:
+        raise PublicationConsoleValidationError(
+            "PMC BioC did not return a readable document payload."
+        )
+
+    passages = document.get("passages")
+    if not isinstance(passages, list) or not passages:
+        raise PublicationConsoleValidationError(
+            "PMC BioC did not return any readable passages."
+        )
+
+    section_states: list[dict[str, Any]] = []
+    state_by_temp_id: dict[str, dict[str, Any]] = {}
+    current_temp_ids: dict[int, str] = {}
+    figures: list[dict[str, Any]] = []
+    tables: list[dict[str, Any]] = []
+    references: list[dict[str, Any]] = []
+    seen_reference_markers: set[str] = set()
+
+    def _create_state(
+        *,
+        heading: str,
+        section_type: str | None,
+        level: int,
+        parent_temp_id: str | None,
+        generated: bool,
+    ) -> dict[str, Any]:
+        temp_id = f"pmc-bioc-section-{len(section_states) + 1}"
+        state = {
+            "temp_id": temp_id,
+            "heading": heading,
+            "section_type": str(section_type or "").strip().upper() or None,
+            "canonical_kind": _pmc_bioc_canonical_kind(section_type, heading),
+            "document_zone": _pmc_bioc_document_zone(section_type),
+            "level": max(1, int(level or 1)),
+            "parent_temp_id": parent_temp_id,
+            "blocks": [],
+            "is_generated_heading": generated,
+        }
+        section_states.append(state)
+        state_by_temp_id[temp_id] = state
+        current_temp_ids[state["level"]] = temp_id
+        for depth in list(current_temp_ids):
+            if depth > state["level"]:
+                current_temp_ids.pop(depth, None)
+        return state
+
+    def _match_current_state(section_type: str | None) -> dict[str, Any] | None:
+        clean_type = str(section_type or "").strip().upper() or None
+        for level in sorted(current_temp_ids.keys(), reverse=True):
+            state = state_by_temp_id.get(current_temp_ids[level])
+            if state is None:
+                continue
+            if clean_type is None or state.get("section_type") == clean_type:
+                return state
+        return None
+
+    for passage in passages:
+        if not isinstance(passage, dict):
+            continue
+        infons = passage.get("infons") if isinstance(passage.get("infons"), dict) else {}
+        passage_type = str(infons.get("type") or "").strip().lower()
+        section_type = str(infons.get("section_type") or "").strip().upper() or None
+        passage_text = _normalize_abstract_text(str(passage.get("text") or ""))
+        if passage_type in {"front", "abstract", "abstract_title_1"}:
+            continue
+        if passage_type in {"fig_caption", "table_caption"}:
+            if not passage_text:
+                continue
+            default_label = "Figure" if passage_type == "fig_caption" else "Table"
+            asset_list = figures if passage_type == "fig_caption" else tables
+            asset_list.append(
+                _build_parsed_publication_paper_asset(
+                    asset_id=f"pmc-bioc-{default_label.lower()}-{len(asset_list) + 1}",
+                    title=_pmc_bioc_asset_title(
+                        caption=passage_text,
+                        default_label=default_label,
+                        index=len(asset_list) + 1,
+                    ),
+                    classification=(
+                        FILE_CLASSIFICATION_FIGURE
+                        if passage_type == "fig_caption"
+                        else FILE_CLASSIFICATION_TABLE
+                    ),
+                    caption=passage_text,
+                    source_parser=STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                )
+            )
+            continue
+        if passage_type == "ref":
+            if not passage_text:
+                continue
+            marker = passage_text.casefold()
+            if marker in seen_reference_markers:
+                continue
+            seen_reference_markers.add(marker)
+            references.append(
+                {
+                    "id": f"paper-reference-{len(references) + 1}",
+                    "label": f"Reference {len(references) + 1}",
+                    "raw_text": passage_text,
+                }
+            )
+            continue
+        if passage_type.startswith("title"):
+            if not passage_text or section_type in {"TITLE", "ABSTRACT", "REF"}:
+                continue
+            level = _safe_int(passage_type.rsplit("_", 1)[-1]) or 1
+            parent_temp_id = current_temp_ids.get(level - 1) if level > 1 else None
+            _create_state(
+                heading=passage_text,
+                section_type=section_type,
+                level=level,
+                parent_temp_id=parent_temp_id,
+                generated=False,
+            )
+            continue
+        if passage_type != "paragraph" or not passage_text:
+            continue
+        if section_type in {"TITLE", "ABSTRACT", "REF"}:
+            continue
+        state = _match_current_state(section_type)
+        if state is None:
+            state = _create_state(
+                heading=_pmc_bioc_default_title(section_type),
+                section_type=section_type,
+                level=1,
+                parent_temp_id=None,
+                generated=True,
+            )
+        state["blocks"].append(passage_text)
+
+    child_temp_ids = {
+        str(state.get("parent_temp_id") or "")
+        for state in section_states
+        if str(state.get("parent_temp_id") or "").strip()
+    }
+    kept_states = [
+        state
+        for state in section_states
+        if state.get("blocks") or str(state.get("temp_id") or "") in child_temp_ids
+    ]
+
+    sections: list[dict[str, Any]] = []
+    temp_to_real_id: dict[str, str] = {}
+    for order, state in enumerate(kept_states):
+        parent_temp_id = str(state.get("parent_temp_id") or "").strip() or None
+        serialized = _serialize_publication_paper_section(
+            order=order,
+            title=str(state.get("heading") or "").strip() or _pmc_bioc_default_title(
+                state.get("section_type")
+            ),
+            raw_label=str(state.get("heading") or "").strip() or None,
+            canonical_kind=str(state.get("canonical_kind") or "section"),
+            content="\n\n".join(state.get("blocks") or []),
+            source=STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+            level=_safe_int(state.get("level")) or 1,
+            parent_id=temp_to_real_id.get(parent_temp_id) if parent_temp_id else None,
+            allow_empty=not bool(state.get("blocks")),
+            is_generated_heading=bool(state.get("is_generated_heading")),
+            document_zone=str(state.get("document_zone") or "").strip() or None,
+        )
+        if serialized is None:
+            continue
+        temp_to_real_id[str(state.get("temp_id") or "")] = str(serialized["id"])
+        sections.append(serialized)
+
+    return {
+        "sections": sections,
+        "figures": figures,
+        "tables": tables,
+        "references": references[:500],
+        "page_count": None,
+        "generation_method": "pmc_bioc_fulltext_v1",
+        "parser_provider": STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC,
+    }
+
+
+def _extract_structured_publication_paper_with_pmc_bioc(
+    *, pmcid: str, content: bytes, title: str | None = None
+) -> dict[str, Any]:
+    payload = _request_pmc_bioc_payload(pmcid)
+    if payload is None:
+        raise PublicationConsoleValidationError(
+            f"PMC BioC full-text parsing was unavailable for {pmcid}."
+        )
+    parsed_payload = _parse_pmc_bioc_into_structured_paper(payload=payload, title=title)
+    aligned_sections, aligned_page_count = (
+        _align_structured_publication_sections_to_pdf_pages(
+            sections=(
+                parsed_payload.get("sections")
+                if isinstance(parsed_payload.get("sections"), list)
+                else []
+            ),
+            content=content,
+        )
+    )
+    parsed_payload["sections"] = aligned_sections
+    parsed_payload["figures"] = _align_structured_publication_assets_to_pdf_pages(
+        assets=(
+            parsed_payload.get("figures")
+            if isinstance(parsed_payload.get("figures"), list)
+            else []
+        ),
+        content=content,
+    )
+    parsed_payload["tables"] = _align_structured_publication_assets_to_pdf_pages(
+        assets=(
+            parsed_payload.get("tables")
+            if isinstance(parsed_payload.get("tables"), list)
+            else []
+        ),
+        content=content,
+    )
+    if aligned_page_count is not None:
+        parsed_payload["page_count"] = aligned_page_count
+    return parsed_payload
+
+
+def _extract_structured_publication_paper_with_best_available_parser(
+    *,
+    content: bytes,
+    title: str | None = None,
+    file_name: str | None = None,
+    pmid: str | None = None,
+    doi: str | None = None,
+    year: int | None = None,
+) -> dict[str, Any]:
+    pmcid = _resolve_pmcid(
+        pmid=pmid,
+        doi=doi,
+        title=title,
+        year=year,
+    )
+    if pmcid:
+        try:
+            return _extract_structured_publication_paper_with_pmc_bioc(
+                pmcid=pmcid,
+                content=content,
+                title=title,
+            )
+        except Exception as exc:
+            logger.warning("PMC BioC parse skipped for %s: %s", pmcid, exc)
+    return _extract_structured_publication_paper_with_grobid(
+        content=content,
+        title=title,
+        file_name=file_name,
+    )
+
+
 def _build_ai_payload(
     *, publication: dict[str, Any], impact_payload: dict[str, Any]
 ) -> dict[str, Any]:
@@ -7938,10 +8316,13 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
             file_id=primary_pdf_file_id,
             proxy_remote=True,
         )
-        parsed_paper = _extract_structured_publication_paper_with_grobid(
+        parsed_paper = _extract_structured_publication_paper_with_best_available_parser(
             content=bytes(binary_payload.get("content") or b""),
             title=str(source_state["publication"].get("title") or "").strip() or None,
             file_name=str(binary_payload.get("file_name") or "").strip() or None,
+            pmid=str(source_state["publication"].get("pmid") or "").strip() or None,
+            doi=str(source_state["publication"].get("doi") or "").strip() or None,
+            year=_safe_int(source_state["publication"].get("year")),
         )
         payload, source_signature = _build_publication_paper_payload(
             publication=source_state["publication"],
@@ -8728,6 +9109,41 @@ def _find_unpaywall_landing_page_urls(*, doi: str, email: str) -> list[str]:
     return candidates
 
 
+def _pmc_article_url(pmcid: str) -> str:
+    return f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid.strip().upper()}/"
+
+
+def _request_pmc_oa_record(pmcid: str) -> dict[str, str] | None:
+    clean_pmcid = str(pmcid or "").strip().upper()
+    if not clean_pmcid.startswith("PMC"):
+        return None
+    xml_text = _request_text_with_retry(
+        url="https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi",
+        params={"id": clean_pmcid},
+        timeout_seconds=_unpaywall_timeout_seconds(),
+        retries=max(1, _unpaywall_retry_count()),
+        headers={"User-Agent": OPEN_ACCESS_FETCH_USER_AGENT},
+    )
+    if not xml_text.strip():
+        return None
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception:
+        return None
+    record = root.find(".//record")
+    if record is None:
+        return None
+    payload = {
+        "pmcid": clean_pmcid,
+        "license": str(record.attrib.get("license") or "").strip(),
+    }
+    link = record.find("./link")
+    if link is not None:
+        payload["archive_href"] = str(link.attrib.get("href") or "").strip()
+        payload["archive_format"] = str(link.attrib.get("format") or "").strip()
+    return payload
+
+
 def _find_open_access_pdf_candidates(*, work: Work, email: str | None) -> list[str]:
     candidates: list[str] = []
     seen: set[str] = set()
@@ -8743,6 +9159,17 @@ def _find_open_access_pdf_candidates(*, work: Work, email: str | None) -> list[s
             return
         seen.add(clean_url)
         candidates.append(clean_url)
+
+    pmcid = _resolve_pmcid(
+        pmid=work.pmid,
+        doi=work.doi,
+        title=work.title,
+        year=_safe_int(work.year),
+    )
+    if pmcid:
+        oa_record = _request_pmc_oa_record(pmcid)
+        if oa_record is not None:
+            _append(_pmc_article_url(pmcid))
 
     doi = _normalize_doi(work.doi)
     if doi:

@@ -110,6 +110,43 @@ def test_grobid_base_url_normalizes_schemeless_base_url(monkeypatch) -> None:
     )
 
 
+def test_resolve_pmcid_from_pubmed_article_ids(monkeypatch) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_resolve_pubmed_pmid",
+        lambda **kwargs: "40308862",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_pubmed_article_xml_root",
+        lambda pmid: ET.fromstring(
+            """
+            <PubmedArticleSet>
+              <PubmedArticle>
+                <PubmedData>
+                  <ArticleIdList>
+                    <ArticleId IdType="pubmed">40308862</ArticleId>
+                    <ArticleId IdType="pmc">PMC12041914</ArticleId>
+                    <ArticleId IdType="doi">10.1093/ehjimp/qyaf042</ArticleId>
+                  </ArticleIdList>
+                </PubmedData>
+              </PubmedArticle>
+            </PubmedArticleSet>
+            """
+        ),
+    )
+
+    assert (
+        publication_console_service._resolve_pmcid(
+            pmid="40308862",
+            doi="10.1093/ehjimp/qyaf042",
+            title="Test title",
+            year=2025,
+        )
+        == "PMC12041914"
+    )
+
+
 def test_publication_detail_endpoint_is_scoped_to_owner(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
@@ -3135,6 +3172,16 @@ def test_find_open_access_pdf_candidates_includes_doi_work_and_pmid(
 ) -> None:
     monkeypatch.setattr(
         publication_console_service,
+        "_resolve_pmcid",
+        lambda **kwargs: "PMC12041914",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_oa_record",
+        lambda pmcid: {"pmcid": pmcid, "archive_href": "ftp://example.org/package.tgz"},
+    )
+    monkeypatch.setattr(
+        publication_console_service,
         "_find_unpaywall_pdf_url",
         lambda **kwargs: None,
     )
@@ -3169,11 +3216,81 @@ def test_find_open_access_pdf_candidates_includes_doi_work_and_pmid(
     )
 
     assert candidates == [
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC12041914/",
         "https://publisher.example/article",
         "https://doi.org/10.1000/candidate-oa-work",
         "https://journal.example/article",
         "https://pubmed.ncbi.nlm.nih.gov/40340893/",
     ]
+
+
+def test_best_available_parser_prefers_pmc_bioc_when_pmcid_resolves(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_resolve_pmcid",
+        lambda **kwargs: "PMC12041914",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_pmc_bioc",
+        lambda **kwargs: {
+            "sections": [
+                {
+                    "id": "paper-section-1-methods",
+                    "title": "Methods",
+                    "raw_label": "Methods",
+                    "label_original": "Methods",
+                    "label_normalized": "Methods",
+                    "kind": "methods",
+                    "canonical_kind": "methods",
+                    "section_type": "main_text",
+                    "canonical_map": "methods",
+                    "content": "PMC BioC methods text.",
+                    "source": "pmc_bioc",
+                    "source_parser": "pmc_bioc",
+                    "order": 0,
+                    "page_start": 1,
+                    "page_end": 2,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": None,
+                    "is_generated_heading": False,
+                    "word_count": 4,
+                    "paragraph_count": 1,
+                    "document_zone": "body",
+                    "section_role": None,
+                    "journal_section_family": None,
+                    "major_section_key": None,
+                }
+            ],
+            "figures": [],
+            "tables": [],
+            "references": [],
+            "page_count": 2,
+            "generation_method": "pmc_bioc_fulltext_v1",
+            "parser_provider": "PMC_BIOC",
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_grobid",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("GROBID should not run")),
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_best_available_parser(
+        content=b"%PDF-1.7 test payload",
+        title="Test title",
+        file_name="test.pdf",
+        pmid="40308862",
+        doi="10.1093/ehjimp/qyaf042",
+        year=2025,
+    )
+
+    assert payload["parser_provider"] == "PMC_BIOC"
+    assert payload["sections"][0]["source"] == "pmc_bioc"
 
 
 def test_open_access_browser_fetch_script_path_prefers_packaged_script(
