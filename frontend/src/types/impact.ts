@@ -426,6 +426,26 @@ export type AdminJournalProfilesListPayload = {
   summary: AdminJournalProfilesSummaryPayload
 }
 
+export type AdminJournalImportPayload = {
+  message: string
+  file_name: string
+  source_label: string
+  impact_factor_label: string
+  detected_columns: string[]
+  rows_read: number
+  rows_applied: number
+  created_profiles: number
+  updated_profiles: number
+  matched_by_source_id: number
+  matched_by_issn_l: number
+  matched_by_issn: number
+  matched_by_display_name: number
+  skipped_rows: number
+  warnings: string[]
+  generated_at: string
+  audit_event: AdminAuditEventPayload
+}
+
 export type AdminRuntimeSettingWorkTypeLlmPayload = {
   setting_key: string
   setting_enabled: boolean

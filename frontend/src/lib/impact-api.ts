@@ -15,6 +15,7 @@ import type {
   AdminOverviewPayload,
   AdminOrganisationImpersonationStartPayload,
   AdminApiMonitorPayload,
+  AdminJournalImportPayload,
   AdminJournalProfilesListPayload,
   AdminPublicationsAutoSyncSettingUpdatePayload,
   AdminCollaborationMetricsRecomputeAllPayload,
@@ -490,6 +491,51 @@ export async function fetchAdminJournalProfiles(
     },
     'Admin journal cache lookup failed',
   )
+}
+
+export async function uploadAdminJournalImpactFactors(
+  token: string,
+  file: File,
+  options?: {
+    sourceLabel?: string
+    impactFactorLabel?: string
+    defaultMetricYear?: number
+    reason?: string
+  },
+): Promise<AdminJournalImportPayload> {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (options?.sourceLabel) {
+    formData.append('source_label', options.sourceLabel)
+  }
+  if (options?.impactFactorLabel) {
+    formData.append('impact_factor_label', options.impactFactorLabel)
+  }
+  if (options?.defaultMetricYear != null) {
+    formData.append('default_metric_year', String(options.defaultMetricYear))
+  }
+  if (options?.reason) {
+    formData.append('reason', options.reason)
+  }
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 120_000)
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/v1/admin/journals/import-impact-factors`,
+      {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: formData,
+        signal: controller.signal,
+      },
+    )
+    if (!response.ok) {
+      throw new Error(await parseApiError(response, `Journal import failed (${response.status})`))
+    }
+    return (await response.json()) as AdminJournalImportPayload
+  } finally {
+    window.clearTimeout(timeout)
+  }
 }
 
 export async function fetchAdminApiMonitor(
