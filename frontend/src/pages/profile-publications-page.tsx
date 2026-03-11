@@ -2529,6 +2529,17 @@ function downloadBlob(filename: string, blob: Blob): void {
   }, 0)
 }
 
+function openBlobInNewTab(blob: Blob): void {
+  const url = window.URL.createObjectURL(blob)
+  const opened = window.open(url, '_blank', 'noopener,noreferrer')
+  window.setTimeout(() => {
+    if (!opened || opened.closed) {
+      return
+    }
+    window.URL.revokeObjectURL(url)
+  }, 60_000)
+}
+
 function publicationExportAuthors(work: PersonaWork): string[] {
   const raw = (work as Record<string, unknown>).authors
   if (Array.isArray(raw)) {
@@ -6192,6 +6203,22 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }
 
+  const onPreviewPublicationFile = async (fileId: string) => {
+    if (!token || !selectedWorkId) {
+      return
+    }
+    setDownloadingFileId(fileId)
+    setPaneError(selectedWorkId, 'files', '')
+    try {
+      const payload = await downloadPublicationFile(token, selectedWorkId, fileId)
+      openBlobInNewTab(payload.blob)
+    } catch (downloadError) {
+      setPaneError(selectedWorkId, 'files', downloadError instanceof Error ? downloadError.message : 'Could not open publication file.')
+    } finally {
+      setDownloadingFileId(null)
+    }
+  }
+
   const openPublicationFileMenuAtPosition = useCallback((fileId: string, x: number, y: number) => {
     if (typeof window === 'undefined') {
       return
@@ -6244,6 +6271,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const onOpenPublicationFile = (file: PublicationFilePayload) => {
     if (isLinkedPublicationFile(file) && publicationFileDirectUrl(file) && !(file.source === 'OA_LINK' && file.is_stored_locally)) {
       onOpenLinkedPublicationFile(file)
+      return
+    }
+    if (file.file_type === 'PDF') {
+      void onPreviewPublicationFile(file.id)
       return
     }
     void onDownloadPublicationFile(file.id, file.file_name)
