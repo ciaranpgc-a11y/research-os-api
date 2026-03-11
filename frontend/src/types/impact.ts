@@ -663,6 +663,7 @@ export type PersonaWork = {
   doi: string | null
   work_type: string
   publication_type?: string | null
+  article_type?: string | null
   venue_name: string
   publisher: string
   abstract: string | null

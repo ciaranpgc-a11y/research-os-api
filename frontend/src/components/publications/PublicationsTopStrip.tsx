@@ -480,6 +480,7 @@ export type PublicationProductionPhaseStats = {
   confidenceNote: string | null
   insufficientHistory: boolean
   totalPublications: number
+  scopedPublicationCount: number
   activeSpan: number
   usableYears: number
   years: number[]
@@ -2262,7 +2263,7 @@ function resolveTrajectoryPhaseTone(phase: PublicationTrajectoryPhaseLabel): Pub
   }
 }
 
-function getPublicationTrajectoryTooltipSurfaceClass(phase: PublicationTrajectoryPhaseLabel): string {
+export function getPublicationTrajectoryTooltipSurfaceClass(phase: PublicationTrajectoryPhaseLabel): string {
   switch (resolveTrajectoryPhaseTone(phase)) {
     case 'positive':
       return 'w-[calc(100vw-1.25rem)] sm:w-[25rem] lg:w-[27rem] max-w-[calc(100vw-1.25rem)] overflow-hidden border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--background)/0.98)] p-0 shadow-[0_18px_40px_hsl(var(--tone-positive-950)/0.09)]'
@@ -2632,6 +2633,7 @@ export function buildPublicationProductionPhaseStats(tile: PublicationMetricTile
       confidenceNote: null,
       insufficientHistory: true,
       totalPublications: yearSeries.totalPublications,
+      scopedPublicationCount: yearSeries.scopedPublicationCount,
       activeSpan: yearSeries.activeSpan,
       usableYears: yearSeries.series.length,
       years: yearSeries.years,
@@ -2706,6 +2708,7 @@ export function buildPublicationProductionPhaseStats(tile: PublicationMetricTile
       confidenceNote,
       insufficientHistory: true,
       totalPublications: yearSeries.totalPublications,
+      scopedPublicationCount: yearSeries.scopedPublicationCount,
       activeSpan,
       usableYears,
       years,
@@ -2768,6 +2771,7 @@ export function buildPublicationProductionPhaseStats(tile: PublicationMetricTile
     confidenceNote,
     insufficientHistory: false,
     totalPublications: yearSeries.totalPublications,
+    scopedPublicationCount: yearSeries.scopedPublicationCount,
     activeSpan,
     usableYears,
     years,
@@ -5531,7 +5535,7 @@ function buildPublicationMixOverTimeTooltipText(
   ].filter((value): value is string => Boolean(value)).join(' ')
 }
 
-function renderPublicationTrajectoryTooltipContent({
+export function renderPublicationTrajectoryTooltipContent({
   years,
   rawValues,
   focusRangeLabel,
@@ -8141,7 +8145,7 @@ function interpolateMonotonePathPoint(
   }
 }
 
-function splitMonotonePathSegment(
+export function splitMonotonePathSegment(
   segment: MonotonePathSegment,
   ratio: number,
 ): {

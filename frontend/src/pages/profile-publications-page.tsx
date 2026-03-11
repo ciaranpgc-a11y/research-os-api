@@ -1263,7 +1263,7 @@ function savePublicationTablePageSizePreference(userId: string, pageSize: Public
   window.localStorage.setItem(publicationsLibraryPageSizeStorageKey(userId), String(pageSize))
 }
 
-function loadPublicationTableColumnOrderPreference(userId: string): PublicationTableColumnKey[] {
+export function loadPublicationTableColumnOrderPreference(userId: string): PublicationTableColumnKey[] {
   if (typeof window === 'undefined') {
     return [...PUBLICATION_TABLE_COLUMN_ORDER]
   }
@@ -1300,7 +1300,7 @@ function loadPublicationTableColumnOrderPreference(userId: string): PublicationT
   }
 }
 
-function savePublicationTableColumnOrderPreference(userId: string, order: PublicationTableColumnKey[]): void {
+export function savePublicationTableColumnOrderPreference(userId: string, order: PublicationTableColumnKey[]): void {
   if (typeof window === 'undefined') {
     return
   }
@@ -8430,6 +8430,39 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
                                   <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'house-publication-overview-stat-value', overviewOwnerContributionToneClass)}>{overviewOwnerContribution}</p>
                                 </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Reader</p>
+                          </div>
+                          <div className="house-drilldown-content-block">
+                            <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
+                              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                                    Continue in the publication reader
+                                  </p>
+                                  <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                    {selectedPaperPrimaryPdfContentFileId
+                                      ? 'Open the continuous-scroll PDF reader with the structured outline alongside it.'
+                                      : 'Open the structured reader for this paper now. It will automatically pick up the PDF view when one is attached.'}
+                                  </p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="shrink-0 gap-2 rounded-full border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] px-4 text-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-100))]"
+                                  onClick={onOpenPublicationReader}
+                                >
+                                  {publicationReaderLoading && publicationReaderOpen ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <FileText className="h-4 w-4" />
+                                  )}
+                                  <span>{selectedPaperPrimaryPdfContentFileId ? 'Open reader' : 'Open structured reader'}</span>
+                                </Button>
                               </div>
                             </div>
                           </div>

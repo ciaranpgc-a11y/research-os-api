@@ -66,7 +66,7 @@ function parseIsoPublicationDate(value: string | null | undefined): Date | null 
   return new Date(Date.UTC(Math.round(year), Math.round(month) - 1, Math.round(day)))
 }
 
-function resolvePublicationTrajectoryMonthStart(record: PublicationTrajectorySeriesRecord): Date | null {
+export function resolvePublicationTrajectoryMonthStart(record: PublicationTrajectorySeriesRecord): Date | null {
   const parsedMonth = parseIsoMonthStart(record.publicationMonthStart)
   if (parsedMonth) {
     return parsedMonth
