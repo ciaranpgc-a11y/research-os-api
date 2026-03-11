@@ -449,6 +449,10 @@ from research_os.services.publications_sync_scheduler_service import (
     start_publications_auto_sync_scheduler,
     stop_publications_auto_sync_scheduler,
 )
+from research_os.services.open_access_sync_scheduler_service import (
+    start_open_access_auto_sync_scheduler,
+    stop_open_access_auto_sync_scheduler,
+)
 from research_os.services.publication_metrics_service import (
     PublicationMetricsNotFoundError,
     PublicationMetricsValidationError,
@@ -701,6 +705,13 @@ async def app_lifespan(_: FastAPI):
                 "publications_auto_sync_scheduler_start_failed",
                 extra={"detail": str(exc)},
             )
+        try:
+            start_open_access_auto_sync_scheduler()
+        except Exception as exc:
+            logger.warning(
+                "open_access_auto_sync_scheduler_start_failed",
+                extra={"detail": str(exc)},
+            )
     try:
         yield
     finally:
@@ -714,6 +725,10 @@ async def app_lifespan(_: FastAPI):
             pass
         try:
             stop_publications_auto_sync_scheduler()
+        except Exception:
+            pass
+        try:
+            stop_open_access_auto_sync_scheduler()
         except Exception:
             pass
 
