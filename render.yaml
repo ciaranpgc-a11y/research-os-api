@@ -5,7 +5,6 @@ services:
     plan: standard
     image:
       url: docker.io/grobid/grobid:0.8.2-crf
-    healthCheckPath: /api/isalive
     envVars:
       - key: JAVA_OPTS
         value: -Xms512m -Xmx1536m
