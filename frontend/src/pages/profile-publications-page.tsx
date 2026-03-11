@@ -104,7 +104,7 @@ type PublicationTableColumnPreference = {
   align: PublicationTableColumnAlign
   width: number
 }
-type PublicationOaPdfStatus = 'available' | 'missing' | 'checking' | 'unknown'
+type PublicationOaPdfStatus = 'available' | 'missing' | 'unknown'
 type PublicationOaPdfStatusRecord = {
   status: PublicationOaPdfStatus
   downloadUrl: string | null
@@ -2146,9 +2146,11 @@ function loadPublicationsOaStatus(userId: string): Record<string, PublicationOaP
       const payload = value as Record<string, unknown>
       const rawStatus = String(payload.status || '').trim().toLowerCase()
       const status: PublicationOaPdfStatus =
-        rawStatus === 'available' || rawStatus === 'missing' || rawStatus === 'checking'
-          ? rawStatus
-          : 'unknown'
+        rawStatus === 'available'
+          ? 'available'
+          : rawStatus === 'missing' || rawStatus === 'checking'
+            ? 'missing'
+            : 'unknown'
       next[workId] = {
         status,
         downloadUrl: String(payload.downloadUrl || '').trim() || null,
@@ -2205,16 +2207,13 @@ function publicationOaStatusLabel(status: PublicationOaPdfStatus, hasDoi: boolea
   if (status === 'available') {
     return 'Open-access PDF available'
   }
-  if (status === 'checking') {
-    return 'Checking for open-access PDF'
-  }
   if (status === 'missing' && !hasDoi) {
     return 'Open-access PDF unavailable (missing DOI)'
   }
   if (status === 'missing') {
     return 'Open-access PDF not found'
   }
-  return 'Open-access PDF pending background check'
+  return 'Open-access PDF status pending'
 }
 
 function loadActivePublicationDetailTab(): PublicationDetailTab {
@@ -8042,11 +8041,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                           </button>
                                         ) : (
                                           <span title={oaLabel} className={`inline-flex items-center ${oaToneClass}`}>
-                                            {oaVisualStatus === 'checking' ? (
-                                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                            ) : (
-                                              <Paperclip className="h-3.5 w-3.5" />
-                                            )}
+                                            <Paperclip className="h-3.5 w-3.5" />
                                           </span>
                                         )
                                       ) : null}
