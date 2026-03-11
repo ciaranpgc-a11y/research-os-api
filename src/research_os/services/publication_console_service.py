@@ -1428,6 +1428,29 @@ def _reuse_existing_open_access_publication_file_local_copy(
     return False
 
 
+def _merge_open_access_publication_file_metadata(
+    target: PublicationFile, source: PublicationFile
+) -> None:
+    if not bool(target.custom_name) and bool(source.custom_name):
+        target.file_name = source.file_name
+        target.custom_name = True
+    if (
+        not bool(target.classification_custom)
+        and bool(source.classification_custom)
+        and str(source.classification or "").strip()
+    ):
+        target.classification = source.classification
+        target.classification_custom = True
+        target.classification_other_label = source.classification_other_label
+    if (
+        str(target.classification or "").strip().upper() == FILE_CLASSIFICATION_OTHER
+        and not str(target.classification_other_label or "").strip()
+        and str(source.classification or "").strip().upper() == FILE_CLASSIFICATION_OTHER
+        and str(source.classification_other_label or "").strip()
+    ):
+        target.classification_other_label = source.classification_other_label
+
+
 def _ensure_open_access_publication_file_local_copy(
     row: PublicationFile,
 ) -> bool:
@@ -8953,6 +8976,7 @@ def list_publication_files(*, user_id: str, publication_id: str) -> dict[str, An
         ).all()
         default_file_name = _resolve_publication_file_display_name(publication)
         active_rows: list[PublicationFile] = []
+        primary_active_oa_row: PublicationFile | None = None
         for row in rows:
             if (
                 not bool(row.custom_name)
@@ -8979,6 +9003,13 @@ def list_publication_files(*, user_id: str, publication_id: str) -> dict[str, An
                         reason="list_without_local_copy",
                     )
                     continue
+                if primary_active_oa_row is not None:
+                    _merge_open_access_publication_file_metadata(
+                        primary_active_oa_row, row
+                    )
+                    row.deleted = True
+                    continue
+                primary_active_oa_row = row
             active_rows.append(row)
         session.flush()
         items = [_serialize_file(publication_id, row) for row in active_rows]
@@ -9248,6 +9279,41 @@ def link_publication_open_access_pdf(
         work = _resolve_work_or_raise(
             session, user_id=user_id, publication_id=publication_id
         )
+        active_oa_rows = session.scalars(
+            select(PublicationFile)
+            .where(
+                PublicationFile.owner_user_id == user_id,
+                PublicationFile.publication_id == publication_id,
+                PublicationFile.source == FILE_SOURCE_OA_LINK,
+                PublicationFile.deleted.is_(False),
+            )
+            .order_by(PublicationFile.created_at.desc())
+        ).all()
+        primary_active_oa_row: PublicationFile | None = None
+        for active_row in active_oa_rows:
+            if not _ensure_open_access_publication_file_local_copy(active_row):
+                _prune_unstored_open_access_publication_file(
+                    active_row,
+                    reason="link_existing_without_local_copy",
+                )
+                continue
+            if primary_active_oa_row is None:
+                primary_active_oa_row = active_row
+                continue
+            _merge_open_access_publication_file_metadata(
+                primary_active_oa_row, active_row
+            )
+            active_row.deleted = True
+        if primary_active_oa_row is not None:
+            if bool(work.oa_link_suppressed):
+                work.oa_link_suppressed = False
+            session.flush()
+            session.refresh(primary_active_oa_row)
+            return {
+                "created": False,
+                "file": _serialize_file(publication_id, primary_active_oa_row),
+                "message": "Open-access PDF already stored.",
+            }
         deleted_oa_row = session.scalars(
             select(PublicationFile)
             .where(

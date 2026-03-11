@@ -3655,6 +3655,103 @@ def test_listing_publication_files_prunes_active_oa_link_without_local_copy(
         assert stored_rows == []
 
 
+def test_listing_publication_files_collapses_duplicate_active_oa_rows(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with session_scope() as session:
+        user = User(
+            email="oa-list-dedupe@example.com",
+            password_hash="test-hash",
+            name="oa-list-dedupe",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work = Work(
+            user_id=user_id,
+            title="OA list dedupe work",
+            title_lower="oa list dedupe work",
+            year=2026,
+            doi="10.1000/oa-list-dedupe-work",
+            work_type="journal-article",
+            venue_name="Test Journal",
+            publisher="Test Publisher",
+            abstract="Abstract",
+            keywords=[],
+            url="",
+            authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+            provenance="manual",
+        )
+        session.add(work)
+        session.flush()
+        work_id = str(work.id)
+
+        older = PublicationFile(
+            publication_id=work_id,
+            owner_user_id=user_id,
+            file_name="older-oa.pdf",
+            file_type="PDF",
+            storage_key=f"{user_id}/{work_id}/older.pdf",
+            source="OA_LINK",
+            oa_url="https://publisher.example/paper.pdf",
+            checksum=None,
+            custom_name=False,
+            classification="PUBLISHED_MANUSCRIPT",
+            classification_custom=True,
+            deleted=False,
+            created_at=publication_console_service._utcnow(),
+        )
+        newer = PublicationFile(
+            publication_id=work_id,
+            owner_user_id=user_id,
+            file_name="newer-oa.pdf",
+            file_type="PDF",
+            storage_key=f"{user_id}/{work_id}/newer.pdf",
+            source="OA_LINK",
+            oa_url="https://pmc.ncbi.nlm.nih.gov/articles/PMC1234567/",
+            checksum=None,
+            custom_name=False,
+            classification=None,
+            classification_custom=False,
+            deleted=False,
+            created_at=publication_console_service._utcnow() + timedelta(seconds=1),
+        )
+        session.add_all([older, newer])
+        session.flush()
+
+        root = tmp_path / "publication-files" / user_id / work_id
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "older.pdf").write_bytes(b"%PDF-1.7 older")
+        (root / "newer.pdf").write_bytes(b"%PDF-1.7 newer")
+
+    payload = publication_console_service.list_publication_files(
+        user_id=user_id,
+        publication_id=work_id,
+    )
+
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["classification"] == "PUBLISHED_MANUSCRIPT"
+
+    with session_scope() as session:
+        rows = session.scalars(
+            select(PublicationFile)
+            .where(
+                PublicationFile.owner_user_id == user_id,
+                PublicationFile.publication_id == work_id,
+                PublicationFile.source == "OA_LINK",
+            )
+            .order_by(PublicationFile.created_at.desc())
+        ).all()
+        assert len(rows) == 2
+        assert rows[0].deleted is False
+        assert rows[0].classification == "PUBLISHED_MANUSCRIPT"
+        assert rows[1].deleted is True
+
+
 def test_deleted_open_access_file_restore_uses_remapped_persisted_local_copy(
     monkeypatch, tmp_path
 ) -> None:
@@ -3734,6 +3831,88 @@ def test_deleted_open_access_file_restore_uses_remapped_persisted_local_copy(
         assert restored is not None
         assert restored.deleted is False
 
+
+def test_open_access_link_returns_existing_active_stored_file_even_if_new_candidate_differs(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    monkeypatch.setattr(
+        publication_console_service,
+        "_find_open_access_pdf_candidates",
+        lambda **kwargs: ["https://pmc.ncbi.nlm.nih.gov/articles/PMC9999999/"],
+    )
+
+    with session_scope() as session:
+        user = User(
+            email="oa-existing-active@example.com",
+            password_hash="test-hash",
+            name="oa-existing-active",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work = Work(
+            user_id=user_id,
+            title="Existing active OA work",
+            title_lower="existing active oa work",
+            year=2026,
+            doi="10.1000/existing-active-oa-work",
+            work_type="journal-article",
+            venue_name="Test Journal",
+            publisher="Test Publisher",
+            abstract="Abstract",
+            keywords=[],
+            url="",
+            authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+            provenance="manual",
+        )
+        session.add(work)
+        session.flush()
+        work_id = str(work.id)
+
+        row = PublicationFile(
+            publication_id=work_id,
+            owner_user_id=user_id,
+            file_name="open-access.pdf",
+            file_type="PDF",
+            storage_key=f"{user_id}/{work_id}/stored.pdf",
+            source="OA_LINK",
+            oa_url="https://publisher.example/article.pdf",
+            checksum=None,
+            custom_name=False,
+            classification=None,
+            classification_custom=False,
+            deleted=False,
+            created_at=publication_console_service._utcnow(),
+        )
+        session.add(row)
+        session.flush()
+
+        root = tmp_path / "publication-files" / user_id / work_id
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "stored.pdf").write_bytes(b"%PDF-1.7 existing")
+
+    payload = publication_console_service.link_publication_open_access_pdf(
+        user_id=user_id,
+        publication_id=work_id,
+    )
+
+    assert payload["created"] is False
+    assert payload["file"] is not None
+    assert payload["message"] == "Open-access PDF already stored."
+
+    with session_scope() as session:
+        rows = session.scalars(
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == user_id,
+                PublicationFile.publication_id == work_id,
+                PublicationFile.source == "OA_LINK",
+                PublicationFile.deleted.is_(False),
+            )
+        ).all()
+        assert len(rows) == 1
 
 def test_publication_file_rename_persists_for_open_access_link(
     monkeypatch, tmp_path
