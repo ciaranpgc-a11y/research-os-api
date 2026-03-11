@@ -353,12 +353,53 @@ def import_journal_profiles_from_csv_bytes(
                     "acceptance_to_publication_days",
                 )
             )
+            five_year_jif = _safe_float(
+                _row_value(
+                    row,
+                    "5_year_jif",
+                    "five_year_impact_factor",
+                    "5_year_impact_factor",
+                    "five_year_jif",
+                    "5yr_jif",
+                    "jif_5_year",
+                )
+            )
+            jci_value = _safe_float(
+                _row_value(
+                    row,
+                    "jci",
+                    "journal_citation_indicator",
+                    "citation_indicator",
+                )
+            )
+            jif_quartile_value = _sanitize_text(
+                _row_value(
+                    row,
+                    "jif_quartile",
+                    "quartile",
+                    "journal_quartile",
+                ),
+                max_length=32,
+            )
+            cited_half_life_value = _sanitize_text(
+                _row_value(
+                    row,
+                    "cited_half_life",
+                    "half_life",
+                    "journal_cited_half_life",
+                ),
+                max_length=64,
+            )
 
             if (
                 metric_value is None
                 and not editor_in_chief_name
                 and time_to_first_decision_days is None
                 and time_to_publication_days is None
+                and five_year_jif is None
+                and jci_value is None
+                and not jif_quartile_value
+                and not cited_half_life_value
             ):
                 skipped_rows += 1
                 if len(warnings) < 25:
@@ -475,6 +516,33 @@ def import_journal_profiles_from_csv_bytes(
                 profile.editorial_source_title
             ):
                 profile.editorial_source_title = clean_source_label
+                row_changed = True
+
+            if (
+                five_year_jif is not None
+                and five_year_jif != _safe_float(profile.five_year_impact_factor)
+            ):
+                profile.five_year_impact_factor = round(five_year_jif, 3)
+                row_changed = True
+            if (
+                jci_value is not None
+                and jci_value != _safe_float(profile.journal_citation_indicator)
+            ):
+                profile.journal_citation_indicator = round(jci_value, 3)
+                row_changed = True
+            if (
+                jif_quartile_value
+                and jif_quartile_value
+                != _sanitize_text(profile.jif_quartile)
+            ):
+                profile.jif_quartile = jif_quartile_value
+                row_changed = True
+            if (
+                cited_half_life_value
+                and cited_half_life_value
+                != _sanitize_text(profile.cited_half_life)
+            ):
+                profile.cited_half_life = cited_half_life_value
                 row_changed = True
 
             if row_changed:

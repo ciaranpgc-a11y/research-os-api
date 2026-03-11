@@ -1972,22 +1972,26 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                         else None
                     ),
                     "five_year_impact_factor": (
-                        _journal_import_float(profile, "5_year_jif")
+                        _safe_float(profile.five_year_impact_factor)
+                        or _journal_import_float(profile, "5_year_jif")
                         if profile is not None
                         else None
                     ),
                     "journal_citation_indicator": (
-                        _journal_import_float(profile, "jci")
+                        _safe_float(profile.journal_citation_indicator)
+                        or _journal_import_float(profile, "jci")
                         if profile is not None
                         else None
                     ),
                     "jif_quartile": (
-                        _journal_import_text(profile, "jif_quartile", max_length=32)
+                        str(profile.jif_quartile or "").strip()
+                        or _journal_import_text(profile, "jif_quartile", max_length=32)
                         if profile is not None
                         else None
                     ),
                     "cited_half_life": (
-                        _journal_import_text(profile, "cited_half_life", max_length=64)
+                        str(profile.cited_half_life or "").strip()
+                        or _journal_import_text(profile, "cited_half_life", max_length=64)
                         if profile is not None
                         else None
                     ),
@@ -2102,29 +2106,41 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                     profile.publisher_reported_impact_factor_source_url
                 )
             if group.get("five_year_impact_factor") is None and profile is not None:
-                group["five_year_impact_factor"] = _journal_import_float(
-                    profile,
-                    "5_year_jif",
+                group["five_year_impact_factor"] = (
+                    _safe_float(profile.five_year_impact_factor)
+                    or _journal_import_float(
+                        profile,
+                        "5_year_jif",
+                    )
                 )
             if group.get("journal_citation_indicator") is None and profile is not None:
-                group["journal_citation_indicator"] = _journal_import_float(
-                    profile,
-                    "jci",
+                group["journal_citation_indicator"] = (
+                    _safe_float(profile.journal_citation_indicator)
+                    or _journal_import_float(
+                        profile,
+                        "jci",
+                    )
                 )
             if not str(group.get("jif_quartile") or "").strip() and profile is not None:
-                group["jif_quartile"] = _journal_import_text(
-                    profile,
-                    "jif_quartile",
-                    max_length=32,
+                group["jif_quartile"] = (
+                    str(profile.jif_quartile or "").strip()
+                    or _journal_import_text(
+                        profile,
+                        "jif_quartile",
+                        max_length=32,
+                    )
                 )
             if (
                 not str(group.get("cited_half_life") or "").strip()
                 and profile is not None
             ):
-                group["cited_half_life"] = _journal_import_text(
-                    profile,
-                    "cited_half_life",
-                    max_length=64,
+                group["cited_half_life"] = (
+                    str(profile.cited_half_life or "").strip()
+                    or _journal_import_text(
+                        profile,
+                        "cited_half_life",
+                        max_length=64,
+                    )
                 )
             if group.get("time_to_first_decision_days") is None and profile is not None:
                 group["time_to_first_decision_days"] = (

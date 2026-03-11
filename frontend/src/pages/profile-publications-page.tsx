@@ -4417,6 +4417,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     [selectedFiles, selectedPaperDocument?.primary_pdf_file_id],
   )
   const selectedPaperPrimaryPdfContentFileId = selectedPaperDocument?.primary_pdf_file_id || selectedPaperPrimaryFile?.id || null
+  const selectedPublicationReaderEntryAvailable = selectedPaperDocument?.reader_entry_available ?? true
   const selectedPaperPrimaryPdfExternalUrl = useMemo(() => {
     const primaryFileUrl = selectedPaperPrimaryFile ? publicationFileDirectUrl(selectedPaperPrimaryFile) : ''
     return resolvePublicationPdfViewerUrl(primaryFileUrl || selectedPaperDocument?.primary_pdf_download_url || '')
@@ -4740,6 +4741,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     publicationReaderSectionRefs.current = {}
     publicationReaderInlineAssetRefs.current = {}
   }, [selectedWorkId])
+
+  useEffect(() => {
+    if (!selectedWorkId) {
+      return
+    }
+    void loadPublicationPaperModelData(selectedWorkId, false, { silent: true })
+  }, [loadPublicationPaperModelData, selectedWorkId])
 
   useEffect(() => {
     if (!publicationFileTagEditorState || publicationFileTagEditorState.open) {
@@ -5867,7 +5875,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }
 
   const onOpenPublicationReader = useCallback(() => {
-    if (!selectedWorkId) {
+    if (!selectedWorkId || !selectedPublicationReaderEntryAvailable) {
       return
     }
     const initialSection = selectedPaperFirstReaderSection
@@ -5880,7 +5888,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderViewMode(selectedPaperPrimaryPdfContentFileId ? 'pdf' : 'structured')
     setPublicationReaderActiveSectionId(initialSection?.id || null)
     void loadPublicationPaperModelData(selectedWorkId, true)
-  }, [loadPublicationPaperModelData, selectedPaperFirstReaderSection, selectedPaperPrimaryPdfContentFileId, selectedWorkId])
+  }, [loadPublicationPaperModelData, selectedPaperFirstReaderSection, selectedPaperPrimaryPdfContentFileId, selectedPublicationReaderEntryAvailable, selectedWorkId])
 
   const onSelectPublicationReaderSection = useCallback((sectionId: string) => {
     const selectedSection = selectedPaperSections.find((section) => section.id === sectionId) || null
@@ -8260,20 +8268,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 </DrilldownSheet.Tab>
                               ))}
                             </DrilldownSheet.Tabs>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="shrink-0 gap-2 rounded-full border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 text-[hsl(var(--tone-neutral-700))] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
-                              onClick={onOpenPublicationReader}
-                            >
-                              {publicationReaderLoading && publicationReaderOpen ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <FileText className="h-4 w-4" />
-                              )}
-                              <span>Reader</span>
-                            </Button>
                           </div>
                       </DrilldownSheet.Header>
 
@@ -8433,39 +8427,43 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </div>
                             </div>
                           </div>
-                          <div className="house-drilldown-heading-block">
-                            <p className="house-drilldown-heading-block-title">Reader</p>
-                          </div>
-                          <div className="house-drilldown-content-block">
-                            <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
-                              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                                    Continue in the publication reader
-                                  </p>
-                                  <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
-                                    {selectedPaperPrimaryPdfContentFileId
-                                      ? 'Open the continuous-scroll PDF reader with the structured outline alongside it.'
-                                      : 'Open the structured reader for this paper now. It will automatically pick up the PDF view when one is attached.'}
-                                  </p>
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="shrink-0 gap-2 rounded-full border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] px-4 text-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-100))]"
-                                  onClick={onOpenPublicationReader}
-                                >
-                                  {publicationReaderLoading && publicationReaderOpen ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <FileText className="h-4 w-4" />
-                                  )}
-                                  <span>{selectedPaperPrimaryPdfContentFileId ? 'Open reader' : 'Open structured reader'}</span>
-                                </Button>
+                          {selectedPublicationReaderEntryAvailable ? (
+                            <>
+                              <div className="house-drilldown-heading-block">
+                                <p className="house-drilldown-heading-block-title">Reader</p>
                               </div>
-                            </div>
-                          </div>
+                              <div className="house-drilldown-content-block">
+                                <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
+                                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                                        Continue in the publication reader
+                                      </p>
+                                      <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                        {selectedPaperPrimaryPdfContentFileId
+                                          ? 'Open the continuous-scroll PDF reader with the structured outline alongside it.'
+                                          : 'Open the structured reader for this paper now. It will automatically pick up the PDF view when one is attached.'}
+                                      </p>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="shrink-0 gap-2 rounded-full border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] px-4 text-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-100))]"
+                                      onClick={onOpenPublicationReader}
+                                    >
+                                      {publicationReaderLoading && publicationReaderOpen ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <FileText className="h-4 w-4" />
+                                      )}
+                                      <span>{selectedPaperPrimaryPdfContentFileId ? 'Open reader' : 'Open structured reader'}</span>
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </>
+                          ) : null}
 
                         </>
                         ) : null}

@@ -2428,6 +2428,7 @@ class PublicationPaperModelDocumentResponse(BaseModel):
     page_count: int | None = None
     search_ready: bool = False
     outline_depth: int = 1
+    reader_entry_available: bool = True
 
 
 class PublicationPaperModelSectionResponse(BaseModel):

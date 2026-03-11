@@ -1,4 +1,14 @@
 services:
+  - type: pserv
+    name: research-os-grobid-achk
+    runtime: image
+    plan: standard
+    image:
+      url: docker.io/grobid/grobid:0.8.2-crf
+    healthCheckPath: /api/isalive
+    envVars:
+      - key: JAVA_OPTS
+        value: -Xms512m -Xmx1536m
   - type: web
     name: research-os-api-achk
     runtime: docker
@@ -20,6 +30,13 @@ services:
         sync: false
       - key: DATA_LIBRARY_ROOT
         value: /var/data/data_library_store
+      - key: PUBLICATION_FILES_ROOT
+        value: /var/data/publication_files_store
+      - key: PUB_GROBID_HOSTPORT
+        fromService:
+          type: pserv
+          name: research-os-grobid-achk
+          property: hostport
       - key: CORS_ALLOW_ORIGINS
         value: http://localhost:5173,https://app.axiomos.studio
       - key: FRONTEND_BASE_URL

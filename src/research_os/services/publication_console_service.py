@@ -62,6 +62,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+HTTP_URL_SCHEME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
 
 TRAJECTORY_VALUES = {
     "EARLY_SPIKE",
@@ -166,11 +167,14 @@ STRUCTURED_PAPER_STATUS_FULL_TEXT_READY = "FULL_TEXT_READY"
 STRUCTURED_PAPER_STATUS_FAILED = "FAILED"
 STRUCTURED_PAPER_SECTION_SOURCE_GROBID = "grobid"
 STRUCTURED_PAPER_PARSER_PROVIDER_GROBID = "GROBID"
+GROBID_AVAILABILITY_CACHE_TTL_SECONDS = 60
 
 _executor_lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
 _inflight_lock = threading.Lock()
 _inflight_jobs: set[tuple[str, str, str]] = set()
+_grobid_availability_checked_at: float | None = None
+_grobid_availability_value = False
 
 
 class PublicationConsoleValidationError(RuntimeError):
@@ -332,7 +336,20 @@ def _unpaywall_retry_count() -> int:
 
 
 def _grobid_base_url() -> str:
-    clean = str(os.getenv("PUB_GROBID_BASE_URL", "http://127.0.0.1:8070")).strip()
+    hostport = _normalize_http_base_url(os.getenv("PUB_GROBID_HOSTPORT", ""))
+    if hostport:
+        return hostport
+    return _normalize_http_base_url(
+        os.getenv("PUB_GROBID_BASE_URL", "http://127.0.0.1:8070")
+    )
+
+
+def _normalize_http_base_url(raw: object) -> str:
+    clean = str(raw or "").strip()
+    if not clean:
+        return ""
+    if not HTTP_URL_SCHEME_PATTERN.match(clean):
+        clean = f"http://{clean}"
     return clean.rstrip("/")
 
 
@@ -344,6 +361,53 @@ def _grobid_timeout_seconds() -> float:
 def _grobid_retry_count() -> int:
     value = _safe_int(os.getenv("PUB_GROBID_RETRY_COUNT", "1"))
     return max(0, min(4, value if value is not None else 1))
+
+
+def _grobid_availability_cache_ttl_seconds() -> int:
+    raw_value = str(
+        os.getenv(
+            "PUB_GROBID_AVAILABILITY_CACHE_TTL_SECONDS",
+            str(GROBID_AVAILABILITY_CACHE_TTL_SECONDS),
+        )
+    ).strip()
+    try:
+        return max(0, int(raw_value))
+    except ValueError:
+        return GROBID_AVAILABILITY_CACHE_TTL_SECONDS
+
+
+def _probe_grobid_availability() -> bool:
+    base_url = _grobid_base_url()
+    if not base_url:
+        return False
+    endpoint = f"{base_url}/api/isalive"
+    timeout_seconds = min(3.0, max(1.0, _grobid_timeout_seconds()))
+    try:
+        with httpx.Client(timeout=httpx.Timeout(timeout_seconds), follow_redirects=True) as client:
+            response = client.get(endpoint)
+    except Exception:
+        return False
+    return response.status_code < 400
+
+
+def grobid_available(*, force_refresh: bool = False) -> bool:
+    global _grobid_availability_checked_at
+    global _grobid_availability_value
+
+    ttl_seconds = _grobid_availability_cache_ttl_seconds()
+    now = time.monotonic()
+    if (
+        not force_refresh
+        and ttl_seconds > 0
+        and _grobid_availability_checked_at is not None
+        and (now - _grobid_availability_checked_at) < ttl_seconds
+    ):
+        return _grobid_availability_value
+
+    available = _probe_grobid_availability()
+    _grobid_availability_checked_at = now
+    _grobid_availability_value = available
+    return available
 
 
 def _openalex_citing_pages() -> int:
@@ -1018,6 +1082,16 @@ def _publication_file_storage_path(value: str | None) -> Path | None:
 
 
 def _publication_file_has_local_copy(row: PublicationFile) -> bool:
+    path = _publication_file_storage_path(row.storage_key)
+    return bool(path is not None and path.exists() and path.is_file())
+
+
+def _publication_file_is_viewable_pdf(row: PublicationFile) -> bool:
+    if str(row.file_type or "").strip().upper() != FILE_TYPE_PDF:
+        return False
+    source = str(row.source or FILE_SOURCE_USER_UPLOAD).strip().upper()
+    if source == FILE_SOURCE_OA_LINK:
+        return _publication_file_has_local_copy(row)
     path = _publication_file_storage_path(row.storage_key)
     return bool(path is not None and path.exists() and path.is_file())
 
@@ -4916,6 +4990,11 @@ def _build_publication_paper_payload(
         for section in sections
         if isinstance(section, dict)
     )
+    reader_entry_available = bool(
+        primary_pdf is not None
+        or has_full_text_sections
+        or grobid_available()
+    )
     outline = _build_publication_paper_outline(
         publication=publication,
         sections=sections,
@@ -4992,6 +5071,7 @@ def _build_publication_paper_payload(
             "page_count": page_count,
             "search_ready": len(sections) > 0,
             "outline_depth": outline_depth,
+            "reader_entry_available": reader_entry_available,
         },
         "sections": sections,
         "outline": outline,
@@ -5643,7 +5723,8 @@ def _request_grobid_fulltext_tei(*, content: bytes, file_name: str) -> str:
     base_url = _grobid_base_url()
     if not base_url:
         raise PublicationConsoleValidationError(
-            "GROBID is required for full-paper parsing but PUB_GROBID_BASE_URL is not configured."
+            "GROBID is required for full-paper parsing but PUB_GROBID_HOSTPORT or "
+            "PUB_GROBID_BASE_URL is not configured."
         )
     endpoint = f"{base_url}/api/processFulltextDocument"
     timeout = httpx.Timeout(_grobid_timeout_seconds())
@@ -7682,14 +7763,14 @@ def _ensure_publication_reader_pdf_attached(
             return False
         if not _normalize_doi(work.doi):
             return False
-        existing_file_id = session.scalars(
-            select(PublicationFile.id).where(
+        existing_files = session.scalars(
+            select(PublicationFile).where(
                 PublicationFile.owner_user_id == user_id,
                 PublicationFile.publication_id == publication_id,
                 PublicationFile.deleted.is_(False),
             )
-        ).first()
-        if existing_file_id is not None:
+        ).all()
+        if any(_publication_file_is_viewable_pdf(row) for row in existing_files):
             return False
     try:
         payload = link_publication_open_access_pdf(

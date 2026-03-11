@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -87,6 +88,26 @@ def _register(client: TestClient, *, email: str) -> tuple[str, str]:
     assert response.status_code == 200
     payload = response.json()
     return str(payload["user"]["id"]), str(payload["session_token"])
+
+
+def test_grobid_base_url_prefers_hostport_env(monkeypatch) -> None:
+    monkeypatch.setenv("PUB_GROBID_HOSTPORT", "research-os-grobid-achk:8070")
+    monkeypatch.setenv("PUB_GROBID_BASE_URL", "https://example.org/grobid")
+
+    assert (
+        publication_console_service._grobid_base_url()
+        == "http://research-os-grobid-achk:8070"
+    )
+
+
+def test_grobid_base_url_normalizes_schemeless_base_url(monkeypatch) -> None:
+    monkeypatch.delenv("PUB_GROBID_HOSTPORT", raising=False)
+    monkeypatch.setenv("PUB_GROBID_BASE_URL", "research-os-grobid-achk:8070/")
+
+    assert (
+        publication_console_service._grobid_base_url()
+        == "http://research-os-grobid-achk:8070"
+    )
 
 
 def test_publication_detail_endpoint_is_scoped_to_owner(monkeypatch, tmp_path) -> None:
@@ -1363,8 +1384,83 @@ def test_publication_paper_model_endpoint_fails_when_grobid_is_unavailable(
         assert payload["status"] == "FAILED"
         assert payload["payload"]["document"]["parser_status"] == "FAILED"
         assert payload["payload"]["document"]["has_full_text_sections"] is False
+        assert payload["payload"]["document"]["reader_entry_available"] is True
         assert "GROBID" in str(payload["payload"]["document"]["parser_last_error"] or "")
         assert payload["payload"]["sections"][0]["source"] in {"structured_abstract", "abstract"}
+
+
+def test_publication_paper_model_hides_reader_entry_without_pdf_when_grobid_is_unavailable(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "grobid_available",
+        lambda **kwargs: False,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_enqueue_structured_abstract_if_needed",
+        lambda **kwargs: False,
+    )
+
+    user_id, work_id = _seed_user_and_work(
+        email="reader-no-pdf-unavailable@example.com",
+        title="Reader hidden without parser",
+    )
+    with session_scope() as session:
+        work = session.get(Work, work_id)
+        assert work is not None
+        work.doi = None
+        session.flush()
+
+    payload = publication_console_service.get_publication_paper_model(
+        user_id=user_id,
+        publication_id=work_id,
+    )
+    assert payload["status"] == "READY"
+    assert payload["payload"]["document"]["has_viewable_pdf"] is False
+    assert payload["payload"]["document"]["parser_status"] == "STRUCTURE_ONLY"
+    assert payload["payload"]["document"]["reader_entry_available"] is False
+
+
+def test_publication_paper_model_keeps_reader_entry_without_pdf_when_grobid_is_available(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "grobid_available",
+        lambda **kwargs: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_enqueue_structured_abstract_if_needed",
+        lambda **kwargs: False,
+    )
+
+    user_id, work_id = _seed_user_and_work(
+        email="reader-no-pdf-available@example.com",
+        title="Reader visible without parser input",
+    )
+    with session_scope() as session:
+        work = session.get(Work, work_id)
+        assert work is not None
+        work.doi = None
+        session.flush()
+
+    payload = publication_console_service.get_publication_paper_model(
+        user_id=user_id,
+        publication_id=work_id,
+    )
+    assert payload["status"] == "READY"
+    assert payload["payload"]["document"]["has_viewable_pdf"] is False
+    assert payload["payload"]["document"]["parser_status"] == "STRUCTURE_ONLY"
+    assert payload["payload"]["document"]["reader_entry_available"] is True
 
 
 def test_align_structured_publication_sections_to_pdf_pages_uses_stored_pdf_text(
@@ -1610,12 +1706,19 @@ def test_publication_paper_model_auto_links_oa_pdf_for_reader(
         assert first_payload["payload"]["document"]["has_viewable_pdf"] is True
         assert first_payload["payload"]["document"]["parser_status"] == "PARSING"
 
-        second_response = client.get(
-            f"/v1/publications/{work_id}/paper-model",
-            headers=_auth_headers(token),
-        )
-        assert second_response.status_code == 200
-        second_payload = second_response.json()
+        second_payload = None
+        for _ in range(10):
+            second_response = client.get(
+                f"/v1/publications/{work_id}/paper-model",
+                headers=_auth_headers(token),
+            )
+            assert second_response.status_code == 200
+            second_payload = second_response.json()
+            if second_payload["status"] == "READY":
+                break
+            time.sleep(0.05)
+
+        assert second_payload is not None
         assert second_payload["status"] == "READY"
         assert second_payload["payload"]["document"]["parser_status"] == "FULL_TEXT_READY"
         assert second_payload["payload"]["document"]["has_viewable_pdf"] is True
@@ -1632,6 +1735,147 @@ def test_publication_paper_model_auto_links_oa_pdf_for_reader(
             ).first()
             assert file_row is not None
             assert str(file_row.source or "").upper() == "OA_LINK"
+
+
+def test_publication_paper_model_auto_links_oa_pdf_when_only_non_pdf_files_exist(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    def _immediate_submit(*, kind: str, user_id: str, publication_id: str, fn):  # noqa: ANN001
+        fn(user_id=user_id, publication_id=publication_id)
+        return True
+
+    monkeypatch.setattr(
+        publication_console_service, "_submit_background_job", _immediate_submit
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_find_unpaywall_pdf_url",
+        lambda **kwargs: "https://example.org/non-pdf-reader-paper.pdf",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes",
+        lambda *args, **kwargs: (b"%PDF-1.7 auto-linked reader bytes", "application/pdf"),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_grobid",
+        lambda **kwargs: {  # noqa: ANN003
+            "sections": [
+                {
+                    "id": "paper-section-1-methods",
+                    "title": "Methods",
+                    "raw_label": "Methods",
+                    "label_original": "Methods",
+                    "label_normalized": "Methods",
+                    "kind": "methods",
+                    "canonical_kind": "methods",
+                    "section_type": "canonical",
+                    "canonical_map": "methods",
+                    "content": "Methods text from the linked PDF.",
+                    "source": "grobid",
+                    "source_parser": "grobid",
+                    "order": 0,
+                    "page_start": 1,
+                    "page_end": 1,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": 0.96,
+                    "is_generated_heading": False,
+                    "word_count": 6,
+                    "paragraph_count": 1,
+                }
+            ],
+            "references": [],
+            "page_count": 9,
+            "generation_method": "test_grobid_parser",
+            "parser_provider": "GROBID",
+        },
+    )
+
+    with TestClient(app) as client:
+        owner_id, token = _register(client, email="reader-non-pdf@example.com")
+
+        with session_scope() as session:
+            work = Work(
+                user_id=owner_id,
+                title="Reader auto-link with attachment",
+                title_lower="reader auto-link with attachment",
+                year=2026,
+                doi="10.1000/reader-auto-link-with-attachment",
+                work_type="journal-article",
+                publication_type="original-article",
+                venue_name="Reader Journal",
+                publisher="Reader Publisher",
+                abstract="Objectives: Evaluate scaffolded readers.",
+                keywords=["reader"],
+                authors_json=[{"name": "Alice Example"}],
+                url="https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                provenance="manual",
+            )
+            session.add(work)
+            session.flush()
+            work_id = str(work.id)
+
+            attachment_path = tmp_path / "reader-notes.docx"
+            attachment_path.write_bytes(b"reader-notes")
+            attachment = PublicationFile(
+                owner_user_id=owner_id,
+                publication_id=work_id,
+                file_name="Reader notes.docx",
+                file_type="DOCX",
+                storage_key=str(attachment_path),
+                source="USER_UPLOAD",
+                checksum="reader-notes-checksum",
+                custom_name=True,
+                classification="SUPPLEMENTARY_MATERIALS",
+                classification_custom=True,
+            )
+            session.add(attachment)
+            session.flush()
+
+        first_response = client.get(
+            f"/v1/publications/{work_id}/paper-model",
+            headers=_auth_headers(token),
+        )
+        assert first_response.status_code == 200
+        first_payload = first_response.json()
+        assert first_payload["status"] == "RUNNING"
+        assert first_payload["payload"]["document"]["has_viewable_pdf"] is True
+        assert first_payload["payload"]["document"]["parser_status"] == "PARSING"
+
+        second_payload = None
+        for _ in range(10):
+            second_response = client.get(
+                f"/v1/publications/{work_id}/paper-model",
+                headers=_auth_headers(token),
+            )
+            assert second_response.status_code == 200
+            second_payload = second_response.json()
+            if second_payload["status"] == "READY":
+                break
+            time.sleep(0.05)
+
+        assert second_payload is not None
+        assert second_payload["status"] == "READY"
+        assert second_payload["payload"]["document"]["parser_status"] == "FULL_TEXT_READY"
+        assert second_payload["payload"]["document"]["has_viewable_pdf"] is True
+
+        with session_scope() as session:
+            files = session.scalars(
+                select(PublicationFile).where(
+                    PublicationFile.owner_user_id == owner_id,
+                    PublicationFile.publication_id == work_id,
+                    PublicationFile.deleted.is_(False),
+                )
+            ).all()
+            assert len(files) == 2
+            assert any(str(row.source or "").upper() == "OA_LINK" for row in files)
+            assert any(str(row.file_type or "").upper() == "DOCX" for row in files)
 
 
 def test_link_publication_open_access_pdf_reuses_existing_local_copy(

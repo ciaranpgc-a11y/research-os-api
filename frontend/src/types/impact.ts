@@ -1021,6 +1021,7 @@ export type PublicationPaperModelPayload = {
     page_count: number | null
     search_ready: boolean
     outline_depth: number
+    reader_entry_available: boolean
   }
   sections: Array<{
     id: string

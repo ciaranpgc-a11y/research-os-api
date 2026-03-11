@@ -539,3 +539,103 @@ def test_import_journal_profiles_from_xlsx_with_jcr_headers(
         assert profile.publisher_reported_impact_factor_year == 2024
         assert profile.publisher_reported_impact_factor_label == "Journal Impact Factor"
         assert profile.editorial_source_title == "JCRImpactFactors2025"
+        assert profile.five_year_impact_factor == 7.1
+        assert profile.journal_citation_indicator == 2.4
+        assert profile.jif_quartile == "Q1"
+
+
+def test_import_journal_profiles_csv_populates_cited_half_life_column(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    result = import_journal_profiles_from_csv_bytes(
+        content=(
+            b"Journal,ISSN-L,Impact Factor,5-Year JIF,JCI,JIF Quartile,Cited Half-Life\n"
+            b"Heart,1355-6037,6.7,8.8,2.1,Q1,9.5\n"
+        ),
+        filename="full-jcr.csv",
+        source_label="JCR 2025",
+    )
+
+    assert result["rows_applied"] == 1
+
+    with session_scope() as session:
+        profile = session.scalars(
+            select(JournalProfile).where(
+                JournalProfile.display_name == "Heart",
+            )
+        ).first()
+        assert profile is not None
+        assert profile.five_year_impact_factor == 8.8
+        assert profile.journal_citation_indicator == 2.1
+        assert profile.jif_quartile == "Q1"
+        assert profile.cited_half_life == "9.5"
+        assert profile.publisher_reported_impact_factor == 6.7
+
+
+def test_list_journals_reads_jcr_columns_without_editorial_raw_json(
+    monkeypatch, tmp_path
+) -> None:
+    """Verify list_journals reads five_year_impact_factor etc. from dedicated columns."""
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with session_scope() as session:
+        user = User(
+            email="jcr-columns@example.com",
+            password_hash="test-hash",
+            name="JCR Columns Test",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        session.add(
+            Work(
+                user_id=user_id,
+                title="JCR column test paper",
+                title_lower="jcr column test paper",
+                year=2024,
+                doi="10.1000/jcr-column-test",
+                work_type="journal-article",
+                publication_type="Original research",
+                venue_name="Heart",
+                journal="Heart",
+                publisher="BMJ",
+                abstract="",
+                keywords=[],
+                url="https://doi.org/10.1000/jcr-column-test",
+                provenance="manual",
+                venue_type="journal",
+                openalex_source_id="S4210189124",
+                issn_l="1355-6037",
+            )
+        )
+        session.add(
+            JournalProfile(
+                provider="openalex",
+                provider_journal_id="S4210189124",
+                issn_l="1355-6037",
+                display_name="Heart",
+                publisher="BMJ",
+                venue_type="journal",
+                publisher_reported_impact_factor=6.7,
+                publisher_reported_impact_factor_year=2024,
+                five_year_impact_factor=8.8,
+                journal_citation_indicator=2.1,
+                jif_quartile="Q1",
+                cited_half_life="9.5",
+            )
+        )
+
+    journals = list_journals(user_id=user_id)
+
+    assert len(journals) == 1
+    payload = journals[0]
+    assert payload["publisher_reported_impact_factor"] == 6.7
+    assert payload["five_year_impact_factor"] == 8.8
+    assert payload["journal_citation_indicator"] == 2.1
+    assert payload["jif_quartile"] == "Q1"
+    assert payload["cited_half_life"] == "9.5"

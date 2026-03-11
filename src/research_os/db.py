@@ -29,6 +29,7 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     event,
+    select,
     text,
 )
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -1078,6 +1079,14 @@ class JournalProfile(Base):
     publisher_reported_impact_factor_source_url: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )
+    five_year_impact_factor: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    journal_citation_indicator: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    jif_quartile: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    cited_half_life: Mapped[str | None] = mapped_column(String(64), nullable=True)
     time_to_first_decision_days: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
@@ -2159,6 +2168,30 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
             _sqlite_add_column_if_missing(
                 connection,
                 table_name="journal_profiles",
+                column_name="five_year_impact_factor",
+                column_sql="FLOAT",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="journal_citation_indicator",
+                column_sql="FLOAT",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="jif_quartile",
+                column_sql="VARCHAR(32)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
+                column_name="cited_half_life",
+                column_sql="VARCHAR(64)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="journal_profiles",
                 column_name="time_to_first_decision_days",
                 column_sql="INTEGER",
             )
@@ -2647,6 +2680,30 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
         connection.execute(
             text(
                 "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS five_year_impact_factor DOUBLE PRECISION"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS journal_citation_indicator DOUBLE PRECISION"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS jif_quartile VARCHAR(32)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
+                "ADD COLUMN IF NOT EXISTS cited_half_life VARCHAR(64)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS journal_profiles "
                 "ADD COLUMN IF NOT EXISTS time_to_first_decision_days INTEGER"
             )
         )
@@ -2707,6 +2764,72 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
         )
 
 
+def _backfill_journal_profile_jcr_columns(engine) -> None:
+    """One-time backfill: copy JCR values from editorial_raw_json into dedicated columns."""
+    try:
+        with Session(engine) as session:
+            profiles = session.scalars(
+                select(JournalProfile).where(
+                    JournalProfile.five_year_impact_factor.is_(None),
+                    JournalProfile.journal_citation_indicator.is_(None),
+                    JournalProfile.jif_quartile.is_(None),
+                    JournalProfile.cited_half_life.is_(None),
+                )
+            ).all()
+            updated = 0
+            for profile in profiles:
+                raw = profile.editorial_raw_json
+                if not isinstance(raw, dict):
+                    continue
+                csv_import = raw.get("csv_import")
+                if not isinstance(csv_import, dict):
+                    continue
+                row = csv_import.get("row")
+                if not isinstance(row, dict):
+                    continue
+                changed = False
+                for csv_key in ("5_year_jif", "five_year_impact_factor", "5_year_impact_factor"):
+                    val = row.get(csv_key)
+                    if val is not None and profile.five_year_impact_factor is None:
+                        try:
+                            profile.five_year_impact_factor = round(float(str(val).replace(",", "")), 3)
+                            changed = True
+                        except (ValueError, TypeError):
+                            pass
+                        break
+                for csv_key in ("jci", "journal_citation_indicator", "citation_indicator"):
+                    val = row.get(csv_key)
+                    if val is not None and profile.journal_citation_indicator is None:
+                        try:
+                            profile.journal_citation_indicator = round(float(str(val).replace(",", "")), 3)
+                            changed = True
+                        except (ValueError, TypeError):
+                            pass
+                        break
+                for csv_key in ("jif_quartile", "quartile"):
+                    val = row.get(csv_key)
+                    if val is not None and profile.jif_quartile is None:
+                        text = str(val).strip()
+                        if text:
+                            profile.jif_quartile = text[:32]
+                            changed = True
+                        break
+                for csv_key in ("cited_half_life", "half_life"):
+                    val = row.get(csv_key)
+                    if val is not None and profile.cited_half_life is None:
+                        text = str(val).strip()
+                        if text:
+                            profile.cited_half_life = text[:64]
+                            changed = True
+                        break
+                if changed:
+                    updated += 1
+            if updated:
+                session.commit()
+    except Exception:
+        pass
+
+
 def create_all_tables() -> None:
     global _initialized_schema_engine_url
     engine = get_engine()
@@ -2720,6 +2843,7 @@ def create_all_tables() -> None:
             Base.metadata.create_all(bind=engine)
             _ensure_sqlite_schema_compatibility(engine)
             _ensure_postgresql_schema_compatibility(engine)
+            _backfill_journal_profile_jcr_columns(engine)
         except (OperationalError, ProgrammingError) as exc:
             # Concurrent startup/scheduler table checks can race in SQLite tests.
             # Some PostgreSQL deployments may also report duplicate index/table
