@@ -76,6 +76,9 @@ TRAJECTORY_VALUES = {
 FILE_SOURCE_OA_LINK = "OA_LINK"
 FILE_SOURCE_SUPPLEMENTARY_LINK = "SUPPLEMENTARY_LINK"
 FILE_SOURCE_USER_UPLOAD = "USER_UPLOAD"
+OA_LOCAL_COPY_REQUIRED_MESSAGE = (
+    "Open-access PDF was found, but a local stored copy could not be recovered for the reader."
+)
 PAPER_MODEL_ASSET_SOURCE_PARSED = "PARSED"
 FILE_TYPE_PDF = "PDF"
 FILE_TYPE_DOCX = "DOCX"
@@ -1231,6 +1234,25 @@ def _ensure_open_access_publication_file_local_copy(
         preferred_filename=str(row.file_name or "open-access.pdf"),
     )
     return True
+
+
+def _prune_unstored_open_access_publication_file(
+    row: PublicationFile, *, reason: str
+) -> None:
+    session = object_session(row)
+    if session is None:
+        return
+    logger.info(
+        "publication_open_access_file_pruned",
+        extra={
+            "file_id": str(row.id),
+            "publication_id": str(row.publication_id),
+            "owner_user_id": str(row.owner_user_id),
+            "reason": reason,
+        },
+    )
+    session.delete(row)
+    session.flush()
 
 
 def _normalize_publication_file_classification(value: str | None) -> str | None:
@@ -8225,12 +8247,14 @@ def list_publication_files(*, user_id: str, publication_id: str) -> dict[str, An
             .order_by(PublicationFile.created_at.desc())
         ).all()
         default_file_name = _resolve_publication_file_display_name(publication)
+        active_rows: list[PublicationFile] = []
         for row in rows:
             if not bool(row.custom_name) and str(row.file_name or "").strip() != default_file_name:
                 row.file_name = default_file_name
             if str(row.source or "").upper() == FILE_SOURCE_OA_LINK:
+                has_local_copy = False
                 try:
-                    _ensure_open_access_publication_file_local_copy(row)
+                    has_local_copy = _ensure_open_access_publication_file_local_copy(row)
                 except Exception:
                     logger.exception(
                         "publication_open_access_file_cache_failed",
@@ -8239,8 +8263,15 @@ def list_publication_files(*, user_id: str, publication_id: str) -> dict[str, An
                             "file_id": str(row.id),
                         },
                     )
+                if not has_local_copy:
+                    _prune_unstored_open_access_publication_file(
+                        row,
+                        reason="list_without_local_copy",
+                    )
+                    continue
+            active_rows.append(row)
         session.flush()
-        items = [_serialize_file(publication_id, row) for row in rows]
+        items = [_serialize_file(publication_id, row) for row in active_rows]
 
         publication_title_key = normalized_text_key(publication.title)
         supplementary_rows = session.scalars(
@@ -8451,16 +8482,14 @@ def link_publication_open_access_pdf(
         ).first()
         if existing is not None:
             if not _ensure_open_access_publication_file_local_copy(existing):
-                if allow_suppressed:
-                    return {
-                        "created": False,
-                        "file": None,
-                        "message": "Open-access PDF was found, but a local stored copy could not be recovered for the reader.",
-                    }
+                _prune_unstored_open_access_publication_file(
+                    existing,
+                    reason="link_existing_without_local_copy",
+                )
                 return {
                     "created": False,
-                    "file": _serialize_file(publication_id, existing),
-                    "message": "Open-access PDF link is available, but local download failed. Use the external link.",
+                    "file": None,
+                    "message": OA_LOCAL_COPY_REQUIRED_MESSAGE,
                 }
             if bool(work.oa_link_suppressed):
                 work.oa_link_suppressed = False
@@ -8484,16 +8513,10 @@ def link_publication_open_access_pdf(
         ).first()
         if matching_deleted is not None:
             if not _ensure_open_access_publication_file_local_copy(matching_deleted):
-                if allow_suppressed:
-                    return {
-                        "created": False,
-                        "file": None,
-                        "message": "Open-access PDF was found, but a local stored copy could not be recovered for the reader.",
-                    }
                 return {
                     "created": False,
-                    "file": _serialize_file(publication_id, matching_deleted),
-                    "message": "Open-access PDF link is available, but local download failed. Use the external link.",
+                    "file": None,
+                    "message": OA_LOCAL_COPY_REQUIRED_MESSAGE,
                 }
             matching_deleted.deleted = False
             work.oa_link_suppressed = False
@@ -8523,21 +8546,12 @@ def link_publication_open_access_pdf(
         session.add(row)
         session.flush()
         if not _ensure_open_access_publication_file_local_copy(row):
-            if allow_suppressed:
-                session.delete(row)
-                session.flush()
-                return {
-                    "created": False,
-                    "file": None,
-                    "message": "Open-access PDF was found, but a local stored copy could not be recovered for the reader.",
-                }
-            work.oa_link_suppressed = False
+            session.delete(row)
             session.flush()
-            session.refresh(row)
             return {
-                "created": True,
-                "file": _serialize_file(publication_id, row),
-                "message": "Open-access PDF link added, but local download failed. Use the external link.",
+                "created": False,
+                "file": None,
+                "message": OA_LOCAL_COPY_REQUIRED_MESSAGE,
             }
         work.oa_link_suppressed = False
         session.flush()

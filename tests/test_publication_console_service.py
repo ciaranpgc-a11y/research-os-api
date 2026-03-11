@@ -1668,7 +1668,7 @@ def test_publication_paper_model_hides_reader_entry_when_oa_attach_is_suppressed
     assert payload["payload"]["document"]["reader_entry_available"] is False
 
 
-def test_publication_paper_model_keeps_reader_entry_for_existing_oa_link_candidate(
+def test_publication_paper_model_hides_reader_entry_for_unstored_existing_oa_link(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -1692,7 +1692,7 @@ def test_publication_paper_model_keeps_reader_entry_for_existing_oa_link_candida
 
     user_id, work_id = _seed_user_and_work(
         email="reader-existing-oa-link@example.com",
-        title="Reader visible when an OA link can still be hydrated",
+        title="Reader hidden when an OA link cannot be hydrated into local storage",
     )
     with session_scope() as session:
         work = session.get(Work, work_id)
@@ -1721,7 +1721,7 @@ def test_publication_paper_model_keeps_reader_entry_for_existing_oa_link_candida
     assert payload["status"] == "READY"
     assert payload["payload"]["document"]["has_viewable_pdf"] is False
     assert payload["payload"]["document"]["parser_status"] == "STRUCTURE_ONLY"
-    assert payload["payload"]["document"]["reader_entry_available"] is True
+    assert payload["payload"]["document"]["reader_entry_available"] is False
 
 
 def test_align_structured_publication_sections_to_pdf_pages_uses_stored_pdf_text(
@@ -2245,7 +2245,10 @@ def test_link_publication_open_access_pdf_reuses_existing_local_copy(
             )
         ).first()
         assert row is not None
-        stored_path = Path(str(row.storage_key))
+        stored_path = publication_console_service._publication_file_storage_path(
+            str(row.storage_key)
+        )
+        assert stored_path is not None
         assert stored_path.exists()
         assert stored_path.read_bytes() == donor_bytes
 
@@ -2700,7 +2703,11 @@ def test_publication_file_content_route_proxies_open_access_pdf(
             refreshed = session.get(PublicationFile, file_id)
             assert refreshed is not None
             assert refreshed.storage_key
-            assert Path(str(refreshed.storage_key)).exists()
+            stored_path = publication_console_service._publication_file_storage_path(
+                str(refreshed.storage_key)
+            )
+            assert stored_path is not None
+            assert stored_path.exists()
             assert refreshed.checksum is not None
 
 
@@ -2972,7 +2979,7 @@ def test_open_access_link_uses_browser_fallback_when_http_fetch_is_blocked(
         ).read_bytes() == browser_bytes
 
 
-def test_open_access_link_keeps_external_link_when_local_cache_download_fails(
+def test_open_access_link_requires_local_cache_download(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -3021,15 +3028,15 @@ def test_open_access_link_keeps_external_link_when_local_cache_download_fails(
             f"/v1/publications/{work_id}/files/link-oa",
             headers=_auth_headers(token),
         )
-        assert response.status_code == 200
-        payload = response.json()
+    assert response.status_code == 200
+    payload = response.json()
 
-    assert payload["created"] is True
-    assert payload["file"] is not None
-    assert payload["file"]["source"] == "OA_LINK"
-    assert payload["file"]["oa_url"] == "https://example.org/files/paper.pdf"
-    assert payload["file"]["download_url"] == "https://example.org/files/paper.pdf"
-    assert payload["message"] == "Open-access PDF link added, but local download failed. Use the external link."
+    assert payload["created"] is False
+    assert payload["file"] is None
+    assert (
+        payload["message"]
+        == "Open-access PDF was found, but a local stored copy could not be recovered for the reader."
+    )
 
     with session_scope() as session:
         stored_row = session.scalars(
@@ -3038,10 +3045,179 @@ def test_open_access_link_keeps_external_link_when_local_cache_download_fails(
                 PublicationFile.publication_id == work_id,
             )
         ).first()
-        assert stored_row is not None
-        assert stored_row.oa_url == "https://example.org/files/paper.pdf"
-        assert stored_row.storage_key == ""
-        assert stored_row.deleted is False
+        assert stored_row is None
+
+
+def test_open_access_link_prunes_existing_active_link_without_local_copy(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    monkeypatch.setattr(
+        publication_console_service,
+        "_find_unpaywall_pdf_url",
+        lambda **kwargs: "https://example.org/files/paper.pdf",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes",
+        lambda *args, **kwargs: (b"", None),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes_via_browser",
+        lambda *args, **kwargs: (b"", None),
+    )
+
+    with session_scope() as session:
+        user = User(
+            email="oa-existing-prune@example.com",
+            password_hash="test-hash",
+            name="oa-existing-prune",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work = Work(
+            user_id=user_id,
+            title="Existing OA link prune work",
+            title_lower="existing oa link prune work",
+            year=2026,
+            doi="10.1000/existing-oa-link-prune-work",
+            work_type="journal-article",
+            venue_name="Test Journal",
+            publisher="Test Publisher",
+            abstract="Abstract",
+            keywords=[],
+            url="",
+            authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+            provenance="manual",
+        )
+        session.add(work)
+        session.flush()
+        work_id = str(work.id)
+
+        row = PublicationFile(
+            publication_id=work_id,
+            owner_user_id=user_id,
+            file_name="open-access.pdf",
+            file_type="PDF",
+            storage_key="",
+            source="OA_LINK",
+            oa_url="https://example.org/files/paper.pdf",
+            checksum=None,
+            custom_name=False,
+            classification=None,
+            classification_custom=False,
+            deleted=False,
+            created_at=publication_console_service._utcnow(),
+        )
+        session.add(row)
+        session.flush()
+
+    payload = publication_console_service.link_publication_open_access_pdf(
+        user_id=user_id,
+        publication_id=work_id,
+    )
+
+    assert payload["created"] is False
+    assert payload["file"] is None
+    assert (
+        payload["message"]
+        == "Open-access PDF was found, but a local stored copy could not be recovered for the reader."
+    )
+
+    with session_scope() as session:
+        stored_row = session.scalars(
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == user_id,
+                PublicationFile.publication_id == work_id,
+            )
+        ).first()
+        assert stored_row is None
+
+
+def test_listing_publication_files_prunes_active_oa_link_without_local_copy(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes",
+        lambda *args, **kwargs: (b"", None),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes_via_browser",
+        lambda *args, **kwargs: (b"", None),
+    )
+
+    with session_scope() as session:
+        user = User(
+            email="oa-list-prune@example.com",
+            password_hash="test-hash",
+            name="oa-list-prune",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work = Work(
+            user_id=user_id,
+            title="OA list prune work",
+            title_lower="oa list prune work",
+            year=2026,
+            doi="10.1000/oa-list-prune-work",
+            work_type="journal-article",
+            venue_name="Test Journal",
+            publisher="Test Publisher",
+            abstract="Abstract",
+            keywords=[],
+            url="",
+            authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+            provenance="manual",
+        )
+        session.add(work)
+        session.flush()
+        work_id = str(work.id)
+
+        row = PublicationFile(
+            publication_id=work_id,
+            owner_user_id=user_id,
+            file_name="open-access.pdf",
+            file_type="PDF",
+            storage_key="",
+            source="OA_LINK",
+            oa_url="https://example.org/files/paper.pdf",
+            checksum=None,
+            custom_name=False,
+            classification=None,
+            classification_custom=False,
+            deleted=False,
+            created_at=publication_console_service._utcnow(),
+        )
+        session.add(row)
+        session.flush()
+
+    payload = publication_console_service.list_publication_files(
+        user_id=user_id,
+        publication_id=work_id,
+    )
+
+    assert payload["items"] == []
+    assert payload["has_deleted_oa_file"] is False
+    assert payload["has_recoverable_deleted_oa_file"] is False
+
+    with session_scope() as session:
+        stored_rows = session.scalars(
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == user_id,
+                PublicationFile.publication_id == work_id,
+            )
+        ).all()
+        assert stored_rows == []
 
 
 def test_deleted_open_access_file_restore_uses_remapped_persisted_local_copy(
