@@ -5,6 +5,42 @@ import { chromium } from "playwright";
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
+function installStealthContext(context) {
+  return context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", {
+      get: () => undefined,
+    });
+    Object.defineProperty(navigator, "languages", {
+      get: () => ["en-GB", "en", "en-US"],
+    });
+    Object.defineProperty(navigator, "platform", {
+      get: () => "Win32",
+    });
+    Object.defineProperty(navigator, "plugins", {
+      get: () => [
+        { name: "Chrome PDF Plugin" },
+        { name: "Chrome PDF Viewer" },
+        { name: "Native Client" },
+      ],
+    });
+    if (!window.chrome) {
+      Object.defineProperty(window, "chrome", {
+        value: {
+          runtime: {},
+          app: {},
+        },
+      });
+    }
+    const originalQuery = window.navigator.permissions?.query;
+    if (originalQuery) {
+      window.navigator.permissions.query = (parameters) =>
+        parameters?.name === "notifications"
+          ? Promise.resolve({ state: Notification.permission })
+          : originalQuery(parameters);
+    }
+  });
+}
+
 function parseArgs(argv) {
   const args = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -351,7 +387,13 @@ async function main() {
     process.exit(1);
   }
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      "--disable-blink-features=AutomationControlled",
+      "--disable-dev-shm-usage",
+    ],
+  });
   let context = null;
   let contextResponseHandler = null;
   try {
@@ -359,10 +401,17 @@ async function main() {
       acceptDownloads: true,
       ignoreHTTPSErrors: true,
       userAgent: BROWSER_USER_AGENT,
+      locale: "en-GB",
+      timezoneId: "Europe/London",
+      viewport: {
+        width: 1440,
+        height: 1200,
+      },
       extraHTTPHeaders: {
         "Accept-Language": "en-GB,en;q=0.9,en-US;q=0.8",
       },
     });
+    await installStealthContext(context);
     const page = await context.newPage();
 
     const capturedResponses = [];
