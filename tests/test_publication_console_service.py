@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import io
+import tarfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -3167,6 +3169,36 @@ def test_fetch_open_access_pdf_bytes_extracts_pdf_from_html_landing_page(
     ]
 
 
+def test_fetch_open_access_pdf_bytes_extracts_pdf_from_pmc_archive(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    archive_buffer = io.BytesIO()
+    with tarfile.open(fileobj=archive_buffer, mode="w:gz") as archive:
+        pdf_payload = b"%PDF-1.7 pmc archive payload"
+        info = tarfile.TarInfo(name="PMC1234567/paper.pdf")
+        info.size = len(pdf_payload)
+        archive.addfile(info, io.BytesIO(pdf_payload))
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_bytes_with_retry",
+        lambda **kwargs: (archive_buffer.getvalue(), "application/x-gzip"),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes_via_browser",
+        lambda *args, **kwargs: (b"", None),
+    )
+
+    content, content_type = publication_console_service._fetch_open_access_pdf_bytes(
+        "https://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_package/ab/cd/PMC1234567.tar.gz"
+    )
+
+    assert content == b"%PDF-1.7 pmc archive payload"
+    assert content_type == "application/pdf"
+
+
 def test_find_open_access_pdf_candidates_includes_doi_work_and_pmid(
     monkeypatch,
 ) -> None:
@@ -3178,7 +3210,10 @@ def test_find_open_access_pdf_candidates_includes_doi_work_and_pmid(
     monkeypatch.setattr(
         publication_console_service,
         "_request_pmc_oa_record",
-        lambda pmcid: {"pmcid": pmcid, "archive_href": "ftp://example.org/package.tgz"},
+        lambda pmcid: {
+            "pmcid": pmcid,
+            "archive_href": "ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_package/ab/cd/PMC12041914.tar.gz",
+        },
     )
     monkeypatch.setattr(
         publication_console_service,
@@ -3216,6 +3251,7 @@ def test_find_open_access_pdf_candidates_includes_doi_work_and_pmid(
     )
 
     assert candidates == [
+        "https://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_package/ab/cd/PMC12041914.tar.gz",
         "https://pmc.ncbi.nlm.nih.gov/articles/PMC12041914/",
         "https://publisher.example/article",
         "https://doi.org/10.1000/candidate-oa-work",

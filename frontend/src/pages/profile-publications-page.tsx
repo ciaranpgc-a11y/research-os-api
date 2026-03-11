@@ -8670,7 +8670,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                             className="h-8 w-8 house-publications-toolbox-item"
                                             onClick={() => void onFindOpenAccessPublicationFile()}
                                             disabled={findingOaFile}
-                                            aria-label="Retrieve deleted OA file"
+                                            aria-label="Find OA PDF"
                                           >
                                             {findingOaFile ? (
                                               <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.1} />
@@ -8681,7 +8681,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         </div>
                                       </TooltipTrigger>
                                       <TooltipContent side="top" align="center" className="house-approved-tooltip px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none">
-                                        Retrieve deleted OA file
+                                        Find OA PDF
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>

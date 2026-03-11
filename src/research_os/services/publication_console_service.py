@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import threading
 import time
@@ -1318,6 +1319,31 @@ def _fetch_open_access_pdf_bytes_from_candidate_urls(
     return b"", None
 
 
+def _extract_open_access_pdf_bytes_from_archive(
+    archive_content: bytes,
+) -> tuple[bytes, str | None]:
+    if not archive_content:
+        return b"", None
+    try:
+        with tarfile.open(fileobj=BytesIO(archive_content), mode="r:gz") as archive:
+            pdf_members = [
+                member
+                for member in archive.getmembers()
+                if member.isfile() and str(member.name or "").lower().endswith(".pdf")
+            ]
+            pdf_members.sort(key=lambda member: len(str(member.name or "")))
+            for member in pdf_members:
+                extracted = archive.extractfile(member)
+                if extracted is None:
+                    continue
+                content = extracted.read()
+                if _looks_like_pdf_payload(content, "application/pdf"):
+                    return content, "application/pdf"
+    except Exception:
+        logger.exception("publication_oa_archive_extract_failed")
+    return b"", None
+
+
 def _fetch_open_access_pdf_bytes(oa_url: str) -> tuple[bytes, str | None]:
     clean_oa_url = str(oa_url or "").strip()
     if not clean_oa_url:
@@ -1330,6 +1356,14 @@ def _fetch_open_access_pdf_bytes(oa_url: str) -> tuple[bytes, str | None]:
     )
     if _looks_like_pdf_payload(content, content_type):
         return content, content_type
+    if clean_oa_url.lower().endswith((".tar.gz", ".tgz")) or "gzip" in str(
+        content_type or ""
+    ).lower():
+        archive_content, archive_content_type = (
+            _extract_open_access_pdf_bytes_from_archive(content)
+        )
+        if _looks_like_pdf_payload(archive_content, archive_content_type):
+            return archive_content, archive_content_type
     if _looks_like_html_payload(content, content_type):
         html_text = content.decode("utf-8", errors="ignore")
         html_candidates = _extract_open_access_pdf_urls_from_html(
@@ -9144,6 +9178,20 @@ def _request_pmc_oa_record(pmcid: str) -> dict[str, str] | None:
     return payload
 
 
+def _normalize_pmc_archive_url(url_value: str | None) -> str | None:
+    clean_url = str(url_value or "").strip()
+    if not clean_url:
+        return None
+    if clean_url.startswith("ftp://ftp.ncbi.nlm.nih.gov/"):
+        return "https://ftp.ncbi.nlm.nih.gov/" + clean_url.removeprefix(
+            "ftp://ftp.ncbi.nlm.nih.gov/"
+        )
+    parsed = urlsplit(clean_url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return None
+    return clean_url
+
+
 def _find_open_access_pdf_candidates(*, work: Work, email: str | None) -> list[str]:
     candidates: list[str] = []
     seen: set[str] = set()
@@ -9169,6 +9217,7 @@ def _find_open_access_pdf_candidates(*, work: Work, email: str | None) -> list[s
     if pmcid:
         oa_record = _request_pmc_oa_record(pmcid)
         if oa_record is not None:
+            _append(_normalize_pmc_archive_url(oa_record.get("archive_href")))
             _append(_pmc_article_url(pmcid))
 
     doi = _normalize_doi(work.doi)
