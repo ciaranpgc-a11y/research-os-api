@@ -2947,6 +2947,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const authorsWarmupInFlightRef = useRef<Set<string>>(new Set())
   const filesWarmupInFlightRef = useRef<Set<string>>(new Set())
   const paperModelWarmupInFlightRef = useRef<Set<string>>(new Set())
+  const paperModelRequestCountByWorkIdRef = useRef<Map<string, number>>(new Map())
+  const paperModelLatestRequestTokenByWorkIdRef = useRef<Map<string, number>>(new Map())
   const filesWarmupCompletedRef = useRef<Set<string>>(new Set())
   const autoOaStatusClearTimerRef = useRef<number | null>(null)
   const localTopMetricsBootstrapAttemptedRef = useRef(false)
@@ -3483,31 +3485,50 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return null
     }
     const silent = Boolean(options?.silent)
+    const forceReparse = Boolean(options?.forceReparse)
     if (!force && paperModelCacheByWorkId[workId]) {
       return paperModelCacheByWorkId[workId]
     }
-    if (paperModelWarmupInFlightRef.current.has(workId)) {
+    if (!forceReparse && paperModelWarmupInFlightRef.current.has(workId)) {
       return paperModelCacheByWorkId[workId] || null
     }
     paperModelWarmupInFlightRef.current.add(workId)
+    paperModelRequestCountByWorkIdRef.current.set(
+      workId,
+      (paperModelRequestCountByWorkIdRef.current.get(workId) ?? 0) + 1,
+    )
+    const requestToken = (paperModelLatestRequestTokenByWorkIdRef.current.get(workId) ?? 0) + 1
+    paperModelLatestRequestTokenByWorkIdRef.current.set(workId, requestToken)
+    const isLatestRequest = () => paperModelLatestRequestTokenByWorkIdRef.current.get(workId) === requestToken
     if (selectedWorkId === workId && !silent) {
       setPublicationReaderLoading(true)
       setPublicationReaderError('')
     }
     try {
       const payload = await fetchPublicationPaperModel(token, workId, {
-        forceReparse: Boolean(options?.forceReparse),
+        forceReparse,
       })
-      setPaperModelCacheByWorkId((current) => ({ ...current, [workId]: payload }))
+      if (isLatestRequest()) {
+        setPaperModelCacheByWorkId((current) => ({ ...current, [workId]: payload }))
+      }
       return payload
     } catch (loadError) {
-      if (selectedWorkId === workId && !silent) {
+      if (selectedWorkId === workId && !silent && isLatestRequest()) {
         setPublicationReaderError(loadError instanceof Error ? loadError.message : 'Could not load paper reader.')
       }
       return null
     } finally {
-      paperModelWarmupInFlightRef.current.delete(workId)
-      if (selectedWorkId === workId && !silent) {
+      const remainingRequests = Math.max(
+        0,
+        (paperModelRequestCountByWorkIdRef.current.get(workId) ?? 1) - 1,
+      )
+      if (remainingRequests > 0) {
+        paperModelRequestCountByWorkIdRef.current.set(workId, remainingRequests)
+      } else {
+        paperModelRequestCountByWorkIdRef.current.delete(workId)
+        paperModelWarmupInFlightRef.current.delete(workId)
+      }
+      if (selectedWorkId === workId && !silent && isLatestRequest()) {
         setPublicationReaderLoading(false)
       }
     }
