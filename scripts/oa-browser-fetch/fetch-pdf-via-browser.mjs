@@ -75,15 +75,16 @@ function looksLikePdfUrl(value) {
 
 async function clickConsent(page) {
   const labels = [
-    "I Accept",
-    "Accept",
-    "Accept all",
-    "Allow all",
-    "Agree",
-    "Continue",
+    /i accept/i,
+    /^accept$/i,
+    /accept all/i,
+    /accept only necessary/i,
+    /allow all/i,
+    /^agree$/i,
+    /^continue$/i,
   ];
   for (const label of labels) {
-    const button = page.getByRole("button", { name: new RegExp(`^${label}$`, "i") });
+    const button = page.getByRole("button", { name: label }).first();
     const visible = await button.isVisible().catch(() => false);
     if (!visible) {
       continue;
@@ -257,8 +258,11 @@ async function clickPdfAffordance(page) {
     if (!visible) {
       continue;
     }
-    await locator.click().catch(() => {});
-    return true;
+    await locator.scrollIntoViewIfNeeded().catch(() => {});
+    const clicked = await locator.click().then(() => true).catch(() => false);
+    if (clicked) {
+      return true;
+    }
   }
 
   const selectors = [
@@ -275,8 +279,11 @@ async function clickPdfAffordance(page) {
     if (!visible) {
       continue;
     }
-    await locator.click().catch(() => {});
-    return true;
+    await locator.scrollIntoViewIfNeeded().catch(() => {});
+    const clicked = await locator.click().then(() => true).catch(() => false);
+    if (clicked) {
+      return true;
+    }
   }
   return false;
 }
