@@ -600,39 +600,63 @@ def _normalize_openalex_work_id(value: str | None) -> str | None:
     return clean if re.fullmatch(r"W\d+", clean) else None
 
 
-def _resolve_openalex_content_url(*, work: Work, user_email: str | None) -> str | None:
-    identifiers: list[str] = []
-    openalex_work_id = _normalize_openalex_work_id(work.openalex_work_id)
-    if openalex_work_id:
-        identifiers.append(openalex_work_id)
-    doi = _normalize_doi(work.doi)
-    if doi:
-        identifiers.append(f"https://doi.org/{doi}")
+def _openalex_work_has_pdf_content(payload: dict[str, Any]) -> bool:
+    has_content = payload.get("has_content")
+    if isinstance(has_content, dict) and bool(has_content.get("pdf")):
+        return True
+    content_urls = payload.get("content_urls")
+    if isinstance(content_urls, dict):
+        return any(str(value or "").strip() for value in content_urls.values())
+    if isinstance(content_urls, list):
+        return any(str(value or "").strip() for value in content_urls)
+    if isinstance(content_urls, str):
+        return bool(content_urls.strip())
+    return False
 
-    seen: set[str] = set()
+
+def _resolve_openalex_content_url(*, work: Work, user_email: str | None) -> str | None:
+    openalex_work_id = _normalize_openalex_work_id(work.openalex_work_id)
     mailto = _openalex_mailto(user_email=user_email)
-    for identifier in identifiers:
-        if identifier in seen:
-            continue
-        seen.add(identifier)
-        params: dict[str, Any] = {"select": "id,content_url"}
+    if openalex_work_id:
+        params: dict[str, Any] = {}
         if mailto:
             params["mailto"] = mailto
         payload = _request_json_with_retry(
-            url=f"https://api.openalex.org/works/{quote(identifier, safe='')}",
+            url=f"https://api.openalex.org/works/{quote(openalex_work_id, safe='')}",
             params=params,
             timeout_seconds=_unpaywall_timeout_seconds(),
             retries=max(1, _unpaywall_retry_count()),
             headers={"User-Agent": OPEN_ACCESS_FETCH_USER_AGENT},
         )
-        if not payload:
-            continue
-        content_url = str(payload.get("content_url") or "").strip()
-        if content_url:
-            return content_url.removesuffix(".pdf")
-        resolved_work_id = _normalize_openalex_work_id(payload.get("id"))
-        if resolved_work_id:
-            return f"https://content.openalex.org/works/{resolved_work_id}"
+        if payload and _openalex_work_has_pdf_content(payload):
+            resolved_work_id = _normalize_openalex_work_id(payload.get("id"))
+            if resolved_work_id:
+                return f"https://content.openalex.org/works/{resolved_work_id}"
+
+    doi = _normalize_doi(work.doi)
+    if not doi:
+        return None
+    params = {
+        "filter": f"doi:{doi}",
+        "select": "id,has_content,content_urls",
+        "per-page": "1",
+    }
+    if mailto:
+        params["mailto"] = mailto
+    payload = _request_json_with_retry(
+        url="https://api.openalex.org/works",
+        params=params,
+        timeout_seconds=_unpaywall_timeout_seconds(),
+        retries=max(1, _unpaywall_retry_count()),
+        headers={"User-Agent": OPEN_ACCESS_FETCH_USER_AGENT},
+    )
+    results = payload.get("results")
+    if isinstance(results, list) and results:
+        first = results[0]
+        if isinstance(first, dict) and _openalex_work_has_pdf_content(first):
+            resolved_work_id = _normalize_openalex_work_id(first.get("id"))
+            if resolved_work_id:
+                return f"https://content.openalex.org/works/{resolved_work_id}"
     return None
 
 

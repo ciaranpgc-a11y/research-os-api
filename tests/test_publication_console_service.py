@@ -3639,8 +3639,13 @@ def test_resolve_openalex_content_url_uses_doi_lookup(monkeypatch) -> None:
         publication_console_service,
         "_request_json_with_retry",
         lambda **kwargs: {
-            "id": "https://openalex.org/W1234567890",
-            "content_url": "https://content.openalex.org/works/W1234567890",
+            "results": [
+                {
+                    "id": "https://openalex.org/W1234567890",
+                    "has_content": {"pdf": True},
+                    "content_urls": None,
+                }
+            ],
         },
     )
 
