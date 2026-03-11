@@ -707,6 +707,10 @@ export type PersonaJournal = {
   publisher_reported_impact_factor_year?: number | null
   publisher_reported_impact_factor_label?: string | null
   publisher_reported_impact_factor_source_url?: string | null
+  five_year_impact_factor?: number | null
+  journal_citation_indicator?: number | null
+  jif_quartile?: string | null
+  cited_half_life?: string | null
   time_to_first_decision_days?: number | null
   time_to_publication_days?: number | null
   editor_in_chief_name?: string | null
@@ -930,6 +934,140 @@ export type PublicationAuthorsPayload = {
   last_error: string | null
 }
 
+export type PublicationPaperModelAssetPayload = {
+  id: string
+  file_id: string | null
+  file_name: string
+  source: 'OA_LINK' | 'USER_UPLOAD' | 'SUPPLEMENTARY_LINK' | 'PARSED'
+  download_url: string | null
+  classification: PublicationFileClassification | null
+  classification_label: string | null
+  is_pdf: boolean
+  title: string
+  caption: string | null
+  page_start: number | null
+  page_end: number | null
+  asset_kind: string
+  origin: 'file' | 'parsed'
+  source_parser: string | null
+  coords: string | null
+  graphic_coords: string | null
+  image_data: string | null
+  structured_html: string | null
+}
+
+export type PublicationPaperModelComponentSummaryPayload = {
+  section_count: number
+  full_text_section_count: number
+  reference_count: number
+  figure_asset_count: number
+  table_asset_count: number
+  dataset_asset_count: number
+  attachment_count: number
+  section_kind_counts: Record<string, number>
+}
+
+export type PublicationPaperModelOutlineNodePayload = {
+  id: string
+  parent_id: string | null
+  label_original: string | null
+  label_normalized: string
+  section_type: string
+  canonical_map: string
+  level: number
+  order_index: number
+  page_start: number | null
+  page_end: number | null
+  bounding_boxes: Array<Record<string, unknown>>
+  text_content: string | null
+  confidence: number | null
+  source_parser: string | null
+  is_generated_heading: boolean
+  node_type: 'group' | 'section' | 'asset' | 'synthetic'
+  target_kind: 'section' | 'asset' | 'page' | null
+  target_id: string | null
+  target_page: number | null
+  is_collapsible: boolean
+}
+
+export type PublicationPaperModelPayload = {
+  metadata: {
+    publication_id: string
+    title: string
+    journal: string
+    year: number | null
+    publication_type: string
+    article_type: string | null
+    doi: string | null
+    pmid: string | null
+    openalex_work_id: string | null
+    citations_total: number
+    authors: string[]
+    keywords: string[]
+  }
+  document: {
+    has_viewable_pdf: boolean
+    primary_pdf_file_id: string | null
+    primary_pdf_file_name: string | null
+    primary_pdf_download_url: string | null
+    primary_pdf_source: 'OA_LINK' | 'USER_UPLOAD' | 'SUPPLEMENTARY_LINK' | null
+    parser_status: 'STRUCTURE_ONLY' | 'PDF_ATTACHED' | 'PARSING' | 'FULL_TEXT_READY' | 'FAILED'
+    parser_version: string
+    generation_method: string
+    has_full_text_sections: boolean
+    total_file_count: number
+    parser_last_error: string | null
+    page_count: number | null
+    search_ready: boolean
+    outline_depth: number
+  }
+  sections: Array<{
+    id: string
+    title: string
+    raw_label: string | null
+    label_original: string | null
+    label_normalized: string | null
+    kind: string
+    canonical_kind: string
+    section_type: 'canonical' | 'editorial' | 'asset' | 'metadata' | 'reference'
+    canonical_map: string
+    content: string
+    source: string
+    source_parser: string | null
+    order: number
+    page_start: number | null
+    page_end: number | null
+    level: number
+    parent_id: string | null
+    bounding_boxes: Array<Record<string, unknown>>
+    confidence: number | null
+    is_generated_heading: boolean
+    word_count: number
+    paragraph_count: number
+    document_zone: string | null
+    section_role: string | null
+    journal_section_family: string | null
+    major_section_key: string | null
+  }>
+  outline: PublicationPaperModelOutlineNodePayload[]
+  figures: PublicationPaperModelAssetPayload[]
+  tables: PublicationPaperModelAssetPayload[]
+  datasets: PublicationPaperModelAssetPayload[]
+  attachments: PublicationPaperModelAssetPayload[]
+  references: Array<Record<string, unknown>>
+  annotations: Array<Record<string, unknown>>
+  component_summary: PublicationPaperModelComponentSummaryPayload
+  provenance: Record<string, unknown>
+}
+
+export type PublicationPaperModelResponsePayload = {
+  payload: PublicationPaperModelPayload
+  computed_at: string | null
+  status: 'READY' | 'RUNNING' | 'FAILED'
+  is_stale: boolean
+  last_error: string | null
+}
+
 export type PublicationImpactPayload = {
   citations_total: number
   citations_last_12m: number
@@ -999,13 +1137,20 @@ export type PublicationAiInsightsResponsePayload = {
   last_error: string | null
 }
 
+export type PublicationInsightsAgentBlockPayload = {
+  kind: 'paragraph' | 'callout'
+  label?: string | null
+  text: string
+}
+
 export type PublicationInsightsAgentSectionPayload = {
-  key: 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history' | 'publication_output_pattern' | 'publication_production_phase' | 'publication_volume_over_time' | 'publication_article_type_over_time' | 'publication_type_over_time'
+  key: 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history' | 'publication_output_pattern' | 'publication_production_phase' | 'publication_year_over_year_trajectory' | 'publication_volume_over_time' | 'publication_article_type_over_time' | 'publication_type_over_time'
   title: string
   headline: string
   body: string
   consideration_label?: string | null
   consideration?: string | null
+  blocks?: PublicationInsightsAgentBlockPayload[]
   evidence: Record<string, unknown>
 }
 
@@ -1019,6 +1164,15 @@ export type PublicationInsightsAgentPayload = {
   provenance: Record<string, unknown>
 }
 
+export type PublicationFileClassification =
+  | 'PUBLISHED_MANUSCRIPT'
+  | 'SUPPLEMENTARY_MATERIALS'
+  | 'DATASETS'
+  | 'TABLE'
+  | 'FIGURE'
+  | 'COVER_LETTER'
+  | 'OTHER'
+
 export type PublicationFilePayload = {
   id: string
   file_name: string
@@ -1029,11 +1183,17 @@ export type PublicationFilePayload = {
   created_at: string
   download_url: string | null
   label: string
+  classification: PublicationFileClassification | null
+  classification_label: string | null
+  classification_other_label?: string | null
   can_delete: boolean
+  can_rename?: boolean
+  can_classify?: boolean
 }
 
 export type PublicationFilesListPayload = {
   items: PublicationFilePayload[]
+  has_deleted_oa_file?: boolean
 }
 
 export type PublicationFileLinkPayload = {

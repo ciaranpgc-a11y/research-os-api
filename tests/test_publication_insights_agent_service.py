@@ -1,14 +1,28 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+import pytest
 
 import research_os.services.publication_insights_agent_service as publication_insights_agent_service
 from research_os.api.app import app
 from research_os.db import MetricsSnapshot, User, Work, create_all_tables, reset_database_state, session_scope
 from research_os.services.publication_metrics_service import compute_publication_top_metrics
+
+
+def _mock_citation_openai_output() -> str:
+    return (
+        '{"overall_summary":"Citation attention is concentrated in a lead paper, while the rest of the portfolio is still picking up activity.",'
+        '"sections":['
+        '{"key":"uncited_works","headline":"Recent uncited pocket","body":"Across the last 3 years, 1 of 3 papers is still uncited, and it is recent rather than old. The portfolio still added 44 citations in the last 12 months, so this looks like a recent lag, not a broader problem.","consideration_label":"What to separate","consideration":"Separate recent uncited work from older uncited papers before treating them as the same issue."},'
+        '{"key":"citation_drivers","headline":"One paper still leads","body":"Across the last 3 years, Driver Paper One accounts for 30 of 44 citations, so recent attention is still concentrated in one lead paper rather than spread across the portfolio.","consideration_label":"What to watch","consideration":"Watch whether newer papers begin to share citation attention with the current lead paper."},'
+        '{"key":"citation_activation","headline":"Activation is present","body":"In the last 3 years, 2 of 3 papers recorded citations, with 1 newly active paper and 1 that stayed active. That leaves 1 inactive paper, so activation is present but not yet broad.","consideration_label":"What to look at","consideration":"Check whether the inactive paper is simply newer or whether attention is staying narrow."},'
+        '{"key":"citation_activation_history","headline":"Renewal is still happening","body":"Through 2025, newly active papers kept appearing instead of leaving citation activity with the same already-active titles. That points to renewal, although the active base is still a small cluster of papers.","consideration_label":"What to watch","consideration":"Watch whether that renewal keeps broadening beyond the same small cluster of papers."}'
+        "]}"
+    )
 
 
 def _set_test_environment(monkeypatch, tmp_path) -> None:
@@ -19,7 +33,73 @@ def _set_test_environment(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path}")
     monkeypatch.setenv("PUB_ANALYTICS_TTL_SECONDS", "60")
     api_module._AUTH_RATE_LIMIT_EVENTS.clear()
+    publication_insights_agent_service._reset_publication_insights_availability_cache()
     reset_database_state()
+
+
+def test_publication_insights_available_returns_false_without_openai_key(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_openai_api_key",
+        lambda: (_ for _ in ()).throw(
+            publication_insights_agent_service.ConfigurationError(
+                "OPENAI_API_KEY is not set."
+            )
+        ),
+    )
+    publication_insights_agent_service._reset_publication_insights_availability_cache()
+
+    assert publication_insights_agent_service.publication_insights_available(
+        force_refresh=True
+    ) is False
+
+
+def test_publication_insights_available_returns_false_for_invalid_openai_access(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    publication_insights_agent_service._reset_publication_insights_availability_cache()
+
+    def _raise_invalid_model_access():  # noqa: ANN202
+        raise RuntimeError("invalid_api_key")
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_client",
+        lambda: SimpleNamespace(models=SimpleNamespace(retrieve=lambda model: _raise_invalid_model_access())),
+    )
+
+    assert publication_insights_agent_service.publication_insights_available(
+        force_refresh=True
+    ) is False
+
+
+def test_publication_insights_available_probes_model_access_once_per_cache_window(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("PUBLICATION_INSIGHTS_AVAILABILITY_CACHE_TTL_SECONDS", "60")
+    publication_insights_agent_service._reset_publication_insights_availability_cache()
+    calls: list[str] = []
+
+    def _retrieve(model: str) -> SimpleNamespace:
+        calls.append(model)
+        return SimpleNamespace(id=model)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_client",
+        lambda: SimpleNamespace(models=SimpleNamespace(retrieve=_retrieve)),
+    )
+
+    assert publication_insights_agent_service.publication_insights_available(
+        force_refresh=True
+    ) is True
+    assert publication_insights_agent_service.publication_insights_available() is True
+    assert calls == ["gpt-5.4"]
 
 
 def _seed_publications_for_user(*, user_id: str) -> None:
@@ -308,6 +388,15 @@ def test_format_publication_output_date_label_avoids_fake_day_precision() -> Non
         )
         == "Feb 2026"
     )
+
+
+def test_format_publication_type_label_maps_conference_entries_to_published_abstract() -> None:
+    assert (
+        publication_insights_agent_service._format_publication_type_label(
+            {"work_type": "conference-paper"}
+        )
+        == "Published abstract"
+    )
     assert (
         publication_insights_agent_service._format_publication_output_date_label(
             {"year": 2026}
@@ -370,18 +459,12 @@ def test_generate_publication_insights_agent_draft_uses_openai_response(
     create_all_tables()
     user_id = _seed_user("pub-agent-openai@example.com")
     _seed_publications_for_user(user_id=user_id)
+    compute_publication_top_metrics(user_id=user_id)
 
     monkeypatch.setattr(
         publication_insights_agent_service,
         "create_response",
-        lambda **kwargs: SimpleNamespace(
-            output_text=
-                '{"overall_summary":"Your uncited share is manageable and a small group of papers drives citation activity.",'
-                '"sections":['
-                '{"key":"uncited_works","headline":"Uncited works","body":"You have a defined group of uncited publications.","consideration_label":"What to separate","consideration":"Consider separating recent uncited work from older backlog."},'
-                '{"key":"citation_drivers","headline":"Citation drivers","body":"A small set of papers is driving recent citations.","consideration_label":"What to watch","consideration":"Consider whether attention is concentrated in one paper."}'
-                "]}"
-        ),
+        lambda **kwargs: SimpleNamespace(output_text=_mock_citation_openai_output()),
     )
 
     payload = publication_insights_agent_service.generate_publication_insights_agent_draft(
@@ -394,24 +477,25 @@ def test_generate_publication_insights_agent_draft_uses_openai_response(
     assert payload["window_id"] == "3y"
     assert len(payload["sections"]) == 4
     assert payload["provenance"]["generation_mode"] == "openai"
-    assert payload["provenance"]["model"] in {"gpt-5.4", "gpt-4.1-mini"}
+    assert payload["provenance"]["model"] == "gpt-5.4"
     uncited_section = next(
         section for section in payload["sections"] if section["key"] == "uncited_works"
     )
-    assert "citations in the last 12 months" in uncited_section["body"]
+    assert "1 of 3 papers is still uncited" in uncited_section["body"]
     assert any(section["key"] == "citation_activation" for section in payload["sections"])
     assert any(section["key"] == "citation_activation_history" for section in payload["sections"])
     assert payload["sections"][0]["consideration_label"]
     assert payload["sections"][0]["consideration"]
 
 
-def test_generate_publication_insights_agent_draft_falls_back_when_openai_fails(
+def test_generate_publication_insights_agent_draft_raises_when_openai_fails(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     user_id = _seed_user("pub-agent-fallback@example.com")
     _seed_publications_for_user(user_id=user_id)
+    compute_publication_top_metrics(user_id=user_id)
 
     def _raise_error(**kwargs):  # noqa: ANN003
         raise RuntimeError("OpenAI unavailable")
@@ -422,50 +506,61 @@ def test_generate_publication_insights_agent_draft_falls_back_when_openai_fails(
         _raise_error,
     )
 
-    payload = publication_insights_agent_service.generate_publication_insights_agent_draft(
-        user_id=user_id,
-        window_id="1y",
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="Publication insights AI generation failed",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id=user_id,
+            window_id="1y",
+        )
+
+
+def test_generate_publication_insights_agent_draft_raises_when_openai_response_is_incomplete(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user("pub-agent-incomplete@example.com")
+    _seed_publications_for_user(user_id=user_id)
+    compute_publication_top_metrics(user_id=user_id)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            status="incomplete",
+            incomplete_details=SimpleNamespace(reason="max_output_tokens"),
+            output_text="",
+        ),
     )
 
-    assert payload["status"] == "draft"
-    assert payload["window_id"] == "1y"
-    assert payload["provenance"]["generation_mode"] == "deterministic_fallback"
-    assert payload["provenance"]["model"] is None
-    assert any(section["key"] == "uncited_works" for section in payload["sections"])
-    assert any(section["key"] == "citation_drivers" for section in payload["sections"])
-    assert any(section["key"] == "citation_activation" for section in payload["sections"])
-    assert any(section["key"] == "citation_activation_history" for section in payload["sections"])
-    assert any(section.get("consideration_label") for section in payload["sections"])
-    assert any(section.get("consideration") for section in payload["sections"])
-    uncited_section = next(
-        section for section in payload["sections"] if section["key"] == "uncited_works"
-    )
-    assert "citations in the last 12 months" in uncited_section["body"]
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="Publication insights AI response was incomplete \\(max_output_tokens\\)",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id=user_id,
+            window_id="1y",
+        )
 
 
-def test_generate_publication_insights_agent_draft_builds_section_level_citation_read(
+def test_build_fallback_payload_builds_section_level_citation_read(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     user_id = _seed_user("pub-agent-section@example.com")
     _seed_publications_for_user(user_id=user_id)
+    compute_publication_top_metrics(user_id=user_id)
 
-    def _raise_error(**kwargs):  # noqa: ANN003
-        raise RuntimeError("OpenAI unavailable")
-
-    monkeypatch.setattr(
-        publication_insights_agent_service,
-        "create_response",
-        _raise_error,
-    )
-
-    payload = publication_insights_agent_service.generate_publication_insights_agent_draft(
+    evidence = publication_insights_agent_service._build_evidence(
         user_id=user_id,
         window_id="1y",
         section_key="citation_drivers",
         scope="section",
     )
+    payload = publication_insights_agent_service._build_fallback_payload(evidence)
 
     citation_section = next(
         section for section in payload["sections"] if section["key"] == "citation_drivers"
@@ -475,7 +570,7 @@ def test_generate_publication_insights_agent_draft_builds_section_level_citation
     assert str(citation_section.get("consideration") or "").startswith("You may want")
 
 
-def test_generate_publication_insights_agent_draft_builds_richer_publication_output_pattern_fallback(
+def test_build_publication_output_pattern_fallback_payload_is_richer(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -486,34 +581,23 @@ def test_generate_publication_insights_agent_draft_builds_richer_publication_out
         lambda **kwargs: _fake_publication_output_pattern_metrics(),
     )
 
-    def _raise_error(**kwargs):  # noqa: ANN003
-        raise RuntimeError("OpenAI unavailable")
-
-    monkeypatch.setattr(
-        publication_insights_agent_service,
-        "create_response",
-        _raise_error,
+    evidence = publication_insights_agent_service._build_publication_output_pattern_evidence(
+        user_id="publication-output-test-user"
+    )
+    payload = publication_insights_agent_service._build_publication_output_pattern_fallback_payload(
+        evidence
     )
 
-    payload = publication_insights_agent_service.generate_publication_insights_agent_draft(
-        user_id="publication-output-test-user",
-        window_id="all",
-        section_key="publication_output_pattern",
-        scope="section",
-    )
-
-    assert payload["status"] == "draft"
-    assert payload["provenance"]["generation_mode"] == "deterministic_fallback"
-    assert payload["provenance"]["evidence"]["phase_label"] == "Plateauing"
-    assert payload["provenance"]["evidence"]["recent_years_label"] == "2023-2025"
+    assert evidence["phase_label"] == "Plateauing"
+    assert evidence["recent_years_label"] == "2023-2025"
     section = payload["sections"][0]
     assert section["headline"] == "Growth flattening"
     assert "every year from 2016 to 2025" in section["body"]
     assert "2025 fell to 4" in section["body"]
     assert "2021 and 2024" in section["body"]
-    assert section["consideration_label"] == "What changes it"
+    assert section["consideration_label"] == "What would confirm it"
     assert "11-19 publication band seen across 2021-2024" in str(section["consideration"] or "")
-    assert "another year near 4 would deepen it" in str(section["consideration"] or "")
+    assert "another year near 4 would confirm a more durable break" in str(section["consideration"] or "")
 
 
 def test_generate_publication_insights_agent_draft_uses_stronger_openai_publication_output_pattern_read(
@@ -534,10 +618,9 @@ def test_generate_publication_insights_agent_draft_uses_stronger_openai_publicat
             output_text=(
                 '{"overall_summary":"The record stays broad and continuous, but the latest complete year no longer sustains the stronger recent run.",'
                 '"sections":['
-                '{"key":"publication_output_pattern","headline":"Repeated highs, softer finish",'
-                '"body":"You published in every year from 2016 to 2025, and recent years averaged 12 publications versus 9 earlier, so the record is broader than a one-peak profile. But 2025 fell to 4 after shared peaks of 19 in 2021 and 2024, which makes the pattern look more like a softer finish after repeated highs than continued build.",'
-                '"consideration_label":"Why it matters",'
-                '"consideration":"Because the highs are shared rather than isolated, the drop to 4 in 2025 reads more like broader lost momentum than the fading of one standout year."}'
+                '{"key":"publication_output_pattern","pattern":"growth flattening","headline":"Repeated highs, then a clear break",'
+                '"body":"You published in every year from 2016 to 2025, and recent years averaged 12 publications versus 9 earlier, so the record is broader than a one-peak profile. But 2025 fell to 4 after shared peaks of 19 in 2021 and 2024, which makes 2025 look more like a break from that stronger run than a continuation of it.",'
+                '"blocks":[{"kind":"callout","label":"Why it matters","text":"Because the highs are shared rather than isolated, the drop to 4 in 2025 looks more like broader lost momentum than the fading of one standout year."}]}'
                 "]}"
             )
         ),
@@ -553,26 +636,149 @@ def test_generate_publication_insights_agent_draft_uses_stronger_openai_publicat
     assert payload["provenance"]["generation_mode"] == "openai"
     assert payload["provenance"]["evidence"]["phase_label"] == "Plateauing"
     section = payload["sections"][0]
-    assert section["headline"] == "Repeated highs, softer finish"
+    assert section["headline"] == "Repeated highs, then a clear break"
     assert "every year from 2016 to 2025" in section["body"]
     assert "2025 fell to 4" in section["body"]
     assert "2021 and 2024" in section["body"]
+    assert section["evidence"]["pattern"] == "growth flattening"
     assert section["consideration_label"] == "Why it matters"
     assert "shared rather than isolated" in str(section["consideration"] or "")
-    prompt_text = str(captured_kwargs["input"])
-    assert "Use one shared publication-insight reasoning style" in prompt_text
-    assert (
-        "Section question: What is the deepest insight about the steadiness of this publication record?"
-        in prompt_text
+    assert section["blocks"] == [
+        {
+            "kind": "callout",
+            "label": "Why it matters",
+            "text": "Because the highs are shared rather than isolated, the drop to 4 in 2025 looks more like broader lost momentum than the fading of one standout year.",
+        }
+    ]
+    assert captured_kwargs["max_output_tokens"] == 1600
+    assert captured_kwargs["reasoning"] == {"effort": "medium"}
+    assert captured_kwargs["store"] is False
+    assert captured_kwargs["text"] == publication_insights_agent_service._publication_output_pattern_text_config()
+    input_messages = captured_kwargs["input"]
+    assert isinstance(input_messages, list)
+    assert len(input_messages) == 2
+    assert input_messages[0]["role"] == "system"
+    assert "Decide one steadiness pattern only." in input_messages[0]["content"]
+    assert "Use the full timeline first." in input_messages[0]["content"]
+    assert "no more than 3 numbers" in input_messages[0]["content"]
+    assert input_messages[1]["role"] == "user"
+    evidence_payload = json.loads(str(input_messages[1]["content"]))
+    assert evidence_payload["section_data"]["phase_label"] == "Plateauing"
+    assert "analysis_brief" in evidence_payload
+    assert evidence_payload["confidence_flags"] == {
+        "phase_confidence_low": False,
+        "includes_partial_year": True,
+    }
+    assert "records" not in evidence_payload["publication_library"]
+
+
+def test_generate_publication_insights_agent_draft_rebuilds_publication_output_pattern_messages_with_ui_context(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    captured_kwargs: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
     )
-    assert "publication_library contains the user's publication library as a whole-record evidence layer" in prompt_text
-    assert '"publication_library"' in prompt_text
-    assert "Paper A" in prompt_text
-    assert "analysis_brief" in prompt_text
-    assert "Treat analysis_brief as a starting point, not a script." in prompt_text
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: captured_kwargs.update(kwargs) or SimpleNamespace(
+            output_text=(
+                '{"sections":['
+                '{"key":"publication_output_pattern","pattern":"growth flattening","headline":"Repeated highs, then a clear break","body":"You published in every year from 2016 to 2025, and recent years averaged 12 publications versus 9 earlier, so the record is broader than a one-peak profile. But 2025 fell to 4 after shared peaks of 19 in 2021 and 2024, which makes 2025 look more like a break from that stronger run than a continuation of it.","blocks":[]}'
+                "]}",
+            )
+        ),
+    )
+
+    publication_insights_agent_service.generate_publication_insights_agent_draft(
+        user_id="publication-output-test-user",
+        window_id="all",
+        section_key="publication_output_pattern",
+        scope="section",
+        ui_context="Tooltip copy for output pattern.",
+    )
+
+    input_messages = captured_kwargs["input"]
+    assert isinstance(input_messages, list)
+    evidence_payload = json.loads(str(input_messages[1]["content"]))
+    assert evidence_payload["ui_context"] == "Tooltip copy for output pattern."
 
 
-def test_generate_publication_insights_agent_draft_rejects_unsupported_publication_output_pattern_partial_year_note(
+def test_publication_output_pattern_structured_output_schema_is_strict() -> None:
+    text_config = publication_insights_agent_service._publication_output_pattern_text_config()
+
+    assert text_config["format"]["type"] == "json_schema"
+    assert text_config["format"]["strict"] is True
+    assert text_config["format"]["name"] == "publication_output_pattern_insight"
+    schema = text_config["format"]["schema"]
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["overall_summary", "sections"]
+    assert schema["properties"]["overall_summary"]["anyOf"] == [
+        {"type": "string"},
+        {"type": "null"},
+    ]
+    assert schema["properties"]["sections"]["minItems"] == 1
+    assert schema["properties"]["sections"]["maxItems"] == 1
+    section_schema = schema["properties"]["sections"]["items"]
+    assert section_schema["additionalProperties"] is False
+    assert section_schema["required"] == ["key", "pattern", "headline", "body", "blocks"]
+    assert section_schema["properties"]["key"] == {
+        "type": "string",
+        "const": "publication_output_pattern",
+    }
+    assert section_schema["properties"]["pattern"]["enum"] == [
+        "too early to read",
+        "continuous growth",
+        "broadly stable",
+        "growth flattening",
+        "output easing",
+        "peak-led record",
+        "burst-led output",
+        "interrupted pattern",
+        "rebuilding output",
+        "active across years",
+    ]
+    assert section_schema["properties"]["blocks"]["maxItems"] == 1
+    block_schema = section_schema["properties"]["blocks"]["items"]
+    assert block_schema["additionalProperties"] is False
+    assert block_schema["properties"]["label"]["anyOf"] == [
+        {"type": "string"},
+        {"type": "null"},
+    ]
+    assert block_schema["required"] == ["kind", "label", "text"]
+
+
+def test_publication_output_pattern_body_accepts_structural_story_without_explicit_peak_language(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    evidence = publication_insights_agent_service._build_publication_output_pattern_evidence(
+        user_id="publication-output-test-user"
+    )
+
+    assert not publication_insights_agent_service._publication_output_pattern_body_is_too_generic(
+        body=(
+            "After a quieter start, the record built into a sustained stronger run, but that rise is no longer being maintained. "
+            "Output stayed active every year, yet the latest complete year, 2025, fell to 4 after several stronger years, "
+            "so this reads as growth flattening rather than broad stability. The partial 2026 signal is too early to outweigh that break."
+        ),
+        fallback_body="",
+        evidence=evidence,
+    )
+
+
+def test_generate_publication_insights_agent_draft_accepts_null_overall_summary_and_null_callout_label_for_publication_output_pattern(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -587,13 +793,49 @@ def test_generate_publication_insights_agent_draft_rejects_unsupported_publicati
         "create_response",
         lambda **kwargs: SimpleNamespace(
             output_text=(
-                '{"overall_summary":"Your record is continuous and growth-led across the full span.",'
-                '"sections":['
-                '{"key":"publication_output_pattern","headline":"Continuous, later surge",'
-                '"body":"Publishing is uninterrupted across all 10 years, with the quietest years concentrated early (2016-2017 at 1 each). Output then rises and becomes burstier, with two tied peak years (2021 and 2024 at 19). Recent years are generally stronger than the early baseline, so the pattern reads as scaling without dependence on one isolated year.",'
-                '"consideration_label":"Check recency",'
-                '"consideration":"Because 2025 is lower, verify whether it is a partial-year count before interpreting it as a slowdown."}'
-                "]}"
+                '{"overall_summary":null,"sections":['
+                '{"key":"publication_output_pattern","pattern":"growth flattening","headline":"Late-run build, then a clear break","body":"The record builds from a very quiet start into a sustained stronger run later in the timeline, rather than depending on a single standout peak. That stronger level is not sustained in the latest complete year, with output falling to 4 in 2025, so the overall shape reads as growth flattening. The partial 2026 signal is too early to change that read.","blocks":[{"kind":"callout","label":null,"text":"The live 2026 signal is still partial, so this read rests on the break in the latest complete year."}]}]}'
+            )
+        ),
+    )
+
+    payload = publication_insights_agent_service.generate_publication_insights_agent_draft(
+        user_id="publication-output-test-user",
+        window_id="all",
+        section_key="publication_output_pattern",
+        scope="section",
+    )
+
+    assert payload["overall_summary"] == ""
+    section = payload["sections"][0]
+    assert section["blocks"] == [
+        {
+            "kind": "callout",
+            "label": None,
+            "text": "The live 2026 signal is still partial, so this read rests on the break in the latest complete year.",
+        }
+    ]
+    assert section["consideration_label"] is None
+    assert section["consideration"] is None
+
+
+def test_generate_publication_insights_agent_draft_accepts_live_confidence_note_for_publication_output_pattern(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"overall_summary":"growth flattening","sections":['
+                '{"key":"publication_output_pattern","pattern":"growth flattening","headline":"Higher run breaks in the latest year","body":"The record stays active across the full span and builds from quieter early years into a stronger multi-year run, but that higher level is not sustained in the latest complete year. After repeated highs, output falls to 4 in 2025, which reads as a break from the stronger run rather than a one-off peak pattern.","blocks":[{"kind":"callout","label":"Confidence note","text":"This read rests on the full continuous timeline with no gap years, but only one complete post-peak year is available so far."}]}]}'
             )
         ),
     )
@@ -606,14 +848,163 @@ def test_generate_publication_insights_agent_draft_rejects_unsupported_publicati
     )
 
     section = payload["sections"][0]
-    assert section["headline"] == "Continuous, later surge"
-    assert section["body"].endswith(".")
-    assert "partial-year" not in str(section["consideration"] or "").lower()
-    assert section["consideration_label"] == "What changes it"
-    assert "11-19 publication band seen across 2021-2024" in str(section["consideration"] or "")
+    assert section["consideration_label"] == "Confidence note"
+    assert section["consideration"] == (
+        "This read rests on the full continuous timeline with no gap years, "
+        "but only one complete post-peak year is available so far."
+    )
+    assert section["blocks"] == [
+        {
+            "kind": "callout",
+            "label": "Confidence note",
+            "text": (
+                "This read rests on the full continuous timeline with no gap years, "
+                "but only one complete post-peak year is available so far."
+            ),
+        }
+    ]
 
 
-def test_generate_publication_insights_agent_draft_builds_publication_production_phase_fallback(
+def test_generate_publication_insights_agent_draft_rejects_extra_fields_for_publication_output_pattern(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"sections":['
+                '{"key":"publication_output_pattern","pattern":"growth flattening","headline":"Repeated highs, then a clear break","body":"You published in every year from 2016 to 2025, and recent years averaged 12 publications versus 9 earlier, so the record is broader than a one-peak profile. But 2025 fell to 4 after shared peaks of 19 in 2021 and 2024, which makes 2025 look more like a break from that stronger run than a continuation of it.","blocks":[],"extra_note":"unexpected"}'
+                "]}",
+            )
+        ),
+    )
+
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="invalid fields for publication_output_pattern",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id="publication-output-test-user",
+            window_id="all",
+            section_key="publication_output_pattern",
+            scope="section",
+        )
+
+
+def test_generate_publication_insights_agent_draft_rejects_generic_publication_output_pattern_headline(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"sections":['
+                '{"key":"publication_output_pattern","pattern":"growth flattening","headline":"Output pattern","body":"You published in every year from 2016 to 2025, and recent years averaged 12 publications versus 9 earlier, so the record is broader than a one-peak profile. But 2025 fell to 4 after shared peaks of 19 in 2021 and 2024, which makes 2025 look more like a break from that stronger run than a continuation of it.","blocks":[]}'
+                "]}",
+            )
+        ),
+    )
+
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="generic headline for publication_output_pattern",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id="publication-output-test-user",
+            window_id="all",
+            section_key="publication_output_pattern",
+            scope="section",
+        )
+
+
+def test_generate_publication_insights_agent_draft_rejects_too_many_blocks_for_publication_output_pattern(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"sections":['
+                '{"key":"publication_output_pattern","pattern":"growth flattening","headline":"Repeated highs, then a clear break","body":"You published in every year from 2016 to 2025, and recent years averaged 12 publications versus 9 earlier, so the record is broader than a one-peak profile. But 2025 fell to 4 after shared peaks of 19 in 2021 and 2024, which makes 2025 look more like a break from that stronger run than a continuation of it.","blocks":[{"kind":"paragraph","text":"The record stayed active across the span."},{"kind":"callout","label":"Why it matters","text":"The highs are shared rather than isolated."}]}'
+                "]}",
+            )
+        ),
+    )
+
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="too many blocks for publication_output_pattern",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id="publication-output-test-user",
+            window_id="all",
+            section_key="publication_output_pattern",
+            scope="section",
+        )
+
+
+def test_generate_publication_insights_agent_draft_errors_on_unsupported_publication_output_pattern_partial_year_note(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+                output_text=(
+                    '{"overall_summary":"Your record is continuous and growth-led across the full span.",'
+                    '"sections":['
+                    '{"key":"publication_output_pattern","pattern":"continuous growth","headline":"Continuous, later surge",'
+                    '"body":"Publishing is uninterrupted across all 10 years, with the quietest years early in 2016-2017. Output then rises into shared peaks of 19 in 2021 and 2024, so recent years still sit above the early baseline rather than depending on one isolated year.",'
+                    '"blocks":[{"kind":"callout","label":"Check recency","text":"Because 2025 is lower, verify whether it is a partial-year count before interpreting it as a slowdown."}]}'
+                    "]}"
+                )
+        ),
+    )
+
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="unsupported block_text content for publication_output_pattern",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id="publication-output-test-user",
+            window_id="all",
+            section_key="publication_output_pattern",
+            scope="section",
+        )
+
+
+def test_build_publication_production_phase_fallback_payload(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -624,26 +1015,19 @@ def test_generate_publication_insights_agent_draft_builds_publication_production
         lambda **kwargs: _fake_publication_output_pattern_metrics(),
     )
 
-    def _raise_error(**kwargs):  # noqa: ANN003
-        raise RuntimeError("OpenAI unavailable")
-
-    monkeypatch.setattr(
-        publication_insights_agent_service,
-        "create_response",
-        _raise_error,
+    evidence = publication_insights_agent_service._build_publication_production_phase_evidence(
+        user_id="publication-output-test-user"
+    )
+    payload = publication_insights_agent_service._build_publication_production_phase_fallback_payload(
+        evidence
     )
 
-    payload = publication_insights_agent_service.generate_publication_insights_agent_draft(
-        user_id="publication-output-test-user",
-        window_id="all",
-        section_key="publication_production_phase",
-        scope="section",
-    )
-
-    assert payload["status"] == "draft"
-    assert payload["provenance"]["generation_mode"] == "deterministic_fallback"
-    evidence = payload["provenance"]["evidence"]
     assert evidence["phase_label"] == "Plateauing"
+    assert evidence["rolling_cutoff_label"] == "Feb 2026"
+    assert evidence["rolling_one_year_total"] == 3
+    assert evidence["rolling_three_year_pace"] == 8.3
+    assert evidence["rolling_prior_period_pace"] == 8.0
+    assert evidence["rolling_prior_period_label"] == "Prior 7 years"
     assert evidence["current_pace_cutoff_label"] == "Feb 2026"
     assert evidence["current_pace_count"] == 1
     assert evidence["current_pace_comparison_label"] == "2023-2025"
@@ -655,10 +1039,12 @@ def test_generate_publication_insights_agent_draft_builds_publication_production
     section = payload["sections"][0]
     assert section["key"] == "publication_production_phase"
     assert section["headline"] == "Rise, then flattening"
-    assert "+1 publication per year from 2016 to 2025" in section["body"]
-    assert "higher-output band that ran at 11-19 publications across 2021-2024" in section["body"]
-    assert "2025 fell to 4" in section["body"]
-    assert section["consideration_label"] == "What changes it"
+    assert "Across the full publication span" in section["body"]
+    assert "2025" in section["body"]
+    assert "In the last 12 months to end Feb 2026, output was 3 publications" in section["body"]
+    assert "trailing 3-year pace of 8.3/year" in section["body"]
+    assert "prior 7 years at 8.0/year" in section["body"]
+    assert section["consideration_label"] == "What would confirm it"
     assert "back into the 11-19 range seen across 2021-2024" in str(section["consideration"] or "")
     assert "another year near 4 would strengthen plateauing" in str(section["consideration"] or "")
     assert "Through Feb 2026, the live year is still behind that pace." in str(section["consideration"] or "")
@@ -680,12 +1066,11 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_produ
         "create_response",
         lambda **kwargs: captured_kwargs.update(kwargs) or SimpleNamespace(
             output_text=(
-                '{"overall_summary":"The record expanded into a higher-output band, but the latest complete year no longer holds that stronger run.",'
+                '{"overall_summary":"Your higher publication output is no longer being sustained.",'
                 '"sections":['
-                '{"key":"publication_production_phase","headline":"Rise, then flattening",'
-                '"body":"The fitted slope remains upward at +1 publication per year from 2016 to 2025, but the record has moved out of the higher-output band that ran at 11-19 publications across 2021-2024. 2025 fell to 4 after joint peaks of 19 in 2021 and 2024, so this now reads as flattening rather than continued scaling.",'
-                '"consideration_label":"What changes it",'
-                '"consideration":"A next complete year back into the 2021-2024 band would move this toward scaling; another year near 4 would strengthen plateauing."}'
+                '{"key":"publication_production_phase","phase":"plateauing","headline":"Higher run no longer holds",'
+                '"body":"Across the full publication span, output peaked in 2021 and 2024 at 19 publications, then fell to 4 in 2025. In the last 12 months to end Feb 2026, output was 3 publications, below the trailing 3-year pace of 8.3/year and prior 7 years at 8.0/year.",'
+                '"blocks":[]}'
                 "]}",
             )
         ),
@@ -701,23 +1086,85 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_produ
     assert payload["provenance"]["generation_mode"] == "openai"
     section = payload["sections"][0]
     assert section["key"] == "publication_production_phase"
-    assert section["headline"] == "Rise, then flattening"
-    assert "+1 publication per year from 2016 to 2025" in section["body"]
-    assert "2025 fell to 4" in section["body"]
-    assert "11-19 publications across 2021-2024" in section["body"]
-    assert section["consideration_label"] == "What changes it"
-    assert "back into the 2021-2024 band" in str(section["consideration"] or "")
-    assert "another year near 4 would strengthen plateauing" in str(section["consideration"] or "")
-    prompt_text = str(captured_kwargs["input"])
-    assert "Use one shared publication-insight reasoning style" in prompt_text
-    assert "Section question: What stage is this publication record in, and why?" in prompt_text
-    assert "publication_library contains the user's publication library as a whole-record evidence layer" in prompt_text
-    assert '"publication_library"' in prompt_text
-    assert "Paper A" in prompt_text
-    assert "Only include the follow-on note when it adds a distinct reading aid" in prompt_text
+    assert section["headline"] == "Higher run no longer holds"
+    assert "Across the full publication span" in section["body"]
+    assert "2025" in section["body"]
+    assert "last 12 months to end Feb 2026" in section["body"]
+    assert "trailing 3-year pace of 8.3/year" in section["body"]
+    assert "prior 7 years at 8.0/year" in section["body"]
+    assert section["evidence"]["phase"] == "plateauing"
+    assert section["consideration_label"] is None
+    assert section["consideration"] is None
+    assert section["blocks"] == []
+    assert captured_kwargs["max_output_tokens"] == 1200
+    assert captured_kwargs["reasoning"] == {"effort": "medium"}
+    assert captured_kwargs["store"] is False
+    assert captured_kwargs["text"] == publication_insights_agent_service._publication_production_phase_text_config()
+    input_messages = captured_kwargs["input"]
+    assert isinstance(input_messages, list)
+    assert len(input_messages) == 2
+    assert input_messages[0]["role"] == "system"
+    assert "Decide one phase only." in input_messages[0]["content"]
+    assert "Use the full publication span first" in input_messages[0]["content"]
+    assert "Do not anchor the read on Jan-Dec buckets" in input_messages[0]["content"]
+    assert "analysis_brief and ui_context may appear in the evidence" in input_messages[0]["content"]
+    assert input_messages[1]["role"] == "user"
+    evidence_payload = json.loads(str(input_messages[1]["content"]))
+    assert evidence_payload["section_data"]["phase_label"] == "Plateauing"
+    assert evidence_payload["section_data"]["rolling_one_year_total"] == 3
+    assert evidence_payload["section_data"]["rolling_three_year_pace"] == 8.3
+    assert evidence_payload["section_data"]["rolling_prior_period_label"] == "Prior 7 years"
+    assert evidence_payload["analysis_brief"]["primary_focus"].startswith(
+        "Anchor the stage call on rolling publication pace"
+    )
+    assert evidence_payload["analysis_brief"]["rolling_pace_summary"].startswith(
+        "Last 12 months to end Feb 2026: 3 publications."
+    )
+    assert evidence_payload["confidence_flags"] == {
+        "phase_confidence_low": False,
+        "current_pace_signal": "behind",
+    }
+    assert "records" not in evidence_payload["publication_library"]
 
 
-def test_generate_publication_insights_agent_draft_builds_publication_volume_over_time_fallback(
+def test_generate_publication_insights_agent_draft_rebuilds_publication_production_phase_messages_with_ui_context(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    captured_kwargs: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: captured_kwargs.update(kwargs) or SimpleNamespace(
+            output_text=(
+                '{"sections":['
+                '{"key":"publication_production_phase","phase":"plateauing","headline":"Rise, then flattening","body":"The fitted slope remains upward at +1 publication per year from 2016 to 2025, and you published every year across the span. But recent years have moved out of the 11-19 publication band seen in 2021-2024, with 2025 falling to 4 after shared peaks of 19 in 2021 and 2024.","blocks":[]}'
+                "]}",
+            )
+        ),
+    )
+
+    publication_insights_agent_service.generate_publication_insights_agent_draft(
+        user_id="publication-output-test-user",
+        window_id="all",
+        section_key="publication_production_phase",
+        scope="section",
+        ui_context="Tooltip copy for production phase.",
+    )
+
+    input_messages = captured_kwargs["input"]
+    assert isinstance(input_messages, list)
+    evidence_payload = json.loads(str(input_messages[1]["content"]))
+    assert evidence_payload["ui_context"] == "Tooltip copy for production phase."
+
+
+def test_publication_production_phase_body_accepts_rolling_pace_led_language(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -728,25 +1175,417 @@ def test_generate_publication_insights_agent_draft_builds_publication_volume_ove
         lambda **kwargs: _fake_publication_output_pattern_metrics(),
     )
 
-    def _raise_error(**kwargs):  # noqa: ANN003
-        raise RuntimeError("OpenAI unavailable")
+    evidence = publication_insights_agent_service._build_publication_production_phase_evidence(
+        user_id="publication-output-test-user"
+    )
+
+    assert not publication_insights_agent_service._publication_production_phase_body_is_too_generic(
+        body=(
+            "Across the full publication span, output peaked in 2021 and 2024 at 19 publications, then fell to 4 in 2025. "
+            "In the last 12 months to end Feb 2026, output was 3 publications, below the trailing 3-year pace of 8.3/year "
+            "and prior 7 years at 8.0/year."
+        ),
+        fallback_body="",
+        evidence=evidence,
+    )
+
+
+def test_publication_production_phase_structured_output_schema_is_strict() -> None:
+    text_config = publication_insights_agent_service._publication_production_phase_text_config()
+
+    assert text_config["format"]["type"] == "json_schema"
+    assert text_config["format"]["strict"] is True
+    schema = text_config["format"]["schema"]
+    assert text_config["format"]["name"] == "publication_production_phase_insight"
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["overall_summary", "sections"]
+    assert schema["properties"]["overall_summary"]["anyOf"] == [
+        {"type": "string"},
+        {"type": "null"},
+    ]
+    assert schema["properties"]["sections"]["minItems"] == 1
+    assert schema["properties"]["sections"]["maxItems"] == 1
+    section_schema = schema["properties"]["sections"]["items"]
+    assert section_schema["additionalProperties"] is False
+    assert section_schema["required"] == ["key", "phase", "headline", "body", "blocks"]
+    assert section_schema["properties"]["key"] == {
+        "type": "string",
+        "const": "publication_production_phase",
+    }
+    assert section_schema["properties"]["phase"]["enum"] == [
+        "early build",
+        "accelerating",
+        "established expansion",
+        "established but concentrated",
+        "intermittent",
+        "plateauing",
+        "reactivated",
+    ]
+    assert section_schema["properties"]["blocks"]["maxItems"] == 1
+    block_schema = section_schema["properties"]["blocks"]["items"]
+    assert block_schema["additionalProperties"] is False
+    assert block_schema["properties"]["label"]["anyOf"] == [
+        {"type": "string"},
+        {"type": "null"},
+    ]
+    assert block_schema["required"] == ["kind", "label", "text"]
+
+
+def test_generate_publication_insights_agent_draft_accepts_null_overall_summary_and_null_paragraph_label_for_publication_production_phase(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
 
     monkeypatch.setattr(
         publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
         "create_response",
-        _raise_error,
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"overall_summary":null,"sections":['
+                '{"key":"publication_production_phase","phase":"plateauing","headline":"Rise, then flattening","body":"The fitted slope remains upward at +1 publication per year from 2016 to 2025, and you published every year across the span. But recent years have moved out of the 11-19 publication band seen in 2021-2024, with 2025 falling to 4 after shared peaks of 19 in 2021 and 2024.","blocks":[{"kind":"paragraph","label":null,"text":"The stronger run is recent rather than evenly spread across the whole record."}]}]}'
+            )
+        ),
     )
 
     payload = publication_insights_agent_service.generate_publication_insights_agent_draft(
         user_id="publication-output-test-user",
         window_id="all",
-        section_key="publication_volume_over_time",
+        section_key="publication_production_phase",
         scope="section",
     )
 
-    assert payload["status"] == "draft"
-    assert payload["provenance"]["generation_mode"] == "deterministic_fallback"
-    evidence = payload["provenance"]["evidence"]
+    assert payload["overall_summary"] == ""
+    section = payload["sections"][0]
+    assert section["blocks"] == [
+        {
+            "kind": "paragraph",
+            "label": None,
+            "text": "The stronger run is recent rather than evenly spread across the whole record.",
+        }
+    ]
+    assert section["consideration_label"] is None
+    assert section["consideration"] is None
+
+
+def test_generate_publication_insights_agent_draft_rejects_extra_fields_for_publication_production_phase(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"sections":['
+                '{"key":"publication_production_phase","phase":"plateauing","headline":"Rise, then flattening","body":"The record moved from 2016 to 2025 with 2025 falling to 4 after shared peaks in 2021 and 2024.","blocks":[],"extra_note":"unexpected"}'
+                "]}",
+            )
+        ),
+    )
+
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="invalid fields for publication_production_phase",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id="publication-output-test-user",
+            window_id="all",
+            section_key="publication_production_phase",
+            scope="section",
+        )
+
+
+def test_generate_publication_insights_agent_draft_rejects_too_many_blocks_for_publication_production_phase(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"sections":['
+                '{"key":"publication_production_phase","phase":"plateauing","headline":"Rise, then flattening","body":"The fitted slope remains upward at +1 publication per year from 2016 to 2025, and you published every year across the span. But recent years have moved out of the 11-19 publication band seen in 2021-2024, with 2025 falling to 4 after shared peaks of 19 in 2021 and 2024.","blocks":[{"kind":"paragraph","text":"A stronger band held across several years."},{"kind":"callout","label":"Confidence","text":"The latest complete year now sits below that band."}]}'
+                "]}",
+            )
+        ),
+    )
+
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="too many blocks for publication_production_phase",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id="publication-output-test-user",
+            window_id="all",
+            section_key="publication_production_phase",
+            scope="section",
+        )
+
+
+def test_generate_publication_insights_agent_draft_rejects_generic_publication_production_phase_headline(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"sections":['
+                '{"key":"publication_production_phase","phase":"plateauing","headline":"Plateauing","body":"The record rises from 2016 to 2025, but 2025 falls to 4 after shared peaks in 2021 and 2024.","blocks":[]}'
+                "]}",
+            )
+        ),
+    )
+
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="generic headline for publication_production_phase",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id="publication-output-test-user",
+            window_id="all",
+            section_key="publication_production_phase",
+            scope="section",
+        )
+
+
+def test_generate_publication_insights_agent_draft_uses_openai_publication_year_over_year_trajectory_read(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    captured_kwargs: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: captured_kwargs.update(kwargs) or SimpleNamespace(
+            output_text=(
+                '{"overall_summary":"A stronger later run is no longer being sustained.","sections":['
+                '{"key":"publication_year_over_year_trajectory","trajectory":"contracting","headline":"Stronger run, then a pullback","body":"Across complete years from 2016-2025, output peaked in 2021 and 2024 at 19 publications before falling to 4 in 2025. In the last 12 months to end Feb 2026, output was 3 publications, below the trailing 3-year pace of 8.3/year and prior 7 years at 8.0/year.","blocks":[{"kind":"callout","label":"Confidence note","text":"The full shape rests on complete years through 2025, while the live 2026 window is still partial."}]}]}'
+            )
+        ),
+    )
+
+    payload = publication_insights_agent_service.generate_publication_insights_agent_draft(
+        user_id="publication-output-test-user",
+        window_id="all",
+        section_key="publication_year_over_year_trajectory",
+        scope="section",
+    )
+
+    assert payload["provenance"]["generation_mode"] == "openai"
+    section = payload["sections"][0]
+    assert section["key"] == "publication_year_over_year_trajectory"
+    assert section["headline"] == "Stronger run, then a pullback"
+    assert "Across complete years from 2016-2025" in section["body"]
+    assert "2021 and 2024" in section["body"]
+    assert "last 12 months to end Feb 2026" in section["body"]
+    assert section["evidence"]["trajectory"] == "contracting"
+    assert section["consideration_label"] == "Confidence note"
+    assert "complete years through 2025" in str(section["consideration"] or "")
+    assert section["blocks"] == [
+        {
+            "kind": "callout",
+            "label": "Confidence note",
+            "text": "The full shape rests on complete years through 2025, while the live 2026 window is still partial.",
+        }
+    ]
+    assert captured_kwargs["max_output_tokens"] == 1200
+    assert captured_kwargs["reasoning"] == {"effort": "medium"}
+    assert captured_kwargs["store"] is False
+    assert (
+        captured_kwargs["text"]
+        == publication_insights_agent_service._publication_year_over_year_trajectory_text_config()
+    )
+    input_messages = captured_kwargs["input"]
+    assert isinstance(input_messages, list)
+    assert len(input_messages) == 2
+    assert input_messages[0]["role"] == "system"
+    assert "Decide one trajectory only." in input_messages[0]["content"]
+    assert "Use complete years first." in input_messages[0]["content"]
+    assert "make that comparison explicit in the body" in input_messages[0]["content"]
+    assert "no more than 3 numbers" in input_messages[0]["content"]
+    assert input_messages[1]["role"] == "user"
+    evidence_payload = json.loads(str(input_messages[1]["content"]))
+    assert evidence_payload["section_data"]["trajectory_phase_label"] == "expanding"
+    assert evidence_payload["analysis_brief"]["primary_focus"].startswith(
+        "Use complete publication years to anchor the year-over-year read. Then make the recent rolling comparison explicit in the body"
+    )
+    assert evidence_payload["analysis_brief"]["body_requirement"].startswith(
+        "Do not leave the rolling read implied."
+    )
+    assert evidence_payload["confidence_flags"] == {
+        "includes_partial_year": True,
+        "phase_confidence_low": False,
+    }
+    assert "records" not in evidence_payload["publication_library"]
+
+
+def test_generate_publication_insights_agent_draft_rebuilds_publication_year_over_year_trajectory_messages_with_ui_context(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    captured_kwargs: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: captured_kwargs.update(kwargs) or SimpleNamespace(
+            output_text=(
+                '{"sections":['
+                '{"key":"publication_year_over_year_trajectory","trajectory":"contracting","headline":"Stronger run, then a pullback","body":"Across complete years from 2016-2025, output peaked in 2021 and 2024 at 19 publications before falling to 4 in 2025. In the last 12 months to end Feb 2026, output was 3 publications, below the trailing 3-year pace of 8.3/year and prior 7 years at 8.0/year.","blocks":[]}]}'
+            )
+        ),
+    )
+
+    publication_insights_agent_service.generate_publication_insights_agent_draft(
+        user_id="publication-output-test-user",
+        window_id="all",
+        section_key="publication_year_over_year_trajectory",
+        scope="section",
+        ui_context="Tooltip copy for trajectory.",
+    )
+
+    input_messages = captured_kwargs["input"]
+    assert isinstance(input_messages, list)
+    evidence_payload = json.loads(str(input_messages[1]["content"]))
+    assert evidence_payload["ui_context"] == "Tooltip copy for trajectory."
+
+
+def test_publication_year_over_year_trajectory_structured_output_schema_is_strict() -> None:
+    text_config = (
+        publication_insights_agent_service._publication_year_over_year_trajectory_text_config()
+    )
+
+    assert text_config["format"]["type"] == "json_schema"
+    assert text_config["format"]["strict"] is True
+    assert (
+        text_config["format"]["name"]
+        == "publication_year_over_year_trajectory_insight"
+    )
+    schema = text_config["format"]["schema"]
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["overall_summary", "sections"]
+    assert schema["properties"]["overall_summary"]["anyOf"] == [
+        {"type": "string"},
+        {"type": "null"},
+    ]
+    assert schema["properties"]["sections"]["minItems"] == 1
+    assert schema["properties"]["sections"]["maxItems"] == 1
+    section_schema = schema["properties"]["sections"]["items"]
+    assert section_schema["additionalProperties"] is False
+    assert section_schema["required"] == [
+        "key",
+        "trajectory",
+        "headline",
+        "body",
+        "blocks",
+    ]
+    assert section_schema["properties"]["key"] == {
+        "type": "string",
+        "const": "publication_year_over_year_trajectory",
+    }
+    assert section_schema["properties"]["trajectory"]["enum"] == [
+        "expanding",
+        "stable",
+        "contracting",
+    ]
+    assert section_schema["properties"]["blocks"]["maxItems"] == 1
+    block_schema = section_schema["properties"]["blocks"]["items"]
+    assert block_schema["additionalProperties"] is False
+    assert block_schema["properties"]["label"]["anyOf"] == [
+        {"type": "string"},
+        {"type": "null"},
+    ]
+    assert block_schema["required"] == ["kind", "label", "text"]
+
+
+def test_generate_publication_insights_agent_draft_rejects_generic_publication_year_over_year_trajectory_body(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"sections":['
+                '{"key":"publication_year_over_year_trajectory","trajectory":"contracting","headline":"Stronger run, then a pullback","body":"The trajectory changed over time and the run shifted in the latest years.","blocks":[]}]}'
+            )
+        ),
+    )
+
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="generic body for publication_year_over_year_trajectory",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id="publication-output-test-user",
+            window_id="all",
+            section_key="publication_year_over_year_trajectory",
+            scope="section",
+        )
+
+
+def test_build_publication_volume_over_time_fallback_payload(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_output_pattern_metrics(),
+    )
+
+    evidence = publication_insights_agent_service._build_publication_volume_over_time_evidence(
+        user_id="publication-output-test-user"
+    )
+    payload = publication_insights_agent_service._build_publication_volume_over_time_fallback_payload(
+        evidence
+    )
+
     assert evidence["overall_trajectory"] == "build_then_flatter"
     assert evidence["recent_position"] == "recently_lighter_than_long_run"
     assert evidence["recent_detail_pattern"] == "small_dated_set"
@@ -789,12 +1628,12 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_volum
         "create_response",
         lambda **kwargs: captured_kwargs.update(kwargs) or SimpleNamespace(
             output_text=(
-                '{"overall_summary":"The record builds into stronger later years, but the latest windows now sit below that earlier high-water mark and are being read from a small recent set.",'
+                '{"overall_summary":"The record builds into stronger later years, but the latest windows now sit below that earlier high-water mark and rest on a small recent set.",'
                 '"sections":['
                 '{"key":"publication_volume_over_time","headline":"Build then pause",'
-                '"body":"Across 2016-2025, publication volume builds from a very quiet start into later peak years. The latest 5-year, 3-year, and 12-month views all sit below that stronger middle-to-late stretch, so recent volume currently looks more like a pause below your earlier high-water mark than a settled decline, and the recent rows are still being carried by only 4 dated publications.",'
-                '"consideration_label":"Recent detail",'
-                '"consideration":"Because only 4 dated publications sit in the latest 12 months, this recent read can still shift quickly as new papers are added."}'
+                '"body":"Across 2016-2025, publication volume moved into a stronger 2021-2025 run, with rolling annual output typically between 9-15 publications. Both recent rolling views now sit below that band, and the latest 12 months contain 4 publications, so the record currently looks paused rather than reset into a durable lower baseline.",'
+                '"consideration_label":"Confidence",'
+                '"consideration":"Because only 4 dated publications sit in the latest 12 months, this part of the record can still shift quickly as new papers are added."}'
                 "]}",
             )
         ),
@@ -819,20 +1658,20 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_volum
     assert "rolling annual output typically between 9-15 publications" in section["body"]
     assert "Both recent rolling views now sit below that band" in section["body"]
     assert "latest 12 months contain 4 publications" in section["body"]
-    assert section["consideration_label"] == "Why it matters"
-    assert "near-term assessments of the portfolio" in str(
-        section["consideration"] or ""
-    )
+    assert section["consideration_label"] == "Confidence"
+    assert "part of the record can still shift quickly" in str(section["consideration"] or "")
+    assert captured_kwargs["text"] == {"format": {"type": "json_object"}}
     prompt_text = str(captured_kwargs["input"])
     assert "Use one shared publication-insight reasoning style" in prompt_text
     assert "Section question: How has publication volume changed, and why does it matter?" in prompt_text
-    assert "publication_library contains the user's publication library as a whole-record evidence layer" in prompt_text
+    assert "publication_library contains compact whole-record library context rather than a record-by-record dump" in prompt_text
     assert '"publication_library"' in prompt_text
-    assert "Paper A" in prompt_text
+    assert '"records"' not in prompt_text
+    assert "Paper A" not in prompt_text
     assert "analysis_brief" in prompt_text
 
 
-def test_generate_publication_insights_agent_draft_builds_publication_article_type_over_time_fallback(
+def test_build_publication_article_type_over_time_fallback_payload(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -843,25 +1682,13 @@ def test_generate_publication_insights_agent_draft_builds_publication_article_ty
         lambda **kwargs: _fake_publication_article_type_over_time_metrics(),
     )
 
-    def _raise_error(**kwargs):  # noqa: ANN003
-        raise RuntimeError("OpenAI unavailable")
-
-    monkeypatch.setattr(
-        publication_insights_agent_service,
-        "create_response",
-        _raise_error,
+    evidence = publication_insights_agent_service._build_publication_article_type_over_time_evidence(
+        user_id="publication-article-type-test-user"
+    )
+    payload = publication_insights_agent_service._build_publication_article_type_over_time_fallback_payload(
+        evidence
     )
 
-    payload = publication_insights_agent_service.generate_publication_insights_agent_draft(
-        user_id="publication-article-type-test-user",
-        window_id="all",
-        section_key="publication_article_type_over_time",
-        scope="section",
-    )
-
-    assert payload["status"] == "draft"
-    assert payload["provenance"]["generation_mode"] == "deterministic_fallback"
-    evidence = payload["provenance"]["evidence"]
     assert evidence["full_record_mix_state"] == "strong_anchor"
     assert evidence["recent_window_change_state"] == "late_leader_shift"
     assert evidence["recent_window_confidence"] == "too_thin"
@@ -870,11 +1697,11 @@ def test_generate_publication_insights_agent_draft_builds_publication_article_ty
     assert section["key"] == "publication_article_type_over_time"
     assert section["headline"] == "Review article is gaining ground"
     assert "Across 2016-2026" in section["body"]
-    assert "Original research makes up 67% of the record" in section["body"]
+    assert "Original research makes up 67% of publications" in section["body"]
     assert "The clearer change sits in 2024-2026" in section["body"]
     assert "2022-2026 still looks closer" in section["body"]
     assert section["consideration_label"] == "Confidence"
-    assert "should confirm the 5-year and 3-year read" in str(section["consideration"] or "")
+    assert "should confirm the 5-year and 3-year pattern" in str(section["consideration"] or "")
 
 
 def test_generate_publication_insights_agent_draft_uses_openai_publication_article_type_over_time_read(
@@ -895,10 +1722,9 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_artic
             output_text=(
                 '{"overall_summary":"Original research remains the largest share, but review articles have taken much more of the shorter recent windows.",'
                 '"sections":['
-                '{"key":"publication_article_type_over_time","headline":"Review article is gaining ground",'
-                '"body":"Across 2016-2026, Original research makes up 67% of the record (10 of 15), with Review article next at 27%. The clearer change sits in 2024-2026: Review article now carries more of the mix there, while 2022-2026 still looks closer to the longer-run ordering led by Original research.",'
-                '"consideration_label":"Confidence",'
-                '"consideration":"The newest rolling year only contains 2 publications and includes 2026 (through 8 Mar 2026), so it should confirm the 5-year and 3-year read, not override it."}'
+                '{"key":"publication_article_type_over_time","mix_pattern":"late_leader_shift","headline":"Review article is gaining ground",'
+                '"body":"Across 2016-2026, original research makes up 67% of the record (10 of 15), with review article next at 27%. The shift shows up in 2024-2026, where review article carries more of the mix, while 2022-2026 still stays closer to the longer-run ordering led by original research. The shorter windows do not fully reverse the hierarchy, but they do make review article a more visible second force than it is across the full record.",'
+                '"blocks":[{"kind":"callout","label":"Confidence","text":"The newest rolling year only contains 2 publications and includes 2026 (through 8 Mar 2026), so it should confirm the 5-year and 3-year pattern, not override it."}]}'
                 "]}",
             )
         ),
@@ -909,6 +1735,7 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_artic
         window_id="all",
         section_key="publication_article_type_over_time",
         scope="section",
+        ui_context="Tooltip copy for article types.",
     )
 
     assert payload["provenance"]["generation_mode"] == "openai"
@@ -918,22 +1745,166 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_artic
     assert section["key"] == "publication_article_type_over_time"
     assert section["headline"] == "Review article is gaining ground"
     assert "Across 2016-2026" in section["body"]
-    assert "Original research makes up 67% of the record" in section["body"]
-    assert "Review article now carries more of the mix there" in section["body"]
+    assert "original research makes up 67% of the record" in section["body"]
+    assert "review article carries more of the mix" in section["body"]
+    assert section["evidence"]["mix_pattern"] == "late_leader_shift"
     assert section["consideration_label"] == "Confidence"
-    assert "should confirm the 5-year and 3-year read" in str(section["consideration"] or "")
-    assert captured_kwargs["timeout"] == 20.0
+    assert "should confirm the 5-year and 3-year pattern" in str(section["consideration"] or "")
+    assert section["blocks"] == [
+        {
+            "kind": "callout",
+            "label": "Confidence",
+            "text": "The newest rolling year only contains 2 publications and includes 2026 (through 8 Mar 2026), so it should confirm the 5-year and 3-year pattern, not override it.",
+        }
+    ]
+    assert captured_kwargs["timeout"] == 45.0
     assert captured_kwargs["max_retries"] == 0
-    prompt_text = str(captured_kwargs["input"])
-    assert "Use one shared publication-insight reasoning style" in prompt_text
-    assert "Section question: How has the mix of article types changed?" in prompt_text
-    assert "publication_library contains the user's publication library as a whole-record evidence layer" in prompt_text
-    assert '"publication_library"' in prompt_text
-    assert "Paper 2026 A" in prompt_text
-    assert "Avoid stock phrases such as 'anchors the full record'" in prompt_text
+    assert captured_kwargs["max_output_tokens"] == 1400
+    assert captured_kwargs["store"] is False
+    assert captured_kwargs["text"] == publication_insights_agent_service._publication_article_type_over_time_text_config()
+    assert captured_kwargs["reasoning"] == {"effort": "medium"}
+    input_messages = captured_kwargs["input"]
+    assert isinstance(input_messages, list)
+    assert len(input_messages) == 2
+    assert input_messages[0]["role"] == "system"
+    assert "Decide one mix pattern only." in input_messages[0]["content"]
+    evidence_payload = json.loads(str(input_messages[1]["content"]))
+    assert evidence_payload["ui_context"] == "Tooltip copy for article types."
+    assert evidence_payload["section_data"]["recent_window_change_state"] == "late_leader_shift"
+    assert "records" not in evidence_payload["publication_library"]
 
 
-def test_generate_publication_insights_agent_draft_builds_publication_type_over_time_fallback(
+def test_publication_article_type_over_time_structured_output_schema_is_strict() -> None:
+    text_config = publication_insights_agent_service._publication_article_type_over_time_text_config()
+
+    assert text_config["format"]["type"] == "json_schema"
+    assert text_config["format"]["strict"] is True
+    assert text_config["format"]["name"] == "publication_article_type_over_time_insight"
+    schema = text_config["format"]["schema"]
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["overall_summary", "sections"]
+    assert schema["properties"]["sections"]["maxItems"] == 1
+    section_schema = schema["properties"]["sections"]["items"]
+    assert section_schema["additionalProperties"] is False
+    assert section_schema["required"] == ["key", "mix_pattern", "headline", "body", "blocks"]
+    assert section_schema["properties"]["key"] == {
+        "type": "string",
+        "const": "publication_article_type_over_time",
+    }
+    assert section_schema["properties"]["mix_pattern"]["enum"] == [
+        "short_record",
+        "late_leader_shift",
+        "leader_shift",
+        "same_leader_more_concentrated",
+        "same_leader_narrower",
+        "broader_recent",
+        "stable_anchor",
+    ]
+    assert section_schema["properties"]["blocks"]["maxItems"] == 1
+    block_schema = section_schema["properties"]["blocks"]["items"]
+    assert block_schema["additionalProperties"] is False
+    assert block_schema["required"] == ["kind", "label", "text"]
+
+
+def test_generate_publication_insights_agent_draft_rejects_extra_fields_for_publication_article_type_over_time(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_article_type_over_time_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"overall_summary":"summary","sections":['
+                '{"key":"publication_article_type_over_time","mix_pattern":"late_leader_shift","headline":"Review article is gaining ground","body":"Across 2016-2026, original research still leads, but review article carries more of the newest mix.","blocks":[],"extra":"nope"}]}'
+            )
+        ),
+    )
+
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="invalid fields for publication_article_type_over_time",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id="publication-article-type-test-user",
+            window_id="all",
+            section_key="publication_article_type_over_time",
+            scope="section",
+        )
+
+
+def test_publication_type_over_time_body_accepts_verbal_share_signal() -> None:
+    evidence = {
+        "all_window": {"top_labels": ["Journal article"]},
+        "latest_window": {"range_label": "2026"},
+        "five_year_window": {"range_label": "2022-2026"},
+        "three_year_window": {"range_label": "2024-2026"},
+        "span_years_label": "2018-2026",
+        "recent_window_change_state": "same_leader_more_concentrated",
+    }
+
+    assert not publication_insights_agent_service._publication_type_over_time_body_is_too_generic(
+        body=(
+            "Journal articles have held a near-constant three-quarter share across the full record "
+            "and in both the 5-year and 3-year windows, so there is no meaningful change in the leading format. "
+            "What has changed is the remainder: earlier output included a broader tail of Other, datasets, letters, "
+            "and reports, whereas the recent mix is narrower and the second position is now conference abstracts rather than Other."
+        ),
+        fallback_body="",
+        evidence=evidence,
+    )
+
+
+def test_publication_article_type_over_time_body_accepts_written_recent_window_phrases() -> None:
+    evidence = {
+        "all_window": {"top_labels": ["Original research"]},
+        "latest_window": {"range_label": "2026"},
+        "five_year_window": {"range_label": "2022-2026"},
+        "three_year_window": {"range_label": "2024-2026"},
+        "span_years_label": "2018-2026",
+        "recent_window_change_state": "same_leader_more_concentrated",
+    }
+
+    assert not publication_insights_agent_service._publication_article_type_over_time_body_is_too_generic(
+        body=(
+            "The older record was more mixed, but the newer portfolio is substantially less so: "
+            "original research rises from 68% across the full set to 84% in the last five years and 88% in 2024-2026. "
+            "Reviews remain present, but they no longer seriously compete for share, and the minor forms seen earlier-case reports and letters-drop out of the recent mix entirely."
+        ),
+        fallback_body="",
+        evidence=evidence,
+    )
+
+
+def test_publication_article_type_over_time_body_accepts_flip_language() -> None:
+    evidence = {
+        "all_window": {"top_labels": ["Original research"]},
+        "latest_window": {"range_label": "2026"},
+        "five_year_window": {"range_label": "2022-2026"},
+        "three_year_window": {"range_label": "2024-2026"},
+        "span_years_label": "2016-2026",
+        "recent_window_change_state": "late_leader_shift",
+    }
+
+    assert not publication_insights_agent_service._publication_article_type_over_time_body_is_too_generic(
+        body=(
+            "Across 2016-2026, original research set the portfolio's basic shape, making up two-thirds of publications, "
+            "with review articles well behind. That longer-run ordering still holds in 2022-2026, but only just: "
+            "5 original research papers versus 4 reviews. By 2024-2026, the mix has flipped, with review articles "
+            "taking 4 of 6 publications and leaving a narrower two-type profile."
+        ),
+        fallback_body="",
+        evidence=evidence,
+    )
+
+
+def test_build_publication_type_over_time_fallback_payload(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -944,25 +1915,13 @@ def test_generate_publication_insights_agent_draft_builds_publication_type_over_
         lambda **kwargs: _fake_publication_type_over_time_metrics(),
     )
 
-    def _raise_error(**kwargs):  # noqa: ANN003
-        raise RuntimeError("OpenAI unavailable")
-
-    monkeypatch.setattr(
-        publication_insights_agent_service,
-        "create_response",
-        _raise_error,
+    evidence = publication_insights_agent_service._build_publication_type_over_time_evidence(
+        user_id="publication-type-test-user"
+    )
+    payload = publication_insights_agent_service._build_publication_type_over_time_fallback_payload(
+        evidence
     )
 
-    payload = publication_insights_agent_service.generate_publication_insights_agent_draft(
-        user_id="publication-type-test-user",
-        window_id="all",
-        section_key="publication_type_over_time",
-        scope="section",
-    )
-
-    assert payload["status"] == "draft"
-    assert payload["provenance"]["generation_mode"] == "deterministic_fallback"
-    evidence = payload["provenance"]["evidence"]
     assert evidence["full_record_mix_state"] == "strong_anchor"
     assert evidence["recent_window_change_state"] == "late_leader_shift"
     assert evidence["recent_window_confidence"] == "too_thin"
@@ -971,11 +1930,11 @@ def test_generate_publication_insights_agent_draft_builds_publication_type_over_
     assert section["key"] == "publication_type_over_time"
     assert section["headline"] == "Review article is gaining ground"
     assert "Across 2016-2026" in section["body"]
-    assert "Journal article makes up 67% of the record" in section["body"]
+    assert "Journal article makes up 67% of publications" in section["body"]
     assert "The clearer change sits in 2024-2026" in section["body"]
     assert "2022-2026 still looks closer" in section["body"]
     assert section["consideration_label"] == "Confidence"
-    assert "should confirm the 5-year and 3-year read" in str(section["consideration"] or "")
+    assert "should confirm the 5-year and 3-year pattern" in str(section["consideration"] or "")
 
 
 def test_generate_publication_insights_agent_draft_uses_openai_publication_type_over_time_read(
@@ -996,10 +1955,9 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_type_
             output_text=(
                 '{"overall_summary":"Journal articles remain the largest share, but review articles have taken much more of the shorter recent windows.",'
                 '"sections":['
-                '{"key":"publication_type_over_time","headline":"Review article is gaining ground",'
-                '"body":"Across 2016-2026, Journal article makes up 67% of the record (10 of 15), with Review article next at 27%. The clearer change sits in 2024-2026: Review article now carries more of the mix there, while 2022-2026 still looks closer to the longer-run ordering led by Journal article.",'
-                '"consideration_label":"Confidence",'
-                '"consideration":"The newest rolling year only contains 2 publications and includes 2026 (through 8 Mar 2026), so it should confirm the 5-year and 3-year read, not override it."}'
+                '{"key":"publication_type_over_time","mix_pattern":"late_leader_shift","headline":"Review article is gaining ground",'
+                '"body":"Across 2016-2026, journal article makes up 67% of the record (10 of 15), with review article next at 27%. The shift shows up in 2024-2026, where review article carries more of the mix, while 2022-2026 still stays closer to the longer-run ordering led by journal article. The newer windows make that second-position change easier to see, even though the broader record still keeps journal article firmly in first place.",'
+                '"blocks":[{"kind":"callout","label":"Confidence","text":"The newest rolling year only contains 2 publications and includes 2026 (through 8 Mar 2026), so it should confirm the 5-year and 3-year pattern, not override it."}]}'
                 "]}",
             )
         ),
@@ -1010,6 +1968,7 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_type_
         window_id="all",
         section_key="publication_type_over_time",
         scope="section",
+        ui_context="Tooltip copy for publication types.",
     )
 
     assert payload["provenance"]["generation_mode"] == "openai"
@@ -1019,19 +1978,98 @@ def test_generate_publication_insights_agent_draft_uses_openai_publication_type_
     assert section["key"] == "publication_type_over_time"
     assert section["headline"] == "Review article is gaining ground"
     assert "Across 2016-2026" in section["body"]
-    assert "Journal article makes up 67% of the record" in section["body"]
-    assert "Review article now carries more of the mix there" in section["body"]
+    assert "journal article makes up 67% of the record" in section["body"]
+    assert "review article carries more of the mix" in section["body"]
+    assert section["evidence"]["mix_pattern"] == "late_leader_shift"
     assert section["consideration_label"] == "Confidence"
-    assert "should confirm the 5-year and 3-year read" in str(section["consideration"] or "")
-    assert captured_kwargs["timeout"] == 20.0
+    assert "should confirm the 5-year and 3-year pattern" in str(section["consideration"] or "")
+    assert section["blocks"] == [
+        {
+            "kind": "callout",
+            "label": "Confidence",
+            "text": "The newest rolling year only contains 2 publications and includes 2026 (through 8 Mar 2026), so it should confirm the 5-year and 3-year pattern, not override it.",
+        }
+    ]
+    assert captured_kwargs["timeout"] == 45.0
     assert captured_kwargs["max_retries"] == 0
-    prompt_text = str(captured_kwargs["input"])
-    assert "Use one shared publication-insight reasoning style" in prompt_text
-    assert "Section question: How has the mix of publication types changed?" in prompt_text
-    assert "publication_library contains the user's publication library as a whole-record evidence layer" in prompt_text
-    assert '"publication_library"' in prompt_text
-    assert "Paper 2026 A" in prompt_text
-    assert "Avoid stock phrases such as 'anchors the full record'" in prompt_text
+    assert captured_kwargs["max_output_tokens"] == 1400
+    assert captured_kwargs["store"] is False
+    assert captured_kwargs["text"] == publication_insights_agent_service._publication_type_over_time_text_config()
+    assert captured_kwargs["reasoning"] == {"effort": "medium"}
+    input_messages = captured_kwargs["input"]
+    assert isinstance(input_messages, list)
+    assert len(input_messages) == 2
+    assert input_messages[0]["role"] == "system"
+    assert "Decide one mix pattern only." in input_messages[0]["content"]
+    evidence_payload = json.loads(str(input_messages[1]["content"]))
+    assert evidence_payload["ui_context"] == "Tooltip copy for publication types."
+    assert evidence_payload["section_data"]["recent_window_change_state"] == "late_leader_shift"
+    assert "records" not in evidence_payload["publication_library"]
+
+
+def test_publication_type_over_time_structured_output_schema_is_strict() -> None:
+    text_config = publication_insights_agent_service._publication_type_over_time_text_config()
+
+    assert text_config["format"]["type"] == "json_schema"
+    assert text_config["format"]["strict"] is True
+    assert text_config["format"]["name"] == "publication_type_over_time_insight"
+    schema = text_config["format"]["schema"]
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["overall_summary", "sections"]
+    assert schema["properties"]["sections"]["maxItems"] == 1
+    section_schema = schema["properties"]["sections"]["items"]
+    assert section_schema["additionalProperties"] is False
+    assert section_schema["required"] == ["key", "mix_pattern", "headline", "body", "blocks"]
+    assert section_schema["properties"]["key"] == {
+        "type": "string",
+        "const": "publication_type_over_time",
+    }
+    assert section_schema["properties"]["mix_pattern"]["enum"] == [
+        "short_record",
+        "late_leader_shift",
+        "leader_shift",
+        "same_leader_more_concentrated",
+        "same_leader_narrower",
+        "broader_recent",
+        "stable_anchor",
+    ]
+    assert section_schema["properties"]["blocks"]["maxItems"] == 1
+    block_schema = section_schema["properties"]["blocks"]["items"]
+    assert block_schema["additionalProperties"] is False
+    assert block_schema["required"] == ["kind", "label", "text"]
+
+
+def test_generate_publication_insights_agent_draft_rejects_extra_fields_for_publication_type_over_time(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "get_publication_top_metrics",
+        lambda **kwargs: _fake_publication_type_over_time_metrics(),
+    )
+    monkeypatch.setattr(
+        publication_insights_agent_service,
+        "create_response",
+        lambda **kwargs: SimpleNamespace(
+            output_text=(
+                '{"overall_summary":"summary","sections":['
+                '{"key":"publication_type_over_time","mix_pattern":"late_leader_shift","headline":"Review article is gaining ground","body":"Across 2016-2026, journal article still leads, but review article carries more of the newest mix.","blocks":[],"extra":"nope"}]}'
+            )
+        ),
+    )
+
+    with pytest.raises(
+        publication_insights_agent_service.PublicationInsightsAgentValidationError,
+        match="invalid fields for publication_type_over_time",
+    ):
+        publication_insights_agent_service.generate_publication_insights_agent_draft(
+            user_id="publication-type-test-user",
+            window_id="all",
+            section_key="publication_type_over_time",
+            scope="section",
+        )
 
 
 def test_build_prompt_uses_shared_citation_insight_guidance() -> None:
@@ -1051,7 +2089,101 @@ def test_build_prompt_uses_shared_citation_insight_guidance() -> None:
     assert "where citation attention concentrates" in prompt
     assert "whether activation is renewing or narrowing" in prompt
     assert "old tail, a recent lag, or a broader problem" in prompt
-    assert "Only include the follow-on note when it adds a distinct reading aid" in prompt
+    assert "Supporting blocks are optional. Most sections need none or just one." in prompt
+    assert "The response shape maps to UI slots, not a checklist" in prompt
+    assert "Each body should usually be 1 to 3 sentences and roughly 30 to 70 words" in prompt
+    assert "If a field runs long, rewrite it shorter instead of expecting truncation or cleanup." not in prompt
+
+
+def test_build_publication_section_evidence_payload_compacts_library_and_deduplicates_ui_context() -> None:
+    payload = publication_insights_agent_service._build_publication_section_evidence_payload(
+        {
+            "portfolio_context": {"discipline": "Medicine"},
+            "publication_library": {
+                "total_records": 2,
+                "first_publication_year": 2020,
+                "last_publication_year": 2024,
+                "years_with_output": [{"year": 2020, "count": 1}, {"year": 2024, "count": 1}],
+                "article_type_counts": [{"label": "Original research", "count": 2}],
+                "publication_type_counts": [{"label": "Journal article", "count": 2}],
+                "records": [
+                    {"title": "Paper A", "year": 2024},
+                    {"title": "Paper B", "year": 2020},
+                ],
+                "as_of_date": "2026-03-09",
+            },
+            "phase_label": "Plateauing",
+            "ui_context": "Hover copy from the question-mark tooltip.",
+        },
+        ui_context="Hover copy from the question-mark tooltip.",
+    )
+
+    assert payload["publication_library"] == {
+        "total_records": 2,
+        "first_publication_year": 2020,
+        "last_publication_year": 2024,
+        "years_with_output": [{"year": 2020, "count": 1}, {"year": 2024, "count": 1}],
+        "article_type_counts": [{"label": "Original research", "count": 2}],
+        "publication_type_counts": [{"label": "Journal article", "count": 2}],
+        "as_of_date": "2026-03-09",
+    }
+    assert "records" not in payload["publication_library"]
+    assert payload["ui_context"] == "Hover copy from the question-mark tooltip."
+    assert payload["section_data"] == {"phase_label": "Plateauing"}
+
+
+def test_require_generated_text_keeps_longer_body_without_trimming() -> None:
+    overlong_body = (
+        "This is a deliberately long sentence that keeps going past the slot because it repeats the same structural "
+        "point about publication concentration and continuity until the validator has to decide whether to clip it or "
+        "raise a real contract error for the generated body."
+    )
+
+    clean = publication_insights_agent_service._require_generated_text(
+        text=overlong_body,
+        section_key="publication_output_pattern",
+        field_name="body",
+        require_sentence_end=True,
+    )
+
+    assert clean == overlong_body
+
+
+def test_normalize_generated_note_keeps_longer_label_without_slicing() -> None:
+    label, consideration = publication_insights_agent_service._normalize_generated_note(
+        label="What would confirm it next",
+        consideration="A full next year near the earlier high band would make the stronger run look durable.",
+        section_key="publication_output_pattern",
+    )
+
+    assert label == "What would confirm it next"
+    assert consideration == "A full next year near the earlier high band would make the stronger run look durable."
+
+
+def test_finalize_publication_insight_sections_merges_blocks_with_legacy_note() -> None:
+    sections = publication_insights_agent_service._finalize_publication_insight_sections(
+        [
+            {
+                "key": "publication_output_pattern",
+                "title": "Publication output pattern",
+                "headline": "Shared highs, then a break",
+                "body": "The record remains continuous across the span.",
+                "blocks": [
+                    {"kind": "paragraph", "text": "The stronger run is recent rather than evenly spread."},
+                    {"kind": "callout", "label": "Confidence", "text": "The live year is still incomplete."},
+                ],
+                "consideration_label": "Context",
+                "consideration": "A full next year will show whether the break persists.",
+            }
+        ]
+    )
+
+    assert len(sections) == 1
+    assert sections[0]["blocks"] == [
+        {"kind": "paragraph", "label": None, "text": "The stronger run is recent rather than evenly spread."},
+        {"kind": "callout", "label": "Confidence", "text": "The live year is still incomplete."},
+        {"kind": "callout", "label": "Context", "text": "A full next year will show whether the break persists."},
+    ]
 
 
 def test_publication_insights_agent_api_returns_payload(monkeypatch, tmp_path) -> None:
@@ -1061,14 +2193,7 @@ def test_publication_insights_agent_api_returns_payload(monkeypatch, tmp_path) -
     monkeypatch.setattr(
         publication_insights_agent_service,
         "create_response",
-        lambda **kwargs: SimpleNamespace(
-            output_text=
-                '{"overall_summary":"A concise portfolio summary.",'
-                '"sections":['
-                '{"key":"uncited_works","headline":"Uncited works","body":"You have uncited publications.","consideration_label":"Why this matters","consideration":"Consider splitting recent and older uncited papers."},'
-                '{"key":"citation_drivers","headline":"Citation drivers","body":"Your leading papers are concentrating citations.","consideration_label":"What to watch","consideration":"Consider whether visibility depends on one standout paper."}'
-                "]}"
-        ),
+        lambda **kwargs: SimpleNamespace(output_text=_mock_citation_openai_output()),
     )
 
     with TestClient(app) as client:
@@ -1096,7 +2221,7 @@ def test_publication_insights_agent_api_returns_payload(monkeypatch, tmp_path) -
     assert payload["agent_name"] == "Publication insights agent"
     assert payload["window_id"] == "5y"
     assert len(payload["sections"]) == 4
-    assert "citations in the last 12 months" in payload["sections"][0]["body"]
+    assert "1 of 3 papers is still uncited" in payload["sections"][0]["body"]
     assert any(section["key"] == "citation_activation" for section in payload["sections"])
     assert any(section["key"] == "citation_activation_history" for section in payload["sections"])
     assert payload["sections"][0]["consideration_label"]

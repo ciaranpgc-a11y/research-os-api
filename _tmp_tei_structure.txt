@@ -1,0 +1,138 @@
+================================================================================
+FIGURE ELEMENTS IN TEI
+================================================================================
+
+<figure type='figure' id='fig_0'>
+  Parent: <body> heading='None'
+  Head: (none)
+  Text preview: Protected by copyright, including for uses related to text and data mining, AI training, and similar
+  Coords: 
+
+<figure type='figure' id='fig_1'>
+  Parent: <body> heading='None'
+  Head: (none)
+  Text preview: Protected by copyright, including for uses related to text and data mining, AI training, and similar
+  Coords: 
+
+<figure type='figure' id='fig_2'>
+  Parent: <body> heading='None'
+  Head: Figure 1
+  Text preview: Figure 11Figure1Echocardiographic diagnoses in patients with high CMR LVFP. Normal findings, LVH and
+  Coords: 
+
+<figure type='figure' id='fig_3'>
+  Parent: <body> heading='None'
+  Head: Figure 3
+  Text preview: Figure 33Figure 3 Funnel plot: CMR sub-phenotyping in patients with non-specific LVH and cardiomyopa
+  Coords: 
+
+<figure type='figure' id='?'>
+  Parent: <body> heading='None'
+  Head: (none)
+  Text preview: 
+  Coords: 
+
+<figure type='figure' id='?'>
+  Parent: <body> heading='None'
+  Head: (none)
+  Text preview: 
+  Coords: 
+
+<figure type='table' id='tab_0'>
+  Parent: <body> heading='None'
+  Head: Table 1
+  Text preview: Table 11Study demographics stratified as per similarity of final diagnosis by transthoracic echocard
+  Coords: 
+
+<figure type='table' id='tab_1'>
+  Parent: <body> heading='None'
+  Head: Table 2
+  Text preview: Table 22Echocardiography findings in the studyNot similarSimilar diagnosisdiagnosis betweenbetweenmo
+  Coords: 
+
+<figure type='table' id='tab_3'>
+  Parent: <body> heading='None'
+  Head: Table 3
+  Text preview: Table 33Cardiovascular magnetic resonance findings for the whole cohortNot similar diagnosis between
+  Coords: 
+
+
+================================================================================
+BODY DIV STRUCTURE (children of each div)
+================================================================================
+
+<div> 'INTRODUCTION'
+  <p> Cardiovascular diseases remain a leading cause of morbidity and mortal
+<div> 'STRENGTHS AND LIMITATIONS OF THIS STUDY'
+  <p> ⇒ Prospective design with data from a real-world clinical registry, wh
+  <p> Protected by copyright, including for uses related to text and data mi
+  <p> Open access assess myocardial scar and extracellular matrix expansion 
+  <p> For this study, we hypothesised that CMR would provide greater diagnos
+  <p> The main objective of this study was to evaluate the incremental diagn
+<div> 'METHODS'
+<div> 'Study population'
+  <p> This study used data from the prospective PREFER-CMR registry ( Clinic
+<div> 'Inclusion criteria'
+  <p> Participants were required to be at least 18 years of age and to have 
+<div> 'Exclusion criteria'
+  <p> Exclusion criteria encompassed individuals with contraindications to C
+<div> 'Patient involvement'
+  <p> Patients or the public were not involved in the design, or conduct, or
+<div> 'Transthoracic echocardiography'
+  <p> Standard TTE was performed in accordance with the guidelines set by th
+  <p> The evaluation focused on key parameters essential for assessing LVFP,
+  <p> As part of this standardised protocol, echocardiographic image quality
+<div> 'CMR protocol and analysis'
+  <p> All CMR studies were performed using a 1.5 Tesla Magnetom Sola system 
+  <p> All imaging procedures were conducted by trained radiographers and ana
+  <p> Protected by copyright, including for uses related to text and data mi
+  <p> . by guest on March 10, 2026 http://bmjopen.bmj.com/ Downloaded from C
+<div> 'Estimation of left ventricular filling pressure using sex-specific CMR-derived equations'
+  <p> To estimate LVFP, we used sex-specific equations derived from CMR metr
+  <p> Where: ► PCWP is the pulmonary capillary wedge pressure in mm Hg. ► LA
+  <p> All CMR image analyses were conducted using dedicated research softwar
+<div> 'Statistical analysis'
+  <p> Statistical analyses were performed using MedCalc for Windows, V.23.1.
+<div> 'RESULTS'
+<div> 'Study population'
+  <p> The study population comprised 261 individuals, with 194 (74%) having 
+<div> 'Echocardiographic findings'
+  <p> Echocardiographic findings are presented in table 2. The LAV index was
+<div> 'CMR findings'
+  <p> CMR findings are presented in table 3. Left ventricular end-diastolic 
+<div> 'Echocardiographic diagnosis in patients with high CMR LVFP'
+  <p> Among patients with high LVFPs on CMR, echocardiographic evaluation re
+  <p> Open access (n=54) of cases (figure 1). LVH was observed in 18% (n=47)
+  <p> Normal echocardiography study in patients with raised LVFP by CMR Amon
+  <p> Non-diagnostic echocardiography study in patients with raised LVFP by 
+  <p> Further sub-phenotyping with CMR Among patients with non-specific LVH 
+<div> 'Open access'
+  <p> Among patients with echocardiographic findings suggestive of IHD (n=26
+  <p> In the cohort with echocardiographic findings consistent with HCM (n=2
+<div> 'DISCUSSION'
+  <p> The most important finding of this study is that CMR provides substant
+  <p> Our findings align with and extend the evidence from other large, regi
+<div> 'Open access'
+  <p> by Kwong et al demonstrated that CMR had a significant impact on the m
+  <p> Our previous study established the first LVFP model using CMR. 8 In th
+  <p> The contrasting findings between Rahi et al's study, 15 which TTE high
+<div> 'Guidelines and clinical context'
+  <p> Our present study aligns robustly with the 2023 European Society of Ca
+<div> 'Limitations'
+  <p> This study has several limitations. The cohort was derived from a sing
+  <p> Figure 5 Multimodal cardiac assessment of a 39-year-old female with SO
+  <p> Open access elevated CMR-derived LVFP limits generalisability to popul
+  <p> The study therefore provides valuable insights into their comparative 
+  <p> Another key limitation is the absence of an independent reference stan
+  <p> Another limitation is the absence of systematically collected clinical
+  <p> Despite these limitations, the study provides compelling evidence that
+<div> 'CONCLUSIONS'
+  <p> In conclusion, this study demonstrates that CMR enhances diagnostic pr
+
+================================================================================
+P ELEMENTS WITH FIGURE/TABLE REFERENCES IN TEXT
+================================================================================
+
+  In 'Limitations':
+    Figure 5 Multimodal cardiac assessment of a 39-year-old female with SOB and palpitations. (a-d) TTE shows an indexed LA volume of 30 mL/m², E velocity of 1.1 m/sec, E/e' of 11.6, and TR peak velocity 
+

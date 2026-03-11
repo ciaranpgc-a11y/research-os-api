@@ -173,7 +173,7 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     icon: LineChart,
     status: 'live',
     lane: 'now',
-    summary: 'Global journal intelligence cache that stores OpenAlex metrics and publisher-reported editorial data before any new web lookup is attempted.',
+    summary: 'Global journal cache that stores OpenAlex metrics and imported publisher-reported data for reuse across all users on the same environment.',
     items: [
       'Canonical journal registry keyed by OpenAlex source and ISSN-L',
       'OpenAlex source metrics, OA flags, APC, and source freshness',

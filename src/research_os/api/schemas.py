@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class HealthResponse(BaseModel):
     status: str
+    publication_insights_available: bool = False
 
 
 class DraftMethodsRequest(BaseModel):
@@ -1223,6 +1224,10 @@ class AdminJournalProfileSummaryResponse(BaseModel):
     publisher_reported_impact_factor_year: int | None = None
     publisher_reported_impact_factor_label: str | None = None
     publisher_reported_impact_factor_source_url: str | None = None
+    five_year_impact_factor: float | None = None
+    journal_citation_indicator: float | None = None
+    jif_quartile: str | None = None
+    cited_half_life: str | None = None
     time_to_first_decision_days: int | None = None
     time_to_publication_days: int | None = None
     editor_in_chief_name: str | None = None
@@ -1992,6 +1997,10 @@ class PersonaJournalResponse(BaseModel):
     publisher_reported_impact_factor_year: int | None = None
     publisher_reported_impact_factor_label: str | None = None
     publisher_reported_impact_factor_source_url: str | None = None
+    five_year_impact_factor: float | None = None
+    journal_citation_indicator: float | None = None
+    jif_quartile: str | None = None
+    cited_half_life: str | None = None
     time_to_first_decision_days: int | None = None
     time_to_publication_days: int | None = None
     editor_in_chief_name: str | None = None
@@ -2004,7 +2013,7 @@ class PersonaJournalResponse(BaseModel):
 
 
 class PersonaJournalRefreshRequest(BaseModel):
-    include_editorial_intel: bool = True
+    include_editorial_intel: bool = False
     force: bool = False
 
 
@@ -2216,6 +2225,7 @@ class PublicationDetailResponse(BaseModel):
     year: int | None = None
     journal: str = "Not available"
     publication_type: str = "Not available"
+    article_type: str | None = None
     citations_total: int = 0
     doi: str | None = None
     pmid: str | None = None
@@ -2337,6 +2347,12 @@ class PublicationAiInsightsResponse(BaseModel):
     last_error: str | None = None
 
 
+class PublicationInsightsAgentBlockResponse(BaseModel):
+    kind: Literal["paragraph", "callout"]
+    label: str | None = None
+    text: str
+
+
 class PublicationInsightsAgentSectionResponse(BaseModel):
     key: Literal[
         "uncited_works",
@@ -2345,6 +2361,7 @@ class PublicationInsightsAgentSectionResponse(BaseModel):
         "citation_activation_history",
         "publication_output_pattern",
         "publication_production_phase",
+        "publication_year_over_year_trajectory",
         "publication_volume_over_time",
         "publication_article_type_over_time",
         "publication_type_over_time",
@@ -2354,6 +2371,7 @@ class PublicationInsightsAgentSectionResponse(BaseModel):
     body: str
     consideration_label: str | None = None
     consideration: str | None = None
+    blocks: list[PublicationInsightsAgentBlockResponse] = Field(default_factory=list)
     evidence: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -2374,6 +2392,162 @@ class PublicationStructuredAbstractRefreshResponse(BaseModel):
     status: Literal["READY", "RUNNING", "FAILED", "MISSING"] = "RUNNING"
 
 
+class PublicationPaperModelMetadataResponse(BaseModel):
+    publication_id: str
+    title: str
+    journal: str = "Not available"
+    year: int | None = None
+    publication_type: str = "Not available"
+    article_type: str | None = None
+    doi: str | None = None
+    pmid: str | None = None
+    openalex_work_id: str | None = None
+    citations_total: int = 0
+    authors: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+
+
+class PublicationPaperModelDocumentResponse(BaseModel):
+    has_viewable_pdf: bool = False
+    primary_pdf_file_id: str | None = None
+    primary_pdf_file_name: str | None = None
+    primary_pdf_download_url: str | None = None
+    primary_pdf_source: Literal["OA_LINK", "USER_UPLOAD", "SUPPLEMENTARY_LINK"] | None = None
+    parser_status: Literal[
+        "STRUCTURE_ONLY",
+        "PDF_ATTACHED",
+        "PARSING",
+        "FULL_TEXT_READY",
+        "FAILED",
+    ] = "STRUCTURE_ONLY"
+    parser_version: str = ""
+    generation_method: str = ""
+    has_full_text_sections: bool = False
+    total_file_count: int = 0
+    parser_last_error: str | None = None
+    page_count: int | None = None
+    search_ready: bool = False
+    outline_depth: int = 1
+
+
+class PublicationPaperModelSectionResponse(BaseModel):
+    id: str
+    title: str
+    raw_label: str | None = None
+    label_original: str | None = None
+    label_normalized: str | None = None
+    kind: str
+    canonical_kind: str = "section"
+    section_type: Literal["canonical", "editorial", "asset", "metadata", "reference"] = "canonical"
+    canonical_map: str = "section"
+    content: str
+    source: str
+    source_parser: str | None = None
+    order: int = 0
+    page_start: int | None = None
+    page_end: int | None = None
+    level: int = 1
+    parent_id: str | None = None
+    bounding_boxes: list[dict[str, Any]] = Field(default_factory=list)
+    confidence: float | None = None
+    is_generated_heading: bool = False
+    word_count: int = 0
+    paragraph_count: int = 0
+    document_zone: str | None = None
+    section_role: str | None = None
+    journal_section_family: str | None = None
+    major_section_key: str | None = None
+
+
+class PublicationPaperModelOutlineNodeResponse(BaseModel):
+    id: str
+    parent_id: str | None = None
+    label_original: str | None = None
+    label_normalized: str
+    section_type: str = "canonical"
+    canonical_map: str = "section"
+    level: int = 1
+    order_index: int = 0
+    page_start: int | None = None
+    page_end: int | None = None
+    bounding_boxes: list[dict[str, Any]] = Field(default_factory=list)
+    text_content: str | None = None
+    confidence: float | None = None
+    source_parser: str | None = None
+    is_generated_heading: bool = False
+    node_type: Literal["group", "section", "asset", "synthetic"] = "section"
+    target_kind: Literal["section", "asset", "page"] | None = None
+    target_id: str | None = None
+    target_page: int | None = None
+    is_collapsible: bool = False
+
+
+class PublicationPaperModelAssetResponse(BaseModel):
+    id: str
+    file_id: str | None = None
+    file_name: str
+    source: Literal["OA_LINK", "USER_UPLOAD", "SUPPLEMENTARY_LINK", "PARSED"] = "USER_UPLOAD"
+    download_url: str | None = None
+    classification: Literal[
+        "PUBLISHED_MANUSCRIPT",
+        "SUPPLEMENTARY_MATERIALS",
+        "DATASETS",
+        "TABLE",
+        "FIGURE",
+        "COVER_LETTER",
+        "OTHER",
+    ] | None = None
+    classification_label: str | None = None
+    is_pdf: bool = False
+    title: str = "Untitled asset"
+    caption: str | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    asset_kind: str = "attachment"
+    origin: Literal["file", "parsed"] = "file"
+    source_parser: str | None = None
+
+
+class PublicationPaperModelComponentSummaryResponse(BaseModel):
+    section_count: int = 0
+    full_text_section_count: int = 0
+    reference_count: int = 0
+    figure_asset_count: int = 0
+    table_asset_count: int = 0
+    dataset_asset_count: int = 0
+    attachment_count: int = 0
+    section_kind_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class PublicationPaperModelPayloadResponse(BaseModel):
+    metadata: PublicationPaperModelMetadataResponse
+    document: PublicationPaperModelDocumentResponse = Field(
+        default_factory=PublicationPaperModelDocumentResponse
+    )
+    sections: list[PublicationPaperModelSectionResponse] = Field(default_factory=list)
+    outline: list[PublicationPaperModelOutlineNodeResponse] = Field(
+        default_factory=list
+    )
+    figures: list[PublicationPaperModelAssetResponse] = Field(default_factory=list)
+    tables: list[PublicationPaperModelAssetResponse] = Field(default_factory=list)
+    datasets: list[PublicationPaperModelAssetResponse] = Field(default_factory=list)
+    attachments: list[PublicationPaperModelAssetResponse] = Field(default_factory=list)
+    references: list[dict[str, Any]] = Field(default_factory=list)
+    annotations: list[dict[str, Any]] = Field(default_factory=list)
+    component_summary: PublicationPaperModelComponentSummaryResponse = Field(
+        default_factory=PublicationPaperModelComponentSummaryResponse
+    )
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+
+class PublicationPaperModelResponse(BaseModel):
+    payload: PublicationPaperModelPayloadResponse
+    computed_at: datetime | None = None
+    status: Literal["READY", "RUNNING", "FAILED"] = "READY"
+    is_stale: bool = False
+    last_error: str | None = None
+
+
 class PublicationFileResponse(BaseModel):
     id: str
     file_name: str
@@ -2384,11 +2558,25 @@ class PublicationFileResponse(BaseModel):
     created_at: datetime
     download_url: str | None = None
     label: str = "File"
+    classification: Literal[
+        "PUBLISHED_MANUSCRIPT",
+        "SUPPLEMENTARY_MATERIALS",
+        "DATASETS",
+        "TABLE",
+        "FIGURE",
+        "COVER_LETTER",
+        "OTHER",
+    ] | None = None
+    classification_label: str | None = None
+    classification_other_label: str | None = None
     can_delete: bool = True
+    can_rename: bool = True
+    can_classify: bool = True
 
 
 class PublicationFilesListResponse(BaseModel):
     items: list[PublicationFileResponse] = Field(default_factory=list)
+    has_deleted_oa_file: bool = False
 
 
 class PublicationFileLinkResponse(BaseModel):
@@ -2397,8 +2585,26 @@ class PublicationFileLinkResponse(BaseModel):
     message: str = ""
 
 
+class PublicationFileLinkRequest(BaseModel):
+    allow_suppressed: bool = False
+
+
 class PublicationFileDeleteResponse(BaseModel):
     deleted: bool = False
+
+
+class PublicationFileUpdateRequest(BaseModel):
+    file_name: str | None = None
+    classification: Literal[
+        "PUBLISHED_MANUSCRIPT",
+        "SUPPLEMENTARY_MATERIALS",
+        "DATASETS",
+        "TABLE",
+        "FIGURE",
+        "COVER_LETTER",
+        "OTHER",
+    ] | None = None
+    classification_other_label: str | None = None
 
 
 class CollaboratorMetricsResponse(BaseModel):

@@ -31,7 +31,6 @@ def patch_windows_platform_machine() -> None:
 
     def _fast_windows_uname() -> platform.uname_result:
         machine = _fast_windows_machine()
-        processor = os.getenv("PROCESSOR_IDENTIFIER", "").strip() or machine
         node = (
             os.getenv("COMPUTERNAME", "").strip()
             or os.getenv("HOSTNAME", "").strip()
@@ -43,7 +42,6 @@ def patch_windows_platform_machine() -> None:
             release="",
             version="",
             machine=machine,
-            processor=processor,
         )
 
     def _fast_windows_system() -> str:

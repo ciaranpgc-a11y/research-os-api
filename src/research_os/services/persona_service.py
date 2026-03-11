@@ -1128,6 +1128,38 @@ def _journal_int_stat_from_profile(
     return _safe_int(summary_stats.get(key))
 
 
+def _journal_import_row(profile: JournalProfile | None) -> dict[str, Any]:
+    if profile is None or not isinstance(profile.editorial_raw_json, dict):
+        return {}
+    csv_import = profile.editorial_raw_json.get("csv_import")
+    if not isinstance(csv_import, dict):
+        return {}
+    row = csv_import.get("row")
+    return dict(row) if isinstance(row, dict) else {}
+
+
+def _journal_import_float(profile: JournalProfile | None, *keys: str) -> float | None:
+    row = _journal_import_row(profile)
+    for key in keys:
+        value = _safe_float(row.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _journal_import_text(
+    profile: JournalProfile | None,
+    *keys: str,
+    max_length: int | None = None,
+) -> str | None:
+    row = _journal_import_row(profile)
+    for key in keys:
+        value = _normalize_venue_candidate(row.get(key))
+        if value:
+            return value[:max_length].rstrip() if max_length is not None else value
+    return None
+
+
 def _is_non_journal_venue(
     *,
     venue_type: Any,
@@ -1635,9 +1667,14 @@ def _load_openalex_journal_profiles(
     *,
     works: list[Work],
     latest_metrics: dict[str, MetricsSnapshot],
-) -> tuple[dict[str, JournalProfile], dict[str, JournalProfile]]:
+) -> tuple[
+    dict[str, JournalProfile],
+    dict[str, JournalProfile],
+    dict[str, JournalProfile],
+]:
     source_ids: set[str] = set()
     issn_ls: set[str] = set()
+    display_name_keys: set[str] = set()
     for work in works:
         source_id = extract_openalex_source_id(work.openalex_source_id)
         if source_id:
@@ -1645,6 +1682,10 @@ def _load_openalex_journal_profiles(
         issn_l = normalize_issn(work.issn_l)
         if issn_l:
             issn_ls.add(issn_l)
+        for candidate in [work.journal, work.venue_name]:
+            canonical_name = _canonical_venue_key(candidate)
+            if canonical_name:
+                display_name_keys.add(canonical_name)
         snapshot = latest_metrics.get(work.id)
         metric_payload = dict(snapshot.metric_payload or {}) if snapshot else {}
         identity = _extract_journal_identity(metric_payload)
@@ -1656,6 +1697,17 @@ def _load_openalex_journal_profiles(
         payload_issn_l = normalize_issn(identity.get("issn_l"))
         if payload_issn_l:
             issn_ls.add(payload_issn_l)
+        source = (
+            identity.get("source") if isinstance(identity.get("source"), dict) else {}
+        )
+        for candidate in [
+            identity.get("journal_name"),
+            metric_payload.get("journal_name"),
+            source.get("display_name"),
+        ]:
+            canonical_name = _canonical_venue_key(candidate)
+            if canonical_name:
+                display_name_keys.add(canonical_name)
 
     by_source_id: dict[str, JournalProfile] = {}
     if source_ids:
@@ -1685,7 +1737,35 @@ def _load_openalex_journal_profiles(
             for normalized_issn in [normalize_issn(row.issn_l)]
             if normalized_issn
         }
-    return by_source_id, by_issn_l
+
+    by_display_name: dict[str, JournalProfile] = {}
+    if display_name_keys:
+        rows = session.scalars(
+            select(JournalProfile).where(
+                JournalProfile.provider == "openalex",
+                func.lower(JournalProfile.display_name).in_(sorted(display_name_keys)),
+            )
+        ).all()
+        for row in rows:
+            canonical_name = _canonical_venue_key(row.display_name)
+            if not canonical_name:
+                continue
+            current = by_display_name.get(canonical_name)
+            if current is None:
+                by_display_name[canonical_name] = row
+                continue
+
+            def _profile_score(profile: JournalProfile) -> tuple[int, int, int, int]:
+                return (
+                    1 if profile.publisher_reported_impact_factor is not None else 0,
+                    1 if str(profile.provider_journal_id or "").strip() else 0,
+                    1 if str(profile.issn_l or "").strip() else 0,
+                    1 if profile.summary_stats_json else 0,
+                )
+
+            if _profile_score(row) > _profile_score(current):
+                by_display_name[canonical_name] = row
+    return by_source_id, by_issn_l, by_display_name
 
 
 def list_journals(*, user_id: str) -> list[dict[str, Any]]:
@@ -1703,7 +1783,11 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
 
         work_ids = [work.id for work in works]
         latest_metrics = _latest_metrics_by_work(session, work_ids)
-        profiles_by_source_id, profiles_by_issn_l = _load_openalex_journal_profiles(
+        (
+            profiles_by_source_id,
+            profiles_by_issn_l,
+            profiles_by_display_name,
+        ) = _load_openalex_journal_profiles(
             session,
             works=works,
             latest_metrics=latest_metrics,
@@ -1722,27 +1806,53 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                 work.openalex_source_id or identity.get("openalex_source_id")
             )
             issn_l = normalize_issn(work.issn_l or identity.get("issn_l"))
-            profile = profiles_by_source_id.get(
-                source_id or ""
-            ) or profiles_by_issn_l.get(issn_l or "")
             source = (
                 identity.get("source")
                 if isinstance(identity.get("source"), dict)
                 else {}
             )
+            matched_profile_by_name = False
+            profile = profiles_by_source_id.get(
+                source_id or ""
+            ) or profiles_by_issn_l.get(issn_l or "")
+            if profile is None:
+                for candidate in [
+                    resolved_metric_journal_name,
+                    metric_payload.get("journal_name"),
+                    source.get("display_name"),
+                    work.journal,
+                    work.venue_name,
+                ]:
+                    canonical_name = _canonical_venue_key(candidate)
+                    if not canonical_name:
+                        continue
+                    profile = profiles_by_display_name.get(canonical_name)
+                    if profile is not None:
+                        matched_profile_by_name = True
+                        break
             source_identity_display_name = _first_venue_candidate(
                 profile.display_name if profile is not None else None,
                 source.get("display_name"),
                 metric_payload.get("journal_name"),
             )
-            display_name = _first_preferred_venue_candidate(
-                profile.display_name if profile is not None else None,
-                resolved_metric_journal_name,
-                metric_payload.get("journal_name"),
-                source.get("display_name"),
-                work.journal,
-                work.venue_name,
-            )
+            if matched_profile_by_name:
+                display_name = _first_preferred_venue_candidate(
+                    resolved_metric_journal_name,
+                    metric_payload.get("journal_name"),
+                    source.get("display_name"),
+                    work.journal,
+                    work.venue_name,
+                    profile.display_name if profile is not None else None,
+                )
+            else:
+                display_name = _first_preferred_venue_candidate(
+                    profile.display_name if profile is not None else None,
+                    resolved_metric_journal_name,
+                    metric_payload.get("journal_name"),
+                    source.get("display_name"),
+                    work.journal,
+                    work.venue_name,
+                )
             if not display_name:
                 continue
             publisher = next(
@@ -1861,6 +1971,26 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                         if profile is not None
                         else None
                     ),
+                    "five_year_impact_factor": (
+                        _journal_import_float(profile, "5_year_jif")
+                        if profile is not None
+                        else None
+                    ),
+                    "journal_citation_indicator": (
+                        _journal_import_float(profile, "jci")
+                        if profile is not None
+                        else None
+                    ),
+                    "jif_quartile": (
+                        _journal_import_text(profile, "jif_quartile", max_length=32)
+                        if profile is not None
+                        else None
+                    ),
+                    "cited_half_life": (
+                        _journal_import_text(profile, "cited_half_life", max_length=64)
+                        if profile is not None
+                        else None
+                    ),
                     "time_to_first_decision_days": (
                         profile.time_to_first_decision_days
                         if profile is not None
@@ -1971,6 +2101,31 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                 group["publisher_reported_impact_factor_source_url"] = (
                     profile.publisher_reported_impact_factor_source_url
                 )
+            if group.get("five_year_impact_factor") is None and profile is not None:
+                group["five_year_impact_factor"] = _journal_import_float(
+                    profile,
+                    "5_year_jif",
+                )
+            if group.get("journal_citation_indicator") is None and profile is not None:
+                group["journal_citation_indicator"] = _journal_import_float(
+                    profile,
+                    "jci",
+                )
+            if not str(group.get("jif_quartile") or "").strip() and profile is not None:
+                group["jif_quartile"] = _journal_import_text(
+                    profile,
+                    "jif_quartile",
+                    max_length=32,
+                )
+            if (
+                not str(group.get("cited_half_life") or "").strip()
+                and profile is not None
+            ):
+                group["cited_half_life"] = _journal_import_text(
+                    profile,
+                    "cited_half_life",
+                    max_length=64,
+                )
             if group.get("time_to_first_decision_days") is None and profile is not None:
                 group["time_to_first_decision_days"] = (
                     profile.time_to_first_decision_days
@@ -2036,6 +2191,22 @@ def list_journals(*, user_id: str) -> list[dict[str, Any]]:
                         round(float(row["publisher_reported_impact_factor"]), 3)
                         if row.get("publisher_reported_impact_factor") is not None
                         else None
+                    ),
+                    "five_year_impact_factor": (
+                        round(float(row["five_year_impact_factor"]), 3)
+                        if row.get("five_year_impact_factor") is not None
+                        else None
+                    ),
+                    "journal_citation_indicator": (
+                        round(float(row["journal_citation_indicator"]), 3)
+                        if row.get("journal_citation_indicator") is not None
+                        else None
+                    ),
+                    "jif_quartile": (
+                        str(row.get("jif_quartile") or "").strip() or None
+                    ),
+                    "cited_half_life": (
+                        str(row.get("cited_half_life") or "").strip() or None
                     ),
                 }
             )

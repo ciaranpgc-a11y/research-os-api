@@ -90,6 +90,35 @@ def _decode_csv_bytes(content: bytes) -> str:
     return content.decode("utf-8", errors="ignore")
 
 
+def convert_spreadsheet_bytes_to_csv_bytes(
+    *, content: bytes, filename: str = ""
+) -> bytes:
+    suffix = Path(str(filename or "")).suffix.lower()
+    if suffix not in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
+        return bytes(content)
+    try:
+        from openpyxl import load_workbook
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError(
+            "openpyxl is required to import Excel journal spreadsheets."
+        ) from exc
+
+    workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    try:
+        worksheet = workbook[workbook.sheetnames[0]]
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        for row in worksheet.iter_rows(values_only=True):
+            if not any(value not in {None, ""} for value in row):
+                continue
+            writer.writerow(
+                ["" if value is None else str(value).strip() for value in row]
+            )
+        return buffer.getvalue().encode("utf-8")
+    finally:
+        workbook.close()
+
+
 def _csv_reader(text: str) -> csv.DictReader:
     sample = text[:4096]
     try:
@@ -136,11 +165,17 @@ def import_journal_profiles_from_csv_bytes(
     default_metric_year: int | None = None,
 ) -> dict[str, Any]:
     create_all_tables()
+    content = convert_spreadsheet_bytes_to_csv_bytes(content=content, filename=filename)
     text = _decode_csv_bytes(content)
     reader = _csv_reader(text)
     fieldnames = list(reader.fieldnames or [])
     normalized_fieldnames = [_normalize_header(value) for value in fieldnames]
-    clean_filename = _sanitize_text(Path(str(filename or "journal-impact-factors.csv")).name, max_length=255) or "journal-impact-factors.csv"
+    clean_filename = (
+        _sanitize_text(
+            Path(str(filename or "journal-impact-factors.csv")).name, max_length=255
+        )
+        or "journal-impact-factors.csv"
+    )
     clean_source_label = _sanitize_text(source_label, max_length=255) or clean_filename
     clean_impact_factor_label = (
         _sanitize_text(impact_factor_label, max_length=64) or "Impact Factor"
@@ -227,8 +262,18 @@ def import_journal_profiles_from_csv_bytes(
                 )
             )
             issns = normalize_issns(
-                _row_value(row, "issns", "issn", "journal_issn", "print_issn")
+                [
+                    value
+                    for value in [
+                        _row_value(row, "issns"),
+                        _row_value(row, "issn", "journal_issn", "print_issn"),
+                        _row_value(row, "eissn", "electronic_issn", "online_issn"),
+                    ]
+                    if value
+                ]
             )
+            if not issn_l and issns:
+                issn_l = normalize_issn(issns[0])
             publisher = _row_value(row, "publisher", "publisher_name")
             source_url = _row_value(
                 row,
@@ -245,27 +290,47 @@ def import_journal_profiles_from_csv_bytes(
                     "journal_impact_factor_year",
                     "jif_year",
                     "metric_year",
+                    "jcr_year",
                     "year",
                 )
             )
+            metric_value_text = _row_value(
+                row,
+                "impact_factor",
+                "journal_impact_factor",
+                "publisher_reported_impact_factor",
+                "jif",
+                "if",
+            )
+            inferred_header_year: int | None = None
+            if not metric_value_text:
+                jif_candidates: list[tuple[int, str]] = []
+                for key, value in row.items():
+                    clean_value = _sanitize_text(value)
+                    if not clean_value:
+                        continue
+                    match = re.fullmatch(r"jif_(\d{4})", str(key or "").strip())
+                    if not match:
+                        continue
+                    parsed_year = _safe_int(match.group(1))
+                    if parsed_year is None:
+                        continue
+                    jif_candidates.append((parsed_year, clean_value))
+                if jif_candidates:
+                    jif_candidates.sort(key=lambda item: item[0], reverse=True)
+                    inferred_header_year, metric_value_text = jif_candidates[0]
             if metric_year is None:
-                metric_year = normalized_default_metric_year
-            metric_value = _safe_float(
+                metric_year = inferred_header_year or normalized_default_metric_year
+            metric_value = _safe_float(metric_value_text)
+            label = (
                 _row_value(
                     row,
-                    "impact_factor",
-                    "journal_impact_factor",
-                    "publisher_reported_impact_factor",
-                    "jif",
-                    "if",
+                    "impact_factor_label",
+                    "journal_impact_factor_label",
+                    "metric_label",
                 )
+                or clean_impact_factor_label
             )
-            label = _row_value(
-                row,
-                "impact_factor_label",
-                "journal_impact_factor_label",
-                "metric_label",
-            ) or clean_impact_factor_label
             editor_in_chief_name = _row_value(
                 row,
                 "editor_in_chief_name",
@@ -353,7 +418,10 @@ def import_journal_profiles_from_csv_bytes(
             )
 
             row_changed = False
-            if source_id and extract_openalex_source_id(profile.provider_journal_id) != source_id:
+            if (
+                source_id
+                and extract_openalex_source_id(profile.provider_journal_id) != source_id
+            ):
                 profile.provider_journal_id = source_id
                 row_changed = True
             if issn_l and normalize_issn(profile.issn_l) != issn_l:
@@ -381,7 +449,9 @@ def import_journal_profiles_from_csv_bytes(
                     profile.publisher_reported_impact_factor_source_url = source_url
                 row_changed = True
 
-            if editor_in_chief_name and editor_in_chief_name != _sanitize_text(profile.editor_in_chief_name):
+            if editor_in_chief_name and editor_in_chief_name != _sanitize_text(
+                profile.editor_in_chief_name
+            ):
                 profile.editor_in_chief_name = editor_in_chief_name
                 row_changed = True
             if (
@@ -396,10 +466,14 @@ def import_journal_profiles_from_csv_bytes(
             ):
                 profile.time_to_publication_days = time_to_publication_days
                 row_changed = True
-            if source_url and source_url != _sanitize_text(profile.editorial_source_url):
+            if source_url and source_url != _sanitize_text(
+                profile.editorial_source_url
+            ):
                 profile.editorial_source_url = source_url
                 row_changed = True
-            if clean_source_label and clean_source_label != _sanitize_text(profile.editorial_source_title):
+            if clean_source_label and clean_source_label != _sanitize_text(
+                profile.editorial_source_title
+            ):
                 profile.editorial_source_title = clean_source_label
                 row_changed = True
 

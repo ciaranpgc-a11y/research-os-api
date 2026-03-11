@@ -357,6 +357,9 @@ class User(Base):
     publication_structured_abstract_caches: Mapped[
         list["PublicationStructuredAbstractCache"]
     ] = relationship(back_populates="owner_user", cascade="all, delete-orphan")
+    publication_structured_paper_caches: Mapped[
+        list["PublicationStructuredPaperCache"]
+    ] = relationship(back_populates="owner_user", cascade="all, delete-orphan")
     publication_files: Mapped[list["PublicationFile"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
     )
@@ -775,6 +778,7 @@ class Work(Base):
     issn_l: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     issns_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     venue_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    oa_link_suppressed: Mapped[bool] = mapped_column(Boolean, default=False)
     journal: Mapped[str] = mapped_column(String(255), default="")
     publication_type: Mapped[str] = mapped_column(String(128), default="")
     citations_total: Mapped[int] = mapped_column(Integer, default=0)
@@ -823,6 +827,9 @@ class Work(Base):
     )
     structured_abstract_cache_rows: Mapped[
         list["PublicationStructuredAbstractCache"]
+    ] = relationship(back_populates="publication", cascade="all, delete-orphan")
+    structured_paper_cache_rows: Mapped[
+        list["PublicationStructuredPaperCache"]
     ] = relationship(back_populates="publication", cascade="all, delete-orphan")
     files: Mapped[list["PublicationFile"]] = relationship(
         back_populates="publication", cascade="all, delete-orphan"
@@ -1205,6 +1212,48 @@ class PublicationStructuredAbstractCache(Base):
     )
 
 
+class PublicationStructuredPaperCache(Base):
+    __tablename__ = "publication_structured_paper_cache"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "publication_id"),
+        Index("ix_pub_structured_paper_cache_owner", "owner_user_id"),
+        Index("ix_pub_structured_paper_cache_publication", "publication_id"),
+        Index("ix_pub_structured_paper_cache_computed", "computed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    publication_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("works.id", ondelete="CASCADE"), index=True
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_signature_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    parser_version: Mapped[str] = mapped_column(
+        String(64), default="publication_structured_paper_v8"
+    )
+    computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(16), default="READY")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    publication: Mapped[Work] = relationship(
+        back_populates="structured_paper_cache_rows"
+    )
+    owner_user: Mapped[User] = relationship(
+        back_populates="publication_structured_paper_caches"
+    )
+
+
 class PublicationFile(Base):
     __tablename__ = "publication_files"
     __table_args__ = (
@@ -1227,6 +1276,13 @@ class PublicationFile(Base):
     source: Mapped[str] = mapped_column(String(16), default="USER_UPLOAD")
     oa_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    custom_name: Mapped[bool] = mapped_column(Boolean, default=False)
+    classification: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    classification_custom: Mapped[bool] = mapped_column(Boolean, default=False)
+    classification_other_label: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )
@@ -1892,6 +1948,58 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
     if engine.dialect.name != "sqlite":
         return
     with engine.begin() as connection:
+        if _sqlite_table_exists(connection, "publication_files"):
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="publication_files",
+                column_name="custom_name",
+                column_sql="BOOLEAN DEFAULT 0",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="publication_files",
+                column_name="classification",
+                column_sql="VARCHAR(64)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="publication_files",
+                column_name="classification_custom",
+                column_sql="BOOLEAN DEFAULT 0",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="publication_files",
+                column_name="classification_other_label",
+                column_sql="VARCHAR(255)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="publication_files",
+                column_name="deleted",
+                column_sql="BOOLEAN DEFAULT 0",
+            )
+            connection.execute(
+                text(
+                    "UPDATE publication_files "
+                    "SET custom_name = 0 "
+                    "WHERE custom_name IS NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "UPDATE publication_files "
+                    "SET classification_custom = 0 "
+                    "WHERE classification_custom IS NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "UPDATE publication_files "
+                    "SET deleted = 0 "
+                    "WHERE deleted IS NULL"
+                )
+            )
         if _sqlite_table_exists(connection, "users"):
             _sqlite_add_column_if_missing(
                 connection,
@@ -1985,8 +2093,21 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                 column_name="venue_type",
                 column_sql="VARCHAR(64)",
             )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="works",
+                column_name="oa_link_suppressed",
+                column_sql="BOOLEAN DEFAULT 0",
+            )
             connection.execute(
                 text("UPDATE works SET issns_json = '[]' WHERE issns_json IS NULL")
+            )
+            connection.execute(
+                text(
+                    "UPDATE works "
+                    "SET oa_link_suppressed = 0 "
+                    "WHERE oa_link_suppressed IS NULL"
+                )
             )
             connection.execute(
                 text(
@@ -2330,6 +2451,57 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
     with engine.begin() as connection:
         connection.execute(
             text(
+                "ALTER TABLE IF EXISTS publication_files "
+                "ADD COLUMN IF NOT EXISTS custom_name BOOLEAN DEFAULT FALSE"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS publication_files "
+                "ADD COLUMN IF NOT EXISTS classification VARCHAR(64)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS publication_files "
+                "ADD COLUMN IF NOT EXISTS classification_custom BOOLEAN DEFAULT FALSE"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS publication_files "
+                "ADD COLUMN IF NOT EXISTS classification_other_label VARCHAR(255)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS publication_files "
+                "ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT FALSE"
+            )
+        )
+        connection.execute(
+            text(
+                "UPDATE publication_files "
+                "SET custom_name = FALSE "
+                "WHERE custom_name IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                "UPDATE publication_files "
+                "SET classification_custom = FALSE "
+                "WHERE classification_custom IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                "UPDATE publication_files "
+                "SET deleted = FALSE "
+                "WHERE deleted IS NULL"
+            )
+        )
+        connection.execute(
+            text(
                 "ALTER TABLE IF EXISTS users "
                 "ADD COLUMN IF NOT EXISTS account_key VARCHAR(36)"
             )
@@ -2412,7 +2584,20 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
             )
         )
         connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS works "
+                "ADD COLUMN IF NOT EXISTS oa_link_suppressed BOOLEAN DEFAULT FALSE"
+            )
+        )
+        connection.execute(
             text("UPDATE works SET issns_json = '[]'::json WHERE issns_json IS NULL")
+        )
+        connection.execute(
+            text(
+                "UPDATE works "
+                "SET oa_link_suppressed = FALSE "
+                "WHERE oa_link_suppressed IS NULL"
+            )
         )
         connection.execute(
             text(

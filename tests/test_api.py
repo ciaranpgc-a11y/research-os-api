@@ -109,23 +109,44 @@ def _promote_user_to_admin(user_id: str) -> None:
 
 
 def test_health_returns_ok(monkeypatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("research_os.api.app.publication_insights_available", lambda: True)
 
     with TestClient(app) as client:
         response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {
+        "status": "ok",
+        "publication_insights_available": True,
+    }
 
 
 def test_v1_health_returns_ok(monkeypatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("research_os.api.app.publication_insights_available", lambda: True)
 
     with TestClient(app) as client:
         response = client.get("/v1/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {
+        "status": "ok",
+        "publication_insights_available": True,
+    }
+
+
+def test_v1_health_reports_publication_insights_unavailable_without_openai_key(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("research_os.api.app.publication_insights_available", lambda: False)
+
+    with TestClient(app) as client:
+        response = client.get("/v1/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "publication_insights_available": False,
+    }
 
 
 def test_v1_health_ready_returns_ok(monkeypatch) -> None:
@@ -7310,15 +7331,21 @@ def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) ->
 def test_v1_persona_journals_refresh_route(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 
-    monkeypatch.setattr(
-        "research_os.api.app.refresh_persona_journal_intelligence",
-        lambda **kwargs: {
+    captured: dict[str, object] = {}
+
+    def _fake_refresh(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
             "journals_considered": 3,
             "openalex_profiles_refreshed": 2,
-            "editorial_profiles_refreshed": 1,
+            "editorial_profiles_refreshed": 0,
             "editorial_profiles_skipped": 0,
             "warnings": [],
-        },
+        }
+
+    monkeypatch.setattr(
+        "research_os.api.app.refresh_persona_journal_intelligence",
+        _fake_refresh,
     )
 
     with TestClient(app) as client:
@@ -7343,10 +7370,12 @@ def test_v1_persona_journals_refresh_route(monkeypatch, tmp_path) -> None:
     assert response.json() == {
         "journals_considered": 3,
         "openalex_profiles_refreshed": 2,
-        "editorial_profiles_refreshed": 1,
+        "editorial_profiles_refreshed": 0,
         "editorial_profiles_skipped": 0,
         "warnings": [],
     }
+    assert captured["include_editorial_intel"] is False
+    assert captured["force"] is True
 
 
 def test_v1_plan_sections_can_include_persona_context(monkeypatch, tmp_path) -> None:

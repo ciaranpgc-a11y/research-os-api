@@ -5,10 +5,12 @@ import json
 import math
 import os
 import re
+import time
 from collections import Counter
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from research_os.clients.openai_client import create_response
+from research_os.clients.openai_client import get_client
 from research_os.config import ConfigurationError
 from research_os.config import get_openai_api_key
 from research_os.services.publication_metrics_service import (
@@ -17,9 +19,12 @@ from research_os.services.publication_metrics_service import (
 )
 
 AGENT_NAME = "Publication insights agent"
-PROMPT_VERSION = "publication_insights_agent_v7"
+PROMPT_VERSION = "publication_insights_agent_v12"
 PREFERRED_MODEL = "gpt-5.4"
-FALLBACK_MODEL = "gpt-4.1-mini"
+PUBLICATION_INSIGHTS_AVAILABILITY_CACHE_TTL_SECONDS = 60
+
+_publication_insights_availability_checked_at: float | None = None
+_publication_insights_availability_value = False
 
 WINDOW_CONFIG: dict[str, dict[str, str]] = {
     "1y": {
@@ -45,7 +50,57 @@ WINDOW_CONFIG: dict[str, dict[str, str]] = {
 }
 
 UNCITED_RECENT_YEARS = 3
-DEFAULT_PUBLICATION_INSIGHTS_OPENAI_TIMEOUT_SECONDS = 20.0
+DEFAULT_PUBLICATION_INSIGHTS_OPENAI_TIMEOUT_SECONDS = 45.0
+DEFAULT_PUBLICATION_INSIGHTS_REASONING_EFFORT = "medium"
+DEFAULT_PUBLICATION_INSIGHTS_MAX_OUTPUT_TOKENS = 2400
+DEFAULT_PUBLICATION_OUTPUT_PATTERN_MAX_OUTPUT_TOKENS = 1600
+PUBLICATION_OUTPUT_PATTERN_SCHEMA_NAME = "publication_output_pattern_insight"
+PUBLICATION_OUTPUT_PATTERN_OPTIONS: tuple[str, ...] = (
+    "too early to read",
+    "continuous growth",
+    "broadly stable",
+    "growth flattening",
+    "output easing",
+    "peak-led record",
+    "burst-led output",
+    "interrupted pattern",
+    "rebuilding output",
+    "active across years",
+)
+DEFAULT_PUBLICATION_PRODUCTION_PHASE_MAX_OUTPUT_TOKENS = 1200
+PUBLICATION_PRODUCTION_PHASE_SCHEMA_NAME = "publication_production_phase_insight"
+PUBLICATION_PRODUCTION_PHASE_OPTIONS: tuple[str, ...] = (
+    "early build",
+    "accelerating",
+    "established expansion",
+    "established but concentrated",
+    "intermittent",
+    "plateauing",
+    "reactivated",
+)
+DEFAULT_PUBLICATION_YEAR_OVER_YEAR_TRAJECTORY_MAX_OUTPUT_TOKENS = 1200
+PUBLICATION_YEAR_OVER_YEAR_TRAJECTORY_SCHEMA_NAME = (
+    "publication_year_over_year_trajectory_insight"
+)
+PUBLICATION_YEAR_OVER_YEAR_TRAJECTORY_OPTIONS: tuple[str, ...] = (
+    "expanding",
+    "stable",
+    "contracting",
+)
+DEFAULT_PUBLICATION_MIX_MAX_OUTPUT_TOKENS = 1400
+PUBLICATION_ARTICLE_TYPE_OVER_TIME_SCHEMA_NAME = (
+    "publication_article_type_over_time_insight"
+)
+PUBLICATION_TYPE_OVER_TIME_SCHEMA_NAME = "publication_type_over_time_insight"
+PUBLICATION_MIX_PATTERN_OPTIONS: tuple[str, ...] = (
+    "short_record",
+    "late_leader_shift",
+    "leader_shift",
+    "same_leader_more_concentrated",
+    "same_leader_narrower",
+    "broader_recent",
+    "stable_anchor",
+)
 
 
 class PublicationInsightsAgentValidationError(RuntimeError):
@@ -67,6 +122,69 @@ def _publication_insights_openai_timeout_seconds() -> float:
     if not math.isfinite(parsed) or parsed < 5.0:
         return DEFAULT_PUBLICATION_INSIGHTS_OPENAI_TIMEOUT_SECONDS
     return min(parsed, 120.0)
+
+
+def _publication_insights_reasoning_effort() -> str:
+    raw_value = str(
+        os.getenv(
+            "PUBLICATION_INSIGHTS_REASONING_EFFORT",
+            DEFAULT_PUBLICATION_INSIGHTS_REASONING_EFFORT,
+        )
+        or ""
+    ).strip().lower()
+    allowed = {"none", "minimal", "low", "medium", "high", "xhigh"}
+    if raw_value in allowed:
+        return raw_value
+    return DEFAULT_PUBLICATION_INSIGHTS_REASONING_EFFORT
+
+
+def _publication_insights_text_config() -> dict[str, Any]:
+    return {"format": {"type": "json_object"}}
+
+
+def _publication_insights_max_output_tokens() -> int:
+    raw_value = str(
+        os.getenv(
+            "PUBLICATION_INSIGHTS_MAX_OUTPUT_TOKENS",
+            str(DEFAULT_PUBLICATION_INSIGHTS_MAX_OUTPUT_TOKENS),
+        )
+        or ""
+    ).strip()
+    try:
+        parsed = int(raw_value)
+    except Exception:
+        return DEFAULT_PUBLICATION_INSIGHTS_MAX_OUTPUT_TOKENS
+    if parsed < 512:
+        return DEFAULT_PUBLICATION_INSIGHTS_MAX_OUTPUT_TOKENS
+    return min(parsed, 4096)
+
+
+def _publication_output_pattern_max_output_tokens() -> int:
+    return min(
+        _publication_insights_max_output_tokens(),
+        DEFAULT_PUBLICATION_OUTPUT_PATTERN_MAX_OUTPUT_TOKENS,
+    )
+
+
+def _publication_production_phase_max_output_tokens() -> int:
+    return min(
+        _publication_insights_max_output_tokens(),
+        DEFAULT_PUBLICATION_PRODUCTION_PHASE_MAX_OUTPUT_TOKENS,
+    )
+
+
+def _publication_year_over_year_trajectory_max_output_tokens() -> int:
+    return min(
+        _publication_insights_max_output_tokens(),
+        DEFAULT_PUBLICATION_YEAR_OVER_YEAR_TRAJECTORY_MAX_OUTPUT_TOKENS,
+    )
+
+
+def _publication_mix_max_output_tokens() -> int:
+    return min(
+        _publication_insights_max_output_tokens(),
+        DEFAULT_PUBLICATION_MIX_MAX_OUTPUT_TOKENS,
+    )
 
 
 PUBLICATION_PHASE_LABELS: tuple[str, ...] = (
@@ -143,13 +261,13 @@ PUBLICATION_TYPE_LABEL_OVERRIDES: dict[str, str] = {
     "preprint": "Other",
     "pre-print": "Other",
     "posted-content": "Other",
-    "conference-abstract": "Conference abstract",
-    "meeting-abstract": "Conference abstract",
-    "conference-paper": "Conference abstract",
-    "conference-poster": "Conference abstract",
-    "conference-presentation": "Conference abstract",
-    "proceedings-article": "Conference abstract",
-    "proceedings": "Conference abstract",
+    "conference-abstract": "Published abstract",
+    "meeting-abstract": "Published abstract",
+    "conference-paper": "Published abstract",
+    "conference-poster": "Published abstract",
+    "conference-presentation": "Published abstract",
+    "proceedings-article": "Published abstract",
+    "proceedings": "Published abstract",
     "review": "Review article",
     "review-article": "Review article",
     "book-chapter": "Book chapter",
@@ -508,6 +626,55 @@ def _build_publication_library_context(
         "records": serialized_rows,
         "as_of_date": as_of_date.isoformat() if isinstance(as_of_date, date) else None,
     }
+
+
+def _compact_publication_library_for_section_prompt(
+    publication_library: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(publication_library, dict):
+        return {}
+
+    years_with_output = publication_library.get("years_with_output")
+    article_type_counts = publication_library.get("article_type_counts")
+    publication_type_counts = publication_library.get("publication_type_counts")
+
+    compact_payload: dict[str, Any] = {
+        "total_records": max(0, int(publication_library.get("total_records") or 0)),
+        "first_publication_year": _safe_int(
+            publication_library.get("first_publication_year")
+        ),
+        "last_publication_year": _safe_int(
+            publication_library.get("last_publication_year")
+        ),
+        "years_with_output": [
+            {
+                "year": max(0, int(item.get("year") or 0)),
+                "count": max(0, int(item.get("count") or 0)),
+            }
+            for item in (years_with_output or [])
+            if isinstance(item, dict) and _safe_int(item.get("year")) is not None
+        ],
+        "article_type_counts": [
+            {
+                "label": str(item.get("label") or "").strip(),
+                "count": max(0, int(item.get("count") or 0)),
+            }
+            for item in (article_type_counts or [])
+            if isinstance(item, dict) and str(item.get("label") or "").strip()
+        ],
+        "publication_type_counts": [
+            {
+                "label": str(item.get("label") or "").strip(),
+                "count": max(0, int(item.get("count") or 0)),
+            }
+            for item in (publication_type_counts or [])
+            if isinstance(item, dict) and str(item.get("label") or "").strip()
+        ],
+        "as_of_date": (
+            str(publication_library.get("as_of_date") or "").strip() or None
+        ),
+    }
+    return compact_payload
 
 
 def _parse_iso_date(value: Any) -> date | None:
@@ -1065,6 +1232,110 @@ def _build_publication_volume_rolling_window_summary(
         "latest_count": latest_count,
         "earliest_count": earliest_count,
         "direction": direction,
+    }
+
+
+def _annualize_publication_monthly_counts(values: list[int]) -> float | None:
+    safe_values = [max(0, int(value)) for value in values]
+    if not safe_values:
+        return None
+    return round((sum(safe_values) / float(len(safe_values))) * 12.0, 1)
+
+
+def _format_publication_rolling_period_label(month_count: int, *, prefix: str) -> str | None:
+    safe_month_count = max(0, int(month_count))
+    if safe_month_count <= 0:
+        return None
+    if safe_month_count % 12 == 0:
+        year_count = safe_month_count // 12
+        return f"{prefix}{year_count} year" + ("" if year_count == 1 else "s")
+    if safe_month_count < 12:
+        return f"{prefix}{safe_month_count} month" + ("" if safe_month_count == 1 else "s")
+    year_label = f"{safe_month_count / 12.0:.1f}".rstrip("0").rstrip(".")
+    return f"{prefix}{year_label} years"
+
+
+def _build_publication_production_phase_rolling_pace_summary(
+    chart_data: dict[str, Any],
+    *,
+    as_of_date: date | None,
+    recent_window_years: int,
+) -> dict[str, Any]:
+    empty_state = {
+        "rolling_cutoff_label": None,
+        "rolling_one_year_total": None,
+        "rolling_one_year_pace": None,
+        "rolling_one_year_window_months": 0,
+        "rolling_three_year_pace": None,
+        "rolling_three_year_window_months": 0,
+        "rolling_prior_period_pace": None,
+        "rolling_prior_period_months": 0,
+        "rolling_prior_period_years": None,
+        "rolling_prior_period_label": None,
+    }
+    safe_as_of_date = as_of_date or _utcnow().date()
+    current_month_start = _resolve_reference_month_start(safe_as_of_date)
+    lifetime_points = _build_publication_volume_lifetime_monthly_points(
+        chart_data,
+        as_of_date=safe_as_of_date,
+    )
+    complete_points = [
+        point
+        for point in lifetime_points
+        if isinstance(point, dict)
+        and isinstance(point.get("month_start"), date)
+        and point["month_start"] < current_month_start
+    ]
+    if not complete_points:
+        return empty_state
+
+    rolling_one_year_window_months = min(12, len(complete_points))
+    target_recent_window_years = max(1, int(recent_window_years or 0))
+    rolling_three_year_window_months = min(
+        max(12, target_recent_window_years * 12),
+        len(complete_points),
+    )
+
+    rolling_one_year_points = complete_points[-rolling_one_year_window_months:]
+    rolling_three_year_points = complete_points[-rolling_three_year_window_months:]
+    prior_points = complete_points[:-rolling_three_year_window_months]
+    last_complete_month = complete_points[-1].get("month_start")
+
+    rolling_one_year_counts = [
+        max(0, int(point.get("count") or 0)) for point in rolling_one_year_points
+    ]
+    rolling_three_year_counts = [
+        max(0, int(point.get("count") or 0)) for point in rolling_three_year_points
+    ]
+    prior_counts = [max(0, int(point.get("count") or 0)) for point in prior_points]
+    prior_period_months = len(prior_counts)
+
+    return {
+        "rolling_cutoff_label": (
+            _format_insight_month_year(last_complete_month)
+            if isinstance(last_complete_month, date)
+            else None
+        ),
+        "rolling_one_year_total": sum(rolling_one_year_counts)
+        if rolling_one_year_counts
+        else None,
+        "rolling_one_year_pace": _annualize_publication_monthly_counts(
+            rolling_one_year_counts
+        ),
+        "rolling_one_year_window_months": rolling_one_year_window_months,
+        "rolling_three_year_pace": _annualize_publication_monthly_counts(
+            rolling_three_year_counts
+        ),
+        "rolling_three_year_window_months": rolling_three_year_window_months,
+        "rolling_prior_period_pace": _annualize_publication_monthly_counts(prior_counts),
+        "rolling_prior_period_months": prior_period_months,
+        "rolling_prior_period_years": (
+            round(prior_period_months / 12.0, 1) if prior_period_months > 0 else None
+        ),
+        "rolling_prior_period_label": _format_publication_rolling_period_label(
+            prior_period_months,
+            prefix="Prior ",
+        ),
     }
 
 
@@ -1693,24 +1964,39 @@ def _build_publication_production_high_run_summary(
     }
 
 
-def _trim_publication_output_pattern_text(
-    text: str | None, *, max_chars: int, require_sentence_end: bool = False
+def _normalize_publication_generated_text(text: Any) -> str:
+    return re.sub(r"\s+", " ", str(text or "").strip())
+
+
+def _validate_generated_text_contract(
+    *,
+    text: Any,
+    section_key: str,
+    field_name: str,
+    require_sentence_end: bool = False,
+    allow_empty: bool = False,
 ) -> str:
-    clean = re.sub(r"\s+", " ", str(text or "").strip())
+    clean = _normalize_publication_generated_text(text)
     if not clean:
-        return ""
-    if len(clean) <= max_chars:
-        return clean
-    snippet = clean[: max_chars + 1]
-    sentence_cutoff = max(snippet.rfind(". "), snippet.rfind("! "), snippet.rfind("? "))
-    if sentence_cutoff >= max(32, int(max_chars * 0.55)):
-        return snippet[: sentence_cutoff + 1].strip()
-    if require_sentence_end:
-        return ""
-    word_cutoff = snippet.rfind(" ")
-    if word_cutoff >= max(24, int(max_chars * 0.45)):
-        return snippet[:word_cutoff].rstrip(",;:- ").strip()
-    return snippet[:max_chars].rstrip(",;:- ").strip()
+        if allow_empty:
+            return ""
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned an empty {field_name} for {section_key}."
+        )
+    if require_sentence_end and clean[-1] not in ".!?":
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned an unfinished {field_name} for {section_key}."
+        )
+    return clean
+
+
+def _validate_generated_note_label(*, label: Any, section_key: str) -> str:
+    clean = _normalize_publication_generated_text(label)
+    if not clean:
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned an empty consideration_label for {section_key}."
+        )
+    return clean
 
 
 def _classify_publication_production_phase(
@@ -2357,6 +2643,11 @@ def _build_publication_output_pattern_evidence(*, user_id: str) -> dict[str, Any
         as_of_date=as_of_date if isinstance(as_of_date, date) else None,
         comparison_years=recent_years,
     )
+    rolling_pace_summary = _build_publication_production_phase_rolling_pace_summary(
+        chart_data,
+        as_of_date=as_of_date if isinstance(as_of_date, date) else None,
+        recent_window_years=max(1, int(recent_summary.get("window_size") or 0)),
+    )
 
     return {
         "metrics_status": "READY",
@@ -2453,6 +2744,16 @@ def _build_publication_output_pattern_evidence(*, user_id: str) -> dict[str, Any
         "current_pace_comparison_mean": current_pace_summary["current_pace_comparison_mean"],
         "current_pace_comparison_delta": current_pace_summary["current_pace_comparison_delta"],
         "current_pace_signal": current_pace_summary["current_pace_signal"],
+        "rolling_cutoff_label": rolling_pace_summary["rolling_cutoff_label"],
+        "rolling_one_year_total": rolling_pace_summary["rolling_one_year_total"],
+        "rolling_one_year_pace": rolling_pace_summary["rolling_one_year_pace"],
+        "rolling_one_year_window_months": rolling_pace_summary["rolling_one_year_window_months"],
+        "rolling_three_year_pace": rolling_pace_summary["rolling_three_year_pace"],
+        "rolling_three_year_window_months": rolling_pace_summary["rolling_three_year_window_months"],
+        "rolling_prior_period_pace": rolling_pace_summary["rolling_prior_period_pace"],
+        "rolling_prior_period_months": rolling_pace_summary["rolling_prior_period_months"],
+        "rolling_prior_period_years": rolling_pace_summary["rolling_prior_period_years"],
+        "rolling_prior_period_label": rolling_pace_summary["rolling_prior_period_label"],
         "historical_gap_years_present": phase_summary["historical_gap_years_present"],
         "includes_partial_year": bool(series_payload.get("includes_partial_year")),
         "partial_year": series_payload.get("partial_year"),
@@ -2468,16 +2769,45 @@ def _build_publication_production_phase_evidence(*, user_id: str) -> dict[str, A
     return _build_publication_output_pattern_evidence(user_id=user_id)
 
 
+def _classify_publication_year_over_year_trajectory(
+    *, years: list[int], series: list[int]
+) -> str:
+    slope = _calculate_publication_output_slope(years, series)
+    if slope is None:
+        return "stable"
+    if slope > 0.2:
+        return "expanding"
+    if slope < -0.2:
+        return "contracting"
+    return "stable"
+
+
+def _build_publication_year_over_year_trajectory_evidence(
+    *, user_id: str
+) -> dict[str, Any]:
+    evidence = _build_publication_output_pattern_evidence(user_id=user_id)
+    year_series = [
+        dict(item) for item in (evidence.get("year_series") or []) if isinstance(item, dict)
+    ]
+    years = [int(item["year"]) for item in year_series if _safe_int(item.get("year")) is not None]
+    series = [max(0, int(item.get("count") or 0)) for item in year_series]
+    evidence["trajectory_phase_label"] = _classify_publication_year_over_year_trajectory(
+        years=years,
+        series=series,
+    )
+    return evidence
+
+
 def _build_publication_output_pattern_shape_phrase(evidence: dict[str, Any]) -> str:
     consistency_label = str(evidence.get("consistency_label") or "").strip().lower() or None
     burstiness_label = str(evidence.get("burstiness_label") or "").strip().lower() or None
 
     if consistency_label and burstiness_label:
         return (
-            f"year-to-year variation reads as {consistency_label}, while spike structure is {burstiness_label}"
+            f"year-to-year variation is {consistency_label}, while spike structure is {burstiness_label}"
         )
     if consistency_label:
-        return f"year-to-year variation reads as {consistency_label}"
+        return f"year-to-year variation is {consistency_label}"
     if burstiness_label:
         return f"spike structure is {burstiness_label}"
     return "variation and spike structure remain mixed"
@@ -2523,7 +2853,7 @@ def _build_publication_output_pattern_prompt_brief(
     peak_years_label = _format_year_list(peak_years) if peak_years else None
 
     if phase_label == "Plateauing" and latest_year is not None and latest_output_count is not None:
-        structural_read = f"Repeated highs, then a softer finish in {latest_year}."
+        structural_read = f"Repeated highs, then a clear break in {latest_year}."
     elif phase_label == "Contracting" and latest_year is not None and latest_output_count is not None:
         structural_read = f"Output has pulled back into a weaker recent run by {latest_year}."
     elif phase_label == "Scaling" and gap_years == 0 and low_year_position == "early":
@@ -2588,7 +2918,7 @@ def _build_publication_output_pattern_prompt_brief(
             else f"{high_run_min_count}-{high_run_max_count}"
         )
         what_changes_it_hint = (
-            f"A next complete year back into the {band_label} publication band seen across {high_run_label} would soften this read; another year near {latest_output_count} would deepen it."
+            f"A next complete year back in the {band_label} publication band seen across {high_run_label} would make {latest_year} look like a dip; another year near {latest_output_count} would confirm a more durable break."
         )
     else:
         what_changes_it_hint = None
@@ -2601,6 +2931,124 @@ def _build_publication_output_pattern_prompt_brief(
         "why_it_matters_hint": why_it_matters_hint,
         "what_changes_it_hint": what_changes_it_hint,
     }
+
+
+def _build_publication_production_phase_prompt_brief(
+    evidence: dict[str, Any],
+) -> dict[str, str]:
+    brief: dict[str, str] = {
+        "primary_focus": (
+            "Anchor the stage call on rolling publication pace through the last completed month. "
+            "Use complete-year peaks only to place that pace inside the longer publication span."
+        )
+    }
+
+    peak_years = [
+        int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None
+    ]
+    peak_years_label = _format_year_list(peak_years) if peak_years else None
+    peak_count = _safe_int(evidence.get("peak_count"))
+    latest_year = _safe_int(evidence.get("latest_year"))
+    latest_output_count = _safe_int(evidence.get("latest_output_count"))
+    rolling_one_year_total = _safe_int(evidence.get("rolling_one_year_total"))
+    rolling_cutoff_label = str(evidence.get("rolling_cutoff_label") or "").strip() or None
+    rolling_three_year_pace = _safe_float(evidence.get("rolling_three_year_pace"))
+    rolling_prior_period_pace = _safe_float(evidence.get("rolling_prior_period_pace"))
+    rolling_prior_period_label = (
+        str(evidence.get("rolling_prior_period_label") or "").strip() or None
+    )
+    phase_confidence_note = (
+        str(evidence.get("phase_confidence_note") or "").strip() or None
+    )
+
+    if peak_years_label and peak_count is not None and latest_year is not None and latest_output_count is not None:
+        brief["structural_anchor"] = (
+            f"Across the full publication span, output peaked in {peak_years_label} at {peak_count} publications, "
+            f"then fell to {latest_output_count} in {latest_year}."
+        )
+    elif latest_year is not None and latest_output_count is not None:
+        brief["structural_anchor"] = (
+            f"The latest complete year is {latest_year} with {latest_output_count} publications."
+        )
+
+    if (
+        rolling_one_year_total is not None
+        and rolling_three_year_pace is not None
+        and rolling_prior_period_pace is not None
+        and rolling_prior_period_label
+    ):
+        cutoff_clause = f" to end {rolling_cutoff_label}" if rolling_cutoff_label else ""
+        brief["rolling_pace_summary"] = (
+            f"Last 12 months{cutoff_clause}: {rolling_one_year_total} publications. "
+            f"Trailing 3-year pace: {rolling_three_year_pace:.1f}/year. "
+            f"{rolling_prior_period_label}: {rolling_prior_period_pace:.1f}/year."
+        )
+    elif rolling_one_year_total is not None and rolling_cutoff_label:
+        brief["rolling_pace_summary"] = (
+            f"Last 12 months to end {rolling_cutoff_label}: {rolling_one_year_total} publications."
+        )
+
+    if phase_confidence_note:
+        brief["confidence_hint"] = phase_confidence_note
+
+    return brief
+
+
+def _build_publication_year_over_year_trajectory_prompt_brief(
+    evidence: dict[str, Any],
+) -> dict[str, str]:
+    brief: dict[str, str] = {
+        "primary_focus": (
+            "Use complete publication years to anchor the year-over-year read. "
+            "Then make the recent rolling comparison explicit in the body: name the last 12 months and compare it with the trailing 3-year pace, "
+            "and with the prior period when that evidence is available."
+        )
+    }
+    span_years_label = str(evidence.get("span_years_label") or "").strip() or None
+    peak_years = [
+        int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None
+    ]
+    peak_years_label = _format_year_list(peak_years) if peak_years else None
+    peak_count = _safe_int(evidence.get("peak_count"))
+    latest_year = _safe_int(evidence.get("latest_year"))
+    latest_output_count = _safe_int(evidence.get("latest_output_count"))
+    trajectory_phase_label = (
+        str(evidence.get("trajectory_phase_label") or "").strip().lower() or "stable"
+    )
+    rolling_summary = _format_publication_production_phase_rolling_pace_summary(evidence)
+
+    if (
+        trajectory_phase_label == "contracting"
+        and peak_years_label
+        and peak_count is not None
+        and latest_year is not None
+        and latest_output_count is not None
+    ):
+        brief["structural_anchor"] = (
+            f"Across complete years from {span_years_label or 'the full span'}, output peaked in "
+            f"{peak_years_label} at {peak_count} publications before falling to {latest_output_count} in {latest_year}."
+        )
+    elif (
+        trajectory_phase_label == "expanding"
+        and peak_years_label
+        and peak_count is not None
+    ):
+        brief["structural_anchor"] = (
+            f"Across complete years from {span_years_label or 'the full span'}, later years build into "
+            f"higher output, reaching {peak_count} in {peak_years_label}."
+        )
+    elif latest_year is not None and latest_output_count is not None:
+        brief["structural_anchor"] = (
+            f"The latest complete year is {latest_year} with {latest_output_count} publications."
+        )
+
+    if rolling_summary:
+        brief["rolling_pace_summary"] = rolling_summary
+        brief["body_requirement"] = (
+            "Do not leave the rolling read implied. State the latest 12-month total and compare it directly with the trailing 3-year pace."
+        )
+
+    return brief
 
 
 def _build_publication_output_pattern_peak_structure_note(
@@ -2662,10 +3110,10 @@ def _build_publication_output_pattern_consideration(
             else f"{high_run_min_count}-{high_run_max_count}"
         )
         return (
-            "What changes it",
+            "What would confirm it",
             (
                 f"A next complete year back into the {band_label} publication band seen across {high_run_label} "
-                f"would soften this read; another year near {latest_output_count} would deepen it."
+                f"would make {latest_year} look like a dip; another year near {latest_output_count} would confirm a more durable break."
             ),
         )
 
@@ -2996,6 +3444,57 @@ def _format_publication_production_phase_current_pace_summary(
     )
 
 
+def _format_publication_production_phase_rolling_pace_summary(
+    evidence: dict[str, Any]
+) -> str | None:
+    rolling_one_year_total = _safe_int(evidence.get("rolling_one_year_total"))
+    rolling_one_year_window_months = max(
+        0, int(evidence.get("rolling_one_year_window_months") or 0)
+    )
+    rolling_cutoff_label = str(evidence.get("rolling_cutoff_label") or "").strip() or None
+    rolling_three_year_pace = _safe_float(evidence.get("rolling_three_year_pace"))
+    rolling_three_year_window_months = max(
+        0, int(evidence.get("rolling_three_year_window_months") or 0)
+    )
+    rolling_prior_period_pace = _safe_float(evidence.get("rolling_prior_period_pace"))
+    rolling_prior_period_label = (
+        str(evidence.get("rolling_prior_period_label") or "").strip() or None
+    )
+    if rolling_one_year_total is None:
+        return None
+
+    one_year_label = (
+        "the last 12 months"
+        if rolling_one_year_window_months == 12
+        else f"the last {rolling_one_year_window_months} months"
+        if rolling_one_year_window_months > 0
+        else "the latest rolling window"
+    )
+    cutoff_clause = f" to end {rolling_cutoff_label}" if rolling_cutoff_label else ""
+    count_noun = "publication" if rolling_one_year_total == 1 else "publications"
+    base_summary = (
+        f"In {one_year_label}{cutoff_clause}, output was {rolling_one_year_total} {count_noun}."
+    )
+    if (
+        rolling_three_year_pace is None
+        or rolling_three_year_window_months <= 0
+        or rolling_prior_period_pace is None
+        or not rolling_prior_period_label
+    ):
+        return base_summary
+
+    trailing_label = (
+        "the trailing 3-year pace"
+        if rolling_three_year_window_months == 36
+        else f"the trailing {rolling_three_year_window_months}-month pace"
+    )
+    return (
+        f"In {one_year_label}{cutoff_clause}, output was {rolling_one_year_total} {count_noun}, "
+        f"below {trailing_label} of {rolling_three_year_pace:.1f}/year and "
+        f"{rolling_prior_period_label.lower()} at {rolling_prior_period_pace:.1f}/year."
+    )
+
+
 def _format_publication_production_phase_peak_summary(evidence: dict[str, Any]) -> str:
     peak_years = [int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None]
     peak_count = _safe_int(evidence.get("peak_count"))
@@ -3014,6 +3513,9 @@ def _build_publication_production_phase_body(evidence: dict[str, Any]) -> str:
     phase_label = str(evidence.get("phase_label") or "").strip()
     slope_summary = _format_publication_production_phase_slope_summary(evidence)
     recent_share_summary = _format_publication_production_phase_recent_share_summary(evidence)
+    rolling_pace_summary = _format_publication_production_phase_rolling_pace_summary(
+        evidence
+    )
     continuity_summary = _format_publication_production_phase_continuity_summary(evidence)
     peak_years = [
         int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None
@@ -3027,6 +3529,18 @@ def _build_publication_production_phase_body(evidence: dict[str, Any]) -> str:
     high_run_max_count = _safe_int(evidence.get("high_run_max_count"))
 
     if phase_label == "Plateauing":
+        if (
+            peak_years_label
+            and peak_count is not None
+            and latest_year is not None
+            and latest_output_count is not None
+            and rolling_pace_summary
+        ):
+            return (
+                f"Across the full publication span, output peaked in {peak_years_label} at {peak_count} publications, "
+                f"then fell to {latest_output_count} in {latest_year}. "
+                f"{rolling_pace_summary}"
+            )
         if (
             high_run_label
             and high_run_min_count is not None
@@ -3072,6 +3586,11 @@ def _build_publication_production_phase_body(evidence: dict[str, Any]) -> str:
                 f"{slope_summary[0].upper()}{slope_summary[1:]}, but the record has stopped converting that earlier rise into stronger recent years. "
                 f"Because {continuity_summary}, {peak_phrase} followed by {latest_output_count} in {latest_year} "
                 f"{read_verb} as genuine flattening rather than a gap-driven interruption."
+            )
+        if rolling_pace_summary:
+            return (
+                "The stronger publication run is no longer being sustained. "
+                f"{rolling_pace_summary}"
             )
         return (
             f"{slope_summary[0].upper()}{slope_summary[1:]}, but the recent complete years are no longer building on that earlier rise. "
@@ -3175,7 +3694,7 @@ def _build_publication_production_phase_fallback_payload(evidence: dict[str, Any
                 if high_run_min_count == high_run_max_count
                 else f"{high_run_min_count}-{high_run_max_count}"
             )
-            consideration_label = "What changes it"
+            consideration_label = "What would confirm it"
             pace_clause = (
                 f" Through {current_pace_cutoff_label}, the live year is still behind that pace."
                 if current_pace_cutoff_label and current_pace_signal == "behind"
@@ -3257,6 +3776,88 @@ def _build_publication_production_phase_fallback_payload(evidence: dict[str, Any
                     "high_run_min_count": evidence.get("high_run_min_count"),
                     "high_run_max_count": evidence.get("high_run_max_count"),
                     "years_since_last_peak": evidence.get("years_since_last_peak"),
+                },
+            }
+        ],
+    }
+
+
+def _build_publication_year_over_year_trajectory_fallback_payload(
+    evidence: dict[str, Any]
+) -> dict[str, Any]:
+    trajectory_phase_label = (
+        str(evidence.get("trajectory_phase_label") or "").strip().lower() or "stable"
+    )
+    span_years_label = str(evidence.get("span_years_label") or "").strip() or "the full span"
+    peak_years = [
+        int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None
+    ]
+    peak_years_label = _format_year_list(peak_years) if peak_years else None
+    peak_count = _safe_int(evidence.get("peak_count"))
+    latest_year = _safe_int(evidence.get("latest_year"))
+    latest_output_count = _safe_int(evidence.get("latest_output_count"))
+    rolling_summary = _format_publication_production_phase_rolling_pace_summary(evidence)
+
+    if trajectory_phase_label == "contracting":
+        headline = "Stronger run, then a pullback"
+        if (
+            peak_years_label
+            and peak_count is not None
+            and latest_year is not None
+            and latest_output_count is not None
+        ):
+            body = (
+                f"Across complete years from {span_years_label}, output peaked in {peak_years_label} at "
+                f"{peak_count} publications before falling to {latest_output_count} in {latest_year}. "
+                f"{rolling_summary or ''}"
+            ).strip()
+        else:
+            body = (
+                f"Across complete years from {span_years_label}, the later years now sit below the stronger earlier run. "
+                f"{rolling_summary or ''}"
+            ).strip()
+    elif trajectory_phase_label == "expanding":
+        headline = "Later years still building"
+        if peak_years_label and peak_count is not None:
+            body = (
+                f"Across complete years from {span_years_label}, output builds into stronger later years, "
+                f"reaching {peak_count} in {peak_years_label}. "
+                f"{rolling_summary or ''}"
+            ).strip()
+        else:
+            body = (
+                f"Across complete years from {span_years_label}, later years still sit above the earlier run. "
+                f"{rolling_summary or ''}"
+            ).strip()
+    else:
+        headline = "Run stays broadly level"
+        body = (
+            f"Across complete years from {span_years_label}, output moves year to year without breaking decisively upward or downward. "
+            f"{rolling_summary or ''}"
+        ).strip()
+
+    return {
+        "overall_summary": body,
+        "sections": [
+            {
+                "key": "publication_year_over_year_trajectory",
+                "title": "Year-over-year trajectory",
+                "headline": headline,
+                "body": body,
+                "consideration_label": None,
+                "consideration": None,
+                "evidence": {
+                    "trajectory_phase_label": trajectory_phase_label,
+                    "span_years_label": evidence.get("span_years_label"),
+                    "peak_years": list(evidence.get("peak_years") or []),
+                    "peak_count": evidence.get("peak_count"),
+                    "latest_year": evidence.get("latest_year"),
+                    "latest_output_count": evidence.get("latest_output_count"),
+                    "rolling_cutoff_label": evidence.get("rolling_cutoff_label"),
+                    "rolling_one_year_total": evidence.get("rolling_one_year_total"),
+                    "rolling_three_year_pace": evidence.get("rolling_three_year_pace"),
+                    "rolling_prior_period_pace": evidence.get("rolling_prior_period_pace"),
+                    "rolling_prior_period_label": evidence.get("rolling_prior_period_label"),
                 },
             }
         ],
@@ -3636,17 +4237,17 @@ def _build_publication_volume_recent_clause(evidence: dict[str, Any]) -> str:
         if recent_detail_pattern in {"very_small_dated_set", "small_dated_set", "limited_recent_detail"}:
             opening = "The latest 5-year, 3-year, and 12-month views all sit below the stronger middle-to-late part of the record, so recent volume currently looks more like a pause below your earlier high-water mark than a settled long-run decline"
         else:
-            opening = "The latest 5-year, 3-year, and 12-month views all sit below the stronger middle-to-late part of the record, so recent volume now looks genuinely softer than your earlier high-water mark"
+            opening = "The latest 5-year, 3-year, and 12-month views all sit below the stronger middle-to-late part of the record, so recent volume now sits clearly below your earlier high-water mark"
     elif recent_position in {"recently_stronger", "recent_rebound", "longer_run_strength"}:
         opening = "The latest 5-year, 3-year, and 12-month views are reinforcing the broader record rather than pulling away from it"
     elif recent_position == "recently_in_line":
-        opening = "The latest 5-year, 3-year, and 12-month views are not materially changing the broader reading"
+        opening = "The latest 5-year, 3-year, and 12-month views are not materially changing the broader pattern"
     elif recent_position == "no_recent_output":
         opening = "The latest 12-month window is currently empty enough to leave the recent end of the record distinctly quieter than the rest of the span"
     elif recent_position == "longer_run_softening":
-        opening = "The latest 5-year view ends softer than its earlier blocks, which puts a drag on the recent end of the record even though the shorter window is more mixed"
+        opening = "The latest 5-year view ends below its earlier blocks, which puts a drag on the recent end of the record even though the shorter window is more mixed"
     else:
-        opening = "The latest windows are giving a mixed recent read against the longer-run record"
+        opening = "The latest windows give a mixed recent picture against the longer-run record"
 
     monthly_context = (
         f"{recent_monthly_total} publication{'s' if recent_monthly_total != 1 else ''} across {recent_monthly_active_months} active month{'s' if recent_monthly_active_months != 1 else ''} in the latest 12 completed months"
@@ -3703,17 +4304,17 @@ def _build_publication_volume_over_time_body(evidence: dict[str, Any]) -> str:
         elif volume_read_mode == "lower_recent_baseline":
             second_sentence = (
                 f"Both recent rolling views now sit below that band, and {latest_phrase}, "
-                "so recent volume is now reading more like a lower current baseline than a brief wobble."
+                "so recent volume now looks more like a lower current baseline than a brief wobble."
             )
         elif recent_support_strength == "thin":
             second_sentence = (
                 f"Both recent rolling views now sit below that band, and {latest_phrase}, "
-                "so the ending reads as a softer patch below the recent run, with too little new depth to treat it as settled."
+                "so the ending looks like a thinner patch below the recent run, with too little new depth to treat it as settled."
             )
         else:
             second_sentence = (
                 f"Both recent rolling views now sit below that band, and {latest_phrase}, "
-                "so the ending now reads as a softer pause below that earlier band rather than continued build."
+                "so the ending now looks more like a pause below that earlier band than continued build."
             )
         if overall_trajectory in {"early_high_then_softer", "higher_then_softer"}:
             second_sentence = (
@@ -4120,7 +4721,7 @@ def _build_publication_mix_prompt_brief(
         evidence,
         mix_name=mix_name,
     )
-    recent_read = _build_publication_mix_recent_clause(
+    recent_window_summary = _build_publication_mix_recent_clause(
         evidence,
         mix_name=mix_name,
     )
@@ -4129,14 +4730,17 @@ def _build_publication_mix_prompt_brief(
         mix_name=mix_name,
     )
     return {
-        "full_record_read": full_record_read,
-        "recent_read": recent_read,
-        "preferred_evidence_order": "full record first, then 5-year and 3-year windows, with the newest 1-year slice only as support or caution when it is thin",
+        "full_record_summary": full_record_read,
+        "recent_window_summary": recent_window_summary,
+        "preferred_evidence_order": "full span first, then 5-year and 3-year windows, with the newest 1-year slice only as support or caution when it is thin",
         "avoid_stock_phrases": [
             "anchors the full record",
+            "the record",
             "recent signal",
             "latest view",
             "centre of gravity",
+            "this read",
+            "soften",
         ],
         "suggested_follow_on": {
             "label": note_label,
@@ -4150,9 +4754,11 @@ def _build_publication_mix_prompt_brief(
 def _build_publication_mix_extra_guidance(mix_name: str) -> str:
     return (
         f"Treat this as a composition question about {mix_name}, not a rank-order summary.\n"
-        "Base the main reading on the full record plus the 5-year and 3-year windows unless the history is too short to do that sensibly.\n"
-        "Use the newest 1-year slice only to confirm or qualify the read unless it has enough volume to stand on its own.\n"
-        "Avoid stock phrases such as 'anchors the full record', 'recent signal', 'latest view', or 'centre of gravity'.\n"
+        "Base the main interpretation on the full span plus the 5-year and 3-year windows unless the history is too short to do that sensibly.\n"
+        "Use the newest 1-year slice only to confirm or qualify the pattern unless it has enough volume to stand on its own.\n"
+        "Avoid stock phrases such as 'anchors the full record', 'recent signal', 'latest view', 'this read', or 'centre of gravity'.\n"
+        "Avoid leaning on the word 'record' when 'full span', direct year ranges, or the named types are clearer.\n"
+        "Keep headlines, note labels, and common-noun category names in sentence case unless they begin a sentence.\n"
         "Name the relevant types directly and explain whether the newer mix looks steady, more contested, broader, or genuinely shifted.\n"
     )
 
@@ -4267,7 +4873,7 @@ def _build_publication_mix_full_record_clause(
     evidence: dict[str, Any], *, mix_name: str
 ) -> str:
     all_window = evidence.get("all_window") if isinstance(evidence.get("all_window"), dict) else {}
-    span_years_label = str(evidence.get("span_years_label") or "").strip() or "the full record"
+    span_years_label = str(evidence.get("span_years_label") or "").strip() or "the full span"
     top_labels = [str(label).strip() for label in (all_window.get("top_labels") or []) if str(label).strip()]
     if not top_labels:
         return f"{mix_name.capitalize()} data is not available yet."
@@ -4295,7 +4901,7 @@ def _build_publication_mix_full_record_clause(
         else ""
     )
     return (
-        f"Across {span_years_label}, {top_label_text} makes up {round(top_share_pct or 0)}% of the record "
+        f"Across {span_years_label}, {top_label_text} makes up {round(top_share_pct or 0)}% of publications "
         f"({top_count} of {total_count}){secondary_clause}."
     )
 
@@ -4371,7 +4977,7 @@ def _build_publication_mix_recent_clause(
         ):
             return (
                 f"The main recent change is concentration rather than replacement: {all_leader} rises from "
-                f"{round(all_top_share_pct)}% across the whole record to {round(concentration_top_share_pct)}% in {concentration_label}, "
+                f"{round(all_top_share_pct)}% across the full span to {round(concentration_top_share_pct)}% in {concentration_label}, "
                 "while smaller categories recede."
             )
         return (
@@ -4470,12 +5076,12 @@ def _build_publication_mix_consideration(
         )
         return (
             "Confidence",
-            f"The newest rolling year only contains {latest_window_total_count} publication{'s' if latest_window_total_count != 1 else ''}{partial_clause}, so it should confirm the 5-year and 3-year read, not override it.",
+            f"The newest rolling year only contains {latest_window_total_count} publication{'s' if latest_window_total_count != 1 else ''}{partial_clause}, so it should confirm the 5-year and 3-year pattern, not override it.",
         )
     if latest_partial_year_label:
         return (
             "Confidence",
-            f"The newest rolling year includes {latest_partial_year_label}, so read it as an early check on the broader {mix_name}, not a reset on its own.",
+            f"The newest rolling year includes {latest_partial_year_label}, so treat it as an early check on the broader {mix_name}, not a reset on its own.",
         )
     if recent_window_change_state in {"late_leader_shift", "leader_shift"}:
         return (
@@ -4598,23 +5204,36 @@ def _build_publication_insight_prompt_preamble(
         "Return JSON only, with no markdown.\n"
         f"{request_line}\n"
         "Write for a highly capable academic reader who wants interpretation, not reassurance.\n"
+        "Write like a sharp human analyst: precise, varied, and concrete rather than templated.\n"
         "Use only the evidence provided. Do not invent causes, mechanisms, advice, or future outcomes.\n"
         "Lead with the structural story, not the metric label.\n"
         "Prefer the fewest concrete numbers that materially change the interpretation.\n"
         "Choose comparisons that earn their place: earlier versus later, established leader versus challenger, broad versus concentrated, persistent versus provisional.\n"
         "If a short recent window is thin, demote it to a qualifier rather than letting it carry the main claim.\n"
         "Do not narrate the interface or restate obvious section labels, charts, tables, toggles, or controls.\n"
-        "Avoid product-copy phrases such as 'this means', 'current stage reads as', 'based on your metrics', or 'over time' in place of analysis.\n"
+        "Avoid canned phrases such as 'this read', 'reads as', 'soften', 'softening', 'softer', 'this means', 'based on your metrics', or 'over time' in place of analysis.\n"
+        "Use sentence case in headlines and note labels. Do not add random capital letters for emphasis.\n"
+        "Write to the response shape without sounding boxed in, templated, or synthetic.\n"
         f"{wider_context_line}"
         "Write directly to the user in plain English.\n"
     )
 
 
-def _build_publication_insight_note_guidance() -> str:
+def _build_publication_insight_slot_guidance(*, multi_section: bool) -> str:
+    body_guidance = (
+        "Each body should usually be 1 to 3 sentences and roughly 30 to 70 words, unless the evidence genuinely calls for a little less or more.\n"
+        if multi_section
+        else "Body should usually be 2 to 4 sentences and roughly 45 to 90 words, unless the evidence genuinely calls for a little less or more.\n"
+    )
     return (
-        "Only include the follow-on note when it adds a distinct reading aid, caution, or confidence qualifier.\n"
-        "If you include a follow-on note, use a short specific label such as Confidence, Live year, Coverage, Why it matters, What changes it, What to watch, Peak structure, or Read this.\n"
-        "Do not default to a generic label if a sharper one is available.\n"
+        "The response shape maps to UI slots, not a checklist: an optional overall summary, a headline, a body, and optional supporting blocks.\n"
+        "overall_summary is optional and should usually be one crisp sentence, roughly 12 to 30 words, only when it adds value beyond the section bodies.\n"
+        "Headline should be a short non-generic phrase, usually 2 to 6 words.\n"
+        + body_guidance
+        + "Supporting blocks are optional. Most sections need none or just one.\n"
+        "Use a paragraph block for one extra analytic move, or a callout block for a caveat, confidence qualifier, or next angle.\n"
+        "If no supporting block helps, omit blocks entirely.\n"
+        "If you include a callout block, its label should stay brief and specific, and its text should usually be 1 or 2 sentences, roughly 12 to 40 words.\n"
     )
 
 
@@ -4635,35 +5254,35 @@ def _build_publication_section_prompt(
         )
         + f"Section question: {section_question}\n"
         "Use one shared publication-insight reasoning style: find the deepest supported insight for this question, then present it clearly.\n"
-        "You are given four evidence layers: portfolio_context, publication_library, section_data, and optional analysis_brief or confidence_flags.\n"
-        "publication_library contains the user's publication library as a whole-record evidence layer, not just a recent slice.\n"
+        "You are given evidence layers named portfolio_context, publication_library, section_data, and optional analysis_brief, confidence_flags, or ui_context.\n"
+        "publication_library contains compact whole-record library context rather than a record-by-record dump.\n"
         "Use the whole library when it sharpens the interpretation, but stay focused on the section question.\n"
         "Treat analysis_brief as a starting point, not a script. You may go beyond it if the raw evidence supports a stronger insight.\n"
+        "Treat ui_context as the section's current hover or explainer copy: useful context for what the section is trying to show, but not a script to paraphrase.\n"
         "Choose the evidence that matters most. Do not force every metric into the body.\n"
         "Prefer the fewest concrete numbers that materially change the interpretation.\n"
         "Do not define metrics back to the user unless that definition is necessary for the insight.\n"
         "Do not narrate the interface or restate obvious labels, charts, tables, toggles, or controls.\n"
-        "If the evidence supports more than one useful follow-on angle, choose the single most valuable note for the current UI slot.\n"
-        "Prefer notes that answer why it matters, what changes it, what to watch, peak structure, or signal strength.\n"
         "Return one section only. Use compact, high-value language for a highly capable academic reader.\n"
-        "Headline should be concise and non-generic.\n"
-        "Body should usually be 2 short sentences that sound like an analyst's reading, not a metric recap.\n"
+        "Avoid template transitions or stock analyst jargon; the prose should feel written, not generated.\n"
+        + _build_publication_insight_slot_guidance(multi_section=False)
         + (f"{extra_guidance.rstrip()}\n" if extra_guidance else "")
-        + _build_publication_insight_note_guidance()
         + "Schema:\n"
         "{\n"
-        '  "overall_summary": "string",\n'
+        '  "overall_summary": "optional concise summary sentence; omit or leave empty when it adds no value",\n'
         '  "sections": [\n'
         "    {\n"
         f'      "key": "{section_key}",\n'
-        '      "headline": "string",\n'
-        '      "body": "string",\n'
-        '      "consideration_label": "optional, max 4 words",\n'
-        '      "consideration": "optional, max 35 words"\n'
+        '      "headline": "short non-generic phrase",\n'
+        '      "body": "main analysis in natural prose",\n'
+        '      "blocks": [\n'
+        '        { "kind": "paragraph", "text": "optional extra analytic paragraph" },\n'
+        '        { "kind": "callout", "label": "optional brief label", "text": "optional caveat, confidence note, or next angle" }\n'
+        "      ]\n"
         "    }\n"
         "  ]\n"
         "}\n"
-        f"Return exactly one section: {section_key}.\n"
+        f"Return the requested single section: {section_key}.\n"
         f"Evidence: {evidence_json}\n"
     )
 
@@ -4673,6 +5292,7 @@ def _build_publication_section_evidence_payload(
     *,
     analysis_brief: dict[str, Any] | None = None,
     confidence_flags: dict[str, Any] | None = None,
+    ui_context: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "portfolio_context": (
@@ -4680,7 +5300,7 @@ def _build_publication_section_evidence_payload(
             if isinstance(evidence.get("portfolio_context"), dict)
             else {}
         ),
-        "publication_library": (
+        "publication_library": _compact_publication_library_for_section_prompt(
             evidence.get("publication_library")
             if isinstance(evidence.get("publication_library"), dict)
             else {}
@@ -4688,63 +5308,406 @@ def _build_publication_section_evidence_payload(
         "section_data": {
             key: value
             for key, value in evidence.items()
-            if key not in {"portfolio_context", "publication_library"}
+            if key not in {"portfolio_context", "publication_library", "ui_context"}
         },
     }
     if analysis_brief:
         payload["analysis_brief"] = analysis_brief
     if confidence_flags:
         payload["confidence_flags"] = confidence_flags
+    if str(ui_context or "").strip():
+        payload["ui_context"] = str(ui_context).strip()
     return payload
 
 
-def _build_publication_output_pattern_prompt(evidence: dict[str, Any]) -> str:
-    analysis_brief = _build_publication_output_pattern_prompt_brief(evidence)
+def _build_publication_production_phase_system_prompt() -> str:
+    return (
+        "You are Publication insights agent for a research analytics product.\n"
+        "You are writing the Production Phase insight only.\n"
+        "Decide one phase only.\n"
+        "Available phase labels:\n"
+        "- early build: a short but growing record that is not yet established.\n"
+        "- accelerating: the full timeline shows strengthening output that the latest complete years still support.\n"
+        "- established expansion: a sustained high-output range is present across the established record.\n"
+        "- established but concentrated: the record is established, but its strength depends on a narrower cluster of peak years or concentrated highs.\n"
+        "- intermittent: breaks in continuity materially shape the record.\n"
+        "- plateauing: an earlier rise or stronger band is no longer being sustained, and rolling pace now sits below that higher run.\n"
+        "- reactivated: a later recovery follows an earlier lull or broken run.\n"
+        "Use the full publication span first, then use rolling pace to show whether that stronger run is still being sustained.\n"
+        "If rolling pace fields are available, treat them as the main recent evidence: last 12 months, trailing multi-year pace, and the prior period pace.\n"
+        "Do not anchor the read on Jan-Dec buckets when rolling pace is available.\n"
+        "Use complete-year peaks or the latest complete year only when they materially explain where the rolling pace sits in the larger arc.\n"
+        "Use the fewest facts that materially change the interpretation, and keep numbers sparse.\n"
+        "Lead with the structural story, not metric names.\n"
+        "Treat thin recent windows or low-confidence signals as qualifiers, not as the main claim.\n"
+        "Use only the evidence in the user message. Do not speculate about causes, advice, or future outcomes.\n"
+        "Do not narrate the interface.\n"
+        "Do not mention citations, prestige, collaboration, field percentiles, or authorship.\n"
+        "analysis_brief and ui_context may appear in the evidence. Use them as context, not as script text to paraphrase.\n"
+        "Generic phase language is not enough unless you make it concrete immediately.\n"
+        "Write in plain English for a highly capable academic reader.\n"
+        "Return content that fits the provided schema exactly and use sentence case.\n"
+        "Keep the headline compact and non-generic. Keep the body to the clearest 2 to 4 sentences.\n"
+        "Supporting blocks are optional, and you may return at most one. Use it only for a confidence note or what would change the read.\n"
+    )
+
+
+def _publication_production_phase_text_config() -> dict[str, Any]:
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": PUBLICATION_PRODUCTION_PHASE_SCHEMA_NAME,
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "overall_summary": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}]
+                    },
+                    "sections": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "key": {
+                                    "type": "string",
+                                    "const": "publication_production_phase",
+                                },
+                                "phase": {
+                                    "type": "string",
+                                    "enum": list(PUBLICATION_PRODUCTION_PHASE_OPTIONS),
+                                },
+                                "headline": {"type": "string"},
+                                "body": {"type": "string"},
+                                "blocks": {
+                                    "type": "array",
+                                    "maxItems": 1,
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "properties": {
+                                            "kind": {
+                                                "type": "string",
+                                                "enum": ["paragraph", "callout"],
+                                            },
+                                            "label": {
+                                                "anyOf": [
+                                                    {"type": "string"},
+                                                    {"type": "null"},
+                                                ]
+                                            },
+                                            "text": {"type": "string"},
+                                        },
+                                        "required": ["kind", "label", "text"],
+                                    },
+                                },
+                            },
+                            "required": ["key", "phase", "headline", "body", "blocks"],
+                        },
+                    },
+                },
+                "required": ["overall_summary", "sections"],
+            },
+        }
+    }
+
+
+def _build_publication_production_phase_messages(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    analysis_brief = _build_publication_production_phase_prompt_brief(evidence)
     evidence_payload = _build_publication_section_evidence_payload(
         evidence,
         analysis_brief=analysis_brief,
-        confidence_flags={
-            "phase_confidence_low": evidence.get("phase_confidence_low"),
-            "includes_partial_year": evidence.get("includes_partial_year"),
-        },
-    )
-    return _build_publication_section_prompt(
-        request_line="This request is for the Publication Production Pattern insight.",
-        section_key="publication_output_pattern",
-        section_question="What is the deepest insight about the steadiness of this publication record?",
-        evidence_payload=evidence_payload,
-        allow_wider_context=True,
-    )
-
-
-def _build_publication_production_phase_prompt(evidence: dict[str, Any]) -> str:
-    evidence_payload = _build_publication_section_evidence_payload(
-        evidence,
+        ui_context=str(evidence.get("ui_context") or "").strip() or None,
         confidence_flags={
             "phase_confidence_low": evidence.get("phase_confidence_low"),
             "current_pace_signal": evidence.get("current_pace_signal"),
         },
     )
-    return _build_publication_section_prompt(
-        request_line="This request is for the Production Phase insight.",
-        section_key="publication_production_phase",
-        section_question="What stage is this publication record in, and why?",
-        evidence_payload=evidence_payload,
-        allow_wider_context=False,
+    evidence_json = json.dumps(evidence_payload, ensure_ascii=True, default=str)
+    return [
+        {"role": "system", "content": _build_publication_production_phase_system_prompt()},
+        {"role": "user", "content": evidence_json},
+    ]
+
+
+def _build_publication_output_pattern_system_prompt() -> str:
+    return (
+        "You are Publication insights agent for a research analytics product.\n"
+        "You are writing the Publication Output Pattern insight only.\n"
+        "Decide one steadiness pattern only.\n"
+        "Available pattern labels:\n"
+        "- too early to read: there is not enough complete publication history to interpret steadiness yet.\n"
+        "- continuous growth: output is uninterrupted and the stronger years build later from a quieter early base.\n"
+        "- broadly stable: output sits in a broad working range without a dominant spike.\n"
+        "- growth flattening: an earlier build or stronger run is no longer being sustained in the latest complete years.\n"
+        "- output easing: recent years now sit below the earlier high-water mark or baseline.\n"
+        "- peak-led record: one or a few peak years carry too much of the record.\n"
+        "- burst-led output: output arrives in spikes or bursts rather than a broad even run.\n"
+        "- interrupted pattern: gap years materially shape the record.\n"
+        "- rebuilding output: later output is recovering after an earlier lull or break.\n"
+        "- active across years: the record stays active across the span but does not resolve into a cleaner steadiness pattern.\n"
+        "Use the full timeline first. Let recent windows lead only when they materially change the whole-record shape.\n"
+        "Use the fewest facts that materially change the interpretation, and use no more than 3 numbers in total.\n"
+        "Lead with the structural story, not metric names.\n"
+        "Steadiness comes from continuity, concentration, timing of quiet versus strong years, and whether the record depends on isolated peaks.\n"
+        "Treat thin recent windows, partial current-year signals, and low-confidence flags as qualifiers rather than the main claim.\n"
+        "Use only the evidence in the user message. Do not speculate about causes, advice, or future outcomes.\n"
+        "Do not narrate the interface.\n"
+        "Do not mention citations, prestige, collaboration, field percentiles, or authorship.\n"
+        "analysis_brief and ui_context may appear in the evidence. Use them as context, not as script text to paraphrase.\n"
+        "Generic phrases such as 'consistent record', 'steady pattern', or 'output pattern' are not enough unless you make them concrete immediately.\n"
+        "Prefer at least one concrete year or count when it materially anchors the shape, but keep the total to the fewest numbers that matter.\n"
+        "If you mention the partial live year, name the actual year explicitly rather than saying only 'current year'.\n"
+        "Write in plain English for a highly capable academic reader.\n"
+        "Return content that fits the provided schema exactly and use sentence case.\n"
+        "Keep the headline compact and non-generic. Keep the body to the clearest 2 to 4 sentences.\n"
+        "Supporting blocks are optional, and you may return at most one. Use it only for why the pattern matters, a confidence note, or what would change the read.\n"
     )
+
+
+def _publication_output_pattern_text_config() -> dict[str, Any]:
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": PUBLICATION_OUTPUT_PATTERN_SCHEMA_NAME,
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "overall_summary": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}]
+                    },
+                    "sections": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "key": {
+                                    "type": "string",
+                                    "const": "publication_output_pattern",
+                                },
+                                "pattern": {
+                                    "type": "string",
+                                    "enum": list(PUBLICATION_OUTPUT_PATTERN_OPTIONS),
+                                },
+                                "headline": {"type": "string"},
+                                "body": {"type": "string"},
+                                "blocks": {
+                                    "type": "array",
+                                    "maxItems": 1,
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "properties": {
+                                            "kind": {
+                                                "type": "string",
+                                                "enum": ["paragraph", "callout"],
+                                            },
+                                            "label": {
+                                                "anyOf": [
+                                                    {"type": "string"},
+                                                    {"type": "null"},
+                                                ]
+                                            },
+                                            "text": {"type": "string"},
+                                        },
+                                        "required": ["kind", "label", "text"],
+                                    },
+                                },
+                            },
+                            "required": ["key", "pattern", "headline", "body", "blocks"],
+                        },
+                    },
+                },
+                "required": ["overall_summary", "sections"],
+            },
+        }
+    }
+
+
+def _build_publication_output_pattern_messages(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    analysis_brief = _build_publication_output_pattern_prompt_brief(evidence)
+    evidence_payload = _build_publication_section_evidence_payload(
+        evidence,
+        analysis_brief=analysis_brief,
+        ui_context=str(evidence.get("ui_context") or "").strip() or None,
+        confidence_flags={
+            "phase_confidence_low": evidence.get("phase_confidence_low"),
+            "includes_partial_year": evidence.get("includes_partial_year"),
+        },
+    )
+    evidence_json = json.dumps(evidence_payload, ensure_ascii=True, default=str)
+    return [
+        {"role": "system", "content": _build_publication_output_pattern_system_prompt()},
+        {"role": "user", "content": evidence_json},
+    ]
+
+
+def _build_publication_output_pattern_prompt(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    return _build_publication_output_pattern_messages(evidence)
+
+
+def _build_publication_production_phase_prompt(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    return _build_publication_production_phase_messages(evidence)
+
+
+def _build_publication_year_over_year_trajectory_system_prompt() -> str:
+    return (
+        "You are Publication insights agent for a research analytics product.\n"
+        "You are writing the Year-over-year Trajectory insight only.\n"
+        "Decide one trajectory only.\n"
+        "Available trajectory labels:\n"
+        "- expanding: later complete years continue to build above the earlier run.\n"
+        "- stable: output varies, but the later complete years do not break clearly upward or downward.\n"
+        "- contracting: a stronger earlier or middle-to-late run is no longer being sustained in the latest complete years.\n"
+        "Use complete years first. Use rolling pace through the last completed month as recent context, and let it lead only if it materially changes the complete-year picture.\n"
+        "If rolling pace evidence is available, make that comparison explicit in the body rather than leaving it implied.\n"
+        "Use the fewest facts that materially change the interpretation, and use no more than 3 numbers in total.\n"
+        "Lead with the structural story, not metric names.\n"
+        "Treat thin recent windows and partial live-year signals as qualifiers rather than the main claim.\n"
+        "Use only the evidence in the user message. Do not speculate about causes, advice, or future outcomes.\n"
+        "Do not narrate the interface.\n"
+        "Do not mention citations, prestige, collaboration, field percentiles, or authorship.\n"
+        "analysis_brief and ui_context may appear in the evidence. ui_context may describe the currently viewed trajectory range or mode; use it as framing context, not as script text to paraphrase.\n"
+        "Generic phrases such as 'the trajectory changed' or 'the run shifted' are not enough unless you make them concrete immediately.\n"
+        "Write in plain English for a highly capable academic reader.\n"
+        "Return content that fits the provided schema exactly and use sentence case.\n"
+        "Keep the headline compact and non-generic. Keep the body to the clearest 2 to 4 sentences.\n"
+        "Supporting blocks are optional, and you may return at most one. Use it only for a confidence note or one extra reading aid.\n"
+    )
+
+
+def _publication_year_over_year_trajectory_text_config() -> dict[str, Any]:
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": PUBLICATION_YEAR_OVER_YEAR_TRAJECTORY_SCHEMA_NAME,
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "overall_summary": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}]
+                    },
+                    "sections": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "key": {
+                                    "type": "string",
+                                    "const": "publication_year_over_year_trajectory",
+                                },
+                                "trajectory": {
+                                    "type": "string",
+                                    "enum": list(
+                                        PUBLICATION_YEAR_OVER_YEAR_TRAJECTORY_OPTIONS
+                                    ),
+                                },
+                                "headline": {"type": "string"},
+                                "body": {"type": "string"},
+                                "blocks": {
+                                    "type": "array",
+                                    "maxItems": 1,
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "properties": {
+                                            "kind": {
+                                                "type": "string",
+                                                "enum": ["paragraph", "callout"],
+                                            },
+                                            "label": {
+                                                "anyOf": [
+                                                    {"type": "string"},
+                                                    {"type": "null"},
+                                                ]
+                                            },
+                                            "text": {"type": "string"},
+                                        },
+                                        "required": ["kind", "label", "text"],
+                                    },
+                                },
+                            },
+                            "required": [
+                                "key",
+                                "trajectory",
+                                "headline",
+                                "body",
+                                "blocks",
+                            ],
+                        },
+                    },
+                },
+                "required": ["overall_summary", "sections"],
+            },
+        }
+    }
+
+
+def _build_publication_year_over_year_trajectory_messages(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    analysis_brief = _build_publication_year_over_year_trajectory_prompt_brief(
+        evidence
+    )
+    evidence_payload = _build_publication_section_evidence_payload(
+        evidence,
+        analysis_brief=analysis_brief,
+        ui_context=str(evidence.get("ui_context") or "").strip() or None,
+        confidence_flags={
+            "includes_partial_year": evidence.get("includes_partial_year"),
+            "phase_confidence_low": evidence.get("phase_confidence_low"),
+        },
+    )
+    evidence_json = json.dumps(evidence_payload, ensure_ascii=True, default=str)
+    return [
+        {
+            "role": "system",
+            "content": _build_publication_year_over_year_trajectory_system_prompt(),
+        },
+        {"role": "user", "content": evidence_json},
+    ]
+
+
+def _build_publication_year_over_year_trajectory_prompt(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    return _build_publication_year_over_year_trajectory_messages(evidence)
 
 
 def _build_publication_volume_over_time_prompt(evidence: dict[str, Any]) -> str:
     wider_context_hint = _build_publication_volume_context_sentence(evidence)
-    recent_read_hint = _build_publication_volume_recent_clause(evidence)
+    recent_window_hint = _build_publication_volume_recent_clause(evidence)
     body_hint = _build_publication_volume_over_time_body(evidence)
     evidence_payload = _build_publication_section_evidence_payload(
         evidence,
         analysis_brief={
             "body_hint": body_hint,
-            "recent_read_hint": recent_read_hint,
+            "recent_window_hint": recent_window_hint,
             "wider_context_hint": wider_context_hint,
         },
+        ui_context=str(evidence.get("ui_context") or "").strip() or None,
         confidence_flags={
             "recent_support_strength": evidence.get("recent_support_strength"),
             "phase_confidence_low": evidence.get("phase_confidence_low"),
@@ -4759,27 +5722,171 @@ def _build_publication_volume_over_time_prompt(evidence: dict[str, Any]) -> str:
     )
 
 
-def _build_publication_article_type_over_time_prompt(evidence: dict[str, Any]) -> str:
+def _build_publication_mix_system_prompt(
+    *, section_label: str, mix_name: str
+) -> str:
+    return (
+        "You are Publication insights agent for a research analytics product.\n"
+        f"You are writing the {section_label} insight only.\n"
+        "Decide one mix pattern only.\n"
+        "Available mix-pattern labels:\n"
+        "- short_record: the 5-year and 3-year windows still overlap too heavily with the full span to call a settled change.\n"
+        "- late_leader_shift: the shorter recent window changes the ordering, but the broader recent window still resembles the long-run mix.\n"
+        "- leader_shift: recent windows show a genuine change in the leading type, not just a tighter version of the same ordering.\n"
+        "- same_leader_more_concentrated: the same leader remains on top, but the newer windows give it materially more share.\n"
+        "- same_leader_narrower: the same leader remains on top, but the newer windows narrow into fewer categories.\n"
+        "- broader_recent: the newer windows spread across more categories than the long-run mix.\n"
+        "- stable_anchor: the recent windows stay close to the full-record ordering.\n"
+        "Start with the full span, then the 5-year and 3-year windows. Let the newest 1-year slice lead only when it materially changes the broader mix and has enough volume to stand up.\n"
+        "Use the fewest facts that materially change the interpretation, and use no more than 3 numbers in total.\n"
+        "Lead with the structural composition story, not metric names.\n"
+        f"Name the relevant {mix_name} directly when they materially shape the interpretation.\n"
+        "Treat thin or partial recent windows as qualifiers rather than the main claim.\n"
+        "Use only the evidence in the user message. Do not speculate about causes, advice, or future outcomes.\n"
+        "Do not narrate the interface.\n"
+        "Do not mention citations, prestige, collaboration, field percentiles, or authorship.\n"
+        "analysis_brief and ui_context may appear in the evidence. Use them as context, not as script text to paraphrase.\n"
+        "Generic phrases such as 'stable mix', 'recent mix', 'latest view', or 'centre of gravity' are not enough unless you make them concrete immediately.\n"
+        "Avoid repeating 'record' when 'full span', direct year ranges, or the named types are clearer.\n"
+        "Write in plain English for a highly capable academic reader.\n"
+        "Return content that fits the provided schema exactly and use sentence case.\n"
+        "Keep the headline compact and non-generic. Keep the body to the clearest 2 to 4 sentences.\n"
+        "Supporting blocks are optional, and you may return at most one. Use it only for a confidence note or what to watch.\n"
+    )
+
+
+def _build_publication_article_type_over_time_system_prompt() -> str:
+    return _build_publication_mix_system_prompt(
+        section_label="Type of Articles Published Over Time",
+        mix_name="article types",
+    )
+
+
+def _build_publication_type_over_time_system_prompt() -> str:
+    return _build_publication_mix_system_prompt(
+        section_label="Type of Publications Published Over Time",
+        mix_name="publication types",
+    )
+
+
+def _publication_mix_text_config(*, schema_name: str, section_key: str) -> dict[str, Any]:
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": schema_name,
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "overall_summary": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}]
+                    },
+                    "sections": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "key": {"type": "string", "const": section_key},
+                                "mix_pattern": {
+                                    "type": "string",
+                                    "enum": list(PUBLICATION_MIX_PATTERN_OPTIONS),
+                                },
+                                "headline": {"type": "string"},
+                                "body": {"type": "string"},
+                                "blocks": {
+                                    "type": "array",
+                                    "maxItems": 1,
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "properties": {
+                                            "kind": {
+                                                "type": "string",
+                                                "enum": ["paragraph", "callout"],
+                                            },
+                                            "label": {
+                                                "anyOf": [
+                                                    {"type": "string"},
+                                                    {"type": "null"},
+                                                ]
+                                            },
+                                            "text": {"type": "string"},
+                                        },
+                                        "required": ["kind", "label", "text"],
+                                    },
+                                },
+                            },
+                            "required": [
+                                "key",
+                                "mix_pattern",
+                                "headline",
+                                "body",
+                                "blocks",
+                            ],
+                        },
+                    },
+                },
+                "required": ["overall_summary", "sections"],
+            },
+        }
+    }
+
+
+def _publication_article_type_over_time_text_config() -> dict[str, Any]:
+    return _publication_mix_text_config(
+        schema_name=PUBLICATION_ARTICLE_TYPE_OVER_TIME_SCHEMA_NAME,
+        section_key="publication_article_type_over_time",
+    )
+
+
+def _publication_type_over_time_text_config() -> dict[str, Any]:
+    return _publication_mix_text_config(
+        schema_name=PUBLICATION_TYPE_OVER_TIME_SCHEMA_NAME,
+        section_key="publication_type_over_time",
+    )
+
+
+def _build_publication_mix_messages(
+    evidence: dict[str, Any], *, mix_name: str, system_prompt: str
+) -> list[dict[str, str]]:
     analysis_brief = _build_publication_mix_prompt_brief(
         evidence,
-        mix_name="article types",
+        mix_name=mix_name,
     )
     evidence_payload = _build_publication_section_evidence_payload(
         evidence,
         analysis_brief=analysis_brief,
+        ui_context=str(evidence.get("ui_context") or "").strip() or None,
         confidence_flags={
             "recent_window_confidence": evidence.get("recent_window_confidence"),
             "latest_year_is_partial": evidence.get("latest_year_is_partial"),
         },
     )
-    return _build_publication_section_prompt(
-        request_line="This request is for the Type of Articles Published Over Time insight.",
-        section_key="publication_article_type_over_time",
-        section_question="How has the mix of article types changed?",
-        evidence_payload=evidence_payload,
-        allow_wider_context=False,
-        extra_guidance=_build_publication_mix_extra_guidance("article types"),
+    evidence_json = json.dumps(evidence_payload, ensure_ascii=True, default=str)
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": evidence_json},
+    ]
+
+
+def _build_publication_article_type_over_time_messages(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    return _build_publication_mix_messages(
+        evidence,
+        mix_name="article types",
+        system_prompt=_build_publication_article_type_over_time_system_prompt(),
     )
+
+
+def _build_publication_article_type_over_time_prompt(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    return _build_publication_article_type_over_time_messages(evidence)
 
 
 def _build_publication_type_over_time_evidence(*, user_id: str) -> dict[str, Any]:
@@ -5120,26 +6227,61 @@ def _build_publication_type_over_time_fallback_payload(
     }
 
 
-def _build_publication_type_over_time_prompt(evidence: dict[str, Any]) -> str:
-    analysis_brief = _build_publication_mix_prompt_brief(
+def _build_publication_type_over_time_messages(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    return _build_publication_mix_messages(
         evidence,
         mix_name="publication types",
+        system_prompt=_build_publication_type_over_time_system_prompt(),
     )
-    evidence_payload = _build_publication_section_evidence_payload(
-        evidence,
-        analysis_brief=analysis_brief,
-        confidence_flags={
-            "recent_window_confidence": evidence.get("recent_window_confidence"),
-            "latest_year_is_partial": evidence.get("latest_year_is_partial"),
-        },
+
+
+def _build_publication_type_over_time_prompt(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    return _build_publication_type_over_time_messages(evidence)
+
+
+def _contains_numeric_or_fraction_signal(text: str) -> bool:
+    normalized = str(text or "").strip().lower()
+    if not normalized:
+        return False
+    if any(char.isdigit() for char in normalized):
+        return True
+    if re.search(
+        r"\b(one|two|three|four|five|six|seven|eight|nine|ten)[-\s]?(half|halves|third|thirds|quarter|quarters|fifth|fifths|sixth|sixths)\b",
+        normalized,
+    ):
+        return True
+    return bool(re.search(r"\bhalf\b", normalized))
+
+
+def _publication_mix_recent_signals(evidence: dict[str, Any]) -> tuple[str, ...]:
+    latest_window = evidence.get("latest_window") if isinstance(evidence.get("latest_window"), dict) else {}
+    five_year_window = (
+        evidence.get("five_year_window")
+        if isinstance(evidence.get("five_year_window"), dict)
+        else {}
     )
-    return _build_publication_section_prompt(
-        request_line="This request is for the Type of Publications Published Over Time insight.",
-        section_key="publication_type_over_time",
-        section_question="How has the mix of publication types changed?",
-        evidence_payload=evidence_payload,
-        allow_wider_context=False,
-        extra_guidance=_build_publication_mix_extra_guidance("publication types"),
+    three_year_window = (
+        evidence.get("three_year_window")
+        if isinstance(evidence.get("three_year_window"), dict)
+        else {}
+    )
+    return (
+        "3-year",
+        "5-year",
+        "last 3 years",
+        "last three years",
+        "last 5 years",
+        "last five years",
+        "recent windows",
+        "shorter windows",
+        "newer record",
+        str(latest_window.get("range_label") or "").strip().lower(),
+        str(five_year_window.get("range_label") or "").strip().lower(),
+        str(three_year_window.get("range_label") or "").strip().lower(),
     )
 
 
@@ -5152,7 +6294,7 @@ def _publication_type_over_time_body_is_too_generic(
         return True
     if normalized == fallback_normalized:
         return False
-    if not any(char.isdigit() for char in normalized):
+    if not _contains_numeric_or_fraction_signal(normalized):
         return True
     generic_phrases = (
         "publication type over time",
@@ -5168,42 +6310,23 @@ def _publication_type_over_time_body_is_too_generic(
     if any(phrase in normalized for phrase in generic_phrases):
         return True
     all_window = evidence.get("all_window") if isinstance(evidence.get("all_window"), dict) else {}
-    latest_window = evidence.get("latest_window") if isinstance(evidence.get("latest_window"), dict) else {}
     span_years_label = str(evidence.get("span_years_label") or "").strip().lower()
     long_run_signals = (
         "across",
         "full record",
+        "full set",
         "long-run",
+        "earlier record",
         span_years_label,
         str(((all_window.get("top_labels") or [None])[0]) or "").strip().lower(),
     )
-    recent_signals = (
-        "3-year",
-        "5-year",
-        str(latest_window.get("range_label") or "").strip().lower(),
-    )
+    recent_signals = _publication_mix_recent_signals(evidence)
     categories_present = 0
     if any(signal and signal in normalized for signal in long_run_signals):
         categories_present += 1
     if any(signal and signal in normalized for signal in recent_signals):
         categories_present += 1
     if categories_present < 2:
-        return True
-    recent_window_change_state = str(
-        evidence.get("recent_window_change_state") or ""
-    ).strip()
-    if recent_window_change_state in {"late_leader_shift", "leader_shift"} and not any(
-        signal in normalized for signal in ("toward", "instead of", "tilt", "shift")
-    ):
-        return True
-    if recent_window_change_state in {
-        "same_leader_more_concentrated",
-        "same_leader_narrower",
-    } and not any(signal in normalized for signal in ("same", "still", "narrow", "concentrat")):
-        return True
-    if recent_window_change_state == "broader_recent" and not any(
-        signal in normalized for signal in ("broader", "secondary", "more types")
-    ):
         return True
     return False
 
@@ -5261,8 +6384,7 @@ def _publication_output_pattern_body_is_too_generic(
         return True
     if normalized == fallback_normalized:
         return False
-    if not any(char.isdigit() for char in normalized):
-        return True
+    has_numeric_signal = _contains_numeric_or_fraction_signal(normalized)
     generic_phrases = (
         "publication pattern",
         "output pattern",
@@ -5273,7 +6395,15 @@ def _publication_output_pattern_body_is_too_generic(
     )
     if any(phrase in normalized for phrase in generic_phrases):
         return True
-    continuity_signals = ("continuous", "every year", "uninterrupted", "gap")
+    long_run_signals = (
+        "full span",
+        "full record",
+        "across the span",
+        "across the full span",
+        "whole record",
+        "overall pattern",
+    )
+    continuity_signals = ("continuous", "every year", "uninterrupted", "gap", "no gap")
     career_timing_signals = (
         "early",
         "recent",
@@ -5281,6 +6411,10 @@ def _publication_output_pattern_body_is_too_generic(
         "later",
         "build-up",
         "slowdown",
+        "quiet start",
+        "quiet opening",
+        "quieter start",
+        "opening",
     )
     trend_signals = (
         "scaling",
@@ -5294,31 +6428,61 @@ def _publication_output_pattern_body_is_too_generic(
         "step-up",
         "surge",
         "rise",
+        "rose",
+        "flatten",
+        "sustain",
+        "maintain",
+        "break",
+        "broke",
+        "drop",
+        "fell",
+        "pause",
+        "easing",
+        "stronger run",
+        "stronger period",
+        "stronger stretch",
     )
-    peak_signals = ("peak", "tied", "dominat", "isolated year")
+    peak_signals = (
+        "peak",
+        "tied",
+        "dominat",
+        "isolated year",
+        "single spike",
+        "isolated peak",
+        "peak-led",
+        "peak dependent",
+        "peak-dependent",
+        "standout spike",
+        "shared peaks",
+        "shared highs",
+    )
     categories_present = 0
+    if any(signal in normalized for signal in long_run_signals):
+        categories_present += 1
     if any(signal in normalized for signal in continuity_signals):
         categories_present += 1
     if any(signal in normalized for signal in career_timing_signals):
         categories_present += 1
-    if any(signal in normalized for signal in trend_signals):
+    has_trend_category = any(signal in normalized for signal in trend_signals)
+    if has_trend_category:
         categories_present += 1
     peak_years = [int(item) for item in (evidence.get("peak_years") or []) if _safe_int(item) is not None]
     peak_specific_year_present = any(str(year) in normalized for year in peak_years[:3])
-    if any(signal in normalized for signal in peak_signals) or peak_specific_year_present:
+    has_peak_category = any(signal in normalized for signal in peak_signals) or peak_specific_year_present
+    if has_peak_category:
         categories_present += 1
-    if categories_present < 3:
+    minimum_categories = 3 if has_numeric_signal else 4
+    if categories_present < minimum_categories:
         return True
-    if peak_years and not peak_specific_year_present and not any(
-        signal in normalized for signal in peak_signals
-    ):
+    peak_year_share_pct = _safe_float(evidence.get("peak_year_share_pct"))
+    if peak_year_share_pct is not None and peak_year_share_pct >= 30 and not has_peak_category:
         return True
     momentum = _safe_float(evidence.get("momentum"))
     phase_label = str(evidence.get("phase_label") or "").strip()
     if (
         phase_label in {"Scaling", "Rebuilding", "Plateauing", "Contracting"}
         or (momentum is not None and abs(momentum) >= 0.5)
-    ) and not any(signal in normalized for signal in trend_signals):
+    ) and not has_trend_category:
         return True
     return False
 
@@ -5425,7 +6589,7 @@ def _publication_article_type_over_time_body_is_too_generic(
         return True
     if normalized == fallback_normalized:
         return False
-    if not any(char.isdigit() for char in normalized):
+    if not _contains_numeric_or_fraction_signal(normalized):
         return True
     generic_phrases = (
         "article type over time",
@@ -5441,11 +6605,12 @@ def _publication_article_type_over_time_body_is_too_generic(
     if any(phrase in normalized for phrase in generic_phrases):
         return True
     all_window = evidence.get("all_window") if isinstance(evidence.get("all_window"), dict) else {}
-    latest_window = evidence.get("latest_window") if isinstance(evidence.get("latest_window"), dict) else {}
     long_run_signals = (
         "across",
         "full record",
+        "full set",
         "long-run",
+        "earlier record",
         str(evidence.get("span_years_label") or "").strip().lower(),
         *[
             str(label).strip().lower()
@@ -5453,43 +6618,28 @@ def _publication_article_type_over_time_body_is_too_generic(
             if str(label).strip()
         ],
     )
-    recent_signals = (
-        "3-year",
-        "5-year",
-        str(latest_window.get("range_label") or "").strip().lower(),
-    )
+    recent_signals = _publication_mix_recent_signals(evidence)
     mix_signals = (
         "mix",
         "tilt",
         "shift",
+        "flip",
+        "carry",
         "narrow",
         "broader",
         "concentrat",
         "lead",
+        "led by",
+        "overtak",
         "ordering",
         "largest",
         "replacement",
+        "takes more",
     )
     has_long_run = any(signal and signal in normalized for signal in long_run_signals)
     has_recent = any(signal and signal in normalized for signal in recent_signals)
     has_mix = any(signal and signal in normalized for signal in mix_signals)
     if not has_long_run or not has_recent or not has_mix:
-        return True
-    recent_window_change_state = str(
-        evidence.get("recent_window_change_state") or ""
-    ).strip()
-    if recent_window_change_state in {"late_leader_shift", "leader_shift"} and not any(
-        signal in normalized for signal in ("tilt", "shift", "moves toward", "instead of")
-    ):
-        return True
-    if recent_window_change_state in {
-        "same_leader_more_concentrated",
-        "same_leader_narrower",
-    } and not any(signal in normalized for signal in ("same", "still", "narrow", "concentrat")):
-        return True
-    if recent_window_change_state == "broader_recent" and not any(
-        signal in normalized for signal in ("broader", "secondary", "more types")
-    ):
         return True
     return False
 
@@ -5519,6 +6669,7 @@ def _publication_production_phase_body_is_too_generic(
         "rises",
         "falls",
         "flat",
+        "pace",
         "scaling",
         "established",
         "plateau",
@@ -5529,12 +6680,26 @@ def _publication_production_phase_body_is_too_generic(
         "earlier",
         "baseline",
         "slope",
+        "sustain",
+        "sustained",
+        "higher run",
+        "stronger run",
+        "cool",
+        "cooled",
+        "slower",
     )
     recent_signals = (
         "recent",
         "earlier",
         "baseline",
+        "rolling",
+        "last 12 months",
+        "12 months",
+        "trailing",
+        "prior",
         str(evidence.get("recent_years_label") or "").strip().lower(),
+        str(evidence.get("rolling_cutoff_label") or "").strip().lower(),
+        str(evidence.get("rolling_prior_period_label") or "").strip().lower(),
         "%",
     )
     continuity_signals = ("every year", "continuous", "uninterrupted", "gap")
@@ -5553,7 +6718,11 @@ def _publication_production_phase_body_is_too_generic(
         categories_present += 1
     if categories_present < 3:
         return True
-    if _safe_float(evidence.get("recent_share_pct")) is not None and not has_recent_category:
+    if (
+        _safe_float(evidence.get("recent_share_pct")) is not None
+        or _safe_float(evidence.get("rolling_three_year_pace")) is not None
+        or _safe_int(evidence.get("rolling_one_year_total")) is not None
+    ) and not has_recent_category:
         return True
     if peak_years and not has_peak_category:
         return True
@@ -5590,6 +6759,25 @@ def _publication_production_phase_headline_is_too_generic(headline: str, phase_l
     if normalized in generic:
         return True
     return bool(phase_normalized) and normalized == phase_normalized
+
+
+def _publication_year_over_year_trajectory_headline_is_too_generic(
+    headline: str, trajectory: str | None
+) -> bool:
+    normalized = str(headline or "").strip().lower()
+    if not normalized:
+        return True
+    trajectory_normalized = str(trajectory or "").strip().lower()
+    generic = {
+        "trajectory",
+        "year-over-year trajectory",
+        "publication trajectory",
+        "year over year trajectory",
+        "year-over-year run",
+    }
+    if normalized in generic:
+        return True
+    return bool(trajectory_normalized) and normalized == trajectory_normalized
 
 
 def _publication_volume_over_time_headline_is_too_generic(headline: str) -> bool:
@@ -5664,6 +6852,25 @@ def _publication_output_pattern_consideration_is_too_generic(
     normalized = str(consideration or "").strip().lower()
     label_normalized = str(label or "").strip().lower()
     if not normalized:
+        return False
+    partial_year = _safe_int(evidence.get("partial_year"))
+    if label_normalized in {"confidence note", "confidence"} and any(
+        signal in normalized
+        for signal in (
+            "partial",
+            "latest complete year",
+            "full record",
+            "full timeline",
+            "continuous timeline",
+            "no gap years",
+            "completed timeline",
+            "complete year",
+            "post-peak year",
+            "post peak year",
+            "qualifier",
+            str(partial_year) if partial_year is not None else "",
+        )
+    ):
         return False
     if label_normalized in {"peak share", "peak-year share"}:
         return True
@@ -5752,6 +6959,130 @@ def _publication_production_phase_text_is_unsupported(text: str) -> bool:
     return any(token in normalized for token in unsupported_tokens)
 
 
+def _publication_year_over_year_trajectory_text_is_unsupported(
+    *, text: str, evidence: dict[str, Any]
+) -> bool:
+    normalized = str(text or "").strip().lower()
+    if not normalized:
+        return False
+    if any(
+        token in normalized
+        for token in (
+            "citation",
+            "citations",
+            "journal prestige",
+            "authorship",
+            "collaboration",
+            "field-normal",
+            "field weighted",
+        )
+    ):
+        return True
+    partial_year_phrases = (
+        "partial year",
+        "partial-year",
+        "year-to-date",
+        "ytd",
+        "incomplete year",
+        "current year",
+    )
+    if any(phrase in normalized for phrase in partial_year_phrases):
+        partial_year = _safe_int(evidence.get("partial_year"))
+        if not bool(evidence.get("includes_partial_year")) or partial_year is None:
+            return True
+        if str(partial_year) not in normalized:
+            return True
+    return False
+
+
+def _publication_year_over_year_trajectory_body_is_too_generic(
+    *, body: str, fallback_body: str, evidence: dict[str, Any]
+) -> bool:
+    normalized = str(body or "").strip().lower()
+    fallback_normalized = str(fallback_body or "").strip().lower()
+    if not normalized:
+        return True
+    if normalized == fallback_normalized:
+        return False
+    if len(normalized.split()) < 12:
+        return True
+    if any(
+        phrase in normalized
+        for phrase in (
+            "the trajectory changed over time",
+            "the run shifted over time",
+            "the trajectory has changed",
+            "the run has shifted",
+        )
+    ):
+        return True
+    structural_signals = (
+        "complete year",
+        "complete years",
+        "full span",
+        "full record",
+        "earlier",
+        "later",
+        "peak",
+        "peaked",
+        "fell",
+        "rose",
+        "pullback",
+        "range",
+        "stronger run",
+        "higher run",
+    )
+    recent_signals = (
+        "rolling",
+        "pace",
+        "last 12 months",
+        "latest 12 months",
+        "trailing",
+        "prior",
+        str(evidence.get("rolling_cutoff_label") or "").strip().lower(),
+        str(evidence.get("rolling_prior_period_label") or "").strip().lower(),
+    )
+    has_structural_signal = any(
+        signal and signal in normalized for signal in structural_signals
+    )
+    has_recent_signal = any(signal and signal in normalized for signal in recent_signals)
+    if not has_structural_signal:
+        return True
+    if (
+        _safe_int(evidence.get("rolling_one_year_total")) is not None
+        or _safe_float(evidence.get("rolling_three_year_pace")) is not None
+    ) and not has_recent_signal:
+        return True
+    return False
+
+
+def _publication_year_over_year_trajectory_consideration_is_too_generic(
+    *, label: str, consideration: str, evidence: dict[str, Any]
+) -> bool:
+    normalized = str(consideration or "").strip().lower()
+    label_normalized = str(label or "").strip().lower()
+    if not normalized:
+        return False
+    partial_year = _safe_int(evidence.get("partial_year"))
+    if label_normalized in {"confidence note", "confidence"} and any(
+        signal in normalized
+        for signal in (
+            "complete year",
+            "complete years",
+            "rolling",
+            "pace",
+            "last 12 months",
+            "trailing",
+            "through",
+            "partial",
+            str(partial_year) if partial_year is not None else "",
+            str(evidence.get("rolling_cutoff_label") or "").strip().lower(),
+        )
+    ):
+        return False
+    return len(normalized.split()) < 8
+
+
 def _publication_article_type_over_time_text_is_unsupported(text: str) -> bool:
     normalized = str(text or "").strip().lower()
     if not normalized:
@@ -5822,65 +7153,547 @@ def _publication_mix_headline_is_inconsistent(
     return False
 
 
-def _coerce_publication_volume_over_time_payload(payload: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
-    fallback = _build_publication_volume_over_time_fallback_payload(evidence)
-    fallback_section = dict((fallback.get("sections") or [{}])[0] or {})
-    model_section = {}
+def _find_generated_section(payload: dict[str, Any], section_key: str) -> dict[str, Any]:
     sections_raw = payload.get("sections")
-    if isinstance(sections_raw, list):
-        for item in sections_raw:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("key") or "").strip() == "publication_volume_over_time":
-                model_section = item
-                break
+    if not isinstance(sections_raw, list):
+        return {}
+    for item in sections_raw:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("key") or "").strip() == section_key:
+            return item
+    return {}
 
-    headline = str(model_section.get("headline") or "").strip() or str(fallback_section.get("headline") or "")
-    if _publication_volume_over_time_headline_is_too_generic(headline):
-        headline = str(fallback_section.get("headline") or headline)
-    body = str(model_section.get("body") or "").strip() or str(fallback_section.get("body") or "")
-    body = _trim_publication_output_pattern_text(body, max_chars=340, require_sentence_end=True)
-    if _publication_volume_over_time_body_is_too_generic(
-        body=body,
-        fallback_body=str(fallback_section.get("body") or ""),
-        evidence=evidence,
-    ):
-        body = str(fallback_section.get("body") or body)
-    elif _publication_volume_over_time_text_is_unsupported(body):
-        body = str(fallback_section.get("body") or body)
 
-    consideration_label = str(model_section.get("consideration_label") or "").strip() or str(fallback_section.get("consideration_label") or "")
-    consideration = str(model_section.get("consideration") or "").strip() or str(fallback_section.get("consideration") or "")
-    consideration = _trim_publication_output_pattern_text(
-        consideration,
-        max_chars=180,
+def _require_object_keys(
+    *,
+    value: Any,
+    allowed_keys: set[str],
+    error_message: str,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise PublicationInsightsAgentValidationError(error_message)
+    extra_keys = set(value.keys()) - allowed_keys
+    if extra_keys:
+        raise PublicationInsightsAgentValidationError(error_message)
+    return value
+
+
+def _require_publication_output_pattern_enum(value: Any) -> str:
+    normalized = _normalize_publication_generated_text(value).lower()
+    if normalized in PUBLICATION_OUTPUT_PATTERN_OPTIONS:
+        return normalized
+    raise PublicationInsightsAgentValidationError(
+        "Publication insights AI returned an invalid pattern for publication_output_pattern."
+    )
+
+
+def _require_publication_production_phase_enum(value: Any) -> str:
+    normalized = _normalize_publication_generated_text(value).lower()
+    if normalized in PUBLICATION_PRODUCTION_PHASE_OPTIONS:
+        return normalized
+    raise PublicationInsightsAgentValidationError(
+        "Publication insights AI returned an invalid phase for publication_production_phase."
+    )
+
+
+def _require_publication_year_over_year_trajectory_enum(value: Any) -> str:
+    normalized = _normalize_publication_generated_text(value).lower()
+    if normalized in PUBLICATION_YEAR_OVER_YEAR_TRAJECTORY_OPTIONS:
+        return normalized
+    raise PublicationInsightsAgentValidationError(
+        "Publication insights AI returned an invalid trajectory for publication_year_over_year_trajectory."
+    )
+
+
+def _require_publication_mix_pattern_enum(*, value: Any, section_key: str) -> str:
+    normalized = _normalize_publication_generated_text(value).lower()
+    if normalized in PUBLICATION_MIX_PATTERN_OPTIONS:
+        return normalized
+    raise PublicationInsightsAgentValidationError(
+        f"Publication insights AI returned an invalid mix_pattern for {section_key}."
+    )
+
+
+def _require_generated_text(
+    *,
+    text: Any,
+    section_key: str,
+    field_name: str,
+    require_sentence_end: bool = False,
+    generic_predicate: Callable[[str], bool] | None = None,
+    unsupported_predicate: Callable[[str], bool] | None = None,
+) -> str:
+    clean = _validate_generated_text_contract(
+        text=text,
+        section_key=section_key,
+        field_name=field_name,
+        require_sentence_end=require_sentence_end,
+    )
+    if generic_predicate and generic_predicate(clean):
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned a generic {field_name} for {section_key}."
+        )
+    if unsupported_predicate and unsupported_predicate(clean):
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned unsupported {field_name} content for {section_key}."
+        )
+    return clean
+
+
+def _normalize_generated_note(
+    *,
+    label: Any,
+    consideration: Any,
+    section_key: str,
+    generic_predicate: Callable[[str, str], bool] | None = None,
+    unsupported_predicate: Callable[[str], bool] | None = None,
+) -> tuple[str | None, str | None]:
+    note_label_raw = _normalize_publication_generated_text(label)
+    note_text_raw = _normalize_publication_generated_text(consideration)
+    if not note_label_raw and not note_text_raw:
+        return None, None
+    if not note_label_raw or not note_text_raw:
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned an incomplete consideration for {section_key}."
+        )
+    note_label = _validate_generated_note_label(
+        label=note_label_raw,
+        section_key=section_key,
+    )
+    note_text = _validate_generated_text_contract(
+        text=note_text_raw,
+        section_key=section_key,
+        field_name="consideration",
         require_sentence_end=True,
     )
-    if _publication_volume_over_time_text_is_unsupported(consideration) or _publication_volume_over_time_consideration_is_too_generic(
-        consideration_label=consideration_label,
-        consideration=consideration,
-        evidence=evidence,
-    ):
-        consideration_label = str(fallback_section.get("consideration_label") or "")
-        consideration = str(fallback_section.get("consideration") or "")
-    overall_summary = _trim_publication_output_pattern_text(
-        str(payload.get("overall_summary") or "").strip()
-        or str(fallback.get("overall_summary") or "").strip(),
-        max_chars=220,
-        require_sentence_end=False,
+    if unsupported_predicate and unsupported_predicate(note_text):
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned unsupported consideration content for {section_key}."
+        )
+    if generic_predicate and generic_predicate(note_label, note_text):
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned a generic consideration for {section_key}."
+        )
+    return note_label, note_text
+
+
+def _normalize_generated_block_kind(value: Any, *, section_key: str) -> Literal["paragraph", "callout"]:
+    normalized = _normalize_publication_generated_text(value).lower()
+    if normalized in {"paragraph", "narrative", "text"}:
+        return "paragraph"
+    if normalized in {"callout", "note", "aside"}:
+        return "callout"
+    raise PublicationInsightsAgentValidationError(
+        f"Publication insights AI returned an invalid block kind for {section_key}."
+    )
+
+
+def _normalize_generated_section_blocks(
+    *,
+    blocks: Any,
+    section_key: str,
+    unsupported_predicate: Callable[[str], bool] | None = None,
+) -> list[dict[str, Any]]:
+    if blocks in (None, ""):
+        return []
+    if not isinstance(blocks, list):
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned invalid blocks for {section_key}."
+        )
+
+    normalized_blocks: list[dict[str, Any]] = []
+    for item in blocks:
+        if not isinstance(item, dict):
+            raise PublicationInsightsAgentValidationError(
+                f"Publication insights AI returned invalid blocks for {section_key}."
+            )
+        kind = _normalize_generated_block_kind(
+            item.get("kind") or item.get("type"),
+            section_key=section_key,
+        )
+        text = _validate_generated_text_contract(
+            text=item.get("text") or item.get("body") or item.get("content"),
+            section_key=section_key,
+            field_name="block_text",
+            require_sentence_end=True,
+        )
+        if unsupported_predicate and unsupported_predicate(text):
+            raise PublicationInsightsAgentValidationError(
+                f"Publication insights AI returned unsupported block_text content for {section_key}."
+            )
+        label_raw = _normalize_publication_generated_text(
+            item.get("label") or item.get("title") or item.get("heading")
+        )
+        normalized_blocks.append(
+            {
+                "kind": kind,
+                "label": label_raw or None,
+                "text": text,
+            }
+        )
+    return normalized_blocks
+
+
+def _finalize_publication_insight_sections(
+    sections: list[dict[str, Any]] | list[Any],
+) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    for item in sections:
+        if not isinstance(item, dict):
+            continue
+        section = dict(item)
+        section_key = str(section.get("key") or "").strip() or "publication_insight"
+        blocks = _normalize_generated_section_blocks(
+            blocks=section.get("blocks"),
+            section_key=section_key,
+        )
+        consideration_label = _normalize_publication_generated_text(
+            section.get("consideration_label")
+        )
+        consideration = _normalize_publication_generated_text(section.get("consideration"))
+        if consideration:
+            legacy_block = {
+                "kind": "callout",
+                "label": consideration_label or None,
+                "text": consideration,
+            }
+            if legacy_block not in blocks:
+                blocks.append(legacy_block)
+        section["blocks"] = blocks
+        output.append(section)
+    return output
+
+
+def _coerce_publication_volume_over_time_payload(payload: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    scaffold = _build_publication_volume_over_time_fallback_payload(evidence)
+    scaffold_section = dict((scaffold.get("sections") or [{}])[0] or {})
+    model_section = _find_generated_section(payload, "publication_volume_over_time")
+    if not model_section:
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned no section for publication_volume_over_time."
+        )
+
+    headline = _require_generated_text(
+        text=model_section.get("headline"),
+        section_key="publication_volume_over_time",
+        field_name="headline",
+        generic_predicate=_publication_volume_over_time_headline_is_too_generic,
+    )
+    body = _require_generated_text(
+        text=model_section.get("body"),
+        section_key="publication_volume_over_time",
+        field_name="body",
+        require_sentence_end=True,
+        generic_predicate=lambda value: _publication_volume_over_time_body_is_too_generic(
+            body=value,
+            fallback_body="",
+            evidence=evidence,
+        ),
+        unsupported_predicate=_publication_volume_over_time_text_is_unsupported,
+    )
+    consideration_label, consideration = _normalize_generated_note(
+        label=model_section.get("consideration_label"),
+        consideration=model_section.get("consideration"),
+        section_key="publication_volume_over_time",
+        generic_predicate=lambda label, note: _publication_volume_over_time_consideration_is_too_generic(
+            consideration_label=label,
+            consideration=note,
+            evidence=evidence,
+        ),
+        unsupported_predicate=_publication_volume_over_time_text_is_unsupported,
+    )
+    overall_summary = _validate_generated_text_contract(
+        text=payload.get("overall_summary"),
+        section_key="publication_volume_over_time",
+        field_name="overall_summary",
+        allow_empty=True,
     )
     if _publication_volume_over_time_text_is_unsupported(overall_summary):
-        overall_summary = str(fallback.get("overall_summary") or "").strip()
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned unsupported overall_summary content for publication_volume_over_time."
+        )
 
     return {
         "overall_summary": overall_summary,
         "sections": [
             {
-                **fallback_section,
-                "headline": _trim_publication_output_pattern_text(headline, max_chars=80),
+                **scaffold_section,
+                "headline": headline,
                 "body": body,
-                "consideration_label": consideration_label[:80] or fallback_section.get("consideration_label"),
-                "consideration": consideration or fallback_section.get("consideration"),
+                "consideration_label": consideration_label,
+                "consideration": consideration,
+                "blocks": model_section.get("blocks"),
+            }
+        ],
+    }
+
+
+def _coerce_publication_year_over_year_trajectory_payload(
+    payload: dict[str, Any], evidence: dict[str, Any]
+) -> dict[str, Any]:
+    scaffold = _build_publication_year_over_year_trajectory_fallback_payload(evidence)
+    scaffold_section = dict((scaffold.get("sections") or [{}])[0] or {})
+    payload_object = _require_object_keys(
+        value=payload,
+        allowed_keys={"overall_summary", "sections"},
+        error_message="Publication insights AI returned invalid fields for publication_year_over_year_trajectory.",
+    )
+    sections_raw = payload_object.get("sections")
+    if not isinstance(sections_raw, list) or len(sections_raw) != 1:
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned no section for publication_year_over_year_trajectory."
+        )
+    model_section = _require_object_keys(
+        value=sections_raw[0],
+        allowed_keys={"key", "trajectory", "headline", "body", "blocks"},
+        error_message="Publication insights AI returned invalid fields for publication_year_over_year_trajectory.",
+    )
+    if str(model_section.get("key") or "").strip() != "publication_year_over_year_trajectory":
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned no section for publication_year_over_year_trajectory."
+        )
+
+    trajectory = _require_publication_year_over_year_trajectory_enum(
+        model_section.get("trajectory")
+    )
+    headline = _require_generated_text(
+        text=model_section.get("headline"),
+        section_key="publication_year_over_year_trajectory",
+        field_name="headline",
+        generic_predicate=lambda value: _publication_year_over_year_trajectory_headline_is_too_generic(
+            value, trajectory
+        ),
+    )
+    body = _require_generated_text(
+        text=model_section.get("body"),
+        section_key="publication_year_over_year_trajectory",
+        field_name="body",
+        require_sentence_end=True,
+        generic_predicate=lambda value: _publication_year_over_year_trajectory_body_is_too_generic(
+            body=value,
+            fallback_body="",
+            evidence=evidence,
+        ),
+        unsupported_predicate=lambda value: _publication_year_over_year_trajectory_text_is_unsupported(
+            text=value,
+            evidence=evidence,
+        ),
+    )
+    raw_blocks = model_section.get("blocks")
+    if not isinstance(raw_blocks, list):
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned invalid blocks for publication_year_over_year_trajectory."
+        )
+    if len(raw_blocks) > 1:
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned too many blocks for publication_year_over_year_trajectory."
+        )
+    for item in raw_blocks:
+        _require_object_keys(
+            value=item,
+            allowed_keys={"kind", "label", "text"},
+            error_message="Publication insights AI returned invalid blocks for publication_year_over_year_trajectory.",
+        )
+    blocks = _normalize_generated_section_blocks(
+        blocks=raw_blocks,
+        section_key="publication_year_over_year_trajectory",
+        unsupported_predicate=lambda value: _publication_year_over_year_trajectory_text_is_unsupported(
+            text=value,
+            evidence=evidence,
+        ),
+    )
+    primary_callout = next(
+        (
+            block
+            for block in blocks
+            if str(block.get("kind") or "").strip() == "callout"
+            and str(block.get("text") or "").strip()
+        ),
+        None,
+    )
+    primary_callout_label = _normalize_publication_generated_text(
+        (primary_callout or {}).get("label")
+    )
+    if primary_callout and primary_callout_label:
+        consideration_label, consideration = _normalize_generated_note(
+            label=primary_callout_label,
+            consideration=(primary_callout or {}).get("text"),
+            section_key="publication_year_over_year_trajectory",
+            generic_predicate=lambda label, note: _publication_year_over_year_trajectory_consideration_is_too_generic(
+                label=label,
+                consideration=note,
+                evidence=evidence,
+            ),
+            unsupported_predicate=lambda value: _publication_year_over_year_trajectory_text_is_unsupported(
+                text=value,
+                evidence=evidence,
+            ),
+        )
+    else:
+        consideration_label, consideration = None, None
+    overall_summary = _validate_generated_text_contract(
+        text=payload_object.get("overall_summary"),
+        section_key="publication_year_over_year_trajectory",
+        field_name="overall_summary",
+        allow_empty=True,
+    )
+    if _publication_year_over_year_trajectory_text_is_unsupported(
+        text=overall_summary,
+        evidence=evidence,
+    ):
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned unsupported overall_summary content for publication_year_over_year_trajectory."
+        )
+
+    return {
+        "overall_summary": overall_summary,
+        "sections": [
+            {
+                **scaffold_section,
+                "headline": headline,
+                "body": body,
+                "consideration_label": consideration_label,
+                "consideration": consideration,
+                "blocks": blocks,
+                "evidence": {
+                    **(
+                        scaffold_section.get("evidence")
+                        if isinstance(scaffold_section.get("evidence"), dict)
+                        else {}
+                    ),
+                    "trajectory": trajectory,
+                },
+            }
+        ],
+    }
+
+
+def _coerce_publication_mix_payload(
+    *,
+    payload: dict[str, Any],
+    evidence: dict[str, Any],
+    section_key: str,
+    build_fallback_payload: Callable[[dict[str, Any]], dict[str, Any]],
+    headline_generic_predicate: Callable[[str], bool],
+    body_generic_predicate: Callable[[str], bool],
+    unsupported_predicate: Callable[[str], bool],
+) -> dict[str, Any]:
+    scaffold = build_fallback_payload(evidence)
+    scaffold_section = dict((scaffold.get("sections") or [{}])[0] or {})
+    payload_object = _require_object_keys(
+        value=payload,
+        allowed_keys={"overall_summary", "sections"},
+        error_message=f"Publication insights AI returned invalid fields for {section_key}.",
+    )
+    sections_raw = payload_object.get("sections")
+    if not isinstance(sections_raw, list) or len(sections_raw) != 1:
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned no section for {section_key}."
+        )
+    model_section = _require_object_keys(
+        value=sections_raw[0],
+        allowed_keys={"key", "mix_pattern", "headline", "body", "blocks"},
+        error_message=f"Publication insights AI returned invalid fields for {section_key}.",
+    )
+    if str(model_section.get("key") or "").strip() != section_key:
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned no section for {section_key}."
+        )
+
+    mix_pattern = _require_publication_mix_pattern_enum(
+        value=model_section.get("mix_pattern"),
+        section_key=section_key,
+    )
+    headline = _require_generated_text(
+        text=model_section.get("headline"),
+        section_key=section_key,
+        field_name="headline",
+        generic_predicate=lambda value: headline_generic_predicate(value)
+        or _publication_mix_headline_is_inconsistent(headline=value, evidence=evidence),
+    )
+    body = _require_generated_text(
+        text=model_section.get("body"),
+        section_key=section_key,
+        field_name="body",
+        require_sentence_end=True,
+        generic_predicate=body_generic_predicate,
+        unsupported_predicate=unsupported_predicate,
+    )
+    raw_blocks = model_section.get("blocks")
+    if not isinstance(raw_blocks, list):
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned invalid blocks for {section_key}."
+        )
+    if len(raw_blocks) > 1:
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned too many blocks for {section_key}."
+        )
+    for item in raw_blocks:
+        _require_object_keys(
+            value=item,
+            allowed_keys={"kind", "label", "text"},
+            error_message=f"Publication insights AI returned invalid blocks for {section_key}.",
+        )
+    blocks = _normalize_generated_section_blocks(
+        blocks=raw_blocks,
+        section_key=section_key,
+        unsupported_predicate=unsupported_predicate,
+    )
+    primary_callout = next(
+        (
+            block
+            for block in blocks
+            if str(block.get("kind") or "").strip() == "callout"
+            and str(block.get("text") or "").strip()
+        ),
+        None,
+    )
+    primary_callout_label = _normalize_publication_generated_text(
+        (primary_callout or {}).get("label")
+    )
+    if primary_callout and primary_callout_label:
+        consideration_label, consideration = _normalize_generated_note(
+            label=primary_callout_label,
+            consideration=(primary_callout or {}).get("text"),
+            section_key=section_key,
+            generic_predicate=lambda label, note: _publication_mix_consideration_is_too_generic(
+                consideration_label=label,
+                consideration=note,
+            ),
+            unsupported_predicate=unsupported_predicate,
+        )
+    else:
+        consideration_label, consideration = None, None
+    overall_summary = _validate_generated_text_contract(
+        text=payload_object.get("overall_summary"),
+        section_key=section_key,
+        field_name="overall_summary",
+        allow_empty=True,
+    )
+    if unsupported_predicate(overall_summary):
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI returned unsupported overall_summary content for {section_key}."
+        )
+
+    return {
+        "overall_summary": overall_summary,
+        "sections": [
+            {
+                **scaffold_section,
+                "headline": headline,
+                "body": body,
+                "consideration_label": consideration_label,
+                "consideration": consideration,
+                "blocks": blocks,
+                "evidence": {
+                    **(
+                        scaffold_section.get("evidence")
+                        if isinstance(scaffold_section.get("evidence"), dict)
+                        else {}
+                    ),
+                    "mix_pattern": mix_pattern,
+                },
             }
         ],
     }
@@ -5889,292 +7702,285 @@ def _coerce_publication_volume_over_time_payload(payload: dict[str, Any], eviden
 def _coerce_publication_article_type_over_time_payload(
     payload: dict[str, Any], evidence: dict[str, Any]
 ) -> dict[str, Any]:
-    fallback = _build_publication_article_type_over_time_fallback_payload(evidence)
-    fallback_section = dict((fallback.get("sections") or [{}])[0] or {})
-    model_section = {}
-    sections_raw = payload.get("sections")
-    if isinstance(sections_raw, list):
-        for item in sections_raw:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("key") or "").strip() == "publication_article_type_over_time":
-                model_section = item
-                break
-
-    headline = str(model_section.get("headline") or "").strip() or str(
-        fallback_section.get("headline") or ""
-    )
-    if _publication_article_type_over_time_headline_is_too_generic(
-        headline
-    ) or _publication_mix_headline_is_inconsistent(
-        headline=headline,
+    return _coerce_publication_mix_payload(
+        payload=payload,
         evidence=evidence,
-    ):
-        headline = str(fallback_section.get("headline") or headline)
-    body = str(model_section.get("body") or "").strip() or str(
-        fallback_section.get("body") or ""
+        section_key="publication_article_type_over_time",
+        build_fallback_payload=_build_publication_article_type_over_time_fallback_payload,
+        headline_generic_predicate=_publication_article_type_over_time_headline_is_too_generic,
+        body_generic_predicate=lambda value: _publication_article_type_over_time_body_is_too_generic(
+            body=value,
+            fallback_body="",
+            evidence=evidence,
+        ),
+        unsupported_predicate=_publication_article_type_over_time_text_is_unsupported,
     )
-    body = _trim_publication_output_pattern_text(
-        body,
-        max_chars=340,
-        require_sentence_end=True,
-    )
-    if _publication_article_type_over_time_body_is_too_generic(
-        body=body,
-        fallback_body=str(fallback_section.get("body") or ""),
-        evidence=evidence,
-    ):
-        body = str(fallback_section.get("body") or body)
-    elif _publication_article_type_over_time_text_is_unsupported(body):
-        body = str(fallback_section.get("body") or body)
-
-    consideration_label = str(model_section.get("consideration_label") or "").strip() or str(
-        fallback_section.get("consideration_label") or ""
-    )
-    consideration = str(model_section.get("consideration") or "").strip() or str(
-        fallback_section.get("consideration") or ""
-    )
-    consideration = _trim_publication_output_pattern_text(
-        consideration,
-        max_chars=180,
-        require_sentence_end=True,
-    )
-    if _publication_article_type_over_time_text_is_unsupported(
-        consideration
-    ) or _publication_mix_consideration_is_too_generic(
-        consideration_label=consideration_label,
-        consideration=consideration,
-    ):
-        consideration_label = str(fallback_section.get("consideration_label") or "")
-        consideration = str(fallback_section.get("consideration") or "")
-    overall_summary = _trim_publication_output_pattern_text(
-        str(payload.get("overall_summary") or "").strip()
-        or str(fallback.get("overall_summary") or "").strip(),
-        max_chars=220,
-        require_sentence_end=False,
-    )
-    if _publication_article_type_over_time_text_is_unsupported(overall_summary):
-        overall_summary = str(fallback.get("overall_summary") or "").strip()
-
-    return {
-        "overall_summary": overall_summary,
-        "sections": [
-            {
-                **fallback_section,
-                "headline": _trim_publication_output_pattern_text(headline, max_chars=80),
-                "body": body,
-                "consideration_label": consideration_label[:80]
-                or fallback_section.get("consideration_label"),
-                "consideration": consideration or fallback_section.get("consideration"),
-            }
-        ],
-    }
 
 
 def _coerce_publication_type_over_time_payload(
     payload: dict[str, Any], evidence: dict[str, Any]
 ) -> dict[str, Any]:
-    fallback = _build_publication_type_over_time_fallback_payload(evidence)
-    fallback_section = dict((fallback.get("sections") or [{}])[0] or {})
-    model_section = {}
-    sections_raw = payload.get("sections")
-    if isinstance(sections_raw, list):
-        for item in sections_raw:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("key") or "").strip() == "publication_type_over_time":
-                model_section = item
-                break
-
-    headline = str(model_section.get("headline") or "").strip() or str(
-        fallback_section.get("headline") or ""
-    )
-    if _publication_type_over_time_headline_is_too_generic(
-        headline
-    ) or _publication_mix_headline_is_inconsistent(
-        headline=headline,
+    return _coerce_publication_mix_payload(
+        payload=payload,
         evidence=evidence,
-    ):
-        headline = str(fallback_section.get("headline") or headline)
-    body = str(model_section.get("body") or "").strip() or str(
-        fallback_section.get("body") or ""
+        section_key="publication_type_over_time",
+        build_fallback_payload=_build_publication_type_over_time_fallback_payload,
+        headline_generic_predicate=_publication_type_over_time_headline_is_too_generic,
+        body_generic_predicate=lambda value: _publication_type_over_time_body_is_too_generic(
+            body=value,
+            fallback_body="",
+            evidence=evidence,
+        ),
+        unsupported_predicate=_publication_type_over_time_text_is_unsupported,
     )
-    body = _trim_publication_output_pattern_text(
-        body,
-        max_chars=340,
-        require_sentence_end=True,
-    )
-    if _publication_type_over_time_body_is_too_generic(
-        body=body,
-        fallback_body=str(fallback_section.get("body") or ""),
-        evidence=evidence,
-    ):
-        body = str(fallback_section.get("body") or body)
-    elif _publication_type_over_time_text_is_unsupported(body):
-        body = str(fallback_section.get("body") or body)
-
-    consideration_label = str(model_section.get("consideration_label") or "").strip() or str(
-        fallback_section.get("consideration_label") or ""
-    )
-    consideration = str(model_section.get("consideration") or "").strip() or str(
-        fallback_section.get("consideration") or ""
-    )
-    consideration = _trim_publication_output_pattern_text(
-        consideration,
-        max_chars=180,
-        require_sentence_end=True,
-    )
-    if _publication_type_over_time_text_is_unsupported(
-        consideration
-    ) or _publication_mix_consideration_is_too_generic(
-        consideration_label=consideration_label,
-        consideration=consideration,
-    ):
-        consideration_label = str(fallback_section.get("consideration_label") or "")
-        consideration = str(fallback_section.get("consideration") or "")
-    overall_summary = _trim_publication_output_pattern_text(
-        str(payload.get("overall_summary") or "").strip()
-        or str(fallback.get("overall_summary") or "").strip(),
-        max_chars=220,
-        require_sentence_end=False,
-    )
-    if _publication_type_over_time_text_is_unsupported(overall_summary):
-        overall_summary = str(fallback.get("overall_summary") or "").strip()
-
-    return {
-        "overall_summary": overall_summary,
-        "sections": [
-            {
-                **fallback_section,
-                "headline": _trim_publication_output_pattern_text(headline, max_chars=80),
-                "body": body,
-                "consideration_label": consideration_label[:80]
-                or fallback_section.get("consideration_label"),
-                "consideration": consideration or fallback_section.get("consideration"),
-            }
-        ],
-    }
 
 
 def _coerce_publication_output_pattern_payload(payload: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
-    fallback = _build_publication_output_pattern_fallback_payload(evidence)
-    fallback_section = dict((fallback.get("sections") or [{}])[0] or {})
-    model_section = {}
-    sections_raw = payload.get("sections")
-    if isinstance(sections_raw, list):
-        for item in sections_raw:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("key") or "").strip() == "publication_output_pattern":
-                model_section = item
-                break
-
-    headline = str(model_section.get("headline") or "").strip() or str(fallback_section.get("headline") or "")
-    if _publication_output_pattern_headline_is_too_generic(headline):
-        headline = str(fallback_section.get("headline") or headline)
-    body = str(model_section.get("body") or "").strip() or str(fallback_section.get("body") or "")
-    body = _trim_publication_output_pattern_text(body, max_chars=320, require_sentence_end=True)
-    if _publication_output_pattern_body_is_too_generic(
-        body=body,
-        fallback_body=str(fallback_section.get("body") or ""),
-        evidence=evidence,
-    ):
-        body = str(fallback_section.get("body") or body)
-    elif _publication_output_pattern_text_is_unsupported(text=body, evidence=evidence):
-        body = str(fallback_section.get("body") or body)
-    consideration_label = str(model_section.get("consideration_label") or "").strip() or str(fallback_section.get("consideration_label") or "")
-    consideration = str(model_section.get("consideration") or "").strip() or str(fallback_section.get("consideration") or "")
-    consideration = _trim_publication_output_pattern_text(
-        consideration,
-        max_chars=180,
-        require_sentence_end=True,
+    scaffold = _build_publication_output_pattern_fallback_payload(evidence)
+    scaffold_section = dict((scaffold.get("sections") or [{}])[0] or {})
+    payload_object = _require_object_keys(
+        value=payload,
+        allowed_keys={"overall_summary", "sections"},
+        error_message="Publication insights AI returned invalid fields for publication_output_pattern.",
     )
-    if _publication_output_pattern_text_is_unsupported(text=consideration, evidence=evidence) or _publication_output_pattern_consideration_is_too_generic(
-        label=consideration_label,
-        consideration=consideration,
-        evidence=evidence,
-    ):
-        consideration_label = str(fallback_section.get("consideration_label") or "")
-        consideration = str(fallback_section.get("consideration") or "")
-    overall_summary = _trim_publication_output_pattern_text(
-        str(payload.get("overall_summary") or "").strip()
-        or str(fallback.get("overall_summary") or "").strip(),
-        max_chars=220,
-        require_sentence_end=False,
+    sections_raw = payload_object.get("sections")
+    if not isinstance(sections_raw, list) or len(sections_raw) != 1:
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned no section for publication_output_pattern."
+        )
+    model_section = _require_object_keys(
+        value=sections_raw[0],
+        allowed_keys={"key", "pattern", "headline", "body", "blocks"},
+        error_message="Publication insights AI returned invalid fields for publication_output_pattern.",
+    )
+    if str(model_section.get("key") or "").strip() != "publication_output_pattern":
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned no section for publication_output_pattern."
+        )
+
+    pattern = _require_publication_output_pattern_enum(model_section.get("pattern"))
+    headline = _require_generated_text(
+        text=model_section.get("headline"),
+        section_key="publication_output_pattern",
+        field_name="headline",
+        generic_predicate=_publication_output_pattern_headline_is_too_generic,
+    )
+    body = _require_generated_text(
+        text=model_section.get("body"),
+        section_key="publication_output_pattern",
+        field_name="body",
+        require_sentence_end=True,
+        generic_predicate=lambda value: _publication_output_pattern_body_is_too_generic(
+            body=value,
+            fallback_body="",
+            evidence=evidence,
+        ),
+        unsupported_predicate=lambda value: _publication_output_pattern_text_is_unsupported(
+            text=value,
+            evidence=evidence,
+        ),
+    )
+    raw_blocks = model_section.get("blocks")
+    if not isinstance(raw_blocks, list):
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned invalid blocks for publication_output_pattern."
+        )
+    if len(raw_blocks) > 1:
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned too many blocks for publication_output_pattern."
+        )
+    for item in raw_blocks:
+        _require_object_keys(
+            value=item,
+            allowed_keys={"kind", "label", "text"},
+            error_message="Publication insights AI returned invalid blocks for publication_output_pattern.",
+        )
+    blocks = _normalize_generated_section_blocks(
+        blocks=raw_blocks,
+        section_key="publication_output_pattern",
+        unsupported_predicate=lambda value: _publication_output_pattern_text_is_unsupported(
+            text=value,
+            evidence=evidence,
+        ),
+    )
+    primary_callout = next(
+        (
+            block
+            for block in blocks
+            if str(block.get("kind") or "").strip() == "callout"
+            and str(block.get("text") or "").strip()
+        ),
+        None,
+    )
+    primary_callout_label = _normalize_publication_generated_text(
+        (primary_callout or {}).get("label")
+    )
+    if primary_callout and primary_callout_label:
+        consideration_label, consideration = _normalize_generated_note(
+            label=primary_callout_label,
+            consideration=(primary_callout or {}).get("text"),
+            section_key="publication_output_pattern",
+            generic_predicate=lambda label, note: _publication_output_pattern_consideration_is_too_generic(
+                label=label,
+                consideration=note,
+                evidence=evidence,
+            ),
+            unsupported_predicate=lambda value: _publication_output_pattern_text_is_unsupported(
+                text=value,
+                evidence=evidence,
+            ),
+        )
+    else:
+        consideration_label, consideration = None, None
+    overall_summary = _validate_generated_text_contract(
+        text=payload_object.get("overall_summary"),
+        section_key="publication_output_pattern",
+        field_name="overall_summary",
+        allow_empty=True,
     )
     if _publication_output_pattern_text_is_unsupported(text=overall_summary, evidence=evidence):
-        overall_summary = str(fallback.get("overall_summary") or "").strip()
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned unsupported overall_summary content for publication_output_pattern."
+        )
 
     return {
         "overall_summary": overall_summary,
         "sections": [
             {
-                **fallback_section,
-                "headline": _trim_publication_output_pattern_text(headline, max_chars=80),
+                **scaffold_section,
+                "headline": headline,
                 "body": body,
-                "consideration_label": consideration_label[:80] or fallback_section.get("consideration_label"),
-                "consideration": consideration or fallback_section.get("consideration"),
+                "consideration_label": consideration_label,
+                "consideration": consideration,
+                "blocks": blocks,
+                "evidence": {
+                    **(
+                        scaffold_section.get("evidence")
+                        if isinstance(scaffold_section.get("evidence"), dict)
+                        else {}
+                    ),
+                    "pattern": pattern,
+                },
             }
         ],
     }
 
 
 def _coerce_publication_production_phase_payload(payload: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
-    fallback = _build_publication_production_phase_fallback_payload(evidence)
-    fallback_section = dict((fallback.get("sections") or [{}])[0] or {})
-    model_section = {}
-    sections_raw = payload.get("sections")
-    if isinstance(sections_raw, list):
-        for item in sections_raw:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("key") or "").strip() == "publication_production_phase":
-                model_section = item
-                break
+    scaffold = _build_publication_production_phase_fallback_payload(evidence)
+    scaffold_section = dict((scaffold.get("sections") or [{}])[0] or {})
+    payload_object = _require_object_keys(
+        value=payload,
+        allowed_keys={"overall_summary", "sections"},
+        error_message="Publication insights AI returned invalid fields for publication_production_phase.",
+    )
+    sections_raw = payload_object.get("sections")
+    if not isinstance(sections_raw, list) or len(sections_raw) != 1:
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned no section for publication_production_phase."
+        )
+    model_section = _require_object_keys(
+        value=sections_raw[0],
+        allowed_keys={"key", "phase", "headline", "body", "blocks"},
+        error_message="Publication insights AI returned invalid fields for publication_production_phase.",
+    )
+    if str(model_section.get("key") or "").strip() != "publication_production_phase":
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned no section for publication_production_phase."
+        )
 
     phase_label = str(evidence.get("phase_label") or "").strip() or None
-    headline = str(model_section.get("headline") or "").strip() or str(fallback_section.get("headline") or "")
-    if _publication_production_phase_headline_is_too_generic(headline, phase_label):
-        headline = str(fallback_section.get("headline") or headline)
-    body = str(model_section.get("body") or "").strip() or str(fallback_section.get("body") or "")
-    body = _trim_publication_output_pattern_text(body, max_chars=320, require_sentence_end=True)
-    if _publication_production_phase_body_is_too_generic(
-        body=body,
-        fallback_body=str(fallback_section.get("body") or ""),
-        evidence=evidence,
-    ):
-        body = str(fallback_section.get("body") or body)
-    elif _publication_production_phase_text_is_unsupported(body):
-        body = str(fallback_section.get("body") or body)
-
-    consideration_label = str(model_section.get("consideration_label") or "").strip() or str(fallback_section.get("consideration_label") or "")
-    consideration = str(model_section.get("consideration") or "").strip() or str(fallback_section.get("consideration") or "")
-    consideration = _trim_publication_output_pattern_text(
-        consideration,
-        max_chars=180,
-        require_sentence_end=True,
+    phase = _require_publication_production_phase_enum(model_section.get("phase"))
+    headline = _require_generated_text(
+        text=model_section.get("headline"),
+        section_key="publication_production_phase",
+        field_name="headline",
+        generic_predicate=lambda value: _publication_production_phase_headline_is_too_generic(
+            value, phase_label
+        ),
     )
-    if _publication_production_phase_text_is_unsupported(consideration):
-        consideration_label = str(fallback_section.get("consideration_label") or "")
-        consideration = str(fallback_section.get("consideration") or "")
-    overall_summary = _trim_publication_output_pattern_text(
-        str(payload.get("overall_summary") or "").strip()
-        or str(fallback.get("overall_summary") or "").strip(),
-        max_chars=220,
-        require_sentence_end=False,
+    body = _require_generated_text(
+        text=model_section.get("body"),
+        section_key="publication_production_phase",
+        field_name="body",
+        require_sentence_end=True,
+        generic_predicate=lambda value: _publication_production_phase_body_is_too_generic(
+            body=value,
+            fallback_body="",
+            evidence=evidence,
+        ),
+        unsupported_predicate=_publication_production_phase_text_is_unsupported,
+    )
+    raw_blocks = model_section.get("blocks")
+    if not isinstance(raw_blocks, list):
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned invalid blocks for publication_production_phase."
+        )
+    if len(raw_blocks) > 1:
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned too many blocks for publication_production_phase."
+        )
+    for item in raw_blocks:
+        _require_object_keys(
+            value=item,
+            allowed_keys={"kind", "label", "text"},
+            error_message="Publication insights AI returned invalid blocks for publication_production_phase.",
+        )
+    blocks = _normalize_generated_section_blocks(
+        blocks=raw_blocks,
+        section_key="publication_production_phase",
+        unsupported_predicate=_publication_production_phase_text_is_unsupported,
+    )
+    primary_callout = next(
+        (
+            block
+            for block in blocks
+            if str(block.get("kind") or "").strip() == "callout"
+            and str(block.get("text") or "").strip()
+        ),
+        None,
+    )
+    primary_callout_label = _normalize_publication_generated_text(
+        (primary_callout or {}).get("label")
+    )
+    if primary_callout and primary_callout_label:
+        consideration_label, consideration = _normalize_generated_note(
+            label=primary_callout_label,
+            consideration=(primary_callout or {}).get("text"),
+            section_key="publication_production_phase",
+            unsupported_predicate=_publication_production_phase_text_is_unsupported,
+        )
+    else:
+        consideration_label, consideration = None, None
+    overall_summary = _validate_generated_text_contract(
+        text=payload_object.get("overall_summary"),
+        section_key="publication_production_phase",
+        field_name="overall_summary",
+        allow_empty=True,
     )
     if _publication_production_phase_text_is_unsupported(overall_summary):
-        overall_summary = str(fallback.get("overall_summary") or "").strip()
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned unsupported overall_summary content for publication_production_phase."
+        )
 
     return {
         "overall_summary": overall_summary,
         "sections": [
             {
-                **fallback_section,
-                "headline": _trim_publication_output_pattern_text(headline, max_chars=80),
+                **scaffold_section,
+                "headline": headline,
                 "body": body,
-                "consideration_label": consideration_label[:80] or fallback_section.get("consideration_label"),
-                "consideration": consideration or fallback_section.get("consideration"),
+                "consideration_label": consideration_label,
+                "consideration": consideration,
+                "blocks": blocks,
+                "evidence": {
+                    **(
+                        scaffold_section.get("evidence")
+                        if isinstance(scaffold_section.get("evidence"), dict)
+                        else {}
+                    ),
+                    "phase": phase,
+                },
             }
         ],
     }
@@ -7009,18 +8815,20 @@ def _build_prompt(evidence: dict[str, Any]) -> str:
         "For citation_activation, distinguish newly active papers from papers that stayed active, and comment on how much of the portfolio remains inactive.\n"
         "For citation_activation_history, interpret whether yearly activity is broadening, narrowing, renewing, or staying steady across complete years.\n"
         "If the evidence includes 1y, 3y, and 5y citation windows together, write one section-level interpretation across the whole section, not separate per-window summaries.\n"
-        + _build_publication_insight_note_guidance()
-        + "If you include a follow-on note, write it from the user's perspective and make it specific to the evidence available.\n"
+        + _build_publication_insight_slot_guidance(multi_section=True)
+        + "If you include a callout block, write it from the user's perspective and make it specific to the evidence available.\n"
         "Schema:\n"
         "{\n"
-        '  "overall_summary": "string",\n'
+        '  "overall_summary": "optional concise summary sentence; omit or leave empty when it adds no value",\n'
         '  "sections": [\n'
         "    {\n"
         '      "key": "uncited_works" | "citation_drivers" | "citation_activation" | "citation_activation_history",\n'
-        '      "headline": "max 4 words",\n'
-        '      "body": "max 45 words",\n'
-        '      "consideration_label": "optional, max 4 words, only when a follow-on note is genuinely useful",\n'
-        '      "consideration": "optional, max 28 words, only when genuinely useful"\n'
+        '      "headline": "short non-generic phrase",\n'
+        '      "body": "main analysis in natural prose",\n'
+        '      "blocks": [\n'
+        '        { "kind": "paragraph", "text": "optional extra analytic paragraph" },\n'
+        '        { "kind": "callout", "label": "optional brief label", "text": "optional caveat, confidence note, or next angle" }\n'
+        "      ]\n"
         "    }\n"
         "  ]\n"
         "}\n"
@@ -7089,63 +8897,71 @@ def _body_is_too_generic(*, key: str, body: str, fallback_body: str) -> bool:
 
 
 def _coerce_model_payload(payload: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
-    fallback = _build_fallback_payload(evidence)
-    sections_raw = payload.get("sections")
-    by_key: dict[str, dict[str, Any]] = {}
-    if isinstance(sections_raw, list):
-        for item in sections_raw:
-            if not isinstance(item, dict):
-                continue
-            key = str(item.get("key") or "").strip()
-            if key in {"uncited_works", "citation_drivers", "citation_activation", "citation_activation_history"}:
-                by_key[key] = item
-
+    scaffold = _build_fallback_payload(evidence)
     output_sections: list[dict[str, Any]] = []
-    fallback_by_key = {
-        str(item["key"]): item for item in fallback["sections"] if isinstance(item, dict)
+    scaffold_by_key = {
+        str(item["key"]): item for item in scaffold["sections"] if isinstance(item, dict)
     }
     for key in ("uncited_works", "citation_drivers", "citation_activation", "citation_activation_history"):
-        fallback_section = dict(fallback_by_key[key])
-        model_section = by_key.get(key) or {}
-        headline = str(model_section.get("headline") or "").strip() or fallback_section["headline"]
-        body = str(model_section.get("body") or "").strip() or fallback_section["body"]
-        consideration_label_raw = str(model_section.get("consideration_label") or "").strip()
-        consideration_raw = str(model_section.get("consideration") or "").strip()
+        scaffold_section = dict(scaffold_by_key[key])
+        model_section = _find_generated_section(payload, key)
+        if not model_section:
+            raise PublicationInsightsAgentValidationError(
+                f"Publication insights AI returned no section for {key}."
+            )
+        headline = _require_generated_text(
+            text=model_section.get("headline"),
+            section_key=key,
+            field_name="headline",
+        )
+        body = _require_generated_text(
+            text=model_section.get("body"),
+            section_key=key,
+            field_name="body",
+            require_sentence_end=True,
+            generic_predicate=lambda value, current_key=key: _body_is_too_generic(
+                key=current_key,
+                body=value,
+                fallback_body="",
+            ),
+        )
+        consideration_label, consideration = _normalize_generated_note(
+            label=model_section.get("consideration_label"),
+            consideration=model_section.get("consideration"),
+            section_key=key,
+        )
         if _body_is_too_generic(
             key=key,
             body=body,
-            fallback_body=str(fallback_section.get("body") or ""),
+            fallback_body="",
         ):
-            body = str(fallback_section.get("body") or body)
-        fallback_section["headline"] = headline[:80]
-        fallback_section["body"] = body[:220]
-        fallback_section["consideration_label"] = (
-            consideration_label_raw[:80] or fallback_section.get("consideration_label")
-        )
-        fallback_section["consideration"] = consideration_raw[:160] or fallback_section.get("consideration")
-        output_sections.append(fallback_section)
+            raise PublicationInsightsAgentValidationError(
+                f"Publication insights AI returned a generic body for {key}."
+            )
+        scaffold_section["headline"] = headline
+        scaffold_section["body"] = body
+        scaffold_section["consideration_label"] = consideration_label
+        scaffold_section["consideration"] = consideration
+        scaffold_section["blocks"] = model_section.get("blocks")
+        output_sections.append(scaffold_section)
 
-    overall_summary = (
-        str(payload.get("overall_summary") or "").strip()
-        or str(fallback.get("overall_summary") or "").strip()
+    overall_summary = _validate_generated_text_contract(
+        text=payload.get("overall_summary"),
+        section_key="citation_summary",
+        field_name="overall_summary",
+        allow_empty=True,
     )
     return {
-        "overall_summary": overall_summary[:220],
+        "overall_summary": overall_summary,
         "sections": output_sections,
     }
 
 
-def _candidate_models() -> list[str]:
-    preferred = str(
-        os.getenv("PUBLICATION_INSIGHTS_AGENT_MODEL", PREFERRED_MODEL)
-    ).strip() or PREFERRED_MODEL
-    fallback = str(
-        os.getenv("PUBLICATION_INSIGHTS_AGENT_FALLBACK_MODEL", FALLBACK_MODEL)
-    ).strip() or FALLBACK_MODEL
-    models = [preferred]
-    if fallback not in models:
-        models.append(fallback)
-    return models
+def _configured_publication_insights_model() -> str:
+    return (
+        str(os.getenv("PUBLICATION_INSIGHTS_AGENT_MODEL", PREFERRED_MODEL)).strip()
+        or PREFERRED_MODEL
+    )
 
 
 def _openai_insights_enabled() -> bool:
@@ -7156,10 +8972,65 @@ def _openai_insights_enabled() -> bool:
     return True
 
 
+def _publication_insights_availability_cache_ttl_seconds() -> int:
+    raw_value = str(
+        os.getenv(
+            "PUBLICATION_INSIGHTS_AVAILABILITY_CACHE_TTL_SECONDS",
+            str(PUBLICATION_INSIGHTS_AVAILABILITY_CACHE_TTL_SECONDS),
+        )
+    ).strip()
+    try:
+        return max(0, int(raw_value))
+    except ValueError:
+        return PUBLICATION_INSIGHTS_AVAILABILITY_CACHE_TTL_SECONDS
+
+
+def _reset_publication_insights_availability_cache() -> None:
+    global _publication_insights_availability_checked_at
+    global _publication_insights_availability_value
+
+    _publication_insights_availability_checked_at = None
+    _publication_insights_availability_value = False
+
+
+def _probe_publication_insights_availability() -> bool:
+    if not _openai_insights_enabled():
+        return False
+    try:
+        get_client().models.retrieve(_configured_publication_insights_model())
+    except Exception:
+        return False
+    return True
+
+
+def publication_insights_available(*, force_refresh: bool = False) -> bool:
+    global _publication_insights_availability_checked_at
+    global _publication_insights_availability_value
+
+    ttl_seconds = _publication_insights_availability_cache_ttl_seconds()
+    now = time.monotonic()
+    if (
+        not force_refresh
+        and ttl_seconds > 0
+        and _publication_insights_availability_checked_at is not None
+        and (now - _publication_insights_availability_checked_at) < ttl_seconds
+    ):
+        return _publication_insights_availability_value
+
+    available = _probe_publication_insights_availability()
+    _publication_insights_availability_checked_at = now
+    _publication_insights_availability_value = available
+    return available
+
+
 def _build_publication_insights_provenance_evidence(
     *, evidence: dict[str, Any], section_key: str | None
 ) -> dict[str, Any]:
-    if section_key in {"publication_output_pattern", "publication_production_phase"}:
+    if section_key in {
+        "publication_output_pattern",
+        "publication_production_phase",
+        "publication_year_over_year_trajectory",
+    }:
         return {
             "window_phrase": evidence.get("window_phrase"),
             "total_publications": evidence.get("total_publications"),
@@ -7212,6 +9083,17 @@ def _build_publication_insights_provenance_evidence(
             "current_pace_comparison_mean": evidence.get("current_pace_comparison_mean"),
             "current_pace_comparison_delta": evidence.get("current_pace_comparison_delta"),
             "current_pace_signal": evidence.get("current_pace_signal"),
+            "rolling_cutoff_label": evidence.get("rolling_cutoff_label"),
+            "rolling_one_year_total": evidence.get("rolling_one_year_total"),
+            "rolling_one_year_pace": evidence.get("rolling_one_year_pace"),
+            "rolling_one_year_window_months": evidence.get("rolling_one_year_window_months"),
+            "rolling_three_year_pace": evidence.get("rolling_three_year_pace"),
+            "rolling_three_year_window_months": evidence.get("rolling_three_year_window_months"),
+            "rolling_prior_period_pace": evidence.get("rolling_prior_period_pace"),
+            "rolling_prior_period_months": evidence.get("rolling_prior_period_months"),
+            "rolling_prior_period_years": evidence.get("rolling_prior_period_years"),
+            "rolling_prior_period_label": evidence.get("rolling_prior_period_label"),
+            "trajectory_phase_label": evidence.get("trajectory_phase_label"),
             "high_run_years": list(evidence.get("high_run_years") or []),
             "high_run_label": evidence.get("high_run_label"),
             "high_run_min_count": evidence.get("high_run_min_count"),
@@ -7383,31 +9265,30 @@ def generate_publication_insights_agent_draft(
     user_id: str,
     window_id: Literal["1y", "3y", "5y", "all"] = "1y",
     section_key: Literal[
-        "uncited_works", "citation_drivers", "citation_activation", "citation_activation_history", "publication_output_pattern", "publication_production_phase", "publication_volume_over_time", "publication_article_type_over_time", "publication_type_over_time"
+        "uncited_works", "citation_drivers", "citation_activation", "citation_activation_history", "publication_output_pattern", "publication_production_phase", "publication_year_over_year_trajectory", "publication_volume_over_time", "publication_article_type_over_time", "publication_type_over_time"
     ]
     | None = None,
     scope: Literal["window", "section"] = "window",
+    ui_context: str | None = None,
 ) -> dict[str, Any]:
     if section_key == "publication_output_pattern":
         evidence = _build_publication_output_pattern_evidence(user_id=user_id)
-        payload = _build_publication_output_pattern_fallback_payload(evidence)
-        prompt = _build_publication_output_pattern_prompt(evidence)
+        request_input: Any = _build_publication_output_pattern_prompt(evidence)
     elif section_key == "publication_production_phase":
         evidence = _build_publication_production_phase_evidence(user_id=user_id)
-        payload = _build_publication_production_phase_fallback_payload(evidence)
-        prompt = _build_publication_production_phase_prompt(evidence)
+        request_input = _build_publication_production_phase_prompt(evidence)
+    elif section_key == "publication_year_over_year_trajectory":
+        evidence = _build_publication_year_over_year_trajectory_evidence(user_id=user_id)
+        request_input = _build_publication_year_over_year_trajectory_prompt(evidence)
     elif section_key == "publication_volume_over_time":
         evidence = _build_publication_volume_over_time_evidence(user_id=user_id)
-        payload = _build_publication_volume_over_time_fallback_payload(evidence)
-        prompt = _build_publication_volume_over_time_prompt(evidence)
+        request_input = _build_publication_volume_over_time_prompt(evidence)
     elif section_key == "publication_article_type_over_time":
         evidence = _build_publication_article_type_over_time_evidence(user_id=user_id)
-        payload = _build_publication_article_type_over_time_fallback_payload(evidence)
-        prompt = _build_publication_article_type_over_time_prompt(evidence)
+        request_input = _build_publication_article_type_over_time_prompt(evidence)
     elif section_key == "publication_type_over_time":
         evidence = _build_publication_type_over_time_evidence(user_id=user_id)
-        payload = _build_publication_type_over_time_fallback_payload(evidence)
-        prompt = _build_publication_type_over_time_prompt(evidence)
+        request_input = _build_publication_type_over_time_prompt(evidence)
     else:
         evidence = _build_evidence(
             user_id=user_id,
@@ -7415,44 +9296,119 @@ def generate_publication_insights_agent_draft(
             section_key=section_key,
             scope=scope,
         )
-        payload = _build_fallback_payload(evidence)
-        prompt = _build_prompt(evidence)
-    model_used: str | None = None
-    generation_mode = "deterministic_fallback"
-    if _openai_insights_enabled():
-        for model_name in _candidate_models():
-            try:
-                response = create_response(
-                    model=model_name,
-                    input=prompt,
-                    max_output_tokens=320,
-                    timeout=_publication_insights_openai_timeout_seconds(),
-                    max_retries=0,
-                )
-                model_payload = _extract_json_object(
-                    str(getattr(response, "output_text", ""))
-                )
-                payload = (
-                    _coerce_publication_volume_over_time_payload(model_payload, evidence)
-                    if section_key == "publication_volume_over_time"
-                    else
-                    _coerce_publication_article_type_over_time_payload(model_payload, evidence)
-                    if section_key == "publication_article_type_over_time"
-                    else
-                    _coerce_publication_type_over_time_payload(model_payload, evidence)
-                    if section_key == "publication_type_over_time"
-                    else
-                    _coerce_publication_output_pattern_payload(model_payload, evidence)
-                    if section_key == "publication_output_pattern"
-                    else _coerce_publication_production_phase_payload(model_payload, evidence)
-                    if section_key == "publication_production_phase"
-                    else _coerce_model_payload(model_payload, evidence)
-                )
-                model_used = model_name
-                generation_mode = "openai"
-                break
-            except Exception:
-                continue
+        request_input = _build_prompt(evidence)
+    if str(ui_context or "").strip():
+        evidence["ui_context"] = str(ui_context).strip()
+        if section_key == "publication_output_pattern":
+            request_input = _build_publication_output_pattern_prompt(evidence)
+        elif section_key == "publication_production_phase":
+            request_input = _build_publication_production_phase_prompt(evidence)
+        elif section_key == "publication_year_over_year_trajectory":
+            request_input = _build_publication_year_over_year_trajectory_prompt(
+                evidence
+            )
+        elif section_key == "publication_volume_over_time":
+            request_input = _build_publication_volume_over_time_prompt(evidence)
+        elif section_key == "publication_article_type_over_time":
+            request_input = _build_publication_article_type_over_time_prompt(evidence)
+        elif section_key == "publication_type_over_time":
+            request_input = _build_publication_type_over_time_prompt(evidence)
+    if not _openai_insights_enabled():
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI is not configured."
+        )
+
+    model_used = _configured_publication_insights_model()
+    text_config = (
+        _publication_output_pattern_text_config()
+        if section_key == "publication_output_pattern"
+        else _publication_production_phase_text_config()
+        if section_key == "publication_production_phase"
+        else _publication_year_over_year_trajectory_text_config()
+        if section_key == "publication_year_over_year_trajectory"
+        else _publication_article_type_over_time_text_config()
+        if section_key == "publication_article_type_over_time"
+        else _publication_type_over_time_text_config()
+        if section_key == "publication_type_over_time"
+        else _publication_insights_text_config()
+    )
+    max_output_tokens = (
+        _publication_output_pattern_max_output_tokens()
+        if section_key == "publication_output_pattern"
+        else _publication_production_phase_max_output_tokens()
+        if section_key == "publication_production_phase"
+        else _publication_year_over_year_trajectory_max_output_tokens()
+        if section_key == "publication_year_over_year_trajectory"
+        else _publication_mix_max_output_tokens()
+        if section_key in {"publication_article_type_over_time", "publication_type_over_time"}
+        else _publication_insights_max_output_tokens()
+    )
+    response_create_kwargs: dict[str, Any] = {}
+    if section_key in {
+        "publication_output_pattern",
+        "publication_production_phase",
+        "publication_year_over_year_trajectory",
+        "publication_article_type_over_time",
+        "publication_type_over_time",
+    }:
+        response_create_kwargs["store"] = False
+    try:
+        response = create_response(
+            model=model_used,
+            input=request_input,
+            max_output_tokens=max_output_tokens,
+            text=text_config,
+            reasoning={"effort": _publication_insights_reasoning_effort()},
+            timeout=_publication_insights_openai_timeout_seconds(),
+            max_retries=0,
+            **response_create_kwargs,
+        )
+    except Exception as exc:
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI generation failed."
+        ) from exc
+
+    response_status = str(getattr(response, "status", "") or "").strip().lower()
+    if response_status == "incomplete":
+        incomplete_details = getattr(response, "incomplete_details", None)
+        reason = str(getattr(incomplete_details, "reason", "") or "").strip() or "unknown_reason"
+        raise PublicationInsightsAgentValidationError(
+            f"Publication insights AI response was incomplete ({reason})."
+        )
+
+    output_text = str(getattr(response, "output_text", "") or "")
+    if not output_text.strip():
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned an empty body."
+        )
+
+    try:
+        model_payload = _extract_json_object(output_text)
+    except ValueError as exc:
+        raise PublicationInsightsAgentValidationError(
+            "Publication insights AI returned invalid JSON."
+        ) from exc
+
+    payload = (
+        _coerce_publication_volume_over_time_payload(model_payload, evidence)
+        if section_key == "publication_volume_over_time"
+        else _coerce_publication_article_type_over_time_payload(model_payload, evidence)
+        if section_key == "publication_article_type_over_time"
+        else _coerce_publication_type_over_time_payload(model_payload, evidence)
+        if section_key == "publication_type_over_time"
+        else _coerce_publication_output_pattern_payload(model_payload, evidence)
+        if section_key == "publication_output_pattern"
+        else _coerce_publication_production_phase_payload(model_payload, evidence)
+        if section_key == "publication_production_phase"
+        else _coerce_publication_year_over_year_trajectory_payload(
+            model_payload, evidence
+        )
+        if section_key == "publication_year_over_year_trajectory"
+        else _coerce_model_payload(model_payload, evidence)
+    )
+    sections = _finalize_publication_insight_sections(
+        list(payload.get("sections") or [])
+    )
 
     return {
         "agent_name": AGENT_NAME,
@@ -7460,12 +9416,12 @@ def generate_publication_insights_agent_draft(
         "window_id": str(evidence.get("window_id") or "1y"),
         "window_label": str(evidence.get("window_label") or "1y"),
         "overall_summary": str(payload.get("overall_summary") or ""),
-        "sections": list(payload.get("sections") or []),
+        "sections": sections,
         "provenance": {
             "source": "publication_metrics_bundle",
             "data_sources": list(evidence.get("data_sources") or []),
             "generated_at": _utcnow(),
-            "generation_mode": generation_mode,
+            "generation_mode": "openai",
             "model": model_used,
             "prompt_version": PROMPT_VERSION,
             "metrics_status": str(evidence.get("metrics_status") or "READY"),

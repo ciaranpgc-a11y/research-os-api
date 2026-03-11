@@ -1,0 +1,94 @@
+
+<!doctype html>
+<html>
+<head>
+<link href="/cochrane-theme/images/favicon.ico" rel="Shortcut Icon">    
+
+<meta name="DOI" content="10.1002/14651858.CD013743">
+    
+<script type="text/javascript">
+    window.dataLayer = window.dataLayer || [];
+
+    /**
+     * Merge the contents of two or more objects together into a new object.
+     *
+     * @param boolean (optional) whether or not this should be a deep merge, defaults to false
+     * @param Object... any number of objects to merge together
+     * @returns Object a new object with the contents of two or more objects merged together
+     */
+    var xtend = function () {
+
+        // Variables
+        var extended = {};
+        var deep = false;
+        var i = 0;
+        var length = arguments.length;
+
+        // Check if a deep merge
+        if ( Object.prototype.toString.call( arguments[0] ) === '[object Boolean]' ) {
+            deep = arguments[0];
+            i++;
+        }
+
+        // Merge the object into the extended object
+        var merge = function (obj) {
+            for ( var prop in obj ) {
+                if ( Object.prototype.hasOwnProperty.call( obj, prop ) ) {
+                    // If deep merge and property is an object, merge properties
+                    if ( deep && Object.prototype.toString.call(obj[prop]) === '[object Object]' ) {
+                        extended[prop] = xtend( true, extended[prop], obj[prop] );
+                    } else {
+                        extended[prop] = obj[prop];
+                    }
+                }
+            }
+        };
+
+        // Loop through each object and conduct a merge
+        for ( ; i < length; i++ ) {
+            var obj = arguments[i];
+            merge(obj);
+        }
+
+        return extended;
+
+    };
+
+</script>
+
+<script type="text/javascript">
+    {
+var o = {"database":"CDSR","article":{"availableLanguage":["en"],"languageCode":"","accessStatus":"free","doi":"10.1002/14651858.CD013743","title":"Antibiotics for the induction and maintenance of remission in ulcerative colitis","firstPublishedDate":"Sep 25, 2020 12:00:00 AM","isCurrentVersion":false,"editorialGroup":"Cochrane Gut Group","availableParts":["PDF Full","PDF Standard","PDF Abstract","HTML","Comments","Information","References","Stats","Related Content"]}};
+window.dataLayer = xtend(true, window.dataLayer, o);
+}
+
+</script>
+
+<script type="text/javascript">
+    {
+var o = {"page":{"pageType":"Article PDF","siteSection":"Content","languageCode":"en"}};
+window.dataLayer = xtend(true, window.dataLayer, o);
+}
+
+</script>
+
+<script type="text/javascript">
+    {
+var o = {"auth":{"roles":["Guest"],"customerIds":["EAL57933332","CORE00000004150","EAL00000068532"],"individualId":""}};
+window.dataLayer = xtend(true, window.dataLayer, o);
+}
+
+</script>
+
+    <script src="https://assets.adobedtm.com/59640f9fa510/7cad07cf7779/launch-a215d9c51521.min.js" async/>
+
+    <script type="text/javascript">if(window._satellite){_satellite.pageBottom()};</script>
+
+</head>
+<body style="height: 100vh; overflow: hidden;">
+<iframe src="/cdsr/doi/10.1002/14651858.CD013743/pdf/CDSR/CD013743/rel0001/CD013743/CD013743.pdf" width="100%" height="100%" style="border-width: 0; margin: 0;">
+    This browser does not support PDFs. Please download the PDF to view it:
+    <a href="/cdsr/doi/10.1002/14651858.CD013743/pdf/CDSR/CD013743/rel0001/CD013743/CD013743.pdf">Download PDF</a>
+</iframe>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9da3440a9d78ece0',t:'MTc3MzE1NTYzMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>

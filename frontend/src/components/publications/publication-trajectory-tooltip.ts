@@ -3,6 +3,7 @@ export type PublicationTrajectoryTooltipSlice = {
   year: number
   rawValue: number
   movingAvgValue: number
+  movingAvgWindowMonths: number
   cumulativeValue: number
   activeValue: number
   previousRawValue: number | null
@@ -24,6 +25,7 @@ export function buildTrajectoryTooltipSlices({
   years,
   rawValues,
   movingAvgValues,
+  movingAvgWindowMonths,
   cumulativeValues,
   activeValues,
   activePoints,
@@ -34,6 +36,7 @@ export function buildTrajectoryTooltipSlices({
   years: number[]
   rawValues: number[]
   movingAvgValues: number[]
+  movingAvgWindowMonths: number[]
   cumulativeValues: number[]
   activeValues: number[]
   activePoints: TrajectoryPointLike[]
@@ -60,6 +63,7 @@ export function buildTrajectoryTooltipSlices({
     const year = years[index] || 0
     const rawValue = Number(rawValues[index] || 0)
     const movingAvgValue = Number(movingAvgValues[index] || 0)
+    const movingAvgWindowMonthCount = Math.max(1, Math.round(movingAvgWindowMonths[index] || 12))
     const cumulativeValue = Number(cumulativeValues[index] || 0)
     const activeValue = Number(activeValues[index] || 0)
     const movingAvgYPct = movingPoints[index] ? clampPct(movingPoints[index].y) : null
@@ -80,6 +84,7 @@ export function buildTrajectoryTooltipSlices({
         year,
         rawValue,
         movingAvgValue,
+        movingAvgWindowMonths: movingAvgWindowMonthCount,
         cumulativeValue,
         activeValue,
         previousRawValue,
@@ -105,6 +110,7 @@ export function buildTrajectoryTooltipSlices({
       year,
       rawValue,
       movingAvgValue,
+      movingAvgWindowMonths: movingAvgWindowMonthCount,
       cumulativeValue,
       activeValue,
       previousRawValue,

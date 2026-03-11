@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from research_os.clients.openai_client import create_response
 from research_os.db import (
     JournalProfile,
     MetricsSnapshot,
@@ -97,16 +94,6 @@ def _sanitize_text(value: Any, *, max_length: int | None = None) -> str | None:
     return clean or None
 
 
-def _extract_json_object(text: str) -> dict[str, Any]:
-    match = re.search(r"\{.*\}", str(text or ""), re.DOTALL)
-    if not match:
-        raise ValueError("Model output did not contain a JSON object.")
-    payload = json.loads(match.group(0))
-    if not isinstance(payload, dict):
-        raise ValueError("Model output was not a JSON object.")
-    return payload
-
-
 def _openalex_timeout_seconds() -> float:
     return max(
         5.0,
@@ -132,38 +119,6 @@ def _openalex_profile_ttl_hours() -> int:
             _safe_int(os.getenv("PERSONA_JOURNAL_OPENALEX_TTL_HOURS", "168")) or 168,
         ),
     )
-
-
-def _editorial_ttl_days() -> int:
-    return max(
-        1,
-        min(
-            365,
-            _safe_int(os.getenv("PERSONA_JOURNAL_EDITORIAL_TTL_DAYS", "90")) or 90,
-        ),
-    )
-
-
-def _editorial_timeout_seconds() -> float:
-    return max(
-        10.0,
-        float(
-            str(os.getenv("PERSONA_JOURNAL_EDITORIAL_TIMEOUT_SECONDS", "45")).strip()
-        ),
-    )
-
-
-def _editorial_model() -> str:
-    return (
-        str(os.getenv("PERSONA_JOURNAL_EDITORIAL_OPENAI_MODEL", "gpt-5.2")).strip()
-        or "gpt-5.2"
-    )
-
-
-def _editorial_fallback_model() -> str:
-    return str(
-        os.getenv("PERSONA_JOURNAL_EDITORIAL_OPENAI_FALLBACK_MODEL", "gpt-5-mini")
-    ).strip()
 
 
 def _openalex_mailto(*, fallback_email: str | None = None) -> str | None:
@@ -256,17 +211,6 @@ def _profile_needs_openalex_refresh(
     if last_synced_at is None:
         return True
     return last_synced_at < (_utcnow() - timedelta(hours=_openalex_profile_ttl_hours()))
-
-
-def _profile_needs_editorial_refresh(
-    profile: JournalProfile, *, force: bool = False
-) -> bool:
-    if force:
-        return True
-    last_verified_at = _coerce_utc(profile.editorial_last_verified_at)
-    if last_verified_at is None:
-        return True
-    return last_verified_at < (_utcnow() - timedelta(days=_editorial_ttl_days()))
 
 
 def _find_or_create_openalex_journal_profile(
@@ -416,152 +360,6 @@ def _fetch_openalex_source_detail(
     return {}
 
 
-def _editorial_allowed_domains(profile: JournalProfile) -> list[str]:
-    homepage_url = _sanitize_text(profile.homepage_url) or None
-    if not homepage_url:
-        return []
-    hostname = _sanitize_text(urlparse(homepage_url).hostname) or None
-    if not hostname:
-        return []
-    candidates: list[str] = []
-    for candidate in [hostname]:
-        clean = candidate.lower().strip(".")
-        if clean and clean not in candidates:
-            candidates.append(clean)
-    parts = hostname.lower().strip(".").split(".")
-    if len(parts) >= 2:
-        parent = ".".join(parts[-2:])
-        if parent not in candidates:
-            candidates.append(parent)
-    if len(parts) >= 3 and len(parts[-1]) == 2 and len(parts[-2]) <= 3:
-        regional_parent = ".".join(parts[-3:])
-        if regional_parent not in candidates:
-            candidates.append(regional_parent)
-    return candidates
-
-
-def _build_editorial_prompt(profile: JournalProfile) -> str:
-    return (
-        "Journal editorial intelligence lookup. Search the web and prefer official "
-        "journal or publisher pages over third-party summary sites. Return JSON only.\n"
-        f'Journal: "{profile.display_name}".\n'
-        f'Publisher: "{profile.publisher or ""}".\n'
-        f'Homepage: "{profile.homepage_url or ""}".\n'
-        f'ISSN-L: "{profile.issn_l or ""}".\n'
-        "Find the current publisher-reported impact factor if shown, the metric year, "
-        "time to first decision in days, time to publication in days, and the current "
-        "editor-in-chief name. If multiple historical values are shown, choose the most "
-        "recent year/value pair and ignore older archived values. If a field is not "
-        "explicitly shown by an official source, return null. Convert weeks to whole days "
-        "only when the official page gives the value explicitly.\n"
-        "{\n"
-        '  "publisher_reported_impact_factor": "number|null",\n'
-        '  "publisher_reported_impact_factor_year": "integer|null",\n'
-        '  "publisher_reported_impact_factor_label": "string|null",\n'
-        '  "time_to_first_decision_days": "integer|null",\n'
-        '  "time_to_publication_days": "integer|null",\n'
-        '  "editor_in_chief_name": "string|null",\n'
-        '  "editorial_source_url": "string|null",\n'
-        '  "editorial_source_title": "string|null",\n'
-        '  "confidence": "high|medium|low|null",\n'
-        '  "notes": "string|null"\n'
-        "}\n"
-    )
-
-
-def _response_to_dict(response: Any) -> dict[str, Any]:
-    if hasattr(response, "model_dump"):
-        payload = response.model_dump()
-        return payload if isinstance(payload, dict) else {}
-    if hasattr(response, "model_dump_json"):
-        try:
-            payload = json.loads(response.model_dump_json())
-        except Exception:
-            return {}
-        return payload if isinstance(payload, dict) else {}
-    return {}
-
-
-def _extract_web_sources(response: Any) -> list[dict[str, str]]:
-    payload = _response_to_dict(response)
-    output = payload.get("output") if isinstance(payload.get("output"), list) else []
-    sources: list[dict[str, str]] = []
-    seen_urls: set[str] = set()
-
-    def _add_source(url: Any, title: Any) -> None:
-        clean_url = _sanitize_text(url)
-        if not clean_url or clean_url in seen_urls:
-            return
-        seen_urls.add(clean_url)
-        sources.append(
-            {
-                "url": clean_url,
-                "title": _sanitize_text(title, max_length=255) or "",
-            }
-        )
-
-    for item in output:
-        if not isinstance(item, dict):
-            continue
-        if item.get("type") == "web_search_call":
-            action = item.get("action")
-            raw_sources = action.get("sources") if isinstance(action, dict) else None
-            if isinstance(raw_sources, list):
-                for raw in raw_sources:
-                    if isinstance(raw, dict):
-                        _add_source(raw.get("url"), raw.get("title"))
-        if item.get("type") != "message":
-            continue
-        content = item.get("content") if isinstance(item.get("content"), list) else []
-        for content_item in content:
-            if not isinstance(content_item, dict):
-                continue
-            annotations = (
-                content_item.get("annotations")
-                if isinstance(content_item.get("annotations"), list)
-                else []
-            )
-            for annotation in annotations:
-                if not isinstance(annotation, dict):
-                    continue
-                _add_source(annotation.get("url"), annotation.get("title"))
-    return sources
-
-
-def _lookup_editorial_intelligence(
-    profile: JournalProfile,
-) -> tuple[dict[str, Any], list[dict[str, str]]]:
-    prompt = _build_editorial_prompt(profile)
-    allowed_domains = _editorial_allowed_domains(profile)
-    tool_config: dict[str, Any] = {"type": "web_search"}
-    if allowed_domains:
-        tool_config["filters"] = {"allowed_domains": allowed_domains}
-    models = [_editorial_model()]
-    fallback_model = _editorial_fallback_model()
-    if fallback_model and fallback_model not in models:
-        models.append(fallback_model)
-    last_error: Exception | None = None
-    for model_name in models:
-        try:
-            response = create_response(
-                model=model_name,
-                input=prompt,
-                tools=[tool_config],
-                include=["web_search_call.action.sources"],
-                max_output_tokens=500,
-                timeout=_editorial_timeout_seconds(),
-                max_retries=0,
-            )
-            payload = _extract_json_object(str(getattr(response, "output_text", "")))
-            return payload, _extract_web_sources(response)
-        except Exception as exc:
-            last_error = exc
-            continue
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError("Editorial intelligence lookup failed.")
-
-
 def _should_replace_impact_factor(
     profile: JournalProfile,
     *,
@@ -611,8 +409,10 @@ def _apply_editorial_payload(
     if impact_factor_label:
         if replace_impact_factor:
             profile.publisher_reported_impact_factor_label = impact_factor_label
-    elif replace_impact_factor and impact_factor is not None and not _sanitize_text(
-        profile.publisher_reported_impact_factor_label
+    elif (
+        replace_impact_factor
+        and impact_factor is not None
+        and not _sanitize_text(profile.publisher_reported_impact_factor_label)
     ):
         profile.publisher_reported_impact_factor_label = IMPACT_FACTOR_LABEL_FALLBACK
 
@@ -903,40 +703,10 @@ def _matching_profiles_for_user(
     return list(deduped.values())
 
 
-def _refresh_editorial_intelligence_for_profiles(
-    profiles: list[JournalProfile], *, force: bool = False
-) -> tuple[int, int, list[str]]:
-    refreshed = 0
-    skipped = 0
-    warnings: list[str] = []
-    for profile in profiles:
-        if not _sanitize_text(profile.display_name):
-            skipped += 1
-            continue
-        if not _profile_needs_editorial_refresh(profile, force=force):
-            skipped += 1
-            continue
-        try:
-            editorial_payload, sources = _lookup_editorial_intelligence(profile)
-        except Exception as exc:
-            warnings.append(
-                f"{profile.display_name}: editorial lookup failed ({type(exc).__name__})."
-            )
-            skipped += 1
-            continue
-        _apply_editorial_payload(
-            profile,
-            editorial_payload=editorial_payload,
-            sources=sources,
-        )
-        refreshed += 1
-    return refreshed, skipped, warnings
-
-
 def refresh_persona_journal_intelligence(
     *,
     user_id: str,
-    include_editorial_intel: bool = True,
+    include_editorial_intel: bool = False,
     force: bool = False,
 ) -> dict[str, Any]:
     create_all_tables()
@@ -974,18 +744,8 @@ def refresh_persona_journal_intelligence(
             works=works,
             latest_metrics=latest_metrics,
         )
-        editorial_refreshed = 0
-        editorial_skipped = 0
-        warnings: list[str] = []
-        if include_editorial_intel and profiles:
-            (
-                editorial_refreshed,
-                editorial_skipped,
-                warnings,
-            ) = _refresh_editorial_intelligence_for_profiles(
-                profiles,
-                force=force,
-            )
+        # Publisher-reported fields are now sourced from the shared cache/import flow.
+        _ = include_editorial_intel
         return {
             "journals_considered": max(
                 int(openalex_result.get("journals_considered") or 0),
@@ -994,7 +754,7 @@ def refresh_persona_journal_intelligence(
             "openalex_profiles_refreshed": int(
                 openalex_result.get("profiles_refreshed") or 0
             ),
-            "editorial_profiles_refreshed": editorial_refreshed,
-            "editorial_profiles_skipped": editorial_skipped,
-            "warnings": warnings,
+            "editorial_profiles_refreshed": 0,
+            "editorial_profiles_skipped": 0,
+            "warnings": [],
         }

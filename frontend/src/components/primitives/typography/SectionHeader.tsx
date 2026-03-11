@@ -5,12 +5,13 @@ import { cn } from '@/lib/utils'
 export interface SectionHeaderProps extends Omit<React.HTMLAttributes<HTMLElement>, 'title'> {
   eyebrow?: string
   heading: string
+  headingAccessory?: React.ReactNode
   description?: string
   actions?: React.ReactNode
 }
 
 const SectionHeader = React.forwardRef<HTMLElement, SectionHeaderProps>(
-  ({ className, eyebrow, heading, description, actions, ...props }, ref) => (
+  ({ className, eyebrow, heading, headingAccessory, description, actions, ...props }, ref) => (
     <header
       ref={ref}
       data-ui="section-header"
@@ -37,13 +38,24 @@ const SectionHeader = React.forwardRef<HTMLElement, SectionHeaderProps>(
           data-house-role="section-header-copy"
           className="flex min-w-0 flex-1 flex-col gap-[var(--space-1)]"
         >
-          <h2
-            data-ui="section-header-heading"
-            data-house-role="section-title"
-            className="m-0 text-h3 font-semibold text-[hsl(var(--foreground))]"
-          >
-            {heading}
-          </h2>
+          <div className="flex min-w-0 flex-wrap items-center gap-[var(--space-2)]">
+            <h2
+              data-ui="section-header-heading"
+              data-house-role="section-title"
+              className="m-0 text-h3 font-semibold text-[hsl(var(--foreground))]"
+            >
+              {heading}
+            </h2>
+            {headingAccessory ? (
+              <div
+                data-ui="section-header-heading-accessory"
+                data-house-role="section-header-heading-accessory"
+                className="shrink-0"
+              >
+                {headingAccessory}
+              </div>
+            ) : null}
+          </div>
           {description ? (
             <p
               data-ui="section-header-description"

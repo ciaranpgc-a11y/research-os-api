@@ -57,11 +57,13 @@ import type {
   PublicationInsightsAgentPayload,
   PublicationAuthorsPayload,
   PublicationDetailPayload,
+  PublicationFileClassification,
   PublicationMetricDetailPayload,
   PublicationFileLinkPayload,
   PublicationFilePayload,
   PublicationFilesListPayload,
   PublicationImpactResponsePayload,
+  PublicationPaperModelResponsePayload,
   PersonaStatePayload,
   PersonaContextPayload,
   PersonaGrantsPayload,
@@ -107,6 +109,17 @@ function cacheAuthIdentity(user: AuthUser): void {
     email: user.email,
     accountKey: user.account_key,
   })
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 0x8000
+  let binary = ''
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+  return btoa(binary)
 }
 
 const REQUEST_TIMEOUT_MS =
@@ -1139,7 +1152,7 @@ export async function refreshPersonaJournals(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        include_editorial_intel: input.includeEditorialIntel ?? true,
+        include_editorial_intel: input.includeEditorialIntel ?? false,
         force: input.force ?? false,
       }),
     },
@@ -1347,6 +1360,21 @@ export async function fetchPublicationAuthors(
   )
 }
 
+export async function fetchPublicationPaperModel(
+  token: string,
+  publicationId: string,
+): Promise<PublicationPaperModelResponsePayload> {
+  return requestJson<PublicationPaperModelResponsePayload>(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/paper-model`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+    'Could not load publication paper model.',
+  )
+}
+
 export async function fetchPublicationImpact(
   token: string,
   publicationId: string,
@@ -1382,18 +1410,23 @@ export async function fetchPublicationInsightsAgent(
   options?: {
     windowId?: '1y' | '3y' | '5y' | 'all'
     scope?: 'window' | 'section'
-    sectionKey?: 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history' | 'publication_output_pattern' | 'publication_production_phase' | 'publication_volume_over_time' | 'publication_article_type_over_time' | 'publication_type_over_time'
+    sectionKey?: 'uncited_works' | 'citation_drivers' | 'citation_activation' | 'citation_activation_history' | 'publication_output_pattern' | 'publication_production_phase' | 'publication_year_over_year_trajectory' | 'publication_volume_over_time' | 'publication_article_type_over_time' | 'publication_type_over_time'
+    uiContext?: string
   },
 ): Promise<PublicationInsightsAgentPayload> {
   const windowId = options?.windowId || '1y'
   const scope = options?.scope || 'window'
   const sectionKey = options?.sectionKey
+  const uiContext = String(options?.uiContext || '').trim()
   const searchParams = new URLSearchParams({
     window_id: windowId,
     scope,
   })
   if (sectionKey) {
     searchParams.set('section_key', sectionKey)
+  }
+  if (uiContext) {
+    searchParams.set('ui_context', uiContext)
   }
   return requestJson<PublicationInsightsAgentPayload>(
     `${API_BASE_URL}/v1/publications/ai/insights?${searchParams.toString()}`,
@@ -1426,13 +1459,17 @@ export async function uploadPublicationFile(
   publicationId: string,
   file: File,
 ): Promise<PublicationFilePayload> {
-  const body = new FormData()
-  body.append('file', file)
+  const contentBase64 = arrayBufferToBase64(await file.arrayBuffer())
+  const body = JSON.stringify({
+    filename: file.name,
+    mime_type: file.type || null,
+    content_base64: contentBase64,
+  })
   return requestJson<PublicationFilePayload>(
     `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/files/upload`,
     {
       method: 'POST',
-      headers: authHeaders(token),
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
       body,
     },
     'Publication file upload failed',
@@ -1443,12 +1480,18 @@ export async function uploadPublicationFile(
 export async function linkPublicationOpenAccessPdf(
   token: string,
   publicationId: string,
+  input?: {
+    allowSuppressed?: boolean
+  },
 ): Promise<PublicationFileLinkPayload> {
+  const allowSuppressed = Boolean(input?.allowSuppressed)
+  const body = allowSuppressed ? JSON.stringify({ allow_suppressed: true }) : undefined
   return requestJson<PublicationFileLinkPayload>(
     `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/files/link-oa`,
     {
       method: 'POST',
-      headers: authHeaders(token),
+      headers: body ? { ...authHeaders(token), 'Content-Type': 'application/json' } : authHeaders(token),
+      body,
     },
     'Open-access PDF lookup failed',
     { timeoutMs: 60_000, retryCount: 1 },
@@ -1467,6 +1510,40 @@ export async function deletePublicationFile(
       headers: authHeaders(token),
     },
     'Publication file delete failed',
+  )
+}
+
+export async function renamePublicationFile(
+  token: string,
+  publicationId: string,
+  fileId: string,
+  fileName: string,
+): Promise<PublicationFilePayload> {
+  return updatePublicationFile(token, publicationId, fileId, { fileName })
+}
+
+export async function updatePublicationFile(
+  token: string,
+  publicationId: string,
+  fileId: string,
+  input: {
+    fileName?: string
+    classification?: PublicationFileClassification | null
+    classificationOtherLabel?: string | null
+  },
+): Promise<PublicationFilePayload> {
+  return requestJson<PublicationFilePayload>(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/files/${encodeURIComponent(fileId)}`,
+    {
+      method: 'PATCH',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        file_name: input.fileName,
+        classification: input.classification,
+        classification_other_label: input.classificationOtherLabel,
+      }),
+    },
+    'Publication file update failed',
   )
 }
 
@@ -1966,8 +2043,14 @@ export async function fetchPersonaState(token: string): Promise<PersonaStatePayl
   )
 }
 
-export async function pingApiHealth(): Promise<{ status: string }> {
-  return requestJson<{ status: string }>(
+export async function pingApiHealth(): Promise<{
+  status: string
+  publication_insights_available: boolean
+}> {
+  return requestJson<{
+    status: string
+    publication_insights_available: boolean
+  }>(
     `${API_BASE_URL}/v1/health`,
     {
       method: 'GET',

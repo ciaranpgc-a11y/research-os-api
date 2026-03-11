@@ -15,17 +15,43 @@ class ConfigurationError(RuntimeError):
     """Raised when required runtime configuration is missing."""
 
 
-def get_openai_api_key() -> str:
-    """Return the OpenAI API key from environment variables."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ConfigurationError("OPENAI_API_KEY is not set.")
-    clean = str(api_key).strip()
+def _clean_openai_api_key(value: str | None) -> str:
+    clean = str(value or "").strip().strip('"').strip("'")
     if clean.startswith("PASTE_YOUR_REAL_KEY_HERE") and "sk-" in clean:
         clean = clean[clean.index("sk-") :]
-    if not clean:
-        raise ConfigurationError("OPENAI_API_KEY is not set.")
     return clean
+
+
+def _get_windows_user_environment_variable(name: str) -> str | None:
+    if not sys.platform.startswith("win"):
+        return None
+    try:
+        import winreg
+    except ImportError:
+        return None
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
+            value, _ = winreg.QueryValueEx(key, name)
+    except OSError:
+        return None
+    clean = str(value or "").strip()
+    return clean or None
+
+
+def get_openai_api_key() -> str:
+    """Return the OpenAI API key from environment variables."""
+    raw_process_value = os.getenv("OPENAI_API_KEY")
+    process_key = _clean_openai_api_key(raw_process_value)
+    user_key = _clean_openai_api_key(
+        _get_windows_user_environment_variable("OPENAI_API_KEY")
+    )
+
+    if str(raw_process_value or "").strip().startswith("PASTE_YOUR_REAL_KEY_HERE") and user_key:
+        return user_key
+    chosen_key = process_key or user_key
+    if not chosen_key:
+        raise ConfigurationError("OPENAI_API_KEY is not set.")
+    return chosen_key
 
 
 def get_data_library_root() -> Path:

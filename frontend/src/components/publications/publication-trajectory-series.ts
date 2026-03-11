@@ -4,6 +4,25 @@ export type PublicationTrajectorySeriesRecord = {
   publicationMonthStart: string | null
 }
 
+export type PublicationTrajectoryMovingAverageSeries = {
+  values: number[]
+  windowMonths: number[]
+}
+
+function shiftUtcMonth(date: Date, delta: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + delta, 1))
+}
+
+function formatMonthKey(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+function monthDiffInclusive(start: Date, end: Date): number {
+  const yearDelta = end.getUTCFullYear() - start.getUTCFullYear()
+  const monthDelta = end.getUTCMonth() - start.getUTCMonth()
+  return (yearDelta * 12) + monthDelta + 1
+}
+
 function parseIsoMonthStart(value: string | null | undefined): Date | null {
   const token = String(value || '').trim()
   if (!token) {
@@ -62,6 +81,20 @@ function resolvePublicationTrajectoryMonthStart(record: PublicationTrajectorySer
   return null
 }
 
+function resolveObservedPublicationTrajectoryMonthStart(
+  record: PublicationTrajectorySeriesRecord,
+): Date | null {
+  const parsedMonth = parseIsoMonthStart(record.publicationMonthStart)
+  if (parsedMonth) {
+    return parsedMonth
+  }
+  const parsedDate = parseIsoPublicationDate(record.publicationDate)
+  if (parsedDate) {
+    return new Date(Date.UTC(parsedDate.getUTCFullYear(), parsedDate.getUTCMonth(), 1))
+  }
+  return null
+}
+
 export function resolvePublicationTrajectoryYear(record: PublicationTrajectorySeriesRecord): number | null {
   if (typeof record.year === 'number' && Number.isFinite(record.year)) {
     return Math.round(record.year)
@@ -97,59 +130,116 @@ export function buildPublicationTrajectoryMovingAverageSeries({
   rawValues,
   records,
   asOfDate,
+  monthlyValuesLifetime = [],
+  monthLabelsLifetime = [],
+  lifetimeMonthStart = null,
 }: {
   years: number[]
   rawValues: number[]
   records: PublicationTrajectorySeriesRecord[]
   asOfDate: Date
-}): number[] {
+  monthlyValuesLifetime?: number[]
+  monthLabelsLifetime?: string[]
+  lifetimeMonthStart?: string | null
+}): PublicationTrajectoryMovingAverageSeries {
   const safeAsOfDate = Number.isFinite(asOfDate.getTime()) ? asOfDate : new Date()
   const asOfYear = safeAsOfDate.getUTCFullYear()
   const asOfMonthIndex = safeAsOfDate.getUTCMonth()
-  const lastCompleteMonthIndex = asOfMonthIndex === 0 ? 11 : asOfMonthIndex - 1
-  const comparableCountsByYear = new Map<number, number>()
+  const currentMonthStart = new Date(Date.UTC(asOfYear, asOfMonthIndex, 1))
+  const lastCompleteMonthStart = shiftUtcMonth(currentMonthStart, -1)
+  const lifetimeCounts = monthlyValuesLifetime
+    .map((value) => (Number.isFinite(value) ? Math.max(0, value) : 0))
+  const lifetimeLabels = monthLabelsLifetime
+    .map((value) => String(value || '').trim())
+  const parsedLifetimeStart = parseIsoPublicationDate(lifetimeMonthStart)
+  const monthlyCountByKey = new Map<string, number>()
+  let firstAvailableMonthStart: Date | null = null
+
+  lifetimeCounts.forEach((count, index) => {
+    const parsedMonthStart = parseIsoMonthStart(lifetimeLabels[index] || '')
+    const monthStart = parsedMonthStart
+      || (parsedLifetimeStart ? shiftUtcMonth(parsedLifetimeStart, index) : null)
+      || shiftUtcMonth(currentMonthStart, index - lifetimeCounts.length)
+    if (!monthStart || monthStart.getTime() >= currentMonthStart.getTime()) {
+      return
+    }
+    monthlyCountByKey.set(formatMonthKey(monthStart), count)
+    if (!firstAvailableMonthStart || monthStart.getTime() < firstAvailableMonthStart.getTime()) {
+      firstAvailableMonthStart = monthStart
+    }
+  })
 
   records.forEach((record) => {
-    const recordYear = resolvePublicationTrajectoryYear(record)
-    if (recordYear === null) {
+    const monthStart = resolveObservedPublicationTrajectoryMonthStart(record)
+    if (!monthStart || monthStart.getTime() >= currentMonthStart.getTime()) {
       return
     }
-    const monthStart = resolvePublicationTrajectoryMonthStart(record)
-    if (!monthStart) {
-      comparableCountsByYear.set(recordYear, (comparableCountsByYear.get(recordYear) || 0) + 1)
+    const monthKey = formatMonthKey(monthStart)
+    if (monthlyCountByKey.has(monthKey)) {
       return
     }
-    if (recordYear === asOfYear && asOfMonthIndex === 0) {
-      return
-    }
-    const cutoffMonthStart = new Date(Date.UTC(recordYear, lastCompleteMonthIndex, 1))
-    if (monthStart.getTime() <= cutoffMonthStart.getTime()) {
-      comparableCountsByYear.set(recordYear, (comparableCountsByYear.get(recordYear) || 0) + 1)
+    monthlyCountByKey.set(monthKey, (monthlyCountByKey.get(monthKey) || 0) + 1)
+    if (!firstAvailableMonthStart || monthStart.getTime() < firstAvailableMonthStart.getTime()) {
+      firstAvailableMonthStart = monthStart
     }
   })
 
-  return rawValues.map((_, index) => {
+  const annualFallbackValue = (index: number): number => {
     const start = Math.max(0, index - 2)
-    const windowYears = years.slice(start, index + 1)
     const rawWindow = rawValues.slice(start, index + 1)
-    if (years[index] !== asOfYear) {
-      return rawWindow.length ? (rawWindow.reduce((sum, value) => sum + value, 0) / rawWindow.length) : 0
+    return rawWindow.length ? (rawWindow.reduce((sum, value) => sum + value, 0) / rawWindow.length) : 0
+  }
+  const annualFallbackWindowMonths = (index: number): number => {
+    const start = Math.max(0, index - 2)
+    return Math.max(1, index - start + 1) * 12
+  }
+
+  const values: number[] = []
+  const windowMonths: number[] = []
+  rawValues.forEach((_, index) => {
+    const year = years[index]
+    if (!firstAvailableMonthStart) {
+      values.push(annualFallbackValue(index))
+      windowMonths.push(annualFallbackWindowMonths(index))
+      return
     }
-    const comparableWindow = windowYears.map((windowYear, windowIndex) => (
-      comparableCountsByYear.get(windowYear) ?? rawWindow[windowIndex] ?? 0
-    ))
-    return comparableWindow.length ? (comparableWindow.reduce((sum, value) => sum + value, 0) / comparableWindow.length) : 0
+    const endMonthStart = year >= asOfYear
+      ? lastCompleteMonthStart
+      : new Date(Date.UTC(year, 11, 1))
+    if (endMonthStart.getTime() < firstAvailableMonthStart.getTime()) {
+      values.push(annualFallbackValue(index))
+      windowMonths.push(annualFallbackWindowMonths(index))
+      return
+    }
+    const windowStart = shiftUtcMonth(endMonthStart, -35)
+    const effectiveWindowStart = windowStart.getTime() < firstAvailableMonthStart.getTime()
+      ? firstAvailableMonthStart
+      : windowStart
+    const monthsCovered = Math.max(1, monthDiffInclusive(effectiveWindowStart, endMonthStart))
+    let total = 0
+    for (let monthIndex = 0; monthIndex < monthsCovered; monthIndex += 1) {
+      const monthStart = shiftUtcMonth(effectiveWindowStart, monthIndex)
+      total += monthlyCountByKey.get(formatMonthKey(monthStart)) || 0
+    }
+    values.push((total / monthsCovered) * 12)
+    windowMonths.push(monthsCovered)
   })
+  return { values, windowMonths }
 }
 
 export function formatTrajectoryMovingAveragePeriodLabel(year: number, asOfDate: Date): string {
   const safeAsOfDate = Number.isFinite(asOfDate.getTime()) ? asOfDate : new Date()
-  if (year !== safeAsOfDate.getUTCFullYear() || safeAsOfDate.getUTCMonth() === 0) {
-    return String(year)
-  }
-  return new Date(Date.UTC(year, safeAsOfDate.getUTCMonth() - 1, 1)).toLocaleString('en-GB', {
+  const endMonth = year >= safeAsOfDate.getUTCFullYear()
+    ? shiftUtcMonth(new Date(Date.UTC(safeAsOfDate.getUTCFullYear(), safeAsOfDate.getUTCMonth(), 1)), -1)
+    : new Date(Date.UTC(year, 11, 1))
+  return endMonth.toLocaleString('en-GB', {
     month: 'short',
     year: 'numeric',
     timeZone: 'UTC',
   })
+}
+
+export function formatTrajectoryMovingAverageWindowLabel(windowMonths: number): string {
+  const safeMonths = Math.max(1, Math.round(windowMonths || 0))
+  return `Rolling ${safeMonths}-month pace`
 }

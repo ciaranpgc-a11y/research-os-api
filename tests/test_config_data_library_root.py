@@ -5,6 +5,37 @@ from pathlib import Path
 import research_os.config as config_module
 
 
+def test_get_openai_api_key_prefers_windows_user_env_when_process_value_is_placeholder(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(config_module.sys, "platform", "win32")
+    monkeypatch.setenv(
+        "OPENAI_API_KEY",
+        "PASTE_YOUR_REAL_KEY_HEREsk-proj-stale-process-key",
+    )
+    monkeypatch.setattr(
+        config_module,
+        "_get_windows_user_environment_variable",
+        lambda name: "sk-proj-user-env-key" if name == "OPENAI_API_KEY" else None,
+    )
+
+    assert config_module.get_openai_api_key() == "sk-proj-user-env-key"
+
+
+def test_get_openai_api_key_prefers_process_env_when_it_is_already_clean(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(config_module.sys, "platform", "win32")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-process-env-key")
+    monkeypatch.setattr(
+        config_module,
+        "_get_windows_user_environment_variable",
+        lambda name: "sk-proj-user-env-key" if name == "OPENAI_API_KEY" else None,
+    )
+
+    assert config_module.get_openai_api_key() == "sk-proj-process-env-key"
+
+
 def test_get_data_library_root_prefers_explicit_env(monkeypatch, tmp_path) -> None:
     explicit_root = (tmp_path / "explicit_data_root").resolve()
     mount_root = (tmp_path / "mount").resolve()

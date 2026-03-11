@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Loader2, Paperclip, Search, Settings, Share2 } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, Filter, Hammer, Loader2, Mail, Paperclip, Pencil, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
 import { PageHeader, Row, Section, SectionHeader, Stack } from '@/components/primitives'
 import { SectionMarker, SectionToolDivider, SectionTools } from '@/components/patterns'
+import { PublicationPdfViewer } from '@/components/publications/PublicationPdfViewer'
 import { PublicationsPerYearChart, PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
 import { drilldownTabFlexGrow } from '@/components/publications/house-drilldown-header-utils'
 import { publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
-import { Button, DrilldownSheet, Sheet, SheetContent, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui'
-import { houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import { Badge, Button, DrilldownSheet, Input, SelectContent, SelectItem, SelectPrimitive, SelectTrigger, SelectValue, Sheet, SheetContent, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
+import { API_BASE_URL } from '@/lib/api'
+import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
   downloadPublicationFile,
@@ -19,16 +21,18 @@ import {
   fetchPublicationDetail,
   fetchPublicationFiles,
   fetchPublicationImpact,
+  fetchPublicationPaperModel,
   fetchPersonaSyncJob,
   fetchMe,
   fetchPersonaState,
   fetchPublicationsAnalytics,
   fetchPublicationsTopMetrics,
   listPersonaJournals,
-  refreshPersonaJournals,
   triggerPublicationsTopMetricsRefresh,
   linkPublicationOpenAccessPdf,
   listPersonaSyncJobs,
+  renamePublicationFile,
+  updatePublicationFile,
   uploadPublicationFile,
 } from '@/lib/impact-api'
 import { getSectionMarkerTone } from '@/lib/section-tone'
@@ -40,10 +44,12 @@ import type {
   PublicationAiInsightsResponsePayload,
   PublicationAuthorsPayload,
   PublicationDetailPayload,
+  PublicationFileClassification,
   PublicationFilePayload,
   PublicationFilesListPayload,
   PublicationImpactResponsePayload,
   PublicationMetricTilePayload,
+  PublicationPaperModelResponsePayload,
   PersonaJournal,
   PersonaWork,
   PersonaStatePayload,
@@ -62,13 +68,16 @@ type JournalSortField =
   | 'share_pct'
   | 'avg_citations'
   | 'median_citations'
-  | 'journal_metric'
   | 'impact_factor'
+  | 'five_year_impact_factor'
+  | 'journal_citation_indicator'
+  | 'cited_half_life'
   | 'is_oa'
   | 'latest_publication_year'
 type LibrarySortField = PublicationSortField | JournalSortField
 type SortDirection = 'asc' | 'desc'
 type PublicationDetailTab = 'overview' | 'content' | 'impact' | 'files' | 'ai'
+type PublicationReaderViewMode = 'structured' | 'pdf'
 type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
 type PublicationTrendsVisualMode = 'bars' | 'line'
 type PublicationTableColumnKey = 'title' | 'year' | 'venue' | 'work_type' | 'article_type' | 'citations'
@@ -102,6 +111,495 @@ type PublicationOaPdfStatusRecord = {
   fileName: string | null
   updatedAt: string
 }
+type PublicationFileMenuState = {
+  fileId: string
+  x: number
+  y: number
+}
+type PublicationFileTagMenuState = {
+  fileId: string
+  x: number
+  y: number
+}
+type PublicationFileTagEditorState = {
+  fileId: string
+  open: boolean
+  pendingClassification: PublicationFileClassification | null
+}
+type PublicationFileOtherLabelEditorState = {
+  fileId: string
+  draft: string
+}
+type PublicationPaperSectionPayload = PublicationPaperModelResponsePayload['payload']['sections'][number]
+type PublicationPaperAssetPayload = PublicationPaperModelResponsePayload['payload']['figures'][number]
+type PublicationPaperStructuredGroupPayload = {
+  key: string
+  label: string
+  sections: PublicationPaperSectionPayload[]
+  rootSections: PublicationPaperSectionPayload[]
+}
+type PublicationReaderNavigatorTarget =
+  | { kind: 'section'; id: string }
+  | { kind: 'asset'; id: string }
+  | null
+type PublicationReaderNavigatorItemPayload = {
+  id: string
+  label: string
+  indent: number
+  target: PublicationReaderNavigatorTarget
+  isActive: boolean
+}
+type PublicationReaderNavigatorGroupPayload = {
+  id: string
+  label: string
+  toneClassName: string
+  target: PublicationReaderNavigatorTarget
+  items: PublicationReaderNavigatorItemPayload[]
+  isActive: boolean
+}
+
+const PUBLICATION_READER_STRUCTURED_GROUP_ORDER = [
+  'abstract',
+  'introduction',
+  'methods',
+  'results',
+  'discussion',
+  'conclusions',
+  'references',
+  'article_information',
+] as const
+const PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS = [
+  {
+    key: 'abstract',
+    label: 'Abstract',
+    toneClassName: 'bg-[#2457a6]',
+  },
+  {
+    key: 'introduction',
+    label: 'Introduction',
+    toneClassName: 'bg-[#42526b]',
+  },
+  {
+    key: 'methods',
+    label: 'Methods',
+    toneClassName: 'bg-[#21704a]',
+  },
+  {
+    key: 'results',
+    label: 'Results',
+    toneClassName: 'bg-[#9a5a0b]',
+  },
+  {
+    key: 'discussion',
+    label: 'Discussion',
+    toneClassName: 'bg-[#9a4863]',
+  },
+  {
+    key: 'conclusions',
+    label: 'Conclusion',
+    toneClassName: 'bg-[#5953b2]',
+  },
+  {
+    key: 'tables',
+    label: 'Tables',
+    toneClassName: 'bg-[#186e83]',
+  },
+  {
+    key: 'figures',
+    label: 'Figures',
+    toneClassName: 'bg-[#a14c73]',
+  },
+  {
+    key: 'references',
+    label: 'References',
+    toneClassName: 'bg-[#6b5946]',
+  },
+  {
+    key: 'article_information',
+    label: 'Article Information',
+    toneClassName: 'bg-[#516170]',
+  },
+] as const
+const PUBLICATION_READER_GROUP_TITLE_ALIASES: Record<string, string[]> = {
+  abstract: ['abstract'],
+  introduction: ['introduction', 'background'],
+  methods: ['methods', 'methodology', 'materials and methods', 'patients and methods'],
+  results: ['results'],
+  discussion: ['discussion'],
+  conclusions: ['conclusion', 'conclusions'],
+  references: ['references'],
+  article_information: ['article information', 'article information and declarations'],
+}
+
+function getPublicationReaderGroupToneClass(groupKey: string | null | undefined): string {
+  return (
+    PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS.find((definition) => definition.key === groupKey)?.toneClassName
+    || 'bg-[hsl(var(--tone-neutral-300))]'
+  )
+}
+
+function comparePublicationPaperSections(
+  left: PublicationPaperSectionPayload,
+  right: PublicationPaperSectionPayload,
+): number {
+  if (left.order !== right.order) {
+    return left.order - right.order
+  }
+  return String(left.title || '').localeCompare(String(right.title || ''))
+}
+
+function formatPublicationPaperStructuredGroupLabel(value: string | null | undefined): string {
+  switch (String(value || '').trim()) {
+    case 'abstract':
+      return 'Abstract'
+    case 'overview':
+      return 'Overview'
+    case 'main_text':
+      return 'Main text'
+    case 'article_information':
+      return 'Article Information'
+    default:
+      return formatPublicationPaperSectionKindLabel(value)
+  }
+}
+
+function normalizePublicationPaperDisplayGroupKey(
+  section: Pick<
+    PublicationPaperSectionPayload,
+    | 'major_section_key'
+    | 'canonical_map'
+    | 'canonical_kind'
+    | 'section_type'
+    | 'title'
+    | 'raw_label'
+    | 'label_original'
+    | 'label_normalized'
+    | 'document_zone'
+    | 'section_role'
+  >,
+): string | null {
+  const majorKey = String(section.major_section_key || '').trim()
+  const canonicalMap = String(section.canonical_map || '').trim()
+  const canonicalKind = String(section.canonical_kind || '').trim()
+  const sectionType = String(section.section_type || '').trim()
+  const documentZone = String(section.document_zone || '').trim()
+  const sectionRole = String(section.section_role || '').trim()
+  const labelText = [
+    section.title,
+    section.raw_label,
+    section.label_original,
+    section.label_normalized,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .toLowerCase()
+
+  if (
+    canonicalMap === 'abstract'
+    || canonicalKind === 'abstract'
+    || majorKey === 'overview'
+    || sectionRole === 'summary_box'
+    || documentZone === 'front'
+    || labelText === 'abstract'
+    || labelText.startsWith('abstract ')
+  ) {
+    return 'abstract'
+  }
+  if (majorKey === 'article_information' || documentZone === 'back') {
+    return 'article_information'
+  }
+  if (sectionType === 'metadata') {
+    return 'article_information'
+  }
+  if (sectionType === 'reference' || canonicalMap === 'references' || canonicalKind === 'references') {
+    return 'references'
+  }
+  if (sectionType === 'asset') {
+    return 'assets'
+  }
+
+  const candidate = majorKey && majorKey !== 'overview' && majorKey !== 'main_text'
+    ? majorKey
+    : canonicalMap || canonicalKind
+
+  switch (candidate) {
+    case 'introduction':
+    case 'methods':
+    case 'results':
+    case 'discussion':
+    case 'references':
+    case 'article_information':
+      return candidate
+    case 'conclusion':
+    case 'conclusions':
+      return 'conclusions'
+    default:
+      break
+  }
+
+  if (labelText.includes('reference')) {
+    return 'references'
+  }
+  if (
+    labelText.includes('funding')
+    || labelText.includes('conflict')
+    || labelText.includes('ethic')
+    || labelText.includes('acknowledg')
+    || labelText.includes('author contribution')
+    || labelText.includes('data availability')
+  ) {
+    return 'article_information'
+  }
+  if (labelText.includes('conclusion')) {
+    return 'conclusions'
+  }
+  if (labelText.includes('discussion')) {
+    return 'discussion'
+  }
+  if (labelText.includes('result')) {
+    return 'results'
+  }
+  if (labelText.includes('method')) {
+    return 'methods'
+  }
+  if (labelText.includes('introduction') || labelText.includes('background')) {
+    return 'introduction'
+  }
+
+  return null
+}
+
+function buildPublicationPaperDisplayGroupKeyBySectionId(
+  sections: PublicationPaperSectionPayload[],
+): Map<string, string> {
+  const next = new Map<string, string>()
+  let currentBodyGroup: string | null = null
+  const orderedSections = [...sections].sort(comparePublicationPaperSections)
+
+  for (const section of orderedSections) {
+    const directGroupKey = normalizePublicationPaperDisplayGroupKey(section)
+    let resolvedGroupKey = directGroupKey
+
+    if (!resolvedGroupKey) {
+      if (section.document_zone === 'front' || section.section_role === 'summary_box') {
+        resolvedGroupKey = 'abstract'
+      } else if (section.document_zone === 'back' || section.section_type === 'metadata') {
+        resolvedGroupKey = 'article_information'
+      } else if (currentBodyGroup) {
+        resolvedGroupKey = currentBodyGroup
+      } else {
+        resolvedGroupKey = 'introduction'
+      }
+    }
+
+    if (['introduction', 'methods', 'results', 'discussion', 'conclusions'].includes(resolvedGroupKey)) {
+      currentBodyGroup = resolvedGroupKey
+    }
+    next.set(section.id, resolvedGroupKey)
+  }
+
+  return next
+}
+
+function publicationReaderSectionMatchesGroupLabel(
+  section: Pick<PublicationPaperSectionPayload, 'title' | 'raw_label' | 'label_original' | 'label_normalized'>,
+  groupKey: string,
+): boolean {
+  const aliases = PUBLICATION_READER_GROUP_TITLE_ALIASES[groupKey] || [groupKey]
+  const normalizedTitle = String(
+    section.title
+      || section.raw_label
+      || section.label_original
+      || section.label_normalized
+      || '',
+  )
+    .trim()
+    .toLowerCase()
+  if (!normalizedTitle) {
+    return false
+  }
+  return aliases.includes(normalizedTitle)
+}
+
+function publicationFileDirectUrl(file: Pick<PublicationFilePayload, 'download_url' | 'oa_url'>): string {
+  return String(file.download_url || file.oa_url || '').trim()
+}
+
+function resolvePublicationAssetUrl(value: string | null | undefined): string {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) {
+    return ''
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed
+  }
+  if (trimmed.startsWith('//')) {
+    if (typeof window !== 'undefined' && window.location.protocol) {
+      return `${window.location.protocol}${trimmed}`
+    }
+    return `https:${trimmed}`
+  }
+  try {
+    return new URL(trimmed, API_BASE_URL).toString()
+  } catch {
+    return trimmed
+  }
+}
+
+function resolvePublicationPdfViewerUrl(value: string | null | undefined): string {
+  const resolved = resolvePublicationAssetUrl(value)
+  if (!resolved) {
+    return ''
+  }
+  return resolved.includes('#') ? resolved : `${resolved}#view=FitH`
+}
+
+function isLinkedPublicationFile(file: Pick<PublicationFilePayload, 'source'>): boolean {
+  return file.source === 'OA_LINK' || file.source === 'SUPPLEMENTARY_LINK'
+}
+
+function canRenamePublicationFile(file: Pick<PublicationFilePayload, 'source' | 'can_delete'> & { can_rename?: boolean }): boolean {
+  return Boolean(file.can_rename ?? file.can_delete) && file.source !== 'SUPPLEMENTARY_LINK'
+}
+
+function canClassifyPublicationFile(file: Pick<PublicationFilePayload, 'source'> & { can_classify?: boolean }): boolean {
+  return Boolean(file.can_classify ?? file.source !== 'SUPPLEMENTARY_LINK')
+}
+
+function formatPublicationPaperSectionKindLabel(value: string | null | undefined): string {
+  const clean = String(value || '').trim()
+  if (!clean) {
+    return 'Section'
+  }
+  return clean
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function formatPublicationPaperSectionPageLabel(
+  section: Pick<PublicationPaperSectionPayload, 'page_start' | 'page_end'>,
+): string | null {
+  if (!Number.isFinite(section.page_start) && !Number.isFinite(section.page_end)) {
+    return null
+  }
+  if (Number.isFinite(section.page_start) && !Number.isFinite(section.page_end)) {
+    return `Page ${section.page_start}`
+  }
+  if (!Number.isFinite(section.page_start) && Number.isFinite(section.page_end)) {
+    return `Page ${section.page_end}`
+  }
+  if (section.page_start === section.page_end) {
+    return `Page ${section.page_start}`
+  }
+  return `Pages ${section.page_start}-${section.page_end}`
+}
+
+function resolvePublicationPaperSectionAnchorPage(
+  section: Pick<PublicationPaperSectionPayload, 'page_start' | 'page_end'> | null | undefined,
+): number | null {
+  if (!section) {
+    return null
+  }
+  if (Number.isFinite(section.page_start)) {
+    return Math.max(1, Number(section.page_start))
+  }
+  if (Number.isFinite(section.page_end)) {
+    return Math.max(1, Number(section.page_end))
+  }
+  return null
+}
+
+function resolvePublicationPaperSectionForPage(
+  sections: PublicationPaperSectionPayload[],
+  page: number | null | undefined,
+): PublicationPaperSectionPayload | null {
+  if (!Array.isArray(sections) || sections.length === 0) {
+    return null
+  }
+  if (!Number.isFinite(page) || Number(page) < 1) {
+    return sections[0] || null
+  }
+  let bestMatch: PublicationPaperSectionPayload | null = null
+  for (const section of sections) {
+    const start = resolvePublicationPaperSectionAnchorPage(section)
+    if (!start) {
+      continue
+    }
+    if (Number(page) < start) {
+      break
+    }
+    const end = Number.isFinite(section.page_end) ? Math.max(start, Number(section.page_end)) : start
+    if (Number(page) <= end) {
+      bestMatch = section
+    } else if (start <= Number(page)) {
+      bestMatch = section
+    }
+  }
+  return bestMatch || sections[0] || null
+}
+
+const PUBLICATION_FILE_CLASSIFICATION_OPTIONS: Array<{
+  value: PublicationFileClassification
+  label: string
+  badgeClassName: string
+}> = [
+  {
+    value: 'PUBLISHED_MANUSCRIPT',
+    label: 'Published manuscript',
+    badgeClassName:
+      'border-[hsl(211_44%_68%)] bg-[hsl(210_67%_96%)] text-[hsl(214_52%_29%)] dark:border-[hsl(211_32%_48%)] dark:bg-[hsl(211_24%_28%)] dark:text-[hsl(210_60%_86%)]',
+  },
+  {
+    value: 'SUPPLEMENTARY_MATERIALS',
+    label: 'Supplementary materials',
+    badgeClassName:
+      'border-[hsl(38_58%_66%)] bg-[hsl(40_85%_95%)] text-[hsl(31_62%_28%)] dark:border-[hsl(37_30%_50%)] dark:bg-[hsl(36_22%_30%)] dark:text-[hsl(39_70%_84%)]',
+  },
+  {
+    value: 'DATASETS',
+    label: 'Datasets',
+    badgeClassName:
+      'border-[hsl(160_34%_63%)] bg-[hsl(158_48%_95%)] text-[hsl(164_50%_24%)] dark:border-[hsl(160_24%_46%)] dark:bg-[hsl(160_18%_29%)] dark:text-[hsl(160_42%_82%)]',
+  },
+  {
+    value: 'TABLE',
+    label: 'Table',
+    badgeClassName:
+      'border-[hsl(265_34%_70%)] bg-[hsl(268_78%_97%)] text-[hsl(266_34%_31%)] dark:border-[hsl(266_22%_48%)] dark:bg-[hsl(267_18%_29%)] dark:text-[hsl(267_58%_84%)]',
+  },
+  {
+    value: 'FIGURE',
+    label: 'Figure',
+    badgeClassName:
+      'border-[hsl(188_42%_66%)] bg-[hsl(187_62%_95%)] text-[hsl(191_58%_27%)] dark:border-[hsl(190_24%_48%)] dark:bg-[hsl(191_20%_29%)] dark:text-[hsl(189_52%_83%)]',
+  },
+  {
+    value: 'COVER_LETTER',
+    label: 'Cover letter',
+    badgeClassName:
+      'border-[hsl(340_38%_72%)] bg-[hsl(339_75%_96%)] text-[hsl(338_42%_31%)] dark:border-[hsl(339_24%_50%)] dark:bg-[hsl(339_18%_30%)] dark:text-[hsl(339_56%_84%)]',
+  },
+  {
+    value: 'OTHER',
+    label: 'Other',
+    badgeClassName:
+      'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))] dark:border-[hsl(var(--tone-neutral-300))] dark:bg-[hsl(var(--tone-neutral-50))] dark:text-[hsl(var(--tone-neutral-800))]',
+  },
+]
+
+function publicationFileClassificationOption(
+  classification: PublicationFileClassification | null | undefined,
+): (typeof PUBLICATION_FILE_CLASSIFICATION_OPTIONS)[number] | null {
+  if (!classification) {
+    return null
+  }
+  return PUBLICATION_FILE_CLASSIFICATION_OPTIONS.find((option) => option.value === classification) || null
+}
 
 const PUBLICATION_DETAIL_TABS: Array<{ id: PublicationDetailTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
@@ -132,24 +630,24 @@ const PUBLICATION_TABLE_COLUMN_DEFINITIONS: Record<PublicationTableColumnKey, { 
   citations: { label: 'Citations', sortField: 'citations' },
 }
 const PUBLICATION_TABLE_COLUMN_DEFAULTS: Record<PublicationTableColumnKey, PublicationTableColumnPreference> = {
-  title: { visible: true, align: 'left', width: 360 },
+  title: { visible: true, align: 'left', width: 440 },
   year: { visible: true, align: 'left', width: 92 },
-  venue: { visible: true, align: 'left', width: 280 },
-  work_type: { visible: true, align: 'left', width: 200 },
-  article_type: { visible: true, align: 'left', width: 168 },
-  citations: { visible: true, align: 'left', width: 136 },
+  venue: { visible: true, align: 'left', width: 240 },
+  work_type: { visible: true, align: 'left', width: 176 },
+  article_type: { visible: true, align: 'left', width: 136 },
+  citations: { visible: true, align: 'left', width: 124 },
 }
 const PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS: Record<PublicationTableColumnKey, { min: number; max: number; growWeight: number }> = {
-  title: { min: 320, max: 760, growWeight: 6.4 },
+  title: { min: 380, max: 960, growWeight: 11.5 },
   year: { min: 96, max: 124, growWeight: 0.6 },
-  venue: { min: 180, max: 340, growWeight: 2.1 },
-  work_type: { min: 170, max: 260, growWeight: 1.6 },
-  article_type: { min: 140, max: 220, growWeight: 1.2 },
-  citations: { min: 124, max: 168, growWeight: 0.8 },
+  venue: { min: 170, max: 360, growWeight: 2.8 },
+  work_type: { min: 150, max: 220, growWeight: 0.9 },
+  article_type: { min: 116, max: 176, growWeight: 0.5 },
+  citations: { min: 112, max: 152, growWeight: 0.5 },
 }
 const PUBLICATION_TABLE_COLUMN_HARD_MIN = 56
 const PUBLICATION_TABLE_COLUMN_WIDTH_MIN = 80
-const PUBLICATION_TABLE_COLUMN_WIDTH_MAX = 640
+const PUBLICATION_TABLE_COLUMN_WIDTH_MAX = 960
 const PUBLICATION_EXPORT_FORMAT_OPTIONS: Array<{ value: PublicationExportFormat; label: string; extension: string; mimeType: string }> = [
   {
     value: 'xlsx',
@@ -213,7 +711,7 @@ const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache_v2'
 const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache_v2'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
-const PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX = 'aawe_publications_library_columns:'
+const PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX = 'aawe_publications_library_columns:v2:'
 const PUBLICATIONS_LIBRARY_PAGE_SIZE_STORAGE_PREFIX = 'aawe_publications_library_page_size:'
 const PUBLICATIONS_LIBRARY_COLUMN_ORDER_STORAGE_PREFIX = 'aawe_publications_library_column_order:'
 const PUBLICATIONS_LIBRARY_VISUAL_SETTINGS_STORAGE_PREFIX = 'aawe_publications_library_visual_settings:'
@@ -235,7 +733,6 @@ const HOUSE_PUBLICATION_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
 const HOUSE_PUBLICATION_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
-const HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS = publicationsHouseDrilldown.caption
 const HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS = publicationsHouseDrilldown.noteSoft
 const HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS = publicationsHouseDrilldown.noteWarning
 const HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS = publicationsHouseDrilldown.link
@@ -257,9 +754,7 @@ const HOUSE_TOGGLE_CHART_BAR_CLASS = publicationsHouseMotion.toggleChartBar
 const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
 const HOUSE_PUBLICATION_DRILLDOWN_VALUE_POSITIVE_CLASS = publicationsHouseDrilldown.valuePositive
 const HOUSE_PUBLICATION_DRILLDOWN_VALUE_NEGATIVE_CLASS = publicationsHouseDrilldown.valueNegative
-const HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS = 'house-publication-file-button-standard'
-const HOUSE_PUBLICATION_NEGATIVE_BUTTON_CLASS = 'house-publication-file-button-negative'
-
+const HOUSE_INPUT_CLASS = houseForms.input
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
   'conference-paper': 'Conference paper',
@@ -443,21 +938,6 @@ function deriveArticleTypeLabel(work: {
   return 'n/a'
 }
 
-function formatShortDate(value: string | null | undefined): string {
-  if (!value) {
-    return 'Not available'
-  }
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 'Not available'
-  }
-  return new Date(parsed).toLocaleDateString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-  })
-}
-
 function doiToUrl(doi: string | null | undefined): string | null {
   const clean = (doi || '').trim()
   if (!clean) {
@@ -531,6 +1011,48 @@ function formatJournalName(value: string | null | undefined): string {
       return `${leading}${core.charAt(0).toUpperCase()}${core.slice(1).toLowerCase()}${trailing}`
     })
     .join(' ')
+}
+
+const JOURNAL_TABLE_METRIC_PILL_BASE_CLASS = 'mx-auto inline-flex min-h-7 min-w-[5.15rem] items-center justify-center rounded-md px-2.5 py-1 text-[0.74rem] font-semibold tabular-nums shadow-[0_1px_2px_hsl(var(--tone-neutral-950)/0.04)]'
+function renderJournalPlainNumericMetric(value: number | null | undefined, digits = 1): ReactNode {
+  if (value == null || Number.isNaN(value)) {
+    return <span className="text-[hsl(var(--tone-neutral-400))]">n/a</span>
+  }
+  return value.toFixed(digits)
+}
+
+function renderJournalCitationIndicatorPill(value: number | null | undefined): ReactNode {
+  if (value == null || Number.isNaN(value)) {
+    return (
+      <Badge
+        variant="outline"
+        className={cn(
+          JOURNAL_TABLE_METRIC_PILL_BASE_CLASS,
+          'border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-500))]',
+        )}
+      >
+        n/a
+      </Badge>
+    )
+  }
+  const toneClass = value >= 2
+    ? 'border-[hsl(var(--tone-positive-400))] bg-[hsl(var(--tone-positive-100))] text-[hsl(var(--tone-positive-900))]'
+    : value >= 1
+      ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]'
+      : 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
+  return (
+    <Badge variant="outline" className={cn(JOURNAL_TABLE_METRIC_PILL_BASE_CLASS, toneClass)}>
+      {value.toFixed(2)}
+    </Badge>
+  )
+}
+
+function renderJournalPlainTextMetric(value: string | null | undefined): ReactNode {
+  const clean = String(value || '').trim()
+  if (!clean) {
+    return <span className="text-[hsl(var(--tone-neutral-400))]">n/a</span>
+  }
+  return clean
 }
 
 function loadCachedUser(): AuthUser | null {
@@ -1294,7 +1816,35 @@ function autoFitPublicationTableColumns(input: {
   const safeAvailableWidth = Math.max(760, Math.round(input.availableWidth))
 
   const sampleSize = Math.max(1, Math.min(220, input.works.length))
-  const sample = input.works.slice(0, sampleSize)
+  const primarySample = input.works.slice(0, Math.min(sampleSize, 140))
+  const longestCandidates = [...input.works]
+    .sort((left, right) => {
+      const leftScore =
+        String(left.title || '').length * 2 +
+        String(left.venue_name || '').length +
+        String(left.work_type || '').length +
+        String(left.article_type || '').length
+      const rightScore =
+        String(right.title || '').length * 2 +
+        String(right.venue_name || '').length +
+        String(right.work_type || '').length +
+        String(right.article_type || '').length
+      return rightScore - leftScore
+    })
+    .slice(0, Math.min(input.works.length, 120))
+  const sample: PersonaWork[] = []
+  const seenSampleIds = new Set<string>()
+  for (const work of [...primarySample, ...longestCandidates]) {
+    if (sample.length >= sampleSize) {
+      break
+    }
+    const key = String(work.id || '').trim() || `${work.title || ''}|${work.year || ''}|${work.venue_name || ''}`
+    if (seenSampleIds.has(key)) {
+      continue
+    }
+    seenSampleIds.add(key)
+    sample.push(work)
+  }
   const valuesByColumn = PUBLICATION_TABLE_COLUMN_ORDER.reduce<Record<PublicationTableColumnKey, string[]>>(
     (accumulator, column) => {
       accumulator[column] = sample.map((work) => publicationTableColumnTextForWork(column, work, input.metricsByWorkId))
@@ -1397,7 +1947,7 @@ function autoFitPublicationTableColumns(input: {
 
   // Minimize sampled row height by balancing widths across wrapping columns.
   const optimizeColumns = visibleColumns.filter((column) => (
-    column === 'title' || column === 'venue' || column === 'work_type' || column === 'article_type'
+    column === 'title' || column === 'venue'
   ))
   if (optimizeColumns.length >= 2) {
     const optimizeColumnSet = new Set<PublicationTableColumnKey>(optimizeColumns)
@@ -1460,21 +2010,34 @@ function autoFitPublicationTableColumns(input: {
         }
 
         let score = 0
+        let worstRowLines = 1
+        let worstTitleLines = 1
         for (let index = 0; index < sample.length; index += 1) {
           let rowLines = 1
+          let titleLines = 1
           for (const column of optimizeColumns) {
             const width = candidateWidths[column] || measured[column]
             const text = valuesByColumn[column][index] || ''
-            rowLines = Math.max(rowLines, estimateWrappedLineCount(text, width))
+            const wrappedLines = estimateWrappedLineCount(text, width)
+            rowLines = Math.max(rowLines, wrappedLines)
+            if (column === 'title') {
+              titleLines = wrappedLines
+            }
           }
-          score += rowLines
+          worstRowLines = Math.max(worstRowLines, rowLines)
+          worstTitleLines = Math.max(worstTitleLines, titleLines)
+          score += rowLines * rowLines
+          score += Math.max(0, titleLines - 2) * 14
+          score += Math.max(0, titleLines - 3) * 28
         }
 
         const titleWidth = candidateWidths.title || measured.title
-        score += Math.max(0, Math.ceil((520 - titleWidth) / 16))
+        score += worstRowLines * 10
+        score += worstTitleLines * 18
+        score += Math.max(0, Math.ceil((640 - titleWidth) / 12))
 
-        const articleTypeWidth = candidateWidths.article_type || measured.article_type
-        score += Math.max(0, Math.ceil((176 - articleTypeWidth) / 20))
+        const venueWidth = candidateWidths.venue || measured.venue
+        score += Math.max(0, Math.ceil((240 - venueWidth) / 24))
 
         if (
           score < bestScore ||
@@ -1725,7 +2288,7 @@ function normalizeAbstractDisplayText(value: string): string {
     .trim()
 }
 
-function splitLongTextIntoParagraphs(value: string, maxParagraphLength = 300): string[] {
+function splitLongTextIntoParagraphs(value: string, maxParagraphLength = 800): string[] {
   const raw = normalizeAbstractDisplayText(value).replace(/\r\n/g, '\n').trim()
   if (!raw) {
     return []
@@ -1740,22 +2303,29 @@ function splitLongTextIntoParagraphs(value: string, maxParagraphLength = 300): s
   }
 
   const normalized = raw.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= Math.round(maxParagraphLength * 1.2)) {
+    return [normalized]
+  }
   const sentences = normalized
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean)
-  if (sentences.length < 3) {
+  if (sentences.length < 4) {
     return [normalized]
   }
 
   const paragraphs: string[] = []
   let current = ''
+  const minimumParagraphLength = Math.max(300, Math.floor(maxParagraphLength * 0.6))
   for (const sentence of sentences) {
     if (!current) {
       current = sentence
       continue
     }
-    if (current.length + sentence.length + 1 <= maxParagraphLength) {
+    if (
+      current.length + sentence.length + 1 <= maxParagraphLength
+      || current.length < minimumParagraphLength
+    ) {
       current = `${current} ${sentence}`
       continue
     }
@@ -2200,7 +2770,7 @@ function SortHeader({
   align = 'left',
   onSort,
 }: {
-  label: string
+  label: ReactNode
   column: LibrarySortField
   sortField: LibrarySortField
   sortDirection: SortDirection
@@ -2220,15 +2790,15 @@ function SortHeader({
       onClick={() => onSort(column)}
       className={`inline-flex w-full items-center gap-1 transition-colors hover:text-foreground ${HOUSE_TABLE_SORT_TRIGGER_CLASS} ${alignClass}`}
     >
-      <span>{label}</span>
+      <span className="min-w-0 leading-tight">{label}</span>
       {active ? (
         sortDirection === 'desc' ? (
-          <ChevronDown className="h-3.5 w-3.5 text-foreground" />
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 self-center text-foreground" />
         ) : (
-          <ChevronUp className="h-3.5 w-3.5 text-foreground" />
+          <ChevronUp className="h-3.5 w-3.5 shrink-0 self-center text-foreground" />
         )
       ) : (
-        <ChevronsUpDown className="h-3.5 w-3.5" />
+        <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 self-center" />
       )}
     </button>
   )
@@ -2285,11 +2855,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [topMetricsResponse, setTopMetricsResponse] = useState<PublicationsTopMetricsPayload | null>(initialCachedTopMetricsResponse)
   const [query, setQuery] = useState('')
   const [publicationTableLayoutWidth, setPublicationTableLayoutWidth] = useState(1100)
-  const [publicationTableColumnOrder, setPublicationTableColumnOrder] = useState<PublicationTableColumnKey[]>(() => (
-    initialCachedUser?.id
-      ? loadPublicationTableColumnOrderPreference(initialCachedUser.id)
-      : [...PUBLICATION_TABLE_COLUMN_ORDER]
-  ))
+  const [publicationTableColumnOrder, setPublicationTableColumnOrder] = useState<PublicationTableColumnKey[]>([...PUBLICATION_TABLE_COLUMN_ORDER])
   const [publicationTableColumns, setPublicationTableColumns] = useState<Record<PublicationTableColumnKey, PublicationTableColumnPreference>>(
     () => (
       initialCachedUser?.id
@@ -2303,7 +2869,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [journalSortField, setJournalSortField] = useState<JournalSortField>('publication_count')
   const [journalSortDirection, setJournalSortDirection] = useState<SortDirection>('desc')
   const [personaJournals, setPersonaJournals] = useState<PersonaJournal[]>([])
-  const [refreshingJournalIntel, setRefreshingJournalIntel] = useState(false)
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [richImporting, setRichImporting] = useState(false)
@@ -2321,6 +2886,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [authorsCacheByWorkId, setAuthorsCacheByWorkId] = useState<Record<string, PublicationAuthorsPayload>>({})
   const [impactCacheByWorkId, setImpactCacheByWorkId] = useState<Record<string, PublicationImpactResponsePayload>>({})
   const [aiCacheByWorkId, setAiCacheByWorkId] = useState<Record<string, PublicationAiInsightsResponsePayload>>({})
+  const [paperModelCacheByWorkId, setPaperModelCacheByWorkId] = useState<Record<string, PublicationPaperModelResponsePayload>>({})
   const [filesCacheByWorkId, setFilesCacheByWorkId] = useState<Record<string, PublicationFilesListPayload>>(
     () => fixture?.filesByWorkId ?? {},
   )
@@ -2329,11 +2895,27 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [expandedAbstractByWorkId, setExpandedAbstractByWorkId] = useState<Record<string, boolean>>({})
   const [contentModeByWorkId] = useState<Record<string, 'plain' | 'highlighted'>>({})
   const [uploadingFile, setUploadingFile] = useState(false)
+  const [findingOaFile, setFindingOaFile] = useState(false)
   const [oaPdfStatusByWorkId, setOaPdfStatusByWorkId] = useState<Record<string, PublicationOaPdfStatusRecord>>({})
   const [autoOaFinding, setAutoOaFinding] = useState(false)
   const [autoOaStatus, setAutoOaStatus] = useState('')
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null)
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
+  const [savingPublicationFileId, setSavingPublicationFileId] = useState<string | null>(null)
+  const [renamingPublicationFileId, setRenamingPublicationFileId] = useState<string | null>(null)
+  const [publicationFileRenameDraft, setPublicationFileRenameDraft] = useState('')
+  const [publicationFileMenuState, setPublicationFileMenuState] = useState<PublicationFileMenuState | null>(null)
+  const [publicationFileTagMenuState, setPublicationFileTagMenuState] = useState<PublicationFileTagMenuState | null>(null)
+  const [publicationFileTagEditorState, setPublicationFileTagEditorState] = useState<PublicationFileTagEditorState | null>(null)
+  const [publicationFileOtherLabelEditorState, setPublicationFileOtherLabelEditorState] = useState<PublicationFileOtherLabelEditorState | null>(null)
+  const [publicationReaderOpen, setPublicationReaderOpen] = useState(false)
+  const [publicationReaderLoading, setPublicationReaderLoading] = useState(false)
+  const [publicationReaderError, setPublicationReaderError] = useState('')
+  const [publicationReaderActiveSectionId, setPublicationReaderActiveSectionId] = useState<string | null>(null)
+  const [publicationReaderPdfPage, setPublicationReaderPdfPage] = useState(1)
+  const [publicationReaderViewMode, setPublicationReaderViewMode] = useState<PublicationReaderViewMode>('structured')
+  const [publicationReaderCollapsedNodeIds, setPublicationReaderCollapsedNodeIds] = useState<Record<string, boolean>>({})
+  const [publicationReaderInspectorOpen, setPublicationReaderInspectorOpen] = useState(false)
   const [filesDragOver, setFilesDragOver] = useState(false)
   const [publicationLibraryVisible, setPublicationLibraryVisible] = useState(true)
   const [publicationLibraryFiltersVisible, setPublicationLibraryFiltersVisible] = useState(false)
@@ -2356,12 +2938,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationTableMetricHighlights, setPublicationTableMetricHighlights] = useState(true)
   const [publicationTableAttachmentStatusVisible, setPublicationTableAttachmentStatusVisible] = useState(true)
   const [publicationTableResizingColumn, setPublicationTableResizingColumn] = useState<PublicationTableColumnKey | null>(null)
-  const [publicationTableDraggingColumn, setPublicationTableDraggingColumn] = useState<PublicationTableColumnKey | null>(null)
   const [selectedPublicationTypes, setSelectedPublicationTypes] = useState<string[]>([])
   const [selectedArticleTypes, setSelectedArticleTypes] = useState<string[]>([])
   const [publicationLibraryToolsOpen, setPublicationLibraryToolsOpen] = useState(false)
   const autoOaInFlightRef = useRef(false)
+  const detailWarmupInFlightRef = useRef<Set<string>>(new Set())
+  const authorsWarmupInFlightRef = useRef<Set<string>>(new Set())
   const filesWarmupInFlightRef = useRef<Set<string>>(new Set())
+  const paperModelWarmupInFlightRef = useRef<Set<string>>(new Set())
   const filesWarmupCompletedRef = useRef<Set<string>>(new Set())
   const autoOaStatusClearTimerRef = useRef<number | null>(null)
   const localTopMetricsBootstrapAttemptedRef = useRef(false)
@@ -2375,6 +2959,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationLibrarySettingsButtonRef = useRef<HTMLButtonElement | null>(null)
   const publicationLibrarySettingsPopoverRef = useRef<HTMLDivElement | null>(null)
   const publicationTableAutoFitAppliedRef = useRef(false)
+  const publicationTableLastAutoFitWidthRef = useRef<number | null>(null)
   const publicationTablePrefsLoadedRef = useRef(false)
   const publicationTableResizeRef = useRef<{
     column: PublicationTableColumnKey
@@ -2383,6 +2968,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     startWidths: Partial<Record<PublicationTableColumnKey, number>>
   } | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
+  const publicationReaderSectionRefs = useRef<Record<string, HTMLElement | null>>({})
+  const publicationReaderScrollViewportRef = useRef<HTMLElement | null>(null)
   const resolvePublicationTableAvailableWidth = useCallback(() => {
     const measuredClient = publicationTableLayoutRef.current?.clientWidth
     if (Number.isFinite(measuredClient) && Number(measuredClient) > 0) {
@@ -2536,36 +3123,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }, [navigate, user?.id])
 
-  const onRefreshJournalIntel = useCallback(async () => {
-    const sessionToken = token.trim()
-    if (!sessionToken || refreshingJournalIntel) {
-      return
-    }
-    setRefreshingJournalIntel(true)
-    setError('')
-    setStatus('Refreshing missing and stale journal intelligence...')
-    try {
-      const refreshResult = await refreshPersonaJournals(sessionToken, {
-        includeEditorialIntel: true,
-        force: false,
-      })
-      const journals = await listPersonaJournals(sessionToken)
-      setPersonaJournals(journals)
-      const warningSuffix = refreshResult.warnings.length > 0
-        ? ` ${refreshResult.warnings.length} source${refreshResult.warnings.length === 1 ? '' : 's'} still need review.`
-        : ''
-      setStatus(
-        `Journal intelligence refreshed for ${refreshResult.journals_considered} journal${refreshResult.journals_considered === 1 ? '' : 's'} `
-        + `(${refreshResult.openalex_profiles_refreshed} OpenAlex, ${refreshResult.editorial_profiles_refreshed} editorial, `
-        + `${refreshResult.editorial_profiles_skipped} cached).${warningSuffix}`,
-      )
-    } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : 'Could not refresh journal intelligence.')
-    } finally {
-      setRefreshingJournalIntel(false)
-    }
-  }, [refreshingJournalIntel, token])
-
   useEffect(() => {
     saveActivePublicationDetailTab(activeDetailTab)
   }, [activeDetailTab])
@@ -2601,14 +3158,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     ))
     publicationTablePrefsLoadedRef.current = true
     publicationTableAutoFitAppliedRef.current = false
+    publicationTableLastAutoFitWidthRef.current = null
   }, [resolvePublicationTableAvailableWidth, user?.id])
 
   useEffect(() => {
     if (!user?.id) {
       return
     }
-    setPublicationTableColumnOrder(loadPublicationTableColumnOrderPreference(user.id))
+    setPublicationTableColumnOrder([...PUBLICATION_TABLE_COLUMN_ORDER])
     publicationTableAutoFitAppliedRef.current = false
+    publicationTableLastAutoFitWidthRef.current = null
   }, [user?.id])
 
   useEffect(() => {
@@ -2658,13 +3217,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     savePublicationTableColumnPreferences(user.id, publicationTableColumns)
   }, [publicationTableColumns, user?.id])
-
-  useEffect(() => {
-    if (!user?.id) {
-      return
-    }
-    savePublicationTableColumnOrderPreference(user.id, publicationTableColumnOrder)
-  }, [publicationTableColumnOrder, user?.id])
 
   useEffect(() => {
     if (!user?.id) {
@@ -2813,6 +3365,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPaneErrorByKey((current) => ({ ...current, [key]: message }))
   }, [])
 
+  const invalidatePublicationPaperModelCache = useCallback((workId: string) => {
+    if (!workId) {
+      return
+    }
+    setPaperModelCacheByWorkId((current) => {
+      if (!current[workId]) {
+        return current
+      }
+      const next = { ...current }
+      delete next[workId]
+      return next
+    })
+  }, [])
+
   const loadPublicationDetailData = useCallback(async (workId: string, force = false) => {
     if (!token || !workId) {
       return
@@ -2820,6 +3386,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!force && detailCacheByWorkId[workId]) {
       return
     }
+    if (detailWarmupInFlightRef.current.has(workId)) {
+      return
+    }
+    detailWarmupInFlightRef.current.add(workId)
     setPaneLoading(workId, 'overview', true)
     setPaneError(workId, 'overview', '')
     try {
@@ -2828,6 +3398,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     } catch (loadError) {
       setPaneError(workId, 'overview', loadError instanceof Error ? loadError.message : 'Could not load publication details.')
     } finally {
+      detailWarmupInFlightRef.current.delete(workId)
       setPaneLoading(workId, 'overview', false)
     }
   }, [detailCacheByWorkId, setPaneError, setPaneLoading, token])
@@ -2839,6 +3410,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!force && authorsCacheByWorkId[workId] && authorsCacheByWorkId[workId].status !== 'RUNNING') {
       return
     }
+    if (authorsWarmupInFlightRef.current.has(workId)) {
+      return
+    }
+    authorsWarmupInFlightRef.current.add(workId)
     setPaneLoading(workId, 'overview', true)
     try {
       const payload = await fetchPublicationAuthors(token, workId)
@@ -2846,9 +3421,19 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     } catch (loadError) {
       setPaneError(workId, 'overview', loadError instanceof Error ? loadError.message : 'Could not load publication authors.')
     } finally {
+      authorsWarmupInFlightRef.current.delete(workId)
       setPaneLoading(workId, 'overview', false)
     }
   }, [authorsCacheByWorkId, setPaneError, setPaneLoading, token])
+
+  const prefetchPublicationOverviewData = useCallback((workId: string) => {
+    const normalizedWorkId = String(workId || '').trim()
+    if (!normalizedWorkId) {
+      return
+    }
+    void loadPublicationDetailData(normalizedWorkId)
+    void loadPublicationAuthorsData(normalizedWorkId)
+  }, [loadPublicationAuthorsData, loadPublicationDetailData])
 
   const loadPublicationImpactData = useCallback(async (workId: string, force = false) => {
     if (!token || !workId) {
@@ -2888,6 +3473,43 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }, [aiCacheByWorkId, setPaneError, setPaneLoading, token])
 
+  const loadPublicationPaperModelData = useCallback(async (
+    workId: string,
+    force = false,
+    options?: { silent?: boolean },
+  ) => {
+    if (!token || !workId) {
+      return null
+    }
+    const silent = Boolean(options?.silent)
+    if (!force && paperModelCacheByWorkId[workId]) {
+      return paperModelCacheByWorkId[workId]
+    }
+    if (paperModelWarmupInFlightRef.current.has(workId)) {
+      return paperModelCacheByWorkId[workId] || null
+    }
+    paperModelWarmupInFlightRef.current.add(workId)
+    if (selectedWorkId === workId && !silent) {
+      setPublicationReaderLoading(true)
+      setPublicationReaderError('')
+    }
+    try {
+      const payload = await fetchPublicationPaperModel(token, workId)
+      setPaperModelCacheByWorkId((current) => ({ ...current, [workId]: payload }))
+      return payload
+    } catch (loadError) {
+      if (selectedWorkId === workId && !silent) {
+        setPublicationReaderError(loadError instanceof Error ? loadError.message : 'Could not load paper reader.')
+      }
+      return null
+    } finally {
+      paperModelWarmupInFlightRef.current.delete(workId)
+      if (selectedWorkId === workId && !silent) {
+        setPublicationReaderLoading(false)
+      }
+    }
+  }, [paperModelCacheByWorkId, selectedWorkId, token])
+
   const loadPublicationFilesData = useCallback(async (workId: string, force = false) => {
     if (!token || !workId) {
       return
@@ -2926,20 +3548,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           },
         }))
       }
+      invalidatePublicationPaperModelCache(workId)
     } catch (loadError) {
       setPaneError(workId, 'files', loadError instanceof Error ? loadError.message : 'Could not load files.')
     } finally {
       setPaneLoading(workId, 'files', false)
     }
-  }, [filesCacheByWorkId, setPaneError, setPaneLoading, token])
+  }, [filesCacheByWorkId, invalidatePublicationPaperModelCache, setPaneError, setPaneLoading, token])
 
   const ensureActiveTabData = useCallback(async (workId: string, tab: PublicationDetailTab) => {
     if (!workId) {
       return
     }
     if (tab === 'overview') {
-      await loadPublicationDetailData(workId)
-      await loadPublicationAuthorsData(workId)
+      await Promise.all([
+        loadPublicationDetailData(workId),
+        loadPublicationAuthorsData(workId),
+      ])
       return
     }
     if (tab === 'content') {
@@ -3313,11 +3938,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       if (journalSortField === 'median_citations') {
         return (left.median_citations - right.median_citations) * direction
       }
-      if (journalSortField === 'journal_metric') {
-        return ((left.journal_metric_value || 0) - (right.journal_metric_value || 0)) * direction
-      }
       if (journalSortField === 'impact_factor') {
         return ((left.publisher_reported_impact_factor || 0) - (right.publisher_reported_impact_factor || 0)) * direction
+      }
+      if (journalSortField === 'five_year_impact_factor') {
+        return ((left.five_year_impact_factor || 0) - (right.five_year_impact_factor || 0)) * direction
+      }
+      if (journalSortField === 'journal_citation_indicator') {
+        return ((left.journal_citation_indicator || 0) - (right.journal_citation_indicator || 0)) * direction
+      }
+      if (journalSortField === 'cited_half_life') {
+        const leftValue = Number.parseFloat(String(left.cited_half_life || ''))
+        const rightValue = Number.parseFloat(String(right.cited_half_life || ''))
+        const normalizedLeft = Number.isFinite(leftValue) ? leftValue : -1
+        const normalizedRight = Number.isFinite(rightValue) ? rightValue : -1
+        return (normalizedLeft - normalizedRight) * direction
       }
       if (journalSortField === 'is_oa') {
         return ((Number(left.is_oa) || 0) - (Number(right.is_oa) || 0)) * direction
@@ -3521,6 +4156,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
   useEffect(() => {
     if (publicationLibraryViewMode === 'publications') {
+      publicationTableAutoFitAppliedRef.current = false
+      publicationTableLastAutoFitWidthRef.current = null
       return
     }
     setSelectedWorkId(null)
@@ -3750,7 +4387,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedAuthorsPayload = selectedWorkId ? authorsCacheByWorkId[selectedWorkId] || null : null
   const selectedImpactResponse = selectedWorkId ? impactCacheByWorkId[selectedWorkId] || null : null
   const selectedAiResponse = selectedWorkId ? aiCacheByWorkId[selectedWorkId] || null : null
+  const selectedPaperModelResponse = selectedWorkId ? paperModelCacheByWorkId[selectedWorkId] || null : null
   const selectedFilesPayload = selectedWorkId ? filesCacheByWorkId[selectedWorkId] || null : null
+  const selectedHasDeletedOaFile = Boolean(selectedFilesPayload?.has_deleted_oa_file)
   const selectedFiles = useMemo(() => {
     const files = [...(selectedFilesPayload?.items || [])]
     files.sort((left, right) => {
@@ -3761,6 +4400,509 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     })
     return files
   }, [selectedFilesPayload?.items])
+  const selectedOpenAccessFiles = useMemo(() => selectedFiles.filter((file) => file.source === 'OA_LINK'), [selectedFiles])
+  const selectedAdditionalFiles = useMemo(() => selectedFiles.filter((file) => file.source !== 'OA_LINK'), [selectedFiles])
+  const selectedHasActiveOaFile = selectedOpenAccessFiles.length > 0
+  const selectedHasRetrievableDeletedOaFile = selectedHasDeletedOaFile && !selectedHasActiveOaFile
+  const selectedPaperModel = selectedPaperModelResponse?.payload || null
+  const selectedPaperSections = selectedPaperModel?.sections || []
+  const selectedPaperMetadata = selectedPaperModel?.metadata || null
+  const selectedPaperDocument = selectedPaperModel?.document || null
+  const selectedPaperPrimaryFile = useMemo(
+    () => (
+      selectedPaperDocument?.primary_pdf_file_id
+        ? selectedFiles.find((file) => file.id === selectedPaperDocument.primary_pdf_file_id) || null
+        : null
+    ),
+    [selectedFiles, selectedPaperDocument?.primary_pdf_file_id],
+  )
+  const selectedPaperPrimaryPdfContentFileId = selectedPaperDocument?.primary_pdf_file_id || selectedPaperPrimaryFile?.id || null
+  const selectedPaperPrimaryPdfExternalUrl = useMemo(() => {
+    const primaryFileUrl = selectedPaperPrimaryFile ? publicationFileDirectUrl(selectedPaperPrimaryFile) : ''
+    return resolvePublicationPdfViewerUrl(primaryFileUrl || selectedPaperDocument?.primary_pdf_download_url || '')
+  }, [selectedPaperDocument?.primary_pdf_download_url, selectedPaperPrimaryFile])
+  const selectedPaperFigures = selectedPaperModel?.figures || []
+  const selectedPaperTables = selectedPaperModel?.tables || []
+  const selectedPaperDatasets = selectedPaperModel?.datasets || []
+  const selectedPaperAttachments = selectedPaperModel?.attachments || []
+  const selectedPaperAssetsById = useMemo(() => {
+    const next = new Map<string, PublicationPaperAssetPayload>()
+    for (const asset of [...selectedPaperFigures, ...selectedPaperTables, ...selectedPaperDatasets, ...selectedPaperAttachments]) {
+      if (asset.id) {
+        next.set(asset.id, asset)
+      }
+    }
+    return next
+  }, [selectedPaperAttachments, selectedPaperDatasets, selectedPaperFigures, selectedPaperTables])
+  const selectedPaperComponentSummary = selectedPaperModel?.component_summary || null
+  const selectedPaperSectionChildrenByParent = useMemo(() => {
+    const next = new Map<string | null, PublicationPaperSectionPayload[]>()
+    for (const section of selectedPaperSections) {
+      const parentId = section.parent_id || null
+      const existing = next.get(parentId)
+      if (existing) {
+        existing.push(section)
+      } else {
+        next.set(parentId, [section])
+      }
+    }
+    for (const items of next.values()) {
+      items.sort(comparePublicationPaperSections)
+    }
+    return next
+  }, [selectedPaperSections])
+
+  const publicationReaderInlineAssetRefs = useRef<Record<string, HTMLElement | null>>({})
+
+  const selectedPaperInlineAssetsBySectionId = useMemo(() => {
+    const allAssets = [...selectedPaperFigures, ...selectedPaperTables]
+    if (!allAssets.length || !selectedPaperSections.length) {
+      return new Map<string, PublicationPaperAssetPayload[]>()
+    }
+    const leafSections = selectedPaperSections
+      .filter((s) => s.page_start != null)
+      .sort((a, b) => (a.page_start ?? 0) - (b.page_start ?? 0))
+    if (!leafSections.length) {
+      return new Map<string, PublicationPaperAssetPayload[]>()
+    }
+    const result = new Map<string, PublicationPaperAssetPayload[]>()
+    const claimed = new Set<string>()
+    for (const asset of allAssets) {
+      const assetPage = asset.page_start
+      if (assetPage == null) {
+        continue
+      }
+      let bestSection: PublicationPaperSectionPayload | null = null
+      for (const section of leafSections) {
+        const sPage = section.page_start ?? 0
+        const ePage = section.page_end ?? sPage
+        if (assetPage >= sPage && assetPage <= ePage) {
+          bestSection = section
+          break
+        }
+      }
+      if (!bestSection) {
+        for (let i = leafSections.length - 1; i >= 0; i--) {
+          if ((leafSections[i].page_start ?? 0) <= assetPage) {
+            bestSection = leafSections[i]
+            break
+          }
+        }
+      }
+      if (bestSection && !claimed.has(asset.id)) {
+        claimed.add(asset.id)
+        const existing = result.get(bestSection.id) || []
+        existing.push(asset)
+        result.set(bestSection.id, existing)
+      }
+    }
+    return result
+  }, [selectedPaperFigures, selectedPaperSections, selectedPaperTables])
+
+  const unplacedInlineAssets = useMemo(() => {
+    const allAssets = [...selectedPaperFigures, ...selectedPaperTables]
+    if (!allAssets.length) return []
+    const placedIds = new Set<string>()
+    for (const assets of selectedPaperInlineAssetsBySectionId.values()) {
+      for (const a of assets) placedIds.add(a.id)
+    }
+    const unplaced = allAssets.filter((a) => !placedIds.has(a.id))
+    unplaced.sort((a, b) => {
+      const kindOrder = (a.asset_kind === 'figure' ? 0 : 1) - (b.asset_kind === 'figure' ? 0 : 1)
+      if (kindOrder !== 0) return kindOrder
+      return (a.title || a.file_name || '').localeCompare(b.title || b.file_name || '')
+    })
+    return unplaced
+  }, [selectedPaperFigures, selectedPaperInlineAssetsBySectionId, selectedPaperTables])
+
+  const selectedPaperDisplayGroupKeyBySectionId = useMemo(
+    () => buildPublicationPaperDisplayGroupKeyBySectionId(selectedPaperSections),
+    [selectedPaperSections],
+  )
+  const selectedStructuredPaperGroups = useMemo<PublicationPaperStructuredGroupPayload[]>(() => {
+    if (!selectedPaperSections.length) {
+      return []
+    }
+    const sectionsByGroup = new Map<string, PublicationPaperSectionPayload[]>()
+    for (const section of selectedPaperSections) {
+      const groupKey = selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null
+      if (!groupKey || groupKey === 'assets') {
+        continue
+      }
+      const existing = sectionsByGroup.get(groupKey)
+      if (existing) {
+        existing.push(section)
+      } else {
+        sectionsByGroup.set(groupKey, [section])
+      }
+    }
+    return [...sectionsByGroup.entries()]
+      .map(([key, sections]) => {
+        sections.sort(comparePublicationPaperSections)
+        const sectionIds = new Set(sections.map((section) => section.id))
+        const rootSections = sections
+          .filter((section) => !section.parent_id || !sectionIds.has(section.parent_id))
+          .sort(comparePublicationPaperSections)
+        return {
+          key,
+          label: formatPublicationPaperStructuredGroupLabel(key),
+          sections,
+          rootSections,
+        }
+      })
+      .sort((left, right) => {
+        const leftIndex = PUBLICATION_READER_STRUCTURED_GROUP_ORDER.indexOf(
+          left.key as typeof PUBLICATION_READER_STRUCTURED_GROUP_ORDER[number],
+        )
+        const rightIndex = PUBLICATION_READER_STRUCTURED_GROUP_ORDER.indexOf(
+          right.key as typeof PUBLICATION_READER_STRUCTURED_GROUP_ORDER[number],
+        )
+        const safeLeftIndex = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex
+        const safeRightIndex = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex
+        if (safeLeftIndex !== safeRightIndex) {
+          return safeLeftIndex - safeRightIndex
+        }
+        const leftOrder = left.sections[0]?.order ?? Number.MAX_SAFE_INTEGER
+        const rightOrder = right.sections[0]?.order ?? Number.MAX_SAFE_INTEGER
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder
+        }
+        return left.label.localeCompare(right.label)
+      })
+  }, [selectedPaperDisplayGroupKeyBySectionId, selectedPaperSections])
+  const selectedPublicationReaderNavigatorGroups = useMemo<PublicationReaderNavigatorGroupPayload[]>(() => {
+    const buildSectionItems = (
+      section: PublicationPaperSectionPayload,
+      groupKey: string,
+      indent: number,
+      items: PublicationReaderNavigatorItemPayload[],
+    ) => {
+      items.push({
+        id: section.id,
+        label: section.title || section.raw_label || 'Untitled section',
+        indent,
+        target: { kind: 'section', id: section.id },
+        isActive: publicationReaderActiveSectionId === section.id,
+      })
+      const children = (selectedPaperSectionChildrenByParent.get(section.id) || [])
+        .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === groupKey)
+        .sort(comparePublicationPaperSections)
+      for (const child of children) {
+        buildSectionItems(child, groupKey, indent + 1, items)
+      }
+    }
+
+    return PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS.reduce<PublicationReaderNavigatorGroupPayload[]>((groups, definition) => {
+      if (definition.key === 'tables' || definition.key === 'figures') {
+        const assets = definition.key === 'tables' ? selectedPaperTables : selectedPaperFigures
+        if (assets.length === 0) {
+          return groups
+        }
+        groups.push({
+          id: definition.key,
+          label: definition.label,
+          toneClassName: definition.toneClassName,
+          target: assets[0]?.id ? { kind: 'asset', id: assets[0].id } : null,
+          isActive: false,
+          items: assets.map((asset) => ({
+            id: asset.id,
+            label: asset.title || asset.file_name || definition.label,
+            indent: 1,
+            target: { kind: 'asset', id: asset.id },
+            isActive: false,
+          })),
+        })
+        return groups
+      }
+
+      const sections = selectedPaperSections
+        .filter((section) => (selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null) === definition.key)
+        .sort(comparePublicationPaperSections)
+      if (sections.length === 0) {
+        return groups
+      }
+      const sectionIds = new Set(sections.map((section) => section.id))
+      const rootSections = sections
+        .filter((section) => !section.parent_id || !sectionIds.has(section.parent_id))
+        .sort(comparePublicationPaperSections)
+      const primarySection = rootSections[0] || sections[0] || null
+      const promoteSingleRoot = Boolean(
+        rootSections.length === 1
+        && primarySection
+        && publicationReaderSectionMatchesGroupLabel(primarySection, definition.key),
+      )
+      const items: PublicationReaderNavigatorItemPayload[] = []
+
+      if (promoteSingleRoot && primarySection) {
+        const childSections = (selectedPaperSectionChildrenByParent.get(primarySection.id) || [])
+          .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === definition.key)
+          .sort(comparePublicationPaperSections)
+        for (const childSection of childSections) {
+          buildSectionItems(childSection, definition.key, 1, items)
+        }
+      } else {
+        for (const rootSection of rootSections) {
+          buildSectionItems(rootSection, definition.key, 1, items)
+        }
+      }
+
+      groups.push({
+        id: definition.key,
+        label: definition.label,
+        toneClassName: definition.toneClassName,
+        target: primarySection?.id ? { kind: 'section', id: primarySection.id } : null,
+        isActive: sections.some((section) => section.id === publicationReaderActiveSectionId),
+        items,
+      })
+      return groups
+    }, [])
+  }, [
+    publicationReaderActiveSectionId,
+    selectedPaperDisplayGroupKeyBySectionId,
+    selectedPaperFigures,
+    selectedPaperSectionChildrenByParent,
+    selectedPaperSections,
+    selectedPaperTables,
+  ])
+  const selectedPaperFirstReaderSection = useMemo(
+    () => selectedStructuredPaperGroups.flatMap((group) => group.rootSections)[0] || selectedPaperSections[0] || null,
+    [selectedPaperSections, selectedStructuredPaperGroups],
+  )
+  const selectedReaderActiveSection = useMemo(
+    () => (
+      publicationReaderActiveSectionId
+        ? selectedPaperSections.find((section) => section.id === publicationReaderActiveSectionId) || null
+        : selectedPaperFirstReaderSection
+    ),
+    [publicationReaderActiveSectionId, selectedPaperFirstReaderSection, selectedPaperSections],
+  )
+  const selectedReaderActiveSectionAnchorPage = useMemo(
+    () => resolvePublicationPaperSectionAnchorPage(selectedReaderActiveSection),
+    [selectedReaderActiveSection],
+  )
+  const selectedReaderActiveNavigatorGroupId = useMemo(
+    () => (selectedReaderActiveSection ? selectedPaperDisplayGroupKeyBySectionId.get(selectedReaderActiveSection.id) || null : null),
+    [selectedPaperDisplayGroupKeyBySectionId, selectedReaderActiveSection],
+  )
+  const publicationFileMenuFile = useMemo(
+    () => (publicationFileMenuState ? selectedFiles.find((file) => file.id === publicationFileMenuState.fileId) || null : null),
+    [publicationFileMenuState, selectedFiles],
+  )
+  const publicationFileTagMenuFile = useMemo(
+    () => (publicationFileTagMenuState ? selectedFiles.find((file) => file.id === publicationFileTagMenuState.fileId) || null : null),
+    [publicationFileTagMenuState, selectedFiles],
+  )
+  const publicationFileMenuBusy = Boolean(
+    publicationFileMenuFile
+    && (savingPublicationFileId === publicationFileMenuFile.id || deletingFileId === publicationFileMenuFile.id),
+  )
+  const publicationFileTagMenuBusy = Boolean(
+    publicationFileTagMenuFile
+    && (savingPublicationFileId === publicationFileTagMenuFile.id || deletingFileId === publicationFileTagMenuFile.id),
+  )
+
+  useEffect(() => {
+    if (publicationFileMenuState && !publicationFileMenuFile) {
+      setPublicationFileMenuState(null)
+    }
+    if (publicationFileTagMenuState && !publicationFileTagMenuFile) {
+      setPublicationFileTagMenuState(null)
+    }
+    if (publicationFileTagEditorState && !selectedFiles.some((file) => file.id === publicationFileTagEditorState.fileId)) {
+      setPublicationFileTagEditorState(null)
+    }
+    if (publicationFileOtherLabelEditorState && !selectedFiles.some((file) => file.id === publicationFileOtherLabelEditorState.fileId)) {
+      setPublicationFileOtherLabelEditorState(null)
+    }
+    if (renamingPublicationFileId && !selectedFiles.some((file) => file.id === renamingPublicationFileId)) {
+      setRenamingPublicationFileId(null)
+      setPublicationFileRenameDraft('')
+      setSavingPublicationFileId((current) => (current === renamingPublicationFileId ? null : current))
+    }
+  }, [publicationFileMenuFile, publicationFileMenuState, publicationFileOtherLabelEditorState, publicationFileTagEditorState, publicationFileTagMenuFile, publicationFileTagMenuState, renamingPublicationFileId, selectedFiles])
+
+  useEffect(() => {
+    setPublicationFileMenuState(null)
+    setPublicationFileTagMenuState(null)
+    setPublicationFileTagEditorState(null)
+    setPublicationFileOtherLabelEditorState(null)
+    setRenamingPublicationFileId(null)
+    setPublicationFileRenameDraft('')
+    setSavingPublicationFileId(null)
+    setPublicationReaderOpen(false)
+    setPublicationReaderLoading(false)
+    setPublicationReaderError('')
+    setPublicationReaderActiveSectionId(null)
+    setPublicationReaderPdfPage(1)
+    setPublicationReaderViewMode('structured')
+    setPublicationReaderCollapsedNodeIds({})
+    setPublicationReaderInspectorOpen(false)
+    publicationReaderSectionRefs.current = {}
+    publicationReaderInlineAssetRefs.current = {}
+  }, [selectedWorkId])
+
+  useEffect(() => {
+    if (!publicationFileTagEditorState || publicationFileTagEditorState.open) {
+      return
+    }
+    if (savingPublicationFileId === publicationFileTagEditorState.fileId) {
+      return
+    }
+    const selectedFile = selectedFiles.find((file) => file.id === publicationFileTagEditorState.fileId) || null
+    if (!selectedFile) {
+      return
+    }
+    if ((selectedFile.classification ?? null) === publicationFileTagEditorState.pendingClassification) {
+      setPublicationFileTagEditorState(null)
+    }
+  }, [publicationFileTagEditorState, savingPublicationFileId, selectedFiles])
+
+  useEffect(() => {
+    if (!publicationReaderOpen) {
+      return
+    }
+    if (selectedPaperSections.length === 0) {
+      setPublicationReaderActiveSectionId(null)
+      return
+    }
+    if (
+      publicationReaderActiveSectionId
+      && selectedPaperSections.some((section) => section.id === publicationReaderActiveSectionId)
+    ) {
+      return
+    }
+    setPublicationReaderActiveSectionId(selectedPaperFirstReaderSection?.id || null)
+  }, [publicationReaderActiveSectionId, publicationReaderOpen, selectedPaperFirstReaderSection, selectedPaperSections])
+
+  useEffect(() => {
+    if (!publicationReaderOpen || selectedPublicationReaderNavigatorGroups.length === 0) {
+      return
+    }
+    setPublicationReaderCollapsedNodeIds((current) => {
+      let changed = false
+      const next = { ...current }
+      for (const group of selectedPublicationReaderNavigatorGroups) {
+        const shouldCollapse = group.id !== selectedReaderActiveNavigatorGroupId
+        if ((current[group.id] ?? true) !== shouldCollapse) {
+          next[group.id] = shouldCollapse
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [publicationReaderOpen, selectedPublicationReaderNavigatorGroups, selectedReaderActiveNavigatorGroupId])
+
+  useEffect(() => {
+    if (!publicationReaderOpen) {
+      return
+    }
+    if (publicationReaderViewMode === 'pdf' && !selectedPaperPrimaryPdfContentFileId) {
+      setPublicationReaderViewMode('structured')
+    }
+  }, [publicationReaderOpen, publicationReaderViewMode, selectedPaperPrimaryPdfContentFileId])
+
+  useEffect(() => {
+    if (!publicationReaderOpen || !selectedWorkId) {
+      return
+    }
+    if (selectedPaperModelResponse?.status !== 'RUNNING' && selectedPaperDocument?.parser_status !== 'PARSING') {
+      return
+    }
+    const timeoutId = window.setTimeout(() => {
+      void loadPublicationPaperModelData(selectedWorkId, true, { silent: true })
+    }, 2400)
+    return () => window.clearTimeout(timeoutId)
+  }, [loadPublicationPaperModelData, publicationReaderOpen, selectedPaperDocument?.parser_status, selectedPaperModelResponse?.status, selectedWorkId])
+
+  useEffect(() => {
+    if (!publicationReaderOpen || publicationReaderViewMode !== 'pdf') {
+      return
+    }
+    const pageAnchoredSection = resolvePublicationPaperSectionForPage(selectedPaperSections, publicationReaderPdfPage)
+    if (!pageAnchoredSection || pageAnchoredSection.id === publicationReaderActiveSectionId) {
+      return
+    }
+    setPublicationReaderActiveSectionId(pageAnchoredSection.id)
+  }, [
+    publicationReaderActiveSectionId,
+    publicationReaderOpen,
+    publicationReaderPdfPage,
+    publicationReaderViewMode,
+    selectedPaperSections,
+  ])
+
+  useEffect(() => {
+    if (!publicationReaderOpen || publicationReaderViewMode !== 'structured') {
+      return
+    }
+    const rootNode = publicationReaderScrollViewportRef.current
+    if (!rootNode) {
+      return
+    }
+    const observedSections = selectedPaperSections
+      .map((section) => ({
+        section,
+        node: publicationReaderSectionRefs.current[section.id],
+      }))
+      .filter((entry): entry is { section: PublicationPaperSectionPayload; node: HTMLElement } => Boolean(entry.node))
+      .sort((left, right) => comparePublicationPaperSections(left.section, right.section))
+    if (observedSections.length === 0) {
+      return
+    }
+
+    let frameId = 0
+    const updateActiveSectionFromScroll = () => {
+      const rootRect = rootNode.getBoundingClientRect()
+      const anchorY = rootRect.top + Math.min(180, Math.max(96, rootRect.height * 0.22))
+      const visibleSections = observedSections
+        .map((entry) => ({
+          ...entry,
+          rect: entry.node.getBoundingClientRect(),
+        }))
+        .filter((entry) => entry.rect.bottom > rootRect.top + 20 && entry.rect.top < rootRect.bottom - 20)
+      const nearestVisibleSection = (visibleSections.length > 0 ? visibleSections : observedSections.map((entry) => ({
+        ...entry,
+        rect: entry.node.getBoundingClientRect(),
+      })))
+        .sort((left, right) => {
+          const leftDistance = Math.abs(left.rect.top - anchorY)
+          const rightDistance = Math.abs(right.rect.top - anchorY)
+          if (leftDistance !== rightDistance) {
+            return leftDistance - rightDistance
+          }
+          return left.section.order - right.section.order
+        })[0]
+      const nextSectionId = nearestVisibleSection?.section.id || null
+      if (nextSectionId && nextSectionId !== publicationReaderActiveSectionId) {
+        setPublicationReaderActiveSectionId(nextSectionId)
+      }
+    }
+
+    const scheduleUpdate = () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId)
+      }
+      frameId = window.requestAnimationFrame(updateActiveSectionFromScroll)
+    }
+
+    scheduleUpdate()
+    rootNode.addEventListener('scroll', scheduleUpdate, { passive: true })
+    window.addEventListener('resize', scheduleUpdate)
+
+    return () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId)
+      }
+      rootNode.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('resize', scheduleUpdate)
+    }
+  }, [
+    publicationReaderActiveSectionId,
+    publicationReaderOpen,
+    publicationReaderViewMode,
+    selectedPaperSections,
+  ])
+
   const publicationTrajectoryChartTile = useMemo<PublicationMetricTilePayload | null>(() => {
     const perYear = selectedImpactResponse?.payload?.per_year || []
     const cleaned = perYear
@@ -4092,52 +5234,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setJournalSortDirection(column === 'journal' || column === 'is_oa' ? 'asc' : 'desc')
   }
 
-  const onReorderPublicationColumn = useCallback((fromColumn: PublicationTableColumnKey, toColumn: PublicationTableColumnKey) => {
-    if (fromColumn === toColumn) {
-      return
-    }
-    setPublicationTableColumnOrder((current) => {
-      const visibleOrder = current.filter((columnKey) => publicationTableColumns[columnKey].visible)
-      const fromIndex = visibleOrder.indexOf(fromColumn)
-      const toIndex = visibleOrder.indexOf(toColumn)
-      if (fromIndex < 0 || toIndex < 0) {
-        return current
-      }
-      const nextVisibleOrder = [...visibleOrder]
-      nextVisibleOrder.splice(fromIndex, 1)
-      nextVisibleOrder.splice(toIndex, 0, fromColumn)
-      const queue = [...nextVisibleOrder]
-      return current.map((columnKey) => (
-        publicationTableColumns[columnKey].visible ? (queue.shift() || columnKey) : columnKey
-      ))
-    })
-  }, [publicationTableColumns])
-
-  const onTogglePublicationColumnVisibility = useCallback((column: PublicationTableColumnKey) => {
-    const availableWidth = resolvePublicationTableAvailableWidth()
-    setPublicationTableColumns((current) => {
-      const visibleCount = PUBLICATION_TABLE_COLUMN_ORDER.reduce(
-        (count, key) => count + (current[key].visible ? 1 : 0),
-        0,
-      )
-      if (current[column].visible && visibleCount <= 1) {
-        return current
-      }
-      const next = {
-        ...current,
-        [column]: {
-          ...current[column],
-          visible: !current[column].visible,
-        },
-      }
-      return clampPublicationTableColumnsToAvailableWidth({
-        columns: next,
-        columnOrder: publicationTableColumnOrder,
-        availableWidth,
-      })
-    })
-  }, [publicationTableColumnOrder, resolvePublicationTableAvailableWidth])
-
   const onResetPublicationTableSettings = useCallback(() => {
     const availableWidth = resolvePublicationTableAvailableWidth()
     setPublicationTableColumns((current) => {
@@ -4203,24 +5299,40 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     publicationTableAutoFitAppliedRef.current = false
+    publicationTableLastAutoFitWidthRef.current = null
   }, [loading])
 
   useLayoutEffect(() => {
-    if (publicationTableAutoFitAppliedRef.current) {
-      return
-    }
     if (!publicationTablePrefsLoadedRef.current) {
       return
     }
-    if (loading || !publicationLibraryVisible) {
+    if (loading || !publicationLibraryVisible || publicationLibraryViewMode !== 'publications') {
       return
     }
     if (!personaState?.works?.length) {
       return
     }
+    if (!publicationTableLayoutRef.current) {
+      return
+    }
+    const availableWidth = resolvePublicationTableAvailableWidth()
+    const lastAutoFitWidth = publicationTableLastAutoFitWidthRef.current
+    const widthChanged = lastAutoFitWidth === null || Math.abs(lastAutoFitWidth - availableWidth) >= 24
+    if (publicationTableAutoFitAppliedRef.current && !widthChanged) {
+      return
+    }
     publicationTableAutoFitAppliedRef.current = true
+    publicationTableLastAutoFitWidthRef.current = availableWidth
     onAutoAdjustPublicationTableWidths()
-  }, [loading, onAutoAdjustPublicationTableWidths, personaState?.works?.length, publicationLibraryVisible])
+  }, [
+    loading,
+    onAutoAdjustPublicationTableWidths,
+    personaState?.works?.length,
+    publicationLibraryViewMode,
+    publicationLibraryVisible,
+    publicationTableLayoutWidth,
+    resolvePublicationTableAvailableWidth,
+  ])
 
   const onDownloadPublicationLibrary = useCallback(() => {
     const selectedFieldKeys = PUBLICATION_EXPORT_FIELD_OPTIONS
@@ -4626,8 +5738,24 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     : ''
   const detailYear = selectedDetail?.year ?? selectedWork?.year ?? null
   const detailJournal = selectedDetail?.journal || formatJournalName(selectedWork?.venue_name || '')
-  const detailPublicationType = selectedDetail?.publication_type || (selectedWork ? derivePublicationTypeLabel(selectedWork) : 'Not available')
-  const detailArticleType = selectedDetail?.article_type || (selectedWork ? deriveArticleTypeLabel(selectedWork) : 'n/a')
+  const detailPaperLinkTooltip = detailJournal && detailJournal !== 'Not available'
+    ? `View at ${detailJournal}`
+    : 'View paper'
+  const detailPublicationType = selectedDetail?.publication_type
+    ? derivePublicationTypeLabel({
+      work_type: selectedDetail.publication_type,
+      title: selectedDetail?.title,
+      venue_name: selectedDetail?.journal,
+    })
+    : (selectedWork ? derivePublicationTypeLabel(selectedWork) : 'Not available')
+  const detailArticleType = selectedDetail?.article_type
+    ? deriveArticleTypeLabel({
+      publication_type: selectedDetail.article_type,
+      work_type: selectedDetail.publication_type,
+      title: selectedDetail?.title,
+      venue_name: selectedDetail?.journal,
+    })
+    : (selectedWork ? deriveArticleTypeLabel(selectedWork) : 'n/a')
   const detailCitations = selectedDetail?.citations_total ?? (selectedWork ? Number(metricsByWorkId.get(selectedWork.id)?.citations || 0) : 0)
   const detailDoi = selectedDetail?.doi || selectedWork?.doi || null
   const detailPmid = selectedDetail?.pmid || selectedWork?.pmid || null
@@ -4695,13 +5823,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!normalizedWorkId) {
       return
     }
-    void loadPublicationDetailData(normalizedWorkId)
+    prefetchPublicationOverviewData(normalizedWorkId)
     if (tab === 'files') {
       void loadPublicationFilesData(normalizedWorkId)
     }
     setSelectedWorkId(normalizedWorkId)
     setActiveDetailTab(tab)
-  }, [activeDetailTab, loadPublicationDetailData, loadPublicationFilesData])
+  }, [activeDetailTab, loadPublicationFilesData, prefetchPublicationOverviewData])
 
   useEffect(() => {
     if (!requestedWorkIdFromQuery) {
@@ -4738,6 +5866,126 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     await loadPublicationFilesData(workId, true)
   }
 
+  const onOpenPublicationReader = useCallback(() => {
+    if (!selectedWorkId) {
+      return
+    }
+    const initialSection = selectedPaperFirstReaderSection
+    const initialPdfPage = resolvePublicationPaperSectionAnchorPage(initialSection) || 1
+    setPublicationReaderOpen(true)
+    setPublicationReaderError('')
+    setPublicationReaderCollapsedNodeIds({})
+    setPublicationReaderInspectorOpen(false)
+    setPublicationReaderPdfPage(initialPdfPage)
+    setPublicationReaderViewMode(selectedPaperPrimaryPdfContentFileId ? 'pdf' : 'structured')
+    setPublicationReaderActiveSectionId(initialSection?.id || null)
+    void loadPublicationPaperModelData(selectedWorkId, true)
+  }, [loadPublicationPaperModelData, selectedPaperFirstReaderSection, selectedPaperPrimaryPdfContentFileId, selectedWorkId])
+
+  const onSelectPublicationReaderSection = useCallback((sectionId: string) => {
+    const selectedSection = selectedPaperSections.find((section) => section.id === sectionId) || null
+    setPublicationReaderActiveSectionId(sectionId)
+    const targetPdfPage = resolvePublicationPaperSectionAnchorPage(selectedSection)
+    if (publicationReaderViewMode === 'pdf' && targetPdfPage) {
+      setPublicationReaderPdfPage(targetPdfPage)
+      return
+    }
+    const scrollToSection = () => {
+      const node = publicationReaderSectionRefs.current[sectionId]
+      if (node) {
+        node.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+    if (publicationReaderViewMode !== 'structured') {
+      setPublicationReaderViewMode('structured')
+      if (typeof window !== 'undefined') {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(scrollToSection)
+        })
+      }
+      return
+    }
+    scrollToSection()
+  }, [publicationReaderViewMode, selectedPaperSections])
+
+  const onTogglePublicationReaderOutlineNode = useCallback((nodeId: string) => {
+    setPublicationReaderCollapsedNodeIds((current) => ({
+      ...current,
+      [nodeId]: !current[nodeId],
+    }))
+  }, [])
+
+  const onEnterPublicationReaderPdfView = useCallback(() => {
+    if (!selectedPaperPrimaryPdfContentFileId) {
+      return
+    }
+    setPublicationReaderPdfPage(selectedReaderActiveSectionAnchorPage || 1)
+    setPublicationReaderViewMode('pdf')
+  }, [selectedPaperPrimaryPdfContentFileId, selectedReaderActiveSectionAnchorPage])
+
+  const onFindOpenAccessPublicationFile = async () => {
+    if (!token || !selectedWorkId) {
+      return
+    }
+    setFindingOaFile(true)
+    setPaneError(selectedWorkId, 'files', '')
+    setStatus('')
+    try {
+      const payload = await linkPublicationOpenAccessPdf(token, selectedWorkId, { allowSuppressed: true })
+      if (user?.id) {
+        const attempted = loadPublicationsOaAutoAttempted(user.id)
+        attempted.add(selectedWorkId)
+        savePublicationsOaAutoAttempted(user.id, attempted)
+      }
+      if (!payload.file) {
+        setOaPdfStatusByWorkId((current) => ({
+          ...current,
+          [selectedWorkId]: {
+            status: 'missing',
+            downloadUrl: null,
+            fileName: null,
+            updatedAt: new Date().toISOString(),
+          },
+        }))
+        setPaneError(selectedWorkId, 'files', payload.message || 'No open-access PDF found.')
+        return
+      }
+
+      const linkedFile = payload.file
+      setFilesCacheByWorkId((current) => {
+        const existing = current[selectedWorkId]?.items || []
+        const existingById = new Map(existing.map((item) => [item.id, item]))
+        existingById.set(linkedFile.id, linkedFile)
+        const nextItems = Array.from(existingById.values()).sort(
+          (left, right) => Date.parse(String(right.created_at || '')) - Date.parse(String(left.created_at || '')),
+        )
+        return {
+          ...current,
+          [selectedWorkId]: {
+            items: nextItems,
+            has_deleted_oa_file: false,
+          },
+        }
+      })
+      invalidatePublicationPaperModelCache(selectedWorkId)
+      setOaPdfStatusByWorkId((current) => ({
+        ...current,
+        [selectedWorkId]: {
+          status: 'available',
+          downloadUrl: linkedFile.download_url || linkedFile.oa_url || null,
+          fileName: linkedFile.file_name || null,
+          updatedAt: new Date().toISOString(),
+        },
+      }))
+      setStatus(payload.message || (payload.created ? 'Open-access PDF added.' : 'Open-access PDF already linked.'))
+      await refreshFilesTab(selectedWorkId)
+    } catch (linkError) {
+      setPaneError(selectedWorkId, 'files', linkError instanceof Error ? linkError.message : 'Could not find an open-access PDF.')
+    } finally {
+      setFindingOaFile(false)
+    }
+  }
+
   const onUploadFiles = async (files: FileList | null) => {
     if (!token || !selectedWorkId || !files || files.length === 0) {
       return
@@ -4767,6 +6015,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             },
           }
         })
+        invalidatePublicationPaperModelCache(selectedWorkId)
         const preferred = uploadedFiles.find((item) => item.source === 'OA_LINK') || uploadedFiles[0]
         setOaPdfStatusByWorkId((current) => ({
           ...current,
@@ -4794,6 +6043,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!token || !selectedWorkId) {
       return
     }
+    const deletedFile = selectedFiles.find((file) => file.id === fileId) || null
     setDeletingFileId(fileId)
     setPaneError(selectedWorkId, 'files', '')
     try {
@@ -4803,8 +6053,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         ...current,
         [selectedWorkId]: {
           items: remainingFiles,
+          has_deleted_oa_file: current[selectedWorkId]?.has_deleted_oa_file || deletedFile?.source === 'OA_LINK',
         },
       }))
+      invalidatePublicationPaperModelCache(selectedWorkId)
       if (remainingFiles.length > 0) {
         const preferred = remainingFiles.find((file) => file.source === 'OA_LINK') || remainingFiles[0]
         setOaPdfStatusByWorkId((current) => ({
@@ -4826,6 +6078,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             updatedAt: new Date().toISOString(),
           },
         }))
+      }
+      if (deletedFile?.source === 'OA_LINK') {
+        setStatus('Open-access file removed. Use the retrieve icon to restore it.')
       }
       await refreshFilesTab(selectedWorkId)
     } catch (deleteError) {
@@ -4858,29 +6113,1017 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }
 
-  const publicationFileShareContext = (file: PublicationFilePayload): { label: string; url: string | null; body: string } => {
-    const label = (file.label || 'File').trim() || 'File'
+  const openPublicationFileMenuAtPosition = useCallback((fileId: string, x: number, y: number) => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const menuWidth = 244
+    const menuHeight = 360
+    setPublicationFileTagMenuState(null)
+    setPublicationFileTagEditorState(null)
+    setPublicationFileOtherLabelEditorState(null)
+    setPublicationFileMenuState({
+      fileId,
+      x: Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8)),
+      y: Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8)),
+    })
+  }, [])
+
+  const openPublicationFileTagMenuAtPosition = useCallback((fileId: string, x: number, y: number) => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const menuWidth = 176
+    const menuHeight = 136
+    setPublicationFileMenuState(null)
+    setPublicationFileTagEditorState(null)
+    setPublicationFileOtherLabelEditorState(null)
+    setPublicationFileTagMenuState({
+      fileId,
+      x: Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8)),
+      y: Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8)),
+    })
+  }, [])
+
+  const onOpenLinkedPublicationFile = useCallback((file: PublicationFilePayload) => {
+    const directUrl = resolvePublicationAssetUrl(publicationFileDirectUrl(file))
+    if (!directUrl) {
+      return
+    }
+    const link = document.createElement('a')
+    link.href = directUrl
+    link.target = '_blank'
+    link.rel = 'noreferrer'
+    if (file.file_name) {
+      link.setAttribute('download', file.file_name)
+    }
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }, [])
+
+  const onOpenPublicationFile = (file: PublicationFilePayload) => {
+    if (isLinkedPublicationFile(file) && publicationFileDirectUrl(file)) {
+      onOpenLinkedPublicationFile(file)
+      return
+    }
+    void onDownloadPublicationFile(file.id, file.file_name)
+  }
+
+  const onOpenPublicationReaderAsset = (
+    asset: PublicationPaperAssetPayload,
+  ) => {
+    const matchedFile = asset.file_id
+      ? selectedFiles.find((file) => file.id === asset.file_id) || null
+      : null
+    if (matchedFile) {
+      onOpenPublicationFile(matchedFile)
+      return
+    }
+    const directUrl = resolvePublicationAssetUrl(asset.download_url)
+    if (directUrl) {
+      const link = document.createElement('a')
+      link.href = directUrl
+      link.target = '_blank'
+      link.rel = 'noreferrer'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      return
+    }
+    const inlineNode = publicationReaderInlineAssetRefs.current[asset.id]
+    if (inlineNode) {
+      if (publicationReaderViewMode !== 'structured') {
+        setPublicationReaderViewMode('structured')
+        if (typeof window !== 'undefined') {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              inlineNode.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            })
+          })
+        }
+      } else {
+        inlineNode.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      return
+    }
+    const targetPage = resolvePublicationPaperSectionAnchorPage({
+      page_start: asset.page_start,
+      page_end: asset.page_end,
+    })
+    if (targetPage && selectedPaperPrimaryPdfContentFileId) {
+      setPublicationReaderPdfPage(targetPage)
+      setPublicationReaderViewMode('pdf')
+    }
+  }
+
+  const onSelectPublicationReaderNavigatorTarget = useCallback((target: PublicationReaderNavigatorTarget) => {
+    if (!target) {
+      return
+    }
+    if (target.kind === 'section') {
+      onSelectPublicationReaderSection(target.id)
+      return
+    }
+    const matchedAsset = selectedPaperAssetsById.get(target.id)
+    if (matchedAsset) {
+      onOpenPublicationReaderAsset(matchedAsset)
+    }
+  }, [onOpenPublicationReaderAsset, onSelectPublicationReaderSection, selectedPaperAssetsById])
+
+  const onOpenPublicationReaderPrimaryPdf = () => {
+    if (selectedPaperPrimaryFile) {
+      onOpenPublicationFile(selectedPaperPrimaryFile)
+      return
+    }
+    const directUrl = resolvePublicationAssetUrl(selectedPaperDocument?.primary_pdf_download_url)
+    if (!directUrl) {
+      return
+    }
+    const link = document.createElement('a')
+    link.href = directUrl
+    link.target = '_blank'
+    link.rel = 'noreferrer'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const onCancelRenamePublicationFile = useCallback(() => {
+    setRenamingPublicationFileId(null)
+    setPublicationFileRenameDraft('')
+    setSavingPublicationFileId(null)
+  }, [])
+
+  const onStartRenamePublicationFile = useCallback((file: PublicationFilePayload) => {
+    if (!selectedWorkId) {
+      return
+    }
+    if (!canRenamePublicationFile(file)) {
+      setPaneError(selectedWorkId, 'files', 'Only saved publication files can be renamed.')
+      return
+    }
+    setPublicationFileMenuState(null)
+    setPublicationFileTagMenuState(null)
+    setPublicationFileTagEditorState(null)
+    setPublicationFileOtherLabelEditorState(null)
+    setPaneError(selectedWorkId, 'files', '')
+    setStatus('')
+    setRenamingPublicationFileId(file.id)
+    setPublicationFileRenameDraft(file.file_name)
+  }, [selectedWorkId, setPaneError])
+
+  const onStartPublicationFileClassification = useCallback((file: PublicationFilePayload) => {
+    if (!selectedWorkId) {
+      return
+    }
+    if (!canClassifyPublicationFile(file)) {
+      setPaneError(selectedWorkId, 'files', 'Only saved publication files can be tagged.')
+      return
+    }
+    setPublicationFileMenuState(null)
+    setPublicationFileTagMenuState(null)
+    setPublicationFileOtherLabelEditorState(null)
+    setPaneError(selectedWorkId, 'files', '')
+    setStatus('')
+    setPublicationFileTagEditorState({
+      fileId: file.id,
+      open: true,
+      pendingClassification: file.classification ?? null,
+    })
+  }, [selectedWorkId, setPaneError])
+
+  const onStartPublicationFileOtherLabelEdit = useCallback((file: PublicationFilePayload) => {
+    if (!selectedWorkId) {
+      return
+    }
+    if (file.classification !== 'OTHER') {
+      setPaneError(selectedWorkId, 'files', 'Only files tagged as Other can use a custom label.')
+      return
+    }
+    setPublicationFileMenuState(null)
+    setPublicationFileTagMenuState(null)
+    setPublicationFileTagEditorState(null)
+    setPaneError(selectedWorkId, 'files', '')
+    setStatus('')
+    setPublicationFileOtherLabelEditorState({
+      fileId: file.id,
+      draft: String(file.classification_other_label || '').trim(),
+    })
+  }, [selectedWorkId, setPaneError])
+
+  const mergeUpdatedPublicationFileIntoCache = useCallback((workId: string, updated: PublicationFilePayload) => {
+    setFilesCacheByWorkId((current) => {
+      const existingPayload = current[workId] || null
+      const existingItems = existingPayload?.items || []
+      return {
+        ...current,
+        [workId]: {
+          ...existingPayload,
+          items: existingItems.map((item) => (item.id === updated.id ? updated : item)),
+        },
+      }
+    })
+    invalidatePublicationPaperModelCache(workId)
+  }, [invalidatePublicationPaperModelCache])
+
+  const onCancelPublicationFileOtherLabelEdit = useCallback(() => {
+    setPublicationFileOtherLabelEditorState(null)
+    setSavingPublicationFileId(null)
+  }, [])
+
+  const onSaveRenamePublicationFile = useCallback(async (file: PublicationFilePayload) => {
+    const nextFileName = String(publicationFileRenameDraft || '').trim()
+    if (!token || !selectedWorkId) {
+      return
+    }
+    if (!canRenamePublicationFile(file)) {
+      setPaneError(selectedWorkId, 'files', 'Only saved publication files can be renamed.')
+      return
+    }
+    if (!nextFileName) {
+      setPaneError(selectedWorkId, 'files', 'File name is required.')
+      return
+    }
+    if (nextFileName === file.file_name) {
+      onCancelRenamePublicationFile()
+      return
+    }
+
+    setPaneError(selectedWorkId, 'files', '')
+    setSavingPublicationFileId(file.id)
+    try {
+      const updated = await renamePublicationFile(token, selectedWorkId, file.id, nextFileName)
+      mergeUpdatedPublicationFileIntoCache(selectedWorkId, updated)
+      setOaPdfStatusByWorkId((current) => {
+        const currentStatus = current[selectedWorkId]
+        if (!currentStatus) {
+          return current
+        }
+        const previousUrl = publicationFileDirectUrl(file)
+        const nextUrl = publicationFileDirectUrl(updated)
+        if (currentStatus.fileName !== file.file_name && currentStatus.downloadUrl !== previousUrl) {
+          return current
+        }
+        return {
+          ...current,
+          [selectedWorkId]: {
+            ...currentStatus,
+            fileName: updated.file_name || currentStatus.fileName,
+            downloadUrl: nextUrl || currentStatus.downloadUrl,
+          },
+        }
+      })
+      setStatus(`Renamed to ${updated.file_name}.`)
+      onCancelRenamePublicationFile()
+    } catch (renameError) {
+      setPaneError(selectedWorkId, 'files', renameError instanceof Error ? renameError.message : 'Could not rename publication file.')
+    } finally {
+      setSavingPublicationFileId((current) => (current === file.id ? null : current))
+    }
+  }, [mergeUpdatedPublicationFileIntoCache, onCancelRenamePublicationFile, publicationFileRenameDraft, selectedWorkId, setPaneError, token])
+
+  const onSavePublicationFileOtherLabel = useCallback(async (file: PublicationFilePayload) => {
+    const nextOtherLabel = String(publicationFileOtherLabelEditorState?.draft || '').trim()
+    const currentOtherLabel = String(file.classification_other_label || '').trim()
+    if (!token || !selectedWorkId) {
+      return
+    }
+    if (file.classification !== 'OTHER') {
+      setPaneError(selectedWorkId, 'files', 'Only files tagged as Other can use a custom label.')
+      return
+    }
+    if (nextOtherLabel === currentOtherLabel) {
+      onCancelPublicationFileOtherLabelEdit()
+      return
+    }
+
+    setPaneError(selectedWorkId, 'files', '')
+    setSavingPublicationFileId(file.id)
+    try {
+      const updated = await updatePublicationFile(token, selectedWorkId, file.id, {
+        classificationOtherLabel: nextOtherLabel || null,
+      })
+      mergeUpdatedPublicationFileIntoCache(selectedWorkId, updated)
+      setStatus(updated.classification_label ? `Tag updated to ${updated.classification_label}.` : 'Tag updated.')
+      onCancelPublicationFileOtherLabelEdit()
+    } catch (otherLabelError) {
+      setPaneError(selectedWorkId, 'files', otherLabelError instanceof Error ? otherLabelError.message : 'Could not update tag label.')
+    } finally {
+      setSavingPublicationFileId((current) => (current === file.id ? null : current))
+    }
+  }, [mergeUpdatedPublicationFileIntoCache, onCancelPublicationFileOtherLabelEdit, publicationFileOtherLabelEditorState?.draft, selectedWorkId, setPaneError, token])
+
+  const onSetPublicationFileClassification = useCallback(async (
+    file: PublicationFilePayload,
+    classification: PublicationFileClassification,
+  ) => {
+    if (!token || !selectedWorkId) {
+      return
+    }
+    if (!canClassifyPublicationFile(file)) {
+      setPaneError(selectedWorkId, 'files', 'Only saved publication files can be tagged.')
+      return
+    }
+    if (file.classification === classification) {
+      setPublicationFileTagEditorState(null)
+      return
+    }
+
+    setPaneError(selectedWorkId, 'files', '')
+    setSavingPublicationFileId(file.id)
+    try {
+      const updated = await updatePublicationFile(token, selectedWorkId, file.id, { classification })
+      mergeUpdatedPublicationFileIntoCache(selectedWorkId, updated)
+      setStatus(`Tagged as ${updated.classification_label}.`)
+      setPublicationFileTagEditorState((current) => (current?.fileId === file.id ? null : current))
+      setPublicationFileOtherLabelEditorState(null)
+    } catch (classificationError) {
+      setPaneError(selectedWorkId, 'files', classificationError instanceof Error ? classificationError.message : 'Could not update file tag.')
+      setPublicationFileTagEditorState({
+        fileId: file.id,
+        open: true,
+        pendingClassification: file.classification ?? null,
+      })
+    } finally {
+      setSavingPublicationFileId((current) => (current === file.id ? null : current))
+    }
+  }, [mergeUpdatedPublicationFileIntoCache, selectedWorkId, setPaneError, token])
+
+  const onClearPublicationFileClassification = useCallback(async (file: PublicationFilePayload) => {
+    if (!token || !selectedWorkId) {
+      return
+    }
+    if (!canClassifyPublicationFile(file)) {
+      setPaneError(selectedWorkId, 'files', 'Only saved publication files can be tagged.')
+      return
+    }
+    if (!file.classification) {
+      setPublicationFileTagMenuState(null)
+      return
+    }
+
+    setPublicationFileTagMenuState(null)
+    setPublicationFileTagEditorState(null)
+    setPublicationFileOtherLabelEditorState(null)
+    setPaneError(selectedWorkId, 'files', '')
+    setSavingPublicationFileId(file.id)
+    try {
+      const updated = await updatePublicationFile(token, selectedWorkId, file.id, {
+        classification: null,
+        classificationOtherLabel: null,
+      })
+      mergeUpdatedPublicationFileIntoCache(selectedWorkId, updated)
+      setStatus('Tag removed.')
+    } catch (clearClassificationError) {
+      setPaneError(selectedWorkId, 'files', clearClassificationError instanceof Error ? clearClassificationError.message : 'Could not remove file tag.')
+    } finally {
+      setSavingPublicationFileId((current) => (current === file.id ? null : current))
+    }
+  }, [mergeUpdatedPublicationFileIntoCache, selectedWorkId, setPaneError, token])
+
+  const publicationFileShareContext = (file: PublicationFilePayload): { subject: string; url: string | null; body: string } => {
+    const fileName = (file.file_name || file.label || 'Publication file').trim() || 'Publication file'
     const publicationTitle = (selectedDetail?.title || selectedWork?.title || 'Publication').trim()
-    const directUrl = String(file.download_url || file.oa_url || '').trim() || null
+    const directUrl = publicationFileDirectUrl(file) || null
     const body = directUrl
-      ? `Publication: ${publicationTitle}\nFile: ${label}\nDownload: ${directUrl}`
-      : `Publication: ${publicationTitle}\nFile: ${label}\nOpen Publications > Files in Axiomos to access this file.`
-    return { label, url: directUrl, body }
+      ? `Publication: ${publicationTitle}\nFile: ${fileName}\nDownload link: ${directUrl}`
+      : `Publication: ${publicationTitle}\nFile: ${fileName}\nDownload the file from Publications > Files in Axiomos and attach it before sending.`
+    return { subject: fileName, url: directUrl, body }
   }
 
   const onSharePublicationFileEmail = (file: PublicationFilePayload, recipientEmail = '') => {
     const context = publicationFileShareContext(file)
-    const subject = encodeURIComponent(`${context.label} | ${selectedDetail?.title || selectedWork?.title || 'Publication'}`)
+    const subject = encodeURIComponent(context.subject)
     const mailto = `mailto:${encodeURIComponent(recipientEmail)}?subject=${subject}&body=${encodeURIComponent(context.body)}`
+    setStatus(
+      context.url
+        ? `Opened an email draft for ${context.subject}.`
+        : `Opened an email draft for ${context.subject}. Attach the downloaded file before sending.`,
+    )
     window.location.href = mailto
   }
 
-  const onSharePublicationFileWithUser = (file: PublicationFilePayload) => {
-    const recipient = (window.prompt('Enter collaborator email') || '').trim()
-    if (!recipient) {
-      return
+  const renderPublicationFileList = (files: PublicationFilePayload[], emptyMessage: string) => {
+    if (files.length === 0) {
+      return <p className="house-publications-drilldown-empty-state">{emptyMessage}</p>
     }
-    onSharePublicationFileEmail(file, recipient)
+    return (
+      <div className="house-publications-drilldown-file-list">
+        {files.map((file) => {
+          const fileLabel = (file.label || 'File').trim() || 'File'
+          const normalizedLabel = fileLabel.toLowerCase().replace(/\s+/g, ' ').trim()
+          const showFileLabel = normalizedLabel !== 'oa manuscript download'
+          const canOpenExternalFile = isLinkedPublicationFile(file) && Boolean(publicationFileDirectUrl(file))
+          const isRenamingFile = renamingPublicationFileId === file.id
+          const isSavingFile = savingPublicationFileId === file.id
+          const isSavingRename = isRenamingFile && isSavingFile
+          const isDeletingFile = deletingFileId === file.id
+          const isDownloadingFile = !canOpenExternalFile && downloadingFileId === file.id
+          const isFileBusy = isDeletingFile || isDownloadingFile || isSavingFile
+          const openFileLabel = canOpenExternalFile ? `Open ${file.file_name}` : `Download ${file.file_name}`
+          const persistedClassificationOption = publicationFileClassificationOption(file.classification)
+          const persistedClassificationLabel = String(file.classification_label || persistedClassificationOption?.label || '').trim()
+          const isEditingTagFile = publicationFileTagEditorState?.fileId === file.id
+          const isEditingOtherTagLabel = publicationFileOtherLabelEditorState?.fileId === file.id
+          const isTagMenuOpenForFile = publicationFileTagMenuState?.fileId === file.id
+          const currentOtherTagLabel = String(file.classification_other_label || '').trim()
+          const otherTagDraft = isEditingOtherTagLabel ? publicationFileOtherLabelEditorState?.draft || '' : ''
+          const isSavingOtherTagLabel = isEditingOtherTagLabel && isSavingFile
+          const classificationControlValue = isEditingTagFile
+            ? publicationFileTagEditorState.pendingClassification
+            : file.classification ?? null
+          const classificationControlOption = publicationFileClassificationOption(classificationControlValue)
+          const classificationControlLabel = String(
+            (isEditingTagFile
+              ? classificationControlOption?.label
+              : file.classification_label || classificationControlOption?.label) || '',
+          ).trim()
+          const showClassificationEditor = canClassifyPublicationFile(file) && isEditingTagFile
+          const showPersistedClassificationBadge = Boolean(persistedClassificationLabel) && !isEditingTagFile && !isEditingOtherTagLabel
+          return (
+            <div
+              key={file.id}
+              className={cn(
+                'house-publications-drilldown-file-entry house-publications-drilldown-file-entry-menuable',
+                HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS,
+                isRenamingFile ? 'space-y-3' : 'space-y-2',
+              )}
+              onContextMenu={(event) => {
+                if (isRenamingFile || isEditingTagFile || isEditingOtherTagLabel) {
+                  return
+                }
+                event.preventDefault()
+                openPublicationFileMenuAtPosition(file.id, event.clientX, event.clientY)
+              }}
+            >
+              {showFileLabel ? <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>{fileLabel}</p> : null}
+              {isRenamingFile ? (
+                <div className="house-publications-drilldown-file-rename-shell">
+                  <Input
+                    value={publicationFileRenameDraft}
+                    onChange={(event) => setPublicationFileRenameDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        void onSaveRenamePublicationFile(file)
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        onCancelRenamePublicationFile()
+                      }
+                    }}
+                    className={cn('house-publications-drilldown-file-rename-input h-9', HOUSE_INPUT_CLASS)}
+                    disabled={isSavingRename}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    className="house-collaborator-action-icon house-collaborator-action-icon-save"
+                    onClick={() => void onSaveRenamePublicationFile(file)}
+                    disabled={isSavingRename || !String(publicationFileRenameDraft || '').trim() || String(publicationFileRenameDraft || '').trim() === file.file_name.trim()}
+                    aria-label={`Save rename for ${file.file_name}`}
+                  >
+                    {isSavingRename ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    className="house-collaborator-action-icon house-collaborator-action-icon-discard"
+                    onClick={onCancelRenamePublicationFile}
+                    disabled={isSavingRename}
+                    aria-label="Cancel rename"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="group/file-row flex items-start gap-3 rounded-md px-1.5 py-1.5 transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] focus-within:bg-[hsl(var(--tone-neutral-50))]">
+                  <div className="flex min-w-0 flex-1 items-start gap-2">
+                    <button
+                      type="button"
+                      className={cn(
+                        'min-w-0 flex-1 rounded-sm bg-transparent p-0 text-left text-[hsl(var(--tone-neutral-900))] transition-[color] duration-[var(--motion-duration-ui)] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-[hsl(var(--tone-neutral-500))]',
+                        !isFileBusy && 'cursor-pointer',
+                      )}
+                      onClick={() => onOpenPublicationFile(file)}
+                      disabled={isFileBusy}
+                      aria-label={openFileLabel}
+                    >
+                      <span
+                        className={cn(
+                          `house-publications-drilldown-file-name ${HOUSE_PUBLICATION_TEXT_CLASS}`,
+                          'min-w-0 transition-colors duration-[var(--motion-duration-ui)] ease-out',
+                          !isFileBusy && 'group-hover/file-row:text-[hsl(var(--tone-accent-700))] group-focus-within/file-row:text-[hsl(var(--tone-accent-700))]',
+                        )}
+                      >
+                        {file.file_name}
+                      </span>
+                    </button>
+                    {showPersistedClassificationBadge ? (
+                      <button
+                        type="button"
+                        className="group/member-badge inline-flex shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        aria-label={`Tag options for ${file.file_name}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          if (isTagMenuOpenForFile) {
+                            setPublicationFileTagMenuState(null)
+                            return
+                          }
+                          const rect = event.currentTarget.getBoundingClientRect()
+                          openPublicationFileTagMenuAtPosition(file.id, rect.left, rect.bottom + 6)
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter' && event.key !== ' ') {
+                            return
+                          }
+                          event.preventDefault()
+                          event.stopPropagation()
+                          if (isTagMenuOpenForFile) {
+                            setPublicationFileTagMenuState(null)
+                            return
+                          }
+                          const rect = event.currentTarget.getBoundingClientRect()
+                          openPublicationFileTagMenuAtPosition(file.id, rect.left, rect.bottom + 6)
+                        }}
+                        disabled={isFileBusy}
+                      >
+                        <Badge
+                          size="sm"
+                          variant="outline"
+                          className={cn(
+                            'shrink-0 self-start whitespace-nowrap transition-[transform,box-shadow] duration-[var(--motion-duration-ui)] ease-out hover:-translate-y-px hover:shadow-[0_2px_8px_hsl(var(--foreground)/0.08)]',
+                            persistedClassificationOption?.badgeClassName,
+                          )}
+                        >
+                          <span>{persistedClassificationLabel}</span>
+                          <ChevronDown
+                            className={cn(
+                              'ml-1 h-3 w-3 transition-[opacity,transform] duration-[var(--motion-duration-ui)] ease-out group-hover/member-badge:translate-y-px',
+                              isTagMenuOpenForFile
+                                ? 'opacity-80'
+                                : 'opacity-45 group-hover/member-badge:opacity-80',
+                            )}
+                          />
+                        </Badge>
+                      </button>
+                    ) : null}
+                    {isEditingOtherTagLabel ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Input
+                          value={otherTagDraft}
+                          onChange={(event) => setPublicationFileOtherLabelEditorState((current) => (current?.fileId === file.id
+                            ? {
+                                ...current,
+                                draft: event.target.value,
+                              }
+                            : current))}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault()
+                              void onSavePublicationFileOtherLabel(file)
+                            } else if (event.key === 'Escape') {
+                              event.preventDefault()
+                              onCancelPublicationFileOtherLabelEdit()
+                            }
+                          }}
+                          placeholder="Custom label"
+                          className={cn('h-8 w-[10rem] rounded-sm px-2 text-xs', HOUSE_INPUT_CLASS)}
+                          disabled={isSavingOtherTagLabel}
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          className="house-collaborator-action-icon house-collaborator-action-icon-save"
+                          onClick={() => void onSavePublicationFileOtherLabel(file)}
+                          disabled={isSavingOtherTagLabel || String(otherTagDraft).trim() === currentOtherTagLabel}
+                          aria-label={`Save custom Other label for ${file.file_name}`}
+                        >
+                          {isSavingOtherTagLabel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        </button>
+                        <button
+                          type="button"
+                          className="house-collaborator-action-icon house-collaborator-action-icon-discard"
+                          onClick={onCancelPublicationFileOtherLabelEdit}
+                          disabled={isSavingOtherTagLabel}
+                          aria-label="Cancel custom tag label edit"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : null}
+                    {showClassificationEditor ? (
+                      <SelectPrimitive
+                        value={classificationControlValue ?? undefined}
+                        open={isEditingTagFile ? publicationFileTagEditorState.open : false}
+                        disabled={isFileBusy}
+                        onOpenChange={(open) => {
+                          if (isFileBusy) {
+                            return
+                          }
+                          setPublicationFileTagEditorState((current) => {
+                            if (open) {
+                              return {
+                                fileId: file.id,
+                                open: true,
+                                pendingClassification: current?.fileId === file.id
+                                  ? current.pendingClassification
+                                  : file.classification ?? null,
+                              }
+                            }
+                            if (!current || current.fileId !== file.id) {
+                              return current
+                            }
+                            return {
+                              ...current,
+                              open: false,
+                            }
+                          })
+                        }}
+                        onValueChange={(value) => {
+                          const nextClassification = value as PublicationFileClassification
+                          setPublicationFileTagEditorState((current) => (current?.fileId === file.id
+                            ? {
+                                ...current,
+                                pendingClassification: nextClassification,
+                              }
+                            : current))
+                          void onSetPublicationFileClassification(file, nextClassification)
+                        }}
+                      >
+                        <SelectTrigger
+                          aria-label={classificationControlLabel ? `Change tag for ${file.file_name}` : `Select tag for ${file.file_name}`}
+                          className={cn(
+                            '!h-5 !min-h-5 w-auto max-w-[14rem] shrink-0 gap-1 rounded-sm px-2 py-0.5 text-xs font-normal leading-none shadow-none ring-offset-0',
+                            classificationControlOption?.badgeClassName || 'border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--tone-neutral-25))] text-[hsl(var(--tone-neutral-500))]',
+                            !classificationControlValue && 'data-[placeholder]:text-[hsl(var(--tone-neutral-500))]',
+                          )}
+                        >
+                          <span className="max-w-[10rem] truncate">
+                            <SelectValue placeholder="Select tag" />
+                          </span>
+                        </SelectTrigger>
+                        <SelectContent className="min-w-[12rem]">
+                          {PUBLICATION_FILE_CLASSIFICATION_OPTIONS.map((option) => (
+                            <SelectItem key={`publication-file-classification-${option.value}`} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </SelectPrimitive>
+                    ) : null}
+                    {isDownloadingFile ? (
+                      <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-[hsl(var(--tone-neutral-500))]" strokeWidth={2.1} />
+                    ) : null}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="house"
+                    size="icon"
+                    className={cn(
+                      'h-8 w-8 shrink-0 house-publications-toolbox-item transition-[opacity,transform] duration-[var(--motion-duration-ui)] ease-out',
+                      isDeletingFile || isSavingFile
+                        ? 'pointer-events-auto opacity-100'
+                        : 'pointer-events-none translate-x-1 opacity-0 group-hover/file-row:pointer-events-auto group-hover/file-row:translate-x-0 group-hover/file-row:opacity-100 group-focus-within/file-row:pointer-events-auto group-focus-within/file-row:translate-x-0 group-focus-within/file-row:opacity-100',
+                    )}
+                    aria-label={`More actions for ${file.file_name}`}
+                    disabled={isDeletingFile || isSavingFile}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      const rect = event.currentTarget.getBoundingClientRect()
+                      openPublicationFileMenuAtPosition(file.id, rect.right - 8, rect.bottom + 6)
+                    }}
+                  >
+                    {isDeletingFile || isSavingFile ? (
+                      <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.1} />
+                    ) : (
+                      <Ellipsis className="h-4 w-4" strokeWidth={2.1} />
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const shouldKeepPublicationDrilldownOpen = useCallback((target: EventTarget | null) => {
+    return target instanceof Element
+      && Boolean(
+        target.closest('[data-ui="publication-file-menu-overlay"]')
+        || target.closest('[data-ui="publication-file-tag-menu-overlay"]')
+        || target.closest('[data-ui="publication-paper-reader-overlay"]')
+        || target.closest('[data-ui="publication-paper-reader-shell"]')
+        || target.closest('[data-ui="select-primitive-content"]'),
+      )
+  }, [])
+
+  const renderPublicationReaderAssetGroup = (
+    items: PublicationPaperAssetPayload[],
+    emptyMessage: string,
+  ) => {
+    if (items.length === 0) {
+      return <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">{emptyMessage}</p>
+    }
+    return (
+      <div className="space-y-3">
+        {items.map((asset) => (
+          <div
+            key={asset.id}
+            className="overflow-hidden rounded-xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] transition-[border-color,background-color] duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))]"
+          >
+            <button
+              type="button"
+              className="flex w-full items-start justify-between gap-3 px-3 py-2 text-left"
+              onClick={() => onOpenPublicationReaderAsset(asset)}
+            >
+              <div className="min-w-0">
+                <p className="line-clamp-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">{asset.title || asset.file_name}</p>
+                <p className="mt-1 text-[0.72rem] uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                  {asset.source === 'PARSED'
+                    ? `${formatPublicationPaperSectionKindLabel(asset.asset_kind)} · GROBID`
+                    : asset.source === 'OA_LINK'
+                      ? 'Open access'
+                      : asset.source === 'SUPPLEMENTARY_LINK'
+                        ? 'Supplementary'
+                        : 'Saved file'}
+                </p>
+                {asset.caption ? (
+                  <p className="mt-1 line-clamp-3 text-[0.82rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                    {asset.caption}
+                  </p>
+                ) : null}
+                {formatPublicationPaperSectionPageLabel({ page_start: asset.page_start, page_end: asset.page_end }) ? (
+                  <p className="mt-1 text-[0.72rem] text-[hsl(var(--tone-neutral-500))]">
+                    {formatPublicationPaperSectionPageLabel({ page_start: asset.page_start, page_end: asset.page_end })}
+                  </p>
+                ) : null}
+              </div>
+              {asset.classification_label ? (
+                <Badge
+                  size="sm"
+                  variant="outline"
+                  className={cn(
+                    'shrink-0 whitespace-nowrap',
+                    publicationFileClassificationOption(asset.classification)?.badgeClassName
+                      || 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]',
+                  )}
+                >
+                  {asset.classification_label}
+                </Badge>
+              ) : null}
+            </button>
+            {asset.image_data ? (
+              <div className="border-t border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-2">
+                <img
+                  src={asset.image_data}
+                  alt={asset.title || asset.file_name || 'Figure'}
+                  className="max-h-[280px] w-full rounded-md object-contain"
+                  loading="lazy"
+                />
+              </div>
+            ) : null}
+            {asset.structured_html ? (
+              <div className="border-t border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-2">
+                <div
+                  className="publication-structured-table max-h-[320px] overflow-auto text-[0.78rem] leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: asset.structured_html }}
+                />
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const renderPublicationReaderStructuredSection = (
+    section: PublicationPaperSectionPayload,
+    depth = 0,
+    groupKey: string | null = null,
+  ): ReactNode => {
+    const childSections = selectedPaperSectionChildrenByParent.get(section.id) || []
+    const isActiveSection = publicationReaderActiveSectionId === section.id
+    const sectionParagraphs = splitLongTextIntoParagraphs(section.content, 800)
+    const sectionGroupKey = groupKey || selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null
+    const sectionToneClassName = getPublicationReaderGroupToneClass(sectionGroupKey)
+    const isMajorHeading = depth === 0 && publicationReaderSectionMatchesGroupLabel(section, sectionGroupKey || '')
+    const isSummaryBox = String(section.section_role || '') === 'summary_box' && depth === 0
+    const showMarker = isMajorHeading
+    const rawLabelRedundant = !section.raw_label
+      || section.raw_label === section.title
+      || section.raw_label.trim().toLowerCase() === (section.title || '').trim().toLowerCase()
+
+    const sectionContent = (
+      <>
+        <div className={cn('flex min-w-0 items-start', showMarker ? 'gap-3' : 'gap-0')}>
+          {showMarker ? (
+            <span
+              className={cn(
+                'mt-1 shrink-0 rounded-full opacity-90',
+                'h-5 w-[0.22rem]',
+                sectionToneClassName,
+              )}
+            />
+          ) : null}
+          <div className={cn('min-w-0 flex-1', showMarker ? '' : depth > 0 ? '' : '')}>
+            <h3
+              className={cn(
+                'leading-tight transition-colors duration-[var(--motion-duration-ui)] ease-out',
+                isSummaryBox
+                  ? 'text-[0.82rem] font-semibold uppercase tracking-[0.04em]'
+                  : depth === 0
+                    ? 'text-[1.05rem] font-semibold'
+                    : depth === 1
+                      ? 'text-[0.94rem] font-medium'
+                      : 'text-[0.88rem] font-medium',
+                isActiveSection
+                  ? 'text-[hsl(var(--tone-accent-800))]'
+                  : isSummaryBox
+                    ? 'text-[hsl(var(--tone-neutral-600))]'
+                    : depth === 0
+                      ? 'text-[hsl(var(--tone-neutral-900))]'
+                      : 'text-[hsl(var(--tone-neutral-800))]',
+              )}
+            >
+              {section.title}
+            </h3>
+            {!rawLabelRedundant ? (
+              <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">
+                {section.raw_label}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        {sectionParagraphs.length > 0 ? (
+          <div className={cn('mt-3 space-y-3', showMarker ? 'pl-[0.95rem]' : '')}>
+            {sectionParagraphs.map((paragraph, paragraphIndex) => (
+              <p key={`${section.id}-paragraph-${paragraphIndex}`} className={cn('leading-[1.85]', isSummaryBox ? 'text-[0.9rem] text-[hsl(var(--tone-neutral-700))]' : 'text-[0.96rem] text-[hsl(var(--tone-neutral-800))]')}>
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        ) : null}
+        {(selectedPaperInlineAssetsBySectionId.get(section.id) || []).length > 0 ? (
+          <div className={cn('mt-4 space-y-4', showMarker ? 'pl-[0.95rem]' : '')}>
+            {(selectedPaperInlineAssetsBySectionId.get(section.id) || []).map((inlineAsset) => (
+              <div
+                key={`inline-${inlineAsset.id}`}
+                ref={(node) => { publicationReaderInlineAssetRefs.current[inlineAsset.id] = node }}
+                className="overflow-hidden rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-white shadow-[0_2px_8px_hsl(var(--tone-neutral-900)/0.04)]"
+              >
+                <div className={cn(
+                  'flex items-center gap-2 px-3 py-2',
+                  inlineAsset.asset_kind === 'table'
+                    ? 'border-l-[3px] border-l-[hsl(var(--tone-accent-400))]'
+                    : 'border-l-[3px] border-l-[hsl(var(--tone-positive-400))]',
+                )}>
+                  <p className="text-[0.82rem] font-semibold text-[hsl(var(--tone-neutral-800))]">
+                    {inlineAsset.title || inlineAsset.file_name}
+                  </p>
+                  {formatPublicationPaperSectionPageLabel({ page_start: inlineAsset.page_start, page_end: inlineAsset.page_end }) ? (
+                    <span className="shrink-0 text-[0.68rem] text-[hsl(var(--tone-neutral-400))]">
+                      {formatPublicationPaperSectionPageLabel({ page_start: inlineAsset.page_start, page_end: inlineAsset.page_end })}
+                    </span>
+                  ) : null}
+                </div>
+                {inlineAsset.image_data ? (
+                  <div className="border-t border-[hsl(var(--tone-neutral-100))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
+                    <img
+                      src={inlineAsset.image_data}
+                      alt={inlineAsset.title || inlineAsset.file_name || 'Figure'}
+                      className="max-h-[400px] w-full rounded object-contain"
+                      loading="lazy"
+                    />
+                  </div>
+                ) : null}
+                {inlineAsset.structured_html ? (
+                  <div className="border-t border-[hsl(var(--tone-neutral-100))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
+                    <div
+                      className="publication-structured-table overflow-auto text-[0.78rem] leading-relaxed"
+                      dangerouslySetInnerHTML={{ __html: inlineAsset.structured_html }}
+                    />
+                  </div>
+                ) : null}
+                {inlineAsset.caption ? (
+                  <div className="border-t border-[hsl(var(--tone-neutral-100))] px-3 py-2">
+                    <p className="text-[0.78rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                      {inlineAsset.caption}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {childSections.length > 0 ? (
+          <div className={cn('mt-5 space-y-5', depth === 0 ? 'pl-4' : 'pl-3')}>
+            {childSections.map((childSection) => renderPublicationReaderStructuredSection(childSection, depth + 1, sectionGroupKey))}
+          </div>
+        ) : null}
+      </>
+    )
+
+    return (
+      <section
+        key={section.id}
+        ref={(node) => {
+          publicationReaderSectionRefs.current[section.id] = node
+        }}
+        className={cn('scroll-mt-6', isSummaryBox && 'rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-4 py-3.5')}
+      >
+        {sectionContent}
+      </section>
+    )
+  }
+
+  const renderPublicationReaderNavigator = (): ReactNode => {
+    if (selectedPublicationReaderNavigatorGroups.length === 0) {
+      return (
+        <p className="px-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">
+          Structured navigation will appear here as the manuscript model fills in.
+        </p>
+      )
+    }
+
+    return (
+      <div className="space-y-2.5">
+        {selectedPublicationReaderNavigatorGroups.map((group) => {
+          const isCollapsed = group.items.length > 0 && (publicationReaderCollapsedNodeIds[group.id] ?? true)
+          return (
+            <section key={group.id} className="space-y-1.5">
+              <div
+                className={cn(
+                  'rounded-[0.95rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-2.5 py-1.5 transition-[background-color,border-color,box-shadow,transform] duration-[var(--motion-duration-ui)] ease-out',
+                  group.isActive
+                    ? 'translate-y-[-1px] border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] shadow-[0_10px_24px_hsl(var(--tone-neutral-900)/0.04)]'
+                    : 'hover:border-[hsl(var(--tone-neutral-250))] hover:bg-[hsl(var(--tone-neutral-50)/0.55)]',
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      'h-6 w-[0.22rem] shrink-0 rounded-full transition-[transform,opacity] duration-[var(--motion-duration-ui)] ease-out',
+                      group.toneClassName,
+                      group.isActive ? 'opacity-100' : 'opacity-75',
+                    )}
+                  />
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 rounded-md bg-transparent text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
+                    onClick={() => onSelectPublicationReaderNavigatorTarget(group.target)}
+                    disabled={!group.target}
+                  >
+                    <span className={cn(houseNavigation.sectionLabel, 'truncate text-[0.66rem] tracking-[0.12em]')}>
+                      {group.label}
+                    </span>
+                  </button>
+                  {group.items.length > 0 ? (
+                    <button
+                      type="button"
+                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-500))] transition-[background-color,color,transform] duration-[var(--motion-duration-ui)] ease-out hover:bg-white hover:text-[hsl(var(--tone-neutral-800))]"
+                      onClick={() => onTogglePublicationReaderOutlineNode(group.id)}
+                      aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.label}`}
+                    >
+                      <ChevronDown
+                        className={cn(
+                          'h-3.5 w-3.5 transition-transform duration-[var(--motion-duration-ui)] ease-out',
+                          isCollapsed ? '-rotate-90' : 'rotate-0',
+                        )}
+                      />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {group.items.length > 0 && !isCollapsed ? (
+                <div className="ml-2 space-y-0.5 border-l border-[hsl(var(--tone-neutral-200))] pl-3">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={cn(
+                        houseNavigation.item,
+                        'w-full rounded-[0.85rem] border border-transparent bg-transparent px-2.5 py-2 text-left shadow-none',
+                        item.isActive && houseNavigation.itemActive,
+                      )}
+                      style={{ paddingLeft: `${0.75 + (item.indent * 0.8)}rem` }}
+                      onClick={() => onSelectPublicationReaderNavigatorTarget(item.target)}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className={cn(houseNavigation.itemLabel, 'text-[0.84rem]', item.indent > 1 && 'text-[0.8rem]')}>
+                          {item.label}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          )
+        })}
+      </div>
+    )
   }
 
   return (
@@ -4897,6 +7140,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <PublicationsTopStrip
           metrics={topMetricsResponse}
+          personaJournals={personaJournals}
           loading={
             !topMetricsResponse
             || (topMetricsResponse.status === 'RUNNING' && (topMetricsResponse.tiles || []).length === 0)
@@ -4912,52 +7156,45 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       <Section className={cn(HOUSE_SECTION_ANCHOR_CLASS)} surface="transparent" inset="none" spaceY="none">
         <SectionHeader
           heading="Publication library"
-          className="house-publications-toolbar-header house-publications-library-toolbar-header"
-          actions={(
-            <div className="ml-auto flex h-8 w-full items-center justify-end gap-1 overflow-visible self-center md:w-auto">
-            <div className="order-0 inline-flex h-8 shrink-0 items-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-0.5 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
-              {([
-                { value: 'publications', label: 'My publications' },
-                { value: 'journals', label: 'My journals' },
-              ] as Array<{ value: PublicationLibraryViewMode; label: string }>).map((option) => {
-                const active = publicationLibraryViewMode === option.value
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={cn(
-                      'inline-flex h-6 items-center rounded-full px-3 text-[0.68rem] font-semibold tracking-[0.04em] transition-colors',
-                      active
-                        ? 'bg-[hsl(var(--foreground))] text-[hsl(var(--background))]'
-                        : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]',
-                    )}
-                    aria-pressed={active}
-                    onClick={() => {
-                      setPublicationLibraryViewMode(option.value)
-                      setPublicationLibraryPage(1)
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                )
-              })}
-            </div>
-            {publicationLibraryVisible && publicationLibraryViewMode === 'journals' ? (
-              <button
-                type="button"
-                className={cn(
-                  'order-1 inline-flex h-8 items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--foreground))] shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition-colors hover:border-[hsl(var(--foreground))]',
-                  refreshingJournalIntel && 'pointer-events-none opacity-70',
-                )}
-                onClick={() => {
-                  void onRefreshJournalIntel()
-                }}
-                aria-label="Refresh missing and stale journal intelligence"
+          headingAccessory={(
+            <div className="house-approved-toggle-context inline-flex items-center">
+              <div
+                className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'overflow-hidden')}
+                data-ui="publication-library-view-toggle"
+                data-house-role="chart-toggle"
+                style={{ width: '15.25rem', minWidth: '15.25rem', maxWidth: '15.25rem', gridTemplateColumns: '1fr 1fr' }}
               >
-                {refreshingJournalIntel ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.1} /> : null}
-                <span>{refreshingJournalIntel ? 'Refreshing...' : 'Refresh stale journal intel'}</span>
-              </button>
-            ) : null}
+                {([
+                  { value: 'publications', label: 'My publications' },
+                  { value: 'journals', label: 'My journals' },
+                ] as Array<{ value: PublicationLibraryViewMode; label: string }>).map((option) => {
+                  const active = publicationLibraryViewMode === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={cn(
+                        HOUSE_TOGGLE_BUTTON_CLASS,
+                        'relative z-[1] min-w-0 px-3 text-center',
+                        option.value === 'publications' ? '!rounded-l-full !rounded-r-none' : '!rounded-l-none !rounded-r-full',
+                        active ? 'bg-foreground text-background shadow-sm' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                      )}
+                      aria-pressed={active}
+                      onClick={() => {
+                        setPublicationLibraryViewMode(option.value)
+                        setPublicationLibraryPage(1)
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+          className="house-publications-toolbar-header house-publications-library-toolbar-header [&_[data-house-role=section-header-content]]:md:items-center"
+          actions={(
+            <div className="flex min-w-[13.75rem] items-center justify-end gap-1 overflow-visible self-center">
             <SectionTools tone="publications" framed={false} className="order-2">
             {publicationLibraryVisible ? (
               <div className="relative order-1 shrink-0">
@@ -5134,7 +7371,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 publicationLibraryVisible && publicationLibraryViewMode === 'publications' && publicationLibraryToolsOpen
                   ? 'z-30 max-w-[20rem] translate-x-0 opacity-100'
                   : 'pointer-events-none z-0 max-w-0 translate-x-1 opacity-0',
-              )}
+                )}
               aria-hidden={!publicationLibraryVisible || publicationLibraryViewMode !== 'publications' || !publicationLibraryToolsOpen}
             >
               <div className="flex min-w-0 flex-nowrap whitespace-nowrap gap-1">
@@ -5411,37 +7648,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     </div>
                     <details className="house-publications-filter-group" open>
                       <summary className="house-publications-filter-summary">
-                        <span>Columns</span>
-                        <span className="house-publications-filter-count">
-                          {visiblePublicationTableColumns.length}/{PUBLICATION_TABLE_COLUMN_ORDER.length}
-                        </span>
-                      </summary>
-                      <div className="house-publications-filter-options">
-                        {publicationTableColumnOrder.map((columnKey) => {
-                          const checked = publicationTableColumns[columnKey].visible
-                          const visibleCount = visiblePublicationTableColumns.length
-                          const disableToggle = checked && visibleCount <= 1
-                          const label = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey].label
-                          return (
-                            <label
-                              key={`publication-column-visibility-${columnKey}`}
-                              className={cn('house-publications-filter-option', disableToggle && 'opacity-60')}
-                            >
-                              <input
-                                type="checkbox"
-                                className="house-publications-filter-checkbox"
-                                checked={checked}
-                                disabled={disableToggle}
-                                onChange={() => onTogglePublicationColumnVisibility(columnKey)}
-                              />
-                              <span className="house-publications-filter-option-label">{label}</span>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </details>
-                    <details className="house-publications-filter-group" open>
-                      <summary className="house-publications-filter-summary">
                         <span>Visuals</span>
                         <span className="house-publications-filter-count">
                           {(publicationTableAlternateRowColoring ? 1 : 0) + (publicationTableMetricHighlights ? 1 : 0) + (publicationTableAttachmentStatusVisible ? 1 : 0)}/3
@@ -5564,7 +7770,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               )}
             </button>
             </SectionTools>
-          </div>
+            </div>
           )}
         />
         {publicationLibraryVisible ? (
@@ -5595,14 +7801,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 <div className="w-full house-table-context-profile">
                   <Table
                     className={cn(
-                      'w-full table-fixed',
+                      'min-w-[72rem] w-full table-auto',
                       publicationTableDensity === 'compact' && 'house-publications-table-density-compact',
                       publicationTableDensity === 'comfortable' && 'house-publications-table-density-comfortable',
                     )}
+                    data-house-no-column-resize="true"
+                    data-house-no-column-controls="true"
                   >
                     <TableHeader className="house-table-head text-left">
                       <TableRow style={{ backgroundColor: 'transparent' }}>
-                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} border-r border-[hsl(var(--border))] pr-4 text-left`}>
                           <SortHeader
                             label="Journal"
                             column="journal"
@@ -5612,73 +7820,93 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             onSort={(column) => onSortJournalColumn(column as JournalSortField)}
                           />
                         </TableHead>
-                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} w-[1%] whitespace-nowrap text-center`}>
                           <SortHeader
                             label="Count"
                             column="publication_count"
                             sortField={journalSortField}
                             sortDirection={journalSortDirection}
-                            align="left"
+                            align="center"
                             onSort={(column) => onSortJournalColumn(column as JournalSortField)}
                           />
                         </TableHead>
-                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} w-[1%] whitespace-nowrap text-center`}>
                           <SortHeader
                             label="Share"
                             column="share_pct"
                             sortField={journalSortField}
                             sortDirection={journalSortDirection}
-                            align="left"
+                            align="center"
                             onSort={(column) => onSortJournalColumn(column as JournalSortField)}
                           />
                         </TableHead>
-                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} w-[6.75rem] text-center`}>
                           <SortHeader
-                            label="Avg cites"
+                            label={<span className="inline-flex flex-col"><span>Average</span><span>citations</span></span>}
                             column="avg_citations"
                             sortField={journalSortField}
                             sortDirection={journalSortDirection}
-                            align="left"
+                            align="center"
                             onSort={(column) => onSortJournalColumn(column as JournalSortField)}
                           />
                         </TableHead>
-                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} w-[6.75rem] text-center`}>
                           <SortHeader
-                            label="Median cites"
+                            label={<span className="inline-flex flex-col"><span>Median</span><span>citations</span></span>}
                             column="median_citations"
                             sortField={journalSortField}
                             sortDirection={journalSortDirection}
-                            align="left"
+                            align="center"
                             onSort={(column) => onSortJournalColumn(column as JournalSortField)}
                           />
                         </TableHead>
-                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} w-[7.75rem] border-l border-[hsl(var(--border))] pl-4 text-center`}>
                           <SortHeader
-                            label="2yr citedness"
-                            column="journal_metric"
-                            sortField={journalSortField}
-                            sortDirection={journalSortDirection}
-                            align="left"
-                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
-                          />
-                        </TableHead>
-                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
-                          <SortHeader
-                            label="Impact factor"
+                            label={<span className="inline-flex flex-col"><span>Impact</span><span>factor</span></span>}
                             column="impact_factor"
                             sortField={journalSortField}
                             sortDirection={journalSortDirection}
-                            align="left"
+                            align="center"
                             onSort={(column) => onSortJournalColumn(column as JournalSortField)}
                           />
                         </TableHead>
-                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} w-[7.5rem] text-center`}>
                           <SortHeader
-                            label="OA"
+                            label={<span className="inline-flex flex-col"><span>5 year</span><span>IF</span></span>}
+                            column="five_year_impact_factor"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="center"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} w-[8.5rem] text-center`}>
+                          <SortHeader
+                            label={<span className="inline-flex flex-col"><span>Citation</span><span>indicator</span></span>}
+                            column="journal_citation_indicator"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="center"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} w-[6.5rem] text-center`}>
+                          <SortHeader
+                            label={<span className="inline-flex flex-col"><span>Cited</span><span>half-life</span></span>}
+                            column="cited_half_life"
+                            sortField={journalSortField}
+                            sortDirection={journalSortDirection}
+                            align="center"
+                            onSort={(column) => onSortJournalColumn(column as JournalSortField)}
+                          />
+                        </TableHead>
+                        <TableHead className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} w-[6rem] text-center`}>
+                          <SortHeader
+                            label={<span className="inline-flex flex-col"><span>Open</span><span>access</span></span>}
                             column="is_oa"
                             sortField={journalSortField}
                             sortDirection={journalSortDirection}
-                            align="left"
+                            align="center"
                             onSort={(column) => onSortJournalColumn(column as JournalSortField)}
                           />
                         </TableHead>
@@ -5692,7 +7920,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             publicationTableAlternateRowColoring && 'odd:bg-[hsl(var(--tone-neutral-50))] even:bg-[hsl(var(--tone-neutral-100))]',
                           )}
                         >
-                          <TableCell className={`align-top font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS}`}>
+                          <TableCell className={`align-top border-r border-[hsl(var(--border))] pr-4 font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS}`}>
                             <div className="grid gap-1">
                               <span className="min-w-0 whitespace-normal break-words leading-tight">
                                 {formatJournalName(journal.display_name) || 'n/a'}
@@ -5704,46 +7932,34 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               ) : null}
                             </div>
                           </TableCell>
-                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} whitespace-nowrap align-top text-center`}>
                             {journal.publication_count}
                           </TableCell>
-                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} whitespace-nowrap align-top text-center`}>
                             {journal.share_pct.toFixed(1)}%
                           </TableCell>
-                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} whitespace-nowrap align-top text-center`}>
                             {journal.avg_citations.toFixed(1)}
                           </TableCell>
-                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} whitespace-nowrap align-top text-center`}>
                             {journal.median_citations.toFixed(1)}
                           </TableCell>
-                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
-                            <div className="grid gap-1">
-                              <span>
-                                {journal.journal_metric_value == null ? 'n/a' : journal.journal_metric_value.toFixed(2)}
-                              </span>
-                              {journal.journal_metric_value != null ? (
-                                <span className="text-[0.65rem] uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
-                                  OpenAlex
-                                </span>
-                              ) : null}
-                            </div>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} whitespace-nowrap align-top border-l border-[hsl(var(--border))] pl-4 text-center`}>
+                            {renderJournalPlainNumericMetric(journal.publisher_reported_impact_factor, 1)}
                           </TableCell>
-                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
-                            <div className="grid gap-1">
-                              <span>
-                                {journal.publisher_reported_impact_factor == null ? 'n/a' : journal.publisher_reported_impact_factor.toFixed(2)}
-                              </span>
-                              {journal.publisher_reported_impact_factor != null ? (
-                                <span className="text-[0.65rem] uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
-                                  {journal.publisher_reported_impact_factor_year
-                                    ? `${journal.publisher_reported_impact_factor_year} publisher`
-                                    : 'publisher reported'}
-                                </span>
-                              ) : null}
-                            </div>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} whitespace-nowrap align-top text-center`}>
+                            {renderJournalPlainNumericMetric(journal.five_year_impact_factor, 1)}
                           </TableCell>
-                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} align-top`}>
-                            {journal.is_oa == null ? 'Unknown' : journal.is_oa ? 'Yes' : 'No'}
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} whitespace-nowrap align-top text-center`}>
+                            {renderJournalCitationIndicatorPill(journal.journal_citation_indicator)}
+                          </TableCell>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} whitespace-nowrap align-top text-center`}>
+                            {renderJournalPlainTextMetric(journal.cited_half_life)}
+                          </TableCell>
+                          <TableCell className={`${HOUSE_TABLE_CELL_TEXT_CLASS} whitespace-nowrap align-top text-center`}>
+                            <span className={cn(journal.is_oa == null && 'text-[hsl(var(--tone-neutral-400))]')}>
+                              {journal.is_oa == null ? 'Unknown' : journal.is_oa ? 'Yes' : 'No'}
+                            </span>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -5822,20 +8038,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             <TableHead
                               key={`table-head-${columnKey}`}
                               className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} group relative text-left`}
-                              onDragOver={(event) => {
-                                if (!publicationTableDraggingColumn || publicationTableDraggingColumn === columnKey) {
-                                  return
-                                }
-                                event.preventDefault()
-                              }}
-                              onDrop={(event) => {
-                                event.preventDefault()
-                                if (!publicationTableDraggingColumn || publicationTableDraggingColumn === columnKey) {
-                                  return
-                                }
-                                onReorderPublicationColumn(publicationTableDraggingColumn, columnKey)
-                                setPublicationTableDraggingColumn(null)
-                              }}
                             >
                               <SortHeader
                                 label={definition.label}
@@ -5845,28 +8047,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 align="left"
                                 onSort={onSortColumn}
                               />
-                              <button
-                                type="button"
-                                draggable
-                                className="house-table-reorder-handle"
-                                data-house-dragging={publicationTableDraggingColumn === columnKey ? 'true' : undefined}
-                                onDragStart={(event) => {
-                                  event.dataTransfer.effectAllowed = 'move'
-                                  event.dataTransfer.setData('text/plain', columnKey)
-                                  setPublicationTableDraggingColumn(columnKey)
-                                }}
-                                onDragEnd={() => {
-                                  setPublicationTableDraggingColumn(null)
-                                }}
-                                onClick={(event) => {
-                                  event.preventDefault()
-                                  event.stopPropagation()
-                                }}
-                                aria-label={`Reorder ${definition.label} column`}
-                                title={`Drag to reorder ${definition.label}`}
-                              >
-                                <GripVertical className="h-3 w-3" />
-                              </button>
                               {!isLastVisibleColumn ? (
                                 <button
                                   type="button"
@@ -5900,6 +8080,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         return (
                           <TableRow
                             key={work.id}
+                            onMouseEnter={() => prefetchPublicationOverviewData(work.id)}
+                            onPointerDown={() => prefetchPublicationOverviewData(work.id)}
                             onClick={() => openPublicationInDetailPanel(work.id, 'overview')}
                             className={cn(
                               'cursor-pointer',
@@ -6039,7 +8221,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 }
               }}
             >
-              <SheetContent side="right" className={HOUSE_PUBLICATION_DRILLDOWN_SHEET_CLASS}>
+              <SheetContent
+                side="right"
+                className={HOUSE_PUBLICATION_DRILLDOWN_SHEET_CLASS}
+                onInteractOutside={(event) => {
+                  if (shouldKeepPublicationDrilldownOpen(event.target)) {
+                    event.preventDefault()
+                  }
+                }}
+                onPointerDownOutside={(event) => {
+                  if (shouldKeepPublicationDrilldownOpen(event.target)) {
+                    event.preventDefault()
+                  }
+                }}
+              >
                 {selectedWork ? (
                   <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS, 'house-drilldown-panel-no-pad')}>
                     <DrilldownSheet.Header
@@ -6048,22 +8243,38 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           variant="profile"
                           alert={activePaneError ? <p className={HOUSE_PUBLICATION_DRILLDOWN_ALERT_CLASS}>{activePaneError}</p> : undefined}
                         >
-                          <DrilldownSheet.Tabs
-                            activeTab={activeDetailTab}
-                            onTabChange={(tabId) => onDetailTabChange(tabId as PublicationDetailTab)}
-                            panelIdPrefix="publication-drilldown-panel-"
-                            tabIdPrefix="publication-drilldown-tab-"
-                            tone="profile"
-                            flexGrow={drilldownTabFlexGrow}
-                            aria-label="Publication drilldown sections"
-                            className="house-drilldown-tabs"
-                          >
-                            {PUBLICATION_DETAIL_TABS.map((tab) => (
-                              <DrilldownSheet.Tab key={tab.id} id={tab.id}>
-                                {tab.label}
-                              </DrilldownSheet.Tab>
-                            ))}
-                          </DrilldownSheet.Tabs>
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <DrilldownSheet.Tabs
+                              activeTab={activeDetailTab}
+                              onTabChange={(tabId) => onDetailTabChange(tabId as PublicationDetailTab)}
+                              panelIdPrefix="publication-drilldown-panel-"
+                              tabIdPrefix="publication-drilldown-tab-"
+                              tone="profile"
+                              flexGrow={drilldownTabFlexGrow}
+                              aria-label="Publication drilldown sections"
+                              className="house-drilldown-tabs"
+                            >
+                              {PUBLICATION_DETAIL_TABS.map((tab) => (
+                                <DrilldownSheet.Tab key={tab.id} id={tab.id}>
+                                  {tab.label}
+                                </DrilldownSheet.Tab>
+                              ))}
+                            </DrilldownSheet.Tabs>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="shrink-0 gap-2 rounded-full border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 text-[hsl(var(--tone-neutral-700))] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
+                              onClick={onOpenPublicationReader}
+                            >
+                              {publicationReaderLoading && publicationReaderOpen ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FileText className="h-4 w-4" />
+                              )}
+                              <span>Reader</span>
+                            </Button>
+                          </div>
                       </DrilldownSheet.Header>
 
                       <DrilldownSheet.TabPanel id={activeDetailTab} isActive={true}>
@@ -6088,7 +8299,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </div>
                             </div>
                             <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
-                              <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>Type</p>
+                              <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>Publication type</p>
                               <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
                                 <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'house-publication-overview-stat-value')}>{detailPublicationType || 'Not available'}</p>
                               </div>
@@ -6100,12 +8311,27 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </div>
                             </div>
                             <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
-                              <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>DOI</p>
+                              <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>Link to paper</p>
                               <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
                                 {detailDoi ? (
-                                  <a className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS} href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">
-                                    {detailDoi}
-                                  </a>
+                                  <TooltipProvider delayDuration={120}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <a
+                                          className="group inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-[hsl(var(--background))] text-[hsl(var(--tone-neutral-700))] shadow-[0_1px_2px_hsl(var(--tone-neutral-950)/0.03)] transition-[background-color,border-color,color,box-shadow] duration-[var(--motion-duration-ui)] ease-out hover:border-transparent hover:bg-[hsl(var(--tone-neutral-50))] hover:text-[hsl(var(--tone-neutral-900))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
+                                          href={doiToUrl(detailDoi) || undefined}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          aria-label={detailPaperLinkTooltip}
+                                        >
+                                          <ArrowUpRight className="h-4 w-4 transition-transform duration-[var(--motion-duration-ui)] ease-out group-hover:-translate-y-0.5 group-hover:translate-x-0.5" strokeWidth={2.1} />
+                                        </a>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" align="center" className="house-approved-tooltip max-w-[16rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none">
+                                        {detailPaperLinkTooltip}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 ) : (
                                   <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Not available</p>
                                 )}
@@ -6200,7 +8426,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 </div>
                               </div>
                               <div className="house-drilldown-summary-stat-card-small house-publication-overview-stat-card">
-                                <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>Contribution</p>
+                                <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, 'house-drilldown-stat-title house-publication-overview-stat-title')}>My contribution</p>
                                 <div className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS, 'house-publication-overview-stat-value-wrap')}>
                                   <p className={cn(HOUSE_PUBLICATION_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'house-publication-overview-stat-value', overviewOwnerContributionToneClass)}>{overviewOwnerContribution}</p>
                                 </div>
@@ -6359,80 +8585,251 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                         {activeDetailTab === 'files' ? (
                           <>
-                          <div className="house-drilldown-heading-block">
-                            <p className="house-drilldown-heading-block-title">Files</p>
-                          </div>
-                          <div className="house-drilldown-content-block">
-                            {selectedFiles.length === 0 ? (
-                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
-                                <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No files linked to this publication.</p>
+                            <div className="house-publications-drilldown-bounded-section">
+                              <div className="house-drilldown-heading-block">
+                                <p className="house-drilldown-heading-block-title">Open Access Files</p>
+                                {selectedHasRetrievableDeletedOaFile ? (
+                                  <TooltipProvider delayDuration={120}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="inline-flex">
+                                          <Button
+                                            type="button"
+                                            variant="house"
+                                            size="icon"
+                                            className="h-8 w-8 house-publications-toolbox-item"
+                                            onClick={() => void onFindOpenAccessPublicationFile()}
+                                            disabled={findingOaFile}
+                                            aria-label="Retrieve deleted OA file"
+                                          >
+                                            {findingOaFile ? (
+                                              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.1} />
+                                            ) : (
+                                              <Search className="h-4 w-4" strokeWidth={2.1} />
+                                            )}
+                                          </Button>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" align="center" className="house-approved-tooltip px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none">
+                                        Retrieve deleted OA file
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : null}
                               </div>
-                            ) : (
-                              <div className="space-y-3">
-                                {selectedFiles.map((file) => {
-                                  const fileLabel = (file.label || 'File').trim() || 'File'
-                                  const sourceLabel = file.source === 'OA_LINK'
-                                    ? 'OA link'
-                                    : file.source === 'SUPPLEMENTARY_LINK'
-                                      ? 'Supplementary link'
-                                      : 'Uploaded'
-                                  return (
-                                    <div key={file.id} className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS} space-y-2`}>
-                                      <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>{fileLabel}</p>
-                                      <p className={`truncate ${HOUSE_PUBLICATION_TEXT_CLASS}`} title={file.file_name}>{file.file_name}</p>
-                                      <p className={HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
-                                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                        {(file.source === 'OA_LINK' || file.source === 'SUPPLEMENTARY_LINK') && file.download_url ? (
-                                          <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
-                                        ) : (
-                                          <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
-                                        )}
-                                        <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
-                                        <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
-                                        {file.can_delete ? (
-                                          <Button type="button" size="sm" variant="secondary" className={cn(HOUSE_PUBLICATION_NEGATIVE_BUTTON_CLASS, 'ml-auto')} disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            )}
-                          </div>
-                          <div className="house-drilldown-heading-block">
-                            <p className="house-drilldown-heading-block-title">Add files</p>
-                          </div>
-                          <div className="house-drilldown-content-block">
-                          <div
-                            className={cn(
-                              HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_CLASS,
-                              HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS,
-                              filesDragOver ? HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_ACTIVE_CLASS : '',
-                            )}
-                            onDragOver={(event) => {
-                              event.preventDefault()
-                              setFilesDragOver(true)
-                            }}
-                            onDragLeave={() => setFilesDragOver(false)}
-                            onDrop={(event) => {
-                              event.preventDefault()
-                              setFilesDragOver(false)
-                              void onUploadFiles(event.dataTransfer.files)
-                            }}
-                          >
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                              <div className="space-y-0.5">
-                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Add files</p>
-                                <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Drag and drop files here, or use upload.</p>
-                              </div>
-                              <div className="flex items-start">
-                                <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
-                                <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
+                              <div className="house-drilldown-content-block house-drilldown-heading-content-block">
+                                {renderPublicationFileList(selectedOpenAccessFiles, 'No open-access file linked to this publication.')}
                               </div>
                             </div>
-                          </div>
-                          </div>
-                        </>
+                            <div className="house-publications-drilldown-bounded-section">
+                              <div className="house-drilldown-heading-block">
+                                <p className="house-drilldown-heading-block-title">Additional Files</p>
+                              </div>
+                              <div className="house-drilldown-content-block house-drilldown-heading-content-block">
+                                {renderPublicationFileList(selectedAdditionalFiles, 'No additional files attached yet.')}
+                                <div className="mt-4">
+                                <div
+                                  className={cn(
+                                    HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_CLASS,
+                                    HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS,
+                                    filesDragOver ? HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_ACTIVE_CLASS : '',
+                                  )}
+                                  onDragOver={(event) => {
+                                    event.preventDefault()
+                                    setFilesDragOver(true)
+                                  }}
+                                  onDragLeave={() => setFilesDragOver(false)}
+                                  onDrop={(event) => {
+                                    event.preventDefault()
+                                    setFilesDragOver(false)
+                                    void onUploadFiles(event.dataTransfer.files)
+                                  }}
+                                >
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="space-y-0.5">
+                                      <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Upload files</p>
+                                      <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Drag and drop files here or use upload. Additional files will stack here under the publication.</p>
+                                    </div>
+                                    <div className="flex items-start gap-2">
+                                      <TooltipProvider delayDuration={120}>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <div className="inline-flex">
+                                              <Button
+                                                type="button"
+                                                variant="house"
+                                                size="icon"
+                                                className="h-8 w-8 house-publications-toolbox-item"
+                                                onClick={() => filePickerRef.current?.click()}
+                                                disabled={uploadingFile || findingOaFile}
+                                                aria-label="Upload file"
+                                              >
+                                                {uploadingFile ? (
+                                                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.1} />
+                                                ) : (
+                                                  <Paperclip className="h-4 w-4" strokeWidth={2.1} />
+                                                )}
+                                              </Button>
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent side="top" align="center" className="house-approved-tooltip px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none">
+                                            Upload file
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                      <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
+                                    </div>
+                                  </div>
+                                </div>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : null}
+
+                        {publicationFileMenuState && publicationFileMenuFile ? createPortal(
+                          <div className="pointer-events-auto fixed inset-0 z-[80]" data-ui="publication-file-menu-overlay" onClick={() => setPublicationFileMenuState(null)}>
+                            <div
+                              data-ui="publication-file-menu-shell"
+                              className="pointer-events-auto fixed w-[15.25rem] rounded-md border border-border bg-card p-1 shadow-lg"
+                              role="menu"
+                              aria-label={`${publicationFileMenuFile.file_name} file actions`}
+                              style={{ left: publicationFileMenuState.x, top: publicationFileMenuState.y }}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]"
+                                onClick={() => {
+                                  setPublicationFileMenuState(null)
+                                  onOpenPublicationFile(publicationFileMenuFile)
+                                }}
+                              >
+                                <Download className="h-4 w-4 shrink-0" />
+                                <span>Download file</span>
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]"
+                                onClick={() => {
+                                  setPublicationFileMenuState(null)
+                                  onSharePublicationFileEmail(publicationFileMenuFile)
+                                }}
+                              >
+                                <Mail className="h-4 w-4 shrink-0" />
+                                <span>Email file</span>
+                              </button>
+                              {canRenamePublicationFile(publicationFileMenuFile) || (canClassifyPublicationFile(publicationFileMenuFile) && !publicationFileMenuFile.classification) || publicationFileMenuFile.can_delete ? <div className="my-1 border-t border-border/70" /> : null}
+                              {canRenamePublicationFile(publicationFileMenuFile) ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]"
+                                  onClick={() => onStartRenamePublicationFile(publicationFileMenuFile)}
+                                >
+                                  <Pencil className="h-4 w-4 shrink-0" />
+                                  <span>Rename file</span>
+                                </button>
+                              ) : null}
+                              {canClassifyPublicationFile(publicationFileMenuFile) && !publicationFileMenuFile.classification ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className={cn(
+                                    'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]',
+                                    publicationFileMenuBusy && 'cursor-not-allowed text-muted-foreground hover:bg-transparent hover:text-muted-foreground',
+                                  )}
+                                  disabled={publicationFileMenuBusy}
+                                  onClick={() => onStartPublicationFileClassification(publicationFileMenuFile)}
+                                >
+                                  <Tag className="h-4 w-4 shrink-0" />
+                                  <span>Tag</span>
+                                </button>
+                              ) : null}
+                              {(canRenamePublicationFile(publicationFileMenuFile) || (canClassifyPublicationFile(publicationFileMenuFile) && !publicationFileMenuFile.classification)) && publicationFileMenuFile.can_delete ? <div className="my-1 border-t border-border/70" /> : null}
+                              {publicationFileMenuFile.can_delete ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className={cn(
+                                    'flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]',
+                                    deletingFileId === publicationFileMenuFile.id && 'cursor-not-allowed text-muted-foreground hover:bg-transparent hover:text-muted-foreground',
+                                  )}
+                                  onClick={() => {
+                                    if (deletingFileId === publicationFileMenuFile.id) {
+                                      return
+                                    }
+                                    setPublicationFileMenuState(null)
+                                    void onDeletePublicationFile(publicationFileMenuFile.id)
+                                  }}
+                                  disabled={deletingFileId === publicationFileMenuFile.id}
+                                >
+                                  <Trash2 className="h-4 w-4 shrink-0" />
+                                  <span>Delete file</span>
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>,
+                          document.body,
+                        ) : null}
+
+                        {publicationFileTagMenuState && publicationFileTagMenuFile ? createPortal(
+                          <div className="pointer-events-auto fixed inset-0 z-[81]" data-ui="publication-file-tag-menu-overlay" onClick={() => setPublicationFileTagMenuState(null)}>
+                            <div
+                              data-ui="publication-file-tag-menu-shell"
+                              className="pointer-events-auto fixed w-[11rem] rounded-md border border-border bg-card p-1 shadow-lg"
+                              role="menu"
+                              aria-label={`${publicationFileTagMenuFile.file_name} tag actions`}
+                              style={{ left: publicationFileTagMenuState.x, top: publicationFileTagMenuState.y }}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className={cn(
+                                  'flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]',
+                                  publicationFileTagMenuBusy && 'cursor-not-allowed text-muted-foreground hover:bg-transparent hover:text-muted-foreground',
+                                )}
+                                disabled={publicationFileTagMenuBusy}
+                                onClick={() => onStartPublicationFileClassification(publicationFileTagMenuFile)}
+                              >
+                                <Pencil className="h-4 w-4 shrink-0" />
+                                <span>Edit tag</span>
+                              </button>
+                              {publicationFileTagMenuFile.classification === 'OTHER' ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className={cn(
+                                    'flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]',
+                                    publicationFileTagMenuBusy && 'cursor-not-allowed text-muted-foreground hover:bg-transparent hover:text-muted-foreground',
+                                  )}
+                                  disabled={publicationFileTagMenuBusy}
+                                  onClick={() => onStartPublicationFileOtherLabelEdit(publicationFileTagMenuFile)}
+                                >
+                                  <Tag className="h-4 w-4 shrink-0" />
+                                  <span>Edit custom label</span>
+                                </button>
+                              ) : null}
+                              <div className="my-1 border-t border-border/70" />
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className={cn(
+                                  'flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]',
+                                  publicationFileTagMenuBusy && 'cursor-not-allowed text-muted-foreground hover:bg-transparent hover:text-muted-foreground',
+                                )}
+                                disabled={publicationFileTagMenuBusy}
+                                onClick={() => void onClearPublicationFileClassification(publicationFileTagMenuFile)}
+                              >
+                                <Trash2 className="h-4 w-4 shrink-0" />
+                                <span>Delete tag</span>
+                              </button>
+                            </div>
+                          </div>,
+                          document.body,
                         ) : null}
 
                         {activeDetailTab === 'ai' ? (
@@ -6562,6 +8959,436 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             </div>
                           </div>
                     </DrilldownSheet.TabPanel>
+                  </div>
+                ) : null}
+              </SheetContent>
+            </Sheet>
+
+            <Sheet
+              open={publicationReaderOpen}
+              onOpenChange={(open) => {
+                setPublicationReaderOpen(open)
+                if (!open) {
+                  setPublicationReaderActiveSectionId(null)
+                  setPublicationReaderPdfPage(1)
+                  setPublicationReaderError('')
+                  setPublicationReaderViewMode('structured')
+                  setPublicationReaderCollapsedNodeIds({})
+                  setPublicationReaderInspectorOpen(false)
+                }
+              }}
+            >
+              <SheetContent
+                side="right"
+                data-ui="publication-paper-reader-shell"
+                className="inset-[1.2vh_1vw_1.2vh_2vw] h-auto max-w-none overflow-hidden rounded-[1.55rem] border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--surface-drilldown-elevated))] p-0 shadow-[0_28px_90px_hsl(var(--tone-neutral-900)/0.18)]"
+              >
+                {selectedWork ? (
+                  <div
+                    data-ui="publication-paper-reader-overlay"
+                    className="flex h-full min-h-0 flex-col bg-[hsl(var(--surface-drilldown-elevated))]"
+                  >
+                    <div className="border-b border-[hsl(var(--tone-neutral-200))] bg-[linear-gradient(180deg,hsl(var(--tone-neutral-50))_0%,hsl(var(--tone-neutral-100)/0.7)_100%)] px-7 py-6">
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0 space-y-1.5">
+                          <h2 className="text-[1.35rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">
+                            {selectedPaperMetadata?.title || selectedDetail?.title || selectedWork.title}
+                          </h2>
+                          <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                            {[
+                              selectedPaperMetadata?.journal || detailJournal || 'Publication record',
+                              selectedPaperMetadata?.year ? String(selectedPaperMetadata.year) : detailYear ? String(detailYear) : null,
+                              selectedPaperDocument?.page_count ? `${selectedPaperDocument.page_count} pages` : null,
+                              selectedPaperSections.length > 0 ? `${selectedPaperSections.length} sections` : null,
+                            ].filter(Boolean).join(' | ')}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <div className="inline-flex items-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50)/0.92)] p-1 shadow-[0_10px_24px_hsl(var(--tone-neutral-900)/0.05)]">
+                            <button
+                              type="button"
+                              className={cn(
+                                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-[background-color,color,transform] duration-[var(--motion-duration-ui)] ease-out',
+                                publicationReaderViewMode === 'pdf'
+                                  ? 'bg-[hsl(var(--tone-accent-600))] text-white shadow-[0_10px_22px_hsl(var(--tone-accent-700)/0.28)]'
+                                  : 'text-[hsl(var(--tone-neutral-600))] hover:bg-[hsl(var(--tone-neutral-100))] hover:text-[hsl(var(--tone-neutral-900))]',
+                              )}
+                              onClick={onEnterPublicationReaderPdfView}
+                              disabled={!selectedPaperPrimaryPdfContentFileId}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>PDF</span>
+                            </button>
+                            <button
+                              type="button"
+                              className={cn(
+                                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-[background-color,color,transform] duration-[var(--motion-duration-ui)] ease-out',
+                                publicationReaderViewMode === 'structured'
+                                  ? 'bg-[hsl(var(--tone-neutral-900))] text-white shadow-[0_10px_22px_hsl(var(--tone-neutral-900)/0.16)]'
+                                  : 'text-[hsl(var(--tone-neutral-600))] hover:bg-[hsl(var(--tone-neutral-100))] hover:text-[hsl(var(--tone-neutral-900))]',
+                              )}
+                              onClick={() => setPublicationReaderViewMode('structured')}
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              <span>Structured</span>
+                            </button>
+                          </div>
+                          {selectedPaperDocument?.has_viewable_pdf ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-2 rounded-full border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-100))]"
+                              onClick={onOpenPublicationReaderPrimaryPdf}
+                            >
+                              <Download className="h-4 w-4" />
+                              <span>Open PDF</span>
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                      {publicationReaderError ? (
+                        <div className="mt-4 rounded-xl border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-4 py-3">
+                          <p className="text-sm leading-relaxed text-[hsl(var(--tone-danger-800))]">{publicationReaderError}</p>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div
+                      className={cn(
+                        'grid min-h-0 flex-1 grid-cols-1',
+                        publicationReaderInspectorOpen
+                          ? 'xl:grid-cols-[15.25rem_minmax(0,1fr)_18.5rem]'
+                          : 'xl:grid-cols-[15.25rem_minmax(0,1fr)_4.5rem]',
+                      )}
+                    >
+                      <aside className="min-h-0 overflow-y-auto border-b border-[hsl(var(--tone-neutral-200))] bg-[linear-gradient(180deg,hsl(var(--tone-neutral-50))_0%,hsl(var(--tone-neutral-100)/0.45)_100%)] xl:border-b-0 xl:border-r">
+                        <div className="p-4 sm:p-5">
+                          <p className={cn(houseNavigation.sectionLabel, 'mb-3 px-1 text-[0.68rem] tracking-[0.12em]')}>
+                            Navigator
+                          </p>
+                          {publicationReaderLoading && selectedPublicationReaderNavigatorGroups.length === 0 ? (
+                            <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-3 text-sm text-[hsl(var(--tone-neutral-600))]">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>Building navigator...</span>
+                            </div>
+                          ) : (
+                            renderPublicationReaderNavigator()
+                          )}
+                        </div>
+                      </aside>
+                      <main
+                        ref={publicationReaderScrollViewportRef}
+                        className={cn(
+                          'min-h-0',
+                          publicationReaderViewMode === 'pdf'
+                            ? 'overflow-hidden bg-[radial-gradient(circle_at_top,hsl(var(--tone-accent-100)/0.68)_0%,hsl(var(--tone-neutral-100)/0.78)_32%,hsl(var(--tone-neutral-100))_100%)]'
+                            : 'overflow-y-auto bg-[linear-gradient(180deg,hsl(var(--tone-neutral-50)/0.86)_0%,hsl(var(--tone-neutral-100)/0.38)_100%)]',
+                        )}
+                      >
+                        {publicationReaderViewMode === 'pdf' ? (
+                          <div className="flex h-full flex-col gap-5 p-6 sm:p-8">
+                            {publicationReaderLoading && !selectedPaperPrimaryPdfContentFileId ? (
+                              <div className="flex items-center gap-3 rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-5 py-4 text-sm text-[hsl(var(--tone-neutral-600))]">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <span>Building the structured paper model...</span>
+                              </div>
+                            ) : null}
+                            {selectedPaperPrimaryPdfContentFileId ? (
+                              <>
+                                <PublicationPdfViewer
+                                  key={selectedPaperPrimaryPdfContentFileId}
+                                  token={token}
+                                  publicationId={selectedWork.id}
+                                  fileId={selectedPaperPrimaryPdfContentFileId}
+                                  title={selectedPaperMetadata?.title || selectedDetail?.title || selectedWork.title}
+                                  className="min-h-0 flex-1"
+                                  targetPage={publicationReaderPdfPage}
+                                  onPageChange={(page) => setPublicationReaderPdfPage(page)}
+                                  onOpenExternal={selectedPaperPrimaryPdfExternalUrl ? onOpenPublicationReaderPrimaryPdf : null}
+                                />
+                              </>
+                            ) : !publicationReaderLoading ? (
+                              <div className="flex h-full items-center justify-center">
+                                <div className="max-w-xl rounded-[1.1rem] border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-6 py-8 text-center shadow-[0_12px_30px_hsl(var(--tone-neutral-900)/0.05)]">
+                                  <p className="text-base font-medium text-[hsl(var(--tone-neutral-900))]">
+                                    No PDF is attached yet for this publication.
+                                  </p>
+                                  <p className="mt-2 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                    You can still read the structured paper scaffold now, and this same popup will turn into the full-paper viewer as soon as a PDF is available.
+                                  </p>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-4 rounded-full"
+                                    onClick={() => setPublicationReaderViewMode('structured')}
+                                  >
+                                    Open structured view
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="mx-auto flex w-full max-w-[58rem] flex-col gap-6 px-7 py-7 sm:px-10 sm:py-8">
+                            {publicationReaderLoading && !selectedPaperModel ? (
+                              <div className="flex items-center gap-3 rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-5 py-4 text-sm text-[hsl(var(--tone-neutral-600))]">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <span>Building the structured paper model...</span>
+                              </div>
+                            ) : null}
+                            {selectedStructuredPaperGroups.length > 0 ? (
+                              selectedStructuredPaperGroups.map((group) => {
+                                const primaryRootSection = group.rootSections[0] || null
+                                const showGroupLabel = !(
+                                  primaryRootSection
+                                  && group.rootSections.length === 1
+                                  && publicationReaderSectionMatchesGroupLabel(primaryRootSection, group.key)
+                                )
+                                return (
+                                  <section
+                                    key={`publication-paper-group-${group.key}`}
+                                    className={cn(
+                                      group.key === 'abstract'
+                                        ? 'border-b border-[hsl(var(--tone-neutral-250))] pb-8'
+                                        : 'border-t border-[hsl(var(--tone-neutral-200))] pt-7',
+                                      group.key !== 'abstract' && 'first:border-t-0 first:pt-0',
+                                      group.key === 'introduction' && 'pt-8',
+                                    )}
+                                  >
+                                    {showGroupLabel ? (
+                                      <div className="min-w-0">
+                                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                                          {group.label}
+                                        </p>
+                                      </div>
+                                    ) : null}
+                                    <div className={cn('space-y-6', showGroupLabel && 'mt-4')}>
+                                      {group.rootSections.map((section) => renderPublicationReaderStructuredSection(section, 0, group.key))}
+                                    </div>
+                                  </section>
+                                )
+                              })
+                            ) : !publicationReaderLoading ? (
+                              <div className="rounded-[1.1rem] border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-5 py-8 text-center">
+                                <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                  No GROBID-derived full-paper sections are available yet for this publication. The reader shell is ready, and the stored PDF can be parsed as soon as GROBID succeeds.
+                                </p>
+                              </div>
+                            ) : null}
+                            {unplacedInlineAssets.length > 0 ? (
+                              <section className="border-t border-[hsl(var(--tone-neutral-200))] pt-7">
+                                <div className="min-w-0">
+                                  <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                                    Figures & Tables
+                                  </p>
+                                </div>
+                                <div className="mt-4 space-y-4">
+                                  {unplacedInlineAssets.map((inlineAsset) => (
+                                    <div
+                                      key={`inline-${inlineAsset.id}`}
+                                      ref={(node) => { publicationReaderInlineAssetRefs.current[inlineAsset.id] = node }}
+                                      className="overflow-hidden rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-white shadow-[0_2px_8px_hsl(var(--tone-neutral-900)/0.04)]"
+                                    >
+                                      <div className={cn(
+                                        'flex items-center gap-2 px-3 py-2',
+                                        inlineAsset.asset_kind === 'table'
+                                          ? 'border-l-[3px] border-l-[hsl(var(--tone-accent-400))]'
+                                          : 'border-l-[3px] border-l-[hsl(var(--tone-positive-400))]',
+                                      )}>
+                                        <p className="text-[0.82rem] font-semibold text-[hsl(var(--tone-neutral-800))]">
+                                          {inlineAsset.title || inlineAsset.file_name}
+                                        </p>
+                                        {formatPublicationPaperSectionPageLabel({ page_start: inlineAsset.page_start, page_end: inlineAsset.page_end }) ? (
+                                          <span className="shrink-0 text-[0.68rem] text-[hsl(var(--tone-neutral-400))]">
+                                            {formatPublicationPaperSectionPageLabel({ page_start: inlineAsset.page_start, page_end: inlineAsset.page_end })}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      {inlineAsset.image_data ? (
+                                        <div className="border-t border-[hsl(var(--tone-neutral-100))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
+                                          <img
+                                            src={inlineAsset.image_data}
+                                            alt={inlineAsset.title || inlineAsset.file_name || 'Figure'}
+                                            className="max-h-[400px] w-full rounded object-contain"
+                                            loading="lazy"
+                                          />
+                                        </div>
+                                      ) : null}
+                                      {inlineAsset.structured_html ? (
+                                        <div className="border-t border-[hsl(var(--tone-neutral-100))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
+                                          <div
+                                            className="publication-structured-table overflow-auto text-[0.78rem] leading-relaxed"
+                                            dangerouslySetInnerHTML={{ __html: inlineAsset.structured_html }}
+                                          />
+                                        </div>
+                                      ) : null}
+                                      {inlineAsset.caption ? (
+                                        <div className="border-t border-[hsl(var(--tone-neutral-100))] px-3 py-2">
+                                          <p className="text-[0.78rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                            {inlineAsset.caption}
+                                          </p>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              </section>
+                            ) : null}
+                          </div>
+                        )}
+                      </main>
+
+                      <aside className="min-h-0 border-t border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] xl:border-l xl:border-t-0">
+                        {publicationReaderInspectorOpen ? (
+                          <div className="h-full overflow-y-auto p-4">
+                            <div className="mb-4 flex items-center justify-between">
+                              <p className={cn(houseNavigation.sectionLabel, 'px-1 text-[0.68rem] tracking-[0.12em]')}>
+                                Details
+                              </p>
+                              <button
+                                type="button"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-600))] transition-[background-color,color,border-color] duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-neutral-300))] hover:text-[hsl(var(--tone-neutral-900))]"
+                                onClick={() => setPublicationReaderInspectorOpen(false)}
+                                aria-label="Collapse reader details"
+                              >
+                                <ChevronRight className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <div className="space-y-5">
+                          <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
+                            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                              Document map
+                            </p>
+                            <div className="mt-3 space-y-2 text-sm leading-relaxed text-[hsl(var(--tone-neutral-700))]">
+                              <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">Parser:</span> {selectedPaperDocument?.parser_status ? formatPublicationPaperSectionKindLabel(selectedPaperDocument.parser_status) : 'Not available'}</p>
+                              <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">Pages:</span> {selectedPaperDocument?.page_count ?? 'n/a'}</p>
+                              {publicationReaderViewMode === 'pdf' && selectedPaperDocument?.page_count ? (
+                                <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">Current PDF page:</span> {publicationReaderPdfPage} / {selectedPaperDocument.page_count}</p>
+                              ) : null}
+                              <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">Sections:</span> {selectedPaperComponentSummary?.section_count ?? selectedPaperSections.length}</p>
+                              <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">References:</span> {selectedPaperComponentSummary?.reference_count ?? selectedPaperModel?.references?.length ?? 0}</p>
+                            </div>
+                            {selectedPaperDocument?.parser_last_error ? (
+                              <p className="mt-3 text-sm leading-relaxed text-[hsl(var(--tone-danger-700))]">
+                                {selectedPaperDocument.parser_last_error}
+                              </p>
+                            ) : null}
+                          </section>
+
+                          <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
+                            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                              Current focus
+                            </p>
+                            <p className="mt-2 text-sm font-medium leading-relaxed text-[hsl(var(--tone-neutral-900))]">
+                              {selectedReaderActiveSection?.title || 'No section selected'}
+                            </p>
+                            {selectedReaderActiveSection ? (
+                              <p className="mt-2 text-[0.72rem] uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                                {formatPublicationPaperSectionKindLabel(selectedReaderActiveSection.canonical_kind || selectedReaderActiveSection.kind)}
+                              </p>
+                            ) : null}
+                            <p className="mt-2 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                              {selectedReaderActiveSection
+                                ? 'This right rail can later hold AI prompts, notes, highlights, and linked knowledge objects against the active section.'
+                                : 'Open a section from the outline to anchor notes and tools here.'}
+                            </p>
+                          </section>
+
+                          <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
+                            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                              Paper record
+                            </p>
+                            <div className="mt-3 space-y-2 text-sm leading-relaxed text-[hsl(var(--tone-neutral-700))]">
+                              <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">Type:</span> {selectedPaperMetadata?.publication_type || detailPublicationType || 'Not available'}</p>
+                              <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">Article type:</span> {selectedPaperMetadata?.article_type || detailArticleType || 'n/a'}</p>
+                              <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">DOI:</span> {selectedPaperMetadata?.doi || 'n/a'}</p>
+                              <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">PMID:</span> {selectedPaperMetadata?.pmid || 'n/a'}</p>
+                              <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">Citations:</span> {selectedPaperMetadata?.citations_total ?? detailCitations}</p>
+                            </div>
+                            {selectedPaperMetadata?.authors?.length ? (
+                              <div className="mt-4">
+                                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                                  Authors
+                                </p>
+                                <p className="mt-2 text-sm leading-relaxed text-[hsl(var(--tone-neutral-700))]">
+                                  {selectedPaperMetadata.authors.join(', ')}
+                                </p>
+                              </div>
+                            ) : null}
+                            {selectedPaperMetadata?.keywords?.length ? (
+                              <div className="mt-4">
+                                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                                  Keywords
+                                </p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {selectedPaperMetadata.keywords.map((keyword) => (
+                                    <Badge
+                                      key={keyword}
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]"
+                                    >
+                                      {keyword}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </section>
+
+                          <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
+                            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                              Figures
+                            </p>
+                            <div className="mt-3">
+                              {renderPublicationReaderAssetGroup(selectedPaperFigures, 'No figures surfaced yet.')}
+                            </div>
+                          </section>
+
+                          <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
+                            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                              Tables
+                            </p>
+                            <div className="mt-3">
+                              {renderPublicationReaderAssetGroup(selectedPaperTables, 'No tables surfaced yet.')}
+                            </div>
+                          </section>
+
+                          <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
+                            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                              Datasets
+                            </p>
+                            <div className="mt-3">
+                              {renderPublicationReaderAssetGroup(selectedPaperDatasets, 'No datasets surfaced yet.')}
+                            </div>
+                          </section>
+
+                          <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
+                            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                              Attachments
+                            </p>
+                            <div className="mt-3">
+                              {renderPublicationReaderAssetGroup(selectedPaperAttachments, 'No additional attachments surfaced yet.')}
+                            </div>
+                          </section>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex h-full items-start justify-center p-2 pt-4">
+                            <button
+                              type="button"
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-600))] shadow-[0_10px_24px_hsl(var(--tone-neutral-900)/0.05)] transition-[background-color,color,border-color,transform] duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-neutral-300))] hover:text-[hsl(var(--tone-neutral-900))] hover:translate-y-[-1px]"
+                              onClick={() => setPublicationReaderInspectorOpen(true)}
+                              aria-label="Expand reader details"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
+                      </aside>
+                    </div>
                   </div>
                 ) : null}
               </SheetContent>
