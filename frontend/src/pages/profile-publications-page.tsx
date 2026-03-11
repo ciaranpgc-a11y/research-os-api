@@ -4413,7 +4413,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedAiResponse = selectedWorkId ? aiCacheByWorkId[selectedWorkId] || null : null
   const selectedPaperModelResponse = selectedWorkId ? paperModelCacheByWorkId[selectedWorkId] || null : null
   const selectedFilesPayload = selectedWorkId ? filesCacheByWorkId[selectedWorkId] || null : null
-  const selectedHasDeletedOaFile = Boolean(selectedFilesPayload?.has_deleted_oa_file)
   const selectedFiles = useMemo(() => {
     const files = [...(selectedFilesPayload?.items || [])]
     files.sort((left, right) => {
@@ -4427,7 +4426,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedOpenAccessFiles = useMemo(() => selectedFiles.filter((file) => file.source === 'OA_LINK'), [selectedFiles])
   const selectedAdditionalFiles = useMemo(() => selectedFiles.filter((file) => file.source !== 'OA_LINK'), [selectedFiles])
   const selectedHasActiveOaFile = selectedOpenAccessFiles.length > 0
-  const selectedHasRetrievableDeletedOaFile = selectedHasDeletedOaFile && !selectedHasActiveOaFile
+  const selectedCanFindOaFile = !selectedHasActiveOaFile
   const selectedPaperModel = selectedPaperModelResponse?.payload || null
   const selectedPaperSections = selectedPaperModel?.sections || []
   const selectedPaperMetadata = selectedPaperModel?.metadata || null
@@ -8658,7 +8657,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             <div className="house-publications-drilldown-bounded-section">
                               <div className="house-drilldown-heading-block">
                                 <p className="house-drilldown-heading-block-title">Open Access Files</p>
-                                {selectedHasRetrievableDeletedOaFile ? (
+                                {selectedCanFindOaFile ? (
                                   <TooltipProvider delayDuration={120}>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
