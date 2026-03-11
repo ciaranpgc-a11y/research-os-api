@@ -111,9 +111,20 @@ async function findPdfCandidates(page, targetUrl) {
           return "";
         }
       };
-      const nodes = Array.from(document.querySelectorAll("a[href], iframe[src], embed[src]"));
+      const nodes = Array.from(
+        document.querySelectorAll(
+          'meta[name="citation_pdf_url"], meta[property="citation_pdf_url"], link[href][type="application/pdf"], a[href], iframe[src], embed[src], object[data]',
+        ),
+      );
       const candidates = nodes
-        .map((node) => node.getAttribute("href") || node.getAttribute("src") || "")
+        .map(
+          (node) =>
+            node.getAttribute("content") ||
+            node.getAttribute("href") ||
+            node.getAttribute("src") ||
+            node.getAttribute("data") ||
+            "",
+        )
         .map((value) => absolute(value))
         .filter(Boolean);
       candidates.unshift(initialTargetUrl);

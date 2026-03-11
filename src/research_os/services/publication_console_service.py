@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 from sqlalchemy import select
@@ -1035,6 +1035,64 @@ def _looks_like_pdf_payload(content: bytes, content_type: str | None = None) -> 
     return "application/pdf" in str(content_type or "").strip().lower()
 
 
+def _looks_like_html_payload(content: bytes, content_type: str | None = None) -> bool:
+    if not content:
+        return False
+    clean_content_type = str(content_type or "").strip().lower()
+    if "text/html" in clean_content_type or "application/xhtml+xml" in clean_content_type:
+        return True
+    prefix = content.lstrip()[:256].lower()
+    return prefix.startswith(b"<!doctype html") or prefix.startswith(b"<html")
+
+
+def _extract_open_access_pdf_urls_from_html(
+    html_text: str, *, base_url: str
+) -> list[str]:
+    clean_html = str(html_text or "").strip()
+    clean_base_url = str(base_url or "").strip()
+    if not clean_html or not clean_base_url:
+        return []
+
+    patterns = (
+        re.compile(
+            r"""<meta[^>]+(?:name|property)\s*=\s*["']citation_pdf_url["'][^>]+content\s*=\s*["']([^"']+)["']""",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"""<link[^>]+type\s*=\s*["']application/pdf["'][^>]+href\s*=\s*["']([^"']+)["']""",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"""<(?:a|iframe|embed|object)[^>]+(?:href|src|data)\s*=\s*["']([^"']+)["']""",
+            re.IGNORECASE,
+        ),
+    )
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for pattern in patterns:
+        for raw_match in pattern.findall(clean_html):
+            candidate = html.unescape(str(raw_match or "").strip())
+            if not candidate:
+                continue
+            absolute = urljoin(clean_base_url, candidate)
+            parsed = urlsplit(absolute)
+            if parsed.scheme.lower() not in {"http", "https"}:
+                continue
+            normalized = absolute.strip()
+            normalized_lower = normalized.lower()
+            if (
+                ".pdf" not in normalized_lower
+                and "pdf" not in normalized_lower
+                and "download" not in normalized_lower
+            ):
+                continue
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            candidates.append(normalized)
+    return candidates
+
+
 def _fetch_open_access_pdf_bytes_via_browser(oa_url: str) -> tuple[bytes, str | None]:
     clean_url = str(oa_url or "").strip()
     if not clean_url or not _open_access_browser_fetch_enabled():
@@ -1191,17 +1249,49 @@ def _open_access_pdf_request_headers(oa_url: str) -> dict[str, str]:
     return headers
 
 
+def _fetch_open_access_pdf_bytes_from_candidate_urls(
+    candidate_urls: list[str],
+) -> tuple[bytes, str | None]:
+    for candidate_url in candidate_urls:
+        clean_candidate_url = str(candidate_url or "").strip()
+        if not clean_candidate_url:
+            continue
+        content, content_type = _request_bytes_with_retry(
+            url=clean_candidate_url,
+            timeout_seconds=_unpaywall_timeout_seconds(),
+            retries=max(1, _unpaywall_retry_count()),
+            headers=_open_access_pdf_request_headers(clean_candidate_url),
+        )
+        if _looks_like_pdf_payload(content, content_type):
+            return content, content_type
+    return b"", None
+
+
 def _fetch_open_access_pdf_bytes(oa_url: str) -> tuple[bytes, str | None]:
+    clean_oa_url = str(oa_url or "").strip()
+    if not clean_oa_url:
+        return b"", None
     content, content_type = _request_bytes_with_retry(
-        url=str(oa_url),
+        url=clean_oa_url,
         timeout_seconds=_unpaywall_timeout_seconds(),
         retries=max(1, _unpaywall_retry_count()),
-        headers=_open_access_pdf_request_headers(str(oa_url)),
+        headers=_open_access_pdf_request_headers(clean_oa_url),
     )
     if _looks_like_pdf_payload(content, content_type):
         return content, content_type
+    if _looks_like_html_payload(content, content_type):
+        html_text = content.decode("utf-8", errors="ignore")
+        html_candidates = _extract_open_access_pdf_urls_from_html(
+            html_text,
+            base_url=clean_oa_url,
+        )
+        candidate_content, candidate_content_type = (
+            _fetch_open_access_pdf_bytes_from_candidate_urls(html_candidates)
+        )
+        if _looks_like_pdf_payload(candidate_content, candidate_content_type):
+            return candidate_content, candidate_content_type
     browser_content, browser_content_type = _fetch_open_access_pdf_bytes_via_browser(
-        oa_url
+        clean_oa_url
     )
     if _looks_like_pdf_payload(browser_content, browser_content_type):
         return browser_content, browser_content_type or "application/pdf"
@@ -8602,6 +8692,77 @@ def _find_unpaywall_pdf_url(*, doi: str, email: str) -> str | None:
     return None
 
 
+def _find_unpaywall_landing_page_urls(*, doi: str, email: str) -> list[str]:
+    payload = _request_json_with_retry(
+        url=f"https://api.unpaywall.org/v2/{quote(doi, safe='')}",
+        params={"email": email},
+        timeout_seconds=_unpaywall_timeout_seconds(),
+        retries=_unpaywall_retry_count(),
+    )
+    if not payload:
+        return []
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _append(url_value: Any) -> None:
+        clean_url = str(url_value or "").strip()
+        if not clean_url:
+            return
+        parsed = urlsplit(clean_url)
+        if parsed.scheme.lower() not in {"http", "https"}:
+            return
+        if clean_url in seen:
+            return
+        seen.add(clean_url)
+        candidates.append(clean_url)
+
+    best = payload.get("best_oa_location")
+    if isinstance(best, dict):
+        _append(best.get("url"))
+    locations = payload.get("oa_locations")
+    if isinstance(locations, list):
+        for location in locations:
+            if not isinstance(location, dict):
+                continue
+            _append(location.get("url"))
+    return candidates
+
+
+def _find_open_access_pdf_candidates(*, work: Work, email: str | None) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _append(url_value: Any) -> None:
+        clean_url = str(url_value or "").strip()
+        if not clean_url:
+            return
+        parsed = urlsplit(clean_url)
+        if parsed.scheme.lower() not in {"http", "https"}:
+            return
+        if clean_url in seen:
+            return
+        seen.add(clean_url)
+        candidates.append(clean_url)
+
+    doi = _normalize_doi(work.doi)
+    if doi:
+        if email:
+            direct_pdf_url = _find_unpaywall_pdf_url(doi=doi, email=email)
+            _append(direct_pdf_url)
+            if not direct_pdf_url:
+                for landing_url in _find_unpaywall_landing_page_urls(
+                    doi=doi, email=email
+                ):
+                    _append(landing_url)
+        _append(f"https://doi.org/{quote(doi, safe='/')}")
+
+    _append(work.url)
+    pmid = _normalize_pmid(work.pmid)
+    if pmid:
+        _append(f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/")
+    return candidates
+
+
 def link_publication_open_access_pdf(
     *, user_id: str, publication_id: str, allow_suppressed: bool = False
 ) -> dict[str, Any]:
@@ -8652,22 +8813,9 @@ def link_publication_open_access_pdf(
                     "Open-access PDF relinking is turned off for this publication."
                 ),
             }
-        doi = _normalize_doi(work.doi)
-        if not doi:
-            return {
-                "created": False,
-                "file": None,
-                "message": "DOI is required to search for open-access PDF links.",
-            }
-
         email = _unpaywall_email(user_email=user.email)
-        if not email:
-            raise PublicationConsoleValidationError(
-                "UNPAYWALL_EMAIL or account email is required for Unpaywall requests."
-            )
-
-        pdf_url = _find_unpaywall_pdf_url(doi=doi, email=email)
-        if not pdf_url:
+        candidate_urls = _find_open_access_pdf_candidates(work=work, email=email)
+        if not candidate_urls:
             return {
                 "created": False,
                 "file": None,
@@ -8678,95 +8826,89 @@ def link_publication_open_access_pdf(
                 ),
             }
 
-        existing = session.scalars(
-            select(PublicationFile).where(
-                PublicationFile.owner_user_id == user_id,
-                PublicationFile.publication_id == publication_id,
-                PublicationFile.source == FILE_SOURCE_OA_LINK,
-                PublicationFile.oa_url == pdf_url,
-                PublicationFile.deleted.is_(False),
-            )
-        ).first()
-        if existing is not None:
-            if not _ensure_open_access_publication_file_local_copy(existing):
-                _prune_unstored_open_access_publication_file(
-                    existing,
-                    reason="link_existing_without_local_copy",
+        for pdf_url in candidate_urls:
+            existing = session.scalars(
+                select(PublicationFile).where(
+                    PublicationFile.owner_user_id == user_id,
+                    PublicationFile.publication_id == publication_id,
+                    PublicationFile.source == FILE_SOURCE_OA_LINK,
+                    PublicationFile.oa_url == pdf_url,
+                    PublicationFile.deleted.is_(False),
                 )
+            ).first()
+            if existing is not None:
+                if not _ensure_open_access_publication_file_local_copy(existing):
+                    _prune_unstored_open_access_publication_file(
+                        existing,
+                        reason="link_existing_without_local_copy",
+                    )
+                    continue
+                if bool(work.oa_link_suppressed):
+                    work.oa_link_suppressed = False
+                    session.flush()
                 return {
                     "created": False,
-                    "file": None,
-                    "message": OA_LOCAL_COPY_REQUIRED_MESSAGE,
+                    "file": _serialize_file(publication_id, existing),
+                    "message": "Open-access PDF link already exists.",
                 }
-            if bool(work.oa_link_suppressed):
+
+            matching_deleted = session.scalars(
+                select(PublicationFile)
+                .where(
+                    PublicationFile.owner_user_id == user_id,
+                    PublicationFile.publication_id == publication_id,
+                    PublicationFile.source == FILE_SOURCE_OA_LINK,
+                    PublicationFile.oa_url == pdf_url,
+                    PublicationFile.deleted.is_(True),
+                )
+                .order_by(PublicationFile.created_at.desc())
+            ).first()
+            if matching_deleted is not None:
+                if not _ensure_open_access_publication_file_local_copy(matching_deleted):
+                    continue
+                matching_deleted.deleted = False
                 work.oa_link_suppressed = False
                 session.flush()
-            return {
-                "created": False,
-                "file": _serialize_file(publication_id, existing),
-                "message": "Open-access PDF link already exists.",
-            }
-
-        matching_deleted = session.scalars(
-            select(PublicationFile)
-            .where(
-                PublicationFile.owner_user_id == user_id,
-                PublicationFile.publication_id == publication_id,
-                PublicationFile.source == FILE_SOURCE_OA_LINK,
-                PublicationFile.oa_url == pdf_url,
-                PublicationFile.deleted.is_(True),
-            )
-            .order_by(PublicationFile.created_at.desc())
-        ).first()
-        if matching_deleted is not None:
-            if not _ensure_open_access_publication_file_local_copy(matching_deleted):
+                session.refresh(matching_deleted)
                 return {
                     "created": False,
-                    "file": None,
-                    "message": OA_LOCAL_COPY_REQUIRED_MESSAGE,
+                    "file": _serialize_file(publication_id, matching_deleted),
+                    "message": "Deleted open-access PDF restored.",
                 }
-            matching_deleted.deleted = False
+
+            row = PublicationFile(
+                publication_id=publication_id,
+                owner_user_id=user_id,
+                file_name=_resolve_publication_file_display_name(work),
+                file_type=FILE_TYPE_PDF,
+                storage_key="",
+                source=FILE_SOURCE_OA_LINK,
+                oa_url=pdf_url,
+                checksum=None,
+                custom_name=False,
+                classification=None,
+                classification_custom=False,
+                deleted=False,
+                created_at=_utcnow(),
+            )
+            session.add(row)
+            session.flush()
+            if not _ensure_open_access_publication_file_local_copy(row):
+                session.delete(row)
+                session.flush()
+                continue
             work.oa_link_suppressed = False
             session.flush()
-            session.refresh(matching_deleted)
+            session.refresh(row)
             return {
-                "created": False,
-                "file": _serialize_file(publication_id, matching_deleted),
-                "message": "Deleted open-access PDF restored.",
+                "created": True,
+                "file": _serialize_file(publication_id, row),
+                "message": "Open-access PDF downloaded and stored.",
             }
-
-        row = PublicationFile(
-            publication_id=publication_id,
-            owner_user_id=user_id,
-            file_name=_resolve_publication_file_display_name(work),
-            file_type=FILE_TYPE_PDF,
-            storage_key="",
-            source=FILE_SOURCE_OA_LINK,
-            oa_url=pdf_url,
-            checksum=None,
-            custom_name=False,
-            classification=None,
-            classification_custom=False,
-            deleted=False,
-            created_at=_utcnow(),
-        )
-        session.add(row)
-        session.flush()
-        if not _ensure_open_access_publication_file_local_copy(row):
-            session.delete(row)
-            session.flush()
-            return {
-                "created": False,
-                "file": None,
-                "message": OA_LOCAL_COPY_REQUIRED_MESSAGE,
-            }
-        work.oa_link_suppressed = False
-        session.flush()
-        session.refresh(row)
         return {
-            "created": True,
-            "file": _serialize_file(publication_id, row),
-            "message": "Open-access PDF downloaded and stored.",
+            "created": False,
+            "file": None,
+            "message": OA_LOCAL_COPY_REQUIRED_MESSAGE,
         }
 
 

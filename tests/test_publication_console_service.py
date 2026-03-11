@@ -3089,6 +3089,93 @@ def test_fetch_open_access_pdf_bytes_uses_browser_like_headers(
     assert "en-GB" in str(seen_headers.get("Accept-Language") or "")
 
 
+def test_fetch_open_access_pdf_bytes_extracts_pdf_from_html_landing_page(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    requested_urls: list[str] = []
+
+    def _request_bytes(**kwargs):  # noqa: ANN003
+        url = str(kwargs.get("url") or "")
+        requested_urls.append(url)
+        if url == "https://example.org/article":
+            return (
+                b'<html><head><meta name="citation_pdf_url" content="/files/paper.pdf"></head></html>',
+                "text/html; charset=utf-8",
+            )
+        if url == "https://example.org/files/paper.pdf":
+            return b"%PDF-1.7 landing page payload", "application/pdf"
+        return b"", None
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_bytes_with_retry",
+        _request_bytes,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes_via_browser",
+        lambda *args, **kwargs: (b"", None),
+    )
+
+    content, content_type = publication_console_service._fetch_open_access_pdf_bytes(
+        "https://example.org/article"
+    )
+
+    assert content == b"%PDF-1.7 landing page payload"
+    assert content_type == "application/pdf"
+    assert requested_urls == [
+        "https://example.org/article",
+        "https://example.org/files/paper.pdf",
+    ]
+
+
+def test_find_open_access_pdf_candidates_includes_doi_work_and_pmid(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_find_unpaywall_pdf_url",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_find_unpaywall_landing_page_urls",
+        lambda **kwargs: [
+            "https://publisher.example/article",
+            "https://publisher.example/article",
+        ],
+    )
+
+    work = Work(
+        title="Candidate OA Work",
+        title_lower="candidate oa work",
+        year=2026,
+        doi="10.1000/candidate-oa-work",
+        pmid="40340893",
+        work_type="journal-article",
+        venue_name="Test Journal",
+        publisher="Test Publisher",
+        abstract="Abstract",
+        keywords=[],
+        url="https://journal.example/article",
+        authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+        provenance="manual",
+    )
+
+    candidates = publication_console_service._find_open_access_pdf_candidates(
+        work=work,
+        email="owner@example.com",
+    )
+
+    assert candidates == [
+        "https://publisher.example/article",
+        "https://doi.org/10.1000/candidate-oa-work",
+        "https://journal.example/article",
+        "https://pubmed.ncbi.nlm.nih.gov/40340893/",
+    ]
+
+
 def test_open_access_browser_fetch_script_path_prefers_packaged_script(
     monkeypatch, tmp_path
 ) -> None:
@@ -3261,6 +3348,76 @@ def test_open_access_link_prunes_existing_active_link_without_local_copy(
             )
         ).first()
         assert stored_row is None
+
+
+def test_open_access_link_tries_multiple_candidates_until_one_is_stored(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    monkeypatch.setattr(
+        publication_console_service,
+        "_find_open_access_pdf_candidates",
+        lambda **kwargs: [
+            "https://example.org/blocked",
+            "https://example.org/landing",
+        ],
+    )
+
+    def _fetch_bytes(url: str) -> tuple[bytes, str | None]:
+        if url == "https://example.org/landing":
+            return b"%PDF-1.7 recovered payload", "application/pdf"
+        return b"", None
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes",
+        _fetch_bytes,
+    )
+
+    with TestClient(app) as client:
+        owner_id, token = _register(client, email="oa-multi-candidate@example.com")
+
+        with session_scope() as session:
+            work = Work(
+                user_id=owner_id,
+                title="Multi candidate OA work",
+                title_lower="multi candidate oa work",
+                year=2026,
+                doi="10.1000/multi-candidate-oa-work",
+                pmid=None,
+                work_type="journal-article",
+                venue_name="Test Journal",
+                publisher="Test Publisher",
+                abstract="Abstract",
+                keywords=[],
+                url="https://example.org/article",
+                authors_json=[{"name": "Ciaran Grafton-Clarke"}],
+                provenance="manual",
+            )
+            session.add(work)
+            session.flush()
+            work_id = str(work.id)
+
+        response = client.post(
+            f"/v1/publications/{work_id}/files/link-oa",
+            headers=_auth_headers(token),
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created"] is True
+
+    with session_scope() as session:
+        stored_row = session.scalars(
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == owner_id,
+                PublicationFile.publication_id == work_id,
+            )
+        ).first()
+        assert stored_row is not None
+        assert stored_row.oa_url == "https://example.org/landing"
+        assert stored_row.storage_key
 
 
 def test_listing_publication_files_prunes_active_oa_link_without_local_copy(
