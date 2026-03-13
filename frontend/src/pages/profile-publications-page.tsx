@@ -5821,8 +5821,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderCollapsedNodeIds({})
     setPublicationReaderInspectorOpen(false)
     setPublicationReaderPdfPage(initialPdfPage)
-    setPublicationReaderViewMode(selectedPaperPrimaryPdfContentFileId ? 'pdf' : 'structured')
-    setPublicationReaderAwaitingPdfUpgrade(!selectedPaperPrimaryPdfContentFileId)
+    setPublicationReaderViewMode('structured')
+    setPublicationReaderAwaitingPdfUpgrade(false)
     setPublicationReaderActiveSectionId(initialSection?.id || null)
     void loadPublicationPaperModelData(selectedWorkId, true, {
       forceReparse: Boolean(
