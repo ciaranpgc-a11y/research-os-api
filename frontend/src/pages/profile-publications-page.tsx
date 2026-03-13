@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowUpRight, BookOpen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, FlaskConical, Filter, Hammer, Lightbulb, Loader2, Mail, Paperclip, Pencil, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, Filter, Hammer, Loader2, Mail, Paperclip, Pencil, RefreshCw, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
@@ -104,7 +104,7 @@ type PublicationTableColumnPreference = {
   align: PublicationTableColumnAlign
   width: number
 }
-type PublicationOaPdfStatus = 'available' | 'missing' | 'unknown'
+type PublicationOaPdfStatus = 'available' | 'missing' | 'checking' | 'unknown'
 type PublicationOaPdfStatusRecord = {
   status: PublicationOaPdfStatus
   downloadUrl: string | null
@@ -147,6 +147,7 @@ type PublicationReaderNavigatorItemPayload = {
   label: string
   indent: number
   target: PublicationReaderNavigatorTarget
+  isActive: boolean
 }
 type PublicationReaderNavigatorGroupPayload = {
   id: string
@@ -154,6 +155,7 @@ type PublicationReaderNavigatorGroupPayload = {
   toneClassName: string
   target: PublicationReaderNavigatorTarget
   items: PublicationReaderNavigatorItemPayload[]
+  isActive: boolean
 }
 
 const PUBLICATION_READER_STRUCTURED_GROUP_ORDER = [
@@ -262,13 +264,22 @@ function formatPublicationPaperStructuredGroupLabel(value: string | null | undef
 }
 
 function publicationReaderLabelSuggestsAbstractSummary(labelText: string): boolean {
+  const normalized = String(labelText || '').trim().toLowerCase()
+  if (!normalized) {
+    return false
+  }
   return (
-    labelText.includes('already known')
-    || labelText.includes('study adds')
-    || labelText.includes('might affect research')
-    || labelText.includes('practice or policy')
-    || labelText.includes('what this study adds')
-    || labelText.includes('what is already known')
+    normalized.includes('already known')
+    || normalized.includes('study adds')
+    || normalized.includes('might affect research')
+    || normalized.includes('practice or policy')
+    || normalized.includes('what this study adds')
+    || normalized.includes('what is already known')
+    || normalized.includes('strengths and limitations')
+    || normalized.includes('key question')
+    || normalized.includes('take home')
+    || normalized.includes('research in context')
+    || normalized.includes('tweetable abstract')
   )
 }
 
@@ -380,117 +391,6 @@ function normalizePublicationPaperDisplayGroupKey(
   return null
 }
 
-function buildPublicationReaderSyntheticAbstractSections(
-  abstractText: string,
-  sections: PublicationPaperSectionPayload[],
-): PublicationPaperSectionPayload[] {
-  const normalizedAbstract = normalizeAbstractDisplayText(abstractText).trim()
-  if (!normalizedAbstract) {
-    return []
-  }
-
-  const orderAnchor = sections.length > 0
-    ? Math.min(...sections.map((section) => section.order))
-    : 0
-  const parentParagraphCount = splitLongTextIntoParagraphs(normalizedAbstract, 800).length
-  const parentWordCount = normalizedAbstract.split(/\s+/).filter(Boolean).length
-  const parentSection: PublicationPaperSectionPayload = {
-    id: 'synthetic-reader-abstract',
-    title: 'Abstract',
-    raw_label: 'Abstract',
-    label_original: 'Abstract',
-    label_normalized: 'abstract',
-    kind: 'abstract',
-    canonical_kind: 'abstract',
-    section_type: 'canonical',
-    canonical_map: 'abstract',
-    content: normalizedAbstract,
-    source: 'derived',
-    source_parser: null,
-    order: orderAnchor - 1,
-    page_start: null,
-    page_end: null,
-    level: 0,
-    parent_id: null,
-    bounding_boxes: [],
-    confidence: null,
-    is_generated_heading: true,
-    word_count: parentWordCount,
-    paragraph_count: parentParagraphCount,
-    document_zone: 'front',
-    section_role: 'abstract_summary',
-    journal_section_family: null,
-    major_section_key: 'overview',
-  }
-
-  const abstractSubsections = extractHeadingSectionsFromAbstractSource(normalizedAbstract)
-  if (abstractSubsections.length < 2) {
-    return [parentSection]
-  }
-
-  const subsectionKeyToCanonicalMap = (value: string): string => {
-    switch (value) {
-      case 'background':
-        return 'introduction'
-      case 'objective':
-      case 'other':
-        return 'abstract'
-      case 'study_design':
-        return 'methods'
-      case 'findings':
-        return 'results'
-      case 'registration':
-        return 'article_information'
-      default:
-        return value
-    }
-  }
-
-  const childSections: PublicationPaperSectionPayload[] = abstractSubsections.map((subsection, index) => {
-    const canonicalMap = subsectionKeyToCanonicalMap(subsection.key)
-    const paragraphCount = splitLongTextIntoParagraphs(subsection.content, 800).length
-    const wordCount = subsection.content.split(/\s+/).filter(Boolean).length
-    return {
-      id: `synthetic-reader-abstract-${subsection.key}-${index}`,
-      title: subsection.label || 'Summary',
-      raw_label: subsection.label || 'Summary',
-      label_original: subsection.label || 'Summary',
-      label_normalized: normalizePublicationReaderSectionLabel(subsection.label || 'Summary'),
-      kind: canonicalMap,
-      canonical_kind: canonicalMap,
-      section_type: 'canonical',
-      canonical_map: canonicalMap,
-      content: normalizeAbstractDisplayText(subsection.content),
-      source: 'derived',
-      source_parser: null,
-      order: orderAnchor - 0.99 + (index * 0.001),
-      page_start: null,
-      page_end: null,
-      level: 1,
-      parent_id: parentSection.id,
-      bounding_boxes: [],
-      confidence: null,
-      is_generated_heading: true,
-      word_count: wordCount,
-      paragraph_count: paragraphCount,
-      document_zone: 'front',
-      section_role: 'abstract_summary',
-      journal_section_family: null,
-      major_section_key: 'overview',
-    }
-  })
-
-  return [
-    {
-      ...parentSection,
-      content: '',
-      word_count: 0,
-      paragraph_count: 0,
-    },
-    ...childSections,
-  ]
-}
-
 function buildPublicationPaperDisplayGroupKeyBySectionId(
   sections: PublicationPaperSectionPayload[],
 ): Map<string, string> {
@@ -545,106 +445,6 @@ function publicationReaderSectionMatchesGroupLabel(
 
 function publicationFileDirectUrl(file: Pick<PublicationFilePayload, 'download_url' | 'oa_url'>): string {
   return String(file.download_url || file.oa_url || '').trim()
-}
-
-function publicationFileOpenAccessSourceLabel(
-  file: Pick<PublicationFilePayload, 'source' | 'oa_url'>,
-): string | null {
-  if (file.source !== 'OA_LINK') {
-    return null
-  }
-  const rawUrl = String(file.oa_url || '').trim()
-  if (!rawUrl) {
-    return 'Open access'
-  }
-  try {
-    const host = new URL(rawUrl).hostname.toLowerCase()
-    if (host === 'pmc.ncbi.nlm.nih.gov' || host === 'ftp.ncbi.nlm.nih.gov') {
-      return 'PMC'
-    }
-    if (host === 'pubmed.ncbi.nlm.nih.gov') {
-      return 'PubMed'
-    }
-    if (host === 'doi.org') {
-      return 'DOI'
-    }
-    if (host.endsWith('tandfonline.com')) {
-      return 'Taylor & Francis'
-    }
-    if (host.startsWith('www.')) {
-      return host.slice(4)
-    }
-    return host
-  } catch {
-    return 'Open access'
-  }
-}
-
-function normalizePublicationReaderSectionLabel(value: string | null | undefined): string {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-}
-
-function getPublicationReaderSpecialSectionTone(
-  section: Pick<
-    PublicationPaperSectionPayload,
-    'title' | 'raw_label' | 'label_original' | 'label_normalized'
-  >,
-): {
-  badge: string
-  title: string
-  icon: ReactNode
-  shellClassName: string
-  badgeClassName: string
-} | null {
-  const normalizedLabel = normalizePublicationReaderSectionLabel(
-    section.title
-    || section.raw_label
-    || section.label_original
-    || section.label_normalized,
-  )
-  if (!normalizedLabel) {
-    return null
-  }
-  if (normalizedLabel.includes('already known')) {
-    return {
-      badge: 'Context',
-      title: 'What Is Already Known',
-      icon: <BookOpen className="h-4 w-4" />,
-      shellClassName:
-        'border-[hsl(var(--tone-accent-200))] bg-[linear-gradient(180deg,hsl(var(--tone-accent-50))_0%,white_100%)]',
-      badgeClassName:
-        'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]',
-    }
-  }
-  if (normalizedLabel.includes('study adds')) {
-    return {
-      badge: 'Contribution',
-      title: 'What This Study Adds',
-      icon: <Lightbulb className="h-4 w-4" />,
-      shellClassName:
-        'border-[hsl(var(--tone-positive-200))] bg-[linear-gradient(180deg,hsl(var(--tone-positive-50))_0%,white_100%)]',
-      badgeClassName:
-        'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]',
-    }
-  }
-  if (
-    normalizedLabel.includes('might affect research')
-    || normalizedLabel.includes('practice or policy')
-  ) {
-    return {
-      badge: 'Implication',
-      title: 'How This Study Might Affect Practice',
-      icon: <FlaskConical className="h-4 w-4" />,
-      shellClassName:
-        'border-[hsl(var(--tone-warning-200))] bg-[linear-gradient(180deg,hsl(var(--tone-warning-50))_0%,white_100%)]',
-      badgeClassName:
-        'border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-800))]',
-    }
-  }
-  return null
 }
 
 function resolvePublicationAssetUrl(value: string | null | undefined): string {
@@ -907,7 +707,11 @@ const PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX = 'aawe_publications_library_c
 const PUBLICATIONS_LIBRARY_PAGE_SIZE_STORAGE_PREFIX = 'aawe_publications_library_page_size:'
 const PUBLICATIONS_LIBRARY_COLUMN_ORDER_STORAGE_PREFIX = 'aawe_publications_library_column_order:'
 const PUBLICATIONS_LIBRARY_VISUAL_SETTINGS_STORAGE_PREFIX = 'aawe_publications_library_visual_settings:'
+const PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX = 'aawe_publications_oa_auto_attempted:'
 const PUBLICATIONS_OA_STATUS_STORAGE_PREFIX = 'aawe_publications_oa_status:'
+const PUBLICATIONS_OA_AUTO_MAX_PER_PASS = 60
+const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
+const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
@@ -2283,8 +2087,42 @@ function autoFitPublicationTableColumns(input: {
   return next
 }
 
+function publicationsOaAutoAttemptedStorageKey(userId: string): string {
+  return `${PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX}${userId}`
+}
+
 function publicationsOaStatusStorageKey(userId: string): string {
   return `${PUBLICATIONS_OA_STATUS_STORAGE_PREFIX}${userId}`
+}
+
+function loadPublicationsOaAutoAttempted(userId: string): Set<string> {
+  if (typeof window === 'undefined') {
+    return new Set<string>()
+  }
+  const raw = window.localStorage.getItem(publicationsOaAutoAttemptedStorageKey(userId))
+  if (!raw) {
+    return new Set<string>()
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      return new Set<string>()
+    }
+    const values = parsed
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+    return new Set<string>(values)
+  } catch {
+    return new Set<string>()
+  }
+}
+
+function savePublicationsOaAutoAttempted(userId: string, attempted: Set<string>): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const values = Array.from(attempted).slice(-4000)
+  window.localStorage.setItem(publicationsOaAutoAttemptedStorageKey(userId), JSON.stringify(values))
 }
 
 function loadPublicationsOaStatus(userId: string): Record<string, PublicationOaPdfStatusRecord> {
@@ -2305,11 +2143,9 @@ function loadPublicationsOaStatus(userId: string): Record<string, PublicationOaP
       const payload = value as Record<string, unknown>
       const rawStatus = String(payload.status || '').trim().toLowerCase()
       const status: PublicationOaPdfStatus =
-        rawStatus === 'available'
-          ? 'available'
-          : rawStatus === 'missing' || rawStatus === 'checking'
-            ? 'missing'
-            : 'unknown'
+        rawStatus === 'available' || rawStatus === 'missing' || rawStatus === 'checking'
+          ? rawStatus
+          : 'unknown'
       next[workId] = {
         status,
         downloadUrl: String(payload.downloadUrl || '').trim() || null,
@@ -2339,20 +2175,17 @@ function savePublicationsOaStatus(
 }
 
 function publicationOaStatusVisualStatus(
-  work: { doi?: string | null; has_open_access_pdf?: boolean | null },
+  work: { doi?: string | null },
   record: PublicationOaPdfStatusRecord | null | undefined,
 ): PublicationOaPdfStatus {
   if (record?.status) {
     return record.status
   }
-  if (work.has_open_access_pdf) {
-    return 'available'
-  }
   const hasDoi = Boolean((work.doi || '').trim())
   if (!hasDoi) {
     return 'missing'
   }
-  return 'missing'
+  return 'unknown'
 }
 
 function publicationOaStatusToneClass(status: PublicationOaPdfStatus): string {
@@ -2369,13 +2202,16 @@ function publicationOaStatusLabel(status: PublicationOaPdfStatus, hasDoi: boolea
   if (status === 'available') {
     return 'Open-access PDF available'
   }
+  if (status === 'checking') {
+    return 'Checking for open-access PDF'
+  }
   if (status === 'missing' && !hasDoi) {
     return 'Open-access PDF unavailable (missing DOI)'
   }
   if (status === 'missing') {
     return 'Open-access PDF not found'
   }
-  return 'Open-access PDF status pending'
+  return 'Open-access PDF pending background check'
 }
 
 function loadActivePublicationDetailTab(): PublicationDetailTab {
@@ -2580,6 +2416,155 @@ function extractHeadingSectionsFromAbstractSource(value: string): LocalAbstractS
   return sections
 }
 
+function buildPublicationReaderSyntheticAbstractSections(
+  abstractText: string,
+  sections: PublicationPaperSectionPayload[],
+): PublicationPaperSectionPayload[] {
+  const normalizedAbstract = normalizeAbstractDisplayText(abstractText).trim()
+  if (!normalizedAbstract) {
+    return []
+  }
+
+  const orderedSections = [...sections].sort(comparePublicationPaperSections)
+  const orderAnchor = orderedSections[0]?.order ?? 0
+  const structuredSections = extractHeadingSectionsFromAbstractSource(normalizedAbstract)
+
+  const makeBaseSection = (
+    id: string,
+    title: string,
+    content: string,
+    parentId: string | null,
+    order: number,
+    level: number,
+  ): PublicationPaperSectionPayload => ({
+    id,
+    title,
+    raw_label: title,
+    label_original: title,
+    label_normalized: title.toLowerCase(),
+    kind: 'abstract',
+    canonical_kind: 'abstract',
+    section_type: 'canonical',
+    canonical_map: 'abstract',
+    content,
+    source: 'derived',
+    source_parser: null,
+    order,
+    page_start: null,
+    page_end: null,
+    level,
+    parent_id: parentId,
+    bounding_boxes: [],
+    confidence: null,
+    is_generated_heading: true,
+    word_count: content ? content.split(/\s+/).filter(Boolean).length : 0,
+    paragraph_count: content ? splitLongTextIntoParagraphs(content, 800).length : 0,
+    document_zone: 'front',
+    section_role: 'abstract_summary',
+    journal_section_family: null,
+    major_section_key: 'overview',
+  })
+
+  if (structuredSections.length < 2) {
+    return [makeBaseSection('synthetic-reader-abstract', 'Abstract', normalizedAbstract, null, orderAnchor - 1, 0)]
+  }
+
+  const parentId = 'synthetic-reader-abstract'
+  const parentSection = makeBaseSection(parentId, 'Abstract', '', null, orderAnchor - 1, 0)
+  const childSections = structuredSections.map((subsection, index) => (
+    makeBaseSection(
+      `synthetic-reader-abstract-${index + 1}`,
+      subsection.label || 'Summary',
+      normalizeAbstractDisplayText(subsection.content),
+      parentId,
+      orderAnchor - 0.99 + ((index + 1) * 0.001),
+      1,
+    )
+  ))
+  return [parentSection, ...childSections]
+}
+
+function normalizePublicationReaderSections(
+  sections: PublicationPaperSectionPayload[],
+  abstractText: string,
+): PublicationPaperSectionPayload[] {
+  const normalizedAbstract = normalizeAbstractDisplayText(abstractText).trim()
+  const next: PublicationPaperSectionPayload[] = []
+  const childCounts = new Map<string, number>()
+  for (const section of sections) {
+    if (section.parent_id) {
+      childCounts.set(section.parent_id, (childCounts.get(section.parent_id) || 0) + 1)
+    }
+  }
+
+  let hasAbstractGroup = false
+  for (const section of sections) {
+    const groupKey = normalizePublicationPaperDisplayGroupKey(section)
+    if (groupKey === 'abstract') {
+      hasAbstractGroup = true
+    }
+    const shouldExpandStructuredAbstract = (
+      groupKey === 'abstract'
+      && !section.parent_id
+      && (childCounts.get(section.id) || 0) === 0
+      && Boolean(section.content)
+    )
+    if (!shouldExpandStructuredAbstract) {
+      next.push(section)
+      continue
+    }
+
+    const structuredSections = extractHeadingSectionsFromAbstractSource(section.content)
+    if (structuredSections.length < 2) {
+      next.push(section)
+      continue
+    }
+
+    next.push({
+      ...section,
+      content: '',
+      word_count: 0,
+      paragraph_count: 0,
+      section_role: section.section_role || 'abstract_summary',
+      major_section_key: section.major_section_key || 'overview',
+      canonical_map: 'abstract',
+      canonical_kind: 'abstract',
+      kind: 'abstract',
+      document_zone: section.document_zone || 'front',
+    })
+    structuredSections.forEach((subsection, index) => {
+      const content = normalizeAbstractDisplayText(subsection.content)
+      next.push({
+        ...section,
+        id: `${section.id}-structured-${index + 1}`,
+        title: subsection.label || 'Summary',
+        raw_label: subsection.label || 'Summary',
+        label_original: subsection.label || 'Summary',
+        label_normalized: (subsection.label || 'Summary').toLowerCase(),
+        canonical_map: 'abstract',
+        canonical_kind: 'abstract',
+        kind: 'abstract',
+        content,
+        order: section.order + ((index + 1) * 0.001),
+        level: Math.max(1, (section.level || 0) + 1),
+        parent_id: section.id,
+        is_generated_heading: true,
+        word_count: content ? content.split(/\s+/).filter(Boolean).length : 0,
+        paragraph_count: content ? splitLongTextIntoParagraphs(content, 800).length : 0,
+        section_role: 'abstract_summary',
+        major_section_key: 'overview',
+        document_zone: 'front',
+      })
+    })
+  }
+
+  if (!hasAbstractGroup && normalizedAbstract) {
+    next.unshift(...buildPublicationReaderSyntheticAbstractSections(normalizedAbstract, sections))
+  }
+
+  return next.sort(comparePublicationPaperSections)
+}
+
 function createDefaultPublicationExportFieldSelection(): Record<PublicationExportFieldKey, boolean> {
   return PUBLICATION_EXPORT_FIELD_OPTIONS.reduce<Record<PublicationExportFieldKey, boolean>>(
     (accumulator, option) => {
@@ -2650,17 +2635,6 @@ function downloadBlob(filename: string, blob: Blob): void {
   window.setTimeout(() => {
     window.URL.revokeObjectURL(url)
   }, 0)
-}
-
-function openBlobInNewTab(blob: Blob): void {
-  const url = window.URL.createObjectURL(blob)
-  const opened = window.open(url, '_blank', 'noopener,noreferrer')
-  window.setTimeout(() => {
-    if (!opened || opened.closed) {
-      return
-    }
-    window.URL.revokeObjectURL(url)
-  }, 60_000)
 }
 
 function publicationExportAuthors(work: PersonaWork): string[] {
@@ -3064,6 +3038,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [uploadingFile, setUploadingFile] = useState(false)
   const [findingOaFile, setFindingOaFile] = useState(false)
   const [oaPdfStatusByWorkId, setOaPdfStatusByWorkId] = useState<Record<string, PublicationOaPdfStatusRecord>>({})
+  const [autoOaFinding, setAutoOaFinding] = useState(false)
+  const [autoOaStatus, setAutoOaStatus] = useState('')
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null)
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
   const [savingPublicationFileId, setSavingPublicationFileId] = useState<string | null>(null)
@@ -3079,7 +3055,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationReaderActiveSectionId, setPublicationReaderActiveSectionId] = useState<string | null>(null)
   const [publicationReaderPdfPage, setPublicationReaderPdfPage] = useState(1)
   const [publicationReaderViewMode, setPublicationReaderViewMode] = useState<PublicationReaderViewMode>('structured')
-  const [publicationReaderAwaitingPdfUpgrade, setPublicationReaderAwaitingPdfUpgrade] = useState(false)
   const [publicationReaderCollapsedNodeIds, setPublicationReaderCollapsedNodeIds] = useState<Record<string, boolean>>({})
   const [publicationReaderInspectorOpen, setPublicationReaderInspectorOpen] = useState(false)
   const [filesDragOver, setFilesDragOver] = useState(false)
@@ -3107,13 +3082,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [selectedPublicationTypes, setSelectedPublicationTypes] = useState<string[]>([])
   const [selectedArticleTypes, setSelectedArticleTypes] = useState<string[]>([])
   const [publicationLibraryToolsOpen, setPublicationLibraryToolsOpen] = useState(false)
+  const autoOaInFlightRef = useRef(false)
   const detailWarmupInFlightRef = useRef<Set<string>>(new Set())
   const authorsWarmupInFlightRef = useRef<Set<string>>(new Set())
   const filesWarmupInFlightRef = useRef<Set<string>>(new Set())
   const paperModelWarmupInFlightRef = useRef<Set<string>>(new Set())
-  const paperModelRequestCountByWorkIdRef = useRef<Map<string, number>>(new Map())
-  const paperModelLatestRequestTokenByWorkIdRef = useRef<Map<string, number>>(new Map())
+  const paperModelCacheRef = useRef(paperModelCacheByWorkId)
+  paperModelCacheRef.current = paperModelCacheByWorkId
+  const selectedWorkIdRef = useRef(selectedWorkId)
+  selectedWorkIdRef.current = selectedWorkId
   const filesWarmupCompletedRef = useRef<Set<string>>(new Set())
+  const autoOaStatusClearTimerRef = useRef<number | null>(null)
   const localTopMetricsBootstrapAttemptedRef = useRef(false)
   const publicationTableLayoutRef = useRef<HTMLDivElement | null>(null)
   const publicationLibraryFilterButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -3293,6 +3272,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     saveActivePublicationDetailTab(activeDetailTab)
   }, [activeDetailTab])
 
+  useEffect(() => () => {
+    if (autoOaStatusClearTimerRef.current !== null) {
+      window.clearTimeout(autoOaStatusClearTimerRef.current)
+      autoOaStatusClearTimerRef.current = null
+    }
+  }, [])
+
   useEffect(() => {
     if (!user?.id) {
       publicationTablePrefsLoadedRef.current = false
@@ -3369,35 +3355,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     setOaPdfStatusByWorkId(loadPublicationsOaStatus(user.id))
   }, [user?.id])
-
-  useEffect(() => {
-    const works = personaState?.works || []
-    if (!works.length) {
-      return
-    }
-    setOaPdfStatusByWorkId((current) => {
-      let changed = false
-      const next = { ...current }
-      for (const work of works) {
-        const existing = current[work.id]
-        const nextStatus: PublicationOaPdfStatus = work.has_open_access_pdf ? 'available' : 'missing'
-        if (
-          existing?.status === nextStatus
-          && (nextStatus !== 'missing' || (!existing.downloadUrl && !existing.fileName))
-        ) {
-          continue
-        }
-        next[work.id] = {
-          status: nextStatus,
-          downloadUrl: nextStatus === 'available' ? existing?.downloadUrl || null : null,
-          fileName: nextStatus === 'available' ? existing?.fileName || null : null,
-          updatedAt: new Date().toISOString(),
-        }
-        changed = true
-      }
-      return changed ? next : current
-    })
-  }, [personaState?.works])
 
   useEffect(() => {
     if (!user?.id) {
@@ -3664,60 +3621,39 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const loadPublicationPaperModelData = useCallback(async (
     workId: string,
     force = false,
-    options?: { silent?: boolean; forceReparse?: boolean },
+    options?: { silent?: boolean; serverForce?: boolean },
   ) => {
     if (!token || !workId) {
       return null
     }
     const silent = Boolean(options?.silent)
-    const forceReparse = Boolean(options?.forceReparse)
-    if (!force && paperModelCacheByWorkId[workId]) {
-      return paperModelCacheByWorkId[workId]
+    if (!force && paperModelCacheRef.current[workId]) {
+      return paperModelCacheRef.current[workId]
     }
-    if (!forceReparse && paperModelWarmupInFlightRef.current.has(workId)) {
-      return paperModelCacheByWorkId[workId] || null
+    if (paperModelWarmupInFlightRef.current.has(workId) && !force) {
+      return paperModelCacheRef.current[workId] || null
     }
     paperModelWarmupInFlightRef.current.add(workId)
-    paperModelRequestCountByWorkIdRef.current.set(
-      workId,
-      (paperModelRequestCountByWorkIdRef.current.get(workId) ?? 0) + 1,
-    )
-    const requestToken = (paperModelLatestRequestTokenByWorkIdRef.current.get(workId) ?? 0) + 1
-    paperModelLatestRequestTokenByWorkIdRef.current.set(workId, requestToken)
-    const isLatestRequest = () => paperModelLatestRequestTokenByWorkIdRef.current.get(workId) === requestToken
-    if (selectedWorkId === workId && !silent) {
+    if (selectedWorkIdRef.current === workId && !silent) {
       setPublicationReaderLoading(true)
       setPublicationReaderError('')
     }
     try {
-      const payload = await fetchPublicationPaperModel(token, workId, {
-        forceReparse,
-      })
-      if (isLatestRequest()) {
-        setPaperModelCacheByWorkId((current) => ({ ...current, [workId]: payload }))
-      }
+      const payload = await fetchPublicationPaperModel(token, workId, { force: Boolean(options?.serverForce) })
+      setPaperModelCacheByWorkId((current) => ({ ...current, [workId]: payload }))
       return payload
     } catch (loadError) {
-      if (selectedWorkId === workId && !silent && isLatestRequest()) {
+      if (selectedWorkIdRef.current === workId && !silent) {
         setPublicationReaderError(loadError instanceof Error ? loadError.message : 'Could not load paper reader.')
       }
       return null
     } finally {
-      const remainingRequests = Math.max(
-        0,
-        (paperModelRequestCountByWorkIdRef.current.get(workId) ?? 1) - 1,
-      )
-      if (remainingRequests > 0) {
-        paperModelRequestCountByWorkIdRef.current.set(workId, remainingRequests)
-      } else {
-        paperModelRequestCountByWorkIdRef.current.delete(workId)
-        paperModelWarmupInFlightRef.current.delete(workId)
-      }
-      if (selectedWorkId === workId && !silent && isLatestRequest()) {
+      paperModelWarmupInFlightRef.current.delete(workId)
+      if (selectedWorkIdRef.current === workId && !silent) {
         setPublicationReaderLoading(false)
       }
     }
-  }, [paperModelCacheByWorkId, selectedWorkId, token])
+  }, [token])
 
   const loadPublicationFilesData = useCallback(async (workId: string, force = false) => {
     if (!token || !workId) {
@@ -4389,6 +4325,141 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [publicationLibraryDownloadScope, selectedWorkId])
 
   useEffect(() => {
+    if (isFixtureMode || !token || !user?.id || autoOaInFlightRef.current) {
+      return
+    }
+    const works = personaState?.works ?? []
+    if (works.length === 0) {
+      return
+    }
+
+    const attempted = loadPublicationsOaAutoAttempted(user.id)
+    const candidates = works
+      .filter((work) => Boolean((work.doi || '').trim()))
+      .filter((work) => !attempted.has(work.id))
+      .slice(0, PUBLICATIONS_OA_AUTO_MAX_PER_PASS)
+    if (candidates.length === 0) {
+      return
+    }
+
+    let cancelled = false
+    autoOaInFlightRef.current = true
+    setAutoOaFinding(true)
+    setAutoOaStatus(`Background PDF ingest: 0/${candidates.length}`)
+    if (autoOaStatusClearTimerRef.current !== null) {
+      window.clearTimeout(autoOaStatusClearTimerRef.current)
+      autoOaStatusClearTimerRef.current = null
+    }
+
+    const run = async () => {
+      let checked = 0
+      let linked = 0
+      let unchanged = 0
+      let unavailable = 0
+      try {
+        for (const work of candidates) {
+          if (cancelled) {
+            break
+          }
+          setOaPdfStatusByWorkId((current) => ({
+            ...current,
+            [work.id]: {
+              status: 'checking',
+              downloadUrl: current[work.id]?.downloadUrl || null,
+              fileName: current[work.id]?.fileName || null,
+              updatedAt: new Date().toISOString(),
+            },
+          }))
+          attempted.add(work.id)
+          try {
+            const payload = await linkPublicationOpenAccessPdf(token, work.id)
+            if (payload.file) {
+              const linkedFile = payload.file
+              const downloadUrl = linkedFile.download_url || linkedFile.oa_url || null
+              setFilesCacheByWorkId((current) => {
+                const existing = current[work.id]?.items || []
+                if (existing.some((item) => item.id === linkedFile.id)) {
+                  return current
+                }
+                return {
+                  ...current,
+                  [work.id]: {
+                    items: [linkedFile, ...existing],
+                  },
+                }
+              })
+              setOaPdfStatusByWorkId((current) => ({
+                ...current,
+                [work.id]: {
+                  status: 'available',
+                  downloadUrl,
+                  fileName: linkedFile.file_name || null,
+                  updatedAt: new Date().toISOString(),
+                },
+              }))
+            } else {
+              setOaPdfStatusByWorkId((current) => ({
+                ...current,
+                [work.id]: {
+                  status: 'missing',
+                  downloadUrl: null,
+                  fileName: null,
+                  updatedAt: new Date().toISOString(),
+                },
+              }))
+            }
+            if (payload.created && payload.file) {
+              linked += 1
+            } else {
+              unchanged += 1
+            }
+          } catch {
+            setOaPdfStatusByWorkId((current) => ({
+              ...current,
+              [work.id]: {
+                status: 'missing',
+                downloadUrl: null,
+                fileName: null,
+                updatedAt: new Date().toISOString(),
+              },
+            }))
+            unavailable += 1
+          }
+          checked += 1
+          savePublicationsOaAutoAttempted(user.id, attempted)
+          if (cancelled) {
+            break
+          }
+          setAutoOaStatus(`Background PDF ingest: ${checked}/${candidates.length} checked`)
+          if (checked < candidates.length) {
+            await new Promise<void>((resolve) => {
+              window.setTimeout(resolve, PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS)
+            })
+          }
+        }
+      } finally {
+        savePublicationsOaAutoAttempted(user.id, attempted)
+        autoOaInFlightRef.current = false
+        setAutoOaFinding(false)
+        if (!cancelled) {
+          setAutoOaStatus(
+            `Background PDF ingest complete: ${linked} linked, ${unchanged} already linked, ${unavailable} unavailable.`,
+          )
+          autoOaStatusClearTimerRef.current = window.setTimeout(() => {
+            setAutoOaStatus('')
+            autoOaStatusClearTimerRef.current = null
+          }, PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS)
+        }
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [isFixtureMode, personaState?.works, token, user?.id])
+
+  useEffect(() => {
     if (isFixtureMode || !token) {
       return
     }
@@ -4463,6 +4534,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedAiResponse = selectedWorkId ? aiCacheByWorkId[selectedWorkId] || null : null
   const selectedPaperModelResponse = selectedWorkId ? paperModelCacheByWorkId[selectedWorkId] || null : null
   const selectedFilesPayload = selectedWorkId ? filesCacheByWorkId[selectedWorkId] || null : null
+  const selectedHasRecoverableDeletedOaFile = Boolean(selectedFilesPayload?.has_recoverable_deleted_oa_file)
   const selectedFiles = useMemo(() => {
     const files = [...(selectedFilesPayload?.items || [])]
     files.sort((left, right) => {
@@ -4476,17 +4548,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedOpenAccessFiles = useMemo(() => selectedFiles.filter((file) => file.source === 'OA_LINK'), [selectedFiles])
   const selectedAdditionalFiles = useMemo(() => selectedFiles.filter((file) => file.source !== 'OA_LINK'), [selectedFiles])
   const selectedHasActiveOaFile = selectedOpenAccessFiles.length > 0
-  const selectedCanFindOaFile = !selectedHasActiveOaFile
+  const selectedHasRetrievableDeletedOaFile = selectedHasRecoverableDeletedOaFile && !selectedHasActiveOaFile
   const selectedPaperModel = selectedPaperModelResponse?.payload || null
-  const selectedPaperSections = selectedPaperModel?.sections || []
+  const selectedReaderAbstractSource = normalizeAbstractDisplayText(
+    String(
+      selectedDetail?.structured_abstract?.source_abstract
+      || selectedDetail?.abstract
+      || selectedWork?.abstract
+      || '',
+    ),
+  )
+  const selectedPaperSections = useMemo(
+    () => normalizePublicationReaderSections(selectedPaperModel?.sections || [], selectedReaderAbstractSource),
+    [selectedPaperModel?.sections, selectedReaderAbstractSource],
+  )
   const selectedPaperMetadata = selectedPaperModel?.metadata || null
   const selectedPaperDocument = selectedPaperModel?.document || null
-  const selectedPaperProvenance = (selectedPaperModel?.provenance || {}) as Record<string, unknown>
-  const selectedPaperAssetEnrichmentCheckedAt = String(selectedPaperProvenance.asset_enrichment_checked_at || '').trim() || null
-  const selectedPaperParsingInProgress = (
-    selectedPaperModelResponse?.status === 'RUNNING'
-    || selectedPaperDocument?.parser_status === 'PARSING'
-  )
+  const selectedPaperProvenance = selectedPaperModel?.provenance || null
   const selectedPaperPrimaryFile = useMemo(
     () => (
       selectedPaperDocument?.primary_pdf_file_id
@@ -4497,13 +4575,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   )
   const selectedPaperPrimaryPdfContentFileId = selectedPaperDocument?.primary_pdf_file_id || selectedPaperPrimaryFile?.id || null
   const selectedPublicationReaderEntryAvailable = selectedPaperDocument?.reader_entry_available ?? true
-  const onRetryPublicationReaderParse = useCallback(() => {
-    if (!selectedWorkId || !selectedPaperPrimaryPdfContentFileId) {
-      return
-    }
-    setPublicationReaderError('')
-    void loadPublicationPaperModelData(selectedWorkId, true, { forceReparse: true })
-  }, [loadPublicationPaperModelData, selectedPaperPrimaryPdfContentFileId, selectedWorkId])
   const selectedPaperPrimaryPdfExternalUrl = useMemo(() => {
     const primaryFileUrl = selectedPaperPrimaryFile ? publicationFileDirectUrl(selectedPaperPrimaryFile) : ''
     return resolvePublicationPdfViewerUrl(primaryFileUrl || selectedPaperDocument?.primary_pdf_download_url || '')
@@ -4512,54 +4583,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedPaperTables = selectedPaperModel?.tables || []
   const selectedPaperDatasets = selectedPaperModel?.datasets || []
   const selectedPaperAttachments = selectedPaperModel?.attachments || []
-  const selectedPaperReaderSections = useMemo(() => {
-    if (!selectedPaperSections.length) {
-      return selectedPaperSections
-    }
-
-    const hasExplicitAbstractSection = selectedPaperSections.some((section) => {
-      const labelText = [
-        section.title,
-        section.raw_label,
-        section.label_original,
-        section.label_normalized,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .trim()
-        .toLowerCase()
-      const groupKey = normalizePublicationPaperDisplayGroupKey(section)
-      return (
-        groupKey === 'abstract'
-        && !publicationReaderLabelSuggestsAbstractSummary(labelText)
-        && (
-          labelText === 'abstract'
-          || labelText.startsWith('abstract ')
-          || section.canonical_kind === 'abstract'
-          || section.canonical_map === 'abstract'
-        )
-      )
-    })
-
-    if (hasExplicitAbstractSection) {
-      return selectedPaperSections
-    }
-
-    const abstractSource = String(
-      selectedDetail?.structured_abstract?.source_abstract
-      || selectedDetail?.abstract
-      || selectedWork?.abstract
-      || '',
-    ).trim()
-    const syntheticAbstractSections = buildPublicationReaderSyntheticAbstractSections(
-      abstractSource,
-      selectedPaperSections,
-    )
-    if (!syntheticAbstractSections.length) {
-      return selectedPaperSections
-    }
-    return [...syntheticAbstractSections, ...selectedPaperSections]
-  }, [selectedDetail?.abstract, selectedDetail?.structured_abstract?.source_abstract, selectedPaperSections, selectedWork?.abstract])
+  const selectedPaperAssetEnrichmentStatus = String(
+    (selectedPaperProvenance as Record<string, unknown> | null)?.asset_enrichment_status || '',
+  ).trim().toUpperCase()
+  const selectedPaperParsingInProgress = (
+    selectedPaperModelResponse?.status === 'RUNNING'
+    || selectedPaperDocument?.parser_status === 'PARSING'
+  )
+  const selectedPaperAssetEnrichmentInFlight = Boolean(
+    !selectedPaperParsingInProgress
+    && selectedPaperDocument?.has_viewable_pdf
+    && selectedPaperDocument?.parser_status === 'FULL_TEXT_READY'
+    && (selectedPaperFigures.length === 0 || selectedPaperTables.length === 0)
+    && !['COMPLETE', 'EMPTY', 'FAILED'].includes(selectedPaperAssetEnrichmentStatus),
+  )
   const selectedPaperAssetsById = useMemo(() => {
     const next = new Map<string, PublicationPaperAssetPayload>()
     for (const asset of [...selectedPaperFigures, ...selectedPaperTables, ...selectedPaperDatasets, ...selectedPaperAttachments]) {
@@ -4572,7 +4609,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedPaperComponentSummary = selectedPaperModel?.component_summary || null
   const selectedPaperSectionChildrenByParent = useMemo(() => {
     const next = new Map<string | null, PublicationPaperSectionPayload[]>()
-    for (const section of selectedPaperReaderSections) {
+    for (const section of selectedPaperSections) {
       const parentId = section.parent_id || null
       const existing = next.get(parentId)
       if (existing) {
@@ -4585,7 +4622,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       items.sort(comparePublicationPaperSections)
     }
     return next
-  }, [selectedPaperReaderSections])
+  }, [selectedPaperSections])
 
   const publicationReaderInlineAssetRefs = useRef<Record<string, HTMLElement | null>>({})
 
@@ -4651,15 +4688,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [selectedPaperFigures, selectedPaperInlineAssetsBySectionId, selectedPaperTables])
 
   const selectedPaperDisplayGroupKeyBySectionId = useMemo(
-    () => buildPublicationPaperDisplayGroupKeyBySectionId(selectedPaperReaderSections),
-    [selectedPaperReaderSections],
+    () => buildPublicationPaperDisplayGroupKeyBySectionId(selectedPaperSections),
+    [selectedPaperSections],
   )
   const selectedStructuredPaperGroups = useMemo<PublicationPaperStructuredGroupPayload[]>(() => {
-    if (!selectedPaperReaderSections.length) {
+    if (!selectedPaperSections.length) {
       return []
     }
     const sectionsByGroup = new Map<string, PublicationPaperSectionPayload[]>()
-    for (const section of selectedPaperReaderSections) {
+    for (const section of selectedPaperSections) {
       const groupKey = selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null
       if (!groupKey || groupKey === 'assets') {
         continue
@@ -4704,7 +4741,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         }
         return left.label.localeCompare(right.label)
       })
-  }, [selectedPaperDisplayGroupKeyBySectionId, selectedPaperReaderSections])
+  }, [selectedPaperDisplayGroupKeyBySectionId, selectedPaperSections])
   const selectedPublicationReaderNavigatorGroups = useMemo<PublicationReaderNavigatorGroupPayload[]>(() => {
     const buildSectionItems = (
       section: PublicationPaperSectionPayload,
@@ -4717,6 +4754,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         label: section.title || section.raw_label || 'Untitled section',
         indent,
         target: { kind: 'section', id: section.id },
+        isActive: false,
       })
       const children = (selectedPaperSectionChildrenByParent.get(section.id) || [])
         .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === groupKey)
@@ -4737,17 +4775,19 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           label: definition.label,
           toneClassName: definition.toneClassName,
           target: assets[0]?.id ? { kind: 'asset', id: assets[0].id } : null,
+          isActive: false,
           items: assets.map((asset) => ({
             id: asset.id,
             label: asset.title || asset.file_name || definition.label,
             indent: 1,
             target: { kind: 'asset', id: asset.id },
+            isActive: false,
           })),
         })
         return groups
       }
 
-      const sections = selectedPaperReaderSections
+      const sections = selectedPaperSections
         .filter((section) => (selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null) === definition.key)
         .sort(comparePublicationPaperSections)
       if (sections.length === 0) {
@@ -4783,6 +4823,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         label: definition.label,
         toneClassName: definition.toneClassName,
         target: primarySection?.id ? { kind: 'section', id: primarySection.id } : null,
+        isActive: false,
         items,
       })
       return groups
@@ -4791,20 +4832,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPaperDisplayGroupKeyBySectionId,
     selectedPaperFigures,
     selectedPaperSectionChildrenByParent,
-    selectedPaperReaderSections,
+    selectedPaperSections,
     selectedPaperTables,
   ])
   const selectedPaperFirstReaderSection = useMemo(
-    () => selectedStructuredPaperGroups.flatMap((group) => group.rootSections)[0] || selectedPaperReaderSections[0] || null,
-    [selectedPaperReaderSections, selectedStructuredPaperGroups],
+    () => selectedStructuredPaperGroups.flatMap((group) => group.rootSections)[0] || selectedPaperSections[0] || null,
+    [selectedPaperSections, selectedStructuredPaperGroups],
   )
   const selectedReaderActiveSection = useMemo(
     () => (
       publicationReaderActiveSectionId
-        ? selectedPaperReaderSections.find((section) => section.id === publicationReaderActiveSectionId) || null
+        ? selectedPaperSections.find((section) => section.id === publicationReaderActiveSectionId) || null
         : selectedPaperFirstReaderSection
     ),
-    [publicationReaderActiveSectionId, selectedPaperFirstReaderSection, selectedPaperReaderSections],
+    [publicationReaderActiveSectionId, selectedPaperFirstReaderSection, selectedPaperSections],
   )
   const selectedReaderActiveSectionAnchorPage = useMemo(
     () => resolvePublicationPaperSectionAnchorPage(selectedReaderActiveSection),
@@ -4861,7 +4902,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderActiveSectionId(null)
     setPublicationReaderPdfPage(1)
     setPublicationReaderViewMode('structured')
-    setPublicationReaderAwaitingPdfUpgrade(false)
     setPublicationReaderCollapsedNodeIds({})
     setPublicationReaderInspectorOpen(false)
     publicationReaderSectionRefs.current = {}
@@ -4895,35 +4935,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!publicationReaderOpen) {
       return
     }
-    if (selectedPaperReaderSections.length === 0) {
+    if (selectedPaperSections.length === 0) {
       setPublicationReaderActiveSectionId(null)
       return
     }
     if (
       publicationReaderActiveSectionId
-      && selectedPaperReaderSections.some((section) => section.id === publicationReaderActiveSectionId)
+      && selectedPaperSections.some((section) => section.id === publicationReaderActiveSectionId)
     ) {
       return
     }
     setPublicationReaderActiveSectionId(selectedPaperFirstReaderSection?.id || null)
-  }, [publicationReaderActiveSectionId, publicationReaderOpen, selectedPaperFirstReaderSection, selectedPaperReaderSections])
-
-  useEffect(() => {
-    if (!publicationReaderOpen || selectedPublicationReaderNavigatorGroups.length === 0) {
-      return
-    }
-    setPublicationReaderCollapsedNodeIds((current) => {
-      let changed = false
-      const next = { ...current }
-      for (const group of selectedPublicationReaderNavigatorGroups) {
-        if (!(group.id in current)) {
-          next[group.id] = false
-          changed = true
-        }
-      }
-      return changed ? next : current
-    })
-  }, [publicationReaderOpen, selectedPublicationReaderNavigatorGroups])
+  }, [publicationReaderActiveSectionId, publicationReaderOpen, selectedPaperFirstReaderSection, selectedPaperSections])
 
   useEffect(() => {
     if (!publicationReaderOpen) {
@@ -4935,48 +4958,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [publicationReaderOpen, publicationReaderViewMode, selectedPaperPrimaryPdfContentFileId])
 
   useEffect(() => {
-    if (!publicationReaderOpen || !publicationReaderAwaitingPdfUpgrade || !selectedPaperPrimaryPdfContentFileId) {
-      return
-    }
-    setPublicationReaderPdfPage(selectedReaderActiveSectionAnchorPage || 1)
-    setPublicationReaderViewMode('pdf')
-    setPublicationReaderAwaitingPdfUpgrade(false)
-  }, [
-    publicationReaderAwaitingPdfUpgrade,
-    publicationReaderOpen,
-    selectedPaperPrimaryPdfContentFileId,
-    selectedReaderActiveSectionAnchorPage,
-  ])
-
-  useEffect(() => {
     if (!publicationReaderOpen || !selectedWorkId) {
       return
     }
-    const waitingForAssets = (
-      selectedPaperDocument?.parser_status === 'FULL_TEXT_READY'
-      && selectedPaperDocument?.has_viewable_pdf
-      && selectedPaperDocument?.has_full_text_sections
-      && selectedPaperFigures.length === 0
-      && selectedPaperTables.length === 0
-      && !selectedPaperAssetEnrichmentCheckedAt
-    )
-    if (selectedPaperModelResponse?.status !== 'RUNNING' && selectedPaperDocument?.parser_status !== 'PARSING' && !waitingForAssets) {
+    if (!selectedPaperParsingInProgress && !selectedPaperAssetEnrichmentInFlight) {
       return
     }
     const timeoutId = window.setTimeout(() => {
       void loadPublicationPaperModelData(selectedWorkId, true, { silent: true })
-    }, waitingForAssets ? 6000 : 2400)
+    }, 2400)
     return () => window.clearTimeout(timeoutId)
   }, [
     loadPublicationPaperModelData,
     publicationReaderOpen,
-    selectedPaperDocument?.has_full_text_sections,
-    selectedPaperDocument?.has_viewable_pdf,
-    selectedPaperDocument?.parser_status,
-    selectedPaperAssetEnrichmentCheckedAt,
-    selectedPaperFigures.length,
-    selectedPaperModelResponse?.status,
-    selectedPaperTables.length,
+    selectedPaperAssetEnrichmentInFlight,
+    selectedPaperParsingInProgress,
     selectedWorkId,
   ])
 
@@ -5955,17 +5951,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderInspectorOpen(false)
     setPublicationReaderPdfPage(initialPdfPage)
     setPublicationReaderViewMode('structured')
-    setPublicationReaderAwaitingPdfUpgrade(false)
     setPublicationReaderActiveSectionId(initialSection?.id || null)
-    void loadPublicationPaperModelData(selectedWorkId, true, {
-      forceReparse: Boolean(
-        selectedPaperPrimaryPdfContentFileId && selectedPaperDocument?.parser_status === 'FAILED',
-      ),
-    })
-  }, [loadPublicationPaperModelData, selectedPaperDocument?.parser_status, selectedPaperFirstReaderSection, selectedPaperPrimaryPdfContentFileId, selectedPublicationReaderEntryAvailable, selectedWorkId])
+    void loadPublicationPaperModelData(selectedWorkId, true)
+  }, [loadPublicationPaperModelData, selectedPaperFirstReaderSection, selectedPublicationReaderEntryAvailable, selectedWorkId])
 
   const onSelectPublicationReaderSection = useCallback((sectionId: string) => {
+    const selectedSection = selectedPaperSections.find((section) => section.id === sectionId) || null
     setPublicationReaderActiveSectionId(sectionId)
+    const targetPdfPage = resolvePublicationPaperSectionAnchorPage(selectedSection)
+    if (publicationReaderViewMode === 'pdf' && targetPdfPage) {
+      setPublicationReaderPdfPage(targetPdfPage)
+      return
+    }
     const scrollToSection = () => {
       const node = publicationReaderSectionRefs.current[sectionId]
       if (node) {
@@ -5982,7 +5979,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     scrollToSection()
-  }, [publicationReaderViewMode])
+  }, [publicationReaderViewMode, selectedPaperSections])
 
   const onTogglePublicationReaderOutlineNode = useCallback((nodeId: string) => {
     setPublicationReaderCollapsedNodeIds((current) => ({
@@ -6008,6 +6005,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setStatus('')
     try {
       const payload = await linkPublicationOpenAccessPdf(token, selectedWorkId, { allowSuppressed: true })
+      if (user?.id) {
+        const attempted = loadPublicationsOaAutoAttempted(user.id)
+        attempted.add(selectedWorkId)
+        savePublicationsOaAutoAttempted(user.id, attempted)
+      }
       if (!payload.file) {
         setOaPdfStatusByWorkId((current) => ({
           ...current,
@@ -6110,9 +6112,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         [selectedWorkId]: {
           items: remainingFiles,
           has_deleted_oa_file: current[selectedWorkId]?.has_deleted_oa_file || deletedFile?.source === 'OA_LINK',
-          has_recoverable_deleted_oa_file:
-            current[selectedWorkId]?.has_recoverable_deleted_oa_file
-            || Boolean(deletedFile?.source === 'OA_LINK' && deletedFile?.is_stored_locally),
+          has_recoverable_deleted_oa_file: current[selectedWorkId]?.has_recoverable_deleted_oa_file || false,
         },
       }))
       invalidatePublicationPaperModelCache(selectedWorkId)
@@ -6139,7 +6139,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         }))
       }
       if (deletedFile?.source === 'OA_LINK') {
-        setStatus('Open-access file removed. Use retrieve to restore or relink it.')
+        setStatus('Open-access file removed. Use the retrieve icon to restore it.')
       }
       await refreshFilesTab(selectedWorkId)
     } catch (deleteError) {
@@ -6167,22 +6167,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       URL.revokeObjectURL(objectUrl)
     } catch (downloadError) {
       setPaneError(selectedWorkId, 'files', downloadError instanceof Error ? downloadError.message : 'Could not download publication file.')
-    } finally {
-      setDownloadingFileId(null)
-    }
-  }
-
-  const onPreviewPublicationFile = async (fileId: string) => {
-    if (!token || !selectedWorkId) {
-      return
-    }
-    setDownloadingFileId(fileId)
-    setPaneError(selectedWorkId, 'files', '')
-    try {
-      const payload = await downloadPublicationFile(token, selectedWorkId, fileId)
-      openBlobInNewTab(payload.blob)
-    } catch (downloadError) {
-      setPaneError(selectedWorkId, 'files', downloadError instanceof Error ? downloadError.message : 'Could not open publication file.')
     } finally {
       setDownloadingFileId(null)
     }
@@ -6238,12 +6222,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [])
 
   const onOpenPublicationFile = (file: PublicationFilePayload) => {
-    if (isLinkedPublicationFile(file) && publicationFileDirectUrl(file) && !(file.source === 'OA_LINK' && file.is_stored_locally)) {
+    if (isLinkedPublicationFile(file) && publicationFileDirectUrl(file)) {
       onOpenLinkedPublicationFile(file)
-      return
-    }
-    if (file.file_type === 'PDF') {
-      void onPreviewPublicationFile(file.id)
       return
     }
     void onDownloadPublicationFile(file.id, file.file_name)
@@ -6601,7 +6581,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           const isDownloadingFile = !canOpenExternalFile && downloadingFileId === file.id
           const isFileBusy = isDeletingFile || isDownloadingFile || isSavingFile
           const openFileLabel = canOpenExternalFile ? `Open ${file.file_name}` : `Download ${file.file_name}`
-          const openAccessSourceLabel = publicationFileOpenAccessSourceLabel(file)
           const persistedClassificationOption = publicationFileClassificationOption(file.classification)
           const persistedClassificationLabel = String(file.classification_label || persistedClassificationOption?.label || '').trim()
           const isEditingTagFile = publicationFileTagEditorState?.fileId === file.id
@@ -6697,15 +6676,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       >
                         {file.file_name}
                       </span>
-                      {openAccessSourceLabel ? (
-                        <Badge
-                          size="sm"
-                          variant="outline"
-                          className="ml-2 shrink-0 border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] text-[10px] font-medium uppercase tracking-[0.14em] text-[hsl(var(--tone-neutral-600))]"
-                        >
-                          {openAccessSourceLabel}
-                        </Badge>
-                      ) : null}
                     </button>
                     {showPersistedClassificationBadge ? (
                       <button
@@ -6999,13 +6969,19 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const sectionToneClassName = getPublicationReaderGroupToneClass(sectionGroupKey)
     const isMajorHeading = depth === 0 && publicationReaderSectionMatchesGroupLabel(section, sectionGroupKey || '')
     const isSummaryBox = String(section.section_role || '') === 'summary_box' && depth === 0
-    const specialSectionTone = depth === 0 ? getPublicationReaderSpecialSectionTone(section) : null
-    const isSpecialSection = Boolean(specialSectionTone)
-    const isRootSection = depth === 0
+    const isRootSection = depth === 0 && !isSummaryBox
     const showMarker = isMajorHeading
     const rawLabelRedundant = !section.raw_label
       || section.raw_label === section.title
       || section.raw_label.trim().toLowerCase() === (section.title || '').trim().toLowerCase()
+    const sectionParagraphStyle: CSSProperties | undefined = isSummaryBox
+      ? undefined
+      : {
+          textAlign: 'justify',
+          hyphens: 'none',
+          wordBreak: 'normal',
+          overflowWrap: 'normal',
+        }
 
     const sectionContent = (
       <>
@@ -7014,32 +6990,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             <span
               className={cn(
                 'mt-1 shrink-0 rounded-full opacity-90',
-                isRootSection ? 'h-4 w-[0.24rem]' : 'h-3 w-[0.22rem]',
+                'h-5 w-[0.22rem]',
                 sectionToneClassName,
               )}
             />
           ) : null}
           <div className={cn('min-w-0 flex-1', showMarker ? '' : depth > 0 ? '' : '')}>
-            {specialSectionTone ? (
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[0.64rem] font-semibold uppercase tracking-[0.12em]',
-                    specialSectionTone.badgeClassName,
-                  )}
-                >
-                  {specialSectionTone.icon}
-                  <span>{specialSectionTone.badge}</span>
-                </span>
-              </div>
-            ) : null}
             <h3
               className={cn(
                 'leading-tight transition-colors duration-[var(--motion-duration-ui)] ease-out',
                 isSummaryBox
                   ? 'text-[0.82rem] font-semibold uppercase tracking-[0.04em]'
-                  : isSpecialSection
-                    ? 'text-[1rem] font-semibold'
                   : depth === 0
                     ? 'text-[1.05rem] font-semibold'
                     : depth === 1
@@ -7049,14 +7010,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   ? 'text-[hsl(var(--tone-accent-800))]'
                   : isSummaryBox
                     ? 'text-[hsl(var(--tone-neutral-600))]'
-                    : isSpecialSection
-                      ? 'text-[hsl(var(--tone-neutral-950))]'
                     : depth === 0
                       ? 'text-[hsl(var(--tone-neutral-900))]'
                       : 'text-[hsl(var(--tone-neutral-800))]',
               )}
             >
-              {specialSectionTone?.title || section.title}
+              {section.title}
             </h3>
             {!rawLabelRedundant ? (
               <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">
@@ -7066,16 +7025,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           </div>
         </div>
         {sectionParagraphs.length > 0 ? (
-          <div className={cn('mt-3 space-y-3', showMarker ? 'pl-[0.95rem]' : '')}>
+          <div className={cn('mt-3 space-y-3.5', showMarker ? 'pl-[0.95rem]' : '')}>
             {sectionParagraphs.map((paragraph, paragraphIndex) => (
               <p
                 key={`${section.id}-paragraph-${paragraphIndex}`}
                 className={cn(
-                  'leading-[1.9] [hyphens:none] [overflow-wrap:normal] [text-align:justify] break-normal',
-                  isSummaryBox || isSpecialSection
-                    ? 'text-[0.92rem] text-[hsl(var(--tone-neutral-700))]'
-                    : 'text-[0.97rem] text-[hsl(var(--tone-neutral-800))]',
+                  'leading-[1.9]',
+                  isSummaryBox
+                    ? 'text-[0.9rem] text-[hsl(var(--tone-neutral-700))]'
+                    : 'text-[0.96rem] text-[hsl(var(--tone-neutral-800))]',
                 )}
+                style={sectionParagraphStyle}
               >
                 {paragraph}
               </p>
@@ -7150,16 +7110,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         }}
         className={cn(
           'scroll-mt-6',
-          isSpecialSection
-            ? cn(
-              'rounded-[1.2rem] border px-4 py-4 shadow-[0_14px_34px_hsl(var(--tone-neutral-900)/0.05)]',
-              specialSectionTone?.shellClassName,
-            )
-            : isSummaryBox
-              ? 'rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-4 py-3.5'
-              : isRootSection
-                ? 'rounded-[1.45rem] border border-[hsl(var(--tone-neutral-200))] bg-[linear-gradient(180deg,white_0%,hsl(var(--tone-neutral-50)/0.72)_100%)] px-6 py-6 shadow-[0_20px_44px_hsl(var(--tone-neutral-900)/0.05)]'
-                : '',
+          isSummaryBox && 'rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-4 py-3.5',
+          isRootSection
+            && !isSummaryBox
+            && 'rounded-[1.25rem] border border-[hsl(var(--tone-neutral-200))] bg-[linear-gradient(180deg,white_0%,hsl(var(--tone-neutral-50)/0.72)_100%)] px-5 py-5 shadow-[0_12px_30px_hsl(var(--tone-neutral-900)/0.05)] sm:px-6',
         )}
       >
         {sectionContent}
@@ -7179,7 +7133,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return (
       <div className="space-y-2.5">
         {selectedPublicationReaderNavigatorGroups.map((group) => {
-          const isCollapsed = group.items.length > 0 && (publicationReaderCollapsedNodeIds[group.id] ?? false)
+          const isCollapsed = group.items.length > 0 && (publicationReaderCollapsedNodeIds[group.id] ?? true)
           return (
             <section key={group.id} className="space-y-1.5">
               <div
@@ -7193,7 +7147,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     className={cn(
                       'h-6 w-[0.22rem] shrink-0 rounded-full transition-[transform,opacity] duration-[var(--motion-duration-ui)] ease-out',
                       group.toneClassName,
-                      'opacity-85',
+                      'opacity-80',
                     )}
                   />
                   <button
@@ -8238,7 +8192,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                           </button>
                                         ) : (
                                           <span title={oaLabel} className={`inline-flex items-center ${oaToneClass}`}>
-                                            <Paperclip className="h-3.5 w-3.5" />
+                                            {oaVisualStatus === 'checking' ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                              <Paperclip className="h-3.5 w-3.5" />
+                                            )}
                                           </span>
                                         )
                                       ) : null}
@@ -8557,7 +8515,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
                                         {selectedPaperPrimaryPdfContentFileId
                                           ? 'Open the continuous-scroll PDF reader with the structured outline alongside it.'
-                                          : 'Open the structured reader for this paper now. If a PDF becomes available, the reader will switch into PDF view automatically.'}
+                                          : 'Open the structured reader for this paper now. It will automatically pick up the PDF view when one is attached.'}
                                       </p>
                                     </div>
                                     <Button
@@ -8734,7 +8692,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             <div className="house-publications-drilldown-bounded-section">
                               <div className="house-drilldown-heading-block">
                                 <p className="house-drilldown-heading-block-title">Open Access Files</p>
-                                {selectedCanFindOaFile ? (
+                                {selectedHasRetrievableDeletedOaFile ? (
                                   <TooltipProvider delayDuration={120}>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
@@ -8746,7 +8704,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                             className="h-8 w-8 house-publications-toolbox-item"
                                             onClick={() => void onFindOpenAccessPublicationFile()}
                                             disabled={findingOaFile}
-                                            aria-label="Find OA PDF"
+                                            aria-label="Retrieve deleted OA file"
                                           >
                                             {findingOaFile ? (
                                               <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.1} />
@@ -8757,7 +8715,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         </div>
                                       </TooltipTrigger>
                                       <TooltipContent side="top" align="center" className="house-approved-tooltip px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none">
-                                        Find OA PDF
+                                        Retrieve deleted OA file
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
@@ -9146,7 +9104,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               selectedPaperMetadata?.year ? String(selectedPaperMetadata.year) : detailYear ? String(detailYear) : null,
                               selectedPaperDocument?.page_count ? `${selectedPaperDocument.page_count} pages` : null,
                               selectedPaperParsingInProgress
-                                ? 'Parsing full paper...'
+                                ? 'Parsing full paper…'
                                 : selectedPaperSections.length > 0
                                   ? `${selectedPaperSections.length} sections`
                                   : null,
@@ -9223,7 +9181,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <div className="h-full w-1/3 animate-pulse rounded-full bg-[linear-gradient(90deg,hsl(var(--tone-accent-500))_0%,hsl(var(--tone-positive-500))_100%)]" />
                               </div>
                               <p className="mt-3 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
-                                Parsing the full paper. The navigator will appear once the manuscript model is ready.
+                                Parsing the full paper. Navigation will appear when the manuscript is ready.
                               </p>
                             </div>
                           ) : publicationReaderLoading && selectedPublicationReaderNavigatorGroups.length === 0 ? (
@@ -9301,7 +9259,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         Parsing full paper
                                       </p>
                                       <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
-                                        The structured reader will appear once the manuscript model is complete. Tables and figures can continue filling in just after that.
+                                        We’re building the structured paper first, then tables and figures will fill in just after that.
                                       </p>
                                     </div>
                                   </div>
@@ -9310,7 +9268,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   </div>
                                 </div>
                                 <div className="grid gap-4 px-5 py-5 sm:grid-cols-3">
-                                  {['Resolving sections', 'Anchoring pages', 'Recovering tables & figures'].map((step, index) => (
+                                  {['Resolving sections', 'Anchoring full text', 'Recovering tables & figures'].map((step, index) => (
                                     <div
                                       key={step}
                                       className={cn(
@@ -9335,7 +9293,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <Loader2 className="h-4 w-4 animate-spin" />
                                 <span>Building the structured paper model...</span>
                               </div>
-                            ) : selectedStructuredPaperGroups.length > 0 ? (
+                            ) : selectedPaperAssetEnrichmentInFlight ? (
+                              <div className="rounded-[1.15rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-5 py-4 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                Tables and figures are still being recovered in the background. The main text is ready now, and assets should appear here once enrichment finishes.
+                              </div>
+                            ) : null}
+                            {!selectedPaperParsingInProgress && selectedStructuredPaperGroups.length > 0 ? (
                               selectedStructuredPaperGroups.map((group) => {
                                 const primaryRootSection = group.rootSections[0] || null
                                 const showGroupLabel = !(
@@ -9347,16 +9310,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   <section
                                     key={`publication-paper-group-${group.key}`}
                                     className={cn(
-                                      'relative',
                                       group.key === 'abstract'
-                                        ? 'pb-6'
-                                        : 'pt-6',
-                                      group.key !== 'abstract' && 'first:pt-0',
+                                        ? 'border-b border-[hsl(var(--tone-neutral-250))] pb-8'
+                                        : 'border-t border-[hsl(var(--tone-neutral-200))] pt-7',
+                                      group.key !== 'abstract' && 'first:border-t-0 first:pt-0',
+                                      group.key === 'introduction' && 'pt-8',
                                     )}
                                   >
                                     {showGroupLabel ? (
-                                      <div className="min-w-0 px-1">
-                                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
+                                      <div className="min-w-0">
+                                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
                                           {group.label}
                                         </p>
                                       </div>
@@ -9468,28 +9431,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               <p><span className="font-medium text-[hsl(var(--tone-neutral-900))]">References:</span> {selectedPaperComponentSummary?.reference_count ?? selectedPaperModel?.references?.length ?? 0}</p>
                             </div>
                             {selectedPaperDocument?.parser_last_error ? (
-                              <>
-                                <p className="mt-3 text-sm leading-relaxed text-[hsl(var(--tone-danger-700))]">
-                                  {selectedPaperDocument.parser_last_error}
-                                </p>
-                                {selectedPaperPrimaryPdfContentFileId && selectedPaperDocument?.parser_status === 'FAILED' ? (
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="mt-3 w-full gap-2 rounded-full"
-                                    disabled={publicationReaderLoading}
-                                    onClick={onRetryPublicationReaderParse}
-                                  >
-                                    {publicationReaderLoading ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <Hammer className="h-4 w-4" />
-                                    )}
-                                    <span>Retry full-paper parse</span>
-                                  </Button>
-                                ) : null}
-                              </>
+                              <p className="mt-3 text-sm leading-relaxed text-[hsl(var(--tone-danger-700))]">
+                                {selectedPaperDocument.parser_last_error}
+                              </p>
+                            ) : null}
+                            {selectedWorkId ? (
+                              <button
+                                type="button"
+                                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[hsl(var(--tone-neutral-250))] bg-white px-3 py-1.5 text-xs font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-neutral-350))] hover:text-[hsl(var(--tone-neutral-900))] disabled:opacity-50"
+                                disabled={publicationReaderLoading}
+                                onClick={() => {
+                                  invalidatePublicationPaperModelCache(selectedWorkId)
+                                  void loadPublicationPaperModelData(selectedWorkId, true, { serverForce: true })
+                                }}
+                              >
+                                <RefreshCw className={cn('h-3 w-3', publicationReaderLoading && 'animate-spin')} />
+                                Refresh parse
+                              </button>
                             ) : null}
                           </section>
 
@@ -9627,6 +9585,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       {error ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_DANGER_CLASS}`}>{error}</p> : null}
       {(loading || richImporting || syncing || fullSyncing) ? (
         <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>Working...</p>
+      ) : null}
+      {autoOaStatus ? (
+        <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>
+          {autoOaStatus}
+          {autoOaFinding ? ' (running in background)' : ''}
+        </p>
       ) : null}
     </Stack>
   )
