@@ -3653,6 +3653,86 @@ def test_crop_figure_images_skips_text_heavy_page_sized_crop(monkeypatch) -> Non
     assert result[0].get("image_data") is None
 
 
+def test_crop_figure_images_prefers_native_pdf_image_when_available(monkeypatch) -> None:
+    class _FakeRect:
+        def __init__(self, x0: float, y0: float, x1: float, y1: float) -> None:
+            self.x0 = x0
+            self.y0 = y0
+            self.x1 = x1
+            self.y1 = y1
+
+        @property
+        def width(self) -> float:
+            return max(0.0, self.x1 - self.x0)
+
+        @property
+        def height(self) -> float:
+            return max(0.0, self.y1 - self.y0)
+
+        @property
+        def is_empty(self) -> bool:
+            return self.width <= 0 or self.height <= 0
+
+    class _FakePage:
+        def __init__(self) -> None:
+            self.rect = _FakeRect(0, 0, 600, 800)
+
+        def get_text(self, mode: str, clip=None):  # noqa: ANN001
+            assert mode == "words"
+            return []
+
+        def get_images(self, full: bool = False):  # noqa: FBT002
+            assert full is True
+            return [(17,)]
+
+        def get_image_rects(self, xref: int):
+            assert xref == 17
+            return [_FakeRect(10, 20, 110, 140)]
+
+        def get_pixmap(self, matrix=None, clip=None):  # noqa: ANN001
+            raise AssertionError("native image extraction should bypass pixmap cropping")
+
+    class _FakeDoc:
+        def __init__(self) -> None:
+            self._page = _FakePage()
+
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> _FakePage:
+            assert index == 0
+            return self._page
+
+        def extract_image(self, xref: int):
+            assert xref == 17
+            return {"image": b"\x89PNG" + (b"x" * 4096), "ext": "png"}
+
+        def close(self) -> None:
+            return None
+
+    class _FakeFitzModule:
+        @staticmethod
+        def open(stream=None, filetype=None):  # noqa: ANN001
+            return _FakeDoc()
+
+        @staticmethod
+        def Rect(x0: float, y0: float, x1: float, y1: float) -> _FakeRect:
+            return _FakeRect(x0, y0, x1, y1)
+
+        @staticmethod
+        def Matrix(x: float, y: float) -> tuple[float, float]:
+            return (x, y)
+
+    monkeypatch.setattr(publication_console_service, "_fitz", _FakeFitzModule)
+
+    result = publication_console_service._crop_figure_images_from_pdf(
+        b"%PDF-1.7 fake payload",
+        [{"id": "fig-1", "coords": "0,10,20,110,140", "image_data": None}],
+    )
+
+    assert str(result[0].get("image_data") or "").startswith("data:image/png;base64,")
+
+
 # ---------------------------------------------------------------------------
 # Docling table matching tests
 # ---------------------------------------------------------------------------

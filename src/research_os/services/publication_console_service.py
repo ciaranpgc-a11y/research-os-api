@@ -172,7 +172,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v25"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v26"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -7449,11 +7449,13 @@ def _parse_grobid_tei_into_structured_paper(
 
 
 _FIGURE_CROP_MIN_BYTES = 2048
-_FIGURE_CROP_SCALE = 2.0
+_FIGURE_CROP_SCALE = 4.0
 _FIGURE_CROP_MAX_PAGE_AREA_RATIO = 0.82
 _FIGURE_CROP_TEXT_HEAVY_PAGE_AREA_RATIO = 0.58
 _FIGURE_CROP_TEXT_HEAVY_WORD_THRESHOLD = 80
 _FIGURE_CROP_MAX_WORD_THRESHOLD = 180
+_FIGURE_NATIVE_IMAGE_MIN_CLIP_COVERAGE = 0.7
+_FIGURE_NATIVE_IMAGE_MIN_IMAGE_COVERAGE = 0.7
 
 
 def _parse_grobid_coords(
@@ -7479,6 +7481,82 @@ def _parse_grobid_coords(
         except (ValueError, IndexError):
             continue
     return entries
+
+
+def _figure_rect_area(rect: Any) -> float:
+    try:
+        return max(0.0, float(rect.x1) - float(rect.x0)) * max(
+            0.0, float(rect.y1) - float(rect.y0)
+        )
+    except Exception:
+        return 0.0
+
+
+def _figure_rect_intersection_area(left: Any, right: Any) -> float:
+    try:
+        x0 = max(float(left.x0), float(right.x0))
+        y0 = max(float(left.y0), float(right.y0))
+        x1 = min(float(left.x1), float(right.x1))
+        y1 = min(float(left.y1), float(right.y1))
+    except Exception:
+        return 0.0
+    return max(0.0, x1 - x0) * max(0.0, y1 - y0)
+
+
+def _extract_native_pdf_figure_image(
+    *,
+    doc: Any,
+    page: Any,
+    clip_rect: Any,
+) -> str | None:
+    clip_area = _figure_rect_area(clip_rect)
+    if clip_area <= 0:
+        return None
+    try:
+        page_images = page.get_images(full=True) or []
+    except Exception:
+        return None
+    best_candidate: tuple[float, float, int] | None = None
+    qualifying_candidates = 0
+    for image in page_images:
+        try:
+            xref = int(image[0])
+        except Exception:
+            continue
+        try:
+            rects = page.get_image_rects(xref) or []
+        except Exception:
+            continue
+        for rect in rects:
+            intersection_area = _figure_rect_intersection_area(clip_rect, rect)
+            if intersection_area <= 0:
+                continue
+            image_area = _figure_rect_area(rect)
+            if image_area <= 0:
+                continue
+            clip_coverage = intersection_area / clip_area
+            image_coverage = intersection_area / image_area
+            if clip_coverage < _FIGURE_NATIVE_IMAGE_MIN_CLIP_COVERAGE:
+                continue
+            if image_coverage < _FIGURE_NATIVE_IMAGE_MIN_IMAGE_COVERAGE:
+                continue
+            qualifying_candidates += 1
+            candidate = (clip_coverage, image_coverage, xref)
+            if best_candidate is None or candidate > best_candidate:
+                best_candidate = candidate
+    if best_candidate is None or qualifying_candidates != 1:
+        return None
+    try:
+        extracted = doc.extract_image(best_candidate[2]) or {}
+    except Exception:
+        return None
+    img_bytes = extracted.get("image")
+    if not isinstance(img_bytes, (bytes, bytearray)) or len(img_bytes) < _FIGURE_CROP_MIN_BYTES:
+        return None
+    extension = str(extracted.get("ext") or "png").strip().lower() or "png"
+    mime_type = mimetypes.guess_type(f"figure.{extension}")[0] or "image/png"
+    encoded = base64.b64encode(bytes(img_bytes)).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
 
 
 def _crop_figure_images_from_pdf(
@@ -7540,6 +7618,15 @@ def _crop_figure_images_from_pdf(
                     and word_count >= _FIGURE_CROP_TEXT_HEAVY_WORD_THRESHOLD
                 )
             ):
+                updated_figures.append(figure_copy)
+                continue
+            native_image_data = _extract_native_pdf_figure_image(
+                doc=doc,
+                page=page,
+                clip_rect=rect,
+            )
+            if native_image_data:
+                figure_copy["image_data"] = native_image_data
                 updated_figures.append(figure_copy)
                 continue
             mat = _fitz.Matrix(_FIGURE_CROP_SCALE, _FIGURE_CROP_SCALE)

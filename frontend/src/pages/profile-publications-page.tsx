@@ -397,6 +397,10 @@ function normalizePublicationPaperDisplayGroupKey(
     || labelText.includes('acknowledg')
     || labelText.includes('author contribution')
     || labelText.includes('data availability')
+    || labelText.includes('abbreviation')
+    || labelText.includes('abbreviations')
+    || labelText.includes('acronym')
+    || labelText.includes('glossary')
   ) {
     return 'article_information'
   }
