@@ -7067,7 +7067,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               <p
                 key={`${section.id}-paragraph-${paragraphIndex}`}
                 className={cn(
-                  'leading-[1.9] [hyphens:auto] [text-align:justify]',
+                  'leading-[1.9] [hyphens:none] [overflow-wrap:normal] [text-align:justify] break-normal',
                   isSummaryBox || isSpecialSection
                     ? 'text-[0.92rem] text-[hsl(var(--tone-neutral-700))]'
                     : 'text-[0.97rem] text-[hsl(var(--tone-neutral-800))]',
@@ -7155,7 +7155,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               ? 'rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-4 py-3.5'
               : isRootSection
                 ? 'rounded-[1.45rem] border border-[hsl(var(--tone-neutral-200))] bg-[linear-gradient(180deg,white_0%,hsl(var(--tone-neutral-50)/0.72)_100%)] px-6 py-6 shadow-[0_20px_44px_hsl(var(--tone-neutral-900)/0.05)]'
-                : 'rounded-[1rem] border border-[hsl(var(--tone-neutral-150))] bg-[hsl(var(--tone-neutral-50)/0.48)] px-4 py-4',
+                : '',
         )}
       >
         {sectionContent}
