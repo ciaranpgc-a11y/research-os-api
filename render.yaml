@@ -25,7 +25,7 @@ services:
       - key: PUBLICATION_FILES_ROOT
         value: /var/data/publication_files_store
       - key: PUB_GROBID_BASE_URL
-        sync: false
+        value: https://grobid.axiomos.studio
       - key: CORS_ALLOW_ORIGINS
         value: http://localhost:5173,https://app.axiomos.studio
       - key: FRONTEND_BASE_URL

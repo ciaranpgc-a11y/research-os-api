@@ -14,6 +14,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import traceback
 import xml.etree.ElementTree as ET
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -170,7 +171,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v23"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v24"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -183,6 +184,7 @@ STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC = "PMC_BIOC"
 STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_PENDING = "PENDING"
 STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_COMPLETE = "COMPLETE"
 STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_EMPTY = "EMPTY"
+STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_FAILED = "FAILED"
 GROBID_AVAILABILITY_CACHE_TTL_SECONDS = 60
 STRUCTURED_PAPER_FULL_TEXT_SECTION_SOURCES = {
     STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
@@ -456,6 +458,16 @@ def _structured_paper_asset_enrichment_retry_seconds() -> int:
         os.getenv("PUB_STRUCTURED_PAPER_ASSET_ENRICHMENT_RETRY_SECONDS", "1800")
     )
     return max(60, value if value is not None else 1800)
+
+
+def _structured_paper_asset_enrichment_failure_retry_seconds() -> int:
+    value = _safe_int(
+        os.getenv(
+            "PUB_STRUCTURED_PAPER_ASSET_ENRICHMENT_FAILURE_RETRY_SECONDS",
+            "300",
+        )
+    )
+    return max(60, value if value is not None else 300)
 
 
 def _is_stale(
@@ -5766,6 +5778,10 @@ def _build_publication_paper_payload(
                 parsed_payload.get("asset_enrichment_checked_at") or ""
             ).strip()
             or None,
+            "asset_enrichment_last_error": str(
+                parsed_payload.get("asset_enrichment_last_error") or ""
+            ).strip()
+            or None,
         },
     }
     source_signature = _publication_paper_seed_hash(
@@ -8398,6 +8414,15 @@ def _publication_paper_payload_needs_asset_enrichment(
             ttl_seconds=_structured_paper_asset_enrichment_retry_seconds(),
             now=now,
         )
+    if (
+        enrichment_status == STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_FAILED
+        and enrichment_checked_at is not None
+    ):
+        return _is_stale(
+            computed_at=enrichment_checked_at,
+            ttl_seconds=_structured_paper_asset_enrichment_failure_retry_seconds(),
+            now=now,
+        )
     return True
 
 
@@ -8412,6 +8437,7 @@ def _build_publication_paper_asset_enrichment_payload(
     tables: list[dict[str, Any]] | None,
     asset_enrichment_status: str,
     asset_enrichment_checked_at: datetime,
+    asset_enrichment_last_error: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     document = (
         current_payload.get("document")
@@ -8460,6 +8486,10 @@ def _build_publication_paper_asset_enrichment_payload(
         or None,
         "asset_enrichment_status": asset_enrichment_status,
         "asset_enrichment_checked_at": _coerce_utc(asset_enrichment_checked_at).isoformat(),
+        "asset_enrichment_last_error": _normalize_abstract_text(
+            asset_enrichment_last_error
+        )
+        or None,
     }
     return _build_publication_paper_payload(
         publication=publication,
@@ -9472,9 +9502,60 @@ def _run_structured_paper_asset_enrichment_job(
             },
         )
     except Exception:
+        failure_message = traceback.format_exc(limit=12)
         logger.exception(
             "publication_paper_asset_enrichment_failed",
             extra={"user_id": user_id, "publication_id": publication_id},
+        )
+        persist_started_at = time.perf_counter()
+        with session_scope() as session:
+            _resolve_work_or_raise(
+                session, user_id=user_id, publication_id=publication_id
+            )
+            row = _load_structured_paper_cache(
+                session,
+                user_id=user_id,
+                publication_id=publication_id,
+                for_update=True,
+            )
+            if row is None:
+                return
+            current_payload = (
+                row.payload_json if isinstance(row.payload_json, dict) else {}
+            )
+            if (
+                str(row.source_signature_sha256 or "").strip()
+                != str(source_signature or "").strip()
+                or row.parser_version != STRUCTURED_PAPER_CACHE_VERSION
+                or not _publication_paper_payload_needs_asset_enrichment(current_payload)
+            ):
+                return
+            payload, _ = _build_publication_paper_asset_enrichment_payload(
+                publication=source_state["publication"],
+                structured_abstract_payload=source_state["structured_abstract_payload"],
+                structured_abstract_status=source_state["structured_abstract_status"],
+                files=source_state["files"],
+                current_payload=current_payload,
+                figures=None,
+                tables=None,
+                asset_enrichment_status=STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_FAILED,
+                asset_enrichment_checked_at=_utcnow(),
+                asset_enrichment_last_error=failure_message[:2000],
+            )
+            row.payload_json = payload
+            row.source_signature_sha256 = source_signature
+            row.parser_version = STRUCTURED_PAPER_CACHE_VERSION
+            row.computed_at = _utcnow()
+            row.status = READY_STATUS
+            row.last_error = None
+            session.flush()
+        logger.info(
+            "structured_paper_asset_enrichment_failed_persisted",
+            extra={
+                "user_id": user_id,
+                "publication_id": publication_id,
+                "persist_ms": round((time.perf_counter() - persist_started_at) * 1000, 2),
+            },
         )
 
 
