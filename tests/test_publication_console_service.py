@@ -1642,6 +1642,181 @@ def test_publication_paper_model_force_reparse_retries_failed_cache(
             refreshed_payload["payload"]["document"]["parser_status"]
             == "FULL_TEXT_READY"
         )
+    assert refreshed_payload["payload"]["sections"][0]["source"] == "grobid"
+
+
+def test_publication_paper_model_retries_stale_running_cache(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    def _immediate_submit(*, kind: str, user_id: str, publication_id: str, fn):  # noqa: ANN001
+        fn(user_id=user_id, publication_id=publication_id)
+        return True
+
+    monkeypatch.setattr(
+        publication_console_service, "_submit_background_job", _immediate_submit
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_resolve_publication_file_binary_payload",
+        lambda **kwargs: {  # noqa: ANN003
+            "content": b"%PDF-1.4 test",
+            "content_type": "application/pdf",
+            "file_name": "paper.pdf",
+            "mode": "content",
+            "url": None,
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_fetch_open_access_pdf_bytes",
+        lambda *args, **kwargs: (
+            b"%PDF-1.7 locally cached oa payload",
+            "application/pdf",
+        ),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_structured_paper_running_timeout_seconds",
+        lambda: 60,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_grobid",
+        lambda **kwargs: {  # noqa: ANN003
+            "sections": [
+                {
+                    "id": "paper-section-1-results",
+                    "title": "Results",
+                    "raw_label": "Results",
+                    "label_original": "Results",
+                    "label_normalized": "Results",
+                    "kind": "results",
+                    "canonical_kind": "results",
+                    "section_type": "canonical",
+                    "canonical_map": "results",
+                    "content": "Freshly reparsed full-text content.",
+                    "source": "grobid",
+                    "source_parser": "grobid",
+                    "order": 0,
+                    "page_start": 1,
+                    "page_end": 2,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": 0.98,
+                    "is_generated_heading": False,
+                    "word_count": 4,
+                    "paragraph_count": 1,
+                }
+            ],
+            "references": [],
+            "page_count": 8,
+            "generation_method": "test_grobid_stale_running_retry",
+            "parser_provider": "GROBID",
+        },
+    )
+
+    with TestClient(app) as client:
+        owner_id, token = _register(client, email="reader-stale-running@example.com")
+
+        with session_scope() as session:
+            work = Work(
+                user_id=owner_id,
+                title="Structured reader stale running paper",
+                title_lower="structured reader stale running paper",
+                year=2026,
+                doi="10.1000/structured-reader-stale-running-paper",
+                work_type="journal-article",
+                publication_type="original-article",
+                venue_name="Reader Journal",
+                publisher="Reader Publisher",
+                abstract="Objectives: Evaluate stalled parsing recovery.",
+                keywords=["reader"],
+                authors_json=[{"name": "Alice Example"}],
+                url="https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                provenance="manual",
+            )
+            session.add(work)
+            session.flush()
+            work_id = str(work.id)
+
+            primary_pdf = PublicationFile(
+                owner_user_id=owner_id,
+                publication_id=work_id,
+                file_name="Example (2026) - PMID 12345678.pdf",
+                file_type="PDF",
+                storage_key="",
+                source="OA_LINK",
+                oa_url="https://example.org/paper.pdf",
+                checksum=None,
+                custom_name=True,
+                classification="PUBLISHED_MANUSCRIPT",
+            )
+            session.add(primary_pdf)
+            session.flush()
+
+            seed_payload, source_signature = (
+                publication_console_service._build_publication_paper_payload(
+                    publication={
+                        "id": work_id,
+                        "title": work.title,
+                        "journal": work.venue_name,
+                        "year": work.year,
+                        "publication_type": work.work_type,
+                        "article_type": work.publication_type,
+                        "doi": work.doi,
+                        "pmid": None,
+                        "citations_total": 0,
+                        "authors": ["Alice Example"],
+                        "keywords": ["reader"],
+                    },
+                    structured_abstract_payload=None,
+                    structured_abstract_status=None,
+                    files=[primary_pdf],
+                    parser_status=publication_console_service.STRUCTURED_PAPER_STATUS_PARSING,
+                )
+            )
+            stale_row = PublicationStructuredPaperCache(
+                owner_user_id=owner_id,
+                publication_id=work_id,
+                payload_json=seed_payload,
+                source_signature_sha256=source_signature,
+                parser_version=publication_console_service.STRUCTURED_PAPER_CACHE_VERSION,
+                computed_at=publication_console_service._utcnow() - timedelta(minutes=10),
+                status=publication_console_service.RUNNING_STATUS,
+                last_error=None,
+            )
+            session.add(stale_row)
+            session.flush()
+
+        retry_response = client.get(
+            f"/v1/publications/{work_id}/paper-model",
+            headers=_auth_headers(token),
+        )
+        assert retry_response.status_code == 200
+        assert retry_response.json()["status"] == "RUNNING"
+
+        refreshed_payload = None
+        for _ in range(10):
+            refreshed_response = client.get(
+                f"/v1/publications/{work_id}/paper-model",
+                headers=_auth_headers(token),
+            )
+            assert refreshed_response.status_code == 200
+            refreshed_payload = refreshed_response.json()
+            if refreshed_payload["status"] == "READY":
+                break
+            time.sleep(0.05)
+
+        assert refreshed_payload is not None
+        assert refreshed_payload["status"] == "READY"
+        assert (
+            refreshed_payload["payload"]["document"]["parser_status"]
+            == "FULL_TEXT_READY"
+        )
         assert refreshed_payload["payload"]["sections"][0]["source"] == "grobid"
 
 

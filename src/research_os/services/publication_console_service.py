@@ -443,6 +443,11 @@ def _structured_paper_max_workers() -> int:
     return max(1, min(8, value if value is not None else 4))
 
 
+def _structured_paper_running_timeout_seconds() -> int:
+    value = _safe_int(os.getenv("PUB_STRUCTURED_PAPER_RUNNING_TIMEOUT_SECONDS", "180"))
+    return max(30, value if value is not None else 180)
+
+
 def _is_stale(
     *, computed_at: datetime | None, ttl_seconds: int, now: datetime | None = None
 ) -> bool:
@@ -9562,6 +9567,11 @@ def get_publication_paper_model(
                 _normalize_abstract_text(str(row.source_signature_sha256 or "")) or None
             )
             current_status = _normalize_status(row.status, fallback=READY_STATUS)
+            running_is_stale = current_status == RUNNING_STATUS and _is_stale(
+                computed_at=_coerce_utc_or_none(row.computed_at),
+                ttl_seconds=_structured_paper_running_timeout_seconds(),
+                now=now,
+            )
             cached_payload = (
                 row.payload_json if isinstance(row.payload_json, dict) else {}
             )
@@ -9630,7 +9640,8 @@ def get_publication_paper_model(
                 should_enqueue_structured_paper = True
             elif (
                 has_viewable_pdf
-                and current_status not in {RUNNING_STATUS, FAILED_STATUS}
+                and current_status not in {FAILED_STATUS}
+                and (current_status != RUNNING_STATUS or running_is_stale)
                 and cached_parser_status != STRUCTURED_PAPER_STATUS_FULL_TEXT_READY
             ):
                 row.payload_json = parsing_payload
