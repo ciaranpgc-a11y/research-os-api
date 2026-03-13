@@ -187,7 +187,7 @@ STRUCTURED_PAPER_FULL_TEXT_SECTION_SOURCES = {
 }
 
 _executor_lock = threading.Lock()
-_executor: ThreadPoolExecutor | None = None
+_executors: dict[str, ThreadPoolExecutor] = {}
 _inflight_lock = threading.Lock()
 _inflight_jobs: set[tuple[str, str, str]] = set()
 _grobid_availability_checked_at: float | None = None
@@ -436,6 +436,11 @@ def _openalex_citing_pages() -> int:
 def _max_workers() -> int:
     value = _safe_int(os.getenv("PUB_ANALYTICS_MAX_CONCURRENT_JOBS", "2"))
     return max(1, value if value is not None else 2)
+
+
+def _structured_paper_max_workers() -> int:
+    value = _safe_int(os.getenv("PUB_STRUCTURED_PAPER_MAX_CONCURRENT_JOBS", "4"))
+    return max(1, min(8, value if value is not None else 4))
 
 
 def _is_stale(
@@ -2263,14 +2268,30 @@ def _hydrate_authors_data(*, work: Work, user_email: str | None) -> dict[str, An
     }
 
 
-def _get_executor() -> ThreadPoolExecutor:
-    global _executor
+def _executor_bucket_for_job_kind(kind: str) -> str:
+    normalized = str(kind or "").strip().lower()
+    if normalized in {"structured_paper", "structured_paper_assets"}:
+        return "structured_paper"
+    return "default"
+
+
+def _get_executor(kind: str = "default") -> ThreadPoolExecutor:
+    global _executors
+    bucket = _executor_bucket_for_job_kind(kind)
     with _executor_lock:
-        if _executor is None:
-            _executor = ThreadPoolExecutor(
-                max_workers=_max_workers(), thread_name_prefix="pub-console"
+        executor = _executors.get(bucket)
+        if executor is None:
+            max_workers = (
+                _structured_paper_max_workers()
+                if bucket == "structured_paper"
+                else _max_workers()
             )
-        return _executor
+            executor = ThreadPoolExecutor(
+                max_workers=max_workers,
+                thread_name_prefix=f"pub-console-{bucket}",
+            )
+            _executors[bucket] = executor
+        return executor
 
 
 def _submit_background_job(*, kind: str, user_id: str, publication_id: str, fn) -> bool:  # noqa: ANN001
@@ -2296,7 +2317,7 @@ def _submit_background_job(*, kind: str, user_id: str, publication_id: str, fn) 
             with _inflight_lock:
                 _inflight_jobs.discard(key)
 
-    _get_executor().submit(_run)
+    _get_executor(kind).submit(_run)
     return True
 
 
@@ -8185,6 +8206,7 @@ def _extract_structured_publication_paper_with_pmc_bioc(
     content: bytes,
     title: str | None = None,
     enrich_assets: bool = True,
+    align_to_pdf: bool = True,
 ) -> dict[str, Any]:
     payload = _request_pmc_bioc_payload(pmcid)
     if payload is None:
@@ -8192,33 +8214,51 @@ def _extract_structured_publication_paper_with_pmc_bioc(
             f"PMC BioC full-text parsing was unavailable for {pmcid}."
         )
     parsed_payload = _parse_pmc_bioc_into_structured_paper(payload=payload, title=title)
-    aligned_sections, aligned_page_count = (
-        _align_structured_publication_sections_to_pdf_pages(
-            sections=(
-                parsed_payload.get("sections")
-                if isinstance(parsed_payload.get("sections"), list)
+    aligned_page_count: int | None = None
+    if align_to_pdf:
+        aligned_sections, aligned_page_count = (
+            _align_structured_publication_sections_to_pdf_pages(
+                sections=(
+                    parsed_payload.get("sections")
+                    if isinstance(parsed_payload.get("sections"), list)
+                    else []
+                ),
+                content=content,
+            )
+        )
+        parsed_payload["sections"] = aligned_sections
+        parsed_payload["figures"] = _align_structured_publication_assets_to_pdf_pages(
+            assets=(
+                parsed_payload.get("figures")
+                if isinstance(parsed_payload.get("figures"), list)
                 else []
             ),
             content=content,
         )
-    )
-    parsed_payload["sections"] = aligned_sections
-    parsed_payload["figures"] = _align_structured_publication_assets_to_pdf_pages(
-        assets=(
-            parsed_payload.get("figures")
-            if isinstance(parsed_payload.get("figures"), list)
-            else []
-        ),
-        content=content,
-    )
-    parsed_payload["tables"] = _align_structured_publication_assets_to_pdf_pages(
-        assets=(
-            parsed_payload.get("tables")
-            if isinstance(parsed_payload.get("tables"), list)
-            else []
-        ),
-        content=content,
-    )
+        parsed_payload["tables"] = _align_structured_publication_assets_to_pdf_pages(
+            assets=(
+                parsed_payload.get("tables")
+                if isinstance(parsed_payload.get("tables"), list)
+                else []
+            ),
+            content=content,
+        )
+    else:
+        parsed_payload["sections"] = [
+            dict(item)
+            for item in parsed_payload.get("sections", [])
+            if isinstance(item, dict)
+        ]
+        parsed_payload["figures"] = [
+            dict(item)
+            for item in parsed_payload.get("figures", [])
+            if isinstance(item, dict)
+        ]
+        parsed_payload["tables"] = [
+            dict(item)
+            for item in parsed_payload.get("tables", [])
+            if isinstance(item, dict)
+        ]
     if enrich_assets and (not parsed_payload["figures"] or not parsed_payload["tables"]):
         try:
             grobid_figures, grobid_tables = (
@@ -8250,6 +8290,7 @@ def _extract_structured_publication_paper_with_best_available_parser(
     doi: str | None = None,
     year: int | None = None,
     enrich_assets: bool = True,
+    align_to_pdf: bool = True,
 ) -> dict[str, Any]:
     pmcid = _resolve_pmcid(
         pmid=pmid,
@@ -8264,6 +8305,7 @@ def _extract_structured_publication_paper_with_best_available_parser(
                 content=content,
                 title=title,
                 enrich_assets=enrich_assets,
+                align_to_pdf=align_to_pdf,
             )
         except Exception as exc:
             logger.warning("PMC BioC parse skipped for %s: %s", pmcid, exc)
@@ -9053,6 +9095,7 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
             doi=str(source_state["publication"].get("doi") or "").strip() or None,
             year=_safe_int(source_state["publication"].get("year")),
             enrich_assets=False,
+            align_to_pdf=False,
         )
         payload, source_signature = _build_publication_paper_payload(
             publication=source_state["publication"],

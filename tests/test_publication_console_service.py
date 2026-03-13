@@ -3521,6 +3521,62 @@ def test_extract_structured_publication_paper_with_pmc_bioc_can_skip_asset_enric
     assert payload["sections"][0]["source"] == "pmc_bioc"
 
 
+def test_extract_structured_publication_paper_with_pmc_bioc_can_skip_pdf_alignment(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_bioc_payload",
+        lambda pmcid: {
+            "documents": [
+                {
+                    "passages": [
+                        {
+                            "infons": {"type": "title_1", "section_type": "METHODS"},
+                            "text": "Methods",
+                        },
+                        {
+                            "infons": {"type": "paragraph", "section_type": "METHODS"},
+                            "text": "PMC BioC methods text.",
+                        },
+                    ]
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_align_structured_publication_sections_to_pdf_pages",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("PDF section alignment should be skipped")
+        ),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_align_structured_publication_assets_to_pdf_pages",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("PDF asset alignment should be skipped")
+        ),
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
+        pmcid="PMC12060880",
+        content=b"%PDF-1.7 fake",
+        title="Test paper",
+        enrich_assets=False,
+        align_to_pdf=False,
+    )
+
+    assert payload["parser_provider"] == "PMC_BIOC"
+    assert payload["sections"][0]["source"] == "pmc_bioc"
+
+
+def test_executor_bucket_for_structured_paper_jobs() -> None:
+    assert publication_console_service._executor_bucket_for_job_kind("structured_paper") == "structured_paper"
+    assert publication_console_service._executor_bucket_for_job_kind("structured_paper_assets") == "structured_paper"
+    assert publication_console_service._executor_bucket_for_job_kind("impact") == "default"
+
+
 def test_publication_paper_payload_needs_asset_enrichment_for_ready_pmc_payload() -> None:
     payload = {
         "document": {
