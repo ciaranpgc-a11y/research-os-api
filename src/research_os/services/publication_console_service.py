@@ -172,7 +172,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v29"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v30"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -181,6 +181,9 @@ STRUCTURED_PAPER_STATUS_FAILED = "FAILED"
 STRUCTURED_PAPER_SECTION_SOURCE_GROBID = "grobid"
 STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC = "pmc_bioc"
 STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS = "pmc_jats"
+STRUCTURED_PAPER_SECTION_SOURCE_NATIVE_PDF = "native_pdf"
+STRUCTURED_PAPER_SECTION_SOURCE_PDF_CROP = "pdf_crop"
+STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH = "pdf_title_match"
 STRUCTURED_PAPER_PARSER_PROVIDER_GROBID = "GROBID"
 STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC = "PMC_BIOC"
 STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_PENDING = "PENDING"
@@ -6808,6 +6811,92 @@ def _publication_paper_figure_image_quality_score(
     )
 
 
+def _publication_paper_figure_image_meets_display_target(
+    asset: dict[str, Any] | None,
+) -> bool:
+    metrics = _publication_paper_figure_image_metrics(asset)
+    if not metrics:
+        return False
+    weak_signals = 0
+    if metrics["width"] is not None and metrics["width"] < _FIGURE_DISPLAY_TARGET_MIN_WIDTH:
+        weak_signals += 1
+    if metrics["height"] is not None and metrics["height"] < _FIGURE_DISPLAY_TARGET_MIN_HEIGHT:
+        weak_signals += 1
+    if metrics["area"] and metrics["area"] < _FIGURE_DISPLAY_TARGET_MIN_AREA:
+        weak_signals += 1
+    if metrics["byte_length"] < _FIGURE_DISPLAY_TARGET_MIN_BYTES:
+        weak_signals += 1
+    return weak_signals <= 1
+
+
+def _publication_paper_figure_asset_source_priority(
+    source_parser: str | None,
+) -> int:
+    clean = str(source_parser or "").strip().lower()
+    return {
+        STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS: 5,
+        STRUCTURED_PAPER_SECTION_SOURCE_NATIVE_PDF: 4,
+        STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH: 3,
+        STRUCTURED_PAPER_SECTION_SOURCE_PDF_CROP: 2,
+        STRUCTURED_PAPER_SECTION_SOURCE_GROBID: 1,
+    }.get(clean, 0)
+
+
+def _publication_paper_figure_asset_quality_score(
+    asset: dict[str, Any] | None,
+) -> tuple[int, int, int, int, int, int, int, int, int, int]:
+    image_score = _publication_paper_figure_image_quality_score(asset)
+    if image_score[0] == 0:
+        return (0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    return (
+        image_score[0],
+        image_score[1],
+        1 if _publication_paper_figure_image_meets_display_target(asset) else 0,
+        image_score[2],
+        image_score[3],
+        image_score[4],
+        image_score[5],
+        _publication_paper_figure_asset_source_priority(
+            asset.get("source_parser") if isinstance(asset, dict) else None
+        ),
+        1 if str(asset.get("title") or "").strip() else 0,
+        1 if _safe_int(asset.get("page_start") if isinstance(asset, dict) else None) is not None else 0,
+    )
+
+
+def _build_publication_paper_figure_candidate_asset(
+    *,
+    base_asset: dict[str, Any],
+    image_data: str,
+    source_parser: str,
+) -> dict[str, Any]:
+    candidate = dict(base_asset)
+    candidate["classification"] = _normalize_publication_file_classification(
+        str(candidate.get("classification") or "").strip() or FILE_CLASSIFICATION_FIGURE
+    )
+    candidate["asset_kind"] = "figure"
+    candidate["image_data"] = image_data
+    candidate["source_parser"] = source_parser
+    return candidate
+
+
+def _select_best_publication_paper_figure_candidate(
+    candidates: Iterable[dict[str, Any] | None],
+) -> dict[str, Any] | None:
+    best_candidate: dict[str, Any] | None = None
+    best_score: tuple[int, int, int, int, int, int, int, int, int, int] | None = None
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        if not str(candidate.get("image_data") or "").strip():
+            continue
+        score = _publication_paper_figure_asset_quality_score(candidate)
+        if best_score is None or score > best_score:
+            best_candidate = candidate
+            best_score = score
+    return best_candidate
+
+
 def _publication_paper_table_html_quality_score(
     asset: dict[str, Any] | None,
 ) -> tuple[int, int, int, int, int]:
@@ -6913,8 +7002,8 @@ def _merge_publication_paper_asset_candidate(
         merged["graphic_coords"] = candidate.get("graphic_coords")
     if candidate.get("image_data") and (
         not merged.get("image_data")
-        or _publication_paper_figure_image_quality_score(candidate)
-        > _publication_paper_figure_image_quality_score(merged)
+        or _publication_paper_figure_asset_quality_score(candidate)
+        > _publication_paper_figure_asset_quality_score(merged)
     ):
         merged["image_data"] = candidate.get("image_data")
         if candidate.get("source_parser"):
@@ -7657,6 +7746,7 @@ def _parse_grobid_tei_into_structured_paper(
 
 _FIGURE_CROP_MIN_BYTES = 2048
 _FIGURE_CROP_SCALE = 4.0
+_FIGURE_DYNAMIC_RENDER_SCALES = (_FIGURE_CROP_SCALE, 6.0, 8.0)
 _FIGURE_CROP_MAX_PAGE_AREA_RATIO = 0.82
 _FIGURE_CROP_TEXT_HEAVY_PAGE_AREA_RATIO = 0.58
 _FIGURE_CROP_TEXT_HEAVY_WORD_THRESHOLD = 80
@@ -7667,6 +7757,10 @@ _FIGURE_LOW_QUALITY_MIN_WIDTH = 320
 _FIGURE_LOW_QUALITY_MIN_HEIGHT = 160
 _FIGURE_LOW_QUALITY_MIN_AREA = 90000
 _FIGURE_LOW_QUALITY_MIN_BYTES = 10000
+_FIGURE_DISPLAY_TARGET_MIN_WIDTH = 1200
+_FIGURE_DISPLAY_TARGET_MIN_HEIGHT = 700
+_FIGURE_DISPLAY_TARGET_MIN_AREA = 650000
+_FIGURE_DISPLAY_TARGET_MIN_BYTES = 35000
 
 
 def _parse_grobid_coords(
@@ -7864,6 +7958,38 @@ def _extract_title_matched_pdf_figure_image(
     return None
 
 
+def _render_pdf_figure_crop_candidate(
+    *,
+    page: Any,
+    rect: Any,
+    base_asset: dict[str, Any],
+) -> dict[str, Any] | None:
+    best_candidate: dict[str, Any] | None = None
+    for scale in _FIGURE_DYNAMIC_RENDER_SCALES:
+        try:
+            mat = _fitz.Matrix(scale, scale)
+            pix = page.get_pixmap(matrix=mat, clip=rect)
+            img_bytes = pix.tobytes("png")
+        except Exception:
+            continue
+        if len(img_bytes) < _FIGURE_CROP_MIN_BYTES:
+            continue
+        b64 = base64.b64encode(img_bytes).decode("ascii")
+        candidate = _build_publication_paper_figure_candidate_asset(
+            base_asset=base_asset,
+            image_data=f"data:image/png;base64,{b64}",
+            source_parser=STRUCTURED_PAPER_SECTION_SOURCE_PDF_CROP,
+        )
+        current_best = _select_best_publication_paper_figure_candidate(
+            [best_candidate, candidate]
+        )
+        if current_best is not None:
+            best_candidate = current_best
+        if _publication_paper_figure_image_meets_display_target(candidate):
+            break
+    return best_candidate
+
+
 def _crop_figure_images_from_pdf(
     content: bytes,
     figures: list[dict[str, Any]],
@@ -7879,6 +8005,9 @@ def _crop_figure_images_from_pdf(
         updated_figures: list[dict[str, Any]] = []
         for figure in figures:
             figure_copy = dict(figure)
+            figure_candidates: list[dict[str, Any]] = []
+            if str(figure_copy.get("image_data") or "").strip():
+                figure_candidates.append(dict(figure_copy))
             coords_source = (
                 "graphic_coords"
                 if figure_copy.get("graphic_coords")
@@ -7892,19 +8021,33 @@ def _crop_figure_images_from_pdf(
                     doc=doc,
                     figure=figure_copy,
                 )
-                if title_matched_image and (
-                    not figure_copy.get("image_data")
-                    or _publication_paper_figure_image_quality_score(
-                        {"classification": FILE_CLASSIFICATION_FIGURE, "image_data": title_matched_image}
+                if title_matched_image:
+                    figure_candidates.append(
+                        _build_publication_paper_figure_candidate_asset(
+                            base_asset=figure_copy,
+                            image_data=title_matched_image,
+                            source_parser=STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH,
+                        )
                     )
-                    > _publication_paper_figure_image_quality_score(figure_copy)
-                ):
-                    figure_copy["image_data"] = title_matched_image
             if not coord_entries:
+                best_candidate = _select_best_publication_paper_figure_candidate(
+                    figure_candidates
+                )
+                if best_candidate is not None:
+                    figure_copy["image_data"] = best_candidate.get("image_data")
+                    if best_candidate.get("source_parser"):
+                        figure_copy["source_parser"] = best_candidate.get("source_parser")
                 updated_figures.append(figure_copy)
                 continue
             page_num, x1, y1, x2, y2 = coord_entries[0]
             if page_num < 0 or page_num >= len(doc):
+                best_candidate = _select_best_publication_paper_figure_candidate(
+                    figure_candidates
+                )
+                if best_candidate is not None:
+                    figure_copy["image_data"] = best_candidate.get("image_data")
+                    if best_candidate.get("source_parser"):
+                        figure_copy["source_parser"] = best_candidate.get("source_parser")
                 updated_figures.append(figure_copy)
                 continue
             page = doc[page_num]
@@ -7915,6 +8058,13 @@ def _crop_figure_images_from_pdf(
             rect.x1 = min(page_rect.x1, rect.x1)
             rect.y1 = min(page_rect.y1, rect.y1)
             if rect.is_empty or rect.width < 48 or rect.height < 48:
+                best_candidate = _select_best_publication_paper_figure_candidate(
+                    figure_candidates
+                )
+                if best_candidate is not None:
+                    figure_copy["image_data"] = best_candidate.get("image_data")
+                    if best_candidate.get("source_parser"):
+                        figure_copy["source_parser"] = best_candidate.get("source_parser")
                 updated_figures.append(figure_copy)
                 continue
             try:
@@ -7937,6 +8087,13 @@ def _crop_figure_images_from_pdf(
                     and word_count >= _FIGURE_CROP_TEXT_HEAVY_WORD_THRESHOLD
                 )
             ):
+                best_candidate = _select_best_publication_paper_figure_candidate(
+                    figure_candidates
+                )
+                if best_candidate is not None:
+                    figure_copy["image_data"] = best_candidate.get("image_data")
+                    if best_candidate.get("source_parser"):
+                        figure_copy["source_parser"] = best_candidate.get("source_parser")
                 updated_figures.append(figure_copy)
                 continue
             native_image_data = _extract_native_pdf_figure_image(
@@ -7945,21 +8102,34 @@ def _crop_figure_images_from_pdf(
                 clip_rect=rect,
             )
             if native_image_data:
-                figure_copy["image_data"] = native_image_data
-                updated_figures.append(figure_copy)
-                continue
-            mat = _fitz.Matrix(_FIGURE_CROP_SCALE, _FIGURE_CROP_SCALE)
-            try:
-                pix = page.get_pixmap(matrix=mat, clip=rect)
-                img_bytes = pix.tobytes("png")
-            except Exception:
-                updated_figures.append(figure_copy)
-                continue
-            if len(img_bytes) < _FIGURE_CROP_MIN_BYTES:
-                updated_figures.append(figure_copy)
-                continue
-            b64 = base64.b64encode(img_bytes).decode("ascii")
-            figure_copy["image_data"] = f"data:image/png;base64,{b64}"
+                figure_candidates.append(
+                    _build_publication_paper_figure_candidate_asset(
+                        base_asset=figure_copy,
+                        image_data=native_image_data,
+                        source_parser=STRUCTURED_PAPER_SECTION_SOURCE_NATIVE_PDF,
+                    )
+                )
+            best_candidate = _select_best_publication_paper_figure_candidate(
+                figure_candidates
+            )
+            if (
+                best_candidate is None
+                or not _publication_paper_figure_image_meets_display_target(best_candidate)
+            ):
+                crop_candidate = _render_pdf_figure_crop_candidate(
+                    page=page,
+                    rect=rect,
+                    base_asset=figure_copy,
+                )
+                if crop_candidate is not None:
+                    figure_candidates.append(crop_candidate)
+                    best_candidate = _select_best_publication_paper_figure_candidate(
+                        figure_candidates
+                    )
+            if best_candidate is not None:
+                figure_copy["image_data"] = best_candidate.get("image_data")
+                if best_candidate.get("source_parser"):
+                    figure_copy["source_parser"] = best_candidate.get("source_parser")
             updated_figures.append(figure_copy)
         return updated_figures
     finally:

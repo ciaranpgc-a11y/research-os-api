@@ -3115,6 +3115,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationReaderViewMode, setPublicationReaderViewMode] = useState<PublicationReaderViewMode>('structured')
   const [publicationReaderCollapsedNodeIds, setPublicationReaderCollapsedNodeIds] = useState<Record<string, boolean>>({})
   const [publicationReaderInspectorOpen, setPublicationReaderInspectorOpen] = useState(false)
+  const [publicationReaderFigureLightboxAsset, setPublicationReaderFigureLightboxAsset] = useState<PublicationPaperAssetPayload | null>(null)
+  const [publicationReaderFigureLightboxFitToViewport, setPublicationReaderFigureLightboxFitToViewport] = useState(true)
   const [filesDragOver, setFilesDragOver] = useState(false)
   const [publicationLibraryVisible, setPublicationLibraryVisible] = useState(true)
   const [publicationLibraryFiltersVisible, setPublicationLibraryFiltersVisible] = useState(false)
@@ -3174,6 +3176,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationReaderSectionRefs = useRef<Record<string, HTMLElement | null>>({})
   const publicationReaderReferencesRef = useRef<HTMLElement | null>(null)
   const publicationReaderScrollViewportRef = useRef<HTMLElement | null>(null)
+  const openPublicationReaderFigureLightbox = useCallback((asset: PublicationPaperAssetPayload) => {
+    if (!String(asset.image_data || '').trim()) {
+      return
+    }
+    setPublicationReaderFigureLightboxAsset(asset)
+    setPublicationReaderFigureLightboxFitToViewport(true)
+  }, [])
+  const closePublicationReaderFigureLightbox = useCallback(() => {
+    setPublicationReaderFigureLightboxAsset(null)
+    setPublicationReaderFigureLightboxFitToViewport(true)
+  }, [])
   const resolvePublicationTableAvailableWidth = useCallback(() => {
     const measuredClient = publicationTableLayoutRef.current?.clientWidth
     if (Number.isFinite(measuredClient) && Number(measuredClient) > 0) {
@@ -3185,6 +3198,25 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     return Math.max(320, Math.round(Number(publicationTableLayoutWidth) || 320))
   }, [publicationTableLayoutWidth])
+
+  useEffect(() => {
+    if (!publicationReaderFigureLightboxAsset) {
+      return undefined
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closePublicationReaderFigureLightbox()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [closePublicationReaderFigureLightbox, publicationReaderFigureLightboxAsset])
+
+  useEffect(() => {
+    if (!publicationReaderOpen && publicationReaderFigureLightboxAsset) {
+      closePublicationReaderFigureLightbox()
+    }
+  }, [closePublicationReaderFigureLightbox, publicationReaderFigureLightboxAsset, publicationReaderOpen])
 
   const loadData = useCallback(async (
     sessionToken: string,
@@ -7097,12 +7129,24 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             </button>
             {asset.image_data ? (
               <div className="border-t border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-2">
-                <img
-                  src={asset.image_data}
-                  alt={asset.title || asset.file_name || 'Figure'}
-                  className="max-h-[280px] w-full rounded-md object-contain"
-                  loading="lazy"
-                />
+                <button
+                  type="button"
+                  className="group block w-full text-left"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openPublicationReaderFigureLightbox(asset)
+                  }}
+                >
+                  <img
+                    src={asset.image_data}
+                    alt={asset.title || asset.file_name || 'Figure'}
+                    className="max-h-[280px] w-full rounded-md object-contain transition-transform duration-[var(--motion-duration-ui)] ease-out group-hover:scale-[1.01]"
+                    loading="lazy"
+                  />
+                  <p className="mt-2 text-[0.72rem] text-[hsl(var(--tone-neutral-500))]">
+                    Open full-size figure
+                  </p>
+                </button>
               </div>
             ) : null}
             {asset.structured_html ? (
@@ -7238,12 +7282,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 </div>
                 {inlineAsset.image_data ? (
                   <div className="border-t border-[hsl(var(--tone-neutral-100))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
-                    <img
-                      src={inlineAsset.image_data}
-                      alt={inlineAsset.title || inlineAsset.file_name || 'Figure'}
-                      className="max-h-[400px] w-full rounded object-contain"
-                      loading="lazy"
-                    />
+                    <button
+                      type="button"
+                      className="group block w-full text-left"
+                      onClick={() => openPublicationReaderFigureLightbox(inlineAsset)}
+                    >
+                      <img
+                        src={inlineAsset.image_data}
+                        alt={inlineAsset.title || inlineAsset.file_name || 'Figure'}
+                        className="max-h-[400px] w-full rounded object-contain transition-transform duration-[var(--motion-duration-ui)] ease-out group-hover:scale-[1.005]"
+                        loading="lazy"
+                      />
+                      <p className="mt-2 text-[0.72rem] text-[hsl(var(--tone-neutral-500))]">
+                        Open full-size figure
+                      </p>
+                    </button>
                   </div>
                 ) : null}
                 {inlineAsset.structured_html ? (
@@ -9565,12 +9618,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       </div>
                                       {inlineAsset.image_data ? (
                                         <div className="border-t border-[hsl(var(--tone-neutral-100))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
-                                          <img
-                                            src={inlineAsset.image_data}
-                                            alt={inlineAsset.title || inlineAsset.file_name || 'Figure'}
-                                            className="max-h-[400px] w-full rounded object-contain"
-                                            loading="lazy"
-                                          />
+                                          <button
+                                            type="button"
+                                            className="group block w-full text-left"
+                                            onClick={() => openPublicationReaderFigureLightbox(inlineAsset)}
+                                          >
+                                            <img
+                                              src={inlineAsset.image_data}
+                                              alt={inlineAsset.title || inlineAsset.file_name || 'Figure'}
+                                              className="max-h-[400px] w-full rounded object-contain transition-transform duration-[var(--motion-duration-ui)] ease-out group-hover:scale-[1.005]"
+                                              loading="lazy"
+                                            />
+                                            <p className="mt-2 text-[0.72rem] text-[hsl(var(--tone-neutral-500))]">
+                                              Open full-size figure
+                                            </p>
+                                          </button>
                                         </div>
                                       ) : null}
                                       {inlineAsset.structured_html ? (
@@ -9830,6 +9892,101 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           {autoOaStatus}
           {autoOaFinding ? ' (running in background)' : ''}
         </p>
+      ) : null}
+      {publicationReaderFigureLightboxAsset && typeof document !== 'undefined' ? createPortal(
+        <div
+          className="fixed inset-0 z-[150] bg-[hsl(var(--tone-neutral-900)/0.82)] backdrop-blur-sm"
+          onClick={closePublicationReaderFigureLightbox}
+          role="presentation"
+        >
+          <div
+            className="absolute inset-4 flex min-h-0 flex-col overflow-hidden rounded-[1.5rem] border border-white/12 bg-[hsl(var(--tone-neutral-950))] text-white shadow-[0_30px_80px_hsl(var(--tone-neutral-950)/0.55)]"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={publicationReaderFigureLightboxAsset.title || publicationReaderFigureLightboxAsset.file_name || 'Full-size figure'}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-white/55">
+                  Figure preview
+                </p>
+                <h2 className="mt-1 truncate text-lg font-semibold text-white">
+                  {publicationReaderFigureLightboxAsset.title || publicationReaderFigureLightboxAsset.file_name || 'Figure'}
+                </h2>
+                <p className="mt-1 text-sm text-white/65">
+                  {publicationReaderAssetSourceLabel(publicationReaderFigureLightboxAsset)}
+                  {formatPublicationPaperSectionPageLabel({
+                    page_start: publicationReaderFigureLightboxAsset.page_start,
+                    page_end: publicationReaderFigureLightboxAsset.page_end,
+                  })
+                    ? ` · ${formatPublicationPaperSectionPageLabel({
+                      page_start: publicationReaderFigureLightboxAsset.page_start,
+                      page_end: publicationReaderFigureLightboxAsset.page_end,
+                    })}`
+                    : ''}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+                  onClick={() => setPublicationReaderFigureLightboxFitToViewport((current) => !current)}
+                >
+                  {publicationReaderFigureLightboxFitToViewport ? 'Natural size' : 'Fit to viewport'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+                  onClick={() => {
+                    if (publicationReaderFigureLightboxAsset.image_data) {
+                      window.open(publicationReaderFigureLightboxAsset.image_data, '_blank', 'noopener,noreferrer')
+                    }
+                  }}
+                >
+                  <ArrowUpRight className="mr-1.5 h-4 w-4" />
+                  Open original
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+                  onClick={closePublicationReaderFigureLightbox}
+                >
+                  <X className="mr-1.5 h-4 w-4" />
+                  Close
+                </Button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto px-5 py-5">
+              <div className={cn(
+                'flex min-h-full items-start justify-center',
+                publicationReaderFigureLightboxFitToViewport ? '' : 'overflow-auto',
+              )}>
+                <img
+                  src={publicationReaderFigureLightboxAsset.image_data || undefined}
+                  alt={publicationReaderFigureLightboxAsset.title || publicationReaderFigureLightboxAsset.file_name || 'Figure'}
+                  className={cn(
+                    'rounded-xl shadow-[0_18px_50px_hsl(var(--tone-neutral-950)/0.45)]',
+                    publicationReaderFigureLightboxFitToViewport
+                      ? 'max-h-[82vh] w-auto max-w-full object-contain'
+                      : 'h-auto max-w-none object-contain',
+                  )}
+                />
+              </div>
+            </div>
+            {publicationReaderFigureLightboxAsset.caption ? (
+              <div className="border-t border-white/10 px-5 py-4">
+                <p className="text-sm leading-relaxed text-white/72">
+                  {publicationReaderFigureLightboxAsset.caption}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </div>,
+        document.body,
       ) : null}
     </Stack>
   )

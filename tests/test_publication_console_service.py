@@ -3872,6 +3872,112 @@ def test_crop_figure_images_upgrades_low_quality_pmc_figure_via_title_match(monk
     assert str(result[0].get("image_data") or "").startswith("data:image/png;base64,")
 
 
+def test_crop_figure_images_rerenders_at_higher_scale_until_quality_target_met(
+    monkeypatch,
+) -> None:
+    def _fake_png_bytes(width: int, height: int, fill: bytes) -> bytes:
+        return (
+            b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\rIHDR"
+            + width.to_bytes(4, "big")
+            + height.to_bytes(4, "big")
+            + b"\x08\x02\x00\x00\x00"
+            + fill
+        )
+
+    class _FakeRect:
+        def __init__(self, x0: float, y0: float, x1: float, y1: float) -> None:
+            self.x0 = x0
+            self.y0 = y0
+            self.x1 = x1
+            self.y1 = y1
+
+        @property
+        def width(self) -> float:
+            return max(0.0, self.x1 - self.x0)
+
+        @property
+        def height(self) -> float:
+            return max(0.0, self.y1 - self.y0)
+
+        @property
+        def is_empty(self) -> bool:
+            return self.width <= 0 or self.height <= 0
+
+    class _FakePixmap:
+        def __init__(self, payload: bytes) -> None:
+            self._payload = payload
+
+        def tobytes(self, _fmt: str) -> bytes:
+            return self._payload
+
+    render_scales: list[float] = []
+
+    class _FakePage:
+        def __init__(self) -> None:
+            self.rect = _FakeRect(0, 0, 600, 800)
+
+        def get_text(self, mode: str, clip=None):  # noqa: ANN001
+            assert mode == "words"
+            return []
+
+        def get_images(self, full: bool = False):  # noqa: FBT002
+            assert full is True
+            return []
+
+        def get_pixmap(self, matrix=None, clip=None):  # noqa: ANN001
+            scale = float(matrix[0])
+            render_scales.append(scale)
+            if scale < 6.0:
+                return _FakePixmap(_fake_png_bytes(900, 520, b"x" * 16000))
+            return _FakePixmap(_fake_png_bytes(1400, 820, b"y" * 50000))
+
+    class _FakeDoc:
+        def __init__(self) -> None:
+            self._page = _FakePage()
+
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> _FakePage:
+            assert index == 0
+            return self._page
+
+        def close(self) -> None:
+            return None
+
+    class _FakeFitzModule:
+        @staticmethod
+        def open(stream=None, filetype=None):  # noqa: ANN001
+            return _FakeDoc()
+
+        @staticmethod
+        def Rect(x0: float, y0: float, x1: float, y1: float) -> _FakeRect:
+            return _FakeRect(x0, y0, x1, y1)
+
+        @staticmethod
+        def Matrix(x: float, y: float) -> tuple[float, float]:
+            return (x, y)
+
+    monkeypatch.setattr(publication_console_service, "_fitz", _FakeFitzModule)
+
+    result = publication_console_service._crop_figure_images_from_pdf(
+        b"%PDF-1.7 fake payload",
+        [{"id": "fig-1", "coords": "0,10,20,110,140", "image_data": None}],
+    )
+
+    metrics = publication_console_service._publication_paper_figure_image_metrics(
+        {
+            "classification": publication_console_service.FILE_CLASSIFICATION_FIGURE,
+            "image_data": result[0].get("image_data"),
+        }
+    )
+    assert render_scales == [4.0, 6.0]
+    assert metrics is not None
+    assert metrics["width"] == 1400
+    assert metrics["height"] == 820
+
+
 def test_extract_title_matched_pdf_figure_image_prefers_image_above_caption(
     monkeypatch,
 ) -> None:
@@ -3990,6 +4096,51 @@ def test_merge_publication_paper_asset_candidate_prefers_higher_quality_figure_i
     assert (
         merged["source_parser"]
         == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID
+    )
+
+
+def test_merge_publication_paper_asset_candidate_prefers_higher_priority_figure_source_on_quality_tie() -> None:
+    png_one = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + (1200).to_bytes(4, "big")
+        + (700).to_bytes(4, "big")
+        + b"\x08\x02\x00\x00\x00"
+        + (b"a" * 25000)
+    )
+    png_two = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + (1200).to_bytes(4, "big")
+        + (700).to_bytes(4, "big")
+        + b"\x08\x02\x00\x00\x00"
+        + (b"b" * 25000)
+    )
+
+    existing = {
+        "classification": publication_console_service.FILE_CLASSIFICATION_FIGURE,
+        "title": "Figure 2",
+        "page_start": 6,
+        "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+        "image_data": "data:image/png;base64," + base64.b64encode(png_one).decode("ascii"),
+    }
+    candidate = {
+        "classification": publication_console_service.FILE_CLASSIFICATION_FIGURE,
+        "title": "Figure 2",
+        "page_start": 6,
+        "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS,
+        "image_data": "data:image/png;base64," + base64.b64encode(png_two).decode("ascii"),
+    }
+
+    merged = publication_console_service._merge_publication_paper_asset_candidate(
+        existing,
+        candidate,
+    )
+
+    assert merged["image_data"] == candidate["image_data"]
+    assert (
+        merged["source_parser"]
+        == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS
     )
 
 
