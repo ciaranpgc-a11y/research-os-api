@@ -6469,6 +6469,203 @@ def _request_grobid_fulltext_tei(*, content: bytes, file_name: str) -> str:
     raise PublicationConsoleValidationError(last_error)
 
 
+def _tei_reference_person_name(author_node: ET.Element | None) -> str:
+    if author_node is None:
+        return ""
+    pers_name = _tei_first_direct_child(author_node, "persName")
+    target = pers_name if pers_name is not None else author_node
+    surnames = [
+        _tei_node_text(node)
+        for node in _tei_direct_children(target, "surname")
+        if _tei_node_text(node)
+    ]
+    forenames = [
+        _tei_node_text(node)
+        for node in _tei_direct_children(target, "forename")
+        if _tei_node_text(node)
+    ]
+    surname = surnames[0] if surnames else ""
+    initials = "".join(
+        part[0].upper()
+        for name in forenames
+        for part in re.split(r"[\s\-]+", name)
+        if part
+    )
+    if surname and initials:
+        return f"{surname} {initials}"
+    if surname:
+        return surname
+    fallback = _tei_node_text(target)
+    return fallback
+
+
+def _tei_reference_author_names(node: ET.Element | None) -> list[str]:
+    if node is None:
+        return []
+    names: list[str] = []
+    for author in node.iter():
+        if _xml_local_name(getattr(author, "tag", "")) != "author":
+            continue
+        name = _tei_reference_person_name(author)
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _tei_reference_title(node: ET.Element | None) -> str:
+    if node is None:
+        return ""
+    analytic = _tei_first_direct_child(node, "analytic")
+    monogr = _tei_first_direct_child(node, "monogr")
+    for container, preferred_levels in (
+        (analytic, {"a", "m", ""}),
+        (monogr, {"a", "m"}),
+        (node, {"a", "m"}),
+    ):
+        if container is None:
+            continue
+        titles = _tei_direct_children(container, "title")
+        for level in preferred_levels:
+            for title_node in titles:
+                title_level = str(title_node.attrib.get("level") or "").strip().lower()
+                if title_level == level:
+                    text = _tei_node_text(title_node)
+                    if text:
+                        return text
+    return ""
+
+
+def _tei_reference_journal_title(node: ET.Element | None) -> str:
+    monogr = _tei_first_direct_child(node, "monogr") if node is not None else None
+    if monogr is None:
+        return ""
+    titles = _tei_direct_children(monogr, "title")
+    for level in ("j", "s", ""):
+        for title_node in titles:
+            title_level = str(title_node.attrib.get("level") or "").strip().lower()
+            if title_level == level:
+                text = _tei_node_text(title_node)
+                if text:
+                    return text
+    return ""
+
+
+def _tei_reference_imprint_value(
+    node: ET.Element | None,
+    *,
+    units: set[str],
+) -> str:
+    if node is None:
+        return ""
+    monogr = _tei_first_direct_child(node, "monogr")
+    imprint = _tei_first_direct_child(monogr, "imprint") if monogr is not None else None
+    if imprint is None:
+        return ""
+    for scope in imprint.iter():
+        if _xml_local_name(getattr(scope, "tag", "")).casefold() != "biblscope":
+            continue
+        unit = str(scope.attrib.get("unit") or "").strip().lower()
+        if unit not in units:
+            continue
+        from_value = str(scope.attrib.get("from") or "").strip()
+        to_value = str(scope.attrib.get("to") or "").strip()
+        text_value = _tei_node_text(scope)
+        if from_value and to_value and from_value != to_value:
+            return f"{from_value}-{to_value}"
+        if from_value:
+            return from_value
+        if text_value:
+            return text_value
+    return ""
+
+
+def _tei_reference_year(node: ET.Element | None) -> str:
+    if node is None:
+        return ""
+    monogr = _tei_first_direct_child(node, "monogr")
+    imprint = _tei_first_direct_child(monogr, "imprint") if monogr is not None else None
+    if imprint is not None:
+        for date_node in imprint.iter():
+            if _xml_local_name(getattr(date_node, "tag", "")) != "date":
+                continue
+            when_value = str(date_node.attrib.get("when") or "").strip()
+            if when_value:
+                match = re.search(r"\b(\d{4})\b", when_value)
+                if match:
+                    return match.group(1)
+            text_value = _tei_node_text(date_node)
+            match = re.search(r"\b(\d{4})\b", text_value)
+            if match:
+                return match.group(1)
+    raw_text = _tei_node_text(node)
+    match = re.search(r"\b(19|20)\d{2}\b", raw_text)
+    if match:
+        return match.group(0)
+    return ""
+
+
+def _tei_reference_identifier(node: ET.Element | None, id_type: str) -> str:
+    if node is None:
+        return ""
+    target_type = str(id_type or "").strip().lower()
+    for id_node in node.iter():
+        if _xml_local_name(getattr(id_node, "tag", "")) != "idno":
+            continue
+        node_type = str(id_node.attrib.get("type") or "").strip().lower()
+        if node_type != target_type:
+            continue
+        text = _tei_node_text(id_node)
+        if text:
+            return text
+    return ""
+
+
+def _format_tei_reference_entry(node: ET.Element | None) -> str:
+    if node is None:
+        return ""
+    authors = _tei_reference_author_names(node)
+    title = _tei_reference_title(node)
+    journal = _tei_reference_journal_title(node)
+    year = _tei_reference_year(node)
+    volume = _tei_reference_imprint_value(node, units={"volume", "vol"})
+    issue = _tei_reference_imprint_value(node, units={"issue"})
+    pages = _tei_reference_imprint_value(node, units={"page", "pp", "pages"})
+    doi = _tei_reference_identifier(node, "doi")
+    pmid = _tei_reference_identifier(node, "pmid")
+
+    parts: list[str] = []
+    if authors:
+        author_text = ", ".join(authors[:8])
+        if len(authors) > 8:
+            author_text += ", et al"
+        parts.append(author_text.rstrip(".") + ".")
+    if title:
+        parts.append(title.rstrip(".") + ".")
+    if journal:
+        journal_part = journal.rstrip(".")
+        details = ""
+        if year:
+            details = year
+        if volume:
+            details = f"{details};{volume}" if details else volume
+        if issue:
+            details = f"{details}({issue})" if details else f"({issue})"
+        if pages:
+            details = f"{details}:{pages}" if details else pages
+        if details:
+            journal_part = f"{journal_part}. {details}."
+        else:
+            journal_part = f"{journal_part}."
+        parts.append(journal_part)
+    elif year:
+        parts.append(f"{year}.")
+    if doi:
+        parts.append(f"doi: {doi}.")
+    if pmid:
+        parts.append(f"PMID: {pmid}.")
+    return _normalize_abstract_text(" ".join(parts))
+
+
 def _extract_publication_paper_reference_entries_from_tei(
     root: ET.Element,
 ) -> list[dict[str, Any]]:
@@ -6493,17 +6690,21 @@ def _extract_publication_paper_reference_entries_from_tei(
                 "biblstruct",
             }:
                 continue
-            raw_text = _tei_node_text(node)
+            formatted_text = _format_tei_reference_entry(node)
+            raw_text = formatted_text or _tei_node_text(node)
             if len(raw_text) < 12:
                 continue
             marker = raw_text.casefold()
-            if marker in seen or _is_publication_paper_boilerplate_block(raw_text):
+            if marker in seen or (
+                not formatted_text and _is_publication_paper_boilerplate_block(raw_text)
+            ):
                 continue
             seen.add(marker)
+            label_text = _tei_node_text(_tei_first_direct_child(node, "label"))
             references.append(
                 {
                     "id": f"paper-reference-{len(references) + 1}",
-                    "label": f"Reference {len(references) + 1}",
+                    "label": label_text or f"Reference {len(references) + 1}",
                     "raw_text": raw_text,
                 }
             )
@@ -6678,6 +6879,18 @@ def _decode_base64_data_uri(
         return mime_type, base64.b64decode(encoded, validate=False)
     except Exception:
         return mime_type, None
+
+
+def _publication_paper_figure_image_signature(
+    asset: dict[str, Any] | None,
+) -> str | None:
+    mime_type, content = _decode_base64_data_uri(
+        asset.get("image_data") if isinstance(asset, dict) else None
+    )
+    if not isinstance(content, (bytes, bytearray)) or not content:
+        return None
+    digest = hashlib.sha256(bytes(content)).hexdigest()[:24]
+    return f"{str(mime_type or 'image/unknown').lower()}:{digest}"
 
 
 def _jpeg_dimensions(content: bytes) -> tuple[int | None, int | None]:
@@ -6869,6 +7082,7 @@ def _build_publication_paper_figure_candidate_asset(
     base_asset: dict[str, Any],
     image_data: str,
     source_parser: str,
+    candidate_xref: int | None = None,
 ) -> dict[str, Any]:
     candidate = dict(base_asset)
     candidate["classification"] = _normalize_publication_file_classification(
@@ -6877,24 +7091,37 @@ def _build_publication_paper_figure_candidate_asset(
     candidate["asset_kind"] = "figure"
     candidate["image_data"] = image_data
     candidate["source_parser"] = source_parser
+    if candidate_xref is not None:
+        candidate["_candidate_xref"] = int(candidate_xref)
     return candidate
 
 
 def _select_best_publication_paper_figure_candidate(
     candidates: Iterable[dict[str, Any] | None],
+    *,
+    avoid_signatures: set[str] | None = None,
 ) -> dict[str, Any] | None:
-    best_candidate: dict[str, Any] | None = None
-    best_score: tuple[int, int, int, int, int, int, int, int, int, int] | None = None
+    preferred_candidate: dict[str, Any] | None = None
+    preferred_score: tuple[int, int, int, int, int, int, int, int, int, int] | None = None
+    fallback_candidate: dict[str, Any] | None = None
+    fallback_score: tuple[int, int, int, int, int, int, int, int, int, int] | None = None
+    blocked_signatures = avoid_signatures or set()
     for candidate in candidates:
         if not isinstance(candidate, dict):
             continue
         if not str(candidate.get("image_data") or "").strip():
             continue
         score = _publication_paper_figure_asset_quality_score(candidate)
-        if best_score is None or score > best_score:
-            best_candidate = candidate
-            best_score = score
-    return best_candidate
+        signature = _publication_paper_figure_image_signature(candidate)
+        if fallback_score is None or score > fallback_score:
+            fallback_candidate = candidate
+            fallback_score = score
+        if signature and signature in blocked_signatures:
+            continue
+        if preferred_score is None or score > preferred_score:
+            preferred_candidate = candidate
+            preferred_score = score
+    return preferred_candidate or fallback_candidate
 
 
 def _publication_paper_table_html_quality_score(
@@ -7808,21 +8035,22 @@ def _figure_rect_intersection_area(left: Any, right: Any) -> float:
     return max(0.0, x1 - x0) * max(0.0, y1 - y0)
 
 
-def _extract_native_pdf_figure_image(
+def _extract_native_pdf_figure_image_candidate(
     *,
     doc: Any,
     page: Any,
     clip_rect: Any,
-) -> str | None:
+    avoid_xrefs: set[int] | None = None,
+) -> tuple[str | None, int | None]:
     clip_area = _figure_rect_area(clip_rect)
     if clip_area <= 0:
-        return None
+        return None, None
+    blocked_xrefs = avoid_xrefs or set()
     try:
         page_images = page.get_images(full=True) or []
     except Exception:
-        return None
-    best_candidate: tuple[float, float, int] | None = None
-    qualifying_candidates = 0
+        return None, None
+    candidates: list[tuple[float, float, int]] = []
     for image in page_images:
         try:
             xref = int(image[0])
@@ -7845,33 +8073,53 @@ def _extract_native_pdf_figure_image(
                 continue
             if image_coverage < _FIGURE_NATIVE_IMAGE_MIN_IMAGE_COVERAGE:
                 continue
-            qualifying_candidates += 1
-            candidate = (clip_coverage, image_coverage, xref)
-            if best_candidate is None or candidate > best_candidate:
-                best_candidate = candidate
-    if best_candidate is None or qualifying_candidates != 1:
-        return None
+            candidates.append((clip_coverage, image_coverage, xref))
+    if not candidates:
+        return None, None
+    candidates.sort(reverse=True)
+    selected_candidate = next(
+        (candidate for candidate in candidates if candidate[2] not in blocked_xrefs),
+        None,
+    )
+    if selected_candidate is None:
+        return None, None
     try:
-        extracted = doc.extract_image(best_candidate[2]) or {}
+        extracted = doc.extract_image(selected_candidate[2]) or {}
     except Exception:
-        return None
+        return None, None
     img_bytes = extracted.get("image")
     if not isinstance(img_bytes, (bytes, bytearray)) or len(img_bytes) < _FIGURE_CROP_MIN_BYTES:
-        return None
+        return None, None
     extension = str(extracted.get("ext") or "png").strip().lower() or "png"
     mime_type = mimetypes.guess_type(f"figure.{extension}")[0] or "image/png"
     encoded = base64.b64encode(bytes(img_bytes)).decode("ascii")
-    return f"data:{mime_type};base64,{encoded}"
+    return f"data:{mime_type};base64,{encoded}", int(selected_candidate[2])
 
 
-def _extract_title_matched_pdf_figure_image(
+def _extract_native_pdf_figure_image(
+    *,
+    doc: Any,
+    page: Any,
+    clip_rect: Any,
+) -> str | None:
+    image_data, _xref = _extract_native_pdf_figure_image_candidate(
+        doc=doc,
+        page=page,
+        clip_rect=clip_rect,
+    )
+    return image_data
+
+
+def _extract_title_matched_pdf_figure_image_candidate(
     *,
     doc: Any,
     figure: dict[str, Any],
-) -> str | None:
+    avoid_xrefs: set[int] | None = None,
+) -> tuple[str | None, int | None]:
     title = _normalize_heading_label(str(figure.get("title") or "").strip() or None)
     if not title:
-        return None
+        return None, None
+    blocked_xrefs = avoid_xrefs or set()
     for page_index in range(len(doc)):
         page = doc[page_index]
         try:
@@ -7885,6 +8133,7 @@ def _extract_title_matched_pdf_figure_image(
         except Exception:
             page_images = []
         best_candidate: tuple[int, float, float, int, int, int] | None = None
+        fallback_candidate: tuple[int, float, float, int, int, int] | None = None
         for title_rect in title_rects:
             title_top = float(getattr(title_rect, "y0", 0.0))
             title_bottom = float(getattr(title_rect, "y1", 0.0))
@@ -7940,12 +8189,17 @@ def _extract_title_matched_pdf_figure_image(
                         len(img_bytes),
                         xref,
                     )
+                    if fallback_candidate is None or candidate > fallback_candidate:
+                        fallback_candidate = candidate
+                    if xref in blocked_xrefs:
+                        continue
                     if best_candidate is None or candidate > best_candidate:
                         best_candidate = candidate
-        if best_candidate is None:
+        selected_candidate = best_candidate or fallback_candidate
+        if selected_candidate is None:
             continue
         try:
-            extracted = doc.extract_image(best_candidate[5]) or {}
+            extracted = doc.extract_image(selected_candidate[5]) or {}
         except Exception:
             continue
         img_bytes = extracted.get("image")
@@ -7954,8 +8208,20 @@ def _extract_title_matched_pdf_figure_image(
         extension = str(extracted.get("ext") or "png").strip().lower() or "png"
         mime_type = mimetypes.guess_type(f"figure.{extension}")[0] or "image/png"
         encoded = base64.b64encode(bytes(img_bytes)).decode("ascii")
-        return f"data:{mime_type};base64,{encoded}"
-    return None
+        return f"data:{mime_type};base64,{encoded}", int(selected_candidate[5])
+    return None, None
+
+
+def _extract_title_matched_pdf_figure_image(
+    *,
+    doc: Any,
+    figure: dict[str, Any],
+) -> str | None:
+    image_data, _xref = _extract_title_matched_pdf_figure_image_candidate(
+        doc=doc,
+        figure=figure,
+    )
+    return image_data
 
 
 def _render_pdf_figure_crop_candidate(
@@ -8003,6 +8269,19 @@ def _crop_figure_images_from_pdf(
         return figures
     try:
         updated_figures: list[dict[str, Any]] = []
+        used_figure_signatures: set[str] = set()
+        used_figure_xrefs: set[int] = set()
+
+        def track_selected_figure_candidate(candidate: dict[str, Any] | None) -> None:
+            if not isinstance(candidate, dict):
+                return
+            best_signature = _publication_paper_figure_image_signature(candidate)
+            if best_signature:
+                used_figure_signatures.add(best_signature)
+            best_xref = _safe_int(candidate.get("_candidate_xref"))
+            if best_xref is not None:
+                used_figure_xrefs.add(best_xref)
+
         for figure in figures:
             figure_copy = dict(figure)
             figure_candidates: list[dict[str, Any]] = []
@@ -8016,10 +8295,12 @@ def _crop_figure_images_from_pdf(
             coords_str = figure_copy.get("graphic_coords") or figure_copy.get("coords")
             coord_entries = _parse_grobid_coords(coords_str)
             title_matched_image = None
+            title_matched_xref: int | None = None
             if not coord_entries or _publication_paper_figure_image_is_low_quality(figure_copy):
-                title_matched_image = _extract_title_matched_pdf_figure_image(
+                title_matched_image, title_matched_xref = _extract_title_matched_pdf_figure_image_candidate(
                     doc=doc,
                     figure=figure_copy,
+                    avoid_xrefs=used_figure_xrefs,
                 )
                 if title_matched_image:
                     figure_candidates.append(
@@ -8027,27 +8308,32 @@ def _crop_figure_images_from_pdf(
                             base_asset=figure_copy,
                             image_data=title_matched_image,
                             source_parser=STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH,
+                            candidate_xref=title_matched_xref,
                         )
                     )
             if not coord_entries:
                 best_candidate = _select_best_publication_paper_figure_candidate(
-                    figure_candidates
+                    figure_candidates,
+                    avoid_signatures=used_figure_signatures,
                 )
                 if best_candidate is not None:
                     figure_copy["image_data"] = best_candidate.get("image_data")
                     if best_candidate.get("source_parser"):
                         figure_copy["source_parser"] = best_candidate.get("source_parser")
+                    track_selected_figure_candidate(best_candidate)
                 updated_figures.append(figure_copy)
                 continue
             page_num, x1, y1, x2, y2 = coord_entries[0]
             if page_num < 0 or page_num >= len(doc):
                 best_candidate = _select_best_publication_paper_figure_candidate(
-                    figure_candidates
+                    figure_candidates,
+                    avoid_signatures=used_figure_signatures,
                 )
                 if best_candidate is not None:
                     figure_copy["image_data"] = best_candidate.get("image_data")
                     if best_candidate.get("source_parser"):
                         figure_copy["source_parser"] = best_candidate.get("source_parser")
+                    track_selected_figure_candidate(best_candidate)
                 updated_figures.append(figure_copy)
                 continue
             page = doc[page_num]
@@ -8059,12 +8345,14 @@ def _crop_figure_images_from_pdf(
             rect.y1 = min(page_rect.y1, rect.y1)
             if rect.is_empty or rect.width < 48 or rect.height < 48:
                 best_candidate = _select_best_publication_paper_figure_candidate(
-                    figure_candidates
+                    figure_candidates,
+                    avoid_signatures=used_figure_signatures,
                 )
                 if best_candidate is not None:
                     figure_copy["image_data"] = best_candidate.get("image_data")
                     if best_candidate.get("source_parser"):
                         figure_copy["source_parser"] = best_candidate.get("source_parser")
+                    track_selected_figure_candidate(best_candidate)
                 updated_figures.append(figure_copy)
                 continue
             try:
@@ -8088,18 +8376,21 @@ def _crop_figure_images_from_pdf(
                 )
             ):
                 best_candidate = _select_best_publication_paper_figure_candidate(
-                    figure_candidates
+                    figure_candidates,
+                    avoid_signatures=used_figure_signatures,
                 )
                 if best_candidate is not None:
                     figure_copy["image_data"] = best_candidate.get("image_data")
                     if best_candidate.get("source_parser"):
                         figure_copy["source_parser"] = best_candidate.get("source_parser")
+                    track_selected_figure_candidate(best_candidate)
                 updated_figures.append(figure_copy)
                 continue
-            native_image_data = _extract_native_pdf_figure_image(
+            native_image_data, native_image_xref = _extract_native_pdf_figure_image_candidate(
                 doc=doc,
                 page=page,
                 clip_rect=rect,
+                avoid_xrefs=used_figure_xrefs,
             )
             if native_image_data:
                 figure_candidates.append(
@@ -8107,10 +8398,12 @@ def _crop_figure_images_from_pdf(
                         base_asset=figure_copy,
                         image_data=native_image_data,
                         source_parser=STRUCTURED_PAPER_SECTION_SOURCE_NATIVE_PDF,
+                        candidate_xref=native_image_xref,
                     )
                 )
             best_candidate = _select_best_publication_paper_figure_candidate(
-                figure_candidates
+                figure_candidates,
+                avoid_signatures=used_figure_signatures,
             )
             if (
                 best_candidate is None
@@ -8124,12 +8417,14 @@ def _crop_figure_images_from_pdf(
                 if crop_candidate is not None:
                     figure_candidates.append(crop_candidate)
                     best_candidate = _select_best_publication_paper_figure_candidate(
-                        figure_candidates
+                        figure_candidates,
+                        avoid_signatures=used_figure_signatures,
                     )
             if best_candidate is not None:
                 figure_copy["image_data"] = best_candidate.get("image_data")
                 if best_candidate.get("source_parser"):
                     figure_copy["source_parser"] = best_candidate.get("source_parser")
+                track_selected_figure_candidate(best_candidate)
             updated_figures.append(figure_copy)
         return updated_figures
     finally:

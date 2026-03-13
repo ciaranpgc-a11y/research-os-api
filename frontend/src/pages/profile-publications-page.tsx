@@ -233,12 +233,38 @@ const PUBLICATION_READER_GROUP_TITLE_ALIASES: Record<string, string[]> = {
   references: ['references'],
   article_information: ['article information', 'article information and declarations'],
 }
+const PUBLICATION_STRUCTURED_TABLE_CLASS_NAME = [
+  'publication-structured-table overflow-auto text-[0.78rem] leading-relaxed',
+  '[&_table]:min-w-full [&_table]:border-collapse [&_table]:table-auto',
+  '[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-[1] [&_thead_th]:bg-[hsl(var(--tone-neutral-100))]',
+  '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-200))] [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:align-top [&_th]:text-[0.72rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.04em] [&_th]:text-[hsl(var(--tone-neutral-700))]',
+  '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-200))] [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_td]:text-[0.82rem] [&_td]:leading-relaxed [&_td]:text-[hsl(var(--tone-neutral-700))]',
+  '[&_tbody_tr:nth-child(even)]:bg-[hsl(var(--tone-neutral-50)/0.75)]',
+  '[&_caption]:mb-2 [&_caption]:text-left [&_caption]:text-[0.76rem] [&_caption]:text-[hsl(var(--tone-neutral-500))]',
+  '[&_.publication-structured-table-notes]:mt-3 [&_.publication-structured-table-notes]:space-y-2 [&_.publication-structured-table-notes]:rounded-[0.9rem] [&_.publication-structured-table-notes]:border [&_.publication-structured-table-notes]:border-[hsl(var(--tone-neutral-200))] [&_.publication-structured-table-notes]:bg-[hsl(var(--tone-neutral-50))] [&_.publication-structured-table-notes]:px-3 [&_.publication-structured-table-notes]:py-2',
+  '[&_.publication-structured-table-notes_p]:m-0 [&_.publication-structured-table-notes_p]:text-[0.74rem] [&_.publication-structured-table-notes_p]:leading-relaxed [&_.publication-structured-table-notes_p]:text-[hsl(var(--tone-neutral-600))]',
+].join(' ')
 
 function getPublicationReaderGroupToneClass(groupKey: string | null | undefined): string {
   return (
     PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS.find((definition) => definition.key === groupKey)?.toneClassName
     || 'bg-[hsl(var(--tone-neutral-300))]'
   )
+}
+
+function formatPublicationReaderReferenceDisplayLabel(
+  value: string | null | undefined,
+  index: number,
+): string {
+  const clean = String(value || '').trim()
+  if (!clean) {
+    return `${index + 1}.`
+  }
+  const syntheticMatch = clean.match(/^reference\s+(\d+)$/i)
+  if (syntheticMatch) {
+    return `${syntheticMatch[1]}.`
+  }
+  return clean
 }
 
 function comparePublicationPaperSections(
@@ -7152,7 +7178,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             {asset.structured_html ? (
               <div className="border-t border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-2">
                 <div
-                  className="publication-structured-table max-h-[320px] overflow-auto text-[0.78rem] leading-relaxed"
+                  className={cn(PUBLICATION_STRUCTURED_TABLE_CLASS_NAME, 'max-h-[320px]')}
                   dangerouslySetInnerHTML={{ __html: asset.structured_html }}
                 />
               </div>
@@ -7302,7 +7328,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 {inlineAsset.structured_html ? (
                   <div className="border-t border-[hsl(var(--tone-neutral-100))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
                     <div
-                      className="publication-structured-table overflow-auto text-[0.78rem] leading-relaxed"
+                      className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
                       dangerouslySetInnerHTML={{ __html: inlineAsset.structured_html }}
                     />
                   </div>
@@ -9638,7 +9664,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       {inlineAsset.structured_html ? (
                                         <div className="border-t border-[hsl(var(--tone-neutral-100))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
                                           <div
-                                            className="publication-structured-table overflow-auto text-[0.78rem] leading-relaxed"
+                                            className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
                                             dangerouslySetInnerHTML={{ __html: inlineAsset.structured_html }}
                                           />
                                         </div>
@@ -9678,11 +9704,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   </div>
                                   <ol className="space-y-3 text-[0.92rem] leading-[1.8] text-[hsl(var(--tone-neutral-700))]">
                                     {selectedPaperReferences.map((reference, index) => (
-                                      <li key={reference.id} className="flex items-start gap-3">
-                                        <span className="mt-0.5 inline-flex min-w-[1.6rem] items-center justify-center rounded-full bg-[hsl(var(--tone-neutral-100))] px-2 py-1 text-[0.68rem] font-semibold text-[hsl(var(--tone-neutral-600))]">
-                                          {index + 1}
+                                      <li
+                                        key={reference.id}
+                                        className="grid grid-cols-[auto,minmax(0,1fr)] gap-3 border-t border-[hsl(var(--tone-neutral-150))] pt-3 first:border-t-0 first:pt-0"
+                                      >
+                                        <span className="pt-0.5 text-[0.74rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
+                                          {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
                                         </span>
-                                        <span className="min-w-0 flex-1">{String(reference.rawText || '').replace(/\s+/g, ' ').trim()}</span>
+                                        <span className="min-w-0 flex-1 text-[0.9rem] leading-[1.85] text-[hsl(var(--tone-neutral-700))]">
+                                          {String(reference.rawText || '').replace(/\s+/g, ' ').trim()}
+                                        </span>
                                       </li>
                                     ))}
                                   </ol>

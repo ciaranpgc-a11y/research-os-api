@@ -1089,7 +1089,64 @@ def test_extract_publication_paper_reference_entries_from_tei_ignores_source_des
     )
 
     assert len(references) == 1
-    assert references[0]["raw_text"] == "Real reference"
+    assert references[0]["raw_text"] == "Real reference."
+
+
+def test_extract_publication_paper_reference_entries_from_tei_formats_structured_citation() -> None:
+    tei_xml = """
+    <TEI xmlns="http://www.tei-c.org/ns/1.0">
+      <text>
+        <back>
+          <div type="references">
+            <listBibl>
+              <biblStruct>
+                <label>[7]</label>
+                <analytic>
+                  <author>
+                    <persName>
+                      <forename type="first">Jane</forename>
+                      <forename type="middle">Alice</forename>
+                      <surname>Smith</surname>
+                    </persName>
+                  </author>
+                  <author>
+                    <persName>
+                      <forename>Peter</forename>
+                      <surname>Jones</surname>
+                    </persName>
+                  </author>
+                  <title level="a">Structured readers in cardiology</title>
+                </analytic>
+                <monogr>
+                  <title level="j">BMJ Open</title>
+                  <imprint>
+                    <date when="2026-05-01" />
+                    <biblScope unit="volume" from="12" />
+                    <biblScope unit="issue" from="3" />
+                    <biblScope unit="page" from="45" to="52" />
+                  </imprint>
+                </monogr>
+                <idno type="DOI">10.1136/bmjopen-2026-000001</idno>
+                <idno type="PMID">12345678</idno>
+              </biblStruct>
+            </listBibl>
+          </div>
+        </back>
+      </text>
+    </TEI>
+    """
+
+    references = publication_console_service._extract_publication_paper_reference_entries_from_tei(
+        ET.fromstring(tei_xml)
+    )
+
+    assert len(references) == 1
+    assert references[0]["label"] == "[7]"
+    assert references[0]["raw_text"] == (
+        "Smith JA, Jones P. Structured readers in cardiology. "
+        "BMJ Open. 2026;12(3):45-52. doi: 10.1136/bmjopen-2026-000001. "
+        "PMID: 12345678."
+    )
 
 
 def test_build_publication_paper_payload_preserves_prestructured_section_hierarchy() -> None:
@@ -4054,6 +4111,91 @@ def test_extract_title_matched_pdf_figure_image_prefers_image_above_caption(
     decoded = base64.b64decode(encoded)
     assert b"a" * 100 in decoded
     assert b"b" * 100 not in decoded
+
+
+def test_crop_figure_images_prefers_distinct_title_matched_images_across_figures(
+    monkeypatch,
+) -> None:
+    class _FakePage:
+        def search_for(self, value: str):
+            if value == "Figure 2":
+                return [type("Rect", (), {"x0": 40, "y0": 310, "x1": 120, "y1": 326})()]
+            if value == "Figure 3":
+                return [type("Rect", (), {"x0": 40, "y0": 320, "x1": 120, "y1": 336})()]
+            return []
+
+        def get_images(self, full: bool = False):  # noqa: FBT002
+            assert full is True
+            return [(54,), (55,)]
+
+        def get_image_rects(self, xref: int):
+            if xref == 54:
+                return [type("Rect", (), {"x0": 35, "y0": 40, "x1": 555, "y1": 300})()]
+            if xref == 55:
+                return [type("Rect", (), {"x0": 48, "y0": 56, "x1": 540, "y1": 288})()]
+            return []
+
+    class _FakeDoc:
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> _FakePage:
+            assert index == 0
+            return _FakePage()
+
+        def extract_image(self, xref: int):
+            if xref == 54:
+                return {
+                    "image": (
+                        b"\x89PNG\r\n\x1a\n"
+                        + b"\x00\x00\x00\rIHDR"
+                        + (2775).to_bytes(4, "big")
+                        + (1288).to_bytes(4, "big")
+                        + b"\x08\x02\x00\x00\x00"
+                        + (b"a" * 30000)
+                    ),
+                    "ext": "png",
+                    "width": 2775,
+                    "height": 1288,
+                }
+            if xref == 55:
+                return {
+                    "image": (
+                        b"\x89PNG\r\n\x1a\n"
+                        + b"\x00\x00\x00\rIHDR"
+                        + (2650).to_bytes(4, "big")
+                        + (1200).to_bytes(4, "big")
+                        + b"\x08\x02\x00\x00\x00"
+                        + (b"b" * 28000)
+                    ),
+                    "ext": "png",
+                    "width": 2650,
+                    "height": 1200,
+                }
+            raise AssertionError(f"unexpected xref {xref}")
+
+        def close(self) -> None:
+            return None
+
+    class _FakeFitzModule:
+        @staticmethod
+        def open(stream=None, filetype=None):  # noqa: ANN001
+            return _FakeDoc()
+
+    monkeypatch.setattr(publication_console_service, "_fitz", _FakeFitzModule)
+
+    result = publication_console_service._crop_figure_images_from_pdf(
+        b"%PDF-1.7 fake payload",
+        [
+            {"id": "fig-2", "title": "Figure 2", "image_data": None},
+            {"id": "fig-3", "title": "Figure 3", "image_data": None},
+        ],
+    )
+
+    assert len(result) == 2
+    assert result[0]["image_data"] != result[1]["image_data"]
+    assert result[0]["source_parser"] == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH
+    assert result[1]["source_parser"] == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH
 
 
 def test_merge_publication_paper_asset_candidate_prefers_higher_quality_figure_image() -> None:
