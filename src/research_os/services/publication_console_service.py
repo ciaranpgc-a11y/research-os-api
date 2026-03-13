@@ -6,6 +6,7 @@ import hashlib
 from io import BytesIO
 import json
 import logging
+import mimetypes
 import os
 import re
 import shutil
@@ -171,7 +172,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v24"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v25"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -179,6 +180,7 @@ STRUCTURED_PAPER_STATUS_FULL_TEXT_READY = "FULL_TEXT_READY"
 STRUCTURED_PAPER_STATUS_FAILED = "FAILED"
 STRUCTURED_PAPER_SECTION_SOURCE_GROBID = "grobid"
 STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC = "pmc_bioc"
+STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS = "pmc_jats"
 STRUCTURED_PAPER_PARSER_PROVIDER_GROBID = "GROBID"
 STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC = "PMC_BIOC"
 STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_PENDING = "PENDING"
@@ -7448,6 +7450,10 @@ def _parse_grobid_tei_into_structured_paper(
 
 _FIGURE_CROP_MIN_BYTES = 2048
 _FIGURE_CROP_SCALE = 2.0
+_FIGURE_CROP_MAX_PAGE_AREA_RATIO = 0.82
+_FIGURE_CROP_TEXT_HEAVY_PAGE_AREA_RATIO = 0.58
+_FIGURE_CROP_TEXT_HEAVY_WORD_THRESHOLD = 80
+_FIGURE_CROP_MAX_WORD_THRESHOLD = 180
 
 
 def _parse_grobid_coords(
@@ -7490,6 +7496,11 @@ def _crop_figure_images_from_pdf(
         updated_figures: list[dict[str, Any]] = []
         for figure in figures:
             figure_copy = dict(figure)
+            coords_source = (
+                "graphic_coords"
+                if figure_copy.get("graphic_coords")
+                else "coords"
+            )
             coords_str = figure_copy.get("graphic_coords") or figure_copy.get("coords")
             coord_entries = _parse_grobid_coords(coords_str)
             if not coord_entries:
@@ -7501,6 +7512,36 @@ def _crop_figure_images_from_pdf(
                 continue
             page = doc[page_num]
             rect = _fitz.Rect(x1, y1, x2, y2)
+            page_rect = page.rect
+            rect.x0 = max(page_rect.x0, rect.x0)
+            rect.y0 = max(page_rect.y0, rect.y0)
+            rect.x1 = min(page_rect.x1, rect.x1)
+            rect.y1 = min(page_rect.y1, rect.y1)
+            if rect.is_empty or rect.width < 48 or rect.height < 48:
+                updated_figures.append(figure_copy)
+                continue
+            try:
+                page_area = max(1.0, page_rect.width * page_rect.height)
+                rect_area = max(0.0, rect.width * rect.height)
+                area_ratio = rect_area / page_area
+            except Exception:
+                area_ratio = 0.0
+            try:
+                words_in_crop = page.get_text("words", clip=rect) or []
+                word_count = len(words_in_crop)
+            except Exception:
+                word_count = 0
+            if (
+                area_ratio >= _FIGURE_CROP_MAX_PAGE_AREA_RATIO
+                or word_count >= _FIGURE_CROP_MAX_WORD_THRESHOLD
+                or (
+                    coords_source != "graphic_coords"
+                    and area_ratio >= _FIGURE_CROP_TEXT_HEAVY_PAGE_AREA_RATIO
+                    and word_count >= _FIGURE_CROP_TEXT_HEAVY_WORD_THRESHOLD
+                )
+            ):
+                updated_figures.append(figure_copy)
+                continue
             mat = _fitz.Matrix(_FIGURE_CROP_SCALE, _FIGURE_CROP_SCALE)
             try:
                 pix = page.get_pixmap(matrix=mat, clip=rect)
@@ -7588,6 +7629,253 @@ def _extract_docling_tables_html(content: bytes) -> list[dict[str, Any]]:
                 pass
 
 
+def _publication_paper_asset_pdf_page_index(
+    asset: dict[str, Any], page_count: int
+) -> int | None:
+    page_start = _safe_int(asset.get("page_start"))
+    if page_start is not None:
+        if 1 <= page_start <= page_count:
+            return page_start - 1
+        if 0 <= page_start < page_count:
+            return page_start
+    coord_entries = _parse_grobid_coords(str(asset.get("coords") or "").strip() or None)
+    if coord_entries:
+        coord_page = _safe_int(coord_entries[0][0])
+        if coord_page is not None:
+            if 0 <= coord_page < page_count:
+                return coord_page
+            if 1 <= coord_page <= page_count:
+                return coord_page - 1
+    return None
+
+
+def _publication_paper_table_clip_rect_for_asset(
+    *, asset: dict[str, Any], page: Any
+) -> Any | None:
+    coord_entries = _parse_grobid_coords(str(asset.get("coords") or "").strip() or None)
+    if not coord_entries:
+        return None
+    _page_num, x1, y1, x2, y2 = coord_entries[0]
+    try:
+        rect = _fitz.Rect(x1, y1, x2, y2)
+    except Exception:
+        return None
+    page_rect = page.rect
+    margin = 10.0
+    rect.x0 = max(page_rect.x0, rect.x0 - margin)
+    rect.y0 = max(page_rect.y0, rect.y0 - margin)
+    rect.x1 = min(page_rect.x1, rect.x1 + margin)
+    rect.y1 = min(page_rect.y1, rect.y1 + margin)
+    if rect.is_empty or rect.width <= 0 or rect.height <= 0:
+        return None
+    return rect
+
+
+def _publication_table_cell_text(value: Any) -> str:
+    return _normalize_abstract_text(str(value or "").replace("\xad", " "))
+
+
+def _publication_table_row_looks_like_title(cells: list[str]) -> bool:
+    non_empty = [cell for cell in cells if cell]
+    if len(non_empty) != 1:
+        return False
+    text = non_empty[0]
+    return len(text) >= 24 and len(text.split()) >= 4
+
+
+def _publication_table_row_looks_like_header(cells: list[str]) -> bool:
+    non_empty = [cell for cell in cells if cell]
+    if len(non_empty) < 2:
+        return False
+    numeric_like = 0
+    for text in non_empty:
+        compact = re.sub(r"\s+", "", text)
+        if compact and re.fullmatch(r"[\d.,;:+\-()%/]+", compact):
+            numeric_like += 1
+    if numeric_like >= len(non_empty):
+        return False
+    average_length = sum(len(text) for text in non_empty) / max(1, len(non_empty))
+    return average_length <= 72
+
+
+def _publication_table_escape_cell_html(value: str) -> str:
+    return html.escape(value).replace("\n", "<br/>")
+
+
+def _render_pymupdf_table_html(table: Any) -> str:
+    try:
+        extracted_rows = table.extract()
+    except Exception:
+        return ""
+    if not isinstance(extracted_rows, list):
+        return ""
+
+    rows: list[list[str]] = []
+    for raw_row in extracted_rows:
+        if not isinstance(raw_row, (list, tuple)):
+            continue
+        normalized_row = [_publication_table_cell_text(cell) for cell in raw_row]
+        if any(normalized_row):
+            rows.append(normalized_row)
+    if not rows:
+        return ""
+
+    while rows and _publication_table_row_looks_like_title(rows[0]):
+        rows = rows[1:]
+    if not rows:
+        return ""
+
+    total_columns = max((len(row) for row in rows), default=0)
+    if total_columns <= 0:
+        return ""
+
+    header_rows: list[list[dict[str, Any]]] = []
+    body_rows: list[list[dict[str, Any]]] = []
+    notes: list[str] = []
+    seen_data_rows = False
+
+    for index, row in enumerate(rows):
+        padded = row + ([""] * max(0, total_columns - len(row)))
+        cells = [
+            {
+                "tag": "th" if index == 0 and _publication_table_row_looks_like_header(padded) else "td",
+                "text": cell,
+                "colspan": 1,
+                "rowspan": 1,
+            }
+            for cell in padded
+        ]
+        if _publication_table_note_like_row(
+            cells=cells,
+            total_columns=total_columns,
+            seen_data_rows=seen_data_rows,
+        ):
+            note_text = _normalize_abstract_text(" ".join(cell.get("text") or "" for cell in cells))
+            if note_text:
+                notes.append(note_text)
+            continue
+        if index == 0 and _publication_table_row_looks_like_header(padded):
+            header_rows.append(cells)
+            continue
+        body_rows.append(cells)
+        seen_data_rows = True
+
+    if not body_rows and header_rows:
+        body_rows = header_rows
+        header_rows = []
+    if not body_rows:
+        return ""
+
+    parts = ["<table>"]
+    if header_rows:
+        parts.append("<thead>")
+        for row in header_rows:
+            rendered = "".join(
+                f"<th>{_publication_table_escape_cell_html(str(cell.get('text') or ''))}</th>"
+                for cell in row
+            )
+            parts.append(f"<tr>{rendered}</tr>")
+        parts.append("</thead>")
+    parts.append("<tbody>")
+    for row in body_rows:
+        rendered = "".join(
+            f"<td>{_publication_table_escape_cell_html(str(cell.get('text') or ''))}</td>"
+            for cell in row
+        )
+        parts.append(f"<tr>{rendered}</tr>")
+    parts.append("</tbody></table>")
+    if notes:
+        parts.append('<div class="publication-structured-table-notes">')
+        for note in notes:
+            parts.append(f"<p>{html.escape(note)}</p>")
+        parts.append("</div>")
+    return "".join(parts)
+
+
+def _extract_pymupdf_tables_html(
+    content: bytes,
+    table_assets: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if _fitz is None or not content or not table_assets:
+        return table_assets
+    try:
+        doc = _fitz.open(stream=content, filetype="pdf")
+    except Exception:
+        logger.warning("PyMuPDF could not open PDF for table extraction")
+        return table_assets
+
+    try:
+        updated_assets: list[dict[str, Any]] = []
+        for asset in table_assets:
+            asset_copy = dict(asset)
+            if str(asset_copy.get("structured_html") or "").strip():
+                updated_assets.append(asset_copy)
+                continue
+            page_index = _publication_paper_asset_pdf_page_index(
+                asset_copy, len(doc)
+            )
+            if page_index is None or page_index < 0 or page_index >= len(doc):
+                updated_assets.append(asset_copy)
+                continue
+
+            page = doc[page_index]
+            clip_rect = _publication_paper_table_clip_rect_for_asset(
+                asset=asset_copy, page=page
+            )
+            finder_attempts: list[Any] = []
+            try:
+                finder_attempts.append(page.find_tables(clip=clip_rect))
+            except Exception:
+                pass
+            try:
+                finder_attempts.append(
+                    page.find_tables(
+                        clip=clip_rect,
+                        vertical_strategy="text",
+                        horizontal_strategy="text",
+                        min_words_vertical=1,
+                        min_words_horizontal=1,
+                    )
+                )
+            except Exception:
+                pass
+            if clip_rect is not None:
+                try:
+                    finder_attempts.append(page.find_tables())
+                except Exception:
+                    pass
+
+            best_html = ""
+            best_score = -1.0
+            for finder in finder_attempts:
+                for candidate in getattr(finder, "tables", []) or []:
+                    candidate_html = _render_pymupdf_table_html(candidate)
+                    if not candidate_html:
+                        continue
+                    score = 1.0
+                    candidate_bbox = getattr(candidate, "bbox", None)
+                    if clip_rect is not None and candidate_bbox is not None:
+                        try:
+                            candidate_rect = _fitz.Rect(candidate_bbox)
+                            intersection = candidate_rect & clip_rect
+                            candidate_area = max(1.0, candidate_rect.width * candidate_rect.height)
+                            score = max(
+                                0.0,
+                                (intersection.width * intersection.height) / candidate_area,
+                            )
+                        except Exception:
+                            score = 1.0
+                    if score > best_score:
+                        best_score = score
+                        best_html = candidate_html
+            if best_html:
+                asset_copy["structured_html"] = best_html
+            updated_assets.append(asset_copy)
+        return updated_assets
+    finally:
+        doc.close()
+
+
 def _match_docling_tables_to_assets(
     docling_tables: list[dict[str, Any]],
     table_assets: list[dict[str, Any]],
@@ -7598,11 +7886,16 @@ def _match_docling_tables_to_assets(
     used_docling: set[int] = set()
     for asset in table_assets:
         asset_copy = dict(asset)
+        if str(asset_copy.get("structured_html") or "").strip():
+            updated_assets.append(asset_copy)
+            continue
         asset_page = _safe_int(asset_copy.get("page_start"))
         best_idx: int | None = None
         best_score = -1
         for idx, dt in enumerate(docling_tables):
             if idx in used_docling:
+                continue
+            if not str(dt.get("html") or "").strip():
                 continue
             docling_page = dt.get("page")
             score = 0
@@ -7846,6 +8139,322 @@ def _canonicalize_docling_table_html(html_text: str) -> str:
     return "".join(parts)
 
 
+def _append_publication_structured_table_notes(
+    html_text: str, notes: list[str]
+) -> str:
+    clean_html = str(html_text or "").strip()
+    clean_notes = [
+        _normalize_abstract_text(note)
+        for note in notes
+        if _normalize_abstract_text(note)
+    ]
+    if not clean_html or not clean_notes:
+        return clean_html
+    note_block = ["<div class=\"publication-structured-table-notes\">"]
+    for note in clean_notes:
+        note_block.append(f"<p>{html.escape(note)}</p>")
+    note_block.append("</div>")
+    return f"{clean_html}{''.join(note_block)}"
+
+
+def _pmc_archive_request_headers() -> dict[str, str]:
+    return {
+        "Accept": "application/octet-stream,application/x-gzip,application/gzip;q=0.9,*/*;q=0.8",
+        "User-Agent": OPEN_ACCESS_FETCH_USER_AGENT,
+    }
+
+
+def _request_pmc_archive_bytes(pmcid: str) -> bytes:
+    oa_record = _request_pmc_oa_record(pmcid)
+    if oa_record is None:
+        return b""
+    archive_url = _normalize_pmc_archive_url(oa_record.get("archive_href"))
+    if not archive_url:
+        return b""
+    content, _content_type = _request_bytes_with_retry(
+        url=archive_url,
+        timeout_seconds=_unpaywall_timeout_seconds(),
+        retries=max(1, _unpaywall_retry_count()),
+        headers=_pmc_archive_request_headers(),
+    )
+    return content
+
+
+def _pmc_archive_member_candidates(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
+    return [member for member in archive.getmembers() if member.isfile()]
+
+
+def _pmc_archive_primary_xml_member(
+    members: list[tarfile.TarInfo],
+) -> tarfile.TarInfo | None:
+    xml_members = [
+        member
+        for member in members
+        if str(member.name or "").lower().endswith((".nxml", ".xml"))
+    ]
+    if not xml_members:
+        return None
+
+    def _sort_key(member: tarfile.TarInfo) -> tuple[int, int, str]:
+        name = str(member.name or "")
+        lower_name = name.lower()
+        return (
+            0 if lower_name.endswith(".nxml") else 1,
+            len(name),
+            lower_name,
+        )
+
+    xml_members.sort(key=_sort_key)
+    return xml_members[0]
+
+
+def _pmc_archive_read_member_bytes(
+    archive: tarfile.TarFile, member: tarfile.TarInfo | None
+) -> bytes:
+    if member is None:
+        return b""
+    extracted = archive.extractfile(member)
+    if extracted is None:
+        return b""
+    return bytes(extracted.read() or b"")
+
+
+def _pmc_archive_find_member(
+    members: list[tarfile.TarInfo], target: str | None
+) -> tarfile.TarInfo | None:
+    clean_target = str(target or "").strip().replace("\\", "/").strip("./")
+    if not clean_target:
+        return None
+    target_name = Path(clean_target).name.lower()
+    target_stem = Path(clean_target).stem.lower()
+    for member in members:
+        member_name = str(member.name or "").strip().replace("\\", "/").strip("./")
+        if not member_name:
+            continue
+        lower_name = member_name.lower()
+        if lower_name == clean_target.lower():
+            return member
+        if Path(member_name).name.lower() == target_name:
+            return member
+        if target_stem and Path(member_name).stem.lower() == target_stem:
+            return member
+    return None
+
+
+def _pmc_archive_graphic_href(node: ET.Element | None) -> str | None:
+    if node is None:
+        return None
+    for graphic in node.iter():
+        if _xml_local_name(getattr(graphic, "tag", "")) not in {
+            "graphic",
+            "inline-graphic",
+            "media",
+            "supplementary-material",
+        }:
+            continue
+        for key, value in getattr(graphic, "attrib", {}).items():
+            if _xml_local_name(str(key)) == "href":
+                clean = str(value or "").strip()
+                if clean:
+                    return clean
+    return None
+
+
+def _pmc_archive_caption_text(node: ET.Element | None) -> str | None:
+    caption_node = _tei_first_direct_child(node, "caption")
+    return _normalize_abstract_text(_tei_node_text(caption_node))
+
+
+def _pmc_archive_caption_title(node: ET.Element | None) -> str | None:
+    caption_node = _tei_first_direct_child(node, "caption")
+    return _normalize_abstract_text(_tei_node_text(_tei_first_direct_child(caption_node, "title")))
+
+
+def _pmc_archive_table_notes(node: ET.Element | None) -> list[str]:
+    if node is None:
+        return []
+    notes: list[str] = []
+    seen: set[str] = set()
+    for foot in _tei_direct_children(node, "table-wrap-foot"):
+        note_text = _normalize_abstract_text(_tei_node_text(foot))
+        if note_text and note_text.casefold() not in seen:
+            seen.add(note_text.casefold())
+            notes.append(note_text)
+    return notes
+
+
+def _pmc_archive_image_data(
+    archive: tarfile.TarFile,
+    members: list[tarfile.TarInfo],
+    href: str | None,
+) -> str | None:
+    member = _pmc_archive_find_member(members, href)
+    content = _pmc_archive_read_member_bytes(archive, member)
+    if not content:
+        return None
+    file_name = str(member.name or href or "").strip()
+    content_type = mimetypes.guess_type(file_name)[0] or None
+    if not content_type:
+        suffix = Path(file_name).suffix.lower()
+        if suffix == ".svg":
+            content_type = "image/svg+xml"
+        elif suffix in {".jpg", ".jpeg"}:
+            content_type = "image/jpeg"
+        elif suffix == ".png":
+            content_type = "image/png"
+        elif suffix == ".gif":
+            content_type = "image/gif"
+        elif suffix in {".tif", ".tiff"}:
+            content_type = "image/tiff"
+    if not content_type or not content_type.startswith("image/"):
+        return None
+    return f"data:{content_type};base64,{base64.b64encode(content).decode('ascii')}"
+
+
+def _extract_structured_publication_assets_from_pmc_archive_content(
+    archive_content: bytes,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not archive_content:
+        return [], []
+    try:
+        with tarfile.open(fileobj=BytesIO(archive_content), mode="r:gz") as archive:
+            members = _pmc_archive_member_candidates(archive)
+            xml_member = _pmc_archive_primary_xml_member(members)
+            xml_content = _pmc_archive_read_member_bytes(archive, xml_member)
+            if not xml_content:
+                return [], []
+            root = ET.fromstring(xml_content)
+
+            figures: list[dict[str, Any]] = []
+            tables: list[dict[str, Any]] = []
+
+            for node in root.iter():
+                local_name = _xml_local_name(getattr(node, "tag", ""))
+                if local_name == "fig":
+                    figure_index = len(figures) + 1
+                    label_text = _tei_node_text(_tei_first_direct_child(node, "label"))
+                    head_text = _pmc_archive_caption_title(node)
+                    title = _publication_paper_asset_display_title(
+                        label_text=label_text,
+                        head_text=head_text,
+                        classification=FILE_CLASSIFICATION_FIGURE,
+                        index=figure_index,
+                    )
+                    caption = _publication_paper_asset_caption_cleanup(
+                        _pmc_archive_caption_text(node),
+                        title=title,
+                        label_text=label_text,
+                        head_text=head_text,
+                    )
+                    parsed_asset = _build_parsed_publication_paper_asset(
+                        asset_id=f"pmc-jats-figure-{figure_index}",
+                        title=title,
+                        classification=FILE_CLASSIFICATION_FIGURE,
+                        caption=caption,
+                        source_parser=STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS,
+                    )
+                    parsed_asset["image_data"] = _pmc_archive_image_data(
+                        archive,
+                        members,
+                        _pmc_archive_graphic_href(node),
+                    )
+                    figures.append(parsed_asset)
+                elif local_name == "table-wrap":
+                    table_index = len(tables) + 1
+                    label_text = _tei_node_text(_tei_first_direct_child(node, "label"))
+                    head_text = _pmc_archive_caption_title(node)
+                    title = _publication_paper_asset_display_title(
+                        label_text=label_text,
+                        head_text=head_text,
+                        classification=FILE_CLASSIFICATION_TABLE,
+                        index=table_index,
+                    )
+                    caption = _publication_paper_asset_caption_cleanup(
+                        _pmc_archive_caption_text(node),
+                        title=title,
+                        label_text=label_text,
+                        head_text=head_text,
+                    )
+                    parsed_asset = _build_parsed_publication_paper_asset(
+                        asset_id=f"pmc-jats-table-{table_index}",
+                        title=title,
+                        classification=FILE_CLASSIFICATION_TABLE,
+                        caption=caption,
+                        source_parser=STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS,
+                    )
+                    table_element = None
+                    for candidate in node.iter():
+                        if _publication_table_xml_local_name(getattr(candidate, "tag", "")) == "table":
+                            table_element = candidate
+                            break
+                    if table_element is not None:
+                        raw_table_html = ET.tostring(table_element, encoding="unicode")
+                        structured_html = _canonicalize_docling_table_html(raw_table_html)
+                        table_notes = _pmc_archive_table_notes(node)
+                        if table_notes:
+                            structured_html = _append_publication_structured_table_notes(
+                                structured_html,
+                                table_notes,
+                            )
+                        parsed_asset["structured_html"] = structured_html
+                    tables.append(parsed_asset)
+    except Exception:
+        logger.exception("publication_pmc_archive_asset_extract_failed")
+        return [], []
+
+    deduped_figures = _merge_publication_paper_asset_collections(
+        parsed_assets=figures,
+        file_assets=[],
+    )
+    deduped_tables = _merge_publication_paper_asset_collections(
+        parsed_assets=tables,
+        file_assets=[],
+    )
+    return deduped_figures, deduped_tables
+
+
+def _extract_structured_publication_assets_from_pmc_archive(
+    pmcid: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    return _extract_structured_publication_assets_from_pmc_archive_content(
+        _request_pmc_archive_bytes(pmcid)
+    )
+
+
+def _publication_paper_asset_has_surface_content(
+    asset: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(asset, dict):
+        return False
+    classification = _normalize_publication_file_classification(
+        str(asset.get("classification") or "").strip() or FILE_CLASSIFICATION_OTHER
+    )
+    if classification == FILE_CLASSIFICATION_TABLE:
+        return bool(str(asset.get("structured_html") or "").strip())
+    if classification == FILE_CLASSIFICATION_FIGURE:
+        return bool(str(asset.get("image_data") or "").strip())
+    return False
+
+
+def _publication_paper_asset_surface_count(
+    assets: list[dict[str, Any]] | None,
+    *,
+    classification: str,
+) -> int:
+    normalized_classification = _normalize_publication_file_classification(classification)
+    items = assets if isinstance(assets, list) else []
+    return sum(
+        1
+        for asset in items
+        if isinstance(asset, dict)
+        and _normalize_publication_file_classification(
+            str(asset.get("classification") or "").strip() or FILE_CLASSIFICATION_OTHER
+        )
+        == normalized_classification
+        and _publication_paper_asset_has_surface_content(asset)
+    )
+
+
 def _docling_table_asset_coordinate_overlap_score(
     *,
     docling_coords: str | None,
@@ -7928,8 +8537,19 @@ def _extract_structured_publication_paper_with_grobid(
         else []
     )
     if tables:
+        parsed_payload["tables"] = _extract_pymupdf_tables_html(content, tables)
+        tables = (
+            parsed_payload.get("tables")
+            if isinstance(parsed_payload.get("tables"), list)
+            else []
+        )
         try:
-            docling_tables = _extract_docling_tables_html(content)
+            if any(
+                not str(item.get("structured_html") or "").strip() for item in tables
+            ):
+                docling_tables = _extract_docling_tables_html(content)
+            else:
+                docling_tables = []
             if docling_tables:
                 parsed_payload["tables"] = _match_docling_tables_to_assets(
                     docling_tables, tables
@@ -7969,8 +8589,14 @@ def _extract_structured_publication_assets_with_grobid(
     if figures:
         figures = _crop_figure_images_from_pdf(content, figures)
     if tables:
+        tables = _extract_pymupdf_tables_html(content, tables)
         try:
-            docling_tables = _extract_docling_tables_html(content)
+            if any(
+                not str(item.get("structured_html") or "").strip() for item in tables
+            ):
+                docling_tables = _extract_docling_tables_html(content)
+            else:
+                docling_tables = []
             if docling_tables:
                 tables = _match_docling_tables_to_assets(docling_tables, tables)
         except Exception as exc:
@@ -8264,6 +8890,33 @@ def _extract_structured_publication_paper_with_pmc_bioc(
             f"PMC BioC full-text parsing was unavailable for {pmcid}."
         )
     parsed_payload = _parse_pmc_bioc_into_structured_paper(payload=payload, title=title)
+    if enrich_assets:
+        try:
+            pmc_figures, pmc_tables = _extract_structured_publication_assets_from_pmc_archive(
+                pmcid
+            )
+            if pmc_figures:
+                parsed_payload["figures"] = _merge_publication_paper_asset_collections(
+                    parsed_assets=pmc_figures,
+                    file_assets=(
+                        parsed_payload.get("figures")
+                        if isinstance(parsed_payload.get("figures"), list)
+                        else []
+                    ),
+                )
+            if pmc_tables:
+                parsed_payload["tables"] = _merge_publication_paper_asset_collections(
+                    parsed_assets=pmc_tables,
+                    file_assets=(
+                        parsed_payload.get("tables")
+                        if isinstance(parsed_payload.get("tables"), list)
+                        else []
+                    ),
+                )
+        except Exception as exc:
+            logger.warning(
+                "PMC archive asset enrichment skipped for %s: %s", pmcid, exc
+            )
     aligned_page_count: int | None = None
     if align_to_pdf:
         aligned_sections, aligned_page_count = (
@@ -8309,7 +8962,18 @@ def _extract_structured_publication_paper_with_pmc_bioc(
             for item in parsed_payload.get("tables", [])
             if isinstance(item, dict)
         ]
-    if enrich_assets and (not parsed_payload["figures"] or not parsed_payload["tables"]):
+    if enrich_assets and (
+        _publication_paper_asset_surface_count(
+            parsed_payload.get("figures"),
+            classification=FILE_CLASSIFICATION_FIGURE,
+        )
+        == 0
+        or _publication_paper_asset_surface_count(
+            parsed_payload.get("tables"),
+            classification=FILE_CLASSIFICATION_TABLE,
+        )
+        == 0
+    ):
         try:
             grobid_figures, grobid_tables = (
                 _extract_structured_publication_assets_with_grobid(
@@ -8318,10 +8982,24 @@ def _extract_structured_publication_paper_with_pmc_bioc(
                     title=title,
                 )
             )
-            if grobid_figures and not parsed_payload["figures"]:
-                parsed_payload["figures"] = grobid_figures
-            if grobid_tables and not parsed_payload["tables"]:
-                parsed_payload["tables"] = grobid_tables
+            if grobid_figures:
+                parsed_payload["figures"] = _merge_publication_paper_asset_collections(
+                    parsed_assets=grobid_figures,
+                    file_assets=(
+                        parsed_payload.get("figures")
+                        if isinstance(parsed_payload.get("figures"), list)
+                        else []
+                    ),
+                )
+            if grobid_tables:
+                parsed_payload["tables"] = _merge_publication_paper_asset_collections(
+                    parsed_assets=grobid_tables,
+                    file_assets=(
+                        parsed_payload.get("tables")
+                        if isinstance(parsed_payload.get("tables"), list)
+                        else []
+                    ),
+                )
         except Exception as exc:
             logger.warning(
                 "GROBID asset enrichment skipped for %s: %s", pmcid, exc
@@ -8391,13 +9069,27 @@ def _publication_paper_payload_needs_asset_enrichment(
         if isinstance(payload.get("component_summary"), dict)
         else {}
     )
+    figures = payload.get("figures") if isinstance(payload.get("figures"), list) else []
+    tables = payload.get("tables") if isinstance(payload.get("tables"), list) else []
     figure_count = max(
         0, int(_safe_int(component_summary.get("figure_asset_count")) or 0)
     )
     table_count = max(
         0, int(_safe_int(component_summary.get("table_asset_count")) or 0)
     )
-    if figure_count > 0 and table_count > 0:
+    surfaced_figure_count = max(
+        _publication_paper_asset_surface_count(
+            figures, classification=FILE_CLASSIFICATION_FIGURE
+        ),
+        figure_count if figure_count > 0 and not figures else 0,
+    )
+    surfaced_table_count = max(
+        _publication_paper_asset_surface_count(
+            tables, classification=FILE_CLASSIFICATION_TABLE
+        ),
+        table_count if table_count > 0 and not tables else 0,
+    )
+    if surfaced_figure_count > 0 and surfaced_table_count > 0:
         return False
     enrichment_status = (
         str(provenance.get("asset_enrichment_status") or "").strip().upper() or None
@@ -9375,15 +10067,81 @@ def _run_structured_paper_asset_enrichment_job(
             (time.perf_counter() - binary_payload_started_at) * 1000, 2
         )
         enrichment_started_at = time.perf_counter()
-        figures, tables = _extract_structured_publication_assets_with_grobid(
-            content=bytes(binary_payload.get("content") or b""),
-            title=str(source_state["publication"].get("title") or "").strip() or None,
-            file_name=str(binary_payload.get("file_name") or "").strip() or None,
+        current_figures = (
+            current_payload.get("figures")
+            if isinstance(current_payload.get("figures"), list)
+            else []
         )
+        current_tables = (
+            current_payload.get("tables")
+            if isinstance(current_payload.get("tables"), list)
+            else []
+        )
+        figures = [dict(item) for item in current_figures if isinstance(item, dict)]
+        tables = [dict(item) for item in current_tables if isinstance(item, dict)]
+        content = bytes(binary_payload.get("content") or b"")
+        publication_title = (
+            str(source_state["publication"].get("title") or "").strip() or None
+        )
+        file_name = str(binary_payload.get("file_name") or "").strip() or None
+        pmcid = _resolve_pmcid(
+            pmid=str(source_state["publication"].get("pmid") or "").strip() or None,
+            doi=str(source_state["publication"].get("doi") or "").strip() or None,
+            title=publication_title,
+            year=_safe_int(source_state["publication"].get("year")),
+        )
+        if pmcid:
+            pmc_figures, pmc_tables = _extract_structured_publication_assets_from_pmc_archive(
+                pmcid
+            )
+            if pmc_figures:
+                figures = _merge_publication_paper_asset_collections(
+                    parsed_assets=pmc_figures,
+                    file_assets=figures,
+                )
+            if pmc_tables:
+                tables = _merge_publication_paper_asset_collections(
+                    parsed_assets=pmc_tables,
+                    file_assets=tables,
+                )
+        need_grobid_figures = (
+            _publication_paper_asset_surface_count(
+                figures, classification=FILE_CLASSIFICATION_FIGURE
+            )
+            == 0
+        )
+        need_grobid_tables = (
+            _publication_paper_asset_surface_count(
+                tables, classification=FILE_CLASSIFICATION_TABLE
+            )
+            == 0
+        )
+        if need_grobid_figures or need_grobid_tables:
+            grobid_figures, grobid_tables = _extract_structured_publication_assets_with_grobid(
+                content=content,
+                title=publication_title,
+                file_name=file_name,
+            )
+            if grobid_figures:
+                figures = _merge_publication_paper_asset_collections(
+                    parsed_assets=grobid_figures,
+                    file_assets=figures,
+                )
+            if grobid_tables:
+                tables = _merge_publication_paper_asset_collections(
+                    parsed_assets=grobid_tables,
+                    file_assets=tables,
+                )
         enrichment_duration_ms = round(
             (time.perf_counter() - enrichment_started_at) * 1000, 2
         )
-        if not figures and not tables:
+        surfaced_figure_count = _publication_paper_asset_surface_count(
+            figures, classification=FILE_CLASSIFICATION_FIGURE
+        )
+        surfaced_table_count = _publication_paper_asset_surface_count(
+            tables, classification=FILE_CLASSIFICATION_TABLE
+        )
+        if surfaced_figure_count == 0 and surfaced_table_count == 0:
             persist_started_at = time.perf_counter()
             with session_scope() as session:
                 _resolve_work_or_raise(
@@ -9415,8 +10173,8 @@ def _run_structured_paper_asset_enrichment_job(
                     structured_abstract_status=source_state["structured_abstract_status"],
                     files=source_state["files"],
                     current_payload=current_payload,
-                    figures=None,
-                    tables=None,
+                    figures=figures,
+                    tables=tables,
                     asset_enrichment_status=STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_EMPTY,
                     asset_enrichment_checked_at=_utcnow(),
                 )
@@ -9435,8 +10193,11 @@ def _run_structured_paper_asset_enrichment_job(
                 extra={
                     "user_id": user_id,
                     "publication_id": publication_id,
+                    "pmcid": pmcid,
                     "binary_payload_ms": binary_payload_duration_ms,
                     "enrichment_ms": enrichment_duration_ms,
+                    "surfaced_figure_count": surfaced_figure_count,
+                    "surfaced_table_count": surfaced_table_count,
                     "persist_ms": persist_duration_ms,
                     "total_ms": round(
                         (time.perf_counter() - job_started_at) * 1000, 2
@@ -9467,9 +10228,9 @@ def _run_structured_paper_asset_enrichment_job(
                 or not _publication_paper_payload_needs_asset_enrichment(current_payload)
             ):
                 return
-            payload, _ = _build_publication_paper_asset_enrichment_payload(
-                publication=source_state["publication"],
-                structured_abstract_payload=source_state["structured_abstract_payload"],
+                payload, _ = _build_publication_paper_asset_enrichment_payload(
+                    publication=source_state["publication"],
+                    structured_abstract_payload=source_state["structured_abstract_payload"],
                 structured_abstract_status=source_state["structured_abstract_status"],
                 files=source_state["files"],
                 current_payload=current_payload,
@@ -9489,13 +10250,14 @@ def _run_structured_paper_asset_enrichment_job(
             (time.perf_counter() - persist_started_at) * 1000, 2
         )
         logger.info(
-            "structured_paper_asset_enrichment_completed",
-            extra={
-                "user_id": user_id,
-                "publication_id": publication_id,
-                "binary_payload_ms": binary_payload_duration_ms,
-                "enrichment_ms": enrichment_duration_ms,
-                "persist_ms": persist_duration_ms,
+                "structured_paper_asset_enrichment_completed",
+                extra={
+                    "user_id": user_id,
+                    "publication_id": publication_id,
+                    "pmcid": pmcid,
+                    "binary_payload_ms": binary_payload_duration_ms,
+                    "enrichment_ms": enrichment_duration_ms,
+                    "persist_ms": persist_duration_ms,
                 "figure_count": len(figures),
                 "table_count": len(tables),
                 "total_ms": round((time.perf_counter() - job_started_at) * 1000, 2),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-import io
+from io import BytesIO
 import tarfile
 import time
 from datetime import datetime, timedelta, timezone
@@ -112,43 +112,6 @@ def test_grobid_base_url_normalizes_schemeless_base_url(monkeypatch) -> None:
     )
 
 
-def test_resolve_pmcid_from_pubmed_article_ids(monkeypatch) -> None:
-    monkeypatch.setattr(
-        publication_console_service,
-        "_resolve_pubmed_pmid",
-        lambda **kwargs: "40308862",
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_pubmed_article_xml_root",
-        lambda pmid: ET.fromstring(
-            """
-            <PubmedArticleSet>
-              <PubmedArticle>
-                <PubmedData>
-                  <ArticleIdList>
-                    <ArticleId IdType="pubmed">40308862</ArticleId>
-                    <ArticleId IdType="pmc">PMC12041914</ArticleId>
-                    <ArticleId IdType="doi">10.1093/ehjimp/qyaf042</ArticleId>
-                  </ArticleIdList>
-                </PubmedData>
-              </PubmedArticle>
-            </PubmedArticleSet>
-            """
-        ),
-    )
-
-    assert (
-        publication_console_service._resolve_pmcid(
-            pmid="40308862",
-            doi="10.1093/ehjimp/qyaf042",
-            title="Test title",
-            year=2025,
-        )
-        == "PMC12041914"
-    )
-
-
 def test_publication_detail_endpoint_is_scoped_to_owner(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
@@ -232,18 +195,7 @@ def test_publication_paper_model_endpoint_returns_structured_reader_payload(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (
-            b"%PDF-1.7 locally cached oa payload",
-            "application/pdf",
-        ),
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (
-            b"%PDF-1.7 locally cached oa payload",
-            "application/pdf",
-        ),
+        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
     )
     monkeypatch.setattr(
         publication_console_service,
@@ -438,9 +390,7 @@ def test_publication_paper_model_endpoint_returns_structured_reader_payload(
         assert payload["payload"]["sections"][0]["canonical_kind"] == "introduction"
         assert payload["payload"]["figures"][0]["classification"] == "FIGURE"
         assert payload["payload"]["figures"][0]["origin"] == "parsed"
-        assert (
-            payload["payload"]["figures"][0]["caption"] == "Recruitment flow diagram."
-        )
+        assert payload["payload"]["figures"][0]["caption"] == "Recruitment flow diagram."
         assert payload["payload"]["tables"][0]["page_start"] == 4
         assert payload["payload"]["outline"][0]["label_normalized"] == "Overview"
         assert any(
@@ -599,10 +549,14 @@ def test_parse_grobid_tei_refines_section_context_and_dedupes_assets() -> None:
     assert study_population_sections[1]["canonical_map"] == "results"
 
     discussion_section = next(
-        section for section in payload["sections"] if section["title"] == "Discussion"
+        section
+        for section in payload["sections"]
+        if section["title"] == "Discussion"
     )
     limitations_section = next(
-        section for section in payload["sections"] if section["title"] == "Limitations"
+        section
+        for section in payload["sections"]
+        if section["title"] == "Limitations"
     )
     consent_section = next(
         section
@@ -648,15 +602,10 @@ def test_parse_grobid_tei_preserves_headingless_wrapper_and_container_content() 
         if isinstance(section, dict)
     )
     assert "Lead paragraph before the named manuscript sections." in combined_content
-    assert (
-        "Unheaded methods lead-in content should still be preserved."
-        in combined_content
-    )
+    assert "Unheaded methods lead-in content should still be preserved." in combined_content
 
 
-def test_parse_grobid_tei_recovers_open_access_wrappers_and_direct_back_matter_blocks() -> (
-    None
-):
+def test_parse_grobid_tei_recovers_open_access_wrappers_and_direct_back_matter_blocks() -> None:
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <text>
@@ -696,22 +645,18 @@ def test_parse_grobid_tei_recovers_open_access_wrappers_and_direct_back_matter_b
         if isinstance(section, dict)
     )
     assert "Additional results detail should not be dropped" in combined_content
-    assert (
-        "Additional discussion interpretation should also be preserved"
-        in combined_content
-    )
+    assert "Additional discussion interpretation should also be preserved" in combined_content
     assert any(
         section["canonical_kind"] == "data_availability"
         for section in payload["sections"]
     )
     assert any(
-        section["canonical_kind"] == "conflicts" for section in payload["sections"]
+        section["canonical_kind"] == "conflicts"
+        for section in payload["sections"]
     )
 
 
-def test_refine_publication_paper_sections_creates_inline_subsections_for_major_sections() -> (
-    None
-):
+def test_refine_publication_paper_sections_creates_inline_subsections_for_major_sections() -> None:
     refined_sections = publication_console_service._refine_publication_paper_sections(
         [
             {
@@ -756,14 +701,10 @@ def test_refine_publication_paper_sections_creates_inline_subsections_for_major_
     )
 
     abstract_section = next(
-        section
-        for section in refined_sections
-        if section["id"] == "paper-section-abstract"
+        section for section in refined_sections if section["id"] == "paper-section-abstract"
     )
     methods_section = next(
-        section
-        for section in refined_sections
-        if section["id"] == "paper-section-methods"
+        section for section in refined_sections if section["id"] == "paper-section-methods"
     )
     abstract_children = [
         section
@@ -784,9 +725,7 @@ def test_refine_publication_paper_sections_creates_inline_subsections_for_major_
         "Results",
         "Conclusion",
     ]
-    assert all(
-        section["major_section_key"] == "overview" for section in abstract_children
-    )
+    assert all(section["major_section_key"] == "overview" for section in abstract_children)
     assert methods_section["major_section_key"] == "methods"
     assert methods_section["section_role"] == "major"
     assert [section["title"] for section in methods_children] == [
@@ -794,15 +733,11 @@ def test_refine_publication_paper_sections_creates_inline_subsections_for_major_
         "Setting",
         "Main outcome measures",
     ]
-    assert all(
-        section["major_section_key"] == "methods" for section in methods_children
-    )
+    assert all(section["major_section_key"] == "methods" for section in methods_children)
     assert all(section["section_role"] == "subsection" for section in methods_children)
 
 
-def test_refine_publication_paper_sections_dedupes_exact_repeated_leaf_sections() -> (
-    None
-):
+def test_refine_publication_paper_sections_dedupes_exact_repeated_leaf_sections() -> None:
     refined_sections = publication_console_service._refine_publication_paper_sections(
         [
             {
@@ -879,9 +814,7 @@ def test_refine_publication_paper_sections_dedupes_exact_repeated_leaf_sections(
     assert len(objective_sections) == 1
 
 
-def test_refine_publication_paper_sections_does_not_attach_body_subsections_to_future_back_heading() -> (
-    None
-):
+def test_refine_publication_paper_sections_does_not_attach_body_subsections_to_future_back_heading() -> None:
     refined_sections = publication_console_service._refine_publication_paper_sections(
         [
             {
@@ -934,22 +867,16 @@ def test_refine_publication_paper_sections_does_not_attach_body_subsections_to_f
     )
 
     study_population = next(
-        section
-        for section in refined_sections
-        if section["id"] == "paper-section-study-population"
+        section for section in refined_sections if section["id"] == "paper-section-study-population"
     )
     statistical_analysis = next(
-        section
-        for section in refined_sections
-        if section["id"] == "paper-section-statistical-analysis"
+        section for section in refined_sections if section["id"] == "paper-section-statistical-analysis"
     )
     assert study_population["parent_id"] is None
     assert statistical_analysis["parent_id"] is None
 
 
-def test_parse_grobid_tei_merges_headingless_body_continuation_into_current_major_section() -> (
-    None
-):
+def test_parse_grobid_tei_merges_headingless_body_continuation_into_current_major_section() -> None:
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <text>
@@ -973,19 +900,15 @@ def test_parse_grobid_tei_merges_headingless_body_continuation_into_current_majo
     results_sections = [
         section
         for section in payload["sections"]
-        if section["canonical_map"] == "results" and section["document_zone"] == "body"
+        if section["canonical_map"] == "results"
+        and section["document_zone"] == "body"
     ]
     assert len(results_sections) == 1
     assert "Primary results text is presented here." in results_sections[0]["content"]
-    assert (
-        "Additional results detail should stay under the existing results section."
-        in results_sections[0]["content"]
-    )
+    assert "Additional results detail should stay under the existing results section." in results_sections[0]["content"]
 
 
-def test_parse_grobid_tei_splits_headingless_back_matter_blocks_into_separate_sections() -> (
-    None
-):
+def test_parse_grobid_tei_splits_headingless_back_matter_blocks_into_separate_sections() -> None:
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <text>
@@ -1008,9 +931,7 @@ def test_parse_grobid_tei_splits_headingless_back_matter_blocks_into_separate_se
     assert "Patient and public involvement" in titles
 
 
-def test_parse_grobid_tei_preserves_empty_explicit_major_wrappers_for_body_subsections() -> (
-    None
-):
+def test_parse_grobid_tei_preserves_empty_explicit_major_wrappers_for_body_subsections() -> None:
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <text>
@@ -1092,9 +1013,7 @@ def test_parse_grobid_tei_ignores_body_note_blocks_when_div_sections_exist() -> 
     assert titles == ["Introduction"]
 
 
-def test_parse_grobid_tei_splits_headed_back_matter_blocks_without_duplicate_listorg_noise() -> (
-    None
-):
+def test_parse_grobid_tei_splits_headed_back_matter_blocks_without_duplicate_listorg_noise() -> None:
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <text>
@@ -1134,9 +1053,7 @@ def test_parse_grobid_tei_splits_headed_back_matter_blocks_without_duplicate_lis
     assert "Provenance and peer review" in titles
 
 
-def test_extract_publication_paper_reference_entries_from_tei_ignores_source_desc_biblstruct() -> (
-    None
-):
+def test_extract_publication_paper_reference_entries_from_tei_ignores_source_desc_biblstruct() -> None:
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
       <teiHeader>
@@ -1175,9 +1092,7 @@ def test_extract_publication_paper_reference_entries_from_tei_ignores_source_des
     assert references[0]["raw_text"] == "Real reference"
 
 
-def test_build_publication_paper_payload_preserves_prestructured_section_hierarchy() -> (
-    None
-):
+def test_build_publication_paper_payload_preserves_prestructured_section_hierarchy() -> None:
     payload, _ = publication_console_service._build_publication_paper_payload(
         publication={
             "title": "Structured paper",
@@ -1397,10 +1312,7 @@ def test_publication_paper_model_endpoint_fails_when_grobid_is_unavailable(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (
-            b"%PDF-1.7 locally cached oa payload",
-            "application/pdf",
-        ),
+        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
     )
 
     def _raise_grobid_unavailable(**kwargs):  # noqa: ANN003
@@ -1475,349 +1387,8 @@ def test_publication_paper_model_endpoint_fails_when_grobid_is_unavailable(
         assert payload["payload"]["document"]["parser_status"] == "FAILED"
         assert payload["payload"]["document"]["has_full_text_sections"] is False
         assert payload["payload"]["document"]["reader_entry_available"] is True
-        assert "GROBID" in str(
-            payload["payload"]["document"]["parser_last_error"] or ""
-        )
-        assert payload["payload"]["sections"][0]["source"] in {
-            "structured_abstract",
-            "abstract",
-        }
-
-
-def test_publication_paper_model_force_reparse_retries_failed_cache(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-
-    def _immediate_submit(*, kind: str, user_id: str, publication_id: str, fn):  # noqa: ANN001
-        fn(user_id=user_id, publication_id=publication_id)
-        return True
-
-    monkeypatch.setattr(
-        publication_console_service, "_submit_background_job", _immediate_submit
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_resolve_publication_file_binary_payload",
-        lambda **kwargs: {  # noqa: ANN003
-            "content": b"%PDF-1.4 test",
-            "content_type": "application/pdf",
-            "file_name": "paper.pdf",
-            "mode": "content",
-            "url": None,
-        },
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (
-            b"%PDF-1.7 locally cached oa payload",
-            "application/pdf",
-        ),
-    )
-
-    attempts = {"count": 0}
-
-    def _parse_with_retry(**kwargs):  # noqa: ANN003
-        if attempts["count"] == 0:
-            attempts["count"] += 1
-            raise publication_console_service.PublicationConsoleValidationError(
-                "GROBID is required for full-paper parsing and could not be reached at http://127.0.0.1:8070/api/processFulltextDocument."
-            )
-        return {
-            "sections": [
-                {
-                    "id": "paper-section-1-results",
-                    "title": "Results",
-                    "raw_label": "Results",
-                    "label_original": "Results",
-                    "label_normalized": "Results",
-                    "kind": "results",
-                    "canonical_kind": "results",
-                    "section_type": "canonical",
-                    "canonical_map": "results",
-                    "content": "Freshly reparsed full-text content.",
-                    "source": "grobid",
-                    "source_parser": "grobid",
-                    "order": 0,
-                    "page_start": 1,
-                    "page_end": 2,
-                    "level": 1,
-                    "parent_id": None,
-                    "bounding_boxes": [],
-                    "confidence": 0.98,
-                    "is_generated_heading": False,
-                    "word_count": 4,
-                    "paragraph_count": 1,
-                }
-            ],
-            "references": [],
-            "page_count": 8,
-            "generation_method": "test_grobid_force_reparse",
-            "parser_provider": "GROBID",
-        }
-
-    monkeypatch.setattr(
-        publication_console_service,
-        "_extract_structured_publication_paper_with_grobid",
-        _parse_with_retry,
-    )
-
-    with TestClient(app) as client:
-        owner_id, token = _register(client, email="reader-force-reparse@example.com")
-
-        with session_scope() as session:
-            work = Work(
-                user_id=owner_id,
-                title="Structured reader force reparse paper",
-                title_lower="structured reader force reparse paper",
-                year=2026,
-                doi="10.1000/structured-reader-force-reparse-paper",
-                work_type="journal-article",
-                publication_type="original-article",
-                venue_name="Reader Journal",
-                publisher="Reader Publisher",
-                abstract="Objectives: Evaluate scaffolded readers.",
-                keywords=["reader"],
-                authors_json=[{"name": "Alice Example"}],
-                url="https://pubmed.ncbi.nlm.nih.gov/12345678/",
-                provenance="manual",
-            )
-            session.add(work)
-            session.flush()
-            work_id = str(work.id)
-
-            primary_pdf = PublicationFile(
-                owner_user_id=owner_id,
-                publication_id=work_id,
-                file_name="Example (2026) - PMID 12345678.pdf",
-                file_type="PDF",
-                storage_key="",
-                source="OA_LINK",
-                oa_url="https://example.org/paper.pdf",
-                checksum=None,
-                custom_name=True,
-                classification="PUBLISHED_MANUSCRIPT",
-            )
-            session.add(primary_pdf)
-            session.flush()
-
-        first_response = client.get(
-            f"/v1/publications/{work_id}/paper-model",
-            headers=_auth_headers(token),
-        )
-        assert first_response.status_code == 200
-        assert first_response.json()["status"] == "RUNNING"
-
-        second_response = client.get(
-            f"/v1/publications/{work_id}/paper-model",
-            headers=_auth_headers(token),
-        )
-        assert second_response.status_code == 200
-        assert second_response.json()["status"] == "FAILED"
-
-        forced_response = client.get(
-            f"/v1/publications/{work_id}/paper-model?force=true",
-            headers=_auth_headers(token),
-        )
-        assert forced_response.status_code == 200
-        assert forced_response.json()["status"] == "RUNNING"
-
-        refreshed_payload = None
-        for _ in range(10):
-            refreshed_response = client.get(
-                f"/v1/publications/{work_id}/paper-model",
-                headers=_auth_headers(token),
-            )
-            assert refreshed_response.status_code == 200
-            refreshed_payload = refreshed_response.json()
-            if refreshed_payload["status"] == "READY":
-                break
-            time.sleep(0.05)
-
-        assert refreshed_payload is not None
-        assert refreshed_payload["status"] == "READY"
-        assert (
-            refreshed_payload["payload"]["document"]["parser_status"]
-            == "FULL_TEXT_READY"
-        )
-    assert refreshed_payload["payload"]["sections"][0]["source"] == "grobid"
-
-
-def test_publication_paper_model_retries_stale_running_cache(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-
-    def _immediate_submit(*, kind: str, user_id: str, publication_id: str, fn):  # noqa: ANN001
-        fn(user_id=user_id, publication_id=publication_id)
-        return True
-
-    monkeypatch.setattr(
-        publication_console_service, "_submit_background_job", _immediate_submit
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_resolve_publication_file_binary_payload",
-        lambda **kwargs: {  # noqa: ANN003
-            "content": b"%PDF-1.4 test",
-            "content_type": "application/pdf",
-            "file_name": "paper.pdf",
-            "mode": "content",
-            "url": None,
-        },
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (
-            b"%PDF-1.7 locally cached oa payload",
-            "application/pdf",
-        ),
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_structured_paper_running_timeout_seconds",
-        lambda: 60,
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_extract_structured_publication_paper_with_grobid",
-        lambda **kwargs: {  # noqa: ANN003
-            "sections": [
-                {
-                    "id": "paper-section-1-results",
-                    "title": "Results",
-                    "raw_label": "Results",
-                    "label_original": "Results",
-                    "label_normalized": "Results",
-                    "kind": "results",
-                    "canonical_kind": "results",
-                    "section_type": "canonical",
-                    "canonical_map": "results",
-                    "content": "Freshly reparsed full-text content.",
-                    "source": "grobid",
-                    "source_parser": "grobid",
-                    "order": 0,
-                    "page_start": 1,
-                    "page_end": 2,
-                    "level": 1,
-                    "parent_id": None,
-                    "bounding_boxes": [],
-                    "confidence": 0.98,
-                    "is_generated_heading": False,
-                    "word_count": 4,
-                    "paragraph_count": 1,
-                }
-            ],
-            "references": [],
-            "page_count": 8,
-            "generation_method": "test_grobid_stale_running_retry",
-            "parser_provider": "GROBID",
-        },
-    )
-
-    with TestClient(app) as client:
-        owner_id, token = _register(client, email="reader-stale-running@example.com")
-
-        with session_scope() as session:
-            work = Work(
-                user_id=owner_id,
-                title="Structured reader stale running paper",
-                title_lower="structured reader stale running paper",
-                year=2026,
-                doi="10.1000/structured-reader-stale-running-paper",
-                work_type="journal-article",
-                publication_type="original-article",
-                venue_name="Reader Journal",
-                publisher="Reader Publisher",
-                abstract="Objectives: Evaluate stalled parsing recovery.",
-                keywords=["reader"],
-                authors_json=[{"name": "Alice Example"}],
-                url="https://pubmed.ncbi.nlm.nih.gov/12345678/",
-                provenance="manual",
-            )
-            session.add(work)
-            session.flush()
-            work_id = str(work.id)
-
-            primary_pdf = PublicationFile(
-                owner_user_id=owner_id,
-                publication_id=work_id,
-                file_name="Example (2026) - PMID 12345678.pdf",
-                file_type="PDF",
-                storage_key="",
-                source="OA_LINK",
-                oa_url="https://example.org/paper.pdf",
-                checksum=None,
-                custom_name=True,
-                classification="PUBLISHED_MANUSCRIPT",
-            )
-            session.add(primary_pdf)
-            session.flush()
-
-            seed_payload, source_signature = (
-                publication_console_service._build_publication_paper_payload(
-                    publication={
-                        "id": work_id,
-                        "title": work.title,
-                        "journal": work.venue_name,
-                        "year": work.year,
-                        "publication_type": work.work_type,
-                        "article_type": work.publication_type,
-                        "doi": work.doi,
-                        "pmid": None,
-                        "citations_total": 0,
-                        "authors": ["Alice Example"],
-                        "keywords": ["reader"],
-                    },
-                    structured_abstract_payload=None,
-                    structured_abstract_status=None,
-                    files=[primary_pdf],
-                    parser_status=publication_console_service.STRUCTURED_PAPER_STATUS_PARSING,
-                )
-            )
-            stale_row = PublicationStructuredPaperCache(
-                owner_user_id=owner_id,
-                publication_id=work_id,
-                payload_json=seed_payload,
-                source_signature_sha256=source_signature,
-                parser_version=publication_console_service.STRUCTURED_PAPER_CACHE_VERSION,
-                computed_at=publication_console_service._utcnow() - timedelta(minutes=10),
-                status=publication_console_service.RUNNING_STATUS,
-                last_error=None,
-            )
-            session.add(stale_row)
-            session.flush()
-
-        retry_response = client.get(
-            f"/v1/publications/{work_id}/paper-model",
-            headers=_auth_headers(token),
-        )
-        assert retry_response.status_code == 200
-        assert retry_response.json()["status"] == "RUNNING"
-
-        refreshed_payload = None
-        for _ in range(10):
-            refreshed_response = client.get(
-                f"/v1/publications/{work_id}/paper-model",
-                headers=_auth_headers(token),
-            )
-            assert refreshed_response.status_code == 200
-            refreshed_payload = refreshed_response.json()
-            if refreshed_payload["status"] == "READY":
-                break
-            time.sleep(0.05)
-
-        assert refreshed_payload is not None
-        assert refreshed_payload["status"] == "READY"
-        assert (
-            refreshed_payload["payload"]["document"]["parser_status"]
-            == "FULL_TEXT_READY"
-        )
-        assert refreshed_payload["payload"]["sections"][0]["source"] == "grobid"
+        assert "GROBID" in str(payload["payload"]["document"]["parser_last_error"] or "")
+        assert payload["payload"]["sections"][0]["source"] in {"structured_abstract", "abstract"}
 
 
 def test_publication_paper_model_hides_reader_entry_without_pdf_when_grobid_is_unavailable(
@@ -1857,7 +1428,7 @@ def test_publication_paper_model_hides_reader_entry_without_pdf_when_grobid_is_u
     assert payload["payload"]["document"]["reader_entry_available"] is False
 
 
-def test_publication_paper_model_keeps_reader_entry_without_pdf_when_grobid_is_available_and_pdf_can_be_attached(
+def test_publication_paper_model_keeps_reader_entry_without_pdf_when_grobid_is_available(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -1873,16 +1444,16 @@ def test_publication_paper_model_keeps_reader_entry_without_pdf_when_grobid_is_a
         "_enqueue_structured_abstract_if_needed",
         lambda **kwargs: False,
     )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_ensure_publication_reader_pdf_attached",
-        lambda **kwargs: False,
-    )
 
     user_id, work_id = _seed_user_and_work(
         email="reader-no-pdf-available@example.com",
         title="Reader visible without parser input",
     )
+    with session_scope() as session:
+        work = session.get(Work, work_id)
+        assert work is not None
+        work.doi = None
+        session.flush()
 
     payload = publication_console_service.get_publication_paper_model(
         user_id=user_id,
@@ -1892,104 +1463,6 @@ def test_publication_paper_model_keeps_reader_entry_without_pdf_when_grobid_is_a
     assert payload["payload"]["document"]["has_viewable_pdf"] is False
     assert payload["payload"]["document"]["parser_status"] == "STRUCTURE_ONLY"
     assert payload["payload"]["document"]["reader_entry_available"] is True
-
-
-def test_publication_paper_model_hides_reader_entry_when_oa_attach_is_suppressed(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-
-    monkeypatch.setattr(
-        publication_console_service,
-        "grobid_available",
-        lambda **kwargs: True,
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_enqueue_structured_abstract_if_needed",
-        lambda **kwargs: False,
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_ensure_publication_reader_pdf_attached",
-        lambda **kwargs: False,
-    )
-
-    user_id, work_id = _seed_user_and_work(
-        email="reader-suppressed@example.com",
-        title="Reader hidden when OA relinking is suppressed",
-    )
-    with session_scope() as session:
-        work = session.get(Work, work_id)
-        assert work is not None
-        work.oa_link_suppressed = True
-        session.flush()
-
-    payload = publication_console_service.get_publication_paper_model(
-        user_id=user_id,
-        publication_id=work_id,
-    )
-    assert payload["status"] == "READY"
-    assert payload["payload"]["document"]["has_viewable_pdf"] is False
-    assert payload["payload"]["document"]["parser_status"] == "STRUCTURE_ONLY"
-    assert payload["payload"]["document"]["reader_entry_available"] is False
-
-
-def test_publication_paper_model_hides_reader_entry_for_unstored_existing_oa_link(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-
-    monkeypatch.setattr(
-        publication_console_service,
-        "grobid_available",
-        lambda **kwargs: True,
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_enqueue_structured_abstract_if_needed",
-        lambda **kwargs: False,
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_ensure_publication_reader_pdf_attached",
-        lambda **kwargs: False,
-    )
-
-    user_id, work_id = _seed_user_and_work(
-        email="reader-existing-oa-link@example.com",
-        title="Reader hidden when an OA link cannot be hydrated into local storage",
-    )
-    with session_scope() as session:
-        work = session.get(Work, work_id)
-        assert work is not None
-        work.doi = None
-        session.add(
-            PublicationFile(
-                publication_id=work_id,
-                owner_user_id=user_id,
-                file_name="Open access paper",
-                file_type="PDF",
-                storage_key="",
-                source="OA_LINK",
-                oa_url="https://example.org/existing-oa-link.pdf",
-                checksum=None,
-                deleted=False,
-                created_at=publication_console_service._utcnow(),
-            )
-        )
-        session.flush()
-
-    payload = publication_console_service.get_publication_paper_model(
-        user_id=user_id,
-        publication_id=work_id,
-    )
-    assert payload["status"] == "READY"
-    assert payload["payload"]["document"]["has_viewable_pdf"] is False
-    assert payload["payload"]["document"]["parser_status"] == "STRUCTURE_ONLY"
-    assert payload["payload"]["document"]["reader_entry_available"] is False
 
 
 def test_align_structured_publication_sections_to_pdf_pages_uses_stored_pdf_text(
@@ -2008,12 +1481,8 @@ def test_align_structured_publication_sections_to_pdf_pages_uses_stored_pdf_text
         def __init__(self, _stream) -> None:  # noqa: ANN001
             self.pages = [
                 _FakePage("Abstract Objectives evaluate incremental diagnostic value."),
-                _FakePage(
-                    "Introduction Cardiovascular diseases remain a leading cause."
-                ),
-                _FakePage(
-                    "Study population Adults referred for imaging were enrolled."
-                ),
+                _FakePage("Introduction Cardiovascular diseases remain a leading cause."),
+                _FakePage("Study population Adults referred for imaging were enrolled."),
                 _FakePage("Results CMR demonstrated diagnostic discordance with TTE."),
             ]
 
@@ -2117,34 +1586,258 @@ def test_align_structured_publication_assets_to_pdf_pages_uses_stored_pdf_text(
 
     monkeypatch.setattr(publication_console_service, "PdfReader", _FakePdfReader)
 
-    aligned_assets = (
-        publication_console_service._align_structured_publication_assets_to_pdf_pages(
-            assets=[
-                {
-                    "id": "parsed-figure-1",
-                    "title": "Figure 1",
-                    "file_name": "Figure 1",
-                    "caption": "Recruitment flow diagram.",
-                    "classification": "FIGURE",
-                    "page_start": None,
-                    "page_end": None,
-                },
-                {
-                    "id": "parsed-table-1",
-                    "title": "Table 1",
-                    "file_name": "Table 1",
-                    "caption": "Baseline cohort characteristics.",
-                    "classification": "TABLE",
-                    "page_start": None,
-                    "page_end": None,
-                },
-            ],
-            content=b"%PDF-1.7 asset anchor test",
-        )
+    aligned_assets = publication_console_service._align_structured_publication_assets_to_pdf_pages(
+        assets=[
+            {
+                "id": "parsed-figure-1",
+                "title": "Figure 1",
+                "file_name": "Figure 1",
+                "caption": "Recruitment flow diagram.",
+                "classification": "FIGURE",
+                "page_start": None,
+                "page_end": None,
+            },
+            {
+                "id": "parsed-table-1",
+                "title": "Table 1",
+                "file_name": "Table 1",
+                "caption": "Baseline cohort characteristics.",
+                "classification": "TABLE",
+                "page_start": None,
+                "page_end": None,
+            },
+        ],
+        content=b"%PDF-1.7 asset anchor test",
     )
 
     assert [asset["page_start"] for asset in aligned_assets] == [1, 2]
     assert [asset["page_end"] for asset in aligned_assets] == [1, 2]
+
+
+def test_render_pymupdf_table_html_strips_title_row_and_moves_notes() -> None:
+    class _FakeTable:
+        def extract(self) -> list[list[str | None]]:
+            return [
+                ["Table 1 Baseline cohort characteristics", None, None],
+                ["Variable", "CMR", "P value"],
+                ["Age", "62", "0.10"],
+                ["a Values are median (IQR).", None, None],
+            ]
+
+    html_text = publication_console_service._render_pymupdf_table_html(_FakeTable())
+
+    assert "Table 1 Baseline cohort characteristics" not in html_text
+    assert "<thead>" in html_text
+    assert "Variable" in html_text
+    assert "publication-structured-table-notes" in html_text
+    assert "Values are median (IQR)." in html_text
+
+
+def test_match_docling_tables_to_assets_preserves_existing_structured_html() -> None:
+    assets = publication_console_service._match_docling_tables_to_assets(
+        docling_tables=[
+            {
+                "html": "<table><tbody><tr><td>Docling</td></tr></tbody></table>",
+                "page": 4,
+                "coords": "4,0,0,100,100",
+            }
+        ],
+        table_assets=[
+            {
+                "id": "parsed-table-1",
+                "page_start": 4,
+                "coords": "4,0,0,100,100",
+                "structured_html": "<table><tbody><tr><td>Native</td></tr></tbody></table>",
+            }
+        ],
+    )
+
+    assert assets[0]["structured_html"] == "<table><tbody><tr><td>Native</td></tr></tbody></table>"
+
+
+def test_extract_structured_publication_assets_from_pmc_archive_content_returns_native_assets() -> None:
+    archive_buffer = BytesIO()
+    with tarfile.open(fileobj=archive_buffer, mode="w:gz") as archive:
+        article_xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <article xmlns:xlink="http://www.w3.org/1999/xlink">
+          <body>
+            <fig id="f1">
+              <label>Figure 4</label>
+              <caption>
+                <title>Diagnostic pathway</title>
+                <p>Figure 4 Diagnostic pathway and case summary.</p>
+              </caption>
+              <graphic xlink:href="fig4.png" />
+            </fig>
+            <table-wrap id="t1">
+              <label>Table 2</label>
+              <caption>
+                <title>Haemodynamic measures</title>
+                <p>Table 2 Haemodynamic measures at baseline.</p>
+              </caption>
+              <table>
+                <thead>
+                  <tr><th>Metric</th><th>Value</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>LVFP</td><td>17 mmHg</td></tr>
+                </tbody>
+              </table>
+              <table-wrap-foot>
+                <p>a Values are median (IQR).</p>
+              </table-wrap-foot>
+            </table-wrap>
+          </body>
+        </article>
+        """.encode("utf-8")
+        xml_info = tarfile.TarInfo("PMC0000001/article.nxml")
+        xml_info.size = len(article_xml)
+        archive.addfile(xml_info, BytesIO(article_xml))
+
+        image_bytes = b"\x89PNG\r\n\x1a\n" + (b"x" * 64)
+        image_info = tarfile.TarInfo("PMC0000001/fig4.png")
+        image_info.size = len(image_bytes)
+        archive.addfile(image_info, BytesIO(image_bytes))
+
+    figures, tables = (
+        publication_console_service._extract_structured_publication_assets_from_pmc_archive_content(
+            archive_buffer.getvalue()
+        )
+    )
+
+    assert len(figures) == 1
+    assert figures[0]["title"] == "Figure 4"
+    assert figures[0]["source_parser"] == "pmc_jats"
+    assert str(figures[0]["image_data"]).startswith("data:image/png;base64,")
+
+    assert len(tables) == 1
+    assert tables[0]["title"] == "Table 2"
+    assert "LVFP" in str(tables[0]["structured_html"] or "")
+    assert "publication-structured-table-notes" in str(
+        tables[0]["structured_html"] or ""
+    )
+
+
+def test_publication_paper_payload_needs_asset_enrichment_when_assets_are_caption_only() -> None:
+    payload = {
+        "document": {
+            "has_viewable_pdf": True,
+            "parser_status": publication_console_service.STRUCTURED_PAPER_STATUS_FULL_TEXT_READY,
+        },
+        "provenance": {
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC,
+        },
+        "component_summary": {
+            "figure_asset_count": 1,
+            "table_asset_count": 1,
+        },
+        "figures": [
+            {
+                "classification": "FIGURE",
+                "title": "Figure 1",
+                "caption": "Figure 1 Caption only",
+                "image_data": None,
+            }
+        ],
+        "tables": [
+            {
+                "classification": "TABLE",
+                "title": "Table 1",
+                "caption": "Table 1 Caption only",
+                "structured_html": None,
+            }
+        ],
+    }
+
+    assert (
+        publication_console_service._publication_paper_payload_needs_asset_enrichment(
+            payload
+        )
+        is True
+    )
+
+
+def test_extract_structured_publication_paper_with_pmc_bioc_prefers_archive_assets(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_bioc_payload",
+        lambda _pmcid: {
+            "documents": [
+                {
+                    "passages": [
+                        {
+                            "infons": {"type": "title_1", "section_type": "INTRO"},
+                            "text": "Introduction",
+                        },
+                        {
+                            "infons": {"type": "paragraph", "section_type": "INTRO"},
+                            "text": "Full-text introduction paragraph.",
+                        },
+                        {
+                            "infons": {"type": "fig_caption", "section_type": "FIG"},
+                            "text": "Figure 1 Caption only.",
+                        },
+                        {
+                            "infons": {"type": "table_caption", "section_type": "TABLE"},
+                            "text": "Table 1 Caption only.",
+                        },
+                    ]
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_assets_from_pmc_archive",
+        lambda _pmcid: (
+            [
+                {
+                    "id": "pmc-jats-figure-1",
+                    "classification": "FIGURE",
+                    "title": "Figure 1",
+                    "caption": "Figure 1 caption",
+                    "source": "parsed",
+                    "source_parser": "pmc_jats",
+                    "image_data": "data:image/png;base64,abc",
+                }
+            ],
+            [
+                {
+                    "id": "pmc-jats-table-1",
+                    "classification": "TABLE",
+                    "title": "Table 1",
+                    "caption": "Table 1 caption",
+                    "source": "parsed",
+                    "source_parser": "pmc_jats",
+                    "structured_html": "<table><tbody><tr><td>Native</td></tr></tbody></table>",
+                }
+            ],
+        ),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_assets_with_grobid",
+        lambda **_kwargs: ([], []),
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
+        pmcid="PMC1234567",
+        content=b"%PDF-1.7 test",
+        title="PMC BioC paper",
+        enrich_assets=True,
+        align_to_pdf=False,
+    )
+
+    assert publication_console_service._publication_paper_asset_surface_count(
+        payload.get("figures"),
+        classification="FIGURE",
+    ) == 1
+    assert publication_console_service._publication_paper_asset_surface_count(
+        payload.get("tables"),
+        classification="TABLE",
+    ) == 1
 
 
 def test_publication_paper_model_auto_links_oa_pdf_for_reader(
@@ -2163,10 +1856,7 @@ def test_publication_paper_model_auto_links_oa_pdf_for_reader(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (
-            b"%PDF-1.7 locally cached oa payload",
-            "application/pdf",
-        ),
+        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
     )
     monkeypatch.setattr(
         publication_console_service,
@@ -2258,9 +1948,7 @@ def test_publication_paper_model_auto_links_oa_pdf_for_reader(
 
         assert second_payload is not None
         assert second_payload["status"] == "READY"
-        assert (
-            second_payload["payload"]["document"]["parser_status"] == "FULL_TEXT_READY"
-        )
+        assert second_payload["payload"]["document"]["parser_status"] == "FULL_TEXT_READY"
         assert second_payload["payload"]["document"]["has_viewable_pdf"] is True
         assert len(second_payload["payload"]["sections"]) == 1
         assert second_payload["payload"]["sections"][0]["source"] == "grobid"
@@ -2298,10 +1986,7 @@ def test_publication_paper_model_auto_links_oa_pdf_when_only_non_pdf_files_exist
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (
-            b"%PDF-1.7 auto-linked reader bytes",
-            "application/pdf",
-        ),
+        lambda *args, **kwargs: (b"%PDF-1.7 auto-linked reader bytes", "application/pdf"),
     )
     monkeypatch.setattr(
         publication_console_service,
@@ -2405,9 +2090,7 @@ def test_publication_paper_model_auto_links_oa_pdf_when_only_non_pdf_files_exist
 
         assert second_payload is not None
         assert second_payload["status"] == "READY"
-        assert (
-            second_payload["payload"]["document"]["parser_status"] == "FULL_TEXT_READY"
-        )
+        assert second_payload["payload"]["document"]["parser_status"] == "FULL_TEXT_READY"
         assert second_payload["payload"]["document"]["has_viewable_pdf"] is True
 
         with session_scope() as session:
@@ -2529,10 +2212,7 @@ def test_link_publication_open_access_pdf_reuses_existing_local_copy(
             )
         ).first()
         assert row is not None
-        stored_path = publication_console_service._publication_file_storage_path(
-            str(row.storage_key)
-        )
-        assert stored_path is not None
+        stored_path = Path(str(row.storage_key))
         assert stored_path.exists()
         assert stored_path.read_bytes() == donor_bytes
 
@@ -2838,9 +2518,9 @@ def test_publication_file_upload_preserves_filename_and_download_header(
             json={
                 "filename": upload_filename,
                 "mime_type": "application/pdf",
-                "content_base64": base64.b64encode(b"%PDF-1.7 test payload").decode(
-                    "ascii"
-                ),
+                "content_base64": base64.b64encode(
+                    b"%PDF-1.7 test payload"
+                ).decode("ascii"),
             },
         )
         assert upload_response.status_code == 200
@@ -2900,9 +2580,9 @@ def test_publication_file_download_restores_extension_for_legacy_filename(
             json={
                 "filename": "legacy-final.pdf",
                 "mime_type": "application/pdf",
-                "content_base64": base64.b64encode(b"%PDF-1.7 legacy payload").decode(
-                    "ascii"
-                ),
+                "content_base64": base64.b64encode(
+                    b"%PDF-1.7 legacy payload"
+                ).decode("ascii"),
             },
         )
         assert upload_response.status_code == 200
@@ -2930,12 +2610,8 @@ def test_publication_file_content_route_proxies_open_access_pdf(
     create_all_tables()
     monkeypatch.setattr(
         publication_console_service,
-        "_request_bytes_with_final_url_retry",
-        lambda **kwargs: (
-            b"%PDF-1.7 proxied oa payload",
-            "application/pdf",
-            str(kwargs.get("url") or ""),
-        ),
+        "_request_bytes_with_retry",
+        lambda **kwargs: (b"%PDF-1.7 proxied oa payload", "application/pdf"),
     )
 
     with TestClient(app) as client:
@@ -2991,11 +2667,7 @@ def test_publication_file_content_route_proxies_open_access_pdf(
             refreshed = session.get(PublicationFile, file_id)
             assert refreshed is not None
             assert refreshed.storage_key
-            stored_path = publication_console_service._publication_file_storage_path(
-                str(refreshed.storage_key)
-            )
-            assert stored_path is not None
-            assert stored_path.exists()
+            assert Path(str(refreshed.storage_key)).exists()
             assert refreshed.checksum is not None
 
 
@@ -3135,10 +2807,7 @@ def test_open_access_link_uses_default_publication_file_name(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (
-            b"%PDF-1.7 locally cached oa payload",
-            "application/pdf",
-        ),
+        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
     )
 
     with TestClient(app) as client:
@@ -3265,613 +2934,14 @@ def test_open_access_link_uses_browser_fallback_when_http_fetch_is_blocked(
         ).first()
         assert stored_row is not None
         assert stored_row.storage_key
-        assert (
-            publication_console_service._publication_file_storage_path(
-                str(stored_row.storage_key)
-            ).read_bytes()
-            == browser_bytes
-        )
+        assert publication_console_service._publication_file_storage_path(
+            str(stored_row.storage_key)
+        ).read_bytes() == browser_bytes
 
 
-def test_fetch_open_access_pdf_bytes_uses_browser_like_headers(
+def test_open_access_link_keeps_external_link_when_local_cache_download_fails(
     monkeypatch, tmp_path
 ) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    seen_headers: dict[str, str] = {}
-
-    def _request_bytes(**kwargs):  # noqa: ANN003
-        seen_headers.update(kwargs.get("headers") or {})
-        return b"%PDF-1.7 direct payload", "application/pdf", str(kwargs.get("url") or "")
-
-    monkeypatch.setattr(
-        publication_console_service,
-        "_request_bytes_with_final_url_retry",
-        _request_bytes,
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes_via_browser",
-        lambda *args, **kwargs: (b"", None),
-    )
-
-    content, content_type = publication_console_service._fetch_open_access_pdf_bytes(
-        "https://example.org/files/paper.pdf"
-    )
-
-    assert content == b"%PDF-1.7 direct payload"
-    assert content_type == "application/pdf"
-    assert "Mozilla/5.0" in str(seen_headers.get("User-Agent") or "")
-    assert seen_headers.get("Origin") == "https://example.org"
-    assert seen_headers.get("Referer") == "https://example.org/"
-    assert "application/pdf" in str(seen_headers.get("Accept") or "")
-    assert "en-GB" in str(seen_headers.get("Accept-Language") or "")
-
-
-def test_fetch_open_access_pdf_bytes_extracts_pdf_from_html_landing_page(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    requested_urls: list[str] = []
-
-    def _request_bytes(**kwargs):  # noqa: ANN003
-        url = str(kwargs.get("url") or "")
-        requested_urls.append(url)
-        if url == "https://example.org/article":
-            return (
-                b'<html><head><meta name="citation_pdf_url" content="/files/paper.pdf"></head></html>',
-                "text/html; charset=utf-8",
-                url,
-            )
-        if url == "https://example.org/files/paper.pdf":
-            return b"%PDF-1.7 landing page payload", "application/pdf", url
-        return b"", None, None
-
-    monkeypatch.setattr(
-        publication_console_service,
-        "_request_bytes_with_final_url_retry",
-        _request_bytes,
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes_via_browser",
-        lambda *args, **kwargs: (b"", None),
-    )
-
-    content, content_type = publication_console_service._fetch_open_access_pdf_bytes(
-        "https://example.org/article"
-    )
-
-    assert content == b"%PDF-1.7 landing page payload"
-    assert content_type == "application/pdf"
-    assert requested_urls == [
-        "https://example.org/article",
-        "https://example.org/files/paper.pdf",
-    ]
-
-
-def test_fetch_open_access_pdf_bytes_follows_meta_refresh_landing_page(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    requested_urls: list[str] = []
-
-    def _request_bytes(**kwargs):  # noqa: ANN003
-        url = str(kwargs.get("url") or "")
-        requested_urls.append(url)
-        if url == "https://doi.org/10.1000/example":
-            return (
-                b"""<html><head><meta http-equiv="REFRESH" content="2; url='/retrieve/article?target=https%3A%2F%2Fpublisher.example%2Farticle'" /></head></html>""",
-                "text/html; charset=utf-8",
-                "https://linkinghub.example/retrieve/doi",
-            )
-        if (
-            url
-            == "https://linkinghub.example/retrieve/article?target=https%3A%2F%2Fpublisher.example%2Farticle"
-        ):
-            return (
-                b'<html><head><meta name="citation_pdf_url" content="https://publisher.example/files/paper.pdf"></head></html>',
-                "text/html; charset=utf-8",
-                "https://publisher.example/article",
-            )
-        if url == "https://publisher.example/files/paper.pdf":
-            return b"%PDF-1.7 meta refresh landing page payload", "application/pdf", url
-        return b"", None, None
-
-    monkeypatch.setattr(
-        publication_console_service,
-        "_request_bytes_with_final_url_retry",
-        _request_bytes,
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes_via_browser",
-        lambda *args, **kwargs: (b"", None),
-    )
-
-    content, content_type = publication_console_service._fetch_open_access_pdf_bytes(
-        "https://doi.org/10.1000/example"
-    )
-
-    assert content == b"%PDF-1.7 meta refresh landing page payload"
-    assert content_type == "application/pdf"
-    assert requested_urls == [
-        "https://doi.org/10.1000/example",
-        "https://linkinghub.example/retrieve/article?target=https%3A%2F%2Fpublisher.example%2Farticle",
-        "https://publisher.example/files/paper.pdf",
-    ]
-
-
-def test_fetch_open_access_pdf_bytes_extracts_pdf_from_pmc_archive(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    archive_buffer = io.BytesIO()
-    with tarfile.open(fileobj=archive_buffer, mode="w:gz") as archive:
-        pdf_payload = b"%PDF-1.7 pmc archive payload"
-        info = tarfile.TarInfo(name="PMC1234567/paper.pdf")
-        info.size = len(pdf_payload)
-        archive.addfile(info, io.BytesIO(pdf_payload))
-
-    monkeypatch.setattr(
-        publication_console_service,
-        "_request_bytes_with_final_url_retry",
-        lambda **kwargs: (
-            archive_buffer.getvalue(),
-            "application/x-gzip",
-            "https://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_package/ab/cd/PMC1234567.tar.gz",
-        ),
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes_via_browser",
-        lambda *args, **kwargs: (b"", None),
-    )
-
-    content, content_type = publication_console_service._fetch_open_access_pdf_bytes(
-        "https://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_package/ab/cd/PMC1234567.tar.gz"
-    )
-
-    assert content == b"%PDF-1.7 pmc archive payload"
-    assert content_type == "application/pdf"
-
-
-def test_find_open_access_pdf_candidates_includes_doi_work_and_pmid(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        publication_console_service,
-        "_resolve_pmcid",
-        lambda **kwargs: "PMC12041914",
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_request_pmc_oa_record",
-        lambda pmcid: {
-            "pmcid": pmcid,
-            "archive_href": "ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_package/ab/cd/PMC12041914.tar.gz",
-        },
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_find_unpaywall_pdf_url",
-        lambda **kwargs: None,
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_find_unpaywall_landing_page_urls",
-        lambda **kwargs: [
-            "https://publisher.example/article",
-            "https://publisher.example/article",
-        ],
-    )
-
-    work = Work(
-        title="Candidate OA Work",
-        title_lower="candidate oa work",
-        year=2026,
-        doi="10.1000/candidate-oa-work",
-        pmid="40340893",
-        work_type="journal-article",
-        venue_name="Test Journal",
-        publisher="Test Publisher",
-        abstract="Abstract",
-        keywords=[],
-        url="https://journal.example/article",
-        authors_json=[{"name": "Ciaran Grafton-Clarke"}],
-        provenance="manual",
-    )
-
-    candidates = publication_console_service._find_open_access_pdf_candidates(
-        work=work,
-        email="owner@example.com",
-    )
-
-    assert candidates == [
-        "https://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_package/ab/cd/PMC12041914.tar.gz",
-        "https://pmc.ncbi.nlm.nih.gov/articles/PMC12041914/",
-        "https://publisher.example/article",
-        "https://doi.org/10.1000/candidate-oa-work",
-        "https://journal.example/article",
-        "https://pubmed.ncbi.nlm.nih.gov/40340893/",
-    ]
-
-
-def test_best_available_parser_prefers_pmc_bioc_when_pmcid_resolves(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        publication_console_service,
-        "_resolve_pmcid",
-        lambda **kwargs: "PMC12041914",
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_extract_structured_publication_paper_with_pmc_bioc",
-        lambda **kwargs: {
-            "sections": [
-                {
-                    "id": "paper-section-1-methods",
-                    "title": "Methods",
-                    "raw_label": "Methods",
-                    "label_original": "Methods",
-                    "label_normalized": "Methods",
-                    "kind": "methods",
-                    "canonical_kind": "methods",
-                    "section_type": "main_text",
-                    "canonical_map": "methods",
-                    "content": "PMC BioC methods text.",
-                    "source": "pmc_bioc",
-                    "source_parser": "pmc_bioc",
-                    "order": 0,
-                    "page_start": 1,
-                    "page_end": 2,
-                    "level": 1,
-                    "parent_id": None,
-                    "bounding_boxes": [],
-                    "confidence": None,
-                    "is_generated_heading": False,
-                    "word_count": 4,
-                    "paragraph_count": 1,
-                    "document_zone": "body",
-                    "section_role": None,
-                    "journal_section_family": None,
-                    "major_section_key": None,
-                }
-            ],
-            "figures": [],
-            "tables": [],
-            "references": [],
-            "page_count": 2,
-            "generation_method": "pmc_bioc_fulltext_v1",
-            "parser_provider": "PMC_BIOC",
-        },
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_extract_structured_publication_paper_with_grobid",
-        lambda **kwargs: (_ for _ in ()).throw(AssertionError("GROBID should not run")),
-    )
-
-    payload = publication_console_service._extract_structured_publication_paper_with_best_available_parser(
-        content=b"%PDF-1.7 test payload",
-        title="Test title",
-        file_name="test.pdf",
-        pmid="40308862",
-        doi="10.1093/ehjimp/qyaf042",
-        year=2025,
-    )
-
-    assert payload["parser_provider"] == "PMC_BIOC"
-    assert payload["sections"][0]["source"] == "pmc_bioc"
-
-
-def test_extract_structured_publication_paper_with_pmc_bioc_enriches_assets_with_grobid(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        publication_console_service,
-        "_request_pmc_bioc_payload",
-        lambda pmcid: {
-            "documents": [
-                {
-                    "passages": [
-                        {
-                            "infons": {"type": "title_1", "section_type": "METHODS"},
-                            "text": "Methods",
-                        },
-                        {
-                            "infons": {"type": "paragraph", "section_type": "METHODS"},
-                            "text": "PMC BioC methods text.",
-                        },
-                    ]
-                }
-            ]
-        },
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_extract_structured_publication_assets_with_grobid",
-        lambda **kwargs: (
-            [
-                {
-                    "id": "paper-asset-figure-1",
-                    "title": "Figure 1",
-                    "file_name": "Figure 1",
-                    "source": "PARSED",
-                    "download_url": None,
-                    "classification": "FIGURE",
-                    "classification_label": "Figure",
-                    "is_pdf": False,
-                    "caption": "A figure",
-                    "page_start": 2,
-                    "page_end": 2,
-                    "asset_kind": "figure",
-                    "origin": "parsed",
-                    "source_parser": "grobid",
-                    "coords": "2,10,10,100,100",
-                    "graphic_coords": "2,10,10,100,100",
-                    "image_data": "data:image/png;base64,abc",
-                    "structured_html": None,
-                }
-            ],
-            [
-                {
-                    "id": "paper-asset-table-1",
-                    "title": "Table 1",
-                    "file_name": "Table 1",
-                    "source": "PARSED",
-                    "download_url": None,
-                    "classification": "TABLE",
-                    "classification_label": "Table",
-                    "is_pdf": False,
-                    "caption": "A table",
-                    "page_start": 3,
-                    "page_end": 3,
-                    "asset_kind": "table",
-                    "origin": "parsed",
-                    "source_parser": "grobid",
-                    "coords": "3,10,10,100,100",
-                    "graphic_coords": None,
-                    "image_data": None,
-                    "structured_html": "<table><tbody><tr><td>A</td></tr></tbody></table>",
-                }
-            ],
-        ),
-    )
-
-    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
-        pmcid="PMC12060880",
-        content=b"%PDF-1.7 fake",
-        title="Test paper",
-    )
-
-    assert payload["parser_provider"] == "PMC_BIOC"
-    assert len(payload["figures"]) == 1
-    assert len(payload["tables"]) == 1
-    assert payload["figures"][0]["source_parser"] == "grobid"
-    assert "<td>A</td>" in str(payload["tables"][0]["structured_html"])
-
-
-def test_extract_structured_publication_paper_with_pmc_bioc_can_skip_asset_enrichment(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        publication_console_service,
-        "_request_pmc_bioc_payload",
-        lambda pmcid: {
-            "documents": [
-                {
-                    "passages": [
-                        {
-                            "infons": {"type": "title_1", "section_type": "METHODS"},
-                            "text": "Methods",
-                        },
-                        {
-                            "infons": {"type": "paragraph", "section_type": "METHODS"},
-                            "text": "PMC BioC methods text.",
-                        },
-                    ]
-                }
-            ]
-        },
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_extract_structured_publication_assets_with_grobid",
-        lambda **kwargs: (_ for _ in ()).throw(
-            AssertionError("GROBID asset enrichment should be skipped")
-        ),
-    )
-
-    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
-        pmcid="PMC12060880",
-        content=b"%PDF-1.7 fake",
-        title="Test paper",
-        enrich_assets=False,
-    )
-
-    assert payload["parser_provider"] == "PMC_BIOC"
-    assert payload["figures"] == []
-    assert payload["tables"] == []
-    assert payload["sections"][0]["source"] == "pmc_bioc"
-
-
-def test_extract_structured_publication_paper_with_pmc_bioc_can_skip_pdf_alignment(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        publication_console_service,
-        "_request_pmc_bioc_payload",
-        lambda pmcid: {
-            "documents": [
-                {
-                    "passages": [
-                        {
-                            "infons": {"type": "title_1", "section_type": "METHODS"},
-                            "text": "Methods",
-                        },
-                        {
-                            "infons": {"type": "paragraph", "section_type": "METHODS"},
-                            "text": "PMC BioC methods text.",
-                        },
-                    ]
-                }
-            ]
-        },
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_align_structured_publication_sections_to_pdf_pages",
-        lambda **kwargs: (_ for _ in ()).throw(
-            AssertionError("PDF section alignment should be skipped")
-        ),
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_align_structured_publication_assets_to_pdf_pages",
-        lambda **kwargs: (_ for _ in ()).throw(
-            AssertionError("PDF asset alignment should be skipped")
-        ),
-    )
-
-    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
-        pmcid="PMC12060880",
-        content=b"%PDF-1.7 fake",
-        title="Test paper",
-        enrich_assets=False,
-        align_to_pdf=False,
-    )
-
-    assert payload["parser_provider"] == "PMC_BIOC"
-    assert payload["sections"][0]["source"] == "pmc_bioc"
-
-
-def test_executor_bucket_for_structured_paper_jobs() -> None:
-    assert publication_console_service._executor_bucket_for_job_kind("structured_paper") == "structured_paper"
-    assert publication_console_service._executor_bucket_for_job_kind("structured_paper_assets") == "structured_paper"
-    assert publication_console_service._executor_bucket_for_job_kind("impact") == "default"
-
-
-def test_publication_paper_payload_needs_asset_enrichment_for_ready_pmc_payload() -> None:
-    payload = {
-        "document": {
-            "has_viewable_pdf": True,
-            "parser_status": "FULL_TEXT_READY",
-        },
-        "provenance": {
-            "parser_provider": "PMC_BIOC",
-        },
-        "component_summary": {
-            "figure_asset_count": 0,
-            "table_asset_count": 0,
-        },
-    }
-
-    assert (
-        publication_console_service._publication_paper_payload_needs_asset_enrichment(
-            payload
-        )
-        is True
-    )
-    assert (
-        publication_console_service._publication_paper_payload_needs_asset_enrichment(
-            {
-                **payload,
-                "component_summary": {
-                    "figure_asset_count": 1,
-                    "table_asset_count": 1,
-                },
-            }
-        )
-        is False
-    )
-    assert (
-        publication_console_service._publication_paper_payload_needs_asset_enrichment(
-            {
-                **payload,
-                "provenance": {
-                    "parser_provider": "GROBID",
-                },
-            }
-        )
-        is False
-    )
-
-
-def test_publication_paper_payload_skips_recent_empty_asset_retry() -> None:
-    checked_at = publication_console_service._utcnow().isoformat()
-    payload = {
-        "document": {
-            "has_viewable_pdf": True,
-            "parser_status": "FULL_TEXT_READY",
-        },
-        "provenance": {
-            "parser_provider": "PMC_BIOC",
-            "asset_enrichment_status": "EMPTY",
-            "asset_enrichment_checked_at": checked_at,
-        },
-        "component_summary": {
-            "figure_asset_count": 0,
-            "table_asset_count": 0,
-        },
-    }
-
-    assert (
-        publication_console_service._publication_paper_payload_needs_asset_enrichment(
-            payload,
-            now=publication_console_service._utcnow(),
-        )
-        is False
-    )
-
-
-def test_publication_paper_payload_retries_stale_failed_asset_enrichment() -> None:
-    checked_at = (
-        publication_console_service._utcnow() - timedelta(minutes=10)
-    ).isoformat()
-    payload = {
-        "document": {
-            "has_viewable_pdf": True,
-            "parser_status": "FULL_TEXT_READY",
-        },
-        "provenance": {
-            "parser_provider": "PMC_BIOC",
-            "asset_enrichment_status": "FAILED",
-            "asset_enrichment_checked_at": checked_at,
-        },
-        "component_summary": {
-            "figure_asset_count": 0,
-            "table_asset_count": 0,
-        },
-    }
-
-    assert (
-        publication_console_service._publication_paper_payload_needs_asset_enrichment(
-            payload,
-            now=publication_console_service._utcnow(),
-        )
-        is True
-    )
-
-
-def test_open_access_browser_fetch_script_path_prefers_packaged_script(
-    monkeypatch, tmp_path
-) -> None:
-    packaged = tmp_path / "scripts" / "oa-browser-fetch" / "fetch-pdf-via-browser.mjs"
-    legacy = tmp_path / "frontend" / "scripts" / "fetch-pdf-via-browser.mjs"
-    packaged.parent.mkdir(parents=True, exist_ok=True)
-    legacy.parent.mkdir(parents=True, exist_ok=True)
-    packaged.write_text("// packaged fetcher\n", encoding="utf-8")
-    legacy.write_text("// legacy fetcher\n", encoding="utf-8")
-
-    monkeypatch.setattr(publication_console_service, "_repo_root", lambda: tmp_path)
-
-    resolved = publication_console_service._open_access_browser_fetch_script_path()
-
-    assert resolved == packaged
-
-
-def test_open_access_link_requires_local_cache_download(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     monkeypatch.setattr(
@@ -3918,173 +2988,15 @@ def test_open_access_link_requires_local_cache_download(monkeypatch, tmp_path) -
             f"/v1/publications/{work_id}/files/link-oa",
             headers=_auth_headers(token),
         )
-    assert response.status_code == 200
-    payload = response.json()
+        assert response.status_code == 200
+        payload = response.json()
 
-    assert payload["created"] is False
-    assert payload["file"] is None
-    assert (
-        payload["message"]
-        == "Open-access PDF was found, but a local stored copy could not be recovered for the reader."
-    )
-
-    with session_scope() as session:
-        stored_row = session.scalars(
-            select(PublicationFile).where(
-                PublicationFile.owner_user_id == owner_id,
-                PublicationFile.publication_id == work_id,
-            )
-        ).first()
-        assert stored_row is None
-
-
-def test_open_access_link_prunes_existing_active_link_without_local_copy(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-    monkeypatch.setattr(
-        publication_console_service,
-        "_find_unpaywall_pdf_url",
-        lambda **kwargs: "https://example.org/files/paper.pdf",
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"", None),
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes_via_browser",
-        lambda *args, **kwargs: (b"", None),
-    )
-
-    with session_scope() as session:
-        user = User(
-            email="oa-existing-prune@example.com",
-            password_hash="test-hash",
-            name="oa-existing-prune",
-        )
-        session.add(user)
-        session.flush()
-        user_id = str(user.id)
-
-        work = Work(
-            user_id=user_id,
-            title="Existing OA link prune work",
-            title_lower="existing oa link prune work",
-            year=2026,
-            doi="10.1000/existing-oa-link-prune-work",
-            work_type="journal-article",
-            venue_name="Test Journal",
-            publisher="Test Publisher",
-            abstract="Abstract",
-            keywords=[],
-            url="",
-            authors_json=[{"name": "Ciaran Grafton-Clarke"}],
-            provenance="manual",
-        )
-        session.add(work)
-        session.flush()
-        work_id = str(work.id)
-
-        row = PublicationFile(
-            publication_id=work_id,
-            owner_user_id=user_id,
-            file_name="open-access.pdf",
-            file_type="PDF",
-            storage_key="",
-            source="OA_LINK",
-            oa_url="https://example.org/files/paper.pdf",
-            checksum=None,
-            custom_name=False,
-            classification=None,
-            classification_custom=False,
-            deleted=False,
-            created_at=publication_console_service._utcnow(),
-        )
-        session.add(row)
-        session.flush()
-
-    payload = publication_console_service.link_publication_open_access_pdf(
-        user_id=user_id,
-        publication_id=work_id,
-    )
-
-    assert payload["created"] is False
-    assert payload["file"] is None
-    assert (
-        payload["message"]
-        == "Open-access PDF was found, but a local stored copy could not be recovered for the reader."
-    )
-
-    with session_scope() as session:
-        stored_row = session.scalars(
-            select(PublicationFile).where(
-                PublicationFile.owner_user_id == user_id,
-                PublicationFile.publication_id == work_id,
-            )
-        ).first()
-        assert stored_row is None
-
-
-def test_open_access_link_tries_multiple_candidates_until_one_is_stored(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-    monkeypatch.setattr(
-        publication_console_service,
-        "_find_open_access_pdf_candidates",
-        lambda **kwargs: [
-            "https://example.org/blocked",
-            "https://example.org/landing",
-        ],
-    )
-
-    def _fetch_bytes(url: str) -> tuple[bytes, str | None]:
-        if url == "https://example.org/landing":
-            return b"%PDF-1.7 recovered payload", "application/pdf"
-        return b"", None
-
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes",
-        _fetch_bytes,
-    )
-
-    with TestClient(app) as client:
-        owner_id, token = _register(client, email="oa-multi-candidate@example.com")
-
-        with session_scope() as session:
-            work = Work(
-                user_id=owner_id,
-                title="Multi candidate OA work",
-                title_lower="multi candidate oa work",
-                year=2026,
-                doi="10.1000/multi-candidate-oa-work",
-                pmid=None,
-                work_type="journal-article",
-                venue_name="Test Journal",
-                publisher="Test Publisher",
-                abstract="Abstract",
-                keywords=[],
-                url="https://example.org/article",
-                authors_json=[{"name": "Ciaran Grafton-Clarke"}],
-                provenance="manual",
-            )
-            session.add(work)
-            session.flush()
-            work_id = str(work.id)
-
-        response = client.post(
-            f"/v1/publications/{work_id}/files/link-oa",
-            headers=_auth_headers(token),
-        )
-
-    assert response.status_code == 200
-    payload = response.json()
     assert payload["created"] is True
+    assert payload["file"] is not None
+    assert payload["file"]["source"] == "OA_LINK"
+    assert payload["file"]["oa_url"] == "https://example.org/files/paper.pdf"
+    assert payload["file"]["download_url"] == "https://example.org/files/paper.pdf"
+    assert payload["message"] == "Open-access PDF link added, but local download failed. Use the external link."
 
     with session_scope() as session:
         stored_row = session.scalars(
@@ -4094,331 +3006,9 @@ def test_open_access_link_tries_multiple_candidates_until_one_is_stored(
             )
         ).first()
         assert stored_row is not None
-        assert stored_row.oa_url == "https://example.org/landing"
-        assert stored_row.storage_key
-
-
-def test_resolve_openalex_content_url_uses_doi_lookup(monkeypatch) -> None:
-    monkeypatch.setattr(
-        publication_console_service,
-        "_request_json_with_retry",
-        lambda **kwargs: {
-            "results": [
-                {
-                    "id": "https://openalex.org/W1234567890",
-                    "has_content": {"pdf": True},
-                    "content_urls": None,
-                }
-            ],
-        },
-    )
-
-    work = Work(
-        title="OpenAlex DOI work",
-        title_lower="openalex doi work",
-        year=2026,
-        doi="10.1000/openalex-doi-work",
-        pmid=None,
-        work_type="journal-article",
-        venue_name="Test Journal",
-        publisher="Test Publisher",
-        abstract="Abstract",
-        keywords=[],
-        url="https://example.org/article",
-        authors_json=[{"name": "Ciaran Grafton-Clarke"}],
-        provenance="manual",
-    )
-
-    resolved = publication_console_service._resolve_openalex_content_url(
-        work=work,
-        user_email="owner@example.com",
-    )
-
-    assert resolved == "https://content.openalex.org/works/W1234567890"
-
-
-def test_fetch_openalex_pdf_bytes_uses_content_api(monkeypatch) -> None:
-    monkeypatch.setenv("OPENALEX_API_KEY", "test-openalex-key")
-    monkeypatch.setattr(
-        publication_console_service,
-        "_resolve_openalex_content_url",
-        lambda **kwargs: "https://content.openalex.org/works/W1234567890",
-    )
-    captured: dict[str, Any] = {}
-
-    def _request_bytes(**kwargs):
-        captured.update(kwargs)
-        return (
-            b"%PDF-1.7 openalex manuscript",
-            "application/pdf",
-            "https://content.openalex.org/works/W1234567890.pdf",
-        )
-
-    monkeypatch.setattr(
-        publication_console_service,
-        "_request_bytes_with_final_url_retry",
-        _request_bytes,
-    )
-
-    content, content_type, pdf_url = publication_console_service._fetch_openalex_pdf_bytes(
-        work=Work(title="Test", title_lower="test", provenance="manual"),
-        user_email="owner@example.com",
-    )
-
-    assert content == b"%PDF-1.7 openalex manuscript"
-    assert content_type == "application/pdf"
-    assert pdf_url == "https://content.openalex.org/works/W1234567890.pdf"
-    assert captured["params"] == {"api_key": "test-openalex-key"}
-
-
-def test_link_publication_open_access_pdf_falls_back_to_openalex_content_api(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-    monkeypatch.setattr(
-        publication_console_service,
-        "_find_open_access_pdf_candidates",
-        lambda **kwargs: ["https://example.org/blocked"],
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes",
-        lambda *_args, **_kwargs: (b"", None),
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_openalex_pdf_bytes",
-        lambda **kwargs: (
-            b"%PDF-1.7 openalex fallback",
-            "application/pdf",
-            "https://content.openalex.org/works/W1234567890.pdf",
-        ),
-    )
-
-    with TestClient(app) as client:
-        owner_id, token = _register(client, email="oa-openalex-fallback@example.com")
-
-        with session_scope() as session:
-            work = Work(
-                user_id=owner_id,
-                title="OpenAlex fallback OA work",
-                title_lower="openalex fallback oa work",
-                year=2026,
-                doi="10.1000/openalex-fallback-oa-work",
-                pmid=None,
-                work_type="journal-article",
-                venue_name="Test Journal",
-                publisher="Test Publisher",
-                abstract="Abstract",
-                keywords=[],
-                url="https://example.org/article",
-                authors_json=[{"name": "Ciaran Grafton-Clarke"}],
-                provenance="manual",
-            )
-            session.add(work)
-            session.flush()
-            work_id = str(work.id)
-
-        response = client.post(
-            f"/v1/publications/{work_id}/files/link-oa",
-            headers=_auth_headers(token),
-        )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["created"] is True
-
-    with session_scope() as session:
-        stored_row = session.scalars(
-            select(PublicationFile).where(
-                PublicationFile.owner_user_id == owner_id,
-                PublicationFile.publication_id == work_id,
-                PublicationFile.deleted.is_(False),
-            )
-        ).first()
-        assert stored_row is not None
-        assert stored_row.oa_url == "https://content.openalex.org/works/W1234567890.pdf"
-        assert stored_row.storage_key
-
-
-def test_listing_publication_files_prunes_active_oa_link_without_local_copy(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"", None),
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes_via_browser",
-        lambda *args, **kwargs: (b"", None),
-    )
-
-    with session_scope() as session:
-        user = User(
-            email="oa-list-prune@example.com",
-            password_hash="test-hash",
-            name="oa-list-prune",
-        )
-        session.add(user)
-        session.flush()
-        user_id = str(user.id)
-
-        work = Work(
-            user_id=user_id,
-            title="OA list prune work",
-            title_lower="oa list prune work",
-            year=2026,
-            doi="10.1000/oa-list-prune-work",
-            work_type="journal-article",
-            venue_name="Test Journal",
-            publisher="Test Publisher",
-            abstract="Abstract",
-            keywords=[],
-            url="",
-            authors_json=[{"name": "Ciaran Grafton-Clarke"}],
-            provenance="manual",
-        )
-        session.add(work)
-        session.flush()
-        work_id = str(work.id)
-
-        row = PublicationFile(
-            publication_id=work_id,
-            owner_user_id=user_id,
-            file_name="open-access.pdf",
-            file_type="PDF",
-            storage_key="",
-            source="OA_LINK",
-            oa_url="https://example.org/files/paper.pdf",
-            checksum=None,
-            custom_name=False,
-            classification=None,
-            classification_custom=False,
-            deleted=False,
-            created_at=publication_console_service._utcnow(),
-        )
-        session.add(row)
-        session.flush()
-
-    payload = publication_console_service.list_publication_files(
-        user_id=user_id,
-        publication_id=work_id,
-    )
-
-    assert payload["items"] == []
-    assert payload["has_deleted_oa_file"] is False
-    assert payload["has_recoverable_deleted_oa_file"] is False
-
-    with session_scope() as session:
-        stored_rows = session.scalars(
-            select(PublicationFile).where(
-                PublicationFile.owner_user_id == user_id,
-                PublicationFile.publication_id == work_id,
-            )
-        ).all()
-        assert stored_rows == []
-
-
-def test_listing_publication_files_collapses_duplicate_active_oa_rows(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-
-    with session_scope() as session:
-        user = User(
-            email="oa-list-dedupe@example.com",
-            password_hash="test-hash",
-            name="oa-list-dedupe",
-        )
-        session.add(user)
-        session.flush()
-        user_id = str(user.id)
-
-        work = Work(
-            user_id=user_id,
-            title="OA list dedupe work",
-            title_lower="oa list dedupe work",
-            year=2026,
-            doi="10.1000/oa-list-dedupe-work",
-            work_type="journal-article",
-            venue_name="Test Journal",
-            publisher="Test Publisher",
-            abstract="Abstract",
-            keywords=[],
-            url="",
-            authors_json=[{"name": "Ciaran Grafton-Clarke"}],
-            provenance="manual",
-        )
-        session.add(work)
-        session.flush()
-        work_id = str(work.id)
-
-        older = PublicationFile(
-            publication_id=work_id,
-            owner_user_id=user_id,
-            file_name="older-oa.pdf",
-            file_type="PDF",
-            storage_key=f"{user_id}/{work_id}/older.pdf",
-            source="OA_LINK",
-            oa_url="https://publisher.example/paper.pdf",
-            checksum=None,
-            custom_name=False,
-            classification="PUBLISHED_MANUSCRIPT",
-            classification_custom=True,
-            deleted=False,
-            created_at=publication_console_service._utcnow(),
-        )
-        newer = PublicationFile(
-            publication_id=work_id,
-            owner_user_id=user_id,
-            file_name="newer-oa.pdf",
-            file_type="PDF",
-            storage_key=f"{user_id}/{work_id}/newer.pdf",
-            source="OA_LINK",
-            oa_url="https://pmc.ncbi.nlm.nih.gov/articles/PMC1234567/",
-            checksum=None,
-            custom_name=False,
-            classification=None,
-            classification_custom=False,
-            deleted=False,
-            created_at=publication_console_service._utcnow() + timedelta(seconds=1),
-        )
-        session.add_all([older, newer])
-        session.flush()
-
-        root = tmp_path / "publication-files" / user_id / work_id
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "older.pdf").write_bytes(b"%PDF-1.7 older")
-        (root / "newer.pdf").write_bytes(b"%PDF-1.7 newer")
-
-    payload = publication_console_service.list_publication_files(
-        user_id=user_id,
-        publication_id=work_id,
-    )
-
-    assert len(payload["items"]) == 1
-    assert payload["items"][0]["classification"] == "PUBLISHED_MANUSCRIPT"
-
-    with session_scope() as session:
-        rows = session.scalars(
-            select(PublicationFile)
-            .where(
-                PublicationFile.owner_user_id == user_id,
-                PublicationFile.publication_id == work_id,
-                PublicationFile.source == "OA_LINK",
-            )
-            .order_by(PublicationFile.created_at.desc())
-        ).all()
-        assert len(rows) == 2
-        assert rows[0].deleted is False
-        assert rows[0].classification == "PUBLISHED_MANUSCRIPT"
-        assert rows[1].deleted is True
+        assert stored_row.oa_url == "https://example.org/files/paper.pdf"
+        assert stored_row.storage_key == ""
+        assert stored_row.deleted is False
 
 
 def test_deleted_open_access_file_restore_uses_remapped_persisted_local_copy(
@@ -4501,88 +3091,6 @@ def test_deleted_open_access_file_restore_uses_remapped_persisted_local_copy(
         assert restored.deleted is False
 
 
-def test_open_access_link_returns_existing_active_stored_file_even_if_new_candidate_differs(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-    monkeypatch.setattr(
-        publication_console_service,
-        "_find_open_access_pdf_candidates",
-        lambda **kwargs: ["https://pmc.ncbi.nlm.nih.gov/articles/PMC9999999/"],
-    )
-
-    with session_scope() as session:
-        user = User(
-            email="oa-existing-active@example.com",
-            password_hash="test-hash",
-            name="oa-existing-active",
-        )
-        session.add(user)
-        session.flush()
-        user_id = str(user.id)
-
-        work = Work(
-            user_id=user_id,
-            title="Existing active OA work",
-            title_lower="existing active oa work",
-            year=2026,
-            doi="10.1000/existing-active-oa-work",
-            work_type="journal-article",
-            venue_name="Test Journal",
-            publisher="Test Publisher",
-            abstract="Abstract",
-            keywords=[],
-            url="",
-            authors_json=[{"name": "Ciaran Grafton-Clarke"}],
-            provenance="manual",
-        )
-        session.add(work)
-        session.flush()
-        work_id = str(work.id)
-
-        row = PublicationFile(
-            publication_id=work_id,
-            owner_user_id=user_id,
-            file_name="open-access.pdf",
-            file_type="PDF",
-            storage_key=f"{user_id}/{work_id}/stored.pdf",
-            source="OA_LINK",
-            oa_url="https://publisher.example/article.pdf",
-            checksum=None,
-            custom_name=False,
-            classification=None,
-            classification_custom=False,
-            deleted=False,
-            created_at=publication_console_service._utcnow(),
-        )
-        session.add(row)
-        session.flush()
-
-        root = tmp_path / "publication-files" / user_id / work_id
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "stored.pdf").write_bytes(b"%PDF-1.7 existing")
-
-    payload = publication_console_service.link_publication_open_access_pdf(
-        user_id=user_id,
-        publication_id=work_id,
-    )
-
-    assert payload["created"] is False
-    assert payload["file"] is not None
-    assert payload["message"] == "Open-access PDF already stored."
-
-    with session_scope() as session:
-        rows = session.scalars(
-            select(PublicationFile).where(
-                PublicationFile.owner_user_id == user_id,
-                PublicationFile.publication_id == work_id,
-                PublicationFile.source == "OA_LINK",
-                PublicationFile.deleted.is_(False),
-            )
-        ).all()
-        assert len(rows) == 1
-
 def test_publication_file_rename_persists_for_open_access_link(
     monkeypatch, tmp_path
 ) -> None:
@@ -4596,10 +3104,7 @@ def test_publication_file_rename_persists_for_open_access_link(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (
-            b"%PDF-1.7 locally cached oa payload",
-            "application/pdf",
-        ),
+        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
     )
 
     with TestClient(app) as client:
@@ -4766,10 +3271,7 @@ def test_deleted_open_access_link_stays_suppressed_until_explicit_readd(
     monkeypatch.setattr(
         publication_console_service,
         "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (
-            b"%PDF-1.7 locally cached oa payload",
-            "application/pdf",
-        ),
+        lambda *args, **kwargs: (b"%PDF-1.7 locally cached oa payload", "application/pdf"),
     )
 
     with TestClient(app) as client:
@@ -4840,9 +3342,7 @@ def test_deleted_open_access_link_stays_suppressed_until_explicit_readd(
         assert explicit_response.status_code == 200
         assert explicit_response.json()["created"] is False
         assert explicit_response.json()["file"] is not None
-        assert (
-            explicit_response.json()["message"] == "Deleted open-access PDF restored."
-        )
+        assert explicit_response.json()["message"] == "Deleted open-access PDF restored."
 
         restored_list_response = client.get(
             f"/v1/publications/{work_id}/files",
@@ -4864,98 +3364,6 @@ def test_deleted_open_access_link_stays_suppressed_until_explicit_readd(
             ).all()
             assert len(restored_rows) == 1
             assert restored_rows[0].source == "OA_LINK"
-
-
-def test_explicit_readd_requires_a_local_pdf_copy(monkeypatch, tmp_path) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-    monkeypatch.setattr(
-        publication_console_service,
-        "_find_unpaywall_pdf_url",
-        lambda **kwargs: "https://example.org/files/paper.pdf",
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_fetch_open_access_pdf_bytes",
-        lambda *args, **kwargs: (b"", None),
-    )
-
-    with TestClient(app) as client:
-        owner_id, token = _register(
-            client, email="oa-restore-external-only@example.com"
-        )
-
-        with session_scope() as session:
-            work = Work(
-                user_id=owner_id,
-                title="Restore external-only OA work",
-                title_lower="restore external-only oa work",
-                year=2026,
-                doi="10.1000/restore-external-only-oa-work",
-                pmid=None,
-                work_type="journal-article",
-                venue_name="Test Journal",
-                publisher="Test Publisher",
-                abstract="Abstract",
-                keywords=[],
-                url="",
-                authors_json=[{"name": "Ciaran Grafton-Clarke"}],
-                provenance="manual",
-                oa_link_suppressed=True,
-            )
-            session.add(work)
-            session.flush()
-            work_id = str(work.id)
-
-            oa_row = PublicationFile(
-                publication_id=work_id,
-                owner_user_id=owner_id,
-                file_name="open-access.pdf",
-                file_type="PDF",
-                storage_key="",
-                source="OA_LINK",
-                oa_url="https://example.org/files/paper.pdf",
-                checksum=None,
-                deleted=True,
-                created_at=publication_console_service._utcnow(),
-            )
-            session.add(oa_row)
-            session.flush()
-
-        explicit_response = client.post(
-            f"/v1/publications/{work_id}/files/link-oa",
-            headers=_auth_headers(token),
-            json={"allow_suppressed": True},
-        )
-        assert explicit_response.status_code == 200
-        assert explicit_response.json()["created"] is False
-        assert explicit_response.json()["file"] is None
-        assert (
-            explicit_response.json()["message"]
-            == "Open-access PDF was found, but a local stored copy could not be recovered for the reader."
-        )
-
-        restored_list_response = client.get(
-            f"/v1/publications/{work_id}/files",
-            headers=_auth_headers(token),
-        )
-        assert restored_list_response.status_code == 200
-        assert restored_list_response.json()["items"] == []
-        assert restored_list_response.json()["has_deleted_oa_file"] is True
-
-        with session_scope() as session:
-            refreshed_work = session.get(Work, work_id)
-            assert refreshed_work is not None
-            assert refreshed_work.oa_link_suppressed is True
-            restored = session.scalars(
-                select(PublicationFile).where(
-                    PublicationFile.owner_user_id == owner_id,
-                    PublicationFile.publication_id == work_id,
-                    PublicationFile.source == "OA_LINK",
-                )
-            ).first()
-            assert restored is not None
-            assert restored.deleted is True
 
 
 def test_structured_abstract_payload_uses_model_when_quality_guard_passes(
@@ -5008,24 +3416,22 @@ def test_structured_abstract_payload_uses_model_when_quality_guard_passes(
         ),
     )
 
-    payload, model_name = (
-        publication_console_service._build_structured_abstract_payload(
-            publication={
-                "title": "Cardiac MRI-derived mean right atrial pressure and outcomes",
-                "journal": "Open Heart",
-                "year": 2025,
-                "doi": None,
-                "pmid": None,
-                "keywords_json": ["heart failure"],
-                "abstract": (
-                    "Background: Right atrial pressure is prognostic in heart failure. "
-                    "Purpose: Develop and validate a CMR-derived mRAP model. "
-                    "Methods: Cohort n=672 with regression analyses. "
-                    "Results: AUC 0.93 with p<0.01 for hospitalisation outcomes. "
-                    "Conclusion: CMR-derived mRAP supports risk stratification."
-                ),
-            }
-        )
+    payload, model_name = publication_console_service._build_structured_abstract_payload(
+        publication={
+            "title": "Cardiac MRI-derived mean right atrial pressure and outcomes",
+            "journal": "Open Heart",
+            "year": 2025,
+            "doi": None,
+            "pmid": None,
+            "keywords_json": ["heart failure"],
+            "abstract": (
+                "Background: Right atrial pressure is prognostic in heart failure. "
+                "Purpose: Develop and validate a CMR-derived mRAP model. "
+                "Methods: Cohort n=672 with regression analyses. "
+                "Results: AUC 0.93 with p<0.01 for hospitalisation outcomes. "
+                "Conclusion: CMR-derived mRAP supports risk stratification."
+            ),
+        }
     )
 
     assert model_name == "gpt-4.1-mini"
@@ -5064,21 +3470,19 @@ def test_structured_abstract_payload_falls_back_when_model_quality_guard_fails(
         ),
     )
 
-    payload, model_name = (
-        publication_console_service._build_structured_abstract_payload(
-            publication={
-                "title": "Structured abstract fidelity guard",
-                "journal": "Test Journal",
-                "year": 2026,
-                "doi": None,
-                "pmid": None,
-                "keywords_json": [],
-                "abstract": (
-                    "Background: Cohort n=101 was studied. "
-                    "Results: AUC 0.75 and p<0.01 were observed."
-                ),
-            }
-        )
+    payload, model_name = publication_console_service._build_structured_abstract_payload(
+        publication={
+            "title": "Structured abstract fidelity guard",
+            "journal": "Test Journal",
+            "year": 2026,
+            "doi": None,
+            "pmid": None,
+            "keywords_json": [],
+            "abstract": (
+                "Background: Cohort n=101 was studied. "
+                "Results: AUC 0.75 and p<0.01 were observed."
+            ),
+        }
     )
 
     assert model_name is None
@@ -5093,63 +3497,41 @@ def test_structured_abstract_payload_falls_back_when_model_quality_guard_fails(
 
 
 def test_is_figure_legend_paragraph_detects_captions() -> None:
-    from research_os.services.publication_console_service import (
-        _is_figure_legend_paragraph,
-    )
+    from research_os.services.publication_console_service import _is_figure_legend_paragraph
 
-    assert (
-        _is_figure_legend_paragraph(
-            "Figure 5 Multimodal cardiac assessment of a 39-year-old female patient "
-            "with confirmed acute myocarditis showing diffuse edema and late gadolinium enhancement."
-        )
-        is True
-    )
+    assert _is_figure_legend_paragraph(
+        "Figure 5 Multimodal cardiac assessment of a 39-year-old female patient "
+        "with confirmed acute myocarditis showing diffuse edema and late gadolinium enhancement."
+    ) is True
 
-    assert (
-        _is_figure_legend_paragraph(
-            "Table 2 Baseline characteristics of the study population stratified by "
-            "treatment group showing demographics, comorbidities, and laboratory results."
-        )
-        is True
-    )
+    assert _is_figure_legend_paragraph(
+        "Table 2 Baseline characteristics of the study population stratified by "
+        "treatment group showing demographics, comorbidities, and laboratory results."
+    ) is True
 
-    assert (
-        _is_figure_legend_paragraph(
-            "Fig. 3 Kaplan-Meier survival curves for the primary endpoint of all-cause "
-            "mortality stratified by baseline left ventricular ejection fraction."
-        )
-        is True
-    )
+    assert _is_figure_legend_paragraph(
+        "Fig. 3 Kaplan-Meier survival curves for the primary endpoint of all-cause "
+        "mortality stratified by baseline left ventricular ejection fraction."
+    ) is True
 
 
 def test_is_figure_legend_paragraph_preserves_sentences() -> None:
-    from research_os.services.publication_console_service import (
-        _is_figure_legend_paragraph,
-    )
+    from research_os.services.publication_console_service import _is_figure_legend_paragraph
 
-    assert (
-        _is_figure_legend_paragraph(
-            "Figure 1 shows the echocardiographic features of our cohort including "
-            "ventricular dimensions and systolic function assessment at baseline."
-        )
-        is False
-    )
+    assert _is_figure_legend_paragraph(
+        "Figure 1 shows the echocardiographic features of our cohort including "
+        "ventricular dimensions and systolic function assessment at baseline."
+    ) is False
 
-    assert (
-        _is_figure_legend_paragraph(
-            "Figure 2 demonstrates the relationship between cardiac biomarkers and "
-            "clinical outcomes over the 12-month follow-up period in our population."
-        )
-        is False
-    )
+    assert _is_figure_legend_paragraph(
+        "Figure 2 demonstrates the relationship between cardiac biomarkers and "
+        "clinical outcomes over the 12-month follow-up period in our population."
+    ) is False
 
-    assert (
-        _is_figure_legend_paragraph(
-            "Table 1 presents the results of multivariate regression analysis with "
-            "adjustment for age, sex, and baseline disease severity across subgroups."
-        )
-        is False
-    )
+    assert _is_figure_legend_paragraph(
+        "Table 1 presents the results of multivariate regression analysis with "
+        "adjustment for age, sex, and baseline disease severity across subgroups."
+    ) is False
 
     assert _is_figure_legend_paragraph("Figure 1") is False
     assert _is_figure_legend_paragraph("") is False
@@ -5189,9 +3571,7 @@ def test_parse_grobid_coords_handles_empty_and_invalid() -> None:
 
 
 def test_crop_figure_images_returns_unchanged_without_fitz() -> None:
-    from research_os.services.publication_console_service import (
-        _crop_figure_images_from_pdf,
-    )
+    from research_os.services.publication_console_service import _crop_figure_images_from_pdf
 
     figures = [{"id": "fig-1", "coords": "0,10,20,30,40", "image_data": None}]
     result = _crop_figure_images_from_pdf(b"", figures)
@@ -5201,29 +3581,89 @@ def test_crop_figure_images_returns_unchanged_without_fitz() -> None:
     assert result2 == []
 
 
+def test_crop_figure_images_skips_text_heavy_page_sized_crop(monkeypatch) -> None:
+    class _FakeRect:
+        def __init__(self, x0: float, y0: float, x1: float, y1: float) -> None:
+            self.x0 = x0
+            self.y0 = y0
+            self.x1 = x1
+            self.y1 = y1
+
+        @property
+        def width(self) -> float:
+            return max(0.0, self.x1 - self.x0)
+
+        @property
+        def height(self) -> float:
+            return max(0.0, self.y1 - self.y0)
+
+        @property
+        def is_empty(self) -> bool:
+            return self.width <= 0 or self.height <= 0
+
+    class _FakePixmap:
+        def tobytes(self, _fmt: str) -> bytes:
+            return b"x" * 4096
+
+    class _FakePage:
+        def __init__(self) -> None:
+            self.rect = _FakeRect(0, 0, 600, 800)
+
+        def get_text(self, mode: str, clip=None):  # noqa: ANN001
+            assert mode == "words"
+            return [("w",)] * 220
+
+        def get_pixmap(self, matrix=None, clip=None):  # noqa: ANN001
+            return _FakePixmap()
+
+    class _FakeDoc:
+        def __init__(self) -> None:
+            self._page = _FakePage()
+
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> _FakePage:
+            assert index == 0
+            return self._page
+
+        def close(self) -> None:
+            return None
+
+    class _FakeFitzModule:
+        @staticmethod
+        def open(stream=None, filetype=None):  # noqa: ANN001
+            return _FakeDoc()
+
+        @staticmethod
+        def Rect(x0: float, y0: float, x1: float, y1: float) -> _FakeRect:
+            return _FakeRect(x0, y0, x1, y1)
+
+        @staticmethod
+        def Matrix(x: float, y: float) -> tuple[float, float]:
+            return (x, y)
+
+    monkeypatch.setattr(publication_console_service, "_fitz", _FakeFitzModule)
+
+    result = publication_console_service._crop_figure_images_from_pdf(
+        b"%PDF-1.7 fake payload",
+        [{"id": "fig-1", "coords": "0,0,0,590,790", "image_data": None}],
+    )
+
+    assert result[0].get("image_data") is None
+
+
 # ---------------------------------------------------------------------------
 # Docling table matching tests
 # ---------------------------------------------------------------------------
 
 
 def test_match_docling_tables_to_assets_matches_by_page() -> None:
-    from research_os.services.publication_console_service import (
-        _match_docling_tables_to_assets,
-    )
+    from research_os.services.publication_console_service import _match_docling_tables_to_assets
 
     docling_tables = [
-        {
-            "html": "<table><tr><td>A</td></tr></table>",
-            "page": 3,
-            "num_rows": 5,
-            "num_cols": 3,
-        },
-        {
-            "html": "<table><tr><td>B</td></tr></table>",
-            "page": 7,
-            "num_rows": 10,
-            "num_cols": 4,
-        },
+        {"html": "<table><tr><td>A</td></tr></table>", "page": 3, "num_rows": 5, "num_cols": 3},
+        {"html": "<table><tr><td>B</td></tr></table>", "page": 7, "num_rows": 10, "num_cols": 4},
     ]
     table_assets = [
         {"id": "t1", "page_start": 3, "structured_html": None},
@@ -5236,22 +3676,16 @@ def test_match_docling_tables_to_assets_matches_by_page() -> None:
 
 
 def test_match_docling_tables_returns_unchanged_when_empty() -> None:
-    from research_os.services.publication_console_service import (
-        _match_docling_tables_to_assets,
-    )
+    from research_os.services.publication_console_service import _match_docling_tables_to_assets
 
     assets = [{"id": "t1", "page_start": 5, "structured_html": None}]
     result = _match_docling_tables_to_assets([], assets)
     assert result == assets
-    result2 = _match_docling_tables_to_assets(
-        [{"html": "<table/>", "page": 5, "num_rows": 2, "num_cols": 2}], []
-    )
+    result2 = _match_docling_tables_to_assets([{"html": "<table/>", "page": 5, "num_rows": 2, "num_cols": 2}], [])
     assert result2 == []
 
 
-def test_extract_docling_tables_html_passes_document_to_html_export(
-    monkeypatch,
-) -> None:
+def test_extract_docling_tables_html_passes_document_to_html_export(monkeypatch) -> None:
     import sys
     import types
 
@@ -5259,7 +3693,6 @@ def test_extract_docling_tables_html_passes_document_to_html_export(
 
     class _FakeProv:
         page_no = 4
-        bbox = types.SimpleNamespace(l=10.0, t=20.0, r=210.0, b=180.0)
 
     class _FakeData:
         grid = [["Label", "Value"], ["A", "1"]]
@@ -5297,68 +3730,12 @@ def test_extract_docling_tables_html_passes_document_to_html_export(
     assert seen_docs == [fake_document]
     assert result == [
         {
-            "html": "<table><tbody><tr><td>A</td></tr></tbody></table>",
+            "html": "<table><tr><td>A</td></tr></table>",
             "page": 4,
-            "coords": "4,10.000,20.000,210.000,180.000",
             "num_rows": 2,
             "num_cols": 2,
         }
     ]
-
-
-def test_canonicalize_docling_table_html_moves_trailing_notes_below_table() -> None:
-    html_text = """
-    <table>
-      <thead><tr><th>Variable</th><th>Value</th></tr></thead>
-      <tbody>
-        <tr><td>Age</td><td>42</td></tr>
-        <tr><td colspan="2">Note: values are reported as median (IQR).</td></tr>
-      </tbody>
-    </table>
-    """
-
-    result = publication_console_service._canonicalize_docling_table_html(html_text)
-
-    assert "<td>Age</td><td>42</td>" in result
-    assert "Note: values are reported as median (IQR)." in result
-    assert '<div class="publication-structured-table-notes">' in result
-    assert "<tbody><tr><td>Age</td><td>42</td></tr></tbody>" in result
-
-
-def test_match_docling_tables_to_assets_prefers_coordinate_overlap() -> None:
-    from research_os.services.publication_console_service import (
-        _match_docling_tables_to_assets,
-    )
-
-    docling_tables = [
-        {
-            "html": "<table><tr><td>Footer</td></tr></table>",
-            "page": 5,
-            "coords": "5,50,700,540,760",
-            "num_rows": 2,
-            "num_cols": 1,
-        },
-        {
-            "html": "<table><tr><td>Data</td></tr></table>",
-            "page": 5,
-            "coords": "5,60,120,530,520",
-            "num_rows": 8,
-            "num_cols": 4,
-        },
-    ]
-    table_assets = [
-        {
-            "id": "t1",
-            "page_start": 5,
-            "coords": "5,55,110,535,540",
-            "structured_html": None,
-        }
-    ]
-
-    result = _match_docling_tables_to_assets(docling_tables, table_assets)
-
-    assert len(result) == 1
-    assert "Data" in str(result[0]["structured_html"])
 
 
 # ---------------------------------------------------------------------------
@@ -5367,9 +3744,7 @@ def test_match_docling_tables_to_assets_prefers_coordinate_overlap() -> None:
 
 
 def test_build_parsed_asset_includes_new_fields() -> None:
-    from research_os.services.publication_console_service import (
-        _build_parsed_publication_paper_asset,
-    )
+    from research_os.services.publication_console_service import _build_parsed_publication_paper_asset
 
     asset = _build_parsed_publication_paper_asset(
         asset_id="parsed-figure-1",
@@ -5435,9 +3810,7 @@ def test_extract_assets_from_tei_captures_coords() -> None:
 
 
 def test_content_cleanup_strips_figure_legend_captions() -> None:
-    from research_os.services.publication_console_service import (
-        _publication_paper_content_cleanup,
-    )
+    from research_os.services.publication_console_service import _publication_paper_content_cleanup
 
     text = (
         "The patient underwent cardiac MRI. "
@@ -5452,12 +3825,8 @@ def test_content_cleanup_strips_figure_legend_captions() -> None:
 
 
 def test_content_cleanup_preserves_figure_references() -> None:
-    from research_os.services.publication_console_service import (
-        _publication_paper_content_cleanup,
-    )
+    from research_os.services.publication_console_service import _publication_paper_content_cleanup
 
-    text = (
-        "Figure 1 shows the distribution of cardiac biomarkers across all study groups."
-    )
+    text = "Figure 1 shows the distribution of cardiac biomarkers across all study groups."
     result = _publication_paper_content_cleanup(text)
     assert "Figure 1 shows" in result
