@@ -3798,6 +3798,33 @@ def test_publication_paper_payload_needs_asset_enrichment_for_ready_pmc_payload(
     )
 
 
+def test_publication_paper_payload_skips_recent_empty_asset_retry() -> None:
+    checked_at = publication_console_service._utcnow().isoformat()
+    payload = {
+        "document": {
+            "has_viewable_pdf": True,
+            "parser_status": "FULL_TEXT_READY",
+        },
+        "provenance": {
+            "parser_provider": "PMC_BIOC",
+            "asset_enrichment_status": "EMPTY",
+            "asset_enrichment_checked_at": checked_at,
+        },
+        "component_summary": {
+            "figure_asset_count": 0,
+            "table_asset_count": 0,
+        },
+    }
+
+    assert (
+        publication_console_service._publication_paper_payload_needs_asset_enrichment(
+            payload,
+            now=publication_console_service._utcnow(),
+        )
+        is False
+    )
+
+
 def test_open_access_browser_fetch_script_path_prefers_packaged_script(
     monkeypatch, tmp_path
 ) -> None:

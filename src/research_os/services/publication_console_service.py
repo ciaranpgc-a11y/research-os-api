@@ -180,6 +180,9 @@ STRUCTURED_PAPER_SECTION_SOURCE_GROBID = "grobid"
 STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC = "pmc_bioc"
 STRUCTURED_PAPER_PARSER_PROVIDER_GROBID = "GROBID"
 STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC = "PMC_BIOC"
+STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_PENDING = "PENDING"
+STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_COMPLETE = "COMPLETE"
+STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_EMPTY = "EMPTY"
 GROBID_AVAILABILITY_CACHE_TTL_SECONDS = 60
 STRUCTURED_PAPER_FULL_TEXT_SECTION_SOURCES = {
     STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
@@ -448,6 +451,13 @@ def _structured_paper_running_timeout_seconds() -> int:
     return max(30, value if value is not None else 180)
 
 
+def _structured_paper_asset_enrichment_retry_seconds() -> int:
+    value = _safe_int(
+        os.getenv("PUB_STRUCTURED_PAPER_ASSET_ENRICHMENT_RETRY_SECONDS", "1800")
+    )
+    return max(60, value if value is not None else 1800)
+
+
 def _is_stale(
     *, computed_at: datetime | None, ttl_seconds: int, now: datetime | None = None
 ) -> bool:
@@ -455,6 +465,17 @@ def _is_stale(
         return True
     reference = _coerce_utc(now or _utcnow())
     return (reference - _coerce_utc(computed_at)).total_seconds() > ttl_seconds
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return _coerce_utc(parsed)
 
 
 def _request_json_with_retry(
@@ -5737,6 +5758,14 @@ def _build_publication_paper_payload(
             or None,
             "parser_provider": str(parsed_payload.get("parser_provider") or "").strip()
             or None,
+            "asset_enrichment_status": str(
+                parsed_payload.get("asset_enrichment_status") or ""
+            ).strip()
+            or None,
+            "asset_enrichment_checked_at": str(
+                parsed_payload.get("asset_enrichment_checked_at") or ""
+            ).strip()
+            or None,
         },
     }
     source_signature = _publication_paper_seed_hash(
@@ -8323,6 +8352,8 @@ def _extract_structured_publication_paper_with_best_available_parser(
 
 def _publication_paper_payload_needs_asset_enrichment(
     payload: dict[str, Any] | None,
+    *,
+    now: datetime | None = None,
 ) -> bool:
     if not isinstance(payload, dict):
         return False
@@ -8350,7 +8381,24 @@ def _publication_paper_payload_needs_asset_enrichment(
     table_count = max(
         0, int(_safe_int(component_summary.get("table_asset_count")) or 0)
     )
-    return figure_count == 0 or table_count == 0
+    if figure_count > 0 and table_count > 0:
+        return False
+    enrichment_status = (
+        str(provenance.get("asset_enrichment_status") or "").strip().upper() or None
+    )
+    enrichment_checked_at = _parse_iso_datetime(
+        provenance.get("asset_enrichment_checked_at")
+    )
+    if enrichment_status in {
+        STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_COMPLETE,
+        STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_EMPTY,
+    } and enrichment_checked_at is not None:
+        return _is_stale(
+            computed_at=enrichment_checked_at,
+            ttl_seconds=_structured_paper_asset_enrichment_retry_seconds(),
+            now=now,
+        )
+    return True
 
 
 def _build_publication_paper_asset_enrichment_payload(
@@ -8360,8 +8408,10 @@ def _build_publication_paper_asset_enrichment_payload(
     structured_abstract_status: str,
     files: list[dict[str, Any]],
     current_payload: dict[str, Any],
-    figures: list[dict[str, Any]],
-    tables: list[dict[str, Any]],
+    figures: list[dict[str, Any]] | None,
+    tables: list[dict[str, Any]] | None,
+    asset_enrichment_status: str,
+    asset_enrichment_checked_at: datetime,
 ) -> tuple[dict[str, Any], str]:
     document = (
         current_payload.get("document")
@@ -8384,14 +8434,32 @@ def _build_publication_paper_asset_enrichment_payload(
             for item in current_payload.get("references", [])
             if isinstance(item, dict)
         ],
-        "figures": figures,
-        "tables": tables,
+        "figures": (
+            figures
+            if figures is not None
+            else [
+                item
+                for item in current_payload.get("figures", [])
+                if isinstance(item, dict)
+            ]
+        ),
+        "tables": (
+            tables
+            if tables is not None
+            else [
+                item
+                for item in current_payload.get("tables", [])
+                if isinstance(item, dict)
+            ]
+        ),
         "page_count": _safe_int(document.get("page_count")),
         "generation_method": str(document.get("generation_method") or "").strip()
         or str(provenance.get("full_text_generation_method") or "").strip()
         or None,
         "parser_provider": str(provenance.get("parser_provider") or "").strip()
         or None,
+        "asset_enrichment_status": asset_enrichment_status,
+        "asset_enrichment_checked_at": _coerce_utc(asset_enrichment_checked_at).isoformat(),
     }
     return _build_publication_paper_payload(
         publication=publication,
@@ -9286,6 +9354,52 @@ def _run_structured_paper_asset_enrichment_job(
             (time.perf_counter() - enrichment_started_at) * 1000, 2
         )
         if not figures and not tables:
+            persist_started_at = time.perf_counter()
+            with session_scope() as session:
+                _resolve_work_or_raise(
+                    session, user_id=user_id, publication_id=publication_id
+                )
+                row = _load_structured_paper_cache(
+                    session,
+                    user_id=user_id,
+                    publication_id=publication_id,
+                    for_update=True,
+                )
+                if row is None:
+                    return
+                current_payload = (
+                    row.payload_json if isinstance(row.payload_json, dict) else {}
+                )
+                if (
+                    str(row.source_signature_sha256 or "").strip()
+                    != str(source_signature or "").strip()
+                    or row.parser_version != STRUCTURED_PAPER_CACHE_VERSION
+                    or not _publication_paper_payload_needs_asset_enrichment(
+                        current_payload
+                    )
+                ):
+                    return
+                payload, _ = _build_publication_paper_asset_enrichment_payload(
+                    publication=source_state["publication"],
+                    structured_abstract_payload=source_state["structured_abstract_payload"],
+                    structured_abstract_status=source_state["structured_abstract_status"],
+                    files=source_state["files"],
+                    current_payload=current_payload,
+                    figures=None,
+                    tables=None,
+                    asset_enrichment_status=STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_EMPTY,
+                    asset_enrichment_checked_at=_utcnow(),
+                )
+                row.payload_json = payload
+                row.source_signature_sha256 = source_signature
+                row.parser_version = STRUCTURED_PAPER_CACHE_VERSION
+                row.computed_at = _utcnow()
+                row.status = READY_STATUS
+                row.last_error = None
+                session.flush()
+            persist_duration_ms = round(
+                (time.perf_counter() - persist_started_at) * 1000, 2
+            )
             logger.info(
                 "structured_paper_asset_enrichment_completed_without_assets",
                 extra={
@@ -9293,6 +9407,7 @@ def _run_structured_paper_asset_enrichment_job(
                     "publication_id": publication_id,
                     "binary_payload_ms": binary_payload_duration_ms,
                     "enrichment_ms": enrichment_duration_ms,
+                    "persist_ms": persist_duration_ms,
                     "total_ms": round(
                         (time.perf_counter() - job_started_at) * 1000, 2
                     ),
@@ -9330,6 +9445,8 @@ def _run_structured_paper_asset_enrichment_job(
                 current_payload=current_payload,
                 figures=figures,
                 tables=tables,
+                asset_enrichment_status=STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_COMPLETE,
+                asset_enrichment_checked_at=_utcnow(),
             )
             row.payload_json = payload
             row.source_signature_sha256 = source_signature

@@ -4481,6 +4481,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedPaperSections = selectedPaperModel?.sections || []
   const selectedPaperMetadata = selectedPaperModel?.metadata || null
   const selectedPaperDocument = selectedPaperModel?.document || null
+  const selectedPaperProvenance = (selectedPaperModel?.provenance || {}) as Record<string, unknown>
+  const selectedPaperAssetEnrichmentCheckedAt = String(selectedPaperProvenance.asset_enrichment_checked_at || '').trim() || null
   const selectedPaperParsingInProgress = (
     selectedPaperModelResponse?.status === 'RUNNING'
     || selectedPaperDocument?.parser_status === 'PARSING'
@@ -4956,6 +4958,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       && selectedPaperDocument?.has_full_text_sections
       && selectedPaperFigures.length === 0
       && selectedPaperTables.length === 0
+      && !selectedPaperAssetEnrichmentCheckedAt
     )
     if (selectedPaperModelResponse?.status !== 'RUNNING' && selectedPaperDocument?.parser_status !== 'PARSING' && !waitingForAssets) {
       return
@@ -4970,6 +4973,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPaperDocument?.has_full_text_sections,
     selectedPaperDocument?.has_viewable_pdf,
     selectedPaperDocument?.parser_status,
+    selectedPaperAssetEnrichmentCheckedAt,
     selectedPaperFigures.length,
     selectedPaperModelResponse?.status,
     selectedPaperTables.length,
