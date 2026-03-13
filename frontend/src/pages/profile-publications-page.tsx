@@ -147,7 +147,6 @@ type PublicationReaderNavigatorItemPayload = {
   label: string
   indent: number
   target: PublicationReaderNavigatorTarget
-  isActive: boolean
 }
 type PublicationReaderNavigatorGroupPayload = {
   id: string
@@ -155,7 +154,6 @@ type PublicationReaderNavigatorGroupPayload = {
   toneClassName: string
   target: PublicationReaderNavigatorTarget
   items: PublicationReaderNavigatorItemPayload[]
-  isActive: boolean
 }
 
 const PUBLICATION_READER_STRUCTURED_GROUP_ORDER = [
@@ -382,22 +380,21 @@ function normalizePublicationPaperDisplayGroupKey(
   return null
 }
 
-function buildPublicationReaderSyntheticAbstractSection(
+function buildPublicationReaderSyntheticAbstractSections(
   abstractText: string,
   sections: PublicationPaperSectionPayload[],
-): PublicationPaperSectionPayload | null {
+): PublicationPaperSectionPayload[] {
   const normalizedAbstract = normalizeAbstractDisplayText(abstractText).trim()
   if (!normalizedAbstract) {
-    return null
+    return []
   }
 
   const orderAnchor = sections.length > 0
     ? Math.min(...sections.map((section) => section.order))
     : 0
-  const paragraphCount = splitLongTextIntoParagraphs(normalizedAbstract, 800).length
-  const wordCount = normalizedAbstract.split(/\s+/).filter(Boolean).length
-
-  return {
+  const parentParagraphCount = splitLongTextIntoParagraphs(normalizedAbstract, 800).length
+  const parentWordCount = normalizedAbstract.split(/\s+/).filter(Boolean).length
+  const parentSection: PublicationPaperSectionPayload = {
     id: 'synthetic-reader-abstract',
     title: 'Abstract',
     raw_label: 'Abstract',
@@ -418,13 +415,80 @@ function buildPublicationReaderSyntheticAbstractSection(
     bounding_boxes: [],
     confidence: null,
     is_generated_heading: true,
-    word_count: wordCount,
-    paragraph_count: paragraphCount,
+    word_count: parentWordCount,
+    paragraph_count: parentParagraphCount,
     document_zone: 'front',
     section_role: 'abstract_summary',
     journal_section_family: null,
     major_section_key: 'overview',
   }
+
+  const abstractSubsections = extractHeadingSectionsFromAbstractSource(normalizedAbstract)
+  if (abstractSubsections.length < 2) {
+    return [parentSection]
+  }
+
+  const subsectionKeyToCanonicalMap = (value: string): string => {
+    switch (value) {
+      case 'background':
+        return 'introduction'
+      case 'objective':
+      case 'other':
+        return 'abstract'
+      case 'study_design':
+        return 'methods'
+      case 'findings':
+        return 'results'
+      case 'registration':
+        return 'article_information'
+      default:
+        return value
+    }
+  }
+
+  const childSections: PublicationPaperSectionPayload[] = abstractSubsections.map((subsection, index) => {
+    const canonicalMap = subsectionKeyToCanonicalMap(subsection.key)
+    const paragraphCount = splitLongTextIntoParagraphs(subsection.content, 800).length
+    const wordCount = subsection.content.split(/\s+/).filter(Boolean).length
+    return {
+      id: `synthetic-reader-abstract-${subsection.key}-${index}`,
+      title: subsection.label || 'Summary',
+      raw_label: subsection.label || 'Summary',
+      label_original: subsection.label || 'Summary',
+      label_normalized: normalizePublicationReaderSectionLabel(subsection.label || 'Summary'),
+      kind: canonicalMap,
+      canonical_kind: canonicalMap,
+      section_type: 'canonical',
+      canonical_map: canonicalMap,
+      content: normalizeAbstractDisplayText(subsection.content),
+      source: 'derived',
+      source_parser: null,
+      order: orderAnchor - 0.99 + (index * 0.001),
+      page_start: null,
+      page_end: null,
+      level: 1,
+      parent_id: parentSection.id,
+      bounding_boxes: [],
+      confidence: null,
+      is_generated_heading: true,
+      word_count: wordCount,
+      paragraph_count: paragraphCount,
+      document_zone: 'front',
+      section_role: 'abstract_summary',
+      journal_section_family: null,
+      major_section_key: 'overview',
+    }
+  })
+
+  return [
+    {
+      ...parentSection,
+      content: '',
+      word_count: 0,
+      paragraph_count: 0,
+    },
+    ...childSections,
+  ]
 }
 
 function buildPublicationPaperDisplayGroupKeyBySectionId(
@@ -669,35 +733,6 @@ function resolvePublicationPaperSectionAnchorPage(
     return Math.max(1, Number(section.page_end))
   }
   return null
-}
-
-function resolvePublicationPaperSectionForPage(
-  sections: PublicationPaperSectionPayload[],
-  page: number | null | undefined,
-): PublicationPaperSectionPayload | null {
-  if (!Array.isArray(sections) || sections.length === 0) {
-    return null
-  }
-  if (!Number.isFinite(page) || Number(page) < 1) {
-    return sections[0] || null
-  }
-  let bestMatch: PublicationPaperSectionPayload | null = null
-  for (const section of sections) {
-    const start = resolvePublicationPaperSectionAnchorPage(section)
-    if (!start) {
-      continue
-    }
-    if (Number(page) < start) {
-      break
-    }
-    const end = Number.isFinite(section.page_end) ? Math.max(start, Number(section.page_end)) : start
-    if (Number(page) <= end) {
-      bestMatch = section
-    } else if (start <= Number(page)) {
-      bestMatch = section
-    }
-  }
-  return bestMatch || sections[0] || null
 }
 
 const PUBLICATION_FILE_CLASSIFICATION_OPTIONS: Array<{
@@ -4514,14 +4549,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       || selectedWork?.abstract
       || '',
     ).trim()
-    const syntheticAbstractSection = buildPublicationReaderSyntheticAbstractSection(
+    const syntheticAbstractSections = buildPublicationReaderSyntheticAbstractSections(
       abstractSource,
       selectedPaperSections,
     )
-    if (!syntheticAbstractSection) {
+    if (!syntheticAbstractSections.length) {
       return selectedPaperSections
     }
-    return [syntheticAbstractSection, ...selectedPaperSections]
+    return [...syntheticAbstractSections, ...selectedPaperSections]
   }, [selectedDetail?.abstract, selectedDetail?.structured_abstract?.source_abstract, selectedPaperSections, selectedWork?.abstract])
   const selectedPaperAssetsById = useMemo(() => {
     const next = new Map<string, PublicationPaperAssetPayload>()
@@ -4680,7 +4715,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         label: section.title || section.raw_label || 'Untitled section',
         indent,
         target: { kind: 'section', id: section.id },
-        isActive: publicationReaderActiveSectionId === section.id,
       })
       const children = (selectedPaperSectionChildrenByParent.get(section.id) || [])
         .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === groupKey)
@@ -4701,13 +4735,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           label: definition.label,
           toneClassName: definition.toneClassName,
           target: assets[0]?.id ? { kind: 'asset', id: assets[0].id } : null,
-          isActive: false,
           items: assets.map((asset) => ({
             id: asset.id,
             label: asset.title || asset.file_name || definition.label,
             indent: 1,
             target: { kind: 'asset', id: asset.id },
-            isActive: false,
           })),
         })
         return groups
@@ -4749,13 +4781,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         label: definition.label,
         toneClassName: definition.toneClassName,
         target: primarySection?.id ? { kind: 'section', id: primarySection.id } : null,
-        isActive: sections.some((section) => section.id === publicationReaderActiveSectionId),
         items,
       })
       return groups
     }, [])
   }, [
-    publicationReaderActiveSectionId,
     selectedPaperDisplayGroupKeyBySectionId,
     selectedPaperFigures,
     selectedPaperSectionChildrenByParent,
@@ -4777,10 +4807,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedReaderActiveSectionAnchorPage = useMemo(
     () => resolvePublicationPaperSectionAnchorPage(selectedReaderActiveSection),
     [selectedReaderActiveSection],
-  )
-  const selectedReaderActiveNavigatorGroupId = useMemo(
-    () => (selectedReaderActiveSection ? selectedPaperDisplayGroupKeyBySectionId.get(selectedReaderActiveSection.id) || null : null),
-    [selectedPaperDisplayGroupKeyBySectionId, selectedReaderActiveSection],
   )
   const publicationFileMenuFile = useMemo(
     () => (publicationFileMenuState ? selectedFiles.find((file) => file.id === publicationFileMenuState.fileId) || null : null),
@@ -4867,13 +4893,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!publicationReaderOpen) {
       return
     }
-    if (selectedPaperSections.length === 0) {
+    if (selectedPaperReaderSections.length === 0) {
       setPublicationReaderActiveSectionId(null)
       return
     }
     if (
       publicationReaderActiveSectionId
-      && selectedPaperSections.some((section) => section.id === publicationReaderActiveSectionId)
+      && selectedPaperReaderSections.some((section) => section.id === publicationReaderActiveSectionId)
     ) {
       return
     }
@@ -4888,15 +4914,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       let changed = false
       const next = { ...current }
       for (const group of selectedPublicationReaderNavigatorGroups) {
-        const shouldCollapse = group.id !== selectedReaderActiveNavigatorGroupId
-        if ((current[group.id] ?? true) !== shouldCollapse) {
-          next[group.id] = shouldCollapse
+        if (!(group.id in current)) {
+          next[group.id] = false
           changed = true
         }
       }
       return changed ? next : current
     })
-  }, [publicationReaderOpen, selectedPublicationReaderNavigatorGroups, selectedReaderActiveNavigatorGroupId])
+  }, [publicationReaderOpen, selectedPublicationReaderNavigatorGroups])
 
   useEffect(() => {
     if (!publicationReaderOpen) {
@@ -4925,102 +4950,30 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!publicationReaderOpen || !selectedWorkId) {
       return
     }
-    if (selectedPaperModelResponse?.status !== 'RUNNING' && selectedPaperDocument?.parser_status !== 'PARSING') {
+    const waitingForAssets = (
+      selectedPaperDocument?.parser_status === 'FULL_TEXT_READY'
+      && selectedPaperDocument?.has_viewable_pdf
+      && selectedPaperDocument?.has_full_text_sections
+      && selectedPaperFigures.length === 0
+      && selectedPaperTables.length === 0
+    )
+    if (selectedPaperModelResponse?.status !== 'RUNNING' && selectedPaperDocument?.parser_status !== 'PARSING' && !waitingForAssets) {
       return
     }
     const timeoutId = window.setTimeout(() => {
       void loadPublicationPaperModelData(selectedWorkId, true, { silent: true })
-    }, 2400)
+    }, waitingForAssets ? 6000 : 2400)
     return () => window.clearTimeout(timeoutId)
-  }, [loadPublicationPaperModelData, publicationReaderOpen, selectedPaperDocument?.parser_status, selectedPaperModelResponse?.status, selectedWorkId])
-
-  useEffect(() => {
-    if (!publicationReaderOpen || publicationReaderViewMode !== 'pdf') {
-      return
-    }
-    const pageAnchoredSection = resolvePublicationPaperSectionForPage(selectedPaperSections, publicationReaderPdfPage)
-    if (!pageAnchoredSection || pageAnchoredSection.id === publicationReaderActiveSectionId) {
-      return
-    }
-    setPublicationReaderActiveSectionId(pageAnchoredSection.id)
   }, [
-    publicationReaderActiveSectionId,
+    loadPublicationPaperModelData,
     publicationReaderOpen,
-    publicationReaderPdfPage,
-    publicationReaderViewMode,
-    selectedPaperSections,
-  ])
-
-  useEffect(() => {
-    if (!publicationReaderOpen || publicationReaderViewMode !== 'structured') {
-      return
-    }
-    const rootNode = publicationReaderScrollViewportRef.current
-    if (!rootNode) {
-      return
-    }
-    const observedSections = selectedPaperSections
-      .map((section) => ({
-        section,
-        node: publicationReaderSectionRefs.current[section.id],
-      }))
-      .filter((entry): entry is { section: PublicationPaperSectionPayload; node: HTMLElement } => Boolean(entry.node))
-      .sort((left, right) => comparePublicationPaperSections(left.section, right.section))
-    if (observedSections.length === 0) {
-      return
-    }
-
-    let frameId = 0
-    const updateActiveSectionFromScroll = () => {
-      const rootRect = rootNode.getBoundingClientRect()
-      const anchorY = rootRect.top + Math.min(180, Math.max(96, rootRect.height * 0.22))
-      const visibleSections = observedSections
-        .map((entry) => ({
-          ...entry,
-          rect: entry.node.getBoundingClientRect(),
-        }))
-        .filter((entry) => entry.rect.bottom > rootRect.top + 20 && entry.rect.top < rootRect.bottom - 20)
-      const nearestVisibleSection = (visibleSections.length > 0 ? visibleSections : observedSections.map((entry) => ({
-        ...entry,
-        rect: entry.node.getBoundingClientRect(),
-      })))
-        .sort((left, right) => {
-          const leftDistance = Math.abs(left.rect.top - anchorY)
-          const rightDistance = Math.abs(right.rect.top - anchorY)
-          if (leftDistance !== rightDistance) {
-            return leftDistance - rightDistance
-          }
-          return left.section.order - right.section.order
-        })[0]
-      const nextSectionId = nearestVisibleSection?.section.id || null
-      if (nextSectionId && nextSectionId !== publicationReaderActiveSectionId) {
-        setPublicationReaderActiveSectionId(nextSectionId)
-      }
-    }
-
-    const scheduleUpdate = () => {
-      if (frameId) {
-        window.cancelAnimationFrame(frameId)
-      }
-      frameId = window.requestAnimationFrame(updateActiveSectionFromScroll)
-    }
-
-    scheduleUpdate()
-    rootNode.addEventListener('scroll', scheduleUpdate, { passive: true })
-    window.addEventListener('resize', scheduleUpdate)
-
-    return () => {
-      if (frameId) {
-        window.cancelAnimationFrame(frameId)
-      }
-      rootNode.removeEventListener('scroll', scheduleUpdate)
-      window.removeEventListener('resize', scheduleUpdate)
-    }
-  }, [
-    publicationReaderActiveSectionId,
-    publicationReaderOpen,
-    publicationReaderViewMode,
-    selectedPaperSections,
+    selectedPaperDocument?.has_full_text_sections,
+    selectedPaperDocument?.has_viewable_pdf,
+    selectedPaperDocument?.parser_status,
+    selectedPaperFigures.length,
+    selectedPaperModelResponse?.status,
+    selectedPaperTables.length,
+    selectedWorkId,
   ])
 
   const publicationTrajectoryChartTile = useMemo<PublicationMetricTilePayload | null>(() => {
@@ -6008,13 +5961,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [loadPublicationPaperModelData, selectedPaperDocument?.parser_status, selectedPaperFirstReaderSection, selectedPaperPrimaryPdfContentFileId, selectedPublicationReaderEntryAvailable, selectedWorkId])
 
   const onSelectPublicationReaderSection = useCallback((sectionId: string) => {
-    const selectedSection = selectedPaperReaderSections.find((section) => section.id === sectionId) || null
     setPublicationReaderActiveSectionId(sectionId)
-    const targetPdfPage = resolvePublicationPaperSectionAnchorPage(selectedSection)
-    if (publicationReaderViewMode === 'pdf' && targetPdfPage) {
-      setPublicationReaderPdfPage(targetPdfPage)
-      return
-    }
     const scrollToSection = () => {
       const node = publicationReaderSectionRefs.current[sectionId]
       if (node) {
@@ -6031,7 +5978,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     scrollToSection()
-  }, [publicationReaderViewMode, selectedPaperReaderSections])
+  }, [publicationReaderViewMode])
 
   const onTogglePublicationReaderOutlineNode = useCallback((nodeId: string) => {
     setPublicationReaderCollapsedNodeIds((current) => ({
@@ -7120,10 +7067,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               <p
                 key={`${section.id}-paragraph-${paragraphIndex}`}
                 className={cn(
-                  'leading-[1.85]',
+                  'leading-[1.9] [hyphens:auto] [text-align:justify]',
                   isSummaryBox || isSpecialSection
                     ? 'text-[0.92rem] text-[hsl(var(--tone-neutral-700))]'
-                    : 'text-[0.96rem] text-[hsl(var(--tone-neutral-800))]',
+                    : 'text-[0.97rem] text-[hsl(var(--tone-neutral-800))]',
                 )}
               >
                 {paragraph}
@@ -7184,7 +7131,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           </div>
         ) : null}
         {childSections.length > 0 ? (
-          <div className={cn('mt-5 space-y-5', depth === 0 ? 'pl-4' : 'pl-3')}>
+          <div className={cn('mt-5 space-y-5 border-l border-[hsl(var(--tone-neutral-150))]', depth === 0 ? 'pl-5' : 'pl-4')}>
             {childSections.map((childSection) => renderPublicationReaderStructuredSection(childSection, depth + 1, sectionGroupKey))}
           </div>
         ) : null}
@@ -7207,8 +7154,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             : isSummaryBox
               ? 'rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-4 py-3.5'
               : isRootSection
-                ? 'rounded-[1.35rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-5 py-5 shadow-[0_18px_40px_hsl(var(--tone-neutral-900)/0.04)]'
-                : '',
+                ? 'rounded-[1.45rem] border border-[hsl(var(--tone-neutral-200))] bg-[linear-gradient(180deg,white_0%,hsl(var(--tone-neutral-50)/0.72)_100%)] px-6 py-6 shadow-[0_20px_44px_hsl(var(--tone-neutral-900)/0.05)]'
+                : 'rounded-[1rem] border border-[hsl(var(--tone-neutral-150))] bg-[hsl(var(--tone-neutral-50)/0.48)] px-4 py-4',
         )}
       >
         {sectionContent}
@@ -7228,15 +7175,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return (
       <div className="space-y-2.5">
         {selectedPublicationReaderNavigatorGroups.map((group) => {
-          const isCollapsed = group.items.length > 0 && (publicationReaderCollapsedNodeIds[group.id] ?? true)
+          const isCollapsed = group.items.length > 0 && (publicationReaderCollapsedNodeIds[group.id] ?? false)
           return (
             <section key={group.id} className="space-y-1.5">
               <div
                 className={cn(
                   'rounded-[0.95rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-2.5 py-1.5 transition-[background-color,border-color,box-shadow,transform] duration-[var(--motion-duration-ui)] ease-out',
-                  group.isActive
-                    ? 'translate-y-[-1px] border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] shadow-[0_10px_24px_hsl(var(--tone-neutral-900)/0.04)]'
-                    : 'hover:border-[hsl(var(--tone-neutral-250))] hover:bg-[hsl(var(--tone-neutral-50)/0.55)]',
+                  'hover:border-[hsl(var(--tone-neutral-250))] hover:bg-[hsl(var(--tone-neutral-50)/0.55)]',
                 )}
               >
                 <div className="flex items-center gap-2">
@@ -7244,7 +7189,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     className={cn(
                       'h-6 w-[0.22rem] shrink-0 rounded-full transition-[transform,opacity] duration-[var(--motion-duration-ui)] ease-out',
                       group.toneClassName,
-                      group.isActive ? 'opacity-100' : 'opacity-75',
+                      'opacity-85',
                     )}
                   />
                   <button
@@ -7283,7 +7228,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       className={cn(
                         houseNavigation.item,
                         'w-full rounded-[0.85rem] border border-transparent bg-transparent px-2.5 py-2 text-left shadow-none',
-                        item.isActive && houseNavigation.itemActive,
+                        'hover:border-[hsl(var(--tone-neutral-200))] hover:bg-white',
                       )}
                       style={{ paddingLeft: `${0.75 + (item.indent * 0.8)}rem` }}
                       onClick={() => onSelectPublicationReaderNavigatorTarget(item.target)}
