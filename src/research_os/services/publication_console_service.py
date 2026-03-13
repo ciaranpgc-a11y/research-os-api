@@ -9275,6 +9275,165 @@ def _pmc_archive_image_data(
     return f"data:{content_type};base64,{base64.b64encode(content).decode('ascii')}"
 
 
+def _pmc_archive_reference_names(citation_node: ET.Element | None) -> str | None:
+    if citation_node is None:
+        return None
+    names: list[str] = []
+    person_groups = [
+        child
+        for child in citation_node.iter()
+        if _xml_local_name(getattr(child, "tag", "")) == "person-group"
+    ]
+    candidates = person_groups or [citation_node]
+    for group in candidates:
+        group_type = str(group.attrib.get("person-group-type") or "").strip().lower()
+        if person_groups and group_type not in {"", "author"}:
+            continue
+        for node in group.iter():
+            local_name = _xml_local_name(getattr(node, "tag", ""))
+            if local_name not in {"name", "string-name"}:
+                continue
+            surname = _normalize_abstract_text(_tei_node_text(_tei_first_direct_child(node, "surname")))
+            given = _normalize_abstract_text(_tei_node_text(_tei_first_direct_child(node, "given-names")))
+            if surname and given:
+                names.append(f"{surname} {given}")
+                continue
+            text_name = _normalize_abstract_text(_tei_node_text(node))
+            if text_name:
+                names.append(text_name)
+        if names:
+            break
+    if not names:
+        collab = _normalize_abstract_text(
+            _tei_node_text(_tei_first_direct_child(citation_node, "collab"))
+        )
+        return collab or None
+    if len(names) <= 6:
+        return ", ".join(names)
+    return ", ".join(names[:6]) + ", et al."
+
+
+def _pmc_archive_reference_pub_id(
+    citation_node: ET.Element | None, pub_id_type: str
+) -> str | None:
+    if citation_node is None:
+        return None
+    target = str(pub_id_type or "").strip().lower()
+    for node in citation_node.iter():
+        if _xml_local_name(getattr(node, "tag", "")) != "pub-id":
+            continue
+        node_type = str(node.attrib.get("pub-id-type") or "").strip().lower()
+        if node_type != target:
+            continue
+        value = _normalize_abstract_text(_tei_node_text(node))
+        if value:
+            return value
+    return None
+
+
+def _format_pmc_archive_reference(ref_node: ET.Element, index: int) -> dict[str, Any] | None:
+    label = _normalize_abstract_text(_tei_node_text(_tei_first_direct_child(ref_node, "label")))
+    citation_node = None
+    for tag in ("element-citation", "mixed-citation", "citation", "nlm-citation"):
+        citation_node = _tei_first_direct_child(ref_node, tag)
+        if citation_node is not None:
+            break
+    if citation_node is None:
+        citation_node = ref_node
+    raw_fallback = _normalize_abstract_text(_tei_node_text(citation_node))
+    authors = _pmc_archive_reference_names(citation_node)
+    article_title = _normalize_abstract_text(
+        _tei_node_text(_tei_first_direct_child(citation_node, "article-title"))
+    )
+    source_title = _normalize_abstract_text(
+        _tei_node_text(_tei_first_direct_child(citation_node, "source"))
+    )
+    year = _normalize_abstract_text(
+        _tei_node_text(_tei_first_direct_child(citation_node, "year"))
+    )
+    volume = _normalize_abstract_text(
+        _tei_node_text(_tei_first_direct_child(citation_node, "volume"))
+    )
+    issue = _normalize_abstract_text(
+        _tei_node_text(_tei_first_direct_child(citation_node, "issue"))
+    )
+    fpage = _normalize_abstract_text(
+        _tei_node_text(_tei_first_direct_child(citation_node, "fpage"))
+    )
+    lpage = _normalize_abstract_text(
+        _tei_node_text(_tei_first_direct_child(citation_node, "lpage"))
+    )
+    elocation = _normalize_abstract_text(
+        _tei_node_text(_tei_first_direct_child(citation_node, "elocation-id"))
+    )
+    doi = _pmc_archive_reference_pub_id(citation_node, "doi")
+
+    parts: list[str] = []
+    if authors:
+        parts.append(authors.rstrip("."))
+    if article_title:
+        parts.append(article_title.rstrip("."))
+    journal_bits = [bit for bit in [source_title, year] if bit]
+    journal_text = ". ".join(journal_bits).strip().rstrip(".")
+    if volume:
+        journal_text = f"{journal_text};{volume}" if journal_text else volume
+        if issue:
+            journal_text = f"{journal_text}({issue})"
+    elif issue and journal_text:
+        journal_text = f"{journal_text}({issue})"
+    pages = None
+    if fpage and lpage and lpage != fpage:
+        pages = f"{fpage}-{lpage}"
+    elif fpage:
+        pages = fpage
+    elif elocation:
+        pages = elocation
+    if pages:
+        journal_text = f"{journal_text}:{pages}" if journal_text else pages
+    if journal_text:
+        parts.append(journal_text.rstrip("."))
+    if doi:
+        parts.append(f"doi: {doi}")
+    formatted = ". ".join(part for part in parts if part).strip()
+    if formatted and not formatted.endswith("."):
+        formatted += "."
+    raw_text = formatted or raw_fallback
+    if not raw_text:
+        return None
+    clean_label = label or f"Reference {index}"
+    return {
+        "id": f"paper-reference-{index}",
+        "label": clean_label,
+        "raw_text": raw_text,
+    }
+
+
+def _extract_publication_paper_references_from_pmc_archive_content(
+    archive_content: bytes,
+) -> list[dict[str, Any]]:
+    if not archive_content:
+        return []
+    try:
+        with tarfile.open(fileobj=BytesIO(archive_content), mode="r:gz") as archive:
+            members = _pmc_archive_member_candidates(archive)
+            xml_member = _pmc_archive_primary_xml_member(members)
+            xml_content = _pmc_archive_read_member_bytes(archive, xml_member)
+            if not xml_content:
+                return []
+            root = ET.fromstring(xml_content)
+            references: list[dict[str, Any]] = []
+            for node in root.iter():
+                if _xml_local_name(getattr(node, "tag", "")) != "ref":
+                    continue
+                item = _format_pmc_archive_reference(node, len(references) + 1)
+                if item is not None:
+                    references.append(item)
+            return references[:500]
+    except Exception:
+        logger.exception("publication_pmc_archive_reference_extract_failed")
+        return []
+
+
 def _extract_structured_publication_assets_from_pmc_archive_content(
     archive_content: bytes,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -9298,6 +9457,7 @@ def _extract_structured_publication_assets_from_pmc_archive_content(
                     figure_index = len(figures) + 1
                     label_text = _tei_node_text(_tei_first_direct_child(node, "label"))
                     head_text = _pmc_archive_caption_title(node)
+                    graphic_href = _pmc_archive_graphic_href(node)
                     title = _publication_paper_asset_display_title(
                         label_text=label_text,
                         head_text=head_text,
@@ -9320,8 +9480,16 @@ def _extract_structured_publication_assets_from_pmc_archive_content(
                     parsed_asset["image_data"] = _pmc_archive_image_data(
                         archive,
                         members,
-                        _pmc_archive_graphic_href(node),
+                        graphic_href,
                     )
+                    href_lower = str(graphic_href or "").strip().lower()
+                    if (
+                        not parsed_asset.get("image_data")
+                        and not caption
+                        and not str(head_text or "").strip()
+                        and href_lower.endswith((".pdf", ".doc", ".docx"))
+                    ):
+                        continue
                     figures.append(parsed_asset)
                 elif local_name == "table-wrap":
                     table_index = len(tables) + 1
@@ -9854,10 +10022,16 @@ def _extract_structured_publication_paper_with_pmc_bioc(
             f"PMC BioC full-text parsing was unavailable for {pmcid}."
         )
     parsed_payload = _parse_pmc_bioc_into_structured_paper(payload=payload, title=title)
+    archive_content = _request_pmc_archive_bytes(pmcid)
+    pmc_archive_references = _extract_publication_paper_references_from_pmc_archive_content(
+        archive_content
+    )
+    if pmc_archive_references:
+        parsed_payload["references"] = pmc_archive_references
     if enrich_assets:
         try:
-            pmc_figures, pmc_tables = _extract_structured_publication_assets_from_pmc_archive(
-                pmcid
+            pmc_figures, pmc_tables = _extract_structured_publication_assets_from_pmc_archive_content(
+                archive_content
             )
             if pmc_figures:
                 parsed_payload["figures"] = _merge_publication_paper_asset_collections(

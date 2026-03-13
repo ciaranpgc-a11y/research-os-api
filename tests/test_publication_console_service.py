@@ -1982,6 +1982,96 @@ def test_publication_paper_payload_needs_asset_enrichment_when_tables_are_low_qu
     )
 
 
+def test_extract_publication_paper_references_from_pmc_archive_content_formats_citations() -> None:
+    xml = """
+    <article>
+      <back>
+        <ref-list>
+          <ref id="R1">
+            <label>1</label>
+            <element-citation publication-type="journal">
+              <person-group person-group-type="author">
+                <name><surname>Grafton-Clarke</surname><given-names>C</given-names></name>
+                <name><surname>Assadi</surname><given-names>H</given-names></name>
+              </person-group>
+              <article-title>Clinical assessment of aortic valve stenosis</article-title>
+              <source>Journal of Magnetic Resonance Imaging</source>
+              <year>2020</year>
+              <volume>51</volume>
+              <fpage>472</fpage>
+              <lpage>480</lpage>
+              <pub-id pub-id-type="doi">10.1002/jmri.26847</pub-id>
+            </element-citation>
+          </ref>
+        </ref-list>
+      </back>
+    </article>
+    """.strip()
+    buffer = BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        payload = xml.encode("utf-8")
+        info = tarfile.TarInfo(name="PMC1234567/article.nxml")
+        info.size = len(payload)
+        archive.addfile(info, BytesIO(payload))
+    references = publication_console_service._extract_publication_paper_references_from_pmc_archive_content(
+        buffer.getvalue()
+    )
+    assert len(references) == 1
+    assert references[0]["label"] == "1"
+    assert "Grafton-Clarke C, Assadi H." in references[0]["raw_text"]
+    assert "Clinical assessment of aortic valve stenosis." in references[0]["raw_text"]
+    assert "Journal of Magnetic Resonance Imaging. 2020;51:472-480." in references[0]["raw_text"]
+    assert "doi: 10.1002/jmri.26847." in references[0]["raw_text"]
+
+
+def test_extract_structured_publication_assets_from_pmc_archive_ignores_non_image_supplementary_fig() -> None:
+    xml = """
+    <article xmlns:xlink="http://www.w3.org/1999/xlink">
+      <body>
+        <fig id="f1">
+          <label>Figure 1</label>
+          <caption><title>Valid figure</title></caption>
+          <graphic xlink:href="figure-1.png" />
+        </fig>
+        <fig id="f2">
+          <supplementary-material xlink:href="reviewer_comments.pdf" />
+        </fig>
+      </body>
+    </article>
+    """.strip()
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + (32).to_bytes(4, "big")
+        + (32).to_bytes(4, "big")
+        + b"\x08\x02\x00\x00\x00"
+        + (b"x" * 1024)
+    )
+    pdf_bytes = b"%PDF-1.7 reviewer comments"
+    buffer = BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        xml_payload = xml.encode("utf-8")
+        xml_info = tarfile.TarInfo(name="PMC7654321/article.nxml")
+        xml_info.size = len(xml_payload)
+        archive.addfile(xml_info, BytesIO(xml_payload))
+
+        png_info = tarfile.TarInfo(name="PMC7654321/figure-1.png")
+        png_info.size = len(png_bytes)
+        archive.addfile(png_info, BytesIO(png_bytes))
+
+        pdf_info = tarfile.TarInfo(name="PMC7654321/reviewer_comments.pdf")
+        pdf_info.size = len(pdf_bytes)
+        archive.addfile(pdf_info, BytesIO(pdf_bytes))
+
+    figures, tables = publication_console_service._extract_structured_publication_assets_from_pmc_archive_content(
+        buffer.getvalue()
+    )
+    assert len(tables) == 0
+    assert len(figures) == 1
+    assert figures[0]["title"] == "Figure 1"
+    assert str(figures[0].get("image_data") or "").startswith("data:image/png;base64,")
+
+
 def test_extract_structured_publication_paper_with_pmc_bioc_prefers_archive_assets(
     monkeypatch,
 ) -> None:
