@@ -263,6 +263,17 @@ function formatPublicationPaperStructuredGroupLabel(value: string | null | undef
   }
 }
 
+function publicationReaderLabelSuggestsAbstractSummary(labelText: string): boolean {
+  return (
+    labelText.includes('already known')
+    || labelText.includes('study adds')
+    || labelText.includes('might affect research')
+    || labelText.includes('practice or policy')
+    || labelText.includes('what this study adds')
+    || labelText.includes('what is already known')
+  )
+}
+
 function normalizePublicationPaperDisplayGroupKey(
   section: Pick<
     PublicationPaperSectionPayload,
@@ -301,6 +312,7 @@ function normalizePublicationPaperDisplayGroupKey(
     || majorKey === 'overview'
     || sectionRole === 'summary_box'
     || documentZone === 'front'
+    || publicationReaderLabelSuggestsAbstractSummary(labelText)
     || labelText === 'abstract'
     || labelText.startsWith('abstract ')
   ) {
@@ -368,6 +380,51 @@ function normalizePublicationPaperDisplayGroupKey(
   }
 
   return null
+}
+
+function buildPublicationReaderSyntheticAbstractSection(
+  abstractText: string,
+  sections: PublicationPaperSectionPayload[],
+): PublicationPaperSectionPayload | null {
+  const normalizedAbstract = normalizeAbstractDisplayText(abstractText).trim()
+  if (!normalizedAbstract) {
+    return null
+  }
+
+  const orderAnchor = sections.length > 0
+    ? Math.min(...sections.map((section) => section.order))
+    : 0
+  const paragraphCount = splitLongTextIntoParagraphs(normalizedAbstract, 800).length
+  const wordCount = normalizedAbstract.split(/\s+/).filter(Boolean).length
+
+  return {
+    id: 'synthetic-reader-abstract',
+    title: 'Abstract',
+    raw_label: 'Abstract',
+    label_original: 'Abstract',
+    label_normalized: 'abstract',
+    kind: 'abstract',
+    canonical_kind: 'abstract',
+    section_type: 'canonical',
+    canonical_map: 'abstract',
+    content: normalizedAbstract,
+    source: 'derived',
+    source_parser: null,
+    order: orderAnchor - 1,
+    page_start: null,
+    page_end: null,
+    level: 0,
+    parent_id: null,
+    bounding_boxes: [],
+    confidence: null,
+    is_generated_heading: true,
+    word_count: wordCount,
+    paragraph_count: paragraphCount,
+    document_zone: 'front',
+    section_role: 'abstract_summary',
+    journal_section_family: null,
+    major_section_key: 'overview',
+  }
 }
 
 function buildPublicationPaperDisplayGroupKeyBySectionId(
@@ -4418,6 +4475,54 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedPaperTables = selectedPaperModel?.tables || []
   const selectedPaperDatasets = selectedPaperModel?.datasets || []
   const selectedPaperAttachments = selectedPaperModel?.attachments || []
+  const selectedPaperReaderSections = useMemo(() => {
+    if (!selectedPaperSections.length) {
+      return selectedPaperSections
+    }
+
+    const hasExplicitAbstractSection = selectedPaperSections.some((section) => {
+      const labelText = [
+        section.title,
+        section.raw_label,
+        section.label_original,
+        section.label_normalized,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim()
+        .toLowerCase()
+      const groupKey = normalizePublicationPaperDisplayGroupKey(section)
+      return (
+        groupKey === 'abstract'
+        && !publicationReaderLabelSuggestsAbstractSummary(labelText)
+        && (
+          labelText === 'abstract'
+          || labelText.startsWith('abstract ')
+          || section.canonical_kind === 'abstract'
+          || section.canonical_map === 'abstract'
+        )
+      )
+    })
+
+    if (hasExplicitAbstractSection) {
+      return selectedPaperSections
+    }
+
+    const abstractSource = String(
+      selectedDetail?.structured_abstract?.source_abstract
+      || selectedDetail?.abstract
+      || selectedWork?.abstract
+      || '',
+    ).trim()
+    const syntheticAbstractSection = buildPublicationReaderSyntheticAbstractSection(
+      abstractSource,
+      selectedPaperSections,
+    )
+    if (!syntheticAbstractSection) {
+      return selectedPaperSections
+    }
+    return [syntheticAbstractSection, ...selectedPaperSections]
+  }, [selectedDetail?.abstract, selectedDetail?.structured_abstract?.source_abstract, selectedPaperSections, selectedWork?.abstract])
   const selectedPaperAssetsById = useMemo(() => {
     const next = new Map<string, PublicationPaperAssetPayload>()
     for (const asset of [...selectedPaperFigures, ...selectedPaperTables, ...selectedPaperDatasets, ...selectedPaperAttachments]) {
@@ -4430,7 +4535,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedPaperComponentSummary = selectedPaperModel?.component_summary || null
   const selectedPaperSectionChildrenByParent = useMemo(() => {
     const next = new Map<string | null, PublicationPaperSectionPayload[]>()
-    for (const section of selectedPaperSections) {
+    for (const section of selectedPaperReaderSections) {
       const parentId = section.parent_id || null
       const existing = next.get(parentId)
       if (existing) {
@@ -4443,7 +4548,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       items.sort(comparePublicationPaperSections)
     }
     return next
-  }, [selectedPaperSections])
+  }, [selectedPaperReaderSections])
 
   const publicationReaderInlineAssetRefs = useRef<Record<string, HTMLElement | null>>({})
 
@@ -4509,15 +4614,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [selectedPaperFigures, selectedPaperInlineAssetsBySectionId, selectedPaperTables])
 
   const selectedPaperDisplayGroupKeyBySectionId = useMemo(
-    () => buildPublicationPaperDisplayGroupKeyBySectionId(selectedPaperSections),
-    [selectedPaperSections],
+    () => buildPublicationPaperDisplayGroupKeyBySectionId(selectedPaperReaderSections),
+    [selectedPaperReaderSections],
   )
   const selectedStructuredPaperGroups = useMemo<PublicationPaperStructuredGroupPayload[]>(() => {
-    if (!selectedPaperSections.length) {
+    if (!selectedPaperReaderSections.length) {
       return []
     }
     const sectionsByGroup = new Map<string, PublicationPaperSectionPayload[]>()
-    for (const section of selectedPaperSections) {
+    for (const section of selectedPaperReaderSections) {
       const groupKey = selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null
       if (!groupKey || groupKey === 'assets') {
         continue
@@ -4562,7 +4667,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         }
         return left.label.localeCompare(right.label)
       })
-  }, [selectedPaperDisplayGroupKeyBySectionId, selectedPaperSections])
+  }, [selectedPaperDisplayGroupKeyBySectionId, selectedPaperReaderSections])
   const selectedPublicationReaderNavigatorGroups = useMemo<PublicationReaderNavigatorGroupPayload[]>(() => {
     const buildSectionItems = (
       section: PublicationPaperSectionPayload,
@@ -4608,7 +4713,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         return groups
       }
 
-      const sections = selectedPaperSections
+      const sections = selectedPaperReaderSections
         .filter((section) => (selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null) === definition.key)
         .sort(comparePublicationPaperSections)
       if (sections.length === 0) {
@@ -4654,20 +4759,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPaperDisplayGroupKeyBySectionId,
     selectedPaperFigures,
     selectedPaperSectionChildrenByParent,
-    selectedPaperSections,
+    selectedPaperReaderSections,
     selectedPaperTables,
   ])
   const selectedPaperFirstReaderSection = useMemo(
-    () => selectedStructuredPaperGroups.flatMap((group) => group.rootSections)[0] || selectedPaperSections[0] || null,
-    [selectedPaperSections, selectedStructuredPaperGroups],
+    () => selectedStructuredPaperGroups.flatMap((group) => group.rootSections)[0] || selectedPaperReaderSections[0] || null,
+    [selectedPaperReaderSections, selectedStructuredPaperGroups],
   )
   const selectedReaderActiveSection = useMemo(
     () => (
       publicationReaderActiveSectionId
-        ? selectedPaperSections.find((section) => section.id === publicationReaderActiveSectionId) || null
+        ? selectedPaperReaderSections.find((section) => section.id === publicationReaderActiveSectionId) || null
         : selectedPaperFirstReaderSection
     ),
-    [publicationReaderActiveSectionId, selectedPaperFirstReaderSection, selectedPaperSections],
+    [publicationReaderActiveSectionId, selectedPaperFirstReaderSection, selectedPaperReaderSections],
   )
   const selectedReaderActiveSectionAnchorPage = useMemo(
     () => resolvePublicationPaperSectionAnchorPage(selectedReaderActiveSection),
@@ -4773,7 +4878,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     setPublicationReaderActiveSectionId(selectedPaperFirstReaderSection?.id || null)
-  }, [publicationReaderActiveSectionId, publicationReaderOpen, selectedPaperFirstReaderSection, selectedPaperSections])
+  }, [publicationReaderActiveSectionId, publicationReaderOpen, selectedPaperFirstReaderSection, selectedPaperReaderSections])
 
   useEffect(() => {
     if (!publicationReaderOpen || selectedPublicationReaderNavigatorGroups.length === 0) {
@@ -5903,7 +6008,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [loadPublicationPaperModelData, selectedPaperDocument?.parser_status, selectedPaperFirstReaderSection, selectedPaperPrimaryPdfContentFileId, selectedPublicationReaderEntryAvailable, selectedWorkId])
 
   const onSelectPublicationReaderSection = useCallback((sectionId: string) => {
-    const selectedSection = selectedPaperSections.find((section) => section.id === sectionId) || null
+    const selectedSection = selectedPaperReaderSections.find((section) => section.id === sectionId) || null
     setPublicationReaderActiveSectionId(sectionId)
     const targetPdfPage = resolvePublicationPaperSectionAnchorPage(selectedSection)
     if (publicationReaderViewMode === 'pdf' && targetPdfPage) {
@@ -5926,7 +6031,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     scrollToSection()
-  }, [publicationReaderViewMode, selectedPaperSections])
+  }, [publicationReaderViewMode, selectedPaperReaderSections])
 
   const onTogglePublicationReaderOutlineNode = useCallback((nodeId: string) => {
     setPublicationReaderCollapsedNodeIds((current) => ({
