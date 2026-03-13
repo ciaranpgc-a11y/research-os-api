@@ -138,9 +138,11 @@ type PublicationPaperStructuredGroupPayload = {
   sections: PublicationPaperSectionPayload[]
   rootSections: PublicationPaperSectionPayload[]
 }
+const PUBLICATION_READER_REFERENCES_TARGET_ID = '__references__'
 type PublicationReaderNavigatorTarget =
   | { kind: 'section'; id: string }
   | { kind: 'asset'; id: string }
+  | { kind: 'references'; id: typeof PUBLICATION_READER_REFERENCES_TARGET_ID }
   | null
 type PublicationReaderNavigatorItemPayload = {
   id: string
@@ -3170,6 +3172,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   } | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
   const publicationReaderSectionRefs = useRef<Record<string, HTMLElement | null>>({})
+  const publicationReaderReferencesRef = useRef<HTMLElement | null>(null)
   const publicationReaderScrollViewportRef = useRef<HTMLElement | null>(null)
   const resolvePublicationTableAvailableWidth = useCallback(() => {
     const measuredClient = publicationTableLayoutRef.current?.clientWidth
@@ -4893,6 +4896,22 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         return groups
       }
 
+      if (definition.key === 'references') {
+        if (selectedPaperReferences.length === 0) {
+          return groups
+        }
+        groups.push({
+          id: definition.key,
+          label: definition.label,
+          toneClassName: definition.toneClassName,
+          target: { kind: 'references', id: PUBLICATION_READER_REFERENCES_TARGET_ID },
+          isActive: publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID,
+          badgeCount: selectedPaperReferences.length,
+          items: [],
+        })
+        return groups
+      }
+
       const sections = selectedPaperSections
         .filter((section) => (selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null) === definition.key)
         .sort(comparePublicationPaperSections)
@@ -4938,6 +4957,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [
     selectedPaperStructuredGroupLabelByKey,
     selectedPaperDisplayGroupKeyBySectionId,
+    selectedPaperReferences.length,
     selectedPaperRenderableFigures,
     selectedPaperSectionChildrenByParent,
     selectedPaperSections,
@@ -4949,11 +4969,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     [selectedPaperSections, selectedStructuredPaperGroups],
   )
   const selectedReaderActiveSection = useMemo(
-    () => (
-      publicationReaderActiveSectionId
+    () => {
+      if (publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID) {
+        return null
+      }
+      return publicationReaderActiveSectionId
         ? selectedPaperSections.find((section) => section.id === publicationReaderActiveSectionId) || null
         : selectedPaperFirstReaderSection
-    ),
+    },
     [publicationReaderActiveSectionId, selectedPaperFirstReaderSection, selectedPaperSections],
   )
   const selectedReaderActiveSectionAnchorPage = useMemo(
@@ -5014,6 +5037,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderCollapsedNodeIds({})
     setPublicationReaderInspectorOpen(false)
     publicationReaderSectionRefs.current = {}
+    publicationReaderReferencesRef.current = null
     publicationReaderInlineAssetRefs.current = {}
   }, [selectedWorkId])
 
@@ -5045,12 +5069,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     if (selectedPaperSections.length === 0) {
-      setPublicationReaderActiveSectionId(null)
+      if (publicationReaderActiveSectionId !== PUBLICATION_READER_REFERENCES_TARGET_ID) {
+        setPublicationReaderActiveSectionId(null)
+      }
       return
     }
     if (
       publicationReaderActiveSectionId
-      && selectedPaperSections.some((section) => section.id === publicationReaderActiveSectionId)
+      && (
+        publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID
+        || selectedPaperSections.some((section) => section.id === publicationReaderActiveSectionId)
+      )
     ) {
       return
     }
@@ -6393,11 +6422,31 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       onSelectPublicationReaderSection(target.id)
       return
     }
+    if (target.kind === 'references') {
+      setPublicationReaderActiveSectionId(PUBLICATION_READER_REFERENCES_TARGET_ID)
+      const scrollToReferences = () => {
+        const node = publicationReaderReferencesRef.current
+        if (node) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }
+      if (publicationReaderViewMode !== 'structured') {
+        setPublicationReaderViewMode('structured')
+        if (typeof window !== 'undefined') {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(scrollToReferences)
+          })
+        }
+        return
+      }
+      scrollToReferences()
+      return
+    }
     const matchedAsset = selectedPaperAssetsById.get(target.id)
     if (matchedAsset) {
       onOpenPublicationReaderAsset(matchedAsset)
     }
-  }, [onOpenPublicationReaderAsset, onSelectPublicationReaderSection, selectedPaperAssetsById])
+  }, [onOpenPublicationReaderAsset, onSelectPublicationReaderSection, publicationReaderViewMode, selectedPaperAssetsById])
 
   const onOpenPublicationReaderPrimaryPdf = () => {
     if (selectedPaperPrimaryFile) {
@@ -7088,7 +7137,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const isMajorHeading = depth === 0 && publicationReaderSectionMatchesGroupLabel(section, sectionGroupKey || '')
     const isSummaryBox = String(section.section_role || '') === 'summary_box' && depth === 0
     const isRootSection = depth === 0 && !isSummaryBox
-    const showMarker = isMajorHeading
+    const suppressHeadingRow = Boolean(isMajorHeading && sectionGroupKey === 'article_information')
+    const showMarker = isMajorHeading && !suppressHeadingRow
     const displaySectionTitle = stripPublicationReaderHeadingPrefix(section.title || section.raw_label || 'Untitled section')
     const rawLabelRedundant = !section.raw_label
       || normalizePublicationReaderHeadingLabel(section.raw_label) === normalizePublicationReaderHeadingLabel(section.title)
@@ -7104,45 +7154,47 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
     const sectionContent = (
       <>
-        <div className={cn('flex min-w-0 items-start', showMarker ? 'gap-3' : 'gap-0')}>
-          {showMarker ? (
-            <span
-              className={cn(
-                'mt-1 shrink-0 rounded-full opacity-90',
-                'h-5 w-[0.22rem]',
-                sectionToneClassName,
-              )}
-            />
-          ) : null}
-          <div className={cn('min-w-0 flex-1', showMarker ? '' : depth > 0 ? '' : '')}>
-            <h3
-              className={cn(
-                'leading-tight transition-colors duration-[var(--motion-duration-ui)] ease-out',
-                isSummaryBox
-                  ? 'text-[0.82rem] font-semibold uppercase tracking-[0.04em]'
-                  : depth === 0
-                    ? 'text-[1.05rem] font-semibold'
-                    : depth === 1
-                      ? 'text-[0.94rem] font-medium'
-                      : 'text-[0.88rem] font-medium',
-                isActiveSection
-                  ? 'text-[hsl(var(--tone-accent-800))]'
-                  : isSummaryBox
-                    ? 'text-[hsl(var(--tone-neutral-600))]'
-                    : depth === 0
-                      ? 'text-[hsl(var(--tone-neutral-900))]'
-                      : 'text-[hsl(var(--tone-neutral-800))]',
-              )}
-            >
-              {displaySectionTitle}
-            </h3>
-            {!rawLabelRedundant ? (
-              <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">
-                {section.raw_label}
-              </p>
+        {!suppressHeadingRow ? (
+          <div className={cn('flex min-w-0 items-start', showMarker ? 'gap-3' : 'gap-0')}>
+            {showMarker ? (
+              <span
+                className={cn(
+                  'mt-1 shrink-0 rounded-full opacity-90',
+                  'h-5 w-[0.22rem]',
+                  sectionToneClassName,
+                )}
+              />
             ) : null}
+            <div className={cn('min-w-0 flex-1', showMarker ? '' : depth > 0 ? '' : '')}>
+              <h3
+                className={cn(
+                  'leading-tight transition-colors duration-[var(--motion-duration-ui)] ease-out',
+                  isSummaryBox
+                    ? 'text-[0.82rem] font-semibold uppercase tracking-[0.04em]'
+                    : depth === 0
+                      ? 'text-[1.05rem] font-semibold'
+                      : depth === 1
+                        ? 'text-[0.94rem] font-medium'
+                        : 'text-[0.88rem] font-medium',
+                  isActiveSection
+                    ? 'text-[hsl(var(--tone-accent-800))]'
+                    : isSummaryBox
+                      ? 'text-[hsl(var(--tone-neutral-600))]'
+                      : depth === 0
+                        ? 'text-[hsl(var(--tone-neutral-900))]'
+                        : 'text-[hsl(var(--tone-neutral-800))]',
+                )}
+              >
+                {displaySectionTitle}
+              </h3>
+              {!rawLabelRedundant ? (
+                <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">
+                  {section.raw_label}
+                </p>
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
         {sectionParagraphs.length > 0 ? (
           <div className={cn('mt-3 space-y-3.5', showMarker ? 'pl-[0.95rem]' : '')}>
             {sectionParagraphs.map((paragraph, paragraphIndex) => (
@@ -9542,13 +9594,25 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </section>
                             ) : null}
                             {selectedPaperReferences.length > 0 ? (
-                              <section className="border-t border-[hsl(var(--tone-neutral-200))] pt-7">
-                                <div className="rounded-[1.15rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-5 py-5 shadow-[0_8px_24px_hsl(var(--tone-neutral-900)/0.04)]">
-                                  <div className="mb-4 flex items-center gap-3">
-                                    <span className="inline-flex h-8 w-1.5 rounded-full bg-[hsl(var(--tone-neutral-500))]" />
-                                    <h2 className="text-[1.18rem] font-semibold tracking-[-0.01em] text-[hsl(var(--tone-neutral-900))]">
-                                      References
-                                    </h2>
+                              <section
+                                ref={(node) => {
+                                  publicationReaderReferencesRef.current = node
+                                }}
+                                className="border-t border-[hsl(var(--tone-neutral-200))] pt-7 scroll-mt-6"
+                              >
+                                <div className="rounded-[1.25rem] border border-[hsl(var(--tone-neutral-200))] bg-[linear-gradient(180deg,white_0%,hsl(var(--tone-neutral-50)/0.72)_100%)] px-5 py-5 shadow-[0_12px_30px_hsl(var(--tone-neutral-900)/0.05)] sm:px-6">
+                                  <div className="mb-4 flex items-start justify-between gap-4">
+                                    <div className="min-w-0">
+                                      <h2 className="text-[1.05rem] font-semibold text-[hsl(var(--tone-neutral-900))]">
+                                        References
+                                      </h2>
+                                      <p className="mt-1 text-[0.8rem] leading-relaxed text-[hsl(var(--tone-neutral-500))]">
+                                        Source citations extracted from the parsed manuscript.
+                                      </p>
+                                    </div>
+                                    <span className="inline-flex min-w-[1.8rem] items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white px-2 py-1 text-[0.68rem] font-semibold text-[hsl(var(--tone-neutral-500))]">
+                                      {selectedPaperReferences.length}
+                                    </span>
                                   </div>
                                   <ol className="space-y-3 text-[0.92rem] leading-[1.8] text-[hsl(var(--tone-neutral-700))]">
                                     {selectedPaperReferences.map((reference, index) => (
@@ -9556,7 +9620,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         <span className="mt-0.5 inline-flex min-w-[1.6rem] items-center justify-center rounded-full bg-[hsl(var(--tone-neutral-100))] px-2 py-1 text-[0.68rem] font-semibold text-[hsl(var(--tone-neutral-600))]">
                                           {index + 1}
                                         </span>
-                                        <span className="min-w-0 flex-1">{reference.rawText}</span>
+                                        <span className="min-w-0 flex-1">{String(reference.rawText || '').replace(/\s+/g, ' ').trim()}</span>
                                       </li>
                                     ))}
                                   </ol>

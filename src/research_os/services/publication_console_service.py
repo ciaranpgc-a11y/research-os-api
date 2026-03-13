@@ -172,7 +172,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v28"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v29"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -7790,9 +7790,14 @@ def _extract_title_matched_pdf_figure_image(
             page_images = page.get_images(full=True) or []
         except Exception:
             page_images = []
-        best_candidate: tuple[int, float, int, int, int] | None = None
+        best_candidate: tuple[int, float, float, int, int, int] | None = None
         for title_rect in title_rects:
+            title_top = float(getattr(title_rect, "y0", 0.0))
             title_bottom = float(getattr(title_rect, "y1", 0.0))
+            title_center_x = (
+                float(getattr(title_rect, "x0", 0.0))
+                + float(getattr(title_rect, "x1", 0.0))
+            ) / 2.0
             for image in page_images:
                 try:
                     xref = int(image[0])
@@ -7815,17 +7820,28 @@ def _extract_title_matched_pdf_figure_image(
                 height = int(extracted.get("height") or 0)
                 image_area = max(0, width * height)
                 for rect in rects:
+                    rect_left = float(getattr(rect, "x0", 0.0))
+                    rect_right = float(getattr(rect, "x1", 0.0))
                     rect_top = float(getattr(rect, "y0", 0.0))
                     rect_bottom = float(getattr(rect, "y1", 0.0))
-                    below_title = 1 if rect_top >= title_bottom else 0
-                    distance = (
-                        rect_top - title_bottom
-                        if below_title
-                        else abs(rect_bottom - float(getattr(title_rect, "y0", 0.0))) + 500.0
-                    )
+                    rect_center_x = (rect_left + rect_right) / 2.0
+                    if rect_bottom <= title_top:
+                        relative_position = 2
+                        distance = title_top - rect_bottom
+                    elif rect_top >= title_bottom:
+                        relative_position = 1
+                        distance = rect_top - title_bottom
+                    else:
+                        relative_position = 0
+                        distance = min(
+                            abs(rect_top - title_bottom),
+                            abs(rect_bottom - title_top),
+                        ) + 750.0
+                    horizontal_distance = abs(rect_center_x - title_center_x)
                     candidate = (
-                        below_title,
+                        relative_position,
                         -distance,
+                        -horizontal_distance,
                         image_area,
                         len(img_bytes),
                         xref,
@@ -7835,7 +7851,7 @@ def _extract_title_matched_pdf_figure_image(
         if best_candidate is None:
             continue
         try:
-            extracted = doc.extract_image(best_candidate[4]) or {}
+            extracted = doc.extract_image(best_candidate[5]) or {}
         except Exception:
             continue
         img_bytes = extracted.get("image")

@@ -3872,6 +3872,84 @@ def test_crop_figure_images_upgrades_low_quality_pmc_figure_via_title_match(monk
     assert str(result[0].get("image_data") or "").startswith("data:image/png;base64,")
 
 
+def test_extract_title_matched_pdf_figure_image_prefers_image_above_caption(
+    monkeypatch,
+) -> None:
+    class _FakeRect:
+        def __init__(self, x0: float, y0: float, x1: float, y1: float) -> None:
+            self.x0 = x0
+            self.y0 = y0
+            self.x1 = x1
+            self.y1 = y1
+
+    class _FakePage:
+        def search_for(self, value: str):
+            assert value == "Figure 2"
+            return [_FakeRect(40, 290, 90, 301)]
+
+        def get_images(self, full: bool = False):  # noqa: FBT002
+            assert full is True
+            return [(54,), (55,)]
+
+        def get_image_rects(self, xref: int):
+            if xref == 54:
+                return [_FakeRect(40, 48, 555, 287)]
+            if xref == 55:
+                return [_FakeRect(40, 457, 555, 684)]
+            return []
+
+    class _FakeDoc:
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> _FakePage:
+            assert index == 0
+            return _FakePage()
+
+        def extract_image(self, xref: int):
+            if xref == 54:
+                return {
+                    "image": (
+                        b"\x89PNG\r\n\x1a\n"
+                        + b"\x00\x00\x00\rIHDR"
+                        + (2775).to_bytes(4, "big")
+                        + (1288).to_bytes(4, "big")
+                        + b"\x08\x02\x00\x00\x00"
+                        + (b"a" * 30000)
+                    ),
+                    "ext": "png",
+                    "width": 2775,
+                    "height": 1288,
+                }
+            if xref == 55:
+                return {
+                    "image": (
+                        b"\x89PNG\r\n\x1a\n"
+                        + b"\x00\x00\x00\rIHDR"
+                        + (2792).to_bytes(4, "big")
+                        + (1232).to_bytes(4, "big")
+                        + b"\x08\x02\x00\x00\x00"
+                        + (b"b" * 30000)
+                    ),
+                    "ext": "png",
+                    "width": 2792,
+                    "height": 1232,
+                }
+            raise AssertionError(f"unexpected xref {xref}")
+
+    data_uri = publication_console_service._extract_title_matched_pdf_figure_image(
+        doc=_FakeDoc(),
+        figure={"title": "Figure 2"},
+    )
+
+    assert isinstance(data_uri, str)
+    assert data_uri.startswith("data:image/png;base64,")
+    encoded = data_uri.split(",", 1)[1]
+    decoded = base64.b64decode(encoded)
+    assert b"a" * 100 in decoded
+    assert b"b" * 100 not in decoded
+
+
 def test_merge_publication_paper_asset_candidate_prefers_higher_quality_figure_image() -> None:
     weak_gif = (
         b"GIF89a"
