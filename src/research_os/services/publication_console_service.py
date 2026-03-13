@@ -10076,6 +10076,11 @@ def _publication_paper_payload_needs_asset_enrichment(
     has_low_quality_tables = _publication_paper_assets_include_low_quality_tables(
         tables
     )
+    enrichment_status = (
+        str(provenance.get("asset_enrichment_status") or "").strip().upper() or None
+    )
+    if enrichment_status is None:
+        return True
     if (
         missing_figure_count == 0
         and missing_table_count == 0
@@ -10089,10 +10094,7 @@ def _publication_paper_payload_needs_asset_enrichment(
         and surfaced_figure_count == 0
         and surfaced_table_count == 0
     ):
-        return False
-    enrichment_status = (
-        str(provenance.get("asset_enrichment_status") or "").strip().upper() or None
-    )
+        return True
     enrichment_checked_at = _parse_iso_datetime(
         provenance.get("asset_enrichment_checked_at")
     )

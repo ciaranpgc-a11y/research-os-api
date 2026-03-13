@@ -1814,6 +1814,31 @@ def test_publication_paper_payload_needs_asset_enrichment_when_assets_are_captio
     )
 
 
+def test_publication_paper_payload_needs_asset_enrichment_runs_initial_asset_pass_without_counts() -> None:
+    payload = {
+        "document": {
+            "has_viewable_pdf": True,
+            "parser_status": publication_console_service.STRUCTURED_PAPER_STATUS_FULL_TEXT_READY,
+        },
+        "provenance": {
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC,
+        },
+        "component_summary": {
+            "figure_asset_count": 0,
+            "table_asset_count": 0,
+        },
+        "figures": [],
+        "tables": [],
+    }
+
+    assert (
+        publication_console_service._publication_paper_payload_needs_asset_enrichment(
+            payload
+        )
+        is True
+    )
+
+
 def test_publication_paper_payload_needs_asset_enrichment_when_figures_are_low_quality() -> None:
     weak_gif = (
         b"GIF89a"
