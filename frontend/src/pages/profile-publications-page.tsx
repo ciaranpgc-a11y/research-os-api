@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, Filter, Hammer, Loader2, Mail, Paperclip, Pencil, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, BookOpen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, FlaskConical, Filter, Hammer, Lightbulb, Loader2, Mail, Paperclip, Pencil, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
@@ -457,6 +457,73 @@ function publicationFileOpenAccessSourceLabel(
   } catch {
     return 'Open access'
   }
+}
+
+function normalizePublicationReaderSectionLabel(value: string | null | undefined): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function getPublicationReaderSpecialSectionTone(
+  section: Pick<
+    PublicationPaperSectionPayload,
+    'title' | 'raw_label' | 'label_original' | 'label_normalized'
+  >,
+): {
+  badge: string
+  title: string
+  icon: ReactNode
+  shellClassName: string
+  badgeClassName: string
+} | null {
+  const normalizedLabel = normalizePublicationReaderSectionLabel(
+    section.title
+    || section.raw_label
+    || section.label_original
+    || section.label_normalized,
+  )
+  if (!normalizedLabel) {
+    return null
+  }
+  if (normalizedLabel.includes('already known')) {
+    return {
+      badge: 'Context',
+      title: 'What Is Already Known',
+      icon: <BookOpen className="h-4 w-4" />,
+      shellClassName:
+        'border-[hsl(var(--tone-accent-200))] bg-[linear-gradient(180deg,hsl(var(--tone-accent-50))_0%,white_100%)]',
+      badgeClassName:
+        'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]',
+    }
+  }
+  if (normalizedLabel.includes('study adds')) {
+    return {
+      badge: 'Contribution',
+      title: 'What This Study Adds',
+      icon: <Lightbulb className="h-4 w-4" />,
+      shellClassName:
+        'border-[hsl(var(--tone-positive-200))] bg-[linear-gradient(180deg,hsl(var(--tone-positive-50))_0%,white_100%)]',
+      badgeClassName:
+        'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]',
+    }
+  }
+  if (
+    normalizedLabel.includes('might affect research')
+    || normalizedLabel.includes('practice or policy')
+  ) {
+    return {
+      badge: 'Implication',
+      title: 'How This Study Might Affect Practice',
+      icon: <FlaskConical className="h-4 w-4" />,
+      shellClassName:
+        'border-[hsl(var(--tone-warning-200))] bg-[linear-gradient(180deg,hsl(var(--tone-warning-50))_0%,white_100%)]',
+      badgeClassName:
+        'border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-800))]',
+    }
+  }
+  return null
 }
 
 function resolvePublicationAssetUrl(value: string | null | undefined): string {
@@ -4322,6 +4389,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedPaperSections = selectedPaperModel?.sections || []
   const selectedPaperMetadata = selectedPaperModel?.metadata || null
   const selectedPaperDocument = selectedPaperModel?.document || null
+  const selectedPaperParsingInProgress = (
+    selectedPaperModelResponse?.status === 'RUNNING'
+    || selectedPaperDocument?.parser_status === 'PARSING'
+  )
   const selectedPaperPrimaryFile = useMemo(
     () => (
       selectedPaperDocument?.primary_pdf_file_id
@@ -6872,6 +6943,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const sectionToneClassName = getPublicationReaderGroupToneClass(sectionGroupKey)
     const isMajorHeading = depth === 0 && publicationReaderSectionMatchesGroupLabel(section, sectionGroupKey || '')
     const isSummaryBox = String(section.section_role || '') === 'summary_box' && depth === 0
+    const specialSectionTone = depth === 0 ? getPublicationReaderSpecialSectionTone(section) : null
+    const isSpecialSection = Boolean(specialSectionTone)
+    const isRootSection = depth === 0
     const showMarker = isMajorHeading
     const rawLabelRedundant = !section.raw_label
       || section.raw_label === section.title
@@ -6884,17 +6958,32 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             <span
               className={cn(
                 'mt-1 shrink-0 rounded-full opacity-90',
-                'h-5 w-[0.22rem]',
+                isRootSection ? 'h-6 w-[0.24rem]' : 'h-5 w-[0.22rem]',
                 sectionToneClassName,
               )}
             />
           ) : null}
           <div className={cn('min-w-0 flex-1', showMarker ? '' : depth > 0 ? '' : '')}>
+            {specialSectionTone ? (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[0.64rem] font-semibold uppercase tracking-[0.12em]',
+                    specialSectionTone.badgeClassName,
+                  )}
+                >
+                  {specialSectionTone.icon}
+                  <span>{specialSectionTone.badge}</span>
+                </span>
+              </div>
+            ) : null}
             <h3
               className={cn(
                 'leading-tight transition-colors duration-[var(--motion-duration-ui)] ease-out',
                 isSummaryBox
                   ? 'text-[0.82rem] font-semibold uppercase tracking-[0.04em]'
+                  : isSpecialSection
+                    ? 'text-[1rem] font-semibold'
                   : depth === 0
                     ? 'text-[1.05rem] font-semibold'
                     : depth === 1
@@ -6904,12 +6993,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   ? 'text-[hsl(var(--tone-accent-800))]'
                   : isSummaryBox
                     ? 'text-[hsl(var(--tone-neutral-600))]'
+                    : isSpecialSection
+                      ? 'text-[hsl(var(--tone-neutral-950))]'
                     : depth === 0
                       ? 'text-[hsl(var(--tone-neutral-900))]'
                       : 'text-[hsl(var(--tone-neutral-800))]',
               )}
             >
-              {section.title}
+              {specialSectionTone?.title || section.title}
             </h3>
             {!rawLabelRedundant ? (
               <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">
@@ -6921,7 +7012,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         {sectionParagraphs.length > 0 ? (
           <div className={cn('mt-3 space-y-3', showMarker ? 'pl-[0.95rem]' : '')}>
             {sectionParagraphs.map((paragraph, paragraphIndex) => (
-              <p key={`${section.id}-paragraph-${paragraphIndex}`} className={cn('leading-[1.85]', isSummaryBox ? 'text-[0.9rem] text-[hsl(var(--tone-neutral-700))]' : 'text-[0.96rem] text-[hsl(var(--tone-neutral-800))]')}>
+              <p
+                key={`${section.id}-paragraph-${paragraphIndex}`}
+                className={cn(
+                  'leading-[1.85]',
+                  isSummaryBox || isSpecialSection
+                    ? 'text-[0.92rem] text-[hsl(var(--tone-neutral-700))]'
+                    : 'text-[0.96rem] text-[hsl(var(--tone-neutral-800))]',
+                )}
+              >
                 {paragraph}
               </p>
             ))}
@@ -6993,7 +7092,19 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         ref={(node) => {
           publicationReaderSectionRefs.current[section.id] = node
         }}
-        className={cn('scroll-mt-6', isSummaryBox && 'rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-4 py-3.5')}
+        className={cn(
+          'scroll-mt-6',
+          isSpecialSection
+            ? cn(
+              'rounded-[1.2rem] border px-4 py-4 shadow-[0_14px_34px_hsl(var(--tone-neutral-900)/0.05)]',
+              specialSectionTone?.shellClassName,
+            )
+            : isSummaryBox
+              ? 'rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-4 py-3.5'
+              : isRootSection
+                ? 'rounded-[1.35rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-5 py-5 shadow-[0_18px_40px_hsl(var(--tone-neutral-900)/0.04)]'
+                : '',
+        )}
       >
         {sectionContent}
       </section>
@@ -8980,7 +9091,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               selectedPaperMetadata?.journal || detailJournal || 'Publication record',
                               selectedPaperMetadata?.year ? String(selectedPaperMetadata.year) : detailYear ? String(detailYear) : null,
                               selectedPaperDocument?.page_count ? `${selectedPaperDocument.page_count} pages` : null,
-                              selectedPaperSections.length > 0 ? `${selectedPaperSections.length} sections` : null,
+                              selectedPaperParsingInProgress
+                                ? 'Parsing full paper...'
+                                : selectedPaperSections.length > 0
+                                  ? `${selectedPaperSections.length} sections`
+                                  : null,
                             ].filter(Boolean).join(' | ')}
                           </p>
                         </div>
@@ -9048,7 +9163,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           <p className={cn(houseNavigation.sectionLabel, 'mb-3 px-1 text-[0.68rem] tracking-[0.12em]')}>
                             Navigator
                           </p>
-                          {publicationReaderLoading && selectedPublicationReaderNavigatorGroups.length === 0 ? (
+                          {selectedPaperParsingInProgress ? (
+                            <div className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-3">
+                              <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-150))]">
+                                <div className="h-full w-1/3 animate-pulse rounded-full bg-[linear-gradient(90deg,hsl(var(--tone-accent-500))_0%,hsl(var(--tone-positive-500))_100%)]" />
+                              </div>
+                              <p className="mt-3 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                Parsing the full paper. The navigator will appear once the manuscript model is ready.
+                              </p>
+                            </div>
+                          ) : publicationReaderLoading && selectedPublicationReaderNavigatorGroups.length === 0 ? (
                             <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-3 text-sm text-[hsl(var(--tone-neutral-600))]">
                               <Loader2 className="h-4 w-4 animate-spin" />
                               <span>Building navigator...</span>
@@ -9113,13 +9237,51 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           </div>
                         ) : (
                           <div className="mx-auto flex w-full max-w-[58rem] flex-col gap-6 px-7 py-7 sm:px-10 sm:py-8">
-                            {publicationReaderLoading && !selectedPaperModel ? (
+                            {selectedPaperParsingInProgress ? (
+                              <div className="overflow-hidden rounded-[1.4rem] border border-[hsl(var(--tone-neutral-200))] bg-white shadow-[0_18px_48px_hsl(var(--tone-neutral-900)/0.06)]">
+                                <div className="border-b border-[hsl(var(--tone-neutral-150))] bg-[linear-gradient(180deg,hsl(var(--tone-accent-50))_0%,white_100%)] px-5 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <Loader2 className="h-4 w-4 animate-spin text-[hsl(var(--tone-accent-700))]" />
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                                        Parsing full paper
+                                      </p>
+                                      <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                        The structured reader will appear once the manuscript model is complete. Tables and figures can continue filling in just after that.
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-150))]">
+                                    <div className="h-full w-1/3 animate-pulse rounded-full bg-[linear-gradient(90deg,hsl(var(--tone-accent-500))_0%,hsl(var(--tone-positive-500))_100%)]" />
+                                  </div>
+                                </div>
+                                <div className="grid gap-4 px-5 py-5 sm:grid-cols-3">
+                                  {['Resolving sections', 'Anchoring pages', 'Recovering tables & figures'].map((step, index) => (
+                                    <div
+                                      key={step}
+                                      className={cn(
+                                        'rounded-[1rem] border px-4 py-4',
+                                        index === 0
+                                          ? 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.6)]'
+                                          : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]',
+                                      )}
+                                    >
+                                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
+                                        Step {index + 1}
+                                      </p>
+                                      <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                                        {step}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : publicationReaderLoading && !selectedPaperModel ? (
                               <div className="flex items-center gap-3 rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-5 py-4 text-sm text-[hsl(var(--tone-neutral-600))]">
                                 <Loader2 className="h-4 w-4 animate-spin" />
                                 <span>Building the structured paper model...</span>
                               </div>
-                            ) : null}
-                            {selectedStructuredPaperGroups.length > 0 ? (
+                            ) : selectedStructuredPaperGroups.length > 0 ? (
                               selectedStructuredPaperGroups.map((group) => {
                                 const primaryRootSection = group.rootSections[0] || null
                                 const showGroupLabel = !(
@@ -9131,16 +9293,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   <section
                                     key={`publication-paper-group-${group.key}`}
                                     className={cn(
+                                      'relative',
                                       group.key === 'abstract'
-                                        ? 'border-b border-[hsl(var(--tone-neutral-250))] pb-8'
-                                        : 'border-t border-[hsl(var(--tone-neutral-200))] pt-7',
-                                      group.key !== 'abstract' && 'first:border-t-0 first:pt-0',
-                                      group.key === 'introduction' && 'pt-8',
+                                        ? 'pb-6'
+                                        : 'pt-6',
+                                      group.key !== 'abstract' && 'first:pt-0',
                                     )}
                                   >
                                     {showGroupLabel ? (
-                                      <div className="min-w-0">
-                                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                                      <div className="min-w-0 px-1">
+                                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
                                           {group.label}
                                         </p>
                                       </div>
