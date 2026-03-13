@@ -217,7 +217,7 @@ const PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS = [
   },
   {
     key: 'article_information',
-    label: 'Article Information',
+    label: 'Declarations',
     toneClassName: 'bg-[#516170]',
   },
 ] as const
@@ -258,7 +258,7 @@ function formatPublicationPaperStructuredGroupLabel(value: string | null | undef
     case 'main_text':
       return 'Main text'
     case 'article_information':
-      return 'Article Information'
+      return 'Declarations'
     default:
       return formatPublicationPaperSectionKindLabel(value)
   }
@@ -4644,6 +4644,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedPaperRenderableTables = useMemo(
     () => selectedPaperTables.filter(publicationReaderAssetHasSurfaceContent),
     [selectedPaperTables],
+  )
+  const selectedPaperReferences = useMemo(
+    () => ((selectedPaperModel?.references || []) as Array<Record<string, unknown>>)
+      .map((reference, index) => ({
+        id: String(reference.id || `reference-${index + 1}`),
+        label: String(reference.label || `Reference ${index + 1}`).trim() || `Reference ${index + 1}`,
+        rawText: String(reference.raw_text || reference.text || '').trim(),
+      }))
+      .filter((reference) => reference.rawText),
+    [selectedPaperModel?.references],
   )
   const selectedPaperMetadataOnlyFigureCount = Math.max(0, selectedPaperFigures.length - selectedPaperRenderableFigures.length)
   const selectedPaperMetadataOnlyTableCount = Math.max(0, selectedPaperTables.length - selectedPaperRenderableTables.length)
@@ -9448,12 +9458,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             ) : null}
                             {!selectedPaperParsingInProgress && selectedStructuredPaperGroups.length > 0 ? (
                               selectedStructuredPaperGroups.map((group) => {
-                                const primaryRootSection = group.rootSections[0] || null
-                                const showGroupLabel = !(
-                                  primaryRootSection
-                                  && group.rootSections.length === 1
-                                  && publicationReaderSectionMatchesGroupLabel(primaryRootSection, group.key)
-                                )
                                 return (
                                   <section
                                     key={`publication-paper-group-${group.key}`}
@@ -9465,14 +9469,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       group.key === 'introduction' && 'pt-8',
                                     )}
                                   >
-                                    {showGroupLabel ? (
-                                      <div className="min-w-0">
-                                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
-                                          {group.label}
-                                        </p>
-                                      </div>
-                                    ) : null}
-                                    <div className={cn('space-y-6', showGroupLabel && 'mt-4')}>
+                                    <div className="space-y-6">
                                       {group.rootSections.map((section) => renderPublicationReaderStructuredSection(section, 0, group.key))}
                                     </div>
                                   </section>
@@ -9541,6 +9538,28 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       ) : null}
                                     </div>
                                   ))}
+                                </div>
+                              </section>
+                            ) : null}
+                            {selectedPaperReferences.length > 0 ? (
+                              <section className="border-t border-[hsl(var(--tone-neutral-200))] pt-7">
+                                <div className="rounded-[1.15rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-5 py-5 shadow-[0_8px_24px_hsl(var(--tone-neutral-900)/0.04)]">
+                                  <div className="mb-4 flex items-center gap-3">
+                                    <span className="inline-flex h-8 w-1.5 rounded-full bg-[hsl(var(--tone-neutral-500))]" />
+                                    <h2 className="text-[1.18rem] font-semibold tracking-[-0.01em] text-[hsl(var(--tone-neutral-900))]">
+                                      References
+                                    </h2>
+                                  </div>
+                                  <ol className="space-y-3 text-[0.92rem] leading-[1.8] text-[hsl(var(--tone-neutral-700))]">
+                                    {selectedPaperReferences.map((reference, index) => (
+                                      <li key={reference.id} className="flex items-start gap-3">
+                                        <span className="mt-0.5 inline-flex min-w-[1.6rem] items-center justify-center rounded-full bg-[hsl(var(--tone-neutral-100))] px-2 py-1 text-[0.68rem] font-semibold text-[hsl(var(--tone-neutral-600))]">
+                                          {index + 1}
+                                        </span>
+                                        <span className="min-w-0 flex-1">{reference.rawText}</span>
+                                      </li>
+                                    ))}
+                                  </ol>
                                 </div>
                               </section>
                             ) : null}

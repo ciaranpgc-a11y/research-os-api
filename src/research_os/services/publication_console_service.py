@@ -172,7 +172,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v26"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v27"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -6663,6 +6663,167 @@ def _publication_paper_asset_title_score(value: str | None) -> int:
     return 2
 
 
+def _decode_base64_data_uri(
+    value: str | None,
+) -> tuple[str | None, bytes | None]:
+    clean = str(value or "").strip()
+    if not clean or not clean.startswith("data:") or ";base64," not in clean:
+        return None, None
+    header, encoded = clean.split(",", 1)
+    mime_type = header[5:].split(";", 1)[0].strip().lower() or None
+    try:
+        return mime_type, base64.b64decode(encoded, validate=False)
+    except Exception:
+        return mime_type, None
+
+
+def _jpeg_dimensions(content: bytes) -> tuple[int | None, int | None]:
+    if len(content) < 4 or content[0:2] != b"\xff\xd8":
+        return None, None
+    sof_markers = {
+        0xC0,
+        0xC1,
+        0xC2,
+        0xC3,
+        0xC5,
+        0xC6,
+        0xC7,
+        0xC9,
+        0xCA,
+        0xCB,
+        0xCD,
+        0xCE,
+        0xCF,
+    }
+    index = 2
+    while index + 8 <= len(content):
+        if content[index] != 0xFF:
+            index += 1
+            continue
+        marker = content[index + 1]
+        index += 2
+        if marker in {0xD8, 0xD9}:
+            continue
+        if index + 2 > len(content):
+            break
+        segment_length = int.from_bytes(content[index : index + 2], "big")
+        if segment_length < 2 or (index + segment_length) > len(content):
+            break
+        if marker in sof_markers and index + 7 <= len(content):
+            height = int.from_bytes(content[index + 3 : index + 5], "big")
+            width = int.from_bytes(content[index + 5 : index + 7], "big")
+            return width or None, height or None
+        index += segment_length
+    return None, None
+
+
+def _image_dimensions_from_bytes(
+    content: bytes | None, mime_type: str | None
+) -> tuple[int | None, int | None]:
+    if not isinstance(content, (bytes, bytearray)) or len(content) < 10:
+        return None, None
+    data = bytes(content)
+    normalized_mime = str(mime_type or "").strip().lower()
+    if normalized_mime == "image/png" or data.startswith(b"\x89PNG\r\n\x1a\n"):
+        if len(data) >= 24 and data[12:16] == b"IHDR":
+            width = int.from_bytes(data[16:20], "big")
+            height = int.from_bytes(data[20:24], "big")
+            return width or None, height or None
+        return None, None
+    if normalized_mime == "image/gif" or data.startswith((b"GIF87a", b"GIF89a")):
+        width = int.from_bytes(data[6:8], "little")
+        height = int.from_bytes(data[8:10], "little")
+        return width or None, height or None
+    if normalized_mime in {"image/jpeg", "image/jpg"} or data.startswith(b"\xff\xd8"):
+        return _jpeg_dimensions(data)
+    return None, None
+
+
+def _publication_paper_figure_image_metrics(
+    asset: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(asset, dict):
+        return None
+    classification = _normalize_publication_file_classification(
+        str(asset.get("classification") or "").strip() or FILE_CLASSIFICATION_OTHER
+    )
+    if classification != FILE_CLASSIFICATION_FIGURE:
+        return None
+    mime_type, content = _decode_base64_data_uri(asset.get("image_data"))
+    if not isinstance(content, (bytes, bytearray)) or not content:
+        return None
+    width, height = _image_dimensions_from_bytes(content, mime_type)
+    byte_length = len(content)
+    return {
+        "mime_type": mime_type,
+        "byte_length": byte_length,
+        "width": width,
+        "height": height,
+        "area": (width or 0) * (height or 0),
+    }
+
+
+def _publication_paper_figure_image_is_low_quality(
+    asset: dict[str, Any] | None,
+) -> bool:
+    metrics = _publication_paper_figure_image_metrics(asset)
+    if not metrics:
+        return False
+    if metrics["mime_type"] == "image/gif":
+        return True
+    weak_signals = 0
+    if metrics["width"] is not None and metrics["width"] < _FIGURE_LOW_QUALITY_MIN_WIDTH:
+        weak_signals += 1
+    if metrics["height"] is not None and metrics["height"] < _FIGURE_LOW_QUALITY_MIN_HEIGHT:
+        weak_signals += 1
+    if metrics["area"] and metrics["area"] < _FIGURE_LOW_QUALITY_MIN_AREA:
+        weak_signals += 1
+    if metrics["byte_length"] < _FIGURE_LOW_QUALITY_MIN_BYTES:
+        weak_signals += 1
+    return weak_signals >= 2
+
+
+def _publication_paper_figure_image_quality_score(
+    asset: dict[str, Any] | None,
+) -> tuple[int, int, int, int, int, int]:
+    metrics = _publication_paper_figure_image_metrics(asset)
+    if not metrics:
+        return (0, 0, 0, 0, 0, 0)
+    mime_priority = {
+        "image/png": 3,
+        "image/jpeg": 2,
+        "image/jpg": 2,
+        "image/webp": 2,
+        "image/gif": 0,
+    }.get(metrics["mime_type"], 1)
+    width = int(metrics["width"] or 0)
+    height = int(metrics["height"] or 0)
+    return (
+        1,
+        0 if _publication_paper_figure_image_is_low_quality(asset) else 1,
+        int(metrics["area"] or 0),
+        min(width, height),
+        int(metrics["byte_length"] or 0),
+        mime_priority,
+    )
+
+
+def _publication_paper_assets_include_low_quality_figures(
+    assets: list[dict[str, Any]] | None,
+) -> bool:
+    items = assets if isinstance(assets, list) else []
+    return any(
+        isinstance(asset, dict)
+        and _publication_paper_asset_has_surface_content(asset)
+        and _normalize_publication_file_classification(
+            str(asset.get("classification") or "").strip() or FILE_CLASSIFICATION_OTHER
+        )
+        == FILE_CLASSIFICATION_FIGURE
+        and _publication_paper_figure_image_is_low_quality(asset)
+        for asset in items
+    )
+
+
 def _merge_publication_paper_asset_candidate(
     existing: dict[str, Any], candidate: dict[str, Any]
 ) -> dict[str, Any]:
@@ -6716,8 +6877,14 @@ def _merge_publication_paper_asset_candidate(
         merged["coords"] = candidate.get("coords")
     if not merged.get("graphic_coords") and candidate.get("graphic_coords"):
         merged["graphic_coords"] = candidate.get("graphic_coords")
-    if not merged.get("image_data") and candidate.get("image_data"):
+    if candidate.get("image_data") and (
+        not merged.get("image_data")
+        or _publication_paper_figure_image_quality_score(candidate)
+        > _publication_paper_figure_image_quality_score(merged)
+    ):
         merged["image_data"] = candidate.get("image_data")
+        if candidate.get("source_parser"):
+            merged["source_parser"] = candidate.get("source_parser")
     if not merged.get("structured_html") and candidate.get("structured_html"):
         merged["structured_html"] = candidate.get("structured_html")
     return merged
@@ -7456,6 +7623,10 @@ _FIGURE_CROP_TEXT_HEAVY_WORD_THRESHOLD = 80
 _FIGURE_CROP_MAX_WORD_THRESHOLD = 180
 _FIGURE_NATIVE_IMAGE_MIN_CLIP_COVERAGE = 0.7
 _FIGURE_NATIVE_IMAGE_MIN_IMAGE_COVERAGE = 0.7
+_FIGURE_LOW_QUALITY_MIN_WIDTH = 320
+_FIGURE_LOW_QUALITY_MIN_HEIGHT = 160
+_FIGURE_LOW_QUALITY_MIN_AREA = 90000
+_FIGURE_LOW_QUALITY_MIN_BYTES = 10000
 
 
 def _parse_grobid_coords(
@@ -9055,6 +9226,9 @@ def _extract_structured_publication_paper_with_pmc_bioc(
             classification=FILE_CLASSIFICATION_FIGURE,
         )
         == 0
+        or _publication_paper_assets_include_low_quality_figures(
+            parsed_payload.get("figures")
+        )
         or _publication_paper_asset_surface_count(
             parsed_payload.get("tables"),
             classification=FILE_CLASSIFICATION_TABLE,
@@ -9176,7 +9350,14 @@ def _publication_paper_payload_needs_asset_enrichment(
         ),
         table_count if table_count > 0 and not tables else 0,
     )
-    if surfaced_figure_count > 0 and surfaced_table_count > 0:
+    has_low_quality_figures = _publication_paper_assets_include_low_quality_figures(
+        figures
+    )
+    if (
+        surfaced_figure_count > 0
+        and surfaced_table_count > 0
+        and not has_low_quality_figures
+    ):
         return False
     enrichment_status = (
         str(provenance.get("asset_enrichment_status") or "").strip().upper() or None
@@ -10196,6 +10377,7 @@ def _run_structured_paper_asset_enrichment_job(
                 figures, classification=FILE_CLASSIFICATION_FIGURE
             )
             == 0
+            or _publication_paper_assets_include_low_quality_figures(figures)
         )
         need_grobid_tables = (
             _publication_paper_asset_surface_count(

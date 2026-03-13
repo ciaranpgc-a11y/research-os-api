@@ -1757,6 +1757,50 @@ def test_publication_paper_payload_needs_asset_enrichment_when_assets_are_captio
     )
 
 
+def test_publication_paper_payload_needs_asset_enrichment_when_figures_are_low_quality() -> None:
+    weak_gif = (
+        b"GIF89a"
+        + (172).to_bytes(2, "little")
+        + (80).to_bytes(2, "little")
+        + (b"x" * 6000)
+    )
+    payload = {
+        "document": {
+            "has_viewable_pdf": True,
+            "parser_status": publication_console_service.STRUCTURED_PAPER_STATUS_FULL_TEXT_READY,
+        },
+        "provenance": {
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC,
+        },
+        "component_summary": {
+            "figure_asset_count": 1,
+            "table_asset_count": 1,
+        },
+        "figures": [
+            {
+                "classification": "FIGURE",
+                "title": "Figure 1",
+                "image_data": "data:image/gif;base64,"
+                + base64.b64encode(weak_gif).decode("ascii"),
+            }
+        ],
+        "tables": [
+            {
+                "classification": "TABLE",
+                "title": "Table 1",
+                "structured_html": "<table><tr><td>ok</td></tr></table>",
+            }
+        ],
+    }
+
+    assert (
+        publication_console_service._publication_paper_payload_needs_asset_enrichment(
+            payload
+        )
+        is True
+    )
+
+
 def test_extract_structured_publication_paper_with_pmc_bioc_prefers_archive_assets(
     monkeypatch,
 ) -> None:
@@ -3731,6 +3775,49 @@ def test_crop_figure_images_prefers_native_pdf_image_when_available(monkeypatch)
     )
 
     assert str(result[0].get("image_data") or "").startswith("data:image/png;base64,")
+
+
+def test_merge_publication_paper_asset_candidate_prefers_higher_quality_figure_image() -> None:
+    weak_gif = (
+        b"GIF89a"
+        + (172).to_bytes(2, "little")
+        + (80).to_bytes(2, "little")
+        + (b"x" * 6000)
+    )
+    strong_png = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + (640).to_bytes(4, "big")
+        + (420).to_bytes(4, "big")
+        + b"\x08\x02\x00\x00\x00"
+        + (b"y" * 20000)
+    )
+
+    existing = {
+        "classification": publication_console_service.FILE_CLASSIFICATION_FIGURE,
+        "title": "Figure 2",
+        "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS,
+        "image_data": "data:image/gif;base64,"
+        + base64.b64encode(weak_gif).decode("ascii"),
+    }
+    candidate = {
+        "classification": publication_console_service.FILE_CLASSIFICATION_FIGURE,
+        "title": "Figure 2",
+        "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+        "image_data": "data:image/png;base64,"
+        + base64.b64encode(strong_png).decode("ascii"),
+    }
+
+    merged = publication_console_service._merge_publication_paper_asset_candidate(
+        existing,
+        candidate,
+    )
+
+    assert merged["image_data"] == candidate["image_data"]
+    assert (
+        merged["source_parser"]
+        == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID
+    )
 
 
 # ---------------------------------------------------------------------------
