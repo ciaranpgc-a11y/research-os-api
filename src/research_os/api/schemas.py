@@ -2490,6 +2490,7 @@ class PublicationPaperModelAssetResponse(BaseModel):
     file_name: str
     source: Literal["OA_LINK", "USER_UPLOAD", "SUPPLEMENTARY_LINK", "PARSED"] = "USER_UPLOAD"
     download_url: str | None = None
+    is_stored_locally: bool = False
     classification: Literal[
         "PUBLISHED_MANUSCRIPT",
         "SUPPLEMENTARY_MATERIALS",
@@ -2508,6 +2509,10 @@ class PublicationPaperModelAssetResponse(BaseModel):
     asset_kind: str = "attachment"
     origin: Literal["file", "parsed"] = "file"
     source_parser: str | None = None
+    coords: str | None = None
+    graphic_coords: str | None = None
+    image_data: str | None = None
+    structured_html: str | None = None
 
 
 class PublicationPaperModelComponentSummaryResponse(BaseModel):

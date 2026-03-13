@@ -69,6 +69,10 @@ OPEN_ACCESS_FETCH_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/122.0.0.0 Safari/537.36"
 )
+DOCLING_TABLE_NOTE_PREFIX_PATTERN = re.compile(
+    r"^(?:notes?|abbreviations?|footnotes?|legend|symbols?)\b|^[*†‡§¶#]+|^[a-z0-9]+[.)]\s",
+    re.IGNORECASE,
+)
 
 TRAJECTORY_VALUES = {
     "EARLY_SPIKE",
@@ -7471,11 +7475,20 @@ def _extract_docling_tables_html(content: bytes) -> list[dict[str, Any]]:
                     html_text = str(export_to_html(document) or "").strip()
                 except TypeError:
                     html_text = str(export_to_html() or "").strip()
+            html_text = _canonicalize_docling_table_html(html_text)
             page_no: int | None = None
+            coords: str | None = None
             if hasattr(table, "prov") and table.prov:
                 first_prov = table.prov[0]
                 if hasattr(first_prov, "page_no"):
                     page_no = int(first_prov.page_no)
+                bbox = getattr(first_prov, "bbox", None)
+                bbox_tuple = _extract_docling_bbox_tuple(bbox)
+                if page_no is not None and bbox_tuple is not None:
+                    coords = (
+                        f"{page_no},{bbox_tuple[0]:.3f},{bbox_tuple[1]:.3f},"
+                        f"{bbox_tuple[2]:.3f},{bbox_tuple[3]:.3f}"
+                    )
             num_rows = 0
             num_cols = 0
             if hasattr(table, "data") and hasattr(table.data, "grid"):
@@ -7487,6 +7500,7 @@ def _extract_docling_tables_html(content: bytes) -> list[dict[str, Any]]:
                 {
                     "html": html_text,
                     "page": page_no,
+                    "coords": coords,
                     "num_rows": num_rows,
                     "num_cols": num_cols,
                 }
@@ -7527,6 +7541,16 @@ def _match_docling_tables_to_assets(
                 and asset_page == docling_page
             ):
                 score += 10
+            score += int(
+                round(
+                    _docling_table_asset_coordinate_overlap_score(
+                        docling_coords=str(dt.get("coords") or "").strip() or None,
+                        asset_coords=str(asset_copy.get("coords") or "").strip()
+                        or None,
+                    )
+                    * 100
+                )
+            )
             if dt.get("num_rows", 0) > 1:
                 score += 5
             if score > best_score:
@@ -7537,6 +7561,246 @@ def _match_docling_tables_to_assets(
             asset_copy["structured_html"] = docling_tables[best_idx].get("html")
         updated_assets.append(asset_copy)
     return updated_assets
+
+
+def _extract_docling_bbox_tuple(value: Any) -> tuple[float, float, float, float] | None:
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)) and len(value) >= 4:
+        coords = [_safe_float(item) for item in value[:4]]
+        if all(item is not None for item in coords):
+            x1, y1, x2, y2 = [float(item) for item in coords if item is not None]
+            return (x1, y1, x2, y2)
+    if isinstance(value, dict):
+        for keys in (
+            ("l", "t", "r", "b"),
+            ("left", "top", "right", "bottom"),
+            ("x0", "y0", "x1", "y1"),
+        ):
+            coords = [_safe_float(value.get(key)) for key in keys]
+            if all(item is not None for item in coords):
+                x1, y1, x2, y2 = [float(item) for item in coords if item is not None]
+                return (x1, y1, x2, y2)
+    for keys in (
+        ("l", "t", "r", "b"),
+        ("left", "top", "right", "bottom"),
+        ("x0", "y0", "x1", "y1"),
+    ):
+        coords = [_safe_float(getattr(value, key, None)) for key in keys]
+        if all(item is not None for item in coords):
+            x1, y1, x2, y2 = [float(item) for item in coords if item is not None]
+            return (x1, y1, x2, y2)
+    return None
+
+
+def _publication_table_xml_local_name(tag: str) -> str:
+    if not tag:
+        return ""
+    if "}" in tag:
+        return tag.rsplit("}", 1)[-1].lower()
+    return str(tag).strip().lower()
+
+
+def _publication_table_row_cell_total(cells: list[dict[str, Any]]) -> int:
+    total = 0
+    for cell in cells:
+        total += max(1, _safe_int(cell.get("colspan")) or 1)
+    return total
+
+
+def _publication_table_extract_rows(table_element: ET.Element) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    direct_rows = [
+        child
+        for child in list(table_element)
+        if _publication_table_xml_local_name(child.tag) == "tr"
+    ]
+    if direct_rows:
+        section_elements = [("tbody", direct_rows)]
+    else:
+        section_elements = []
+        for child in list(table_element):
+            section_name = _publication_table_xml_local_name(child.tag)
+            if section_name not in {"thead", "tbody", "tfoot"}:
+                continue
+            child_rows = [
+                row for row in list(child) if _publication_table_xml_local_name(row.tag) == "tr"
+            ]
+            if child_rows:
+                section_elements.append((section_name, child_rows))
+    for section_name, child_rows in section_elements:
+        for row in child_rows:
+            cells: list[dict[str, Any]] = []
+            for cell in list(row):
+                cell_tag = _publication_table_xml_local_name(cell.tag)
+                if cell_tag not in {"th", "td"}:
+                    continue
+                text = _normalize_abstract_text(" ".join(cell.itertext()))
+                cells.append(
+                    {
+                        "tag": cell_tag,
+                        "text": text,
+                        "colspan": _safe_int(cell.attrib.get("colspan")) or 1,
+                        "rowspan": _safe_int(cell.attrib.get("rowspan")) or 1,
+                    }
+                )
+            if cells:
+                rows.append({"section": section_name, "cells": cells})
+    return rows
+
+
+def _publication_table_note_like_row(
+    *,
+    cells: list[dict[str, Any]],
+    total_columns: int,
+    seen_data_rows: bool,
+) -> bool:
+    if not seen_data_rows or total_columns <= 1 or not cells:
+        return False
+    texts = [str(cell.get("text") or "").strip() for cell in cells if str(cell.get("text") or "").strip()]
+    if not texts:
+        return False
+    combined = _normalize_abstract_text(" ".join(texts))
+    if not combined:
+        return False
+    non_empty_count = len(texts)
+    cell_total = _publication_table_row_cell_total(cells)
+    if DOCLING_TABLE_NOTE_PREFIX_PATTERN.match(combined):
+        return True
+    if non_empty_count == 1 and cell_total >= max(total_columns - 1, 2):
+        if len(combined) >= 18:
+            return True
+    return False
+
+
+def _publication_table_render_cells(cells: list[dict[str, Any]]) -> str:
+    rendered: list[str] = []
+    for cell in cells:
+        tag = "th" if str(cell.get("tag") or "").lower() == "th" else "td"
+        attrs: list[str] = []
+        colspan = max(1, _safe_int(cell.get("colspan")) or 1)
+        rowspan = max(1, _safe_int(cell.get("rowspan")) or 1)
+        if colspan > 1:
+            attrs.append(f' colspan="{colspan}"')
+        if rowspan > 1:
+            attrs.append(f' rowspan="{rowspan}"')
+        text = html.escape(str(cell.get("text") or ""))
+        rendered.append(f"<{tag}{''.join(attrs)}>{text}</{tag}>")
+    return "".join(rendered)
+
+
+def _canonicalize_docling_table_html(html_text: str) -> str:
+    raw = str(html_text or "").strip()
+    if "<table" not in raw.lower():
+        return raw
+    try:
+        wrapped = ET.fromstring(f"<root>{raw}</root>")
+    except Exception:
+        return raw
+    table_element = None
+    for candidate in wrapped.iter():
+        if _publication_table_xml_local_name(candidate.tag) == "table":
+            table_element = candidate
+            break
+    if table_element is None:
+        return raw
+
+    rows = _publication_table_extract_rows(table_element)
+    if not rows:
+        return raw
+
+    total_columns = max((_publication_table_row_cell_total(row["cells"]) for row in rows), default=0)
+    header_rows: list[list[dict[str, Any]]] = []
+    body_rows: list[list[dict[str, Any]]] = []
+    notes: list[str] = []
+    seen_data_rows = False
+    inferred_header = False
+    for index, row in enumerate(rows):
+        cells = row["cells"]
+        section = str(row.get("section") or "tbody").lower()
+        if section == "tfoot" and _publication_table_note_like_row(
+            cells=cells,
+            total_columns=total_columns,
+            seen_data_rows=seen_data_rows or bool(body_rows),
+        ):
+            note_text = _normalize_abstract_text(" ".join(str(cell.get("text") or "") for cell in cells))
+            if note_text:
+                notes.append(note_text)
+            continue
+        if _publication_table_note_like_row(
+            cells=cells,
+            total_columns=total_columns,
+            seen_data_rows=seen_data_rows,
+        ):
+            note_text = _normalize_abstract_text(" ".join(str(cell.get("text") or "") for cell in cells))
+            if note_text:
+                notes.append(note_text)
+            continue
+        if section == "thead":
+            header_rows.append(cells)
+            continue
+        if (
+            not header_rows
+            and not inferred_header
+            and index == 0
+            and all(str(cell.get("tag") or "").lower() == "th" for cell in cells)
+        ):
+            header_rows.append(cells)
+            inferred_header = True
+            continue
+        body_rows.append(cells)
+        seen_data_rows = True
+
+    if not body_rows and header_rows:
+        body_rows = header_rows
+        header_rows = []
+    if not body_rows:
+        return raw
+
+    parts = ["<table>"]
+    if header_rows:
+        parts.append("<thead>")
+        for row in header_rows:
+            parts.append(f"<tr>{_publication_table_render_cells(row)}</tr>")
+        parts.append("</thead>")
+    parts.append("<tbody>")
+    for row in body_rows:
+        parts.append(f"<tr>{_publication_table_render_cells(row)}</tr>")
+    parts.append("</tbody></table>")
+    if notes:
+        parts.append('<div class="publication-structured-table-notes">')
+        for note in notes:
+            parts.append(f"<p>{html.escape(note)}</p>")
+        parts.append("</div>")
+    return "".join(parts)
+
+
+def _docling_table_asset_coordinate_overlap_score(
+    *,
+    docling_coords: str | None,
+    asset_coords: str | None,
+) -> float:
+    docling_entries = _parse_grobid_coords(docling_coords)
+    asset_entries = _parse_grobid_coords(asset_coords)
+    if not docling_entries or not asset_entries:
+        return 0.0
+    best = 0.0
+    for doc_page, dx1, dy1, dx2, dy2 in docling_entries:
+        doc_area = max(0.0, dx2 - dx1) * max(0.0, dy2 - dy1)
+        if doc_area <= 0:
+            continue
+        for asset_page, ax1, ay1, ax2, ay2 in asset_entries:
+            if doc_page != asset_page:
+                continue
+            ix1 = max(dx1, ax1)
+            iy1 = max(dy1, ay1)
+            ix2 = min(dx2, ax2)
+            iy2 = min(dy2, ay2)
+            intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+            if intersection <= 0:
+                continue
+            best = max(best, intersection / doc_area)
+    return best
 
 
 def _extract_structured_publication_paper_with_grobid(

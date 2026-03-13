@@ -4795,6 +4795,7 @@ def test_extract_docling_tables_html_passes_document_to_html_export(
 
     class _FakeProv:
         page_no = 4
+        bbox = types.SimpleNamespace(l=10.0, t=20.0, r=210.0, b=180.0)
 
     class _FakeData:
         grid = [["Label", "Value"], ["A", "1"]]
@@ -4832,12 +4833,68 @@ def test_extract_docling_tables_html_passes_document_to_html_export(
     assert seen_docs == [fake_document]
     assert result == [
         {
-            "html": "<table><tr><td>A</td></tr></table>",
+            "html": "<table><tbody><tr><td>A</td></tr></tbody></table>",
             "page": 4,
+            "coords": "4,10.000,20.000,210.000,180.000",
             "num_rows": 2,
             "num_cols": 2,
         }
     ]
+
+
+def test_canonicalize_docling_table_html_moves_trailing_notes_below_table() -> None:
+    html_text = """
+    <table>
+      <thead><tr><th>Variable</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Age</td><td>42</td></tr>
+        <tr><td colspan="2">Note: values are reported as median (IQR).</td></tr>
+      </tbody>
+    </table>
+    """
+
+    result = publication_console_service._canonicalize_docling_table_html(html_text)
+
+    assert "<td>Age</td><td>42</td>" in result
+    assert "Note: values are reported as median (IQR)." in result
+    assert '<div class="publication-structured-table-notes">' in result
+    assert "<tbody><tr><td>Age</td><td>42</td></tr></tbody>" in result
+
+
+def test_match_docling_tables_to_assets_prefers_coordinate_overlap() -> None:
+    from research_os.services.publication_console_service import (
+        _match_docling_tables_to_assets,
+    )
+
+    docling_tables = [
+        {
+            "html": "<table><tr><td>Footer</td></tr></table>",
+            "page": 5,
+            "coords": "5,50,700,540,760",
+            "num_rows": 2,
+            "num_cols": 1,
+        },
+        {
+            "html": "<table><tr><td>Data</td></tr></table>",
+            "page": 5,
+            "coords": "5,60,120,530,520",
+            "num_rows": 8,
+            "num_cols": 4,
+        },
+    ]
+    table_assets = [
+        {
+            "id": "t1",
+            "page_start": 5,
+            "coords": "5,55,110,535,540",
+            "structured_html": None,
+        }
+    ]
+
+    result = _match_docling_tables_to_assets(docling_tables, table_assets)
+
+    assert len(result) == 1
+    assert "Data" in str(result[0]["structured_html"])
 
 
 # ---------------------------------------------------------------------------
