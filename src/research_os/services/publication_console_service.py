@@ -10228,9 +10228,9 @@ def _run_structured_paper_asset_enrichment_job(
                 or not _publication_paper_payload_needs_asset_enrichment(current_payload)
             ):
                 return
-                payload, _ = _build_publication_paper_asset_enrichment_payload(
-                    publication=source_state["publication"],
-                    structured_abstract_payload=source_state["structured_abstract_payload"],
+            payload, _ = _build_publication_paper_asset_enrichment_payload(
+                publication=source_state["publication"],
+                structured_abstract_payload=source_state["structured_abstract_payload"],
                 structured_abstract_status=source_state["structured_abstract_status"],
                 files=source_state["files"],
                 current_payload=current_payload,
@@ -10250,14 +10250,14 @@ def _run_structured_paper_asset_enrichment_job(
             (time.perf_counter() - persist_started_at) * 1000, 2
         )
         logger.info(
-                "structured_paper_asset_enrichment_completed",
-                extra={
-                    "user_id": user_id,
-                    "publication_id": publication_id,
-                    "pmcid": pmcid,
-                    "binary_payload_ms": binary_payload_duration_ms,
-                    "enrichment_ms": enrichment_duration_ms,
-                    "persist_ms": persist_duration_ms,
+            "structured_paper_asset_enrichment_completed",
+            extra={
+                "user_id": user_id,
+                "publication_id": publication_id,
+                "pmcid": pmcid,
+                "binary_payload_ms": binary_payload_duration_ms,
+                "enrichment_ms": enrichment_duration_ms,
+                "persist_ms": persist_duration_ms,
                 "figure_count": len(figures),
                 "table_count": len(tables),
                 "total_ms": round((time.perf_counter() - job_started_at) * 1000, 2),
