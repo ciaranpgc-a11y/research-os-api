@@ -156,6 +156,7 @@ type PublicationReaderNavigatorGroupPayload = {
   target: PublicationReaderNavigatorTarget
   items: PublicationReaderNavigatorItemPayload[]
   isActive: boolean
+  badgeCount: number
 }
 
 const PUBLICATION_READER_STRUCTURED_GROUP_ORDER = [
@@ -261,6 +262,33 @@ function formatPublicationPaperStructuredGroupLabel(value: string | null | undef
     default:
       return formatPublicationPaperSectionKindLabel(value)
   }
+}
+
+function normalizePublicationReaderHeadingLabel(value: string | null | undefined): string {
+  let normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+  if (!normalized) {
+    return ''
+  }
+  normalized = normalized.replace(/^(?:section|part|chapter)\s+/, '')
+  normalized = normalized.replace(/^(?:\d+(?:\.\d+)*|[ivxlcdm]+|[a-z])(?:\s*[\].):-]\s*|\s+)/i, '')
+  normalized = normalized.replace(/^[\s\-–—:.)\]]+/, '').trim()
+  return normalized
+}
+
+function stripPublicationReaderHeadingPrefix(value: string | null | undefined): string {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return ''
+  }
+  const stripped = raw
+    .replace(/^(?:Section|Part|Chapter)\s+/i, '')
+    .replace(/^(?:\d+(?:\.\d+)*|[IVXLCDM]+|[A-Za-z])(?:\s*[\].):-]\s*|\s+)/, '')
+    .replace(/^[\s\-–—:.)\]]+/, '')
+    .trim()
+  return stripped || raw
 }
 
 function publicationReaderLabelSuggestsAbstractSummary(labelText: string): boolean {
@@ -427,20 +455,44 @@ function publicationReaderSectionMatchesGroupLabel(
   section: Pick<PublicationPaperSectionPayload, 'title' | 'raw_label' | 'label_original' | 'label_normalized'>,
   groupKey: string,
 ): boolean {
-  const aliases = PUBLICATION_READER_GROUP_TITLE_ALIASES[groupKey] || [groupKey]
-  const normalizedTitle = String(
+  const aliases = (PUBLICATION_READER_GROUP_TITLE_ALIASES[groupKey] || [groupKey]).map((alias) => normalizePublicationReaderHeadingLabel(alias))
+  const normalizedTitle = normalizePublicationReaderHeadingLabel(
     section.title
       || section.raw_label
       || section.label_original
       || section.label_normalized
-      || '',
+      || ''
   )
-    .trim()
-    .toLowerCase()
   if (!normalizedTitle) {
     return false
   }
   return aliases.includes(normalizedTitle)
+}
+
+function publicationReaderAssetHasSurfaceContent(asset: PublicationPaperAssetPayload): boolean {
+  if (asset.asset_kind === 'table') {
+    return Boolean(String(asset.structured_html || '').trim())
+  }
+  if (asset.asset_kind === 'figure') {
+    return Boolean(String(asset.image_data || '').trim())
+  }
+  return Boolean(String(asset.image_data || asset.structured_html || '').trim())
+}
+
+function publicationReaderAssetSourceLabel(asset: PublicationPaperAssetPayload): string {
+  if (asset.source_parser === 'pmc_jats') {
+    return `${formatPublicationPaperSectionKindLabel(asset.asset_kind)} · PMC`
+  }
+  if (asset.source === 'PARSED') {
+    return `${formatPublicationPaperSectionKindLabel(asset.asset_kind)} · GROBID`
+  }
+  if (asset.source === 'OA_LINK') {
+    return 'Open access'
+  }
+  if (asset.source === 'SUPPLEMENTARY_LINK') {
+    return 'Supplementary'
+  }
+  return 'Saved file'
 }
 
 function publicationFileDirectUrl(file: Pick<PublicationFilePayload, 'download_url' | 'oa_url'>): string {
@@ -4581,6 +4633,22 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [selectedPaperDocument?.primary_pdf_download_url, selectedPaperPrimaryFile])
   const selectedPaperFigures = selectedPaperModel?.figures || []
   const selectedPaperTables = selectedPaperModel?.tables || []
+  const selectedPaperRenderableFigures = useMemo(
+    () => selectedPaperFigures.filter(publicationReaderAssetHasSurfaceContent),
+    [selectedPaperFigures],
+  )
+  const selectedPaperRenderableTables = useMemo(
+    () => selectedPaperTables.filter(publicationReaderAssetHasSurfaceContent),
+    [selectedPaperTables],
+  )
+  const selectedPaperMetadataOnlyFigureCount = Math.max(0, selectedPaperFigures.length - selectedPaperRenderableFigures.length)
+  const selectedPaperMetadataOnlyTableCount = Math.max(0, selectedPaperTables.length - selectedPaperRenderableTables.length)
+  const selectedPaperMetadataOnlyFigureMessage = selectedPaperMetadataOnlyFigureCount > 0
+    ? `${selectedPaperMetadataOnlyFigureCount} figure ${selectedPaperMetadataOnlyFigureCount === 1 ? 'reference has' : 'references have'} been identified, but preview extraction is still incomplete.`
+    : null
+  const selectedPaperMetadataOnlyTableMessage = selectedPaperMetadataOnlyTableCount > 0
+    ? `${selectedPaperMetadataOnlyTableCount} table ${selectedPaperMetadataOnlyTableCount === 1 ? 'reference has' : 'references have'} been identified, but the structured table body is not available yet.`
+    : null
   const selectedPaperDatasets = selectedPaperModel?.datasets || []
   const selectedPaperAttachments = selectedPaperModel?.attachments || []
   const selectedPaperAssetEnrichmentStatus = String(
@@ -4594,18 +4662,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     !selectedPaperParsingInProgress
     && selectedPaperDocument?.has_viewable_pdf
     && selectedPaperDocument?.parser_status === 'FULL_TEXT_READY'
-    && (selectedPaperFigures.length === 0 || selectedPaperTables.length === 0)
+    && (
+      selectedPaperRenderableFigures.length === 0
+      || selectedPaperRenderableTables.length === 0
+      || selectedPaperRenderableFigures.length < selectedPaperFigures.length
+      || selectedPaperRenderableTables.length < selectedPaperTables.length
+    )
     && !['COMPLETE', 'EMPTY', 'FAILED'].includes(selectedPaperAssetEnrichmentStatus),
   )
   const selectedPaperAssetsById = useMemo(() => {
     const next = new Map<string, PublicationPaperAssetPayload>()
-    for (const asset of [...selectedPaperFigures, ...selectedPaperTables, ...selectedPaperDatasets, ...selectedPaperAttachments]) {
+    for (const asset of [...selectedPaperRenderableFigures, ...selectedPaperRenderableTables, ...selectedPaperDatasets, ...selectedPaperAttachments]) {
       if (asset.id) {
         next.set(asset.id, asset)
       }
     }
     return next
-  }, [selectedPaperAttachments, selectedPaperDatasets, selectedPaperFigures, selectedPaperTables])
+  }, [selectedPaperAttachments, selectedPaperDatasets, selectedPaperRenderableFigures, selectedPaperRenderableTables])
   const selectedPaperComponentSummary = selectedPaperModel?.component_summary || null
   const selectedPaperSectionChildrenByParent = useMemo(() => {
     const next = new Map<string | null, PublicationPaperSectionPayload[]>()
@@ -4627,7 +4700,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationReaderInlineAssetRefs = useRef<Record<string, HTMLElement | null>>({})
 
   const selectedPaperInlineAssetsBySectionId = useMemo(() => {
-    const allAssets = [...selectedPaperFigures, ...selectedPaperTables]
+    const allAssets = [...selectedPaperRenderableFigures, ...selectedPaperRenderableTables]
     if (!allAssets.length || !selectedPaperSections.length) {
       return new Map<string, PublicationPaperAssetPayload[]>()
     }
@@ -4669,10 +4742,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
     }
     return result
-  }, [selectedPaperFigures, selectedPaperSections, selectedPaperTables])
+  }, [selectedPaperRenderableFigures, selectedPaperRenderableTables, selectedPaperSections])
 
   const unplacedInlineAssets = useMemo(() => {
-    const allAssets = [...selectedPaperFigures, ...selectedPaperTables]
+    const allAssets = [...selectedPaperRenderableFigures, ...selectedPaperRenderableTables]
     if (!allAssets.length) return []
     const placedIds = new Set<string>()
     for (const assets of selectedPaperInlineAssetsBySectionId.values()) {
@@ -4685,7 +4758,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return (a.title || a.file_name || '').localeCompare(b.title || b.file_name || '')
     })
     return unplaced
-  }, [selectedPaperFigures, selectedPaperInlineAssetsBySectionId, selectedPaperTables])
+  }, [selectedPaperInlineAssetsBySectionId, selectedPaperRenderableFigures, selectedPaperRenderableTables])
 
   const selectedPaperDisplayGroupKeyBySectionId = useMemo(
     () => buildPublicationPaperDisplayGroupKeyBySectionId(selectedPaperSections),
@@ -4717,7 +4790,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           .sort(comparePublicationPaperSections)
         return {
           key,
-          label: formatPublicationPaperStructuredGroupLabel(key),
+          label: key === 'abstract' && sections.some((section) => (
+            String(section.section_role || '') === 'summary_box'
+            || publicationReaderLabelSuggestsAbstractSummary(
+              [
+                section.title,
+                section.raw_label,
+                section.label_original,
+                section.label_normalized,
+              ]
+                .filter(Boolean)
+                .join(' '),
+            )
+          ))
+            ? 'Overview'
+            : formatPublicationPaperStructuredGroupLabel(key),
           sections,
           rootSections,
         }
@@ -4742,6 +4829,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         return left.label.localeCompare(right.label)
       })
   }, [selectedPaperDisplayGroupKeyBySectionId, selectedPaperSections])
+  const selectedPaperStructuredGroupLabelByKey = useMemo(
+    () => new Map(selectedStructuredPaperGroups.map((group) => [group.key, group.label])),
+    [selectedStructuredPaperGroups],
+  )
   const selectedPublicationReaderNavigatorGroups = useMemo<PublicationReaderNavigatorGroupPayload[]>(() => {
     const buildSectionItems = (
       section: PublicationPaperSectionPayload,
@@ -4751,10 +4842,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     ) => {
       items.push({
         id: section.id,
-        label: section.title || section.raw_label || 'Untitled section',
+        label: stripPublicationReaderHeadingPrefix(section.title || section.raw_label || 'Untitled section'),
         indent,
         target: { kind: 'section', id: section.id },
-        isActive: false,
+        isActive: section.id === publicationReaderActiveSectionId,
       })
       const children = (selectedPaperSectionChildrenByParent.get(section.id) || [])
         .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === groupKey)
@@ -4766,16 +4857,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
     return PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS.reduce<PublicationReaderNavigatorGroupPayload[]>((groups, definition) => {
       if (definition.key === 'tables' || definition.key === 'figures') {
-        const assets = definition.key === 'tables' ? selectedPaperTables : selectedPaperFigures
+        const assets = definition.key === 'tables' ? selectedPaperRenderableTables : selectedPaperRenderableFigures
         if (assets.length === 0) {
           return groups
         }
         groups.push({
           id: definition.key,
-          label: definition.label,
+          label: selectedPaperStructuredGroupLabelByKey.get(definition.key) || definition.label,
           toneClassName: definition.toneClassName,
           target: assets[0]?.id ? { kind: 'asset', id: assets[0].id } : null,
           isActive: false,
+          badgeCount: assets.length,
           items: assets.map((asset) => ({
             id: asset.id,
             label: asset.title || asset.file_name || definition.label,
@@ -4820,20 +4912,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
       groups.push({
         id: definition.key,
-        label: definition.label,
+        label: selectedPaperStructuredGroupLabelByKey.get(definition.key) || definition.label,
         toneClassName: definition.toneClassName,
         target: primarySection?.id ? { kind: 'section', id: primarySection.id } : null,
-        isActive: false,
+        isActive: items.some((item) => item.isActive) || primarySection?.id === publicationReaderActiveSectionId,
+        badgeCount: items.length || rootSections.length,
         items,
       })
       return groups
     }, [])
   }, [
+    selectedPaperStructuredGroupLabelByKey,
     selectedPaperDisplayGroupKeyBySectionId,
-    selectedPaperFigures,
+    selectedPaperRenderableFigures,
     selectedPaperSectionChildrenByParent,
     selectedPaperSections,
-    selectedPaperTables,
+    selectedPaperRenderableTables,
+    publicationReaderActiveSectionId,
   ])
   const selectedPaperFirstReaderSection = useMemo(
     () => selectedStructuredPaperGroups.flatMap((group) => group.rootSections)[0] || selectedPaperSections[0] || null,
@@ -6881,9 +6976,19 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const renderPublicationReaderAssetGroup = (
     items: PublicationPaperAssetPayload[],
     emptyMessage: string,
+    metadataMessage?: string | null,
   ) => {
     if (items.length === 0) {
-      return <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">{emptyMessage}</p>
+      return (
+        <div className="space-y-2">
+          <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">{emptyMessage}</p>
+          {metadataMessage ? (
+            <p className="rounded-xl border border-dashed border-[hsl(var(--tone-neutral-250))] bg-white/80 px-3 py-2 text-[0.8rem] leading-relaxed text-[hsl(var(--tone-neutral-500))]">
+              {metadataMessage}
+            </p>
+          ) : null}
+        </div>
+      )
     }
     return (
       <div className="space-y-3">
@@ -6900,13 +7005,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               <div className="min-w-0">
                 <p className="line-clamp-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">{asset.title || asset.file_name}</p>
                 <p className="mt-1 text-[0.72rem] uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-                  {asset.source === 'PARSED'
-                    ? `${formatPublicationPaperSectionKindLabel(asset.asset_kind)} · GROBID`
-                    : asset.source === 'OA_LINK'
-                      ? 'Open access'
-                      : asset.source === 'SUPPLEMENTARY_LINK'
-                        ? 'Supplementary'
-                        : 'Saved file'}
+                  {publicationReaderAssetSourceLabel(asset)}
                 </p>
                 {asset.caption ? (
                   <p className="mt-1 line-clamp-3 text-[0.82rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
@@ -6953,6 +7052,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             ) : null}
           </div>
         ))}
+        {metadataMessage ? (
+          <p className="rounded-xl border border-dashed border-[hsl(var(--tone-neutral-250))] bg-white/80 px-3 py-2 text-[0.8rem] leading-relaxed text-[hsl(var(--tone-neutral-500))]">
+            {metadataMessage}
+          </p>
+        ) : null}
       </div>
     )
   }
@@ -6971,9 +7075,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const isSummaryBox = String(section.section_role || '') === 'summary_box' && depth === 0
     const isRootSection = depth === 0 && !isSummaryBox
     const showMarker = isMajorHeading
+    const displaySectionTitle = stripPublicationReaderHeadingPrefix(section.title || section.raw_label || 'Untitled section')
     const rawLabelRedundant = !section.raw_label
-      || section.raw_label === section.title
-      || section.raw_label.trim().toLowerCase() === (section.title || '').trim().toLowerCase()
+      || normalizePublicationReaderHeadingLabel(section.raw_label) === normalizePublicationReaderHeadingLabel(section.title)
+      || normalizePublicationReaderHeadingLabel(section.raw_label) === normalizePublicationReaderHeadingLabel(displaySectionTitle)
     const sectionParagraphStyle: CSSProperties | undefined = isSummaryBox
       ? undefined
       : {
@@ -7015,7 +7120,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       : 'text-[hsl(var(--tone-neutral-800))]',
               )}
             >
-              {section.title}
+              {displaySectionTitle}
             </h3>
             {!rawLabelRedundant ? (
               <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">
@@ -7140,6 +7245,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 className={cn(
                   'rounded-[0.95rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-2.5 py-1.5 transition-[background-color,border-color,box-shadow,transform] duration-[var(--motion-duration-ui)] ease-out',
                   'hover:border-[hsl(var(--tone-neutral-250))] hover:bg-[hsl(var(--tone-neutral-50)/0.55)]',
+                  group.isActive && 'border-[hsl(var(--tone-accent-250))] bg-[hsl(var(--tone-accent-50))] shadow-[0_10px_24px_hsl(var(--tone-accent-900)/0.06)]',
                 )}
               >
                 <div className="flex items-center gap-2">
@@ -7156,8 +7262,22 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     onClick={() => onSelectPublicationReaderNavigatorTarget(group.target)}
                     disabled={!group.target}
                   >
-                    <span className={cn(houseNavigation.sectionLabel, 'truncate text-[0.66rem] tracking-[0.12em]')}>
-                      {group.label}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className={cn(
+                        houseNavigation.sectionLabel,
+                        'truncate text-[0.66rem] tracking-[0.12em]',
+                        group.isActive && 'text-[hsl(var(--tone-accent-900))]',
+                      )}>
+                        {group.label}
+                      </span>
+                      <span className={cn(
+                        'inline-flex min-w-[1.4rem] items-center justify-center rounded-full border px-1.5 py-0.5 text-[0.62rem] font-semibold leading-none',
+                        group.isActive
+                          ? 'border-[hsl(var(--tone-accent-250))] bg-white text-[hsl(var(--tone-accent-800))]'
+                          : 'border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-500))]',
+                      )}>
+                        {group.badgeCount}
+                      </span>
                     </span>
                   </button>
                   {group.items.length > 0 ? (
@@ -7187,12 +7307,24 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         houseNavigation.item,
                         'w-full rounded-[0.85rem] border border-transparent bg-transparent px-2.5 py-2 text-left shadow-none',
                         'hover:border-[hsl(var(--tone-neutral-200))] hover:bg-white',
+                        item.isActive && 'border-[hsl(var(--tone-accent-200))] bg-white text-[hsl(var(--tone-accent-900))] shadow-[0_8px_20px_hsl(var(--tone-accent-900)/0.05)]',
                       )}
                       style={{ paddingLeft: `${0.75 + (item.indent * 0.8)}rem` }}
                       onClick={() => onSelectPublicationReaderNavigatorTarget(item.target)}
                     >
                       <span className="flex min-w-0 items-center gap-2">
-                        <span className={cn(houseNavigation.itemLabel, 'text-[0.84rem]', item.indent > 1 && 'text-[0.8rem]')}>
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 shrink-0 rounded-full',
+                            item.isActive ? group.toneClassName : 'bg-[hsl(var(--tone-neutral-300))]',
+                          )}
+                        />
+                        <span className={cn(
+                          houseNavigation.itemLabel,
+                          'text-[0.84rem]',
+                          item.indent > 1 && 'text-[0.8rem]',
+                          item.isActive && 'text-[hsl(var(--tone-accent-900))]',
+                        )}>
                           {item.label}
                         </span>
                       </span>
@@ -9298,6 +9430,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 Tables and figures are still being recovered in the background. The main text is ready now, and assets should appear here once enrichment finishes.
                               </div>
                             ) : null}
+                            {!selectedPaperParsingInProgress
+                            && !selectedPaperAssetEnrichmentInFlight
+                            && (selectedPaperMetadataOnlyFigureCount > 0 || selectedPaperMetadataOnlyTableCount > 0) ? (
+                              <div className="rounded-[1.1rem] border border-dashed border-[hsl(var(--tone-neutral-250))] bg-white/80 px-5 py-4 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                {[
+                                  selectedPaperMetadataOnlyFigureMessage,
+                                  selectedPaperMetadataOnlyTableMessage,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ')}
+                              </div>
+                            ) : null}
                             {!selectedPaperParsingInProgress && selectedStructuredPaperGroups.length > 0 ? (
                               selectedStructuredPaperGroups.map((group) => {
                                 const primaryRootSection = group.rootSections[0] || null
@@ -9456,7 +9600,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               Current focus
                             </p>
                             <p className="mt-2 text-sm font-medium leading-relaxed text-[hsl(var(--tone-neutral-900))]">
-                              {selectedReaderActiveSection?.title || 'No section selected'}
+                              {stripPublicationReaderHeadingPrefix(selectedReaderActiveSection?.title || 'No section selected')}
                             </p>
                             {selectedReaderActiveSection ? (
                               <p className="mt-2 text-[0.72rem] uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
@@ -9517,7 +9661,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               Figures
                             </p>
                             <div className="mt-3">
-                              {renderPublicationReaderAssetGroup(selectedPaperFigures, 'No figures surfaced yet.')}
+                              {renderPublicationReaderAssetGroup(
+                                selectedPaperRenderableFigures,
+                                'No figures surfaced yet.',
+                                selectedPaperMetadataOnlyFigureMessage,
+                              )}
                             </div>
                           </section>
 
@@ -9526,7 +9674,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               Tables
                             </p>
                             <div className="mt-3">
-                              {renderPublicationReaderAssetGroup(selectedPaperTables, 'No tables surfaced yet.')}
+                              {renderPublicationReaderAssetGroup(
+                                selectedPaperRenderableTables,
+                                'No tables surfaced yet.',
+                                selectedPaperMetadataOnlyTableMessage,
+                              )}
                             </div>
                           </section>
 
