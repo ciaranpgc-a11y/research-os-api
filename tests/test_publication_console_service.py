@@ -3820,6 +3820,38 @@ def test_merge_publication_paper_asset_candidate_prefers_higher_quality_figure_i
     )
 
 
+def test_merge_publication_paper_asset_candidate_prefers_source_native_table_html() -> None:
+    existing = {
+        "classification": publication_console_service.FILE_CLASSIFICATION_TABLE,
+        "title": "Table 1",
+        "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+        "structured_html": (
+            "<table><thead><tr><th>Op</th><th>en</th><th>acce</th></tr></thead>"
+            "<tbody><tr><td>A</td><td>B</td><td>C</td></tr></tbody></table>"
+        ),
+    }
+    candidate = {
+        "classification": publication_console_service.FILE_CLASSIFICATION_TABLE,
+        "title": "Table 1",
+        "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS,
+        "structured_html": (
+            "<table><thead><tr><th>Variable</th><th>Value</th></tr></thead>"
+            "<tbody><tr><td>LVFP</td><td>14</td></tr></tbody></table>"
+        ),
+    }
+
+    merged = publication_console_service._merge_publication_paper_asset_candidate(
+        existing,
+        candidate,
+    )
+
+    assert merged["structured_html"] == candidate["structured_html"]
+    assert (
+        merged["source_parser"]
+        == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS
+    )
+
+
 # ---------------------------------------------------------------------------
 # Docling table matching tests
 # ---------------------------------------------------------------------------
