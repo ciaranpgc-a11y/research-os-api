@@ -172,7 +172,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v31"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v32"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -7147,6 +7147,12 @@ def _publication_paper_table_html_quality_score(
         noise_penalty += 2
     if "protected by copyright" in normalized:
         noise_penalty += 2
+    if re.search(r"\btable\s+\d+[a-z]?\b[^.]{0,32}\bcont\.?\b", normalized):
+        noise_penalty += 2
+    if re.search(r"\b\d+\s+of\s+\d+\b", normalized):
+        noise_penalty += 1
+    if re.search(r"\b(?:open\s+hear\s*t|j\.\s*cardiovasc|copyr(?:ight)?)\b", normalized):
+        noise_penalty += 2
     if single_char_cells >= 6:
         noise_penalty += 1
     return (
@@ -7156,6 +7162,42 @@ def _publication_paper_table_html_quality_score(
         cell_count,
         len(html_content),
     )
+
+
+def _publication_paper_table_html_is_low_quality(
+    asset: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(asset, dict):
+        return True
+    html_content = str(asset.get("structured_html") or "").strip()
+    if not html_content:
+        return True
+    normalized = re.sub(r"\s+", " ", html_content).strip().lower()
+    text_content = " ".join(re.sub(r"<[^>]+>", " ", html_content).split())
+    cell_count = html_content.count("<td") + html_content.count("<th")
+    single_char_cells = len(
+        re.findall(r"<t[dh][^>]*>\s*[A-Za-z]\s*</t[dh]>", html_content)
+    )
+    noise_hits = 0
+    noise_patterns = (
+        r"\btable\s+\d+[a-z]?\b[^.]{0,32}\bcont\.?\b",
+        r"\b\d+\s+of\s+\d+\b",
+        r"\bopen\s+hear\s*t\b",
+        r"\bj\.\s*cardiovasc\b",
+        r"\bcopyr(?:ight)?\b",
+        r"\bprotected by copyright\b",
+    )
+    for pattern in noise_patterns:
+        if re.search(pattern, normalized):
+            noise_hits += 1
+    if single_char_cells >= 6:
+        noise_hits += 1
+    if cell_count < 4 and len(text_content) < 120:
+        noise_hits += 1
+    source_parser = str(asset.get("source_parser") or "").strip().lower()
+    if source_parser == STRUCTURED_PAPER_SECTION_SOURCE_GROBID:
+        return noise_hits >= 1
+    return noise_hits >= 2
 
 
 def _publication_paper_assets_include_low_quality_figures(
@@ -7172,6 +7214,57 @@ def _publication_paper_assets_include_low_quality_figures(
         and _publication_paper_figure_image_is_low_quality(asset)
         for asset in items
     )
+
+
+def _publication_paper_assets_include_low_quality_tables(
+    assets: list[dict[str, Any]] | None,
+) -> bool:
+    items = assets if isinstance(assets, list) else []
+    return any(
+        isinstance(asset, dict)
+        and _normalize_publication_file_classification(
+            str(asset.get("classification") or "").strip() or FILE_CLASSIFICATION_OTHER
+        )
+        == FILE_CLASSIFICATION_TABLE
+        and _publication_paper_asset_has_surface_content(asset)
+        and _publication_paper_table_html_is_low_quality(asset)
+        for asset in items
+    )
+
+
+def _publication_paper_asset_expected_count(
+    payload: dict[str, Any] | None,
+    *,
+    classification: str,
+) -> int:
+    if not isinstance(payload, dict):
+        return 0
+    normalized_classification = _normalize_publication_file_classification(classification)
+    component_summary = (
+        payload.get("component_summary")
+        if isinstance(payload.get("component_summary"), dict)
+        else {}
+    )
+    items_key = (
+        "figures" if normalized_classification == FILE_CLASSIFICATION_FIGURE else "tables"
+    )
+    count_key = (
+        "figure_asset_count"
+        if normalized_classification == FILE_CLASSIFICATION_FIGURE
+        else "table_asset_count"
+    )
+    items = payload.get(items_key) if isinstance(payload.get(items_key), list) else []
+    listed_count = sum(
+        1
+        for asset in items
+        if isinstance(asset, dict)
+        and _normalize_publication_file_classification(
+            str(asset.get("classification") or "").strip() or FILE_CLASSIFICATION_OTHER
+        )
+        == normalized_classification
+    )
+    summary_count = max(0, int(_safe_int(component_summary.get(count_key)) or 0))
+    return max(listed_count, summary_count)
 
 
 def _merge_publication_paper_asset_candidate(
@@ -9955,43 +10048,46 @@ def _publication_paper_payload_needs_asset_enrichment(
         return False
     if str(document.get("parser_status") or "").strip().upper() != STRUCTURED_PAPER_STATUS_FULL_TEXT_READY:
         return False
-    if (
-        str(provenance.get("parser_provider") or "").strip().upper()
-        != STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC
-    ):
-        return False
-    component_summary = (
-        payload.get("component_summary")
-        if isinstance(payload.get("component_summary"), dict)
-        else {}
-    )
     figures = payload.get("figures") if isinstance(payload.get("figures"), list) else []
     tables = payload.get("tables") if isinstance(payload.get("tables"), list) else []
-    figure_count = max(
-        0, int(_safe_int(component_summary.get("figure_asset_count")) or 0)
+    expected_figure_count = _publication_paper_asset_expected_count(
+        payload, classification=FILE_CLASSIFICATION_FIGURE
     )
-    table_count = max(
-        0, int(_safe_int(component_summary.get("table_asset_count")) or 0)
+    expected_table_count = _publication_paper_asset_expected_count(
+        payload, classification=FILE_CLASSIFICATION_TABLE
     )
     surfaced_figure_count = max(
         _publication_paper_asset_surface_count(
             figures, classification=FILE_CLASSIFICATION_FIGURE
         ),
-        figure_count if figure_count > 0 and not figures else 0,
+        expected_figure_count if expected_figure_count > 0 and not figures else 0,
     )
     surfaced_table_count = max(
         _publication_paper_asset_surface_count(
             tables, classification=FILE_CLASSIFICATION_TABLE
         ),
-        table_count if table_count > 0 and not tables else 0,
+        expected_table_count if expected_table_count > 0 and not tables else 0,
     )
+    missing_figure_count = max(0, expected_figure_count - surfaced_figure_count)
+    missing_table_count = max(0, expected_table_count - surfaced_table_count)
     has_low_quality_figures = _publication_paper_assets_include_low_quality_figures(
         figures
     )
+    has_low_quality_tables = _publication_paper_assets_include_low_quality_tables(
+        tables
+    )
     if (
-        surfaced_figure_count > 0
-        and surfaced_table_count > 0
+        missing_figure_count == 0
+        and missing_table_count == 0
         and not has_low_quality_figures
+        and not has_low_quality_tables
+    ):
+        return False
+    if (
+        expected_figure_count == 0
+        and expected_table_count == 0
+        and surfaced_figure_count == 0
+        and surfaced_table_count == 0
     ):
         return False
     enrichment_status = (
@@ -10982,6 +11078,12 @@ def _run_structured_paper_asset_enrichment_job(
         )
         figures = [dict(item) for item in current_figures if isinstance(item, dict)]
         tables = [dict(item) for item in current_tables if isinstance(item, dict)]
+        expected_figure_count = _publication_paper_asset_expected_count(
+            current_payload, classification=FILE_CLASSIFICATION_FIGURE
+        )
+        expected_table_count = _publication_paper_asset_expected_count(
+            current_payload, classification=FILE_CLASSIFICATION_TABLE
+        )
         content = bytes(binary_payload.get("content") or b"")
         publication_title = (
             str(source_state["publication"].get("title") or "").strip() or None
@@ -11009,18 +11111,21 @@ def _run_structured_paper_asset_enrichment_job(
                 )
         if content and _publication_paper_assets_include_low_quality_figures(figures):
             figures = _crop_figure_images_from_pdf(content, figures)
+        surfaced_figure_count = _publication_paper_asset_surface_count(
+            figures, classification=FILE_CLASSIFICATION_FIGURE
+        )
+        surfaced_table_count = _publication_paper_asset_surface_count(
+            tables, classification=FILE_CLASSIFICATION_TABLE
+        )
         need_grobid_figures = (
-            _publication_paper_asset_surface_count(
-                figures, classification=FILE_CLASSIFICATION_FIGURE
-            )
-            == 0
+            surfaced_figure_count < expected_figure_count
+            or surfaced_figure_count == 0
             or _publication_paper_assets_include_low_quality_figures(figures)
         )
         need_grobid_tables = (
-            _publication_paper_asset_surface_count(
-                tables, classification=FILE_CLASSIFICATION_TABLE
-            )
-            == 0
+            surfaced_table_count < expected_table_count
+            or surfaced_table_count == 0
+            or _publication_paper_assets_include_low_quality_tables(tables)
         )
         if need_grobid_figures or need_grobid_tables:
             grobid_figures, grobid_tables = _extract_structured_publication_assets_with_grobid(
@@ -11047,7 +11152,20 @@ def _run_structured_paper_asset_enrichment_job(
         surfaced_table_count = _publication_paper_asset_surface_count(
             tables, classification=FILE_CLASSIFICATION_TABLE
         )
-        if surfaced_figure_count == 0 and surfaced_table_count == 0:
+        missing_figure_count = max(0, expected_figure_count - surfaced_figure_count)
+        missing_table_count = max(0, expected_table_count - surfaced_table_count)
+        has_low_quality_figures = _publication_paper_assets_include_low_quality_figures(
+            figures
+        )
+        has_low_quality_tables = _publication_paper_assets_include_low_quality_tables(
+            tables
+        )
+        if (
+            expected_figure_count == 0
+            and expected_table_count == 0
+            and surfaced_figure_count == 0
+            and surfaced_table_count == 0
+        ):
             persist_started_at = time.perf_counter()
             with session_scope() as session:
                 _resolve_work_or_raise(
@@ -11108,6 +11226,91 @@ def _run_structured_paper_asset_enrichment_job(
                     "total_ms": round(
                         (time.perf_counter() - job_started_at) * 1000, 2
                     ),
+                },
+            )
+            return
+        if (
+            missing_figure_count > 0
+            or missing_table_count > 0
+            or has_low_quality_figures
+            or has_low_quality_tables
+        ):
+            failure_reason_parts: list[str] = []
+            if missing_figure_count > 0:
+                failure_reason_parts.append(
+                    f"missing {missing_figure_count} figure asset(s)"
+                )
+            if missing_table_count > 0:
+                failure_reason_parts.append(
+                    f"missing {missing_table_count} table asset(s)"
+                )
+            if has_low_quality_figures:
+                failure_reason_parts.append("low-quality figure assets")
+            if has_low_quality_tables:
+                failure_reason_parts.append("low-quality table assets")
+            failure_reason = "; ".join(failure_reason_parts) or "asset enrichment incomplete"
+            persist_started_at = time.perf_counter()
+            with session_scope() as session:
+                _resolve_work_or_raise(
+                    session, user_id=user_id, publication_id=publication_id
+                )
+                row = _load_structured_paper_cache(
+                    session,
+                    user_id=user_id,
+                    publication_id=publication_id,
+                    for_update=True,
+                )
+                if row is None:
+                    return
+                current_payload = (
+                    row.payload_json if isinstance(row.payload_json, dict) else {}
+                )
+                if (
+                    str(row.source_signature_sha256 or "").strip()
+                    != str(source_signature or "").strip()
+                    or row.parser_version != STRUCTURED_PAPER_CACHE_VERSION
+                    or not _publication_paper_payload_needs_asset_enrichment(
+                        current_payload
+                    )
+                ):
+                    return
+                payload, _ = _build_publication_paper_asset_enrichment_payload(
+                    publication=source_state["publication"],
+                    structured_abstract_payload=source_state["structured_abstract_payload"],
+                    structured_abstract_status=source_state["structured_abstract_status"],
+                    files=source_state["files"],
+                    current_payload=current_payload,
+                    figures=figures,
+                    tables=tables,
+                    asset_enrichment_status=STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_FAILED,
+                    asset_enrichment_checked_at=_utcnow(),
+                    asset_enrichment_last_error=failure_reason,
+                )
+                row.payload_json = payload
+                row.source_signature_sha256 = source_signature
+                row.parser_version = STRUCTURED_PAPER_CACHE_VERSION
+                row.computed_at = _utcnow()
+                row.status = READY_STATUS
+                row.last_error = None
+                session.flush()
+            logger.info(
+                "structured_paper_asset_enrichment_incomplete",
+                extra={
+                    "user_id": user_id,
+                    "publication_id": publication_id,
+                    "pmcid": pmcid,
+                    "figure_count": len(figures),
+                    "table_count": len(tables),
+                    "surfaced_figure_count": surfaced_figure_count,
+                    "surfaced_table_count": surfaced_table_count,
+                    "expected_figure_count": expected_figure_count,
+                    "expected_table_count": expected_table_count,
+                    "missing_figure_count": missing_figure_count,
+                    "missing_table_count": missing_table_count,
+                    "has_low_quality_figures": has_low_quality_figures,
+                    "has_low_quality_tables": has_low_quality_tables,
+                    "persist_ms": round((time.perf_counter() - persist_started_at) * 1000, 2),
+                    "total_ms": round((time.perf_counter() - job_started_at) * 1000, 2),
                 },
             )
             return

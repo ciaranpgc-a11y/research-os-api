@@ -1858,6 +1858,105 @@ def test_publication_paper_payload_needs_asset_enrichment_when_figures_are_low_q
     )
 
 
+def test_publication_paper_payload_needs_asset_enrichment_when_some_expected_assets_are_missing() -> None:
+    strong_png = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + (1600).to_bytes(4, "big")
+        + (900).to_bytes(4, "big")
+        + b"\x08\x02\x00\x00\x00"
+        + (b"z" * 40000)
+    )
+    payload = {
+        "document": {
+            "has_viewable_pdf": True,
+            "parser_status": publication_console_service.STRUCTURED_PAPER_STATUS_FULL_TEXT_READY,
+        },
+        "provenance": {
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC,
+        },
+        "component_summary": {
+            "figure_asset_count": 2,
+            "table_asset_count": 1,
+        },
+        "figures": [
+            {
+                "classification": "FIGURE",
+                "title": "Figure 1",
+                "image_data": "data:image/png;base64,"
+                + base64.b64encode(strong_png).decode("ascii"),
+            },
+            {
+                "classification": "FIGURE",
+                "title": "Figure 2",
+                "caption": "Figure 2 Caption only",
+                "image_data": None,
+            },
+        ],
+        "tables": [
+            {
+                "classification": "TABLE",
+                "title": "Table 1",
+                "structured_html": "<table><tr><td>ok</td><td>still ok</td></tr></table>",
+            }
+        ],
+    }
+
+    assert (
+        publication_console_service._publication_paper_payload_needs_asset_enrichment(
+            payload
+        )
+        is True
+    )
+
+
+def test_publication_paper_payload_needs_asset_enrichment_when_tables_are_low_quality() -> None:
+    strong_png = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + (1600).to_bytes(4, "big")
+        + (900).to_bytes(4, "big")
+        + b"\x08\x02\x00\x00\x00"
+        + (b"q" * 40000)
+    )
+    payload = {
+        "document": {
+            "has_viewable_pdf": True,
+            "parser_status": publication_console_service.STRUCTURED_PAPER_STATUS_FULL_TEXT_READY,
+        },
+        "provenance": {
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_GROBID,
+        },
+        "component_summary": {
+            "figure_asset_count": 1,
+            "table_asset_count": 1,
+        },
+        "figures": [
+            {
+                "classification": "FIGURE",
+                "title": "Figure 1",
+                "image_data": "data:image/png;base64,"
+                + base64.b64encode(strong_png).decode("ascii"),
+            }
+        ],
+        "tables": [
+            {
+                "classification": "TABLE",
+                "title": "Table 1",
+                "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                "structured_html": "<table><tr><td>Open Hear t</td><td>Table 1. Cont.</td></tr></table>",
+            }
+        ],
+    }
+
+    assert (
+        publication_console_service._publication_paper_payload_needs_asset_enrichment(
+            payload
+        )
+        is True
+    )
+
+
 def test_extract_structured_publication_paper_with_pmc_bioc_prefers_archive_assets(
     monkeypatch,
 ) -> None:
