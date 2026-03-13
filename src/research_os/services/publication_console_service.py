@@ -10292,19 +10292,58 @@ def _run_structured_paper_asset_enrichment_job(
                 or not _publication_paper_payload_needs_asset_enrichment(current_payload)
             ):
                 return
-            payload, _ = _build_publication_paper_asset_enrichment_payload(
-                publication=source_state["publication"],
-                structured_abstract_payload=source_state["structured_abstract_payload"],
-                structured_abstract_status=source_state["structured_abstract_status"],
-                files=source_state["files"],
-                current_payload=current_payload,
-                figures=None,
-                tables=None,
-                asset_enrichment_status=STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_FAILED,
-                asset_enrichment_checked_at=_utcnow(),
-                asset_enrichment_last_error=failure_message[:2000],
-            )
-            row.payload_json = payload
+            persisted_payload = current_payload
+            try:
+                if source_state is not None:
+                    persisted_payload, _ = _build_publication_paper_asset_enrichment_payload(
+                        publication=source_state["publication"],
+                        structured_abstract_payload=source_state["structured_abstract_payload"],
+                        structured_abstract_status=source_state["structured_abstract_status"],
+                        files=source_state["files"],
+                        current_payload=current_payload,
+                        figures=None,
+                        tables=None,
+                        asset_enrichment_status=STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_FAILED,
+                        asset_enrichment_checked_at=_utcnow(),
+                        asset_enrichment_last_error=failure_message[:2000],
+                    )
+                else:
+                    provenance = (
+                        current_payload.get("provenance")
+                        if isinstance(current_payload.get("provenance"), dict)
+                        else {}
+                    )
+                    persisted_payload = dict(current_payload)
+                    persisted_payload["provenance"] = {
+                        **provenance,
+                        "asset_enrichment_status": STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_FAILED,
+                        "asset_enrichment_checked_at": _utcnow().isoformat(),
+                        "asset_enrichment_last_error": _normalize_abstract_text(
+                            failure_message[:2000]
+                        )
+                        or None,
+                    }
+            except Exception:
+                logger.exception(
+                    "publication_paper_asset_enrichment_failure_payload_build_failed",
+                    extra={"user_id": user_id, "publication_id": publication_id},
+                )
+                provenance = (
+                    current_payload.get("provenance")
+                    if isinstance(current_payload.get("provenance"), dict)
+                    else {}
+                )
+                persisted_payload = dict(current_payload)
+                persisted_payload["provenance"] = {
+                    **provenance,
+                    "asset_enrichment_status": STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_FAILED,
+                    "asset_enrichment_checked_at": _utcnow().isoformat(),
+                    "asset_enrichment_last_error": _normalize_abstract_text(
+                        failure_message[:2000]
+                    )
+                    or None,
+                }
+            row.payload_json = persisted_payload
             row.source_signature_sha256 = source_signature
             row.parser_version = STRUCTURED_PAPER_CACHE_VERSION
             row.computed_at = _utcnow()
