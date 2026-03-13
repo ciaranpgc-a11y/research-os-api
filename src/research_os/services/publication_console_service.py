@@ -9037,12 +9037,17 @@ def _run_structured_abstract_compute_job(
 
 def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> None:
     now = _utcnow()
+    job_started_at = time.perf_counter()
     source_state: dict[str, Any] | None = None
     source_signature: str | None = None
     should_enqueue_asset_enrichment = False
     try:
+        source_state_started_at = time.perf_counter()
         source_state = _load_publication_paper_source_state(
             user_id=user_id, publication_id=publication_id
+        )
+        source_state_duration_ms = round(
+            (time.perf_counter() - source_state_started_at) * 1000, 2
         )
         seed_payload, source_signature = _build_publication_paper_payload(
             publication=source_state["publication"],
@@ -9079,14 +9084,30 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
                 row.status = READY_STATUS
                 row.last_error = None
                 session.flush()
+            logger.info(
+                "structured_paper_parse_completed_without_pdf",
+                extra={
+                    "user_id": user_id,
+                    "publication_id": publication_id,
+                    "source_state_ms": source_state_duration_ms,
+                    "total_ms": round(
+                        (time.perf_counter() - job_started_at) * 1000, 2
+                    ),
+                },
+            )
             return
 
+        binary_payload_started_at = time.perf_counter()
         binary_payload = _resolve_publication_file_binary_payload(
             user_id=user_id,
             publication_id=publication_id,
             file_id=primary_pdf_file_id,
             proxy_remote=True,
         )
+        binary_payload_duration_ms = round(
+            (time.perf_counter() - binary_payload_started_at) * 1000, 2
+        )
+        parser_started_at = time.perf_counter()
         parsed_paper = _extract_structured_publication_paper_with_best_available_parser(
             content=bytes(binary_payload.get("content") or b""),
             title=str(source_state["publication"].get("title") or "").strip() or None,
@@ -9097,6 +9118,10 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
             enrich_assets=False,
             align_to_pdf=False,
         )
+        parser_duration_ms = round(
+            (time.perf_counter() - parser_started_at) * 1000, 2
+        )
+        persist_started_at = time.perf_counter()
         payload, source_signature = _build_publication_paper_payload(
             publication=source_state["publication"],
             structured_abstract_payload=source_state["structured_abstract_payload"],
@@ -9129,6 +9154,24 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
             row.status = READY_STATUS
             row.last_error = None
             session.flush()
+        persist_duration_ms = round(
+            (time.perf_counter() - persist_started_at) * 1000, 2
+        )
+        logger.info(
+            "structured_paper_parse_completed",
+            extra={
+                "user_id": user_id,
+                "publication_id": publication_id,
+                "source_state_ms": source_state_duration_ms,
+                "binary_payload_ms": binary_payload_duration_ms,
+                "parser_ms": parser_duration_ms,
+                "persist_ms": persist_duration_ms,
+                "enqueued_asset_enrichment": should_enqueue_asset_enrichment,
+                "parser_provider": parsed_paper.get("parser_provider"),
+                "generation_method": parsed_paper.get("generation_method"),
+                "total_ms": round((time.perf_counter() - job_started_at) * 1000, 2),
+            },
+        )
         if should_enqueue_asset_enrichment:
             _submit_background_job(
                 kind="structured_paper_assets",
@@ -9183,6 +9226,7 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
 def _run_structured_paper_asset_enrichment_job(
     *, user_id: str, publication_id: str
 ) -> None:
+    job_started_at = time.perf_counter()
     source_state = _load_publication_paper_source_state(
         user_id=user_id, publication_id=publication_id
     )
@@ -9217,19 +9261,40 @@ def _run_structured_paper_asset_enrichment_job(
             return
 
     try:
+        binary_payload_started_at = time.perf_counter()
         binary_payload = _resolve_publication_file_binary_payload(
             user_id=user_id,
             publication_id=publication_id,
             file_id=primary_pdf_file_id,
             proxy_remote=True,
         )
+        binary_payload_duration_ms = round(
+            (time.perf_counter() - binary_payload_started_at) * 1000, 2
+        )
+        enrichment_started_at = time.perf_counter()
         figures, tables = _extract_structured_publication_assets_with_grobid(
             content=bytes(binary_payload.get("content") or b""),
             title=str(source_state["publication"].get("title") or "").strip() or None,
             file_name=str(binary_payload.get("file_name") or "").strip() or None,
         )
+        enrichment_duration_ms = round(
+            (time.perf_counter() - enrichment_started_at) * 1000, 2
+        )
         if not figures and not tables:
+            logger.info(
+                "structured_paper_asset_enrichment_completed_without_assets",
+                extra={
+                    "user_id": user_id,
+                    "publication_id": publication_id,
+                    "binary_payload_ms": binary_payload_duration_ms,
+                    "enrichment_ms": enrichment_duration_ms,
+                    "total_ms": round(
+                        (time.perf_counter() - job_started_at) * 1000, 2
+                    ),
+                },
+            )
             return
+        persist_started_at = time.perf_counter()
         with session_scope() as session:
             _resolve_work_or_raise(
                 session, user_id=user_id, publication_id=publication_id
@@ -9268,6 +9333,22 @@ def _run_structured_paper_asset_enrichment_job(
             row.status = READY_STATUS
             row.last_error = None
             session.flush()
+        persist_duration_ms = round(
+            (time.perf_counter() - persist_started_at) * 1000, 2
+        )
+        logger.info(
+            "structured_paper_asset_enrichment_completed",
+            extra={
+                "user_id": user_id,
+                "publication_id": publication_id,
+                "binary_payload_ms": binary_payload_duration_ms,
+                "enrichment_ms": enrichment_duration_ms,
+                "persist_ms": persist_duration_ms,
+                "figure_count": len(figures),
+                "table_count": len(tables),
+                "total_ms": round((time.perf_counter() - job_started_at) * 1000, 2),
+            },
+        )
     except Exception:
         logger.exception(
             "publication_paper_asset_enrichment_failed",
