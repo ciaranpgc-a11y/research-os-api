@@ -7010,7 +7010,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             <span
               className={cn(
                 'mt-1 shrink-0 rounded-full opacity-90',
-                isRootSection ? 'h-6 w-[0.24rem]' : 'h-5 w-[0.22rem]',
+                isRootSection ? 'h-4 w-[0.24rem]' : 'h-3 w-[0.22rem]',
                 sectionToneClassName,
               )}
             />
@@ -7131,7 +7131,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           </div>
         ) : null}
         {childSections.length > 0 ? (
-          <div className={cn('mt-5 space-y-5 border-l border-[hsl(var(--tone-neutral-150))]', depth === 0 ? 'pl-5' : 'pl-4')}>
+          <div className={cn('mt-5 space-y-5', depth === 0 ? 'pl-4' : 'pl-3')}>
             {childSections.map((childSection) => renderPublicationReaderStructuredSection(childSection, depth + 1, sectionGroupKey))}
           </div>
         ) : null}
