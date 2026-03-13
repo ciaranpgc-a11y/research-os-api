@@ -7869,6 +7869,44 @@ def _extract_structured_publication_paper_with_grobid(
     return parsed_payload
 
 
+def _extract_structured_publication_assets_with_grobid(
+    *, content: bytes, file_name: str | None = None, title: str | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    tei_xml = _request_grobid_fulltext_tei(
+        content=content,
+        file_name=file_name or "publication.pdf",
+    )
+    parsed_payload = _parse_grobid_tei_into_structured_paper(
+        tei_xml=tei_xml, title=title
+    )
+    figures = _align_structured_publication_assets_to_pdf_pages(
+        assets=(
+            parsed_payload.get("figures")
+            if isinstance(parsed_payload.get("figures"), list)
+            else []
+        ),
+        content=content,
+    )
+    tables = _align_structured_publication_assets_to_pdf_pages(
+        assets=(
+            parsed_payload.get("tables")
+            if isinstance(parsed_payload.get("tables"), list)
+            else []
+        ),
+        content=content,
+    )
+    if figures:
+        figures = _crop_figure_images_from_pdf(content, figures)
+    if tables:
+        try:
+            docling_tables = _extract_docling_tables_html(content)
+            if docling_tables:
+                tables = _match_docling_tables_to_assets(docling_tables, tables)
+        except Exception as exc:
+            logger.warning("Docling table enrichment skipped: %s", exc)
+    return figures, tables
+
+
 def _request_pmc_bioc_payload(pmcid: str) -> Any:
     clean_pmcid = str(pmcid or "").strip().upper()
     if not clean_pmcid.startswith("PMC"):
@@ -8177,6 +8215,23 @@ def _extract_structured_publication_paper_with_pmc_bioc(
         ),
         content=content,
     )
+    if not parsed_payload["figures"] or not parsed_payload["tables"]:
+        try:
+            grobid_figures, grobid_tables = (
+                _extract_structured_publication_assets_with_grobid(
+                    content=content,
+                    file_name="publication.pdf",
+                    title=title,
+                )
+            )
+            if grobid_figures and not parsed_payload["figures"]:
+                parsed_payload["figures"] = grobid_figures
+            if grobid_tables and not parsed_payload["tables"]:
+                parsed_payload["tables"] = grobid_tables
+        except Exception as exc:
+            logger.warning(
+                "GROBID asset enrichment skipped for %s: %s", pmcid, exc
+            )
     if aligned_page_count is not None:
         parsed_payload["page_count"] = aligned_page_count
     return parsed_payload

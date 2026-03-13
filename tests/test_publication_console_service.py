@@ -3390,6 +3390,93 @@ def test_best_available_parser_prefers_pmc_bioc_when_pmcid_resolves(
     assert payload["sections"][0]["source"] == "pmc_bioc"
 
 
+def test_extract_structured_publication_paper_with_pmc_bioc_enriches_assets_with_grobid(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_bioc_payload",
+        lambda pmcid: {
+            "documents": [
+                {
+                    "passages": [
+                        {
+                            "infons": {"type": "title_1", "section_type": "METHODS"},
+                            "text": "Methods",
+                        },
+                        {
+                            "infons": {"type": "paragraph", "section_type": "METHODS"},
+                            "text": "PMC BioC methods text.",
+                        },
+                    ]
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_assets_with_grobid",
+        lambda **kwargs: (
+            [
+                {
+                    "id": "paper-asset-figure-1",
+                    "title": "Figure 1",
+                    "file_name": "Figure 1",
+                    "source": "PARSED",
+                    "download_url": None,
+                    "classification": "FIGURE",
+                    "classification_label": "Figure",
+                    "is_pdf": False,
+                    "caption": "A figure",
+                    "page_start": 2,
+                    "page_end": 2,
+                    "asset_kind": "figure",
+                    "origin": "parsed",
+                    "source_parser": "grobid",
+                    "coords": "2,10,10,100,100",
+                    "graphic_coords": "2,10,10,100,100",
+                    "image_data": "data:image/png;base64,abc",
+                    "structured_html": None,
+                }
+            ],
+            [
+                {
+                    "id": "paper-asset-table-1",
+                    "title": "Table 1",
+                    "file_name": "Table 1",
+                    "source": "PARSED",
+                    "download_url": None,
+                    "classification": "TABLE",
+                    "classification_label": "Table",
+                    "is_pdf": False,
+                    "caption": "A table",
+                    "page_start": 3,
+                    "page_end": 3,
+                    "asset_kind": "table",
+                    "origin": "parsed",
+                    "source_parser": "grobid",
+                    "coords": "3,10,10,100,100",
+                    "graphic_coords": None,
+                    "image_data": None,
+                    "structured_html": "<table><tbody><tr><td>A</td></tr></tbody></table>",
+                }
+            ],
+        ),
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
+        pmcid="PMC12060880",
+        content=b"%PDF-1.7 fake",
+        title="Test paper",
+    )
+
+    assert payload["parser_provider"] == "PMC_BIOC"
+    assert len(payload["figures"]) == 1
+    assert len(payload["tables"]) == 1
+    assert payload["figures"][0]["source_parser"] == "grobid"
+    assert "<td>A</td>" in str(payload["tables"][0]["structured_html"])
+
+
 def test_open_access_browser_fetch_script_path_prefers_packaged_script(
     monkeypatch, tmp_path
 ) -> None:
