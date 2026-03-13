@@ -9370,6 +9370,25 @@ def _extract_structured_publication_paper_with_pmc_bioc(
         == 0
     )
     if enrich_assets and (need_grobid_figures or need_grobid_tables):
+        if need_grobid_figures and content:
+            parsed_payload["figures"] = _crop_figure_images_from_pdf(
+                content,
+                [
+                    dict(item)
+                    for item in parsed_payload.get("figures", [])
+                    if isinstance(item, dict)
+                ],
+            )
+            need_grobid_figures = (
+                _publication_paper_asset_surface_count(
+                    parsed_payload.get("figures"),
+                    classification=FILE_CLASSIFICATION_FIGURE,
+                )
+                == 0
+                or _publication_paper_assets_include_low_quality_figures(
+                    parsed_payload.get("figures")
+                )
+            )
         try:
             grobid_figures, grobid_tables = (
                 _extract_structured_publication_assets_with_grobid(
@@ -10507,6 +10526,8 @@ def _run_structured_paper_asset_enrichment_job(
                     parsed_assets=pmc_tables,
                     file_assets=tables,
                 )
+        if content and _publication_paper_assets_include_low_quality_figures(figures):
+            figures = _crop_figure_images_from_pdf(content, figures)
         need_grobid_figures = (
             _publication_paper_asset_surface_count(
                 figures, classification=FILE_CLASSIFICATION_FIGURE

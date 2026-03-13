@@ -3777,6 +3777,101 @@ def test_crop_figure_images_prefers_native_pdf_image_when_available(monkeypatch)
     assert str(result[0].get("image_data") or "").startswith("data:image/png;base64,")
 
 
+def test_crop_figure_images_upgrades_low_quality_pmc_figure_via_title_match(monkeypatch) -> None:
+    class _FakeRect:
+        def __init__(self, x0: float, y0: float, x1: float, y1: float) -> None:
+            self.x0 = x0
+            self.y0 = y0
+            self.x1 = x1
+            self.y1 = y1
+
+        @property
+        def width(self) -> float:
+            return max(0.0, self.x1 - self.x0)
+
+        @property
+        def height(self) -> float:
+            return max(0.0, self.y1 - self.y0)
+
+        @property
+        def is_empty(self) -> bool:
+            return self.width <= 0 or self.height <= 0
+
+    class _FakePage:
+        def search_for(self, value: str):
+            assert value == "Figure 2"
+            return [_FakeRect(20, 40, 120, 60)]
+
+        def get_images(self, full: bool = False):  # noqa: FBT002
+            assert full is True
+            return [(17,)]
+
+        def get_image_rects(self, xref: int):
+            assert xref == 17
+            return [_FakeRect(40, 80, 500, 380)]
+
+    class _FakeDoc:
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> _FakePage:
+            assert index == 0
+            return _FakePage()
+
+        def extract_image(self, xref: int):
+            assert xref == 17
+            return {
+                "image": (
+                    b"\x89PNG\r\n\x1a\n"
+                    + b"\x00\x00\x00\rIHDR"
+                    + (1200).to_bytes(4, "big")
+                    + (800).to_bytes(4, "big")
+                    + b"\x08\x02\x00\x00\x00"
+                    + (b"x" * 20000)
+                ),
+                "ext": "png",
+                "width": 1200,
+                "height": 800,
+            }
+
+        def close(self) -> None:
+            return None
+
+    class _FakeFitzModule:
+        @staticmethod
+        def open(stream=None, filetype=None):  # noqa: ANN001
+            return _FakeDoc()
+
+        @staticmethod
+        def Rect(x0: float, y0: float, x1: float, y1: float) -> _FakeRect:
+            return _FakeRect(x0, y0, x1, y1)
+
+    weak_gif = (
+        b"GIF89a"
+        + (172).to_bytes(2, "little")
+        + (80).to_bytes(2, "little")
+        + (b"x" * 6000)
+    )
+
+    monkeypatch.setattr(publication_console_service, "_fitz", _FakeFitzModule)
+
+    result = publication_console_service._crop_figure_images_from_pdf(
+        b"%PDF-1.7 fake payload",
+        [
+            {
+                "id": "fig-2",
+                "title": "Figure 2",
+                "classification": publication_console_service.FILE_CLASSIFICATION_FIGURE,
+                "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS,
+                "image_data": "data:image/gif;base64,"
+                + base64.b64encode(weak_gif).decode("ascii"),
+            }
+        ],
+    )
+
+    assert str(result[0].get("image_data") or "").startswith("data:image/png;base64,")
+
+
 def test_merge_publication_paper_asset_candidate_prefers_higher_quality_figure_image() -> None:
     weak_gif = (
         b"GIF89a"
