@@ -3477,6 +3477,96 @@ def test_extract_structured_publication_paper_with_pmc_bioc_enriches_assets_with
     assert "<td>A</td>" in str(payload["tables"][0]["structured_html"])
 
 
+def test_extract_structured_publication_paper_with_pmc_bioc_can_skip_asset_enrichment(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_bioc_payload",
+        lambda pmcid: {
+            "documents": [
+                {
+                    "passages": [
+                        {
+                            "infons": {"type": "title_1", "section_type": "METHODS"},
+                            "text": "Methods",
+                        },
+                        {
+                            "infons": {"type": "paragraph", "section_type": "METHODS"},
+                            "text": "PMC BioC methods text.",
+                        },
+                    ]
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_assets_with_grobid",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("GROBID asset enrichment should be skipped")
+        ),
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
+        pmcid="PMC12060880",
+        content=b"%PDF-1.7 fake",
+        title="Test paper",
+        enrich_assets=False,
+    )
+
+    assert payload["parser_provider"] == "PMC_BIOC"
+    assert payload["figures"] == []
+    assert payload["tables"] == []
+    assert payload["sections"][0]["source"] == "pmc_bioc"
+
+
+def test_publication_paper_payload_needs_asset_enrichment_for_ready_pmc_payload() -> None:
+    payload = {
+        "document": {
+            "has_viewable_pdf": True,
+            "parser_status": "FULL_TEXT_READY",
+        },
+        "provenance": {
+            "parser_provider": "PMC_BIOC",
+        },
+        "component_summary": {
+            "figure_asset_count": 0,
+            "table_asset_count": 0,
+        },
+    }
+
+    assert (
+        publication_console_service._publication_paper_payload_needs_asset_enrichment(
+            payload
+        )
+        is True
+    )
+    assert (
+        publication_console_service._publication_paper_payload_needs_asset_enrichment(
+            {
+                **payload,
+                "component_summary": {
+                    "figure_asset_count": 1,
+                    "table_asset_count": 1,
+                },
+            }
+        )
+        is False
+    )
+    assert (
+        publication_console_service._publication_paper_payload_needs_asset_enrichment(
+            {
+                **payload,
+                "provenance": {
+                    "parser_provider": "GROBID",
+                },
+            }
+        )
+        is False
+    )
+
+
 def test_open_access_browser_fetch_script_path_prefers_packaged_script(
     monkeypatch, tmp_path
 ) -> None:
