@@ -172,7 +172,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v32"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v33"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -7096,6 +7096,94 @@ def _build_publication_paper_figure_candidate_asset(
     return candidate
 
 
+def _publication_paper_figure_caption_anchor_terms(
+    caption: str | None,
+) -> list[str]:
+    clean = _publication_paper_content_cleanup(caption)
+    if not clean:
+        return []
+    clean = re.sub(
+        r"^(?:fig(?:ure)?\.?\s*\d+[A-Za-z]?(?:\s*[:.\-])?\s*)",
+        "",
+        clean,
+        flags=re.IGNORECASE,
+    ).strip()
+    if not clean:
+        return []
+    sentence = re.split(r"(?<=[.!?])\s+", clean, maxsplit=1)[0].strip()
+    words = clean.split()
+    anchors: list[str] = []
+    for candidate in (
+        sentence,
+        " ".join(words[:14]).strip(),
+        " ".join(words[:10]).strip(),
+        " ".join(words[:8]).strip(),
+    ):
+        normalized = re.sub(r"\s+", " ", str(candidate or "").strip())
+        if len(normalized) < 18:
+            continue
+        if normalized not in anchors:
+            anchors.append(normalized)
+    return anchors
+
+
+def _publication_paper_figure_search_terms(
+    figure: dict[str, Any] | None,
+) -> list[tuple[int, str]]:
+    if not isinstance(figure, dict):
+        return []
+    terms: list[tuple[int, str]] = []
+    seen: set[str] = set()
+
+    def add_term(priority: int, value: str | None) -> None:
+        clean = re.sub(r"\s+", " ", str(value or "").strip())
+        if len(clean) < 3:
+            return
+        key = clean.casefold()
+        if key in seen:
+            return
+        seen.add(key)
+        terms.append((priority, clean))
+
+    title = _normalize_heading_label(str(figure.get("title") or "").strip() or None)
+    caption = str(figure.get("caption") or "").strip()
+    add_term(1, title)
+    for anchor in _publication_paper_figure_caption_anchor_terms(caption):
+        add_term(4, anchor)
+    if title and not re.fullmatch(r"(?:Figure|Fig\.?)\s+\d+[A-Za-z]?", title, flags=re.IGNORECASE):
+        add_term(2, title)
+    if title:
+        label_match = re.search(r"\b(?:Figure|Fig\.?)\s+\d+[A-Za-z]?\b", title, flags=re.IGNORECASE)
+        if label_match:
+            add_term(1, label_match.group(0))
+    return terms
+
+
+def _publication_paper_figure_page_order(
+    doc: Any,
+    figure: dict[str, Any] | None,
+) -> list[int]:
+    try:
+        page_count = len(doc)
+    except Exception:
+        page_count = 0
+    if page_count <= 0:
+        return []
+    page_start = _safe_int(figure.get("page_start") if isinstance(figure, dict) else None)
+    if page_start is None:
+        return list(range(page_count))
+    preferred = max(0, min(page_count - 1, page_start - 1))
+    ordered: list[int] = [preferred]
+    for offset in (1, -1, 2, -2):
+        page_index = preferred + offset
+        if 0 <= page_index < page_count and page_index not in ordered:
+            ordered.append(page_index)
+    for page_index in range(page_count):
+        if page_index not in ordered:
+            ordered.append(page_index)
+    return ordered
+
+
 def _select_best_publication_paper_figure_candidate(
     candidates: Iterable[dict[str, Any] | None],
     *,
@@ -8209,90 +8297,93 @@ def _extract_title_matched_pdf_figure_image_candidate(
     figure: dict[str, Any],
     avoid_xrefs: set[int] | None = None,
 ) -> tuple[str | None, int | None]:
-    title = _normalize_heading_label(str(figure.get("title") or "").strip() or None)
-    if not title:
+    search_terms = _publication_paper_figure_search_terms(figure)
+    if not search_terms:
         return None, None
     blocked_xrefs = avoid_xrefs or set()
-    for page_index in range(len(doc)):
+    for page_index in _publication_paper_figure_page_order(doc, figure):
         page = doc[page_index]
-        try:
-            title_rects = page.search_for(title) or []
-        except Exception:
-            title_rects = []
-        if not title_rects:
-            continue
         try:
             page_images = page.get_images(full=True) or []
         except Exception:
             page_images = []
-        best_candidate: tuple[int, float, float, int, int, int] | None = None
-        fallback_candidate: tuple[int, float, float, int, int, int] | None = None
-        for title_rect in title_rects:
-            title_top = float(getattr(title_rect, "y0", 0.0))
-            title_bottom = float(getattr(title_rect, "y1", 0.0))
-            title_center_x = (
-                float(getattr(title_rect, "x0", 0.0))
-                + float(getattr(title_rect, "x1", 0.0))
-            ) / 2.0
-            for image in page_images:
-                try:
-                    xref = int(image[0])
-                except Exception:
-                    continue
-                try:
-                    rects = page.get_image_rects(xref) or []
-                except Exception:
-                    continue
-                if not rects:
-                    continue
-                try:
-                    extracted = doc.extract_image(xref) or {}
-                except Exception:
-                    continue
-                img_bytes = extracted.get("image")
-                if not isinstance(img_bytes, (bytes, bytearray)) or len(img_bytes) < _FIGURE_CROP_MIN_BYTES:
-                    continue
-                width = int(extracted.get("width") or 0)
-                height = int(extracted.get("height") or 0)
-                image_area = max(0, width * height)
-                for rect in rects:
-                    rect_left = float(getattr(rect, "x0", 0.0))
-                    rect_right = float(getattr(rect, "x1", 0.0))
-                    rect_top = float(getattr(rect, "y0", 0.0))
-                    rect_bottom = float(getattr(rect, "y1", 0.0))
-                    rect_center_x = (rect_left + rect_right) / 2.0
-                    if rect_bottom <= title_top:
-                        relative_position = 2
-                        distance = title_top - rect_bottom
-                    elif rect_top >= title_bottom:
-                        relative_position = 1
-                        distance = rect_top - title_bottom
-                    else:
-                        relative_position = 0
-                        distance = min(
-                            abs(rect_top - title_bottom),
-                            abs(rect_bottom - title_top),
-                        ) + 750.0
-                    horizontal_distance = abs(rect_center_x - title_center_x)
-                    candidate = (
-                        relative_position,
-                        -distance,
-                        -horizontal_distance,
-                        image_area,
-                        len(img_bytes),
-                        xref,
-                    )
-                    if fallback_candidate is None or candidate > fallback_candidate:
-                        fallback_candidate = candidate
-                    if xref in blocked_xrefs:
+        best_candidate: tuple[int, int, int, float, float, int, int, int] | None = None
+        fallback_candidate: tuple[int, int, int, float, float, int, int, int] | None = None
+        for term_priority, search_term in search_terms:
+            try:
+                title_rects = page.search_for(search_term) or []
+            except Exception:
+                title_rects = []
+            if not title_rects:
+                continue
+            for title_rect in title_rects:
+                title_top = float(getattr(title_rect, "y0", 0.0))
+                title_bottom = float(getattr(title_rect, "y1", 0.0))
+                title_center_x = (
+                    float(getattr(title_rect, "x0", 0.0))
+                    + float(getattr(title_rect, "x1", 0.0))
+                ) / 2.0
+                for image in page_images:
+                    try:
+                        xref = int(image[0])
+                    except Exception:
                         continue
-                    if best_candidate is None or candidate > best_candidate:
-                        best_candidate = candidate
+                    try:
+                        rects = page.get_image_rects(xref) or []
+                    except Exception:
+                        continue
+                    if not rects:
+                        continue
+                    try:
+                        extracted = doc.extract_image(xref) or {}
+                    except Exception:
+                        continue
+                    img_bytes = extracted.get("image")
+                    if not isinstance(img_bytes, (bytes, bytearray)) or len(img_bytes) < _FIGURE_CROP_MIN_BYTES:
+                        continue
+                    width = int(extracted.get("width") or 0)
+                    height = int(extracted.get("height") or 0)
+                    image_area = max(0, width * height)
+                    for rect in rects:
+                        rect_left = float(getattr(rect, "x0", 0.0))
+                        rect_right = float(getattr(rect, "x1", 0.0))
+                        rect_top = float(getattr(rect, "y0", 0.0))
+                        rect_bottom = float(getattr(rect, "y1", 0.0))
+                        rect_center_x = (rect_left + rect_right) / 2.0
+                        if rect_bottom <= title_top:
+                            relative_position = 2
+                            distance = title_top - rect_bottom
+                        elif rect_top >= title_bottom:
+                            relative_position = 1
+                            distance = rect_top - title_bottom
+                        else:
+                            relative_position = 0
+                            distance = min(
+                                abs(rect_top - title_bottom),
+                                abs(rect_bottom - title_top),
+                            ) + 750.0
+                        horizontal_distance = abs(rect_center_x - title_center_x)
+                        candidate = (
+                            term_priority,
+                            1 if page_index == max(0, (_safe_int(figure.get("page_start")) or 1) - 1) else 0,
+                            relative_position,
+                            -distance,
+                            -horizontal_distance,
+                            image_area,
+                            len(img_bytes),
+                            xref,
+                        )
+                        if fallback_candidate is None or candidate > fallback_candidate:
+                            fallback_candidate = candidate
+                        if xref in blocked_xrefs:
+                            continue
+                        if best_candidate is None or candidate > best_candidate:
+                            best_candidate = candidate
         selected_candidate = best_candidate or fallback_candidate
         if selected_candidate is None:
             continue
         try:
-            extracted = doc.extract_image(selected_candidate[5]) or {}
+            extracted = doc.extract_image(selected_candidate[7]) or {}
         except Exception:
             continue
         img_bytes = extracted.get("image")
@@ -8301,7 +8392,7 @@ def _extract_title_matched_pdf_figure_image_candidate(
         extension = str(extracted.get("ext") or "png").strip().lower() or "png"
         mime_type = mimetypes.guess_type(f"figure.{extension}")[0] or "image/png"
         encoded = base64.b64encode(bytes(img_bytes)).decode("ascii")
-        return f"data:{mime_type};base64,{encoded}", int(selected_candidate[5])
+        return f"data:{mime_type};base64,{encoded}", int(selected_candidate[7])
     return None, None
 
 

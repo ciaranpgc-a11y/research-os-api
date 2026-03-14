@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, Filter, Hammer, Loader2, Mail, Paperclip, Pencil, RefreshCw, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -138,6 +138,17 @@ type PublicationPaperStructuredGroupPayload = {
   sections: PublicationPaperSectionPayload[]
   rootSections: PublicationPaperSectionPayload[]
 }
+type PublicationReaderReferencePayload = {
+  id: string
+  label: string
+  rawText: string
+}
+type PublicationReaderReferencePopoverState = {
+  tokenLabel: string
+  references: PublicationReaderReferencePayload[]
+  top: number
+  left: number
+}
 const PUBLICATION_READER_REFERENCES_TARGET_ID = '__references__'
 type PublicationReaderNavigatorTarget =
   | { kind: 'section'; id: string }
@@ -265,6 +276,44 @@ function formatPublicationReaderReferenceDisplayLabel(
     return `${syntheticMatch[1]}.`
   }
   return clean
+}
+
+function normalizePublicationReaderReferenceLookupKey(value: string | null | undefined): string {
+  const clean = String(value || '').trim()
+  if (!clean) {
+    return ''
+  }
+  const stripped = clean
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+    .replace(/^reference\s+/i, '')
+    .replace(/\.$/, '')
+    .trim()
+  return stripped.toLowerCase()
+}
+
+function expandPublicationReaderReferenceToken(value: string): string[] {
+  const clean = String(value || '').trim().replace(/^\[/, '').replace(/\]$/, '')
+  if (!clean) {
+    return []
+  }
+  const parts = clean.split(/[,;]+/).map((part) => part.trim()).filter(Boolean)
+  const expanded: string[] = []
+  for (const part of parts) {
+    const rangeMatch = part.match(/^(\d+)\s*[-–]\s*(\d+)$/)
+    if (rangeMatch) {
+      const start = Number(rangeMatch[1])
+      const end = Number(rangeMatch[2])
+      if (Number.isFinite(start) && Number.isFinite(end) && end >= start && end - start <= 12) {
+        for (let current = start; current <= end; current += 1) {
+          expanded.push(String(current))
+        }
+        continue
+      }
+    }
+    expanded.push(part)
+  }
+  return expanded
 }
 
 function comparePublicationPaperSections(
@@ -3143,6 +3192,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationReaderInspectorOpen, setPublicationReaderInspectorOpen] = useState(false)
   const [publicationReaderFigureLightboxAsset, setPublicationReaderFigureLightboxAsset] = useState<PublicationPaperAssetPayload | null>(null)
   const [publicationReaderFigureLightboxFitToViewport, setPublicationReaderFigureLightboxFitToViewport] = useState(true)
+  const [publicationReaderReferencePopover, setPublicationReaderReferencePopover] = useState<PublicationReaderReferencePopoverState | null>(null)
   const [filesDragOver, setFilesDragOver] = useState(false)
   const [publicationLibraryVisible, setPublicationLibraryVisible] = useState(true)
   const [publicationLibraryFiltersVisible, setPublicationLibraryFiltersVisible] = useState(false)
@@ -3213,6 +3263,33 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderFigureLightboxAsset(null)
     setPublicationReaderFigureLightboxFitToViewport(true)
   }, [])
+  const closePublicationReaderReferencePopover = useCallback(() => {
+    setPublicationReaderReferencePopover(null)
+  }, [])
+  const openPublicationReaderReferencePopover = useCallback((
+    event: ReactMouseEvent<HTMLElement>,
+    tokenLabel: string,
+    references: PublicationReaderReferencePayload[],
+  ) => {
+    if (!references.length) {
+      return
+    }
+    const rect = event.currentTarget.getBoundingClientRect()
+    const estimatedWidth = 420
+    const margin = 20
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1440
+    const left = Math.min(
+      Math.max(margin, rect.left),
+      Math.max(margin, viewportWidth - estimatedWidth - margin),
+    )
+    const top = rect.bottom + 10
+    setPublicationReaderReferencePopover({
+      tokenLabel,
+      references,
+      top,
+      left,
+    })
+  }, [])
   const resolvePublicationTableAvailableWidth = useCallback(() => {
     const measuredClient = publicationTableLayoutRef.current?.clientWidth
     if (Number.isFinite(measuredClient) && Number(measuredClient) > 0) {
@@ -3243,6 +3320,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       closePublicationReaderFigureLightbox()
     }
   }, [closePublicationReaderFigureLightbox, publicationReaderFigureLightboxAsset, publicationReaderOpen])
+  useEffect(() => {
+    if (!publicationReaderReferencePopover) {
+      return undefined
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closePublicationReaderReferencePopover()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [closePublicationReaderReferencePopover, publicationReaderReferencePopover])
+  useEffect(() => {
+    if (!publicationReaderOpen && publicationReaderReferencePopover) {
+      closePublicationReaderReferencePopover()
+    }
+  }, [closePublicationReaderReferencePopover, publicationReaderOpen, publicationReaderReferencePopover])
 
   const loadData = useCallback(async (
     sessionToken: string,
@@ -4706,7 +4800,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     () => selectedPaperTables.filter(publicationReaderAssetHasSurfaceContent),
     [selectedPaperTables],
   )
-  const selectedPaperReferences = useMemo(
+  const selectedPaperReferences = useMemo<PublicationReaderReferencePayload[]>(
     () => ((selectedPaperModel?.references || []) as Array<Record<string, unknown>>)
       .map((reference, index) => ({
         id: String(reference.id || `reference-${index + 1}`),
@@ -4726,6 +4820,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     : null
   const selectedPaperDatasets = selectedPaperModel?.datasets || []
   const selectedPaperAttachments = selectedPaperModel?.attachments || []
+  const selectedPaperReferencesByLookupKey = useMemo(() => {
+    const next = new Map<string, PublicationReaderReferencePayload>()
+    selectedPaperReferences.forEach((reference, index) => {
+      const displayLabel = formatPublicationReaderReferenceDisplayLabel(reference.label, index)
+      for (const candidate of [
+        reference.label,
+        displayLabel,
+        String(index + 1),
+      ]) {
+        const key = normalizePublicationReaderReferenceLookupKey(candidate)
+        if (key && !next.has(key)) {
+          next.set(key, reference)
+        }
+      }
+    })
+    return next
+  }, [selectedPaperReferences])
   const selectedPaperAssetEnrichmentStatus = String(
     (selectedPaperProvenance as Record<string, unknown> | null)?.asset_enrichment_status || '',
   ).trim().toUpperCase()
@@ -5090,12 +5201,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderLoading(false)
     setPublicationReaderError('')
     setPublicationReaderActiveSectionId(null)
-    setPublicationReaderPdfPage(1)
-    setPublicationReaderViewMode('structured')
-    setPublicationReaderCollapsedNodeIds({})
-    setPublicationReaderInspectorOpen(false)
-    publicationReaderSectionRefs.current = {}
-    publicationReaderReferencesRef.current = null
+      setPublicationReaderPdfPage(1)
+      setPublicationReaderViewMode('structured')
+      setPublicationReaderCollapsedNodeIds({})
+      setPublicationReaderInspectorOpen(false)
+      setPublicationReaderReferencePopover(null)
+      publicationReaderSectionRefs.current = {}
+      publicationReaderReferencesRef.current = null
     publicationReaderInlineAssetRefs.current = {}
   }, [selectedWorkId])
 
@@ -7191,6 +7303,49 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           </p>
         ) : null}
       </div>
+      )
+    }
+
+  const renderPublicationReaderParagraphWithReferences = (
+    paragraph: string,
+    keyPrefix: string,
+    className: string,
+    style?: CSSProperties,
+  ): ReactNode => {
+    const citationPattern = /(\[(?:\d+(?:\s*[-–]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-–]\s*\d+)?)*)\])/g
+    const parts = String(paragraph || '').split(citationPattern)
+    if (parts.length <= 1) {
+      return (
+        <p key={keyPrefix} className={className} style={style}>
+          {paragraph}
+        </p>
+      )
+    }
+    return (
+      <p key={keyPrefix} className={className} style={style}>
+        {parts.map((part, partIndex) => {
+          const tokenMatch = part.match(/^\[(.+)\]$/)
+          if (!tokenMatch) {
+            return <span key={`${keyPrefix}-text-${partIndex}`}>{part}</span>
+          }
+          const references = expandPublicationReaderReferenceToken(tokenMatch[1])
+            .map((token) => selectedPaperReferencesByLookupKey.get(normalizePublicationReaderReferenceLookupKey(token)) || null)
+            .filter((reference): reference is PublicationReaderReferencePayload => Boolean(reference))
+          if (references.length === 0) {
+            return <span key={`${keyPrefix}-token-${partIndex}`}>{part}</span>
+          }
+          return (
+            <button
+              key={`${keyPrefix}-token-${partIndex}`}
+              type="button"
+              className="inline rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.7)] px-1.5 py-0.5 text-left text-[0.84em] font-medium text-[hsl(var(--tone-accent-800))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-100))]"
+              onClick={(event) => openPublicationReaderReferencePopover(event, part, references)}
+            >
+              {part}
+            </button>
+          )
+        })}
+      </p>
     )
   }
 
@@ -7268,18 +7423,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         {sectionParagraphs.length > 0 ? (
           <div className={cn('mt-3 space-y-3.5', showMarker ? 'pl-[0.95rem]' : '')}>
             {sectionParagraphs.map((paragraph, paragraphIndex) => (
-              <p
-                key={`${section.id}-paragraph-${paragraphIndex}`}
-                className={cn(
+              renderPublicationReaderParagraphWithReferences(
+                paragraph,
+                `${section.id}-paragraph-${paragraphIndex}`,
+                cn(
                   'leading-[1.9]',
                   isSummaryBox
                     ? 'text-[0.9rem] text-[hsl(var(--tone-neutral-700))]'
                     : 'text-[0.96rem] text-[hsl(var(--tone-neutral-800))]',
-                )}
-                style={sectionParagraphStyle}
-              >
-                {paragraph}
-              </p>
+                ),
+                sectionParagraphStyle,
+              )
             ))}
           </div>
         ) : null}
@@ -9923,6 +10077,60 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           {autoOaStatus}
           {autoOaFinding ? ' (running in background)' : ''}
         </p>
+      ) : null}
+      {publicationReaderReferencePopover && typeof document !== 'undefined' ? createPortal(
+        <div
+          className="fixed inset-0 z-[145]"
+          onClick={closePublicationReaderReferencePopover}
+          role="presentation"
+        >
+          <div
+            className="absolute w-[min(26rem,calc(100vw-2rem))] rounded-[1.15rem] border border-[hsl(var(--tone-neutral-200))] bg-white p-4 shadow-[0_20px_50px_hsl(var(--tone-neutral-950)/0.16)]"
+            style={{
+              top: publicationReaderReferencePopover.top,
+              left: publicationReaderReferencePopover.left,
+            }}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="false"
+            aria-label={`Reference details for ${publicationReaderReferencePopover.tokenLabel}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                  Citation
+                </p>
+                <h3 className="mt-1 text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
+                  {publicationReaderReferencePopover.tokenLabel}
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-500))] transition-colors hover:border-[hsl(var(--tone-neutral-300))] hover:text-[hsl(var(--tone-neutral-900))]"
+                onClick={closePublicationReaderReferencePopover}
+                aria-label="Close reference details"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-3 space-y-3">
+              {publicationReaderReferencePopover.references.map((reference, index) => (
+                <div
+                  key={`${reference.id}-${index}`}
+                  className="rounded-[0.95rem] border border-[hsl(var(--tone-neutral-150))] bg-[hsl(var(--tone-neutral-50)/0.75)] px-3 py-3"
+                >
+                  <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                    {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
+                  </p>
+                  <p className="mt-2 text-[0.88rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
+                    {String(reference.rawText || '').replace(/\s+/g, ' ').trim()}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body,
       ) : null}
       {publicationReaderFigureLightboxAsset && typeof document !== 'undefined' ? createPortal(
         <div

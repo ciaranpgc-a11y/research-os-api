@@ -4327,6 +4327,71 @@ def test_extract_title_matched_pdf_figure_image_prefers_image_above_caption(
     assert b"b" * 100 not in decoded
 
 
+def test_extract_title_matched_pdf_figure_image_uses_caption_anchor_terms() -> None:
+    class _FakeRect:
+        def __init__(self, x0: float, y0: float, x1: float, y1: float) -> None:
+            self.x0 = x0
+            self.y0 = y0
+            self.x1 = x1
+            self.y1 = y1
+
+    class _FakePage:
+        def search_for(self, value: str):
+            if value == "Figure 4":
+                return []
+            if value.startswith("CMR sub-phenotyping in patients with IHD and HCM"):
+                return [_FakeRect(40, 290, 380, 310)]
+            return []
+
+        def get_images(self, full: bool = False):  # noqa: FBT002
+            assert full is True
+            return [(61,), (62,)]
+
+        def get_image_rects(self, xref: int):
+            if xref == 61:
+                return [_FakeRect(40, 60, 520, 270)]
+            if xref == 62:
+                return [_FakeRect(560, 60, 860, 270)]
+            return []
+
+    class _FakeDoc:
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> _FakePage:
+            assert index == 0
+            return _FakePage()
+
+        def extract_image(self, xref: int):
+            fill = b"c" if xref == 61 else b"d"
+            return {
+                "image": (
+                    b"\x89PNG\r\n\x1a\n"
+                    + b"\x00\x00\x00\rIHDR"
+                    + (2408).to_bytes(4, "big")
+                    + (1080).to_bytes(4, "big")
+                    + b"\x08\x02\x00\x00\x00"
+                    + (fill * 30000)
+                ),
+                "ext": "png",
+                "width": 2408,
+                "height": 1080,
+            }
+
+    data_uri = publication_console_service._extract_title_matched_pdf_figure_image(
+        doc=_FakeDoc(),
+        figure={
+            "title": "Figure 4",
+            "caption": "CMR sub-phenotyping in patients with IHD and HCM. CMR confirmed the echocardiographic diagnosis.",
+        },
+    )
+
+    assert isinstance(data_uri, str)
+    assert data_uri.startswith("data:image/png;base64,")
+    decoded = base64.b64decode(data_uri.split(",", 1)[1])
+    assert b"c" * 100 in decoded
+
+
 def test_crop_figure_images_prefers_distinct_title_matched_images_across_figures(
     monkeypatch,
 ) -> None:
