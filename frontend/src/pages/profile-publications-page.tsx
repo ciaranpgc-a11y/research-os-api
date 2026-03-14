@@ -427,6 +427,28 @@ function normalizePublicationPaperDisplayGroupKey(
     .join(' ')
     .trim()
     .toLowerCase()
+  const suggestsArticleInformation = (
+    labelText.includes('funding')
+    || labelText.includes('conflict')
+    || labelText.includes('ethic')
+    || labelText.includes('acknowledg')
+    || labelText.includes('author contribution')
+    || labelText.includes('data availability')
+    || labelText.includes('abbreviation')
+    || labelText.includes('abbreviations')
+    || labelText.includes('acronym')
+    || labelText.includes('glossary')
+  )
+
+  if (sectionType === 'reference' || canonicalMap === 'references' || canonicalKind === 'references') {
+    return 'references'
+  }
+  if (majorKey === 'article_information' || sectionType === 'metadata' || suggestsArticleInformation) {
+    return 'article_information'
+  }
+  if (sectionType === 'asset') {
+    return 'assets'
+  }
 
   if (
     canonicalMap === 'abstract'
@@ -440,17 +462,8 @@ function normalizePublicationPaperDisplayGroupKey(
   ) {
     return 'abstract'
   }
-  if (majorKey === 'article_information' || documentZone === 'back') {
+  if (documentZone === 'back') {
     return 'article_information'
-  }
-  if (sectionType === 'metadata') {
-    return 'article_information'
-  }
-  if (sectionType === 'reference' || canonicalMap === 'references' || canonicalKind === 'references') {
-    return 'references'
-  }
-  if (sectionType === 'asset') {
-    return 'assets'
   }
 
   const candidate = majorKey && majorKey !== 'overview' && majorKey !== 'main_text'
@@ -474,20 +487,6 @@ function normalizePublicationPaperDisplayGroupKey(
 
   if (labelText.includes('reference')) {
     return 'references'
-  }
-  if (
-    labelText.includes('funding')
-    || labelText.includes('conflict')
-    || labelText.includes('ethic')
-    || labelText.includes('acknowledg')
-    || labelText.includes('author contribution')
-    || labelText.includes('data availability')
-    || labelText.includes('abbreviation')
-    || labelText.includes('abbreviations')
-    || labelText.includes('acronym')
-    || labelText.includes('glossary')
-  ) {
-    return 'article_information'
   }
   if (labelText.includes('conclusion')) {
     return 'conclusions'

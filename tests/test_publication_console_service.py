@@ -876,6 +876,107 @@ def test_refine_publication_paper_sections_does_not_attach_body_subsections_to_f
     assert statistical_analysis["parent_id"] is None
 
 
+def test_refine_publication_paper_sections_nests_bmj_summary_boxes_under_abstract() -> None:
+    refined_sections = publication_console_service._refine_publication_paper_sections(
+        [
+            {
+                "id": "paper-section-abstract",
+                "title": "Abstract",
+                "raw_label": "Abstract",
+                "label_original": "Abstract",
+                "label_normalized": "Abstract",
+                "canonical_kind": "abstract",
+                "kind": "abstract",
+                "content": "Structured abstract content.",
+                "source": "grobid",
+                "order": 0,
+                "level": 1,
+                "parent_id": None,
+                "document_zone": "front",
+            },
+            {
+                "id": "paper-section-known",
+                "title": "What is already known on this topic",
+                "raw_label": "What is already known on this topic",
+                "label_original": "What is already known on this topic",
+                "label_normalized": "What is already known on this topic",
+                "canonical_kind": "section",
+                "kind": "section",
+                "content": "Prior echo phenotyping misses important subtypes.",
+                "source": "grobid",
+                "order": 1,
+                "level": 1,
+                "parent_id": None,
+                "document_zone": "front",
+            },
+            {
+                "id": "paper-section-adds",
+                "title": "What this study adds",
+                "raw_label": "What this study adds",
+                "label_original": "What this study adds",
+                "label_normalized": "What this study adds",
+                "canonical_kind": "section",
+                "kind": "section",
+                "content": "CMR improved aetiological sub-phenotyping beyond echocardiography.",
+                "source": "grobid",
+                "order": 2,
+                "level": 1,
+                "parent_id": None,
+                "document_zone": "front",
+            },
+        ],
+        journal="BMJ Open",
+    )
+
+    known_section = next(
+        section for section in refined_sections if section["id"] == "paper-section-known"
+    )
+    adds_section = next(
+        section for section in refined_sections if section["id"] == "paper-section-adds"
+    )
+
+    assert known_section["canonical_kind"] == "key_summary_known"
+    assert known_section["section_role"] == "summary_box"
+    assert known_section["journal_section_family"] == "bmj_summary_box"
+    assert known_section["parent_id"] == "paper-section-abstract"
+    assert known_section["level"] >= 2
+
+    assert adds_section["canonical_kind"] == "key_summary_adds"
+    assert adds_section["section_role"] == "summary_box"
+    assert adds_section["journal_section_family"] == "bmj_summary_box"
+    assert adds_section["parent_id"] == "paper-section-abstract"
+    assert adds_section["level"] >= 2
+
+
+def test_refine_publication_paper_sections_classifies_abbreviations_as_metadata() -> None:
+    refined_sections = publication_console_service._refine_publication_paper_sections(
+        [
+            {
+                "id": "paper-section-abbreviations",
+                "title": "Abbreviations",
+                "raw_label": "Abbreviations",
+                "label_original": "Abbreviations",
+                "label_normalized": "Abbreviations",
+                "canonical_kind": "section",
+                "kind": "section",
+                "content": "CMR, cardiac magnetic resonance; LVFP, left ventricular filling pressure.",
+                "source": "grobid",
+                "order": 0,
+                "level": 1,
+                "parent_id": None,
+                "document_zone": "front",
+            },
+        ],
+        journal="Open Heart",
+    )
+
+    abbreviations = refined_sections[0]
+    assert abbreviations["canonical_kind"] == "abbreviations"
+    assert abbreviations["section_type"] == "metadata"
+    assert abbreviations["major_section_key"] == "article_information"
+    assert abbreviations["section_role"] == "metadata"
+
+
 def test_parse_grobid_tei_merges_headingless_body_continuation_into_current_major_section() -> None:
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">

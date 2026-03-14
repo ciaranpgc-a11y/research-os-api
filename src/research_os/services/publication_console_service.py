@@ -119,6 +119,7 @@ PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS = {
     "lay_summary",
 }
 PUBLICATION_PAPER_METADATA_SECTION_KINDS = {
+    "abbreviations",
     "registration",
     "ethics",
     "data_availability",
@@ -159,7 +160,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v23"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v24"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -3245,6 +3246,7 @@ def _normalize_publication_paper_section_kind(value: str | None) -> str:
         "provenance",
         "references",
         "appendix",
+        "abbreviations",
         "supplementary_materials",
         "figure",
         "table",
@@ -3369,6 +3371,11 @@ def _normalize_publication_paper_section_kind(value: str | None) -> str:
         return "ethics"
     if any(
         token in clean
+        for token in ["abbreviation", "abbreviations", "acronym", "acronyms", "glossary"]
+    ):
+        return "abbreviations"
+    if any(
+        token in clean
         for token in ["data availability", "data sharing", "availability of data"]
     ):
         return "data_availability"
@@ -3440,6 +3447,7 @@ def _publication_paper_section_label(kind: str) -> str:
         "provenance": "Provenance and peer review",
         "references": "References",
         "appendix": "Appendix",
+        "abbreviations": "Abbreviations",
         "supplementary_materials": "Supplementary materials",
         "figure": "Figure",
         "table": "Table",
@@ -3792,6 +3800,43 @@ def _split_publication_paper_editorial_overflow(
     return clean_content, None, None
 
 
+def _nest_publication_paper_summary_boxes_under_abstract(
+    sections: list[dict[str, Any]],
+) -> None:
+    abstract_root: dict[str, Any] | None = next(
+        (
+            section
+            for section in sections
+            if _normalize_publication_paper_section_kind(section.get("canonical_map"))
+            == "abstract"
+            and not str(section.get("parent_id") or "").strip()
+        ),
+        None,
+    )
+    if abstract_root is None:
+        return
+    abstract_root_id = str(abstract_root.get("id") or "").strip()
+    if not abstract_root_id:
+        return
+    abstract_level = int(_safe_int(abstract_root.get("level")) or 1)
+    for section in sections:
+        section_id = str(section.get("id") or "").strip()
+        if not section_id or section_id == abstract_root_id:
+            continue
+        if str(section.get("parent_id") or "").strip():
+            continue
+        if str(section.get("section_role") or "").strip() != "summary_box":
+            continue
+        if str(section.get("journal_section_family") or "").strip() != "bmj_summary_box":
+            continue
+        section["parent_id"] = abstract_root_id
+        section["level"] = max(
+            abstract_level + 1,
+            int(_safe_int(section.get("level")) or 1),
+            2,
+        )
+
+
 def _refine_publication_paper_sections(
     sections: list[dict[str, Any]],
     *,
@@ -3827,6 +3872,12 @@ def _refine_publication_paper_sections(
         canonical_kind = _normalize_publication_paper_section_kind(
             refined.get("canonical_kind") or refined.get("kind") or raw_title
         )
+        if canonical_kind in {"section", "title"}:
+            title_inferred_kind = _normalize_publication_paper_section_kind(
+                raw_title or raw_label
+            )
+            if title_inferred_kind not in {"section", "title"}:
+                canonical_kind = title_inferred_kind
         document_zone = str(refined.get("document_zone") or "").strip().lower() or "body"
         if document_zone == "body":
             raw_title_marker = re.sub(r"[\s_-]+", " ", raw_title.casefold()).strip()
@@ -3995,6 +4046,8 @@ def _refine_publication_paper_sections(
                 "major_section_key": major_section_key,
             }
             refined_sections.append(child_section)
+
+    _nest_publication_paper_summary_boxes_under_abstract(refined_sections)
 
     for order, section in enumerate(refined_sections):
         section["order"] = order
