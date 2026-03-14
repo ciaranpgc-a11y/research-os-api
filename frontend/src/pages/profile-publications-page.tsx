@@ -142,6 +142,14 @@ type PublicationReaderReferencePayload = {
   id: string
   label: string
   rawText: string
+  title?: string
+  authors?: string[]
+  year?: string
+  journal?: string
+  doi?: string
+  volume?: string
+  pages?: string
+  xmlId?: string
 }
 type PublicationReaderReferencePopoverState = {
   tokenLabel: string
@@ -4806,6 +4814,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         id: String(reference.id || `reference-${index + 1}`),
         label: String(reference.label || `Reference ${index + 1}`).trim() || `Reference ${index + 1}`,
         rawText: String(reference.raw_text || reference.text || '').trim(),
+        ...(reference.title ? { title: String(reference.title) } : {}),
+        ...(Array.isArray(reference.authors) && reference.authors.length ? { authors: reference.authors.map(String) } : {}),
+        ...(reference.year ? { year: String(reference.year) } : {}),
+        ...(reference.journal ? { journal: String(reference.journal) } : {}),
+        ...(reference.doi ? { doi: String(reference.doi) } : {}),
+        ...(reference.volume ? { volume: String(reference.volume) } : {}),
+        ...(reference.pages ? { pages: String(reference.pages) } : {}),
+        ...(reference.xml_id ? { xmlId: String(reference.xml_id) } : {}),
       }))
       .filter((reference) => reference.rawText),
     [selectedPaperModel?.references],
@@ -4835,6 +4851,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         }
       }
     })
+    return next
+  }, [selectedPaperReferences])
+  const selectedPaperReferenceIdMap = useMemo<Record<string, string>>(
+    () => (selectedPaperModel as Record<string, unknown> | null)?.reference_id_map as Record<string, string> || {},
+    [selectedPaperModel],
+  )
+  const selectedPaperReferencesById = useMemo(() => {
+    const next = new Map<string, PublicationReaderReferencePayload>()
+    for (const ref of selectedPaperReferences) {
+      next.set(ref.id, ref)
+    }
     return next
   }, [selectedPaperReferences])
   const selectedPaperAssetEnrichmentStatus = String(
@@ -7295,6 +7322,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 />
               </div>
             ) : null}
+            {!asset.image_data && !asset.structured_html && asset.page_start != null ? (
+              <div className="border-t border-dashed border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50)/0.5)] px-3 py-2">
+                <p className="text-[0.78rem] text-[hsl(var(--tone-neutral-500))]">
+                  {asset.asset_kind === 'table'
+                    ? 'Table content not available — view in PDF'
+                    : 'Image not extractable from PDF'}
+                </p>
+              </div>
+            ) : null}
           </div>
         ))}
         {metadataMessage ? (
@@ -7312,7 +7348,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     className: string,
     style?: CSSProperties,
   ): ReactNode => {
-    const citationPattern = /(\[(?:\d+(?:\s*[-–]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-–]\s*\d+)?)*)\])/g
+    const citationPattern = /(\[(?:\d+(?:\s*[-–]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-–]\s*\d+)?)*)\]|\{\{cite:[^}]+\}\})/g
     const parts = String(paragraph || '').split(citationPattern)
     if (parts.length <= 1) {
       return (
@@ -7324,6 +7360,26 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return (
       <p key={keyPrefix} className={className} style={style}>
         {parts.map((part, partIndex) => {
+          const citeMarkerMatch = part.match(/^\{\{cite:([^}]+)\}\}$/)
+          if (citeMarkerMatch) {
+            const xmlId = citeMarkerMatch[1]
+            const refEntryId = selectedPaperReferenceIdMap[xmlId]
+            const reference = refEntryId ? selectedPaperReferencesById.get(refEntryId) : undefined
+            if (reference) {
+              const displayLabel = reference.label || String(selectedPaperReferences.indexOf(reference) + 1)
+              return (
+                <button
+                  key={`${keyPrefix}-cite-${partIndex}`}
+                  type="button"
+                  className="inline rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.7)] px-1.5 py-0.5 text-left text-[0.84em] font-medium text-[hsl(var(--tone-accent-800))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-100))]"
+                  onClick={(event) => openPublicationReaderReferencePopover(event, `[${displayLabel}]`, [reference])}
+                >
+                  [{displayLabel}]
+                </button>
+              )
+            }
+            return <span key={`${keyPrefix}-cite-${partIndex}`} />
+          }
           const tokenMatch = part.match(/^\[(.+)\]$/)
           if (!tokenMatch) {
             return <span key={`${keyPrefix}-text-${partIndex}`}>{part}</span>
@@ -7537,7 +7593,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return (
       <div className="space-y-2.5">
         {selectedPublicationReaderNavigatorGroups.map((group) => {
-          const isCollapsed = group.items.length > 0 && (publicationReaderCollapsedNodeIds[group.id] ?? true)
+          const isCollapsed = group.items.length > 0 && (publicationReaderCollapsedNodeIds[group.id] ?? false)
           return (
             <section key={group.id} className="space-y-1.5">
               <div
@@ -10113,7 +10169,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 max-h-[60vh] space-y-3 overflow-y-auto">
               {publicationReaderReferencePopover.references.map((reference, index) => (
                 <div
                   key={`${reference.id}-${index}`}
@@ -10122,9 +10178,41 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
                     {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
                   </p>
-                  <p className="mt-2 text-[0.88rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
-                    {String(reference.rawText || '').replace(/\s+/g, ' ').trim()}
-                  </p>
+                  {reference.title ? (
+                    <p className="mt-2 text-[0.88rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]">
+                      {reference.title}
+                    </p>
+                  ) : null}
+                  {reference.authors?.length ? (
+                    <p className="mt-1 text-[0.82rem] leading-snug text-[hsl(var(--tone-neutral-600))]">
+                      {reference.authors.join(', ')}
+                    </p>
+                  ) : null}
+                  {(reference.journal || reference.year || reference.volume || reference.pages) ? (
+                    <p className="mt-1 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
+                      {[
+                        reference.journal,
+                        reference.volume ? `vol. ${reference.volume}` : null,
+                        reference.pages ? `pp. ${reference.pages}` : null,
+                        reference.year ? `(${reference.year})` : null,
+                      ].filter(Boolean).join(', ')}
+                    </p>
+                  ) : null}
+                  {reference.doi ? (
+                    <a
+                      href={`https://doi.org/${encodeURIComponent(reference.doi)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 inline-block text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 hover:text-[hsl(var(--tone-accent-800))]"
+                    >
+                      DOI: {reference.doi}
+                    </a>
+                  ) : null}
+                  {!reference.title && !reference.authors?.length ? (
+                    <p className="mt-2 text-[0.88rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
+                      {String(reference.rawText || '').replace(/\s+/g, ' ').trim()}
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>

@@ -700,7 +700,6 @@ export type PersonaWork = {
   issn_l?: string | null
   issns?: string[]
   venue_type?: string | null
-  has_open_access_pdf?: boolean
   created_at: string
   updated_at: string
 }
@@ -1078,6 +1077,7 @@ export type PublicationPaperModelPayload = {
   datasets: PublicationPaperModelAssetPayload[]
   attachments: PublicationPaperModelAssetPayload[]
   references: Array<Record<string, unknown>>
+  reference_id_map: Record<string, string>
   annotations: Array<Record<string, unknown>>
   component_summary: PublicationPaperModelComponentSummaryPayload
   provenance: Record<string, unknown>
@@ -1209,7 +1209,6 @@ export type PublicationFilePayload = {
   classification: PublicationFileClassification | null
   classification_label: string | null
   classification_other_label?: string | null
-  is_stored_locally?: boolean
   can_delete: boolean
   can_rename?: boolean
   can_classify?: boolean

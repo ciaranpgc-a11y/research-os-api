@@ -57,7 +57,9 @@
 
     --tone-neutral-50: 0 0% 100%;
     --tone-neutral-100: 214 20% 98%;
+    --tone-neutral-150: 214 19% 96%;
     --tone-neutral-200: 214 18% 94%;
+    --tone-neutral-250: 215 16% 90%;
     --tone-neutral-300: 216 13% 86%;
     --tone-neutral-400: 217 14% 60%;
     --tone-neutral-500: 218 15% 46%;
@@ -448,7 +450,9 @@
 
     --tone-neutral-50: 220 18% 94%;
     --tone-neutral-100: 219 17% 86%;
+    --tone-neutral-150: 219 17% 80%;
     --tone-neutral-200: 219 16% 74%;
+    --tone-neutral-250: 220 16% 68%;
     --tone-neutral-300: 220 15% 62%;
     --tone-neutral-400: 220 15% 52%;
     --tone-neutral-500: 220 16% 44%;
@@ -5634,7 +5638,9 @@
   box-shadow: 0 0 0 3px hsl(var(--tone-accent-200) / 0.55);
 }
 
-/* Structured table styles for Docling-extracted tables rendered in the paper reader */
+/* Structured table styles for Docling/GROBID-extracted tables rendered in the paper reader.
+   Base layout rules only — visual styling (borders, colors) is handled by Tailwind
+   utility classes in PUBLICATION_STRUCTURED_TABLE_CLASS_NAME. */
 .publication-structured-table table {
   width: 100%;
   border-collapse: collapse;
@@ -5644,22 +5650,7 @@
 
 .publication-structured-table th,
 .publication-structured-table td {
-  border: 1px solid hsl(var(--tone-neutral-200));
   padding: 0.3rem 0.5rem;
   text-align: left;
   vertical-align: top;
-}
-
-.publication-structured-table th {
-  background-color: hsl(var(--tone-neutral-100));
-  font-weight: 600;
-  color: hsl(var(--tone-neutral-800));
-}
-
-.publication-structured-table td {
-  color: hsl(var(--tone-neutral-700));
-}
-
-.publication-structured-table tr:nth-child(even) td {
-  background-color: hsl(var(--tone-neutral-50) / 0.5);
 }

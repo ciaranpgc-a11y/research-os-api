@@ -1409,19 +1409,11 @@ export async function fetchPublicationAuthors(
 export async function fetchPublicationPaperModel(
   token: string,
   publicationId: string,
-  options?: {
-    forceReparse?: boolean
-  },
+  options?: { force?: boolean },
 ): Promise<PublicationPaperModelResponsePayload> {
-  const url = new URL(
-    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/paper-model`,
-    window.location.origin,
-  )
-  if (options?.forceReparse) {
-    url.searchParams.set('force', 'true')
-  }
+  const params = options?.force ? '?force=true' : ''
   return requestJson<PublicationPaperModelResponsePayload>(
-    url.toString(),
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/paper-model${params}`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
