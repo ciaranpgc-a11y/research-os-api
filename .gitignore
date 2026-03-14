@@ -27,6 +27,7 @@ Thumbs.db
 # Secrets
 .env
 .env.*
+!deploy/.env.example
 
 # Local deployment scratch files
 tmp_deploys.json

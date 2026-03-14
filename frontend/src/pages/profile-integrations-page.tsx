@@ -8,7 +8,7 @@ import { getSectionMarkerTone } from '@/lib/section-tone'
 import { houseLayout } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { Button, Input } from '@/components/ui'
-import { fetchMe, searchOpenAlexAuthors, updateMe } from '@/lib/impact-api'
+import { enqueueOpenAlexImportJob, fetchMe, searchOpenAlexAuthors, updateMe } from '@/lib/impact-api'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import type { AuthUser } from '@/types/impact'
 
@@ -213,6 +213,20 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     }
   }
 
+  const queueOpenAlexImport = useCallback(
+    async (sessionToken: string, authorId: string): Promise<string> => {
+      const payload = await enqueueOpenAlexImportJob(sessionToken, authorId, {
+        overwriteUserMetadata: true,
+        runMetricsSync: true,
+        providers: ['openalex', 'semantic_scholar'],
+        refreshAnalytics: true,
+        refreshMetrics: true,
+      })
+      return String(payload.job_id || '').trim()
+    },
+    [],
+  )
+
   const onConfirmOpenAlexAuthor = async () => {
     if (!token || isFixtureMode) {
       return
@@ -228,9 +242,19 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     setOpenAlexSearchError('')
     try {
       const payload = await updateMe(token, { openalex_author_id: selectedId })
+      const shouldQueueImport = Boolean(
+        payload.openalex_integration_approved && selectedId !== openAlexAuthorId,
+      )
+      const queuedJobId = shouldQueueImport
+        ? await queueOpenAlexImport(token, selectedId)
+        : ''
       setUser(payload)
       saveCachedIntegrationsUser(payload)
-      setStatus(`OpenAlex profile confirmed (${selectedId}).`)
+      setStatus(
+        queuedJobId
+          ? `OpenAlex profile confirmed (${selectedId}). Publication sync queued.`
+          : `OpenAlex profile confirmed (${selectedId}).`,
+      )
     } catch (confirmError) {
       if (handleSessionExpiry(confirmError)) {
         return
@@ -287,9 +311,19 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         openalex_integration_approved: nextApproved,
         openalex_auto_update_enabled: nextAutoUpdateEnabled,
       })
+      const shouldQueueImport = Boolean(
+        nextApproved && payload.openalex_author_id && !openAlexIntegrationApproved,
+      )
+      const queuedJobId = shouldQueueImport
+        ? await queueOpenAlexImport(token, String(payload.openalex_author_id))
+        : ''
       setUser(payload)
       saveCachedIntegrationsUser(payload)
-      setStatus('OpenAlex sync preferences updated.')
+      setStatus(
+        queuedJobId
+          ? 'OpenAlex sync preferences updated. Publication sync queued.'
+          : 'OpenAlex sync preferences updated.',
+      )
     } catch (settingsError) {
       if (handleSessionExpiry(settingsError)) {
         return

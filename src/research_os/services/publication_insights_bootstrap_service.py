@@ -522,6 +522,9 @@ def _work_from_openalex(
         "title": title,
         "year": _safe_int(work_payload.get("publication_year")),
         "doi": doi,
+        "citations_total": max(
+            0, int(_safe_int(work_payload.get("cited_by_count")) or 0)
+        ),
         "work_type": re.sub(r"\s+", " ", str(work_payload.get("type") or "").strip()),
         "venue_name": venue_name,
         "publisher": publisher,

@@ -176,6 +176,60 @@ def _normalize_status(value: str | None) -> str:
     return READY_STATUS
 
 
+def _max_timestamp(
+    current: datetime | None, candidate: datetime | None
+) -> datetime | None:
+    if candidate is None:
+        return current
+    candidate_utc = _coerce_utc(candidate)
+    if current is None:
+        return candidate_utc
+    return candidate_utc if candidate_utc > current else current
+
+
+def _latest_bundle_input_timestamp(session, *, user_id: str) -> datetime | None:
+    latest: datetime | None = None
+
+    work_rows = session.execute(
+        select(Work.updated_at, Work.created_at).where(Work.user_id == user_id)
+    ).all()
+    for updated_at, created_at in work_rows:
+        latest = _max_timestamp(latest, updated_at)
+        latest = _max_timestamp(latest, created_at)
+
+    snapshot_rows = session.execute(
+        select(MetricsSnapshot.captured_at, MetricsSnapshot.created_at)
+        .join(Work, MetricsSnapshot.work_id == Work.id)
+        .where(Work.user_id == user_id)
+    ).all()
+    for captured_at, created_at in snapshot_rows:
+        latest = _max_timestamp(latest, captured_at)
+        latest = _max_timestamp(latest, created_at)
+
+    collaborator_rows = session.execute(
+        select(Collaborator.updated_at, Collaborator.created_at).where(
+            Collaborator.owner_user_id == user_id
+        )
+    ).all()
+    for updated_at, created_at in collaborator_rows:
+        latest = _max_timestamp(latest, updated_at)
+        latest = _max_timestamp(latest, created_at)
+
+    collaborator_affiliation_rows = session.execute(
+        select(
+            CollaboratorAffiliation.updated_at,
+            CollaboratorAffiliation.created_at,
+        )
+        .join(Collaborator, CollaboratorAffiliation.collaborator_id == Collaborator.id)
+        .where(Collaborator.owner_user_id == user_id)
+    ).all()
+    for updated_at, created_at in collaborator_affiliation_rows:
+        latest = _max_timestamp(latest, updated_at)
+        latest = _max_timestamp(latest, created_at)
+
+    return latest
+
+
 def _normalize_article_type_label(
     value: Any, *, default: str = "Original research"
 ) -> str:
@@ -5615,6 +5669,12 @@ def get_publication_top_metrics(*, user_id: str) -> dict[str, Any]:
                 _coerce_utc(row.computed_at) if row.computed_at is not None else None
             )
             stale = _is_stale(computed_at=computed_at, now=_utcnow())
+            latest_input_at = _latest_bundle_input_timestamp(session, user_id=user_id)
+            input_outdated = (
+                latest_input_at is not None
+                and computed_at is not None
+                and latest_input_at > computed_at
+            ) or (latest_input_at is not None and computed_at is None)
             payload = _read_bundle_payload(row)
             metadata = payload.get("metadata") if isinstance(payload, dict) else {}
             schema_version = (
@@ -5626,13 +5686,20 @@ def get_publication_top_metrics(*, user_id: str) -> dict[str, Any]:
             should_retry_failed = status == FAILED_STATUS
             payload_incomplete = _citation_drilldown_payload_incomplete(payload)
             if (
-                stale or schema_outdated or should_retry_failed or payload_incomplete
+                stale
+                or schema_outdated
+                or should_retry_failed
+                or payload_incomplete
+                or input_outdated
             ) and status != RUNNING_STATUS:
                 enqueue = True
                 status = RUNNING_STATUS
             response = _response_from_row(row, status_override=status)
             response["is_stale"] = (
-                bool(response.get("is_stale")) or schema_outdated or payload_incomplete
+                bool(response.get("is_stale"))
+                or schema_outdated
+                or payload_incomplete
+                or input_outdated
             )
     if enqueue:
         enqueue_publication_top_metrics_refresh(user_id=user_id, reason="stale_read")

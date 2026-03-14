@@ -1,0 +1,18 @@
+# ─── Research-OS reverse proxy ───────────────────────────────────────────────
+# Caddy automatically provisions and renews HTTPS certificates via Let's Encrypt.
+# If api.axiomos.studio is proxied through Cloudflare, set the Cloudflare SSL/TLS
+# mode to "Full (strict)" so Cloudflare trusts the Caddy-issued certificate.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Main SPA
+app.axiomos.studio {
+	reverse_proxy frontend:80
+}
+
+api.axiomos.studio {
+	reverse_proxy api:8000
+}
+
+grobid.axiomos.studio {
+	reverse_proxy grobid:8070
+}

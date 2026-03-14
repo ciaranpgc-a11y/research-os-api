@@ -1303,6 +1303,25 @@ def upsert_work(
     doi = _normalize_doi(work.get("doi"))
     url = str(work.get("url", "")).strip()
     pmid = _extract_pmid(work.get("pmid")) or _extract_pmid(url)
+    citations_total = max(0, int(_safe_int(work.get("citations_total")) or 0))
+    openalex_work_id = str(work.get("openalex_work_id") or "").strip()
+    if openalex_work_id:
+        openalex_work_id = openalex_work_id.rstrip("/")
+        if openalex_work_id.startswith("https://openalex.org/"):
+            openalex_work_id = openalex_work_id.removeprefix(
+                "https://openalex.org/"
+            )
+        elif openalex_work_id.startswith("http://openalex.org/"):
+            openalex_work_id = openalex_work_id.removeprefix(
+                "http://openalex.org/"
+            )
+        openalex_work_id = openalex_work_id.strip().strip("/")
+        openalex_work_id = openalex_work_id.split("/")[-1].strip()
+        if not openalex_work_id or openalex_work_id[0].lower() != "w":
+            openalex_work_id = ""
+        else:
+            openalex_work_id = openalex_work_id.upper()
+    openalex_work_id = openalex_work_id or None
     openalex_source_id = extract_openalex_source_id(work.get("openalex_source_id"))
     issn_l = normalize_issn(work.get("issn_l"))
     issns = _normalize_work_issns(
@@ -1369,6 +1388,7 @@ def upsert_work(
             "year": year,
             "doi": doi,
             "pmid": pmid,
+            "citations_total": citations_total,
             "work_type": normalized_work_type,
             "journal": journal_name,
             "venue_name": venue_name,
@@ -1378,6 +1398,7 @@ def upsert_work(
             "keywords": _normalize_keywords(work.get("keywords")),
             "url": url,
             "provenance": provenance,
+            "openalex_work_id": openalex_work_id,
             "openalex_source_id": openalex_source_id,
             "issn_l": issn_l,
             "issns": issns,
@@ -1392,6 +1413,8 @@ def upsert_work(
                 year=mutable_fields["year"],
                 doi=mutable_fields["doi"],
                 pmid=mutable_fields["pmid"],
+                citations_total=mutable_fields["citations_total"],
+                openalex_work_id=mutable_fields["openalex_work_id"],
                 work_type=mutable_fields["work_type"],
                 journal=mutable_fields["journal"],
                 venue_name=mutable_fields["venue_name"],
@@ -1426,6 +1449,7 @@ def upsert_work(
                 existing.abstract = mutable_fields["abstract"]
                 existing.keywords = mutable_fields["keywords"]
                 existing.url = mutable_fields["url"]
+                existing.citations_total = mutable_fields["citations_total"]
                 if work_type_source == "llm":
                     existing.work_type_source = "llm"
                     existing.work_type_llm_at = _utcnow()
@@ -1437,6 +1461,10 @@ def upsert_work(
                 existing.doi = doi
             if mutable_fields["pmid"] and not _extract_pmid(existing.pmid):
                 existing.pmid = mutable_fields["pmid"]
+            if mutable_fields["openalex_work_id"] and not str(
+                existing.openalex_work_id or ""
+            ).strip():
+                existing.openalex_work_id = mutable_fields["openalex_work_id"]
             _apply_journal_identity_to_work(
                 existing,
                 openalex_source_id=mutable_fields["openalex_source_id"],
@@ -2570,6 +2598,7 @@ def sync_metrics(
                     "venue_name": work.venue_name,
                     "url": work.url,
                     "pmid": _extract_pmid(work.pmid) or _extract_pmid(work.url),
+                    "openalex_work_id": work.openalex_work_id,
                 },
             )
             for work in works

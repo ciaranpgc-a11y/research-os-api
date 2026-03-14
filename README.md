@@ -121,11 +121,9 @@ PowerShell-safe async generation enqueue:
 curl.exe --% -X POST http://127.0.0.1:8000/v1/projects/PROJECT_ID/manuscripts/MANUSCRIPT_ID/generate -H "Content-Type: application/json" -d "{\"sections\":[\"introduction\",\"methods\",\"results\"],\"notes_context\":\"core trial notes\"}"
 ```
 
-## Deploy to Render
+## Deploy to Hetzner
 
-`render.yaml` provisions:
-- `research-os-api-achk` (Docker web service)
-- `research-os-ui-achk` (static site from `frontend/`)
+Production runs on a Hetzner VPS using Docker Compose with Caddy in front.
 
 Production domains:
 - Frontend: `https://app.axiomos.studio`
@@ -133,7 +131,6 @@ Production domains:
 
 The API Docker startup runs `alembic upgrade head` before launching Uvicorn.
 The API health check path is `/v1/health/ready` so database connectivity is verified.
-Auto-deploy is configured to `checksPass` so only commits that pass CI are deployed.
 
 Required API environment variables:
 - `OPENAI_API_KEY` (must be set; API fails startup if missing)
@@ -143,16 +140,16 @@ Recommended API environment variables:
 - `FRONTEND_BASE_URL=https://app.axiomos.studio` (production)
 - `DATABASE_URL` (defaults to local SQLite when absent)
 - `DATA_LIBRARY_ROOT` (directory for uploaded library files; set to a persistent mount path in production)
+- `PUBLICATION_FILES_ROOT` (directory for stored publication files)
 - `AAWE_BOOTSTRAP_EMAIL` (optional stable seeded login for rebuilds)
 - `AAWE_BOOTSTRAP_PASSWORD` (password for seeded login)
 - `AAWE_BOOTSTRAP_NAME` (optional; default `AAWE Test User`)
 - `AAWE_BOOTSTRAP_EMAIL_VERIFIED` (`1` to skip manual verification for that seeded account)
 - `AAWE_BOOTSTRAP_FORCE_PASSWORD` (`1` to reset seeded account password on every startup)
 
-Frontend environment variables:
-- `NODE_VERSION=20` (recommended on Render for the static frontend build; matches `frontend/package.json`)
+Frontend build/runtime variables:
 - `VITE_API_BASE_URL=https://api.axiomos.studio` (production)
-- `VITE_TEST_ACCOUNT_EMAIL` / `VITE_TEST_ACCOUNT_PASSWORD` (optional auth-page shortcut for test environments).
+- `VITE_TEST_ACCOUNT_EMAIL` / `VITE_TEST_ACCOUNT_PASSWORD` (optional auth-page shortcut for test environments)
 
 OAuth redirect URI configuration (production):
 - `ORCID_REDIRECT_URI=https://api.axiomos.studio/v1/orcid/callback`
@@ -161,31 +158,7 @@ OAuth redirect URI configuration (production):
 SPA refresh routing:
 - Frontend build copies `dist/index.html` to `dist/404.html` and `dist/200.html` so direct refreshes on deep routes (e.g. `/w/...`) still load the app shell on static hosts.
 
-### Easier rebuild testing (recommended)
-
-If you redeploy often, use both:
-
-1. Persistent database
-- Set `DATABASE_URL` to a managed Postgres instance (recommended on Render).
-- Without this, container-local SQLite is reset on deploy.
-
-2. Persistent data-library storage
-- Attach a Render disk to the API service and mount it (for example at `/var/data`).
-- Set `DATA_LIBRARY_ROOT=/var/data/data_library_store`.
-- Without this, uploaded files can disappear on restart/deploy even if metadata rows still exist.
-
-3. Bootstrap test account
-- Set on API service:
-  - `AAWE_BOOTSTRAP_EMAIL`
-  - `AAWE_BOOTSTRAP_PASSWORD`
-  - `AAWE_BOOTSTRAP_EMAIL_VERIFIED=1`
-- The API seeds/updates this account automatically on startup.
-
-Optional frontend convenience:
-- Set:
-  - `VITE_TEST_ACCOUNT_EMAIL`
-  - `VITE_TEST_ACCOUNT_PASSWORD`
-- Auth page will show a `Use test account` button to prefill credentials.
+See `docs/DEPLOYMENT.md` for the full Hetzner deployment, cutover, preview, and rollback runbook.
 
 ## Docker
 

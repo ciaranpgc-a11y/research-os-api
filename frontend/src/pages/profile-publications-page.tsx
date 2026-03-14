@@ -4106,8 +4106,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (isLocalRuntime) {
       return
     }
-    const tileCount = (topMetricsResponse?.tiles || []).length
-    if (!token || topMetricsResponse?.status !== 'RUNNING' || tileCount > 0) {
+    if (!token || topMetricsResponse?.status !== 'RUNNING') {
       return
     }
     let cancelled = false
@@ -4373,8 +4372,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return {
       title: 'No works in your library yet.',
       steps: [
-        'Connect ORCID in Integrations.',
-        'Run ORCID sync from the top-right actions.',
+        'Confirm your OpenAlex profile in Integrations.',
+        'Use Refresh publications from the top-right actions.',
         'Select any row to inspect publication details.',
       ],
     }
@@ -4417,8 +4416,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return {
       title: 'No journals in your library yet.',
       steps: [
-        'Connect ORCID in Integrations.',
-        'Run ORCID sync from the top-right actions.',
+        'Confirm your OpenAlex profile in Integrations.',
+        'Use Refresh publications from the top-right actions.',
         'Return here once your publication library has loaded.',
       ],
     }
@@ -5305,7 +5304,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       publicationReaderPollingStartRef.current = Date.now()
     }
     const elapsedMs = Date.now() - publicationReaderPollingStartRef.current
-    if (elapsedMs > 120_000) {
+    if (elapsedMs > 300_000) {
       return
     }
     const timeoutId = window.setTimeout(() => {
@@ -8366,8 +8365,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     {((publicationLibraryViewMode === 'journals'
                       ? journalLibraryEmptyState?.steps
                       : publicationLibraryEmptyState?.steps) || [
-                      'Connect ORCID in Integrations.',
-                      'Run ORCID sync from the top-right actions.',
+                      'Confirm your OpenAlex profile in Integrations.',
+                      'Use Refresh publications from the top-right actions.',
                       'Select any row to inspect publication details.',
                     ]).map((step) => (
                       <li key={step}>{step}</li>

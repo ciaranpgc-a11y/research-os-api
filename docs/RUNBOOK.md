@@ -26,17 +26,22 @@
 - Run Storybook:
   - `npm run storybook --prefix frontend`
 
-## Render deployment pointers
+## Production deployment pointers
 
-- API service: `research-os-api-achk`
-  - Uses Docker runtime.
-  - Deployed from root `Dockerfile`.
-  - Health check: `https://api.axiomos.studio/v1/health/ready`.
-- UI service: `research-os-ui-achk`
-  - Uses static runtime.
-  - Builds from `frontend/` using `npm ci && npm run build`.
-  - Pins `NODE_VERSION=20` to match `frontend/package.json`.
-  - Publishes output from `frontend/dist`.
+- Production host: Hetzner VPS
+- Reverse proxy: Caddy
+- Live UI: `https://app.axiomos.studio`
+- Live API: `https://api.axiomos.studio`
+- Live stack entrypoint: `docker compose up -d --build`
+- Live health check: `https://api.axiomos.studio/v1/health/ready`
+
+Useful server checks:
+- `docker compose ps`
+- `docker compose logs -f api`
+- `docker compose logs -f frontend`
+- `docker compose logs -f caddy`
+
+Preview can be enabled later with the `preview` compose profile once preview DNS is in place.
 
 ## If you feel lost
 

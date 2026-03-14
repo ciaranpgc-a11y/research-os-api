@@ -700,10 +700,14 @@ def update_current_user(
 ) -> dict[str, object]:
     create_all_tables()
     identity_changed = False
+    queue_openalex_import = False
+    queued_openalex_author_id = ""
     updated_user_id = ""
     response_payload: dict[str, object] = {}
     with session_scope() as session:
         user, _ = _resolve_user_from_session_token(session=session, token=session_token)
+        previous_openalex_author_id = str(user.openalex_author_id or "").strip()
+        previous_openalex_integration_approved = bool(user.openalex_integration_approved)
 
         if name is not None:
             normalized_name = _normalize_name(name)
@@ -763,6 +767,17 @@ def update_current_user(
         session.refresh(user)
         updated_user_id = str(user.id)
         response_payload = _serialize_user(user)
+        current_openalex_author_id = str(user.openalex_author_id or "").strip()
+        current_openalex_integration_approved = bool(user.openalex_integration_approved)
+        queue_openalex_import = bool(
+            current_openalex_integration_approved
+            and current_openalex_author_id
+            and (
+                (not previous_openalex_integration_approved)
+                or current_openalex_author_id != previous_openalex_author_id
+            )
+        )
+        queued_openalex_author_id = current_openalex_author_id
 
     if identity_changed and updated_user_id:
         try:
@@ -785,6 +800,49 @@ def update_current_user(
             )
         except Exception:
             pass
+
+    if queue_openalex_import and updated_user_id and queued_openalex_author_id:
+        try:
+            from research_os.services.persona_sync_job_service import (
+                PersonaSyncJobConflictError,
+                PersonaSyncJobValidationError,
+                enqueue_persona_sync_job,
+            )
+
+            enqueue_persona_sync_job(
+                user_id=updated_user_id,
+                job_type="openalex_import",
+                overwrite_user_metadata=True,
+                run_metrics_sync=True,
+                providers=["openalex", "semantic_scholar"],
+                refresh_analytics=True,
+                refresh_metrics=True,
+                openalex_author_id=queued_openalex_author_id,
+            )
+        except PersonaSyncJobConflictError:
+            logger.info(
+                "openalex_import_already_active",
+                extra={
+                    "user_id": updated_user_id,
+                    "openalex_author_id": queued_openalex_author_id,
+                },
+            )
+        except PersonaSyncJobValidationError:
+            logger.exception(
+                "openalex_import_enqueue_validation_failed",
+                extra={
+                    "user_id": updated_user_id,
+                    "openalex_author_id": queued_openalex_author_id,
+                },
+            )
+        except Exception:
+            logger.exception(
+                "openalex_import_enqueue_failed",
+                extra={
+                    "user_id": updated_user_id,
+                    "openalex_author_id": queued_openalex_author_id,
+                },
+            )
     return response_payload
 
 

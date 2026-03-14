@@ -175,10 +175,6 @@ jobs:
         shell: bash
         run: xargs -r python -m pytest -q < pytest-targets.txt
 
-      - name: Validate Render blueprint YAML
-        run: |
-          python -c "from pathlib import Path; import yaml; p = Path('render.yaml'); assert p.exists(), 'render.yaml missing'; yaml.safe_load(p.read_text(encoding='utf-8'))"
-
       - name: Build Docker image
         run: docker build -t research-os-api .
 

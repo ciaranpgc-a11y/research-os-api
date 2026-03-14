@@ -99,6 +99,22 @@ class OpenAlexMetricsProvider(MetricsProvider):
     _base_url = "https://api.openalex.org/works"
 
     @staticmethod
+    def _normalize_openalex_work_id(value: Any) -> str:
+        clean = str(value or "").strip()
+        if not clean:
+            return ""
+        clean = clean.rstrip("/")
+        if clean.startswith("https://openalex.org/"):
+            clean = clean.removeprefix("https://openalex.org/")
+        elif clean.startswith("http://openalex.org/"):
+            clean = clean.removeprefix("http://openalex.org/")
+        clean = clean.strip().strip("/")
+        token = clean.split("/")[-1].strip()
+        if not token or token[0].lower() != "w":
+            return ""
+        return token.upper()
+
+    @staticmethod
     def _normalize_title(value: str) -> str:
         return re.sub(r"[^a-z0-9]+", " ", (value or "").strip().lower()).strip()
 
@@ -182,6 +198,9 @@ class OpenAlexMetricsProvider(MetricsProvider):
         return best
 
     def fetch_metrics(self, work: dict[str, Any]) -> dict[str, Any]:
+        openalex_work_id = self._normalize_openalex_work_id(
+            work.get("openalex_work_id")
+        )
         doi = self._normalize_doi(str(work.get("doi", "")).strip())
         title = str(work.get("title", "")).strip()
         year_raw = work.get("year")
@@ -192,6 +211,17 @@ class OpenAlexMetricsProvider(MetricsProvider):
             try:
                 candidate: dict[str, Any] | None = None
                 match_method = ""
+                if openalex_work_id:
+                    response = self._request_with_retry(
+                        client,
+                        url=f"{self._base_url}/{openalex_work_id}",
+                        params={},
+                    )
+                    if response.status_code < 400:
+                        payload = response.json()
+                        if isinstance(payload, dict) and payload.get("id"):
+                            candidate = payload
+                            match_method = "openalex_work_id"
                 if doi:
                     response = self._request_with_retry(
                         client,

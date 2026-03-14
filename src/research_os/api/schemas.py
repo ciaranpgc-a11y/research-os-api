@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -1969,7 +1969,6 @@ class PersonaWorkResponse(BaseModel):
     issn_l: str | None = None
     issns: list[str] = Field(default_factory=list)
     venue_type: str | None = None
-    has_open_access_pdf: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -2490,7 +2489,6 @@ class PublicationPaperModelAssetResponse(BaseModel):
     file_name: str
     source: Literal["OA_LINK", "USER_UPLOAD", "SUPPLEMENTARY_LINK", "PARSED"] = "USER_UPLOAD"
     download_url: str | None = None
-    is_stored_locally: bool = False
     classification: Literal[
         "PUBLISHED_MANUSCRIPT",
         "SUPPLEMENTARY_MATERIALS",
@@ -2577,7 +2575,6 @@ class PublicationFileResponse(BaseModel):
     ] | None = None
     classification_label: str | None = None
     classification_other_label: str | None = None
-    is_stored_locally: bool = False
     can_delete: bool = True
     can_rename: bool = True
     can_classify: bool = True

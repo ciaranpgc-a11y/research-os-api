@@ -1,5 +1,27 @@
 # Change Log
 
+## 2026-03-15
+
+### Hetzner Self-Hosted Deployment + Polling Timeout Fix
+
+- **Area:** Infrastructure and deployment; publication reader polling.
+- **What changed:**
+  - **Docker Compose deployment**: Added `docker-compose.yml` with three services (Caddy reverse proxy, API, GROBID) for self-hosted deployment on Hetzner VPS. GROBID runs co-located with the API for faster parsing.
+  - **Reverse proxy**: Added `deploy/Caddyfile` for automatic HTTPS via Caddy for `api.axiomos.studio` and `grobid.axiomos.studio`.
+  - **Environment template**: Added `deploy/.env.example` documenting all required environment variables.
+  - **Polling timeout**: Increased frontend parsing poll timeout from 2 minutes to 5 minutes to accommodate slower network conditions.
+  - **Deployment docs**: Updated `docs/DEPLOYMENT.md` with Hetzner deployment guide including architecture diagram, setup steps, and operational notes.
+- **Why it changed:**
+  - Render's cold starts and slow network caused parsing to exceed the 2-minute poll timeout, making completed parses invisible to users.
+  - Co-locating GROBID with the API eliminates network latency for PDF parsing.
+  - Self-hosted deployment provides persistent filesystem and no cold-start delays.
+- **Key files touched:**
+  - `docker-compose.yml` (new)
+  - `deploy/Caddyfile` (new)
+  - `deploy/.env.example` (new)
+  - `frontend/src/pages/profile-publications-page.tsx`
+  - `docs/DEPLOYMENT.md`
+
 ## 2026-03-14
 
 ### Publication Reader: Citations, Enrichment Fix, and Dev Process Log

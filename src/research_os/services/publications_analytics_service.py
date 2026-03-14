@@ -181,6 +181,39 @@ def _latest_metrics_by_work_at_or_before(
     return best
 
 
+def _max_timestamp(
+    current: datetime | None, candidate: datetime | None
+) -> datetime | None:
+    if candidate is None:
+        return current
+    candidate_utc = _coerce_utc(candidate)
+    if current is None:
+        return candidate_utc
+    return candidate_utc if candidate_utc > current else current
+
+
+def _latest_bundle_input_timestamp(session, *, user_id: str) -> datetime | None:
+    latest: datetime | None = None
+
+    work_rows = session.execute(
+        select(Work.updated_at, Work.created_at).where(Work.user_id == user_id)
+    ).all()
+    for updated_at, created_at in work_rows:
+        latest = _max_timestamp(latest, updated_at)
+        latest = _max_timestamp(latest, created_at)
+
+    snapshot_rows = session.execute(
+        select(MetricsSnapshot.captured_at, MetricsSnapshot.created_at)
+        .join(Work, MetricsSnapshot.work_id == Work.id)
+        .where(Work.user_id == user_id)
+    ).all()
+    for captured_at, created_at in snapshot_rows:
+        latest = _max_timestamp(latest, captured_at)
+        latest = _max_timestamp(latest, created_at)
+
+    return latest
+
+
 def _sum_citations(rows: dict[str, MetricsSnapshot]) -> int:
     return sum(max(0, int(snapshot.citations_count or 0)) for snapshot in rows.values())
 
@@ -1189,9 +1222,15 @@ def get_publications_analytics(*, user_id: str) -> dict[str, Any]:
             if not payload:
                 payload = _build_empty_payload(computed_at=now)
             computed_at = _coerce_utc_or_none(row.computed_at)
+            latest_input_at = _latest_bundle_input_timestamp(session, user_id=user_id)
+            input_outdated = (
+                latest_input_at is not None
+                and computed_at is not None
+                and latest_input_at > computed_at
+            ) or (latest_input_at is not None and computed_at is None)
             stale = _is_stale(
                 computed_at=computed_at, now=now
-            ) or not _is_metric_payload_current(payload)
+            ) or not _is_metric_payload_current(payload) or input_outdated
             status = _normalize_status(row.status)
             should_enqueue = _should_enqueue_from_row(
                 row, now=now, stale=stale, force=False
