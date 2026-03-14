@@ -172,7 +172,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v33"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v34"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -5759,6 +5759,11 @@ def _build_publication_paper_payload(
         "datasets": datasets,
         "attachments": attachments,
         "references": references,
+        "reference_id_map": (
+            dict(parsed_payload["reference_id_map"])
+            if isinstance(parsed_payload.get("reference_id_map"), dict)
+            else {}
+        ),
         "annotations": [],
         "component_summary": component_summary,
         "provenance": {
@@ -6341,6 +6346,47 @@ def _is_figure_legend_paragraph(text: str) -> bool:
     return True
 
 
+
+def _tei_node_text_with_citations(node: ET.Element | None) -> str:
+    """Like ``_tei_node_text`` but preserves ``<ref type="bibr">`` as ``{{cite:ID}}`` markers."""
+    if node is None:
+        return ""
+    parts: list[str] = []
+
+    def _walk(el: ET.Element) -> None:
+        tag = _xml_local_name(getattr(el, "tag", ""))
+        if tag == "ref":
+            ref_type = str(el.attrib.get("type") or "").strip().lower()
+            if ref_type == "bibr":
+                target = str(el.attrib.get("target") or "").strip()
+                ref_id = target.lstrip("#") if target else ""
+                if ref_id:
+                    parts.append(f"{{{{cite:{ref_id}}}}}")
+                    if el.tail:
+                        t = _normalize_publication_pdf_text_line(el.tail)
+                        if t:
+                            parts.append(t)
+                    return
+        if el.text:
+            t = _normalize_publication_pdf_text_line(el.text)
+            if t:
+                parts.append(t)
+        for child in list(el):
+            _walk(child)
+        if el.tail:
+            t = _normalize_publication_pdf_text_line(el.tail)
+            if t:
+                parts.append(t)
+
+    if node.text:
+        t = _normalize_publication_pdf_text_line(node.text)
+        if t:
+            parts.append(t)
+    for child in list(node):
+        _walk(child)
+    return _normalize_abstract_text(" ".join(parts))
+
+
 def _tei_section_blocks(node: ET.Element | None) -> list[str]:
     blocks: list[str] = []
     if node is None:
@@ -6395,7 +6441,8 @@ def _tei_section_blocks(node: ET.Element | None) -> list[str]:
         raw_text = _tei_node_text(child)
         if _is_figure_legend_paragraph(raw_text or ""):
             continue
-        text = _publication_paper_content_cleanup(raw_text)
+        raw_text_with_cites = _tei_node_text_with_citations(child)
+        text = _publication_paper_content_cleanup(raw_text_with_cites)
         if text and not _is_publication_paper_boilerplate_block(text):
             blocks.append(text)
     deduped_blocks: list[str] = []
@@ -6685,10 +6732,8 @@ def _extract_publication_paper_reference_entries_from_tei(
     seen: set[str] = set()
     for container in candidate_iterables:
         for node in container.iter():
-            if _xml_local_name(getattr(node, "tag", "")).casefold() not in {
-                "bibl",
-                "biblstruct",
-            }:
+            tag_lower = _xml_local_name(getattr(node, "tag", "")).casefold()
+            if tag_lower not in {"bibl", "biblstruct"}:
                 continue
             formatted_text = _format_tei_reference_entry(node)
             raw_text = formatted_text or _tei_node_text(node)
@@ -6701,13 +6746,20 @@ def _extract_publication_paper_reference_entries_from_tei(
                 continue
             seen.add(marker)
             label_text = _tei_node_text(_tei_first_direct_child(node, "label"))
-            references.append(
-                {
-                    "id": f"paper-reference-{len(references) + 1}",
-                    "label": label_text or f"Reference {len(references) + 1}",
-                    "raw_text": raw_text,
-                }
-            )
+            entry: dict[str, Any] = {
+                "id": f"paper-reference-{len(references) + 1}",
+                "label": label_text or f"Reference {len(references) + 1}",
+                "raw_text": raw_text,
+            }
+            if tag_lower == "biblstruct":
+                xml_id = str(
+                    node.attrib.get("{http://www.w3.org/XML/1998/namespace}id")
+                    or node.attrib.get("xml:id")
+                    or ""
+                ).strip()
+                if xml_id:
+                    entry["xml_id"] = xml_id
+            references.append(entry)
     return references[:500]
 
 
@@ -8141,11 +8193,22 @@ def _parse_grobid_tei_into_structured_paper(
     )
     refined_sections = _refine_publication_paper_sections(cleaned_sections)
 
+    references = _extract_publication_paper_reference_entries_from_tei(root)
+    reference_id_map: dict[str, str] = {}
+    for ref in references:
+        xml_id = ref.get("xml_id")
+        if xml_id:
+            reference_id_map[xml_id] = ref["id"]
+        lbl = str(ref.get("label") or "").strip()
+        if lbl and lbl not in reference_id_map:
+            reference_id_map[lbl] = ref["id"]
+
     return {
         "sections": refined_sections,
         "figures": parsed_figures,
         "tables": parsed_tables,
-        "references": _extract_publication_paper_reference_entries_from_tei(root),
+        "references": references,
+        "reference_id_map": reference_id_map,
         "page_count": _tei_page_count(root),
         "generation_method": "grobid_tei_fulltext_v3",
         "parser_provider": STRUCTURED_PAPER_PARSER_PROVIDER_GROBID,
@@ -9492,11 +9555,15 @@ def _format_pmc_archive_reference(ref_node: ET.Element, index: int) -> dict[str,
     if not raw_text:
         return None
     clean_label = label or f"Reference {index}"
-    return {
+    ref_xml_id = str(ref_node.attrib.get("id") or "").strip()
+    entry: dict[str, Any] = {
         "id": f"paper-reference-{index}",
         "label": clean_label,
         "raw_text": raw_text,
     }
+    if ref_xml_id:
+        entry["xml_id"] = ref_xml_id
+    return entry
 
 
 def _extract_publication_paper_references_from_pmc_archive_content(
@@ -10099,6 +10166,117 @@ def _parse_pmc_bioc_into_structured_paper(
     }
 
 
+
+def _jats_node_text_with_citations(node: ET.Element | None) -> str:
+    """Extract text from a JATS XML node, preserving <xref ref-type="bibr"> as citation markers."""
+    if node is None:
+        return ""
+    parts: list[str] = []
+
+    def _walk(el: ET.Element) -> None:
+        tag = _xml_local_name(getattr(el, "tag", ""))
+        if tag == "xref":
+            ref_type = str(el.attrib.get("ref-type") or "").strip().lower()
+            if ref_type == "bibr":
+                rid = str(el.attrib.get("rid") or "").strip()
+                display = _normalize_publication_pdf_text_line(
+                    "".join(el.itertext())
+                )
+                if rid:
+                    parts.append(f"{{{{cite:{rid}}}}}")
+                elif display:
+                    parts.append(f"[{display}]")
+                if el.tail:
+                    t = _normalize_publication_pdf_text_line(el.tail)
+                    if t:
+                        parts.append(t)
+                return
+        if el.text:
+            t = _normalize_publication_pdf_text_line(el.text)
+            if t:
+                parts.append(t)
+        for child in list(el):
+            _walk(child)
+        if el.tail:
+            t = _normalize_publication_pdf_text_line(el.tail)
+            if t:
+                parts.append(t)
+
+    if node.text:
+        t = _normalize_publication_pdf_text_line(node.text)
+        if t:
+            parts.append(t)
+    for child in list(node):
+        _walk(child)
+    return _normalize_abstract_text(" ".join(parts))
+
+
+def _enrich_bioc_sections_with_jats_citations(
+    sections: list[dict[str, Any]],
+    archive_content: bytes,
+) -> list[dict[str, Any]]:
+    """Replace BioC section content with JATS-extracted text that includes citation markers."""
+    if not archive_content or not sections:
+        return sections
+    try:
+        with tarfile.open(fileobj=BytesIO(archive_content), mode="r:gz") as archive:
+            members = _pmc_archive_member_candidates(archive)
+            xml_member = _pmc_archive_primary_xml_member(members)
+            xml_content = _pmc_archive_read_member_bytes(archive, xml_member)
+            if not xml_content:
+                return sections
+            root = ET.fromstring(xml_content)
+    except Exception:
+        return sections
+
+    jats_paragraphs: list[str] = []
+    for body_node in root.iter():
+        if _xml_local_name(getattr(body_node, "tag", "")) != "body":
+            continue
+        for p_node in body_node.iter():
+            if _xml_local_name(getattr(p_node, "tag", "")) != "p":
+                continue
+            text = _jats_node_text_with_citations(p_node)
+            if text and len(text) >= 20:
+                jats_paragraphs.append(text)
+        break
+
+    if not jats_paragraphs:
+        return sections
+
+    def _para_signature(text: str) -> str:
+        clean = re.sub(r"\{\{cite:[^}]+\}\}", "", text)
+        clean = re.sub(r"\[\d+[^\]]*\]", "", clean)
+        clean = re.sub(r"[^a-z0-9]+", "", clean.lower())
+        return clean[:80]
+
+    jats_by_sig: dict[str, str] = {}
+    for jp in jats_paragraphs:
+        sig = _para_signature(jp)
+        if sig and sig not in jats_by_sig:
+            jats_by_sig[sig] = jp
+
+    updated_sections: list[dict[str, Any]] = []
+    for section in sections:
+        sec_copy = dict(section)
+        bioc_content = str(sec_copy.get("content") or "").strip()
+        if not bioc_content:
+            updated_sections.append(sec_copy)
+            continue
+        bioc_paragraphs = [p.strip() for p in bioc_content.split("\n") if p.strip()]
+        enriched_paragraphs: list[str] = []
+        for bp in bioc_paragraphs:
+            sig = _para_signature(bp)
+            jats_match = jats_by_sig.get(sig) if sig else None
+            if jats_match and "{{cite:" in jats_match:
+                enriched_paragraphs.append(jats_match)
+            else:
+                enriched_paragraphs.append(bp)
+        sec_copy["content"] = "\n".join(enriched_paragraphs)
+        updated_sections.append(sec_copy)
+    return updated_sections
+
+
 def _extract_structured_publication_paper_with_pmc_bioc(
     *,
     pmcid: str,
@@ -10119,6 +10297,15 @@ def _extract_structured_publication_paper_with_pmc_bioc(
     )
     if pmc_archive_references:
         parsed_payload["references"] = pmc_archive_references
+    reference_id_map: dict[str, str] = {}
+    for ref in (parsed_payload.get("references") or []):
+        xml_id = ref.get("xml_id")
+        if xml_id:
+            reference_id_map[xml_id] = ref["id"]
+        lbl = str(ref.get("label") or "").strip()
+        if lbl and lbl not in reference_id_map:
+            reference_id_map[lbl] = ref["id"]
+    parsed_payload["reference_id_map"] = reference_id_map
     if enrich_assets:
         try:
             pmc_figures, pmc_tables = _extract_structured_publication_assets_from_pmc_archive_content(
@@ -10260,6 +10447,11 @@ def _extract_structured_publication_paper_with_pmc_bioc(
             )
     if aligned_page_count is not None:
         parsed_payload["page_count"] = aligned_page_count
+    if archive_content:
+        parsed_payload["sections"] = _enrich_bioc_sections_with_jats_citations(
+            parsed_payload.get("sections", []),
+            archive_content,
+        )
     return parsed_payload
 
 

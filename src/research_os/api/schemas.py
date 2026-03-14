@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -2540,6 +2540,7 @@ class PublicationPaperModelPayloadResponse(BaseModel):
     datasets: list[PublicationPaperModelAssetResponse] = Field(default_factory=list)
     attachments: list[PublicationPaperModelAssetResponse] = Field(default_factory=list)
     references: list[dict[str, Any]] = Field(default_factory=list)
+    reference_id_map: dict[str, str] = Field(default_factory=dict)
     annotations: list[dict[str, Any]] = Field(default_factory=list)
     component_summary: PublicationPaperModelComponentSummaryResponse = Field(
         default_factory=PublicationPaperModelComponentSummaryResponse
