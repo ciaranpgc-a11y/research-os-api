@@ -10100,6 +10100,46 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               {renderPublicationReaderAssetGroup(selectedPaperAttachments, 'No additional attachments surfaced yet.')}
                             </div>
                           </section>
+
+                          <section className="rounded-2xl border border-dashed border-[hsl(var(--tone-neutral-300))] bg-white/60 p-4">
+                            <details>
+                              <summary className="cursor-pointer text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-400))] select-none">
+                                Process log (dev)
+                              </summary>
+                              <div className="mt-3 space-y-1 font-mono text-[0.68rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">response.status:</span> {selectedPaperModelResponse?.status ?? '—'}</p>
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">parser_status:</span> {selectedPaperDocument?.parser_status ?? '—'}</p>
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">parser_version:</span> {String((selectedPaperProvenance as Record<string, unknown> | null)?.parser_version || selectedPaperDocument?.parser_version || '—')}</p>
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">generation_method:</span> {String(selectedPaperDocument?.generation_method || '—')}</p>
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">parser_provider:</span> {String((selectedPaperProvenance as Record<string, unknown> | null)?.parser_provider || '—')}</p>
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">grobid_url:</span> {String((selectedPaperProvenance as Record<string, unknown> | null)?.grobid_base_url || '—')}</p>
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">computed_at:</span> {selectedPaperModelResponse?.computed_at ? new Date(String(selectedPaperModelResponse.computed_at)).toLocaleString() : '—'}</p>
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">parse_duration:</span> {(() => { const ms = (selectedPaperProvenance as Record<string, unknown> | null)?.parse_duration_ms; return ms != null ? `${Number(ms).toLocaleString()}ms` : '—' })()}</p>
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">asset_enrichment:</span> {String((selectedPaperProvenance as Record<string, unknown> | null)?.asset_enrichment_status || '—')}</p>
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">sections:</span> {selectedPaperSections.length} <span className="text-[hsl(var(--tone-neutral-400))]">|</span> refs: {selectedPaperModel?.references?.length ?? 0} <span className="text-[hsl(var(--tone-neutral-400))]">|</span> figs: {selectedPaperFigures.length} <span className="text-[hsl(var(--tone-neutral-400))]">|</span> tables: {selectedPaperTables.length}</p>
+                                <p><span className="text-[hsl(var(--tone-neutral-500))]">polling:</span> {selectedPaperParsingInProgress ? 'PARSING' : selectedPaperAssetEnrichmentInFlight ? 'ASSET_ENRICHMENT' : 'IDLE'}</p>
+                                {selectedPaperDocument?.parser_last_error ? (
+                                  <p className="text-[hsl(var(--tone-danger-600))]"><span className="text-[hsl(var(--tone-neutral-500))]">error:</span> {selectedPaperDocument.parser_last_error}</p>
+                                ) : null}
+                                {selectedPaperModelResponse?.last_error ? (
+                                  <p className="text-[hsl(var(--tone-danger-600))]"><span className="text-[hsl(var(--tone-neutral-500))]">response_error:</span> {selectedPaperModelResponse.last_error}</p>
+                                ) : null}
+                                {(() => {
+                                  const steps = (selectedPaperProvenance as Record<string, unknown> | null)?.parse_steps
+                                  if (!Array.isArray(steps) || steps.length === 0) return null
+                                  return (
+                                    <div className="mt-2 border-t border-[hsl(var(--tone-neutral-200))] pt-2">
+                                      <p className="text-[hsl(var(--tone-neutral-500))]">parse steps:</p>
+                                      {steps.map((step: unknown, i: number) => {
+                                        const s = step as Record<string, unknown>
+                                        return <p key={i} className="pl-2">{String(s.label || '?')}: {Number(s.duration_ms || 0).toLocaleString()}ms</p>
+                                      })}
+                                    </div>
+                                  )
+                                })()}
+                              </div>
+                            </details>
+                          </section>
                             </div>
                           </div>
                         ) : (

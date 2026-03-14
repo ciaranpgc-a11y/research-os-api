@@ -5792,6 +5792,11 @@ def _build_publication_paper_payload(
                 parsed_payload.get("asset_enrichment_last_error") or ""
             ).strip()
             or None,
+            "grobid_base_url": _grobid_base_url() or None,
+            "parse_started_at": parsed_payload.get("_parse_started_at"),
+            "parse_completed_at": parsed_payload.get("_parse_completed_at"),
+            "parse_duration_ms": parsed_payload.get("_parse_duration_ms"),
+            "parse_steps": parsed_payload.get("_parse_steps"),
         },
     }
     source_signature = _publication_paper_seed_hash(
@@ -11384,6 +11389,14 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
         parser_duration_ms = round(
             (time.perf_counter() - parser_started_at) * 1000, 2
         )
+        parsed_paper["_parse_started_at"] = now.isoformat() if now else None
+        parsed_paper["_parse_completed_at"] = _utcnow().isoformat()
+        parsed_paper["_parse_duration_ms"] = round((time.perf_counter() - job_started_at) * 1000, 2)
+        parsed_paper["_parse_steps"] = [
+            {"label": "source_state", "duration_ms": source_state_duration_ms},
+            {"label": "pdf_fetch", "duration_ms": binary_payload_duration_ms},
+            {"label": "parser", "duration_ms": parser_duration_ms},
+        ]
         persist_started_at = time.perf_counter()
         payload, source_signature = _build_publication_paper_payload(
             publication=source_state["publication"],
