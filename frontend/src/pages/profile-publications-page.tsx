@@ -5292,11 +5292,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }, [publicationReaderOpen, publicationReaderViewMode, selectedPaperPrimaryPdfContentFileId])
 
+  const publicationReaderPollingStartRef = useRef<number>(0)
   useEffect(() => {
     if (!publicationReaderOpen || !selectedWorkId) {
       return
     }
     if (!selectedPaperParsingInProgress && !selectedPaperAssetEnrichmentInFlight) {
+      publicationReaderPollingStartRef.current = 0
+      return
+    }
+    if (publicationReaderPollingStartRef.current === 0) {
+      publicationReaderPollingStartRef.current = Date.now()
+    }
+    const elapsedMs = Date.now() - publicationReaderPollingStartRef.current
+    if (elapsedMs > 120_000) {
       return
     }
     const timeoutId = window.setTimeout(() => {
@@ -9816,7 +9825,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   </section>
                                 )
                               })
-                            ) : !publicationReaderLoading ? (
+                            ) : !selectedPaperParsingInProgress && !publicationReaderLoading ? (
                               <div className="rounded-[1.1rem] border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-5 py-8 text-center">
                                 <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
                                   No GROBID-derived full-paper sections are available yet for this publication. The reader shell is ready, and the stored PDF can be parsed as soon as GROBID succeeds.
@@ -9985,6 +9994,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             ) : null}
                           </section>
 
+                          {!selectedPaperParsingInProgress ? (
                           <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
                             <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
                               Current focus
@@ -10003,6 +10013,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 : 'Open a section from the outline to anchor notes and tools here.'}
                             </p>
                           </section>
+                          ) : null}
 
                           <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
                             <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
