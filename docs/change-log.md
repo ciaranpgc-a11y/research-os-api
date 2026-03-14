@@ -1,5 +1,28 @@
 # Change Log
 
+## 2026-03-14
+
+### Publication Reader: Citations, Enrichment Fix, and Dev Process Log
+
+- **Area:** Publication structured paper reader — parsing, display, and diagnostics.
+- **What changed:**
+  - **Inline citations**: Added `{{cite:xmlId}}` citation markers to both GROBID TEI and PMC BioC parser paths. Built `reference_id_map` (XML ID → display label) in API response. Frontend renders citation markers as `[N]` popovers linking to references.
+  - **JATS enrichment fix**: Rewrote `_enrich_bioc_sections_with_jats_citations` from paragraph-level to section-level matching. Fixes content truncation when BioC concatenates multiple JATS paragraphs into one passage. Adds 70% coverage guard.
+  - **Parsing UX fixes**: Hid "No GROBID-derived sections" message during active parsing. Hid "Current Focus" right-rail section during parsing to prevent premature abstract display. Added 2-minute polling timeout to prevent infinite polling when GROBID hangs.
+  - **Dev process log**: Added collapsible "Process log (dev)" panel in right-rail inspector showing response status, parser_status, parser_version, generation_method, GROBID URL, computed_at, parse_duration, asset_enrichment status, section/ref/fig/table counts, polling state, errors, and per-step timing breakdown.
+  - **Backend timing**: Injected parse timing data (started_at, completed_at, duration_ms, per-step breakdown) into provenance dict so it's visible in the API response.
+  - **Lint/format fixes**: Resolved ruff F841, F821, F401 errors and ran ruff format to unblock CI.
+- **Why it changed:**
+  - Citations were missing from the structured reader despite being present in source XML.
+  - JATS enrichment was silently truncating Introduction and other sections.
+  - Parsing UI showed contradictory states (spinner + "no sections" simultaneously).
+  - No visibility into parsing pipeline state for debugging stuck parses.
+- **Key files touched:**
+  - `src/research_os/services/publication_console_service.py`
+  - `src/research_os/api/schemas.py`
+  - `frontend/src/pages/profile-publications-page.tsx`
+- **Cache version:** Bumped `publication_structured_paper_v33` → `v35`.
+
 ## 2026-02-26
 
 ### Admin Reconcile Error Tracker + Diagnostic Audit Detail
