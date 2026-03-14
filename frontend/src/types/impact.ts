@@ -1070,6 +1070,9 @@ export type PublicationPaperModelPayload = {
     section_role: string | null
     journal_section_family: string | null
     major_section_key: string | null
+    display_group?: string | null
+    display_parent_id?: string | null
+    display_order?: number | null
   }>
   outline: PublicationPaperModelOutlineNodePayload[]
   figures: PublicationPaperModelAssetPayload[]

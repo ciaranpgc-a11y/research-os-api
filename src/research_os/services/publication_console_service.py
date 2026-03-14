@@ -158,9 +158,28 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
     "discussion": 40,
     "conclusions": 50,
 }
+PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
+    "abstract": ("abstract",),
+    "introduction": ("introduction", "background"),
+    "methods": (
+        "methods",
+        "methodology",
+        "materials and methods",
+        "patients and methods",
+    ),
+    "results": ("results",),
+    "discussion": ("discussion",),
+    "conclusions": ("conclusion", "conclusions"),
+    "references": ("references",),
+    "article_information": (
+        "article information",
+        "article information and declarations",
+        "declarations",
+    ),
+}
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v24"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v25"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -4141,6 +4160,251 @@ def _publication_paper_section_type(kind: str | None) -> str:
     return "canonical"
 
 
+def _publication_paper_display_label_text(section: dict[str, Any]) -> str:
+    return " ".join(
+        str(section.get(key) or "").strip()
+        for key in ("title", "raw_label", "label_original", "label_normalized")
+        if str(section.get(key) or "").strip()
+    ).strip().lower()
+
+
+def _publication_paper_label_suggests_article_information(label_text: str) -> bool:
+    return any(
+        token in label_text
+        for token in (
+            "funding",
+            "conflict",
+            "ethic",
+            "acknowledg",
+            "author contribution",
+            "data availability",
+            "abbreviation",
+            "abbreviations",
+            "acronym",
+            "glossary",
+            "provenance",
+            "patient and public involvement",
+        )
+    )
+
+
+def _publication_paper_label_suggests_abstract_summary(label_text: str) -> bool:
+    return any(
+        token in label_text
+        for token in (
+            "already known",
+            "study adds",
+            "might affect research",
+            "practice or policy",
+            "what this study adds",
+            "what is already known",
+            "strengths and limitations",
+            "key question",
+            "take home",
+            "research in context",
+            "tweetable abstract",
+        )
+    )
+
+
+def _normalize_publication_paper_display_heading_label(value: str | None) -> str:
+    return re.sub(
+        r"[\s_-]+",
+        " ",
+        _strip_publication_paper_heading_prefix(value).lower(),
+    ).strip()
+
+
+def _publication_paper_section_matches_display_group_label(
+    section: dict[str, Any], group_key: str
+) -> bool:
+    normalized_title = _normalize_publication_paper_display_heading_label(
+        section.get("title")
+        or section.get("raw_label")
+        or section.get("label_original")
+        or section.get("label_normalized")
+    )
+    if not normalized_title:
+        return False
+    aliases = PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES.get(group_key, (group_key,))
+    return normalized_title in {
+        _normalize_publication_paper_display_heading_label(alias) for alias in aliases
+    }
+
+
+def _normalize_publication_paper_display_group_key(
+    section: dict[str, Any]
+) -> str | None:
+    display_group = str(section.get("display_group") or "").strip().lower()
+    if display_group:
+        return display_group
+
+    major_key = str(section.get("major_section_key") or "").strip().lower()
+    canonical_map = _normalize_publication_paper_section_kind(section.get("canonical_map"))
+    canonical_kind = _normalize_publication_paper_section_kind(
+        section.get("canonical_kind") or section.get("kind")
+    )
+    section_type = str(section.get("section_type") or "").strip().lower()
+    document_zone = str(section.get("document_zone") or "").strip().lower()
+    section_role = str(section.get("section_role") or "").strip().lower()
+    label_text = _publication_paper_display_label_text(section)
+    suggests_article_information = _publication_paper_label_suggests_article_information(
+        label_text
+    )
+
+    if (
+        section_type == "reference"
+        or canonical_map == "references"
+        or canonical_kind == "references"
+    ):
+        return "references"
+    if section_type == "metadata":
+        return None if document_zone == "body" and not suggests_article_information else "article_information"
+    if major_key == "article_information" or suggests_article_information:
+        return (
+            None
+            if document_zone == "body" and not suggests_article_information
+            else "article_information"
+        )
+    if section_type == "asset":
+        return "assets"
+    if (
+        canonical_map == "abstract"
+        or canonical_kind == "abstract"
+        or major_key == "overview"
+        or section_role == "summary_box"
+        or document_zone == "front"
+        or canonical_kind in PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS
+        or _publication_paper_label_suggests_abstract_summary(label_text)
+    ):
+        return "abstract"
+    if document_zone == "back":
+        return "article_information"
+
+    candidate = (
+        major_key
+        if major_key and major_key not in {"overview", "main_text", "article_information"}
+        else canonical_map or canonical_kind
+    )
+    if candidate in {
+        "introduction",
+        "methods",
+        "results",
+        "discussion",
+        "references",
+        "article_information",
+    }:
+        return candidate
+    if candidate in {"conclusion", "conclusions"}:
+        return "conclusions"
+    if "reference" in label_text:
+        return "references"
+    if "conclusion" in label_text:
+        return "conclusions"
+    if "discussion" in label_text:
+        return "discussion"
+    if "result" in label_text:
+        return "results"
+    if "method" in label_text:
+        return "methods"
+    if "introduction" in label_text or "background" in label_text:
+        return "introduction"
+    return None
+
+
+def _publication_paper_display_group_needs_major_parent(group_key: str) -> bool:
+    return group_key in PUBLICATION_PAPER_MAJOR_MAIN_SECTION_KINDS or group_key == "abstract"
+
+
+def _publication_paper_is_display_major_section(
+    section: dict[str, Any], *, group_key: str
+) -> bool:
+    section_role = str(section.get("section_role") or "").strip().lower()
+    if section_role == "major":
+        return True
+    return _publication_paper_section_matches_display_group_label(section, group_key)
+
+
+def _apply_publication_paper_display_metadata(
+    sections: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    ordered_sections = [
+        dict(section)
+        for section in sorted(
+            [item for item in sections if isinstance(item, dict)],
+            key=lambda item: (
+                int(_safe_int(item.get("order")) or 0),
+                str(item.get("title") or ""),
+            ),
+        )
+    ]
+    if not ordered_sections:
+        return []
+
+    sections_by_id = {
+        str(section.get("id") or "").strip(): section
+        for section in ordered_sections
+        if str(section.get("id") or "").strip()
+    }
+    display_group_by_id: dict[str, str] = {}
+    current_body_group: str | None = None
+    for section in ordered_sections:
+        section_id = str(section.get("id") or "").strip()
+        resolved_group = _normalize_publication_paper_display_group_key(section)
+        document_zone = str(section.get("document_zone") or "").strip().lower()
+        section_role = str(section.get("section_role") or "").strip().lower()
+        if not resolved_group:
+            if document_zone == "front" or section_role == "summary_box":
+                resolved_group = "abstract"
+            elif document_zone == "back":
+                resolved_group = "article_information"
+            elif current_body_group:
+                resolved_group = current_body_group
+            else:
+                resolved_group = "introduction"
+        if resolved_group in PUBLICATION_PAPER_MAJOR_MAIN_SECTION_KINDS:
+            current_body_group = resolved_group
+        section["display_group"] = resolved_group
+        if section_id:
+            display_group_by_id[section_id] = resolved_group
+
+    last_group_major_id: dict[str, str] = {}
+    for index, section in enumerate(ordered_sections):
+        section_id = str(section.get("id") or "").strip()
+        group_key = str(section.get("display_group") or "").strip().lower()
+        raw_parent_id = str(section.get("parent_id") or "").strip()
+        document_zone = str(section.get("document_zone") or "").strip().lower()
+        display_parent_id: str | None = None
+        is_display_major = _publication_paper_is_display_major_section(
+            section, group_key=group_key
+        )
+
+        if not is_display_major and raw_parent_id:
+            parent = sections_by_id.get(raw_parent_id)
+            if parent is not None:
+                parent_zone = str(parent.get("document_zone") or "").strip().lower()
+                parent_group = display_group_by_id.get(raw_parent_id)
+                if parent_group == group_key and parent_zone == document_zone:
+                    display_parent_id = raw_parent_id
+
+        if (
+            not display_parent_id
+            and not is_display_major
+            and _publication_paper_display_group_needs_major_parent(group_key)
+        ):
+            fallback_parent_id = last_group_major_id.get(group_key)
+            if fallback_parent_id and fallback_parent_id != section_id:
+                display_parent_id = fallback_parent_id
+
+        if is_display_major and section_id:
+            last_group_major_id[group_key] = section_id
+
+        section["display_parent_id"] = display_parent_id
+        section["display_order"] = int(_safe_int(section.get("order")) or index)
+
+    return ordered_sections
+
+
 def _serialize_publication_paper_section(
     *,
     order: int,
@@ -5027,6 +5291,7 @@ def _build_publication_paper_payload(
             if has_parsed_paper
             else seed_sections
         )
+    sections = _apply_publication_paper_display_metadata(sections)
     references = (
         [
             item

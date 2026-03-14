@@ -2458,6 +2458,9 @@ class PublicationPaperModelSectionResponse(BaseModel):
     section_role: str | None = None
     journal_section_family: str | None = None
     major_section_key: str | None = None
+    display_group: str | None = None
+    display_parent_id: str | None = None
+    display_order: int | None = None
 
 
 class PublicationPaperModelOutlineNodeResponse(BaseModel):

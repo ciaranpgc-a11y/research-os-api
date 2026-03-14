@@ -242,6 +242,9 @@ const PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS = [
     toneClassName: 'bg-[#516170]',
   },
 ] as const
+const PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITION_BY_KEY = new Map(
+  PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS.map((definition) => [definition.key, definition]),
+)
 const PUBLICATION_READER_GROUP_TITLE_ALIASES: Record<string, string[]> = {
   abstract: ['abstract'],
   introduction: ['introduction', 'background'],
@@ -328,10 +331,26 @@ function comparePublicationPaperSections(
   left: PublicationPaperSectionPayload,
   right: PublicationPaperSectionPayload,
 ): number {
+  const leftDisplayOrder = Number.isFinite(Number(left.display_order)) ? Number(left.display_order) : left.order
+  const rightDisplayOrder = Number.isFinite(Number(right.display_order)) ? Number(right.display_order) : right.order
+  if (leftDisplayOrder !== rightDisplayOrder) {
+    return leftDisplayOrder - rightDisplayOrder
+  }
   if (left.order !== right.order) {
     return left.order - right.order
   }
   return String(left.title || '').localeCompare(String(right.title || ''))
+}
+
+function publicationReaderSectionDisplayParentId(
+  section: Pick<PublicationPaperSectionPayload, 'display_parent_id' | 'parent_id'>,
+): string | null {
+  const displayParentId = String(section.display_parent_id || '').trim()
+  if (displayParentId) {
+    return displayParentId
+  }
+  const parentId = String(section.parent_id || '').trim()
+  return parentId || null
 }
 
 function formatPublicationPaperStructuredGroupLabel(value: string | null | undefined): string {
@@ -399,6 +418,7 @@ function publicationReaderLabelSuggestsAbstractSummary(labelText: string): boole
 function normalizePublicationPaperDisplayGroupKey(
   section: Pick<
     PublicationPaperSectionPayload,
+    | 'display_group'
     | 'major_section_key'
     | 'canonical_map'
     | 'canonical_kind'
@@ -411,6 +431,10 @@ function normalizePublicationPaperDisplayGroupKey(
     | 'section_role'
   >,
 ): string | null {
+  const displayGroup = String(section.display_group || '').trim()
+  if (displayGroup) {
+    return displayGroup
+  }
   const majorKey = String(section.major_section_key || '').trim()
   const canonicalMap = String(section.canonical_map || '').trim()
   const canonicalKind = String(section.canonical_kind || '').trim()
@@ -2603,6 +2627,9 @@ function buildPublicationReaderSyntheticAbstractSections(
     section_role: 'abstract_summary',
     journal_section_family: null,
     major_section_key: 'overview',
+    display_group: 'abstract',
+    display_parent_id: parentId,
+    display_order: order,
   })
 
   if (structuredSections.length < 2) {
@@ -2632,8 +2659,9 @@ function normalizePublicationReaderSections(
   const next: PublicationPaperSectionPayload[] = []
   const childCounts = new Map<string, number>()
   for (const section of sections) {
-    if (section.parent_id) {
-      childCounts.set(section.parent_id, (childCounts.get(section.parent_id) || 0) + 1)
+    const parentId = publicationReaderSectionDisplayParentId(section)
+    if (parentId) {
+      childCounts.set(parentId, (childCounts.get(parentId) || 0) + 1)
     }
   }
 
@@ -2645,7 +2673,7 @@ function normalizePublicationReaderSections(
     }
     const shouldExpandStructuredAbstract = (
       groupKey === 'abstract'
-      && !section.parent_id
+      && !publicationReaderSectionDisplayParentId(section)
       && (childCounts.get(section.id) || 0) === 0
       && Boolean(section.content)
     )
@@ -2671,6 +2699,9 @@ function normalizePublicationReaderSections(
       canonical_kind: 'abstract',
       kind: 'abstract',
       document_zone: section.document_zone || 'front',
+      display_group: 'abstract',
+      display_parent_id: null,
+      display_order: section.display_order ?? section.order,
     })
     structuredSections.forEach((subsection, index) => {
       const content = normalizeAbstractDisplayText(subsection.content)
@@ -2694,6 +2725,9 @@ function normalizePublicationReaderSections(
         section_role: 'abstract_summary',
         major_section_key: 'overview',
         document_zone: 'front',
+        display_group: 'abstract',
+        display_parent_id: section.id,
+        display_order: (section.display_order ?? section.order) + ((index + 1) * 0.001),
       })
     })
   }
@@ -4894,7 +4928,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedPaperSectionChildrenByParent = useMemo(() => {
     const next = new Map<string | null, PublicationPaperSectionPayload[]>()
     for (const section of selectedPaperSections) {
-      const parentId = section.parent_id || null
+      const parentId = publicationReaderSectionDisplayParentId(section)
       const existing = next.get(parentId)
       if (existing) {
         existing.push(section)
@@ -4982,7 +5016,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const sectionsByGroup = new Map<string, PublicationPaperSectionPayload[]>()
     for (const section of selectedPaperSections) {
       const groupKey = selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null
-      if (!groupKey || groupKey === 'assets') {
+      if (!groupKey || groupKey === 'assets' || (groupKey === 'references' && selectedPaperReferences.length > 0)) {
         continue
       }
       const existing = sectionsByGroup.get(groupKey)
@@ -4997,7 +5031,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         sections.sort(comparePublicationPaperSections)
         const sectionIds = new Set(sections.map((section) => section.id))
         const rootSections = sections
-          .filter((section) => !section.parent_id || !sectionIds.has(section.parent_id))
+          .filter((section) => {
+            const parentId = publicationReaderSectionDisplayParentId(section)
+            return !parentId || !sectionIds.has(parentId)
+          })
           .sort(comparePublicationPaperSections)
         return {
           key,
@@ -5021,6 +5058,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         }
       })
       .sort((left, right) => {
+        const leftOrder = left.sections[0]?.display_order ?? left.sections[0]?.order ?? Number.MAX_SAFE_INTEGER
+        const rightOrder = right.sections[0]?.display_order ?? right.sections[0]?.order ?? Number.MAX_SAFE_INTEGER
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder
+        }
         const leftIndex = PUBLICATION_READER_STRUCTURED_GROUP_ORDER.indexOf(
           left.key as typeof PUBLICATION_READER_STRUCTURED_GROUP_ORDER[number],
         )
@@ -5032,14 +5074,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         if (safeLeftIndex !== safeRightIndex) {
           return safeLeftIndex - safeRightIndex
         }
-        const leftOrder = left.sections[0]?.order ?? Number.MAX_SAFE_INTEGER
-        const rightOrder = right.sections[0]?.order ?? Number.MAX_SAFE_INTEGER
-        if (leftOrder !== rightOrder) {
-          return leftOrder - rightOrder
-        }
         return left.label.localeCompare(right.label)
       })
-  }, [selectedPaperDisplayGroupKeyBySectionId, selectedPaperSections])
+  }, [selectedPaperDisplayGroupKeyBySectionId, selectedPaperReferences.length, selectedPaperSections])
   const selectedPaperStructuredGroupLabelByKey = useMemo(
     () => new Map(selectedStructuredPaperGroups.map((group) => [group.key, group.label])),
     [selectedStructuredPaperGroups],
@@ -5066,95 +5103,93 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
     }
 
-    return PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS.reduce<PublicationReaderNavigatorGroupPayload[]>((groups, definition) => {
-      if (definition.key === 'tables' || definition.key === 'figures') {
-        const assets = definition.key === 'tables' ? selectedPaperRenderableTables : selectedPaperRenderableFigures
-        if (assets.length === 0) {
-          return groups
-        }
-        groups.push({
-          id: definition.key,
-          label: selectedPaperStructuredGroupLabelByKey.get(definition.key) || definition.label,
-          toneClassName: definition.toneClassName,
-          target: assets[0]?.id ? { kind: 'asset', id: assets[0].id } : null,
-          isActive: false,
-          badgeCount: assets.length,
-          items: assets.map((asset) => ({
-            id: asset.id,
-            label: asset.title || asset.file_name || definition.label,
-            indent: 1,
-            target: { kind: 'asset', id: asset.id },
-            isActive: false,
-          })),
-        })
-        return groups
-      }
+    const groups: PublicationReaderNavigatorGroupPayload[] = []
 
-      if (definition.key === 'references') {
-        if (selectedPaperReferences.length === 0) {
-          return groups
-        }
-        groups.push({
-          id: definition.key,
-          label: definition.label,
-          toneClassName: definition.toneClassName,
-          target: { kind: 'references', id: PUBLICATION_READER_REFERENCES_TARGET_ID },
-          isActive: publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID,
-          badgeCount: selectedPaperReferences.length,
-          items: [],
-        })
-        return groups
-      }
-
-      const sections = selectedPaperSections
-        .filter((section) => (selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null) === definition.key)
-        .sort(comparePublicationPaperSections)
-      if (sections.length === 0) {
-        return groups
-      }
-      const sectionIds = new Set(sections.map((section) => section.id))
-      const rootSections = sections
-        .filter((section) => !section.parent_id || !sectionIds.has(section.parent_id))
-        .sort(comparePublicationPaperSections)
-      const primarySection = rootSections[0] || sections[0] || null
+    for (const group of selectedStructuredPaperGroups) {
+      const definition = PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITION_BY_KEY.get(
+        group.key as typeof PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS[number]['key'],
+      )
+      const primarySection = group.rootSections[0] || group.sections[0] || null
       const promoteSingleRoot = Boolean(
-        rootSections.length === 1
+        group.rootSections.length === 1
         && primarySection
-        && publicationReaderSectionMatchesGroupLabel(primarySection, definition.key),
+        && publicationReaderSectionMatchesGroupLabel(primarySection, group.key),
       )
       const items: PublicationReaderNavigatorItemPayload[] = []
 
       if (promoteSingleRoot && primarySection) {
         const childSections = (selectedPaperSectionChildrenByParent.get(primarySection.id) || [])
-          .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === definition.key)
+          .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === group.key)
           .sort(comparePublicationPaperSections)
         for (const childSection of childSections) {
-          buildSectionItems(childSection, definition.key, 1, items)
+          buildSectionItems(childSection, group.key, 1, items)
         }
       } else {
-        for (const rootSection of rootSections) {
-          buildSectionItems(rootSection, definition.key, 1, items)
+        for (const rootSection of group.rootSections) {
+          buildSectionItems(rootSection, group.key, 1, items)
         }
       }
 
       groups.push({
-        id: definition.key,
-        label: selectedPaperStructuredGroupLabelByKey.get(definition.key) || definition.label,
-        toneClassName: definition.toneClassName,
+        id: group.key,
+        label: group.label,
+        toneClassName: definition?.toneClassName || 'bg-[hsl(var(--tone-neutral-300))]',
         target: primarySection?.id ? { kind: 'section', id: primarySection.id } : null,
         isActive: items.some((item) => item.isActive) || primarySection?.id === publicationReaderActiveSectionId,
-        badgeCount: items.length || rootSections.length,
+        badgeCount: items.length || group.rootSections.length,
         items,
       })
-      return groups
-    }, [])
+    }
+
+    const appendAssetGroup = (
+      key: 'tables' | 'figures',
+      assets: PublicationPaperAssetPayload[],
+    ) => {
+      if (assets.length === 0) {
+        return
+      }
+      const definition = PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITION_BY_KEY.get(key)
+      groups.push({
+        id: key,
+        label: selectedPaperStructuredGroupLabelByKey.get(key) || definition?.label || formatPublicationPaperStructuredGroupLabel(key),
+        toneClassName: definition?.toneClassName || 'bg-[hsl(var(--tone-neutral-300))]',
+        target: assets[0]?.id ? { kind: 'asset', id: assets[0].id } : null,
+        isActive: false,
+        badgeCount: assets.length,
+        items: assets.map((asset) => ({
+          id: asset.id,
+          label: asset.title || asset.file_name || definition?.label || key,
+          indent: 1,
+          target: { kind: 'asset', id: asset.id },
+          isActive: false,
+        })),
+      })
+    }
+
+    appendAssetGroup('tables', selectedPaperRenderableTables)
+    appendAssetGroup('figures', selectedPaperRenderableFigures)
+
+    if (selectedPaperReferences.length > 0) {
+      const definition = PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITION_BY_KEY.get('references')
+      groups.push({
+        id: 'references',
+        label: definition?.label || 'References',
+        toneClassName: definition?.toneClassName || 'bg-[hsl(var(--tone-neutral-300))]',
+        target: { kind: 'references', id: PUBLICATION_READER_REFERENCES_TARGET_ID },
+        isActive: publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID,
+        badgeCount: selectedPaperReferences.length,
+        items: [],
+      })
+    }
+
+    return groups
   }, [
+    selectedStructuredPaperGroups,
     selectedPaperStructuredGroupLabelByKey,
     selectedPaperDisplayGroupKeyBySectionId,
     selectedPaperReferences.length,
     selectedPaperRenderableFigures,
     selectedPaperSectionChildrenByParent,
-    selectedPaperSections,
     selectedPaperRenderableTables,
     publicationReaderActiveSectionId,
   ])
