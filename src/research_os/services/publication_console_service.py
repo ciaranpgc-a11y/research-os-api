@@ -172,7 +172,7 @@ PUBLICATION_PAPER_MAJOR_MAIN_SECTION_ORDER = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v34"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v35"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -10229,32 +10229,43 @@ def _enrich_bioc_sections_with_jats_citations(
     except Exception:
         return sections
 
-    jats_paragraphs: list[str] = []
+    def _heading_key(text: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+    def _strip_citations(text: str) -> str:
+        text = re.sub(r"\{\{cite:[^}]+\}\}", "", text)
+        text = re.sub(r"\[\d+[^\]]*\]", "", text)
+        return re.sub(r"[^a-z0-9]+", "", text.lower())
+
+    # ---- Section-level approach: extract <sec> elements from JATS body ----
+    jats_sections: dict[str, list[str]] = {}
     for body_node in root.iter():
         if _xml_local_name(getattr(body_node, "tag", "")) != "body":
             continue
-        for p_node in body_node.iter():
-            if _xml_local_name(getattr(p_node, "tag", "")) != "p":
+        for sec_node in body_node.iter():
+            if _xml_local_name(getattr(sec_node, "tag", "")) != "sec":
                 continue
-            text = _jats_node_text_with_citations(p_node)
-            if text and len(text) >= 20:
-                jats_paragraphs.append(text)
+            title_node = _tei_first_direct_child(sec_node, "title")
+            heading = _normalize_abstract_text(
+                _tei_node_text(title_node) if title_node is not None else ""
+            )
+            key = _heading_key(heading)
+            if not key:
+                continue
+            paras: list[str] = []
+            for child in list(sec_node):
+                if _xml_local_name(getattr(child, "tag", "")) == "p":
+                    text = _jats_node_text_with_citations(child)
+                    if text and len(text) >= 20:
+                        paras.append(text)
+            if paras:
+                existing = jats_sections.get(key, [])
+                existing.extend(paras)
+                jats_sections[key] = existing
         break
 
-    if not jats_paragraphs:
+    if not jats_sections:
         return sections
-
-    def _para_signature(text: str) -> str:
-        clean = re.sub(r"\{\{cite:[^}]+\}\}", "", text)
-        clean = re.sub(r"\[\d+[^\]]*\]", "", clean)
-        clean = re.sub(r"[^a-z0-9]+", "", clean.lower())
-        return clean[:80]
-
-    jats_by_sig: dict[str, str] = {}
-    for jp in jats_paragraphs:
-        sig = _para_signature(jp)
-        if sig and sig not in jats_by_sig:
-            jats_by_sig[sig] = jp
 
     updated_sections: list[dict[str, Any]] = []
     for section in sections:
@@ -10263,19 +10274,18 @@ def _enrich_bioc_sections_with_jats_citations(
         if not bioc_content:
             updated_sections.append(sec_copy)
             continue
-        bioc_paragraphs = [p.strip() for p in bioc_content.split("\n") if p.strip()]
-        enriched_paragraphs: list[str] = []
-        for bp in bioc_paragraphs:
-            sig = _para_signature(bp)
-            jats_match = jats_by_sig.get(sig) if sig else None
-            if jats_match and "{{cite:" in jats_match:
-                enriched_paragraphs.append(jats_match)
-            else:
-                enriched_paragraphs.append(bp)
-        sec_copy["content"] = "\n".join(enriched_paragraphs)
+        section_title = str(sec_copy.get("title") or "").strip()
+        key = _heading_key(section_title)
+        jats_paras = jats_sections.get(key)
+        if jats_paras and any("{{cite:" in p for p in jats_paras):
+            jats_joined = "\n\n".join(jats_paras)
+            jats_stripped_len = len(_strip_citations(jats_joined))
+            bioc_stripped_len = len(_strip_citations(bioc_content))
+            # Only replace if JATS covers at least 70% of the original text
+            if jats_stripped_len >= bioc_stripped_len * 0.70:
+                sec_copy["content"] = jats_joined
         updated_sections.append(sec_copy)
     return updated_sections
-
 
 def _extract_structured_publication_paper_with_pmc_bioc(
     *,
