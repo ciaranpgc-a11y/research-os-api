@@ -24,7 +24,7 @@ COPY alembic ./alembic
 COPY scripts/oa-browser-fetch ./scripts/oa-browser-fetch
 
 RUN python -m pip install --no-cache-dir --no-deps . && \
-    python -c "import fitz; import pypdf; from docling.document_converter import DocumentConverter; import research_os.api.app; import research_os.services.citation_service; import research_os.services.section_planning_service; import research_os.services.claim_linker_service; import research_os.services.grounded_draft_service; import research_os.services.consistency_service; import research_os.services.paragraph_regeneration_service; import research_os.services.title_abstract_service; import research_os.services.submission_pack_service"
+    python -c "import research_os.api.app; import research_os.services.citation_service; import research_os.services.section_planning_service; import research_os.services.claim_linker_service; import research_os.services.grounded_draft_service; import research_os.services.consistency_service; import research_os.services.paragraph_regeneration_service; import research_os.services.title_abstract_service; import research_os.services.submission_pack_service"
 
 EXPOSE 8000
 
