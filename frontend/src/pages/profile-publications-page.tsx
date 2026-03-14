@@ -7452,10 +7452,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     depth = 0,
     groupKey: string | null = null,
   ): ReactNode => {
-    const childSections = selectedPaperSectionChildrenByParent.get(section.id) || []
     const isActiveSection = publicationReaderActiveSectionId === section.id
     const sectionParagraphs = splitLongTextIntoParagraphs(section.content, 800)
     const sectionGroupKey = groupKey || selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null
+    const childSections = (selectedPaperSectionChildrenByParent.get(section.id) || [])
+      .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === sectionGroupKey)
+      .sort(comparePublicationPaperSections)
     const sectionToneClassName = getPublicationReaderGroupToneClass(sectionGroupKey)
     const isMajorHeading = depth === 0 && publicationReaderSectionMatchesGroupLabel(section, sectionGroupKey || '')
     const isSummaryBox = String(section.section_role || '') === 'summary_box' && depth === 0
