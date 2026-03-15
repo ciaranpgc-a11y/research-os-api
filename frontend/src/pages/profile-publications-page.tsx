@@ -7999,7 +7999,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       suppressPrimaryHeading?: boolean
     },
   ): ReactNode => {
-    const sectionParagraphs = splitLongTextIntoParagraphs(section.content, 800)
     const sectionGroupKey = groupKey || selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null
     const childSections = (selectedPaperSectionChildrenByParent.get(section.id) || [])
       .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === sectionGroupKey)
@@ -8034,6 +8033,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const showMarker = isMajorHeading && !suppressHeadingRow && !isArticleInformationGroup
     const showSummaryIcon = shouldRenderAsCalloutTile
     const displaySectionTitle = formatPublicationReaderHeadingSentenceCase(section.title || section.raw_label || 'Untitled section')
+    const sectionParagraphMaxLength = shouldRenderAsCalloutTile
+      ? 680
+      : isArticleInformationGroup
+        ? 640
+        : depth === 0
+          ? 600
+          : 520
+    const sectionParagraphs = splitLongTextIntoParagraphs(section.content, sectionParagraphMaxLength)
     const rawLabelRedundant = !section.raw_label
       || normalizePublicationReaderHeadingLabel(section.raw_label) === normalizePublicationReaderHeadingLabel(section.title)
       || normalizePublicationReaderHeadingLabel(section.raw_label) === normalizePublicationReaderHeadingLabel(displaySectionTitle)
@@ -8082,7 +8089,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           </div>
         ) : null}
         {sectionParagraphs.length > 0 ? (
-          <div className={cn('mt-1.25 space-y-2.25', showMarker ? 'pl-[0.95rem]' : '', isArticleInformationGroup && 'mt-1.25 space-y-2')}>
+          <div
+            className={cn(
+              'mt-1.25',
+              shouldRenderAsCalloutTile
+                ? 'space-y-3.5'
+                : isArticleInformationGroup
+                  ? 'space-y-3'
+                  : 'space-y-4',
+              showMarker ? 'pl-[0.95rem]' : '',
+            )}
+          >
             {sectionParagraphs.map((paragraph, paragraphIndex) => (
               renderPublicationReaderParagraphWithReferences(
                 paragraph,
