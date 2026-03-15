@@ -383,6 +383,17 @@ function formatPublicationReaderReferenceTokenLabel(value: string): string {
   return compactRuns.join(', ')
 }
 
+function formatPublicationReaderReferenceClusterLabel(labels: string[]): string {
+  const cleanedLabels = labels
+    .map((label) => String(label || '').replace(/^\[|\]$/g, '').replace(/\.$/, '').trim())
+    .filter(Boolean)
+  if (cleanedLabels.length === 0) {
+    return ''
+  }
+  const uniqueLabels = cleanedLabels.filter((label, index) => cleanedLabels.indexOf(label) === index)
+  return formatPublicationReaderReferenceTokenLabel(uniqueLabels.join(', '))
+}
+
 function formatPublicationReaderReferenceAuthors(
   authors: string[] | null | undefined,
   options?: { concise?: boolean },
@@ -8145,71 +8156,108 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       )
     }
 
+    const resolvePublicationReaderCitationToken = (token: string): { label: string; references: PublicationReaderReferencePayload[] } | null => {
+      const citeMarkerMatch = token.match(/^\{\{cite:([^}]+)\}\}$/)
+      if (citeMarkerMatch) {
+        const xmlId = citeMarkerMatch[1]
+        const refEntryId = selectedPaperReferenceIdMap[xmlId]
+        const reference = refEntryId ? selectedPaperReferencesById.get(refEntryId) : undefined
+        if (!reference) {
+          return null
+        }
+        return {
+          label: String(
+            reference.label || String(selectedPaperReferences.indexOf(reference) + 1),
+          ).replace(/^\[|\]$/g, '').trim(),
+          references: [reference],
+        }
+      }
+
+      const tokenMatch = token.match(/^\[(.+)\]$/)
+      if (!tokenMatch) {
+        return null
+      }
+      const references = expandPublicationReaderReferenceToken(tokenMatch[1])
+        .map((value) => selectedPaperReferencesByLookupKey.get(normalizePublicationReaderReferenceLookupKey(value)) || null)
+        .filter((reference): reference is PublicationReaderReferencePayload => Boolean(reference))
+      if (references.length === 0) {
+        return null
+      }
+      return {
+        label: formatPublicationReaderReferenceTokenLabel(tokenMatch[1]),
+        references,
+      }
+    }
+
+    const nodes: ReactNode[] = []
+    for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+      const part = parts[partIndex]
+      const previousPart = parts[partIndex - 1] || ''
+      const nextPart = parts[partIndex + 1] || ''
+      const previousPartIsCitationToken = PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(previousPart)
+      const nextPartIsCitationToken = PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(nextPart)
+
+      if (!PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(part)) {
+        if (previousPartIsCitationToken && nextPartIsCitationToken && /^\s+$/.test(part)) {
+          continue
+        }
+        const normalizedText = nextPartIsCitationToken
+          ? part.replace(/\s+$/g, '')
+          : part
+        nodes.push(
+          <span key={`${keyPrefix}-text-${partIndex}`}>
+            {normalizedText}
+            {nextPartIsCitationToken ? '\u00A0' : null}
+          </span>,
+        )
+        continue
+      }
+
+      const currentToken = resolvePublicationReaderCitationToken(part)
+      if (!currentToken) {
+        nodes.push(<span key={`${keyPrefix}-token-${partIndex}`}>{part}</span>)
+        continue
+      }
+
+      const clusterLabels: string[] = [currentToken.label]
+      const clusterReferences: PublicationReaderReferencePayload[] = [...currentToken.references]
+      let clusterEndIndex = partIndex
+      while (true) {
+        const spacer = parts[clusterEndIndex + 1] || ''
+        const nextTokenValue = parts[clusterEndIndex + 2] || ''
+        if (!/^\s+$/.test(spacer) || !PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(nextTokenValue)) {
+          break
+        }
+        const nextToken = resolvePublicationReaderCitationToken(nextTokenValue)
+        if (!nextToken) {
+          break
+        }
+        clusterLabels.push(nextToken.label)
+        nextToken.references.forEach((reference) => {
+          if (!clusterReferences.some((existing) => existing.id === reference.id)) {
+            clusterReferences.push(reference)
+          }
+        })
+        clusterEndIndex += 2
+      }
+
+      const displayClusterLabel = formatPublicationReaderReferenceClusterLabel(clusterLabels)
+      nodes.push(
+        <button
+          key={`${keyPrefix}-token-${partIndex}`}
+          type="button"
+          className={referenceChipClassName}
+          {...buildPublicationReaderReferenceTriggerProps(displayClusterLabel, clusterReferences)}
+        >
+          {displayClusterLabel}
+        </button>,
+      )
+      partIndex = clusterEndIndex
+    }
+
     return (
       <p key={keyPrefix} className={className} style={style}>
-        {parts.map((part, partIndex) => {
-          const previousPart = parts[partIndex - 1] || ''
-          const nextPart = parts[partIndex + 1] || ''
-          const previousPartIsCitationToken = PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(previousPart)
-          const nextPartIsCitationToken = PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(nextPart)
-          const citeMarkerMatch = part.match(/^\{\{cite:([^}]+)\}\}$/)
-          if (citeMarkerMatch) {
-            const xmlId = citeMarkerMatch[1]
-            const refEntryId = selectedPaperReferenceIdMap[xmlId]
-            const reference = refEntryId ? selectedPaperReferencesById.get(refEntryId) : undefined
-            if (reference) {
-              const displayLabel = String(
-                reference.label || String(selectedPaperReferences.indexOf(reference) + 1),
-              ).replace(/^\[|\]$/g, '').trim()
-              return (
-                <button
-                  key={`${keyPrefix}-cite-${partIndex}`}
-                  type="button"
-                  className={referenceChipClassName}
-                  {...buildPublicationReaderReferenceTriggerProps(displayLabel, [reference])}
-                >
-                  {displayLabel}
-                </button>
-              )
-            }
-            return <span key={`${keyPrefix}-cite-${partIndex}`} />
-          }
-
-          const tokenMatch = part.match(/^\[(.+)\]$/)
-          if (!tokenMatch) {
-            if (previousPartIsCitationToken && nextPartIsCitationToken && /^\s+$/.test(part)) {
-              return <span key={`${keyPrefix}-text-${partIndex}`} className="inline-block w-[0.16rem]" aria-hidden="true" />
-            }
-            const normalizedText = nextPartIsCitationToken
-              ? part.replace(/\s+$/g, '')
-              : part
-            return (
-              <span key={`${keyPrefix}-text-${partIndex}`}>
-                {normalizedText}
-                {nextPartIsCitationToken ? '\u00A0' : null}
-              </span>
-            )
-          }
-
-          const references = expandPublicationReaderReferenceToken(tokenMatch[1])
-            .map((token) => selectedPaperReferencesByLookupKey.get(normalizePublicationReaderReferenceLookupKey(token)) || null)
-            .filter((reference): reference is PublicationReaderReferencePayload => Boolean(reference))
-          if (references.length === 0) {
-            return <span key={`${keyPrefix}-token-${partIndex}`}>{part}</span>
-          }
-
-          const displayTokenLabel = formatPublicationReaderReferenceTokenLabel(tokenMatch[1])
-          return (
-            <button
-              key={`${keyPrefix}-token-${partIndex}`}
-              type="button"
-              className={referenceChipClassName}
-              {...buildPublicationReaderReferenceTriggerProps(displayTokenLabel, references)}
-            >
-              {displayTokenLabel}
-            </button>
-          )
-        })}
+        {nodes}
       </p>
     )
   }
@@ -11094,6 +11142,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       {publicationReaderReferencePopover && typeof document !== 'undefined' ? createPortal(
         (() => {
           const isPinnedReferencePopover = publicationReaderReferencePopover.interaction === 'pinned'
+          const previewReferences = isPinnedReferencePopover
+            ? publicationReaderReferencePopover.references
+            : publicationReaderReferencePopover.references.slice(0, 3)
+          const hiddenPreviewReferenceCount = Math.max(
+            0,
+            publicationReaderReferencePopover.references.length - previewReferences.length,
+          )
           const popoverCard = (
             <div
               className={cn(
@@ -11139,7 +11194,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 isPinnedReferencePopover && 'mt-3',
                 isPinnedReferencePopover ? 'max-h-[60vh] space-y-3' : 'max-h-[18rem] space-y-2',
               )}>
-                {publicationReaderReferencePopover.references.map((reference, index) => (
+                {previewReferences.map((reference, index) => (
                   <div
                     key={`${reference.id}-${index}`}
                     className={cn(
@@ -11215,6 +11270,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     ) : null}
                   </div>
                 ))}
+                {!isPinnedReferencePopover && hiddenPreviewReferenceCount > 0 ? (
+                  <p className="border-t border-[hsl(var(--tone-neutral-150))] pt-2 text-[0.72rem] font-medium text-[hsl(var(--tone-neutral-500))]">
+                    {publicationReaderReferencePopover.references.length} references
+                  </p>
+                ) : null}
               </div>
             </div>
           )
