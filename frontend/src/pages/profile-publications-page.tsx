@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, Filter, Hammer, Loader2, Mail, Paperclip, Pencil, RefreshCw, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -159,6 +159,7 @@ type PublicationReaderReferencePopoverState = {
   references: PublicationReaderReferencePayload[]
   top: number
   left: number
+  interaction: 'hover' | 'pinned'
 }
 const PUBLICATION_READER_REFERENCES_TARGET_ID = '__references__'
 type PublicationReaderNavigatorTarget =
@@ -351,6 +352,35 @@ function expandPublicationReaderReferenceToken(value: string): string[] {
     expanded.push(part)
   }
   return expanded
+}
+
+function formatPublicationReaderReferenceTokenLabel(value: string): string {
+  const expanded = expandPublicationReaderReferenceToken(value)
+  if (!expanded.length) {
+    return String(value || '').trim().replace(/\s*,\s*/g, ', ')
+  }
+
+  const numericValues = expanded.map((token) => Number(token))
+  const allNumeric = numericValues.every((token) => Number.isInteger(token))
+  if (!allNumeric) {
+    return expanded.join(', ')
+  }
+
+  const compactRuns: string[] = []
+  let runStart = numericValues[0]
+  let previous = numericValues[0]
+  for (let index = 1; index < numericValues.length; index += 1) {
+    const current = numericValues[index]
+    if (current === previous + 1) {
+      previous = current
+      continue
+    }
+    compactRuns.push(runStart === previous ? String(runStart) : `${runStart}-${previous}`)
+    runStart = current
+    previous = current
+  }
+  compactRuns.push(runStart === previous ? String(runStart) : `${runStart}-${previous}`)
+  return compactRuns.join(', ')
 }
 
 function comparePublicationPaperSections(
@@ -3441,30 +3471,85 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const closePublicationReaderReferencePopover = useCallback(() => {
     setPublicationReaderReferencePopover(null)
   }, [])
-  const openPublicationReaderReferencePopover = useCallback((
-    event: ReactMouseEvent<HTMLElement>,
+  const resolvePublicationReaderReferencePopoverState = useCallback((
+    target: HTMLElement,
     tokenLabel: string,
     references: PublicationReaderReferencePayload[],
+    interaction: 'hover' | 'pinned',
   ) => {
     if (!references.length) {
-      return
+      return null
     }
-    const rect = event.currentTarget.getBoundingClientRect()
-    const estimatedWidth = 420
+    const rect = target.getBoundingClientRect()
+    const estimatedWidth = interaction === 'hover' ? 360 : 420
     const margin = 20
     const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1440
     const left = Math.min(
       Math.max(margin, rect.left),
       Math.max(margin, viewportWidth - estimatedWidth - margin),
     )
-    const top = rect.bottom + 10
-    setPublicationReaderReferencePopover({
+    const top = rect.bottom + (interaction === 'hover' ? 8 : 10)
+    return {
       tokenLabel,
       references,
       top,
       left,
-    })
+      interaction,
+    } satisfies PublicationReaderReferencePopoverState
   }, [])
+  const previewPublicationReaderReferencePopover = useCallback((
+    target: HTMLElement,
+    tokenLabel: string,
+    references: PublicationReaderReferencePayload[],
+  ) => {
+    setPublicationReaderReferencePopover((current) => {
+      if (current?.interaction === 'pinned') {
+        return current
+      }
+      return resolvePublicationReaderReferencePopoverState(target, tokenLabel, references, 'hover')
+    })
+  }, [resolvePublicationReaderReferencePopoverState])
+  const closePublicationReaderReferencePreview = useCallback(() => {
+    setPublicationReaderReferencePopover((current) => (
+      current?.interaction === 'hover' ? null : current
+    ))
+  }, [])
+  const openPublicationReaderReferencePopover = useCallback((
+    event: ReactMouseEvent<HTMLElement>,
+    tokenLabel: string,
+    references: PublicationReaderReferencePayload[],
+  ) => {
+    const nextState = resolvePublicationReaderReferencePopoverState(
+      event.currentTarget,
+      tokenLabel,
+      references,
+      'pinned',
+    )
+    if (!nextState) {
+      return
+    }
+    setPublicationReaderReferencePopover(nextState)
+  }, [resolvePublicationReaderReferencePopoverState])
+  const buildPublicationReaderReferenceTriggerProps = useCallback((
+    tokenLabel: string,
+    references: PublicationReaderReferencePayload[],
+  ) => ({
+    onMouseEnter: (event: ReactMouseEvent<HTMLElement>) => {
+      previewPublicationReaderReferencePopover(event.currentTarget, tokenLabel, references)
+    },
+    onMouseLeave: closePublicationReaderReferencePreview,
+    onFocus: (event: ReactFocusEvent<HTMLElement>) => {
+      previewPublicationReaderReferencePopover(event.currentTarget, tokenLabel, references)
+    },
+    onBlur: closePublicationReaderReferencePreview,
+    onClick: (event: ReactMouseEvent<HTMLElement>) => {
+      openPublicationReaderReferencePopover(event, tokenLabel, references)
+    },
+  }), [
+    closePublicationReaderReferencePreview,
+    openPublicationReaderReferencePopover,
+    previewPublicationReaderReferencePopover,
+  ])
   const resolvePublicationTableAvailableWidth = useCallback(() => {
     const measuredClient = publicationTableLayoutRef.current?.clientWidth
     if (Number.isFinite(measuredClient) && Number(measuredClient) > 0) {
@@ -8065,7 +8150,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   key={`${keyPrefix}-cite-${partIndex}`}
                   type="button"
                   className={referenceChipClassName}
-                  onClick={(event) => openPublicationReaderReferencePopover(event, displayLabel, [reference])}
+                  {...buildPublicationReaderReferenceTriggerProps(displayLabel, [reference])}
                 >
                   {displayLabel}
                 </button>
@@ -8097,13 +8182,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             return <span key={`${keyPrefix}-token-${partIndex}`}>{part}</span>
           }
 
-          const displayTokenLabel = tokenMatch[1].trim()
+          const displayTokenLabel = formatPublicationReaderReferenceTokenLabel(tokenMatch[1])
           return (
             <button
               key={`${keyPrefix}-token-${partIndex}`}
               type="button"
               className={referenceChipClassName}
-              onClick={(event) => openPublicationReaderReferencePopover(event, displayTokenLabel, references)}
+              {...buildPublicationReaderReferenceTriggerProps(displayTokenLabel, references)}
             >
               {displayTokenLabel}
             </button>
@@ -10991,89 +11076,146 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         </p>
       ) : null}
       {publicationReaderReferencePopover && typeof document !== 'undefined' ? createPortal(
-        <div
-          className="fixed inset-0 z-[145]"
-          onClick={closePublicationReaderReferencePopover}
-          role="presentation"
-        >
-          <div
-            className="absolute w-[min(26rem,calc(100vw-2rem))] rounded-[1.15rem] border border-[hsl(var(--tone-neutral-200))] bg-white p-4 shadow-[0_20px_50px_hsl(var(--tone-neutral-950)/0.16)]"
-            style={{
-              top: publicationReaderReferencePopover.top,
-              left: publicationReaderReferencePopover.left,
-            }}
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="false"
-            aria-label={`Reference details for ${publicationReaderReferencePopover.tokenLabel}`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
-                  Citation
-                </p>
-                <h3 className="mt-1 text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
-                  {publicationReaderReferencePopover.tokenLabel}
-                </h3>
-              </div>
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-500))] transition-colors hover:border-[hsl(var(--tone-neutral-300))] hover:text-[hsl(var(--tone-neutral-900))]"
-                onClick={closePublicationReaderReferencePopover}
-                aria-label="Close reference details"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-3 max-h-[60vh] space-y-3 overflow-y-auto">
-              {publicationReaderReferencePopover.references.map((reference, index) => (
-                <div
-                  key={`${reference.id}-${index}`}
-                  className="rounded-[0.95rem] border border-[hsl(var(--tone-neutral-150))] bg-[hsl(var(--tone-neutral-50)/0.75)] px-3 py-3"
-                >
-                  <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-                    {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
+        (() => {
+          const isPinnedReferencePopover = publicationReaderReferencePopover.interaction === 'pinned'
+          const popoverCard = (
+            <div
+              className={cn(
+                'absolute rounded-[1.15rem] border bg-white shadow-[0_20px_50px_hsl(var(--tone-neutral-950)/0.16)]',
+                isPinnedReferencePopover
+                  ? 'w-[min(26rem,calc(100vw-2rem))] border-[hsl(var(--tone-neutral-200))] p-4'
+                  : 'pointer-events-none w-[min(22rem,calc(100vw-2rem))] border-[hsl(var(--tone-accent-200))] bg-[linear-gradient(180deg,hsl(var(--tone-accent-50)/0.92)_0%,white_100%)] px-3.5 py-3.5 shadow-[0_18px_40px_hsl(var(--tone-neutral-950)/0.14)]',
+              )}
+              style={{
+                top: publicationReaderReferencePopover.top,
+                left: publicationReaderReferencePopover.left,
+              }}
+              onClick={isPinnedReferencePopover ? (event) => event.stopPropagation() : undefined}
+              role={isPinnedReferencePopover ? 'dialog' : 'status'}
+              aria-modal={isPinnedReferencePopover ? 'false' : undefined}
+              aria-label={`${isPinnedReferencePopover ? 'Reference details' : 'Reference preview'} for ${publicationReaderReferencePopover.tokenLabel}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={cn(
+                    'font-semibold uppercase tracking-[0.1em]',
+                    isPinnedReferencePopover
+                      ? 'text-[0.72rem] text-[hsl(var(--tone-neutral-500))]'
+                      : 'text-[0.68rem] text-[hsl(var(--tone-accent-700))]',
+                  )}>
+                    {isPinnedReferencePopover ? 'Citation' : 'Reference preview'}
                   </p>
-                  {reference.title ? (
-                    <p className="mt-2 text-[0.88rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]">
-                      {reference.title}
-                    </p>
-                  ) : null}
-                  {reference.authors?.length ? (
-                    <p className="mt-1 text-[0.82rem] leading-snug text-[hsl(var(--tone-neutral-600))]">
-                      {reference.authors.join(', ')}
-                    </p>
-                  ) : null}
-                  {(reference.journal || reference.year || reference.volume || reference.pages) ? (
-                    <p className="mt-1 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
-                      {[
-                        reference.journal,
-                        reference.volume ? `vol. ${reference.volume}` : null,
-                        reference.pages ? `pp. ${reference.pages}` : null,
-                        reference.year ? `(${reference.year})` : null,
-                      ].filter(Boolean).join(', ')}
-                    </p>
-                  ) : null}
-                  {reference.doi ? (
-                    <a
-                      href={`https://doi.org/${encodeURIComponent(reference.doi)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 inline-block text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 hover:text-[hsl(var(--tone-accent-800))]"
-                    >
-                      DOI: {reference.doi}
-                    </a>
-                  ) : null}
-                  {!reference.title && !reference.authors?.length ? (
-                    <p className="mt-2 text-[0.88rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
-                      {String(reference.rawText || '').replace(/\s+/g, ' ').trim()}
-                    </p>
-                  ) : null}
+                  <h3 className={cn(
+                    'mt-1 font-semibold text-[hsl(var(--tone-neutral-900))]',
+                    isPinnedReferencePopover ? 'text-sm' : 'text-[0.92rem]',
+                  )}>
+                    {publicationReaderReferencePopover.tokenLabel}
+                  </h3>
                 </div>
-              ))}
+                {isPinnedReferencePopover ? (
+                  <button
+                    type="button"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-500))] transition-colors hover:border-[hsl(var(--tone-neutral-300))] hover:text-[hsl(var(--tone-neutral-900))]"
+                    onClick={closePublicationReaderReferencePopover}
+                    aria-label="Close reference details"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+              <div className={cn(
+                'mt-3 overflow-y-auto',
+                isPinnedReferencePopover ? 'max-h-[60vh] space-y-3' : 'max-h-[18rem] space-y-2.5',
+              )}>
+                {publicationReaderReferencePopover.references.map((reference, index) => (
+                  <div
+                    key={`${reference.id}-${index}`}
+                    className={cn(
+                      'rounded-[0.95rem] px-3 py-3',
+                      isPinnedReferencePopover
+                        ? 'border border-[hsl(var(--tone-neutral-150))] bg-[hsl(var(--tone-neutral-50)/0.75)]'
+                        : 'border border-[hsl(var(--tone-accent-150))] bg-white/88',
+                    )}
+                  >
+                    <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                      {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
+                    </p>
+                    {reference.title ? (
+                      <p className={cn(
+                        'mt-2 font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]',
+                        isPinnedReferencePopover ? 'text-[0.88rem]' : 'text-[0.84rem]',
+                      )}>
+                        {reference.title}
+                      </p>
+                    ) : null}
+                    {reference.authors?.length ? (
+                      <p className={cn(
+                        'mt-1 leading-snug text-[hsl(var(--tone-neutral-600))]',
+                        isPinnedReferencePopover ? 'text-[0.82rem]' : 'text-[0.78rem]',
+                      )}>
+                        {reference.authors.join(', ')}
+                      </p>
+                    ) : null}
+                    {(reference.journal || reference.year || reference.volume || reference.pages) ? (
+                      <p className={cn(
+                        'mt-1 text-[hsl(var(--tone-neutral-500))]',
+                        isPinnedReferencePopover ? 'text-[0.8rem]' : 'text-[0.75rem]',
+                      )}>
+                        {[
+                          reference.journal,
+                          reference.volume ? `vol. ${reference.volume}` : null,
+                          reference.pages ? `pp. ${reference.pages}` : null,
+                          reference.year ? `(${reference.year})` : null,
+                        ].filter(Boolean).join(', ')}
+                      </p>
+                    ) : null}
+                    {reference.doi ? (
+                      <a
+                        href={`https://doi.org/${encodeURIComponent(reference.doi)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          'mt-1 inline-block underline underline-offset-2',
+                          isPinnedReferencePopover
+                            ? 'text-[0.78rem] text-[hsl(var(--tone-accent-600))] decoration-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]'
+                            : 'pointer-events-none text-[0.74rem] text-[hsl(var(--tone-accent-700))] decoration-[hsl(var(--tone-accent-200))]',
+                        )}
+                      >
+                        DOI: {reference.doi}
+                      </a>
+                    ) : null}
+                    {!reference.title && !reference.authors?.length ? (
+                      <p className={cn(
+                        'mt-2 leading-[1.7] text-[hsl(var(--tone-neutral-700))]',
+                        isPinnedReferencePopover ? 'text-[0.88rem]' : 'text-[0.82rem]',
+                      )}>
+                        {String(reference.rawText || '').replace(/\s+/g, ' ').trim()}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        </div>,
+          )
+
+          if (!isPinnedReferencePopover) {
+            return (
+              <div className="pointer-events-none fixed inset-0 z-[145]" role="presentation">
+                {popoverCard}
+              </div>
+            )
+          }
+
+          return (
+            <div
+              className="fixed inset-0 z-[145]"
+              onClick={closePublicationReaderReferencePopover}
+              role="presentation"
+            >
+              {popoverCard}
+            </div>
+          )
+        })(),
         document.body,
       ) : null}
       {publicationReaderFigureLightboxAsset && typeof document !== 'undefined' ? createPortal(
