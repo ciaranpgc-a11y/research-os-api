@@ -7797,7 +7797,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       suppressPrimaryHeading?: boolean
     },
   ): ReactNode => {
-    const isActiveSection = publicationReaderActiveSectionId === section.id
     const sectionParagraphs = splitLongTextIntoParagraphs(section.content, 800)
     const sectionGroupKey = groupKey || selectedPaperDisplayGroupKeyBySectionId.get(section.id) || null
     const childSections = (selectedPaperSectionChildrenByParent.get(section.id) || [])
@@ -7864,18 +7863,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       ? 'text-[0.96rem] font-semibold tracking-[-0.01em]'
                     : depth === 0
                       ? 'text-[1.16rem] font-semibold tracking-[-0.016em]'
-                      : depth === 1
+                    : depth === 1
                         ? 'text-[1.01rem] font-semibold tracking-[-0.012em]'
                         : 'text-[0.9rem] font-semibold tracking-[-0.008em]',
-                  isActiveSection
-                    ? 'text-[hsl(var(--tone-accent-800))]'
-                    : isSummaryBox
-                      ? 'text-[hsl(var(--tone-neutral-600))]'
-                      : depth === 0
-                        ? 'text-[hsl(var(--tone-neutral-900))]'
-                        : depth === 1
-                          ? 'text-[hsl(var(--tone-neutral-800))]'
-                          : 'text-[hsl(var(--tone-neutral-700))]',
+                  'text-[hsl(var(--tone-neutral-900))]',
                 )}
               >
                 {displaySectionTitle}
