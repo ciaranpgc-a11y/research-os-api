@@ -6616,7 +6616,7 @@ def _tei_split_displaced_paragraphs(
         tag = _xml_local_name(getattr(child, "tag", "")).casefold()
         if tag not in {"p"}:
             continue
-        raw_text = _tei_node_text(child)
+        raw_text = _tei_node_text_with_citations(child)
         if _is_publication_paper_boilerplate_block(raw_text):
             saw_boilerplate = True
             continue

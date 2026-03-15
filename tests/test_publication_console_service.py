@@ -1214,6 +1214,22 @@ def test_parse_grobid_tei_prefers_visible_numeric_bibliography_labels() -> None:
     assert "TTE [7] in patients" in intro["content"]
 
 
+def test_tei_split_displaced_paragraphs_preserves_visible_numeric_citations() -> None:
+    tei_xml = """
+    <div xmlns="http://www.tei-c.org/ns/1.0">
+      <p>Visible summary bullet.</p>
+      <p>Protected by copyright, including for uses related to text and data mining, AI training, and similar technologies.</p>
+      <p>Overflow continuation over TTE <ref type="bibr" target="#b6">7</ref> in patients with raised LVFP.</p>
+    </div>
+    """
+    node = ET.fromstring(tei_xml)
+
+    native, displaced = publication_console_service._tei_split_displaced_paragraphs(node)
+
+    assert native == ["Visible summary bullet."]
+    assert displaced == ["Overflow continuation over TTE [7] in patients with raised LVFP."]
+
+
 def test_parse_grobid_tei_splits_headed_back_matter_blocks_without_duplicate_listorg_noise() -> None:
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
