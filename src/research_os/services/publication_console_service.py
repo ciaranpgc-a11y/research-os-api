@@ -191,7 +191,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v30"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v31"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -4916,6 +4916,82 @@ def _build_publication_paper_reference_id_bridge(
     return bridge
 
 
+def _merge_publication_paper_reference_metadata(
+    *,
+    citation_references: list[dict[str, Any]],
+    final_references: list[dict[str, Any]],
+    reference_id_map: dict[str, str],
+) -> list[dict[str, Any]]:
+    if not final_references:
+        return []
+    if not citation_references or not reference_id_map:
+        return [dict(reference) for reference in final_references if isinstance(reference, dict)]
+
+    citation_by_xml_id: dict[str, dict[str, Any]] = {}
+    for reference in citation_references:
+        if not isinstance(reference, dict):
+            continue
+        xml_id = str(reference.get("xml_id") or "").strip()
+        if xml_id:
+            citation_by_xml_id[xml_id] = dict(reference)
+
+    citation_by_final_id: dict[str, list[dict[str, Any]]] = {}
+    for xml_id, final_id in reference_id_map.items():
+        clean_xml_id = str(xml_id or "").strip()
+        clean_final_id = str(final_id or "").strip()
+        if not clean_xml_id or not clean_final_id:
+            continue
+        citation_reference = citation_by_xml_id.get(clean_xml_id)
+        if citation_reference is None:
+            continue
+        citation_by_final_id.setdefault(clean_final_id, []).append(citation_reference)
+
+    merged_references: list[dict[str, Any]] = []
+    for reference in final_references:
+        if not isinstance(reference, dict):
+            continue
+        reference_copy = dict(reference)
+        reference_id = str(reference_copy.get("id") or "").strip()
+        for citation_reference in citation_by_final_id.get(reference_id, []):
+            citation_xml_id = str(citation_reference.get("xml_id") or "").strip()
+            if citation_xml_id and not str(reference_copy.get("xml_id") or "").strip():
+                reference_copy["xml_id"] = citation_xml_id
+
+            citation_authors = citation_reference.get("authors")
+            if (
+                isinstance(citation_authors, list)
+                and citation_authors
+                and not (
+                    isinstance(reference_copy.get("authors"), list)
+                    and list(reference_copy.get("authors") or [])
+                )
+            ):
+                reference_copy["authors"] = [
+                    str(author).strip()
+                    for author in citation_authors
+                    if str(author).strip()
+                ]
+
+            for field_name in (
+                "title",
+                "journal",
+                "year",
+                "volume",
+                "issue",
+                "pages",
+                "doi",
+                "pmid",
+                "pmcid",
+            ):
+                if str(reference_copy.get(field_name) or "").strip():
+                    continue
+                field_value = citation_reference.get(field_name)
+                if str(field_value or "").strip():
+                    reference_copy[field_name] = str(field_value).strip()
+        merged_references.append(reference_copy)
+    return merged_references
+
+
 def _overlay_grobid_inline_references_onto_structured_paper(
     *,
     parsed_payload: dict[str, Any],
@@ -4998,6 +5074,11 @@ def _overlay_grobid_inline_references_onto_structured_paper(
         updated_sections.append(section_copy)
 
     updated_payload = dict(parsed_payload)
+    updated_payload["references"] = _merge_publication_paper_reference_metadata(
+        citation_references=citation_references,
+        final_references=final_references,
+        reference_id_map=reference_id_map,
+    )
     updated_payload["sections"] = updated_sections
     if reference_id_map:
         updated_payload["reference_id_map"] = reference_id_map
@@ -8329,9 +8410,9 @@ def _pmc_archive_image_data(
     return f"data:{content_type};base64,{base64.b64encode(content).decode('ascii')}"
 
 
-def _pmc_archive_reference_names(citation_node: ET.Element | None) -> str | None:
+def _pmc_archive_reference_author_list(citation_node: ET.Element | None) -> list[str]:
     if citation_node is None:
-        return None
+        return []
     names: list[str] = []
     person_groups = [
         child
@@ -8365,7 +8446,14 @@ def _pmc_archive_reference_names(citation_node: ET.Element | None) -> str | None
         collab = _normalize_abstract_text(
             _tei_node_text(_tei_first_direct_child(citation_node, "collab"))
         )
-        return collab or None
+        return [collab] if collab else []
+    return names
+
+
+def _pmc_archive_reference_names(citation_node: ET.Element | None) -> str | None:
+    names = _pmc_archive_reference_author_list(citation_node)
+    if not names:
+        return None
     if len(names) <= 6:
         return ", ".join(names)
     return ", ".join(names[:6]) + ", et al."
@@ -8403,6 +8491,7 @@ def _format_pmc_archive_reference(
     if citation_node is None:
         citation_node = ref_node
     raw_fallback = _normalize_abstract_text(_tei_node_text(citation_node))
+    authors_list = _pmc_archive_reference_author_list(citation_node)
     authors = _pmc_archive_reference_names(citation_node)
     article_title = _normalize_abstract_text(
         _tei_node_text(_tei_first_direct_child(citation_node, "article-title"))
@@ -8428,7 +8517,16 @@ def _format_pmc_archive_reference(
     elocation = _normalize_abstract_text(
         _tei_node_text(_tei_first_direct_child(citation_node, "elocation-id"))
     )
-    doi = _pmc_archive_reference_pub_id(citation_node, "doi")
+    doi = _normalize_doi(_pmc_archive_reference_pub_id(citation_node, "doi"))
+    pmid = _normalize_pmid(_pmc_archive_reference_pub_id(citation_node, "pmid"))
+    pmcid = (
+        _normalize_abstract_text(_pmc_archive_reference_pub_id(citation_node, "pmcid"))
+        or _normalize_abstract_text(_pmc_archive_reference_pub_id(citation_node, "pmc"))
+    )
+    if pmcid:
+        pmcid = pmcid.upper()
+        if not pmcid.startswith("PMC"):
+            pmcid = f"PMC{pmcid}"
 
     parts: list[str] = []
     if authors:
@@ -8462,11 +8560,32 @@ def _format_pmc_archive_reference(
     raw_text = formatted or raw_fallback
     if not raw_text:
         return None
-    return {
+    reference_payload: dict[str, Any] = {
         "id": f"paper-reference-{index}",
         "label": label or f"Reference {index}",
         "raw_text": raw_text,
     }
+    if article_title:
+        reference_payload["title"] = article_title
+    if authors_list:
+        reference_payload["authors"] = authors_list
+    if source_title:
+        reference_payload["journal"] = source_title
+    if year:
+        reference_payload["year"] = year
+    if volume:
+        reference_payload["volume"] = volume
+    if issue:
+        reference_payload["issue"] = issue
+    if pages:
+        reference_payload["pages"] = pages
+    if doi:
+        reference_payload["doi"] = doi
+    if pmid:
+        reference_payload["pmid"] = pmid
+    if pmcid:
+        reference_payload["pmcid"] = pmcid
+    return reference_payload
 
 
 def _extract_publication_paper_references_from_pmc_archive_content(

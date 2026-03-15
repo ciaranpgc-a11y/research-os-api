@@ -147,7 +147,10 @@ type PublicationReaderReferencePayload = {
   year?: string
   journal?: string
   doi?: string
+  pmid?: string
+  pmcid?: string
   volume?: string
+  issue?: string
   pages?: string
   xmlId?: string
 }
@@ -4869,7 +4872,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         ...(reference.year ? { year: String(reference.year) } : {}),
         ...(reference.journal ? { journal: String(reference.journal) } : {}),
         ...(reference.doi ? { doi: String(reference.doi) } : {}),
+        ...(reference.pmid ? { pmid: String(reference.pmid) } : {}),
+        ...(reference.pmcid ? { pmcid: String(reference.pmcid) } : {}),
         ...(reference.volume ? { volume: String(reference.volume) } : {}),
+        ...(reference.issue ? { issue: String(reference.issue) } : {}),
         ...(reference.pages ? { pages: String(reference.pages) } : {}),
         ...(reference.xml_id ? { xmlId: String(reference.xml_id) } : {}),
       }))

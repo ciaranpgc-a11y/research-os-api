@@ -2306,6 +2306,8 @@ def test_extract_publication_paper_references_from_pmc_archive_content_formats_c
               <fpage>472</fpage>
               <lpage>480</lpage>
               <pub-id pub-id-type="doi">10.1002/jmri.26847</pub-id>
+              <pub-id pub-id-type="pmid">31999000</pub-id>
+              <pub-id pub-id-type="pmcid">PMC7654321</pub-id>
             </element-citation>
           </ref>
         </ref-list>
@@ -2327,6 +2329,15 @@ def test_extract_publication_paper_references_from_pmc_archive_content_formats_c
     assert "Clinical assessment of aortic valve stenosis." in references[0]["raw_text"]
     assert "Journal of Magnetic Resonance Imaging. 2020;51:472-480." in references[0]["raw_text"]
     assert "doi: 10.1002/jmri.26847." in references[0]["raw_text"]
+    assert references[0]["title"] == "Clinical assessment of aortic valve stenosis"
+    assert references[0]["authors"] == ["Grafton-Clarke C", "Assadi H"]
+    assert references[0]["journal"] == "Journal of Magnetic Resonance Imaging"
+    assert references[0]["year"] == "2020"
+    assert references[0]["volume"] == "51"
+    assert references[0]["pages"] == "472-480"
+    assert references[0]["doi"] == "10.1002/jmri.26847"
+    assert references[0]["pmid"] == "31999000"
+    assert references[0]["pmcid"] == "PMC7654321"
 
 
 def test_extract_structured_publication_assets_from_pmc_archive_ignores_non_image_supplementary_fig() -> None:
@@ -2504,6 +2515,7 @@ def test_extract_structured_publication_paper_with_pmc_bioc_overlays_grobid_inli
                 "id": "paper-reference-2",
                 "label": "2",
                 "raw_text": "Reference two.",
+                "doi": "10.1000/pmc-two",
             },
         ],
     )
@@ -2552,12 +2564,23 @@ def test_extract_structured_publication_paper_with_pmc_bioc_overlays_grobid_inli
                     "label": "1",
                     "raw_text": "Reference one.",
                     "xml_id": "b1",
+                    "title": "Reference One Title",
+                    "authors": ["Alpha A", "Beta B"],
+                    "journal": "Structured Journal",
+                    "year": "2023",
+                    "doi": "10.1000/one",
+                    "pmid": "12345678",
                 },
                 {
                     "id": "paper-reference-2",
                     "label": "2",
                     "raw_text": "Reference two.",
                     "xml_id": "b2",
+                    "title": "Reference Two Title",
+                    "authors": ["Gamma C"],
+                    "journal": "Overlay Journal",
+                    "year": "2024",
+                    "pmid": "87654321",
                 },
             ],
             "reference_id_map": {
@@ -2592,6 +2615,20 @@ def test_extract_structured_publication_paper_with_pmc_bioc_overlays_grobid_inli
         "b1": "paper-reference-1",
         "b2": "paper-reference-2",
     }
+    assert payload["references"][0]["xml_id"] == "b1"
+    assert payload["references"][0]["title"] == "Reference One Title"
+    assert payload["references"][0]["authors"] == ["Alpha A", "Beta B"]
+    assert payload["references"][0]["journal"] == "Structured Journal"
+    assert payload["references"][0]["year"] == "2023"
+    assert payload["references"][0]["doi"] == "10.1000/one"
+    assert payload["references"][0]["pmid"] == "12345678"
+    assert payload["references"][1]["xml_id"] == "b2"
+    assert payload["references"][1]["title"] == "Reference Two Title"
+    assert payload["references"][1]["authors"] == ["Gamma C"]
+    assert payload["references"][1]["journal"] == "Overlay Journal"
+    assert payload["references"][1]["year"] == "2024"
+    assert payload["references"][1]["doi"] == "10.1000/pmc-two"
+    assert payload["references"][1]["pmid"] == "87654321"
     assert payload["generation_method"] == "pmc_bioc_fulltext_v1+grobid_citation_overlay_v1"
 
 
