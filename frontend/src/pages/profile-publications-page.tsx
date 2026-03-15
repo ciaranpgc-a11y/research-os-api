@@ -248,6 +248,14 @@ const PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS = [
 const PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITION_BY_KEY = new Map(
   PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS.map((definition) => [definition.key, definition]),
 )
+const PUBLICATION_READER_NARRATIVE_GROUP_KEYS = [
+  'abstract',
+  'introduction',
+  'methods',
+  'results',
+  'discussion',
+  'conclusions',
+] as const
 const PUBLICATION_READER_GROUP_TITLE_ALIASES: Record<string, string[]> = {
   abstract: ['abstract'],
   introduction: ['introduction', 'background'],
@@ -3251,6 +3259,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationReaderPdfPage, setPublicationReaderPdfPage] = useState(1)
   const [publicationReaderViewMode, setPublicationReaderViewMode] = useState<PublicationReaderViewMode>('structured')
   const [publicationReaderCollapsedNodeIds, setPublicationReaderCollapsedNodeIds] = useState<Record<string, boolean>>({})
+  const [publicationReaderEndMatterExpanded, setPublicationReaderEndMatterExpanded] = useState(false)
   const [publicationReaderInspectorOpen, setPublicationReaderInspectorOpen] = useState(false)
   const [publicationReaderFigureLightboxAsset, setPublicationReaderFigureLightboxAsset] = useState<PublicationPaperAssetPayload | null>(null)
   const [publicationReaderFigureLightboxFitToViewport, setPublicationReaderFigureLightboxFitToViewport] = useState(true)
@@ -3314,6 +3323,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationReaderSectionRefs = useRef<Record<string, HTMLElement | null>>({})
   const publicationReaderReferencesRef = useRef<HTMLElement | null>(null)
   const publicationReaderScrollViewportRef = useRef<HTMLElement | null>(null)
+  const publicationReaderNavigatorViewportRef = useRef<HTMLDivElement | null>(null)
+  const publicationReaderNavigatorTargetRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const openPublicationReaderFigureLightbox = useCallback((asset: PublicationPaperAssetPayload) => {
     if (!String(asset.image_data || '').trim()) {
       return
@@ -5322,10 +5333,61 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPaperRenderableTables,
     publicationReaderActiveSectionId,
   ])
+  const publicationReaderActiveNavigatorGroupId = useMemo(
+    () => (
+      publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID
+        ? 'references'
+        : publicationReaderActiveSectionId
+          ? selectedPaperDisplayGroupKeyBySectionId.get(publicationReaderActiveSectionId) || null
+          : selectedPublicationReaderNavigatorGroups[0]?.id || null
+    ),
+    [
+      publicationReaderActiveSectionId,
+      selectedPaperDisplayGroupKeyBySectionId,
+      selectedPublicationReaderNavigatorGroups,
+    ],
+  )
+  const publicationReaderActiveNavigatorSubsectionId = useMemo(
+    () => (
+      publicationReaderActiveSectionId
+      && publicationReaderActiveSectionId !== PUBLICATION_READER_REFERENCES_TARGET_ID
+        ? publicationReaderActiveSectionId
+        : null
+    ),
+    [publicationReaderActiveSectionId],
+  )
+  const selectedPublicationReaderNarrativeNavigatorGroups = useMemo(
+    () => selectedPublicationReaderNavigatorGroups.filter((group) => (
+      PUBLICATION_READER_NARRATIVE_GROUP_KEYS.includes(
+        group.id as typeof PUBLICATION_READER_NARRATIVE_GROUP_KEYS[number],
+      )
+    )),
+    [selectedPublicationReaderNavigatorGroups],
+  )
+  const selectedPublicationReaderEndMatterNavigatorGroups = useMemo(
+    () => selectedPublicationReaderNavigatorGroups.filter((group) => !selectedPublicationReaderNarrativeNavigatorGroups.includes(group)),
+    [selectedPublicationReaderNarrativeNavigatorGroups, selectedPublicationReaderNavigatorGroups],
+  )
+  const publicationReaderEndMatterIsActive = useMemo(
+    () => Boolean(
+      publicationReaderActiveNavigatorGroupId
+      && selectedPublicationReaderEndMatterNavigatorGroups.some((group) => group.id === publicationReaderActiveNavigatorGroupId),
+    ),
+    [publicationReaderActiveNavigatorGroupId, selectedPublicationReaderEndMatterNavigatorGroups],
+  )
+  const publicationReaderEndMatterIsExpanded = publicationReaderEndMatterExpanded || publicationReaderEndMatterIsActive
   const selectedPaperFirstReaderSection = useMemo(
     () => selectedStructuredPaperGroups.flatMap((group) => group.rootSections)[0] || selectedPaperSections[0] || null,
     [selectedPaperSections, selectedStructuredPaperGroups],
   )
+  const buildPublicationReaderSingleOpenCollapsedState = useCallback((openGroupId: string | null) => (
+    selectedPublicationReaderNavigatorGroups.reduce<Record<string, boolean>>((accumulator, group) => {
+      if (group.items.length > 0) {
+        accumulator[group.id] = group.id !== openGroupId
+      }
+      return accumulator
+    }, {})
+  ), [selectedPublicationReaderNavigatorGroups])
   const selectedReaderActiveSection = useMemo(
     () => {
       if (publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID) {
@@ -5393,6 +5455,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       setPublicationReaderPdfPage(1)
       setPublicationReaderViewMode('structured')
       setPublicationReaderCollapsedNodeIds({})
+      setPublicationReaderEndMatterExpanded(false)
       setPublicationReaderInspectorOpen(false)
       setPublicationReaderReferencePopover(null)
       publicationReaderSectionRefs.current = {}
@@ -6454,6 +6517,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderOpen(true)
     setPublicationReaderError('')
     setPublicationReaderCollapsedNodeIds({})
+    setPublicationReaderEndMatterExpanded(false)
     setPublicationReaderInspectorOpen(false)
     setPublicationReaderPdfPage(initialPdfPage)
     setPublicationReaderViewMode('structured')
@@ -6486,13 +6550,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     scrollToSection()
   }, [publicationReaderViewMode, selectedPaperSections])
-
-  const onTogglePublicationReaderOutlineNode = useCallback((nodeId: string) => {
-    setPublicationReaderCollapsedNodeIds((current) => ({
-      ...current,
-      [nodeId]: !current[nodeId],
-    }))
-  }, [])
 
   const onEnterPublicationReaderPdfView = useCallback(() => {
     if (!selectedPaperPrimaryPdfContentFileId) {
@@ -6817,45 +6874,36 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [onOpenPublicationReaderAsset, onSelectPublicationReaderSection, publicationReaderViewMode, selectedPaperAssetsById])
 
   useEffect(() => {
-    const activeGroupId = publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID
-      ? 'references'
-      : publicationReaderActiveSectionId
-        ? selectedPaperDisplayGroupKeyBySectionId.get(publicationReaderActiveSectionId) || null
-        : null
+    const activeGroupId = publicationReaderActiveNavigatorGroupId
     if (!activeGroupId) {
       return
     }
-    setPublicationReaderCollapsedNodeIds((current) => (
-      current[activeGroupId]
-        ? {
-            ...current,
-            [activeGroupId]: false,
-          }
-        : current
-    ))
-  }, [publicationReaderActiveSectionId, selectedPaperDisplayGroupKeyBySectionId])
+    setPublicationReaderCollapsedNodeIds((current) => {
+      const next = buildPublicationReaderSingleOpenCollapsedState(activeGroupId)
+      const nextEntries = Object.entries(next)
+      return (
+        nextEntries.length === Object.keys(current).length
+        && nextEntries.every(([groupId, isCollapsed]) => current[groupId] === isCollapsed)
+      )
+        ? current
+        : next
+    })
+  }, [
+    buildPublicationReaderSingleOpenCollapsedState,
+    publicationReaderActiveNavigatorGroupId,
+  ])
 
   useEffect(() => {
     if (!publicationReaderOpen || Object.keys(publicationReaderCollapsedNodeIds).length > 0 || selectedPublicationReaderNavigatorGroups.length === 0) {
       return
     }
-    const activeGroupId = publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID
-      ? 'references'
-      : publicationReaderActiveSectionId
-        ? selectedPaperDisplayGroupKeyBySectionId.get(publicationReaderActiveSectionId) || null
-        : selectedPublicationReaderNavigatorGroups[0]?.id || null
-    const nextCollapsedState = selectedPublicationReaderNavigatorGroups.reduce<Record<string, boolean>>((accumulator, group) => {
-      if (group.items.length > 0) {
-        accumulator[group.id] = group.id !== activeGroupId
-      }
-      return accumulator
-    }, {})
-    setPublicationReaderCollapsedNodeIds(nextCollapsedState)
+    const activeGroupId = publicationReaderActiveNavigatorGroupId
+    setPublicationReaderCollapsedNodeIds(buildPublicationReaderSingleOpenCollapsedState(activeGroupId))
   }, [
-    publicationReaderActiveSectionId,
+    buildPublicationReaderSingleOpenCollapsedState,
+    publicationReaderActiveNavigatorGroupId,
     publicationReaderCollapsedNodeIds,
     publicationReaderOpen,
-    selectedPaperDisplayGroupKeyBySectionId,
     selectedPublicationReaderNavigatorGroups,
   ])
 
@@ -6939,6 +6987,40 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     publicationReaderViewMode,
     selectedPaperReferences.length,
     selectedPaperSections,
+  ])
+
+  useEffect(() => {
+    if (!publicationReaderOpen || publicationReaderViewMode !== 'structured') {
+      return
+    }
+    const viewportNode = publicationReaderNavigatorViewportRef.current
+    if (!viewportNode) {
+      return
+    }
+    const targetKey = publicationReaderActiveNavigatorSubsectionId
+      ? `item:${publicationReaderActiveNavigatorSubsectionId}`
+      : publicationReaderActiveNavigatorGroupId
+        ? `group:${publicationReaderActiveNavigatorGroupId}`
+        : null
+    if (!targetKey) {
+      return
+    }
+    const targetNode = publicationReaderNavigatorTargetRefs.current[targetKey]
+    if (!targetNode) {
+      return
+    }
+    let frame = window.requestAnimationFrame(() => {
+      targetNode.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+    })
+    return () => {
+      window.cancelAnimationFrame(frame)
+    }
+  }, [
+    publicationReaderActiveNavigatorGroupId,
+    publicationReaderActiveNavigatorSubsectionId,
+    publicationReaderEndMatterIsExpanded,
+    publicationReaderOpen,
+    publicationReaderViewMode,
   ])
 
   const onOpenPublicationReaderPrimaryPdf = () => {
@@ -8009,91 +8091,143 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       )
     }
 
-    return (
-      <div className="space-y-3">
-        {selectedPublicationReaderNavigatorGroups.map((group) => {
-          const isCollapsed = group.items.length > 0 && (publicationReaderCollapsedNodeIds[group.id] ?? false)
-          return (
-            <section key={group.id} className="space-y-2">
-              <div
-                className={cn(
-                  'rounded-[1rem] border border-[hsl(var(--tone-neutral-150))] bg-white/95 px-3 py-2.5 transition-[background-color,border-color,box-shadow,transform] duration-[var(--motion-duration-ui)] ease-out',
-                  'hover:border-[hsl(var(--tone-neutral-220))] hover:bg-white',
-                  group.isActive && 'border-[hsl(var(--tone-accent-220))] bg-white shadow-[0_12px_28px_hsl(var(--tone-accent-900)/0.08)]',
-                )}
-              >
-                <div className="flex items-start gap-2.5">
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 rounded-md bg-transparent py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
-                    onClick={() => onSelectPublicationReaderNavigatorTarget(group.target)}
-                    disabled={!group.target}
-                  >
-                    <span className="flex min-w-0 items-start gap-2">
-                      <span className={cn(
-                        houseNavigation.sectionLabel,
-                        'whitespace-normal break-words text-[0.68rem] leading-[1.45] tracking-[0.12em]',
-                        group.isActive && 'text-[hsl(var(--tone-accent-900))]',
-                      )}>
-                        {group.label}
-                      </span>
-                    </span>
-                  </button>
-                  {group.items.length > 0 ? (
-                    <button
-                      type="button"
-                      className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-500))] transition-[background-color,color,transform] duration-[var(--motion-duration-ui)] ease-out hover:bg-white hover:text-[hsl(var(--tone-neutral-800))]"
-                      onClick={() => onTogglePublicationReaderOutlineNode(group.id)}
-                      aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.label}`}
-                    >
-                      <ChevronDown
-                        className={cn(
-                          'h-3.5 w-3.5 transition-transform duration-[var(--motion-duration-ui)] ease-out',
-                          isCollapsed ? '-rotate-90' : 'rotate-0',
-                        )}
-                      />
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              {group.items.length > 0 && !isCollapsed ? (
-                <div className="ml-3 space-y-1.5 border-l border-[hsl(var(--tone-neutral-200))] pl-3.5">
-                  {group.items.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={cn(
-                        houseNavigation.item,
-                        'w-full rounded-[0.95rem] border border-transparent bg-transparent px-2.5 py-2.5 text-left shadow-none',
-                        'hover:border-[hsl(var(--tone-neutral-200))] hover:bg-white',
-                        item.isActive && 'border-[hsl(var(--tone-accent-200))] bg-white text-[hsl(var(--tone-accent-900))] shadow-[0_8px_20px_hsl(var(--tone-accent-900)/0.05)]',
-                      )}
-                      style={{ paddingLeft: `${0.75 + (item.indent * 0.8)}rem` }}
-                      onClick={() => onSelectPublicationReaderNavigatorTarget(item.target)}
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span
-                          className={cn(
-                            'h-1.5 w-1.5 shrink-0 rounded-full',
-                            item.isActive ? group.toneClassName : 'bg-[hsl(var(--tone-neutral-300))]',
-                          )}
-                        />
-                        <span className={cn(
-                          houseNavigation.itemLabel,
-                          'whitespace-normal break-words text-[0.84rem] leading-[1.38]',
-                          item.indent > 1 && 'text-[0.8rem]',
-                          item.isActive && 'text-[hsl(var(--tone-accent-900))]',
-                        )}>
-                          {item.label}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
+    const renderNavigatorGroup = (
+      group: PublicationReaderNavigatorGroupPayload,
+      options?: {
+        compact?: boolean
+      },
+    ) => {
+      const compact = Boolean(options?.compact)
+      const isExpanded = group.items.length > 0 && !(publicationReaderCollapsedNodeIds[group.id] ?? false)
+      const isActiveGroup = publicationReaderActiveNavigatorGroupId === group.id || group.isActive
+      return (
+        <div key={group.id} className={cn('space-y-1.5', compact && 'space-y-1')}>
+          <button
+            ref={(node) => {
+              publicationReaderNavigatorTargetRefs.current[`group:${group.id}`] = node
+            }}
+            type="button"
+            className={cn(
+              'group relative w-full overflow-hidden rounded-[1rem] pl-4 pr-3 text-left transition-[background-color,color] duration-[var(--motion-duration-ui)] ease-out',
+              compact ? 'py-2.5' : 'py-3',
+              isActiveGroup
+                ? 'bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-900))]'
+                : 'text-[hsl(var(--tone-neutral-700))] hover:bg-white/90 hover:text-[hsl(var(--tone-neutral-900))]',
+            )}
+            onClick={() => onSelectPublicationReaderNavigatorTarget(group.target)}
+            disabled={!group.target}
+          >
+            <span
+              className={cn(
+                'absolute left-0 top-2 bottom-2 w-[3px] rounded-full transition-colors duration-[var(--motion-duration-ui)] ease-out',
+                isActiveGroup ? 'bg-[hsl(var(--tone-accent-500))]' : 'bg-transparent',
+              )}
+              aria-hidden="true"
+            />
+            <span className="flex items-start gap-3">
+              <span className="min-w-0 flex-1">
+                <span
+                  className={cn(
+                    'block whitespace-normal break-words font-semibold tracking-[-0.01em]',
+                    compact ? 'text-[0.9rem] leading-[1.32]' : 'text-[0.98rem] leading-[1.3]',
+                  )}
+                >
+                  {group.label}
+                </span>
+              </span>
+              {group.items.length > 0 ? (
+                <span
+                  className={cn(
+                    'mt-0.5 shrink-0 text-[hsl(var(--tone-neutral-400))] transition-transform duration-[var(--motion-duration-ui)] ease-out',
+                    isExpanded ? 'rotate-90' : 'rotate-0',
+                    isActiveGroup && 'text-[hsl(var(--tone-accent-700))]',
+                  )}
+                  aria-hidden="true"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </span>
               ) : null}
-            </section>
-          )
-        })}
+            </span>
+          </button>
+          {group.items.length > 0 && isExpanded ? (
+            <div className={cn('ml-4 border-l border-[hsl(var(--tone-neutral-200))] pl-4', compact ? 'space-y-0.5' : 'space-y-1')}>
+              {group.items.map((item) => (
+                <button
+                  key={item.id}
+                  ref={(node) => {
+                    publicationReaderNavigatorTargetRefs.current[`item:${item.id}`] = node
+                  }}
+                  type="button"
+                  className={cn(
+                    'block w-full rounded-[0.9rem] bg-transparent py-1.5 text-left transition-[background-color,color] duration-[var(--motion-duration-ui)] ease-out',
+                    item.isActive
+                      ? 'bg-[hsl(var(--tone-accent-50)/0.72)] text-[hsl(var(--tone-accent-900))]'
+                      : 'text-[hsl(var(--tone-neutral-600))] hover:bg-white/80 hover:text-[hsl(var(--tone-neutral-900))]',
+                  )}
+                  style={{ paddingLeft: `${Math.max(0, (item.indent - 1) * 0.85)}rem` }}
+                  onClick={() => onSelectPublicationReaderNavigatorTarget(item.target)}
+                >
+                  <span
+                    className={cn(
+                      'block whitespace-normal break-words pr-2 text-[0.84rem] leading-[1.45]',
+                      item.indent > 1 && 'text-[0.8rem] leading-[1.42]',
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-5">
+        <div className="space-y-1 px-1">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--tone-neutral-500))]">
+            Manuscript map
+          </p>
+          <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+            Follow the paper as you read, with one active branch open at a time.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          {selectedPublicationReaderNarrativeNavigatorGroups.map((group) => renderNavigatorGroup(group))}
+        </div>
+
+        {selectedPublicationReaderEndMatterNavigatorGroups.length > 0 ? (
+          <div className="border-t border-[hsl(var(--tone-neutral-180))] pt-4">
+            <button
+              type="button"
+              className="flex w-full items-start justify-between gap-3 rounded-[1rem] bg-[hsl(var(--tone-neutral-50)/0.85)] px-4 py-3 text-left transition-[background-color,color] duration-[var(--motion-duration-ui)] ease-out hover:bg-white"
+              onClick={() => setPublicationReaderEndMatterExpanded((current) => !current)}
+              aria-expanded={publicationReaderEndMatterIsExpanded}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--tone-neutral-500))]">
+                  End matter
+                </span>
+                <span className="mt-1 block whitespace-normal break-words text-[0.92rem] font-semibold leading-[1.34] text-[hsl(var(--tone-neutral-900))]">
+                  Figures, tables, references and declarations
+                </span>
+              </span>
+              <ChevronDown
+                className={cn(
+                  'mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-ui)] ease-out',
+                  publicationReaderEndMatterIsExpanded ? 'rotate-180' : 'rotate-0',
+                )}
+              />
+            </button>
+            {publicationReaderEndMatterIsExpanded ? (
+              <div className="mt-3 space-y-1.5">
+                {selectedPublicationReaderEndMatterNavigatorGroups.map((group) => renderNavigatorGroup(group, { compact: true }))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -9945,6 +10079,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   setPublicationReaderError('')
                   setPublicationReaderViewMode('structured')
                   setPublicationReaderCollapsedNodeIds({})
+                  setPublicationReaderEndMatterExpanded(false)
                   setPublicationReaderInspectorOpen(false)
                 }
               }}
@@ -10053,7 +10188,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       )}
                     >
                       <aside className="min-h-0 px-3 pb-6 pt-14 sm:px-4 sm:pt-16">
-                        <div className="sticky top-8 max-h-[calc(100vh-11rem)] overflow-y-auto rounded-[1.35rem] bg-white/88 p-3 shadow-[0_18px_38px_hsl(var(--tone-neutral-900)/0.08)] backdrop-blur">
+                        <div
+                          ref={publicationReaderNavigatorViewportRef}
+                          className="sticky top-8 max-h-[calc(100vh-11rem)] overflow-y-auto rounded-[1.45rem] border border-[hsl(var(--tone-neutral-200))] bg-[linear-gradient(180deg,hsl(var(--surface-drilldown-elevated)/0.96)_0%,hsl(var(--tone-neutral-50)/0.94)_100%)] px-4 py-4 backdrop-blur"
+                        >
                           {selectedPaperParsingInProgress ? (
                             <div className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-3">
                               <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-150))]">
