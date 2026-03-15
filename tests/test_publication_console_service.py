@@ -1567,10 +1567,18 @@ def test_build_publication_paper_payload_keeps_seed_abstract_when_full_text_lack
 
     sources = [section["source"] for section in payload["sections"]]
     titles = [section["title"] for section in payload["sections"]]
+    abstract_section = next(section for section in payload["sections"] if section["title"] == "Abstract")
+    objective_section = next(section for section in payload["sections"] if section["title"] == "Objective")
 
-    assert sources[:3] == ["structured_abstract", "structured_abstract", "structured_abstract"]
+    assert titles[:4] == ["Abstract", "Objective", "Methods", "Results"]
+    assert sources[:4] == [
+        "structured_abstract",
+        "structured_abstract",
+        "structured_abstract",
+        "structured_abstract",
+    ]
+    assert objective_section["parent_id"] == abstract_section["id"]
     assert any(source == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC for source in sources)
-    assert titles[:3] == ["Objective", "Methods", "Results"]
     assert "Introduction" in titles
 
 

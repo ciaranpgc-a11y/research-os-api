@@ -4576,13 +4576,31 @@ def _build_publication_paper_sections(
     *, structured_abstract_payload: dict[str, Any], abstract: str | None
 ) -> list[dict[str, Any]]:
     sections: list[dict[str, Any]] = []
+    normalized_abstract = _normalize_abstract_text(abstract)
     raw_sections = (
         structured_abstract_payload.get("sections")
         if isinstance(structured_abstract_payload, dict)
         else []
     )
     if isinstance(raw_sections, list):
-        for index, item in enumerate(raw_sections):
+        abstract_root = _serialize_publication_paper_section(
+            order=0,
+            title="Abstract",
+            raw_label="Abstract",
+            canonical_kind="abstract",
+            content=None,
+            source="structured_abstract",
+            allow_empty=True,
+            is_generated_heading=False,
+            document_zone="front",
+            section_role="major",
+            major_section_key="overview",
+        )
+        abstract_root_id = None
+        if abstract_root is not None:
+            sections.append(abstract_root)
+            abstract_root_id = str(abstract_root.get("id") or "").strip() or None
+        for index, item in enumerate(raw_sections, start=1):
             if not isinstance(item, dict):
                 continue
             title = _normalize_heading_label(str(item.get("label") or "")) or "Summary"
@@ -4600,14 +4618,18 @@ def _build_publication_paper_sections(
                 canonical_kind=kind,
                 content=content,
                 source="structured_abstract",
+                level=2 if abstract_root_id else 1,
+                parent_id=abstract_root_id,
                 is_generated_heading=False,
+                document_zone="front",
+                section_role="subsection" if abstract_root_id else None,
+                major_section_key="overview" if abstract_root_id else None,
             )
             if serialized is not None:
                 sections.append(serialized)
-    if sections:
+    if len(sections) > 1:
         return sections
 
-    normalized_abstract = _normalize_abstract_text(abstract)
     if not normalized_abstract:
         return []
     serialized = _serialize_publication_paper_section(
