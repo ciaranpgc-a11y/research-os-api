@@ -8034,7 +8034,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     className: string,
     style?: CSSProperties,
   ): ReactNode => {
-    const referenceChipClassName = 'relative -top-[0.12em] inline-flex min-h-[1.22rem] min-w-[1.22rem] items-center justify-center whitespace-nowrap rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-100))] px-[0.36rem] py-[0.04rem] text-left text-[0.67em] font-semibold leading-none tracking-[0.01em] text-[hsl(var(--tone-accent-850))] transition-[background-color,border-color,color] duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-accent-500))] hover:bg-[hsl(var(--tone-accent-150))] hover:text-[hsl(var(--tone-accent-900))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-300))] focus-visible:ring-offset-2'
+    const referenceChipClassName = 'align-super inline-flex min-h-[1.14rem] min-w-[1.14rem] items-center justify-center whitespace-nowrap rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-100))] px-[0.3rem] py-0 text-left text-[0.64em] font-semibold leading-none tracking-[0.005em] text-[hsl(var(--tone-accent-850))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-accent-500))] hover:bg-[hsl(var(--tone-accent-150))] hover:text-[hsl(var(--tone-accent-900))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-300))] focus-visible:ring-offset-2'
     const parts = String(paragraph || '').split(PUBLICATION_READER_CITATION_TOKEN_GLOBAL_PATTERN)
     if (parts.length <= 1) {
       return (
@@ -8047,7 +8047,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return (
       <p key={keyPrefix} className={className} style={style}>
         {parts.map((part, partIndex) => {
+          const previousPart = parts[partIndex - 1] || ''
           const nextPart = parts[partIndex + 1] || ''
+          const previousPartIsCitationToken = PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(previousPart)
           const nextPartIsCitationToken = PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(nextPart)
           const citeMarkerMatch = part.match(/^\{\{cite:([^}]+)\}\}$/)
           if (citeMarkerMatch) {
@@ -8074,6 +8076,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
           const tokenMatch = part.match(/^\[(.+)\]$/)
           if (!tokenMatch) {
+            if (previousPartIsCitationToken && nextPartIsCitationToken && /^\s+$/.test(part)) {
+              return <span key={`${keyPrefix}-text-${partIndex}`} className="inline-block w-[0.16rem]" aria-hidden="true" />
+            }
             const normalizedText = nextPartIsCitationToken
               ? part.replace(/\s+$/g, '')
               : part
