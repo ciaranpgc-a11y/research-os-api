@@ -8480,7 +8480,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           </div>
         ) : null}
         {childSections.length > 0 ? (
-          <div className={cn('mt-2.25 space-y-5', depth === 0 ? 'pl-0' : 'pl-3')}>
+          <div
+            className={cn(
+              depth === 0 && isNarrativeGroup
+                ? 'mt-3 space-y-6'
+                : 'mt-2.25 space-y-5',
+              depth === 0 ? 'pl-0' : 'pl-3',
+            )}
+          >
             {childSections.map((childSection) => renderPublicationReaderStructuredSection(childSection, depth + 1, sectionGroupKey, options))}
           </div>
         ) : null}
