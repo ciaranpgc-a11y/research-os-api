@@ -190,7 +190,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v29"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v30"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -4622,6 +4622,96 @@ def _build_publication_paper_sections(
     return [serialized] if serialized is not None else []
 
 
+def _publication_paper_sections_include_abstract(
+    sections: list[dict[str, Any]],
+) -> bool:
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        if str(section.get("source") or "").strip() in {"structured_abstract", "abstract"}:
+            return True
+        if str(section.get("canonical_kind") or "").strip() == "abstract":
+            return True
+        if str(section.get("canonical_map") or "").strip() == "abstract":
+            return True
+        normalized_title_kind = _normalize_publication_paper_section_kind(
+            str(section.get("title") or section.get("raw_label") or "").strip()
+        )
+        if normalized_title_kind == "abstract":
+            return True
+    return False
+
+
+def _resequence_publication_paper_sections(
+    sections: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    resequenced: list[dict[str, Any]] = []
+    old_to_new: dict[str, str] = {}
+    parent_markers: list[str | None] = []
+
+    for order, section in enumerate(sections):
+        if not isinstance(section, dict):
+            continue
+        section_copy = dict(section)
+        old_id = str(section_copy.get("id") or "").strip()
+        old_parent_id = str(section_copy.get("parent_id") or "").strip() or None
+        section_copy["order"] = order
+        section_copy["id"] = _publication_paper_section_id(
+            order=order,
+            key=str(
+                section_copy.get("canonical_kind") or section_copy.get("kind") or ""
+            ).strip()
+            or "section",
+            title=str(
+                section_copy.get("title")
+                or section_copy.get("raw_label")
+                or f"section-{order + 1}"
+            ).strip()
+            or f"section-{order + 1}",
+        )
+        if old_id:
+            old_to_new[old_id] = str(section_copy["id"])
+        resequenced.append(section_copy)
+        parent_markers.append(old_parent_id)
+
+    for section_copy, old_parent_id in zip(resequenced, parent_markers):
+        section_copy["parent_id"] = old_to_new.get(old_parent_id) if old_parent_id else None
+
+    return resequenced
+
+
+def _merge_seed_sections_into_parsed_sections(
+    *,
+    seed_sections: list[dict[str, Any]],
+    parsed_sections: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    normalized_seed_sections = [
+        dict(section)
+        for section in seed_sections
+        if isinstance(section, dict)
+        and (
+            str(section.get("content") or "").strip()
+            or str(section.get("title") or "").strip()
+        )
+    ]
+    normalized_parsed_sections = [
+        dict(section)
+        for section in parsed_sections
+        if isinstance(section, dict)
+        and (
+            str(section.get("content") or "").strip()
+            or str(section.get("title") or "").strip()
+        )
+    ]
+    if not normalized_seed_sections or not normalized_parsed_sections:
+        return normalized_parsed_sections
+    if _publication_paper_sections_include_abstract(normalized_parsed_sections):
+        return normalized_parsed_sections
+    return _resequence_publication_paper_sections(
+        [*normalized_seed_sections, *normalized_parsed_sections]
+    )
+
+
 def _serialize_publication_paper_asset(value: dict[str, Any]) -> dict[str, Any]:
     raw_classification = str(value.get("classification") or "").strip() or None
     classification: str | None = None
@@ -5383,6 +5473,11 @@ def _build_publication_paper_payload(
             )
             if has_parsed_paper
             else seed_sections
+        )
+    if has_parsed_paper:
+        sections = _merge_seed_sections_into_parsed_sections(
+            seed_sections=seed_sections,
+            parsed_sections=sections,
         )
     sections = _apply_publication_paper_display_metadata(sections)
     references = (

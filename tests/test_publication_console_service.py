@@ -1452,6 +1452,128 @@ def test_build_publication_paper_payload_preserves_prestructured_section_hierarc
     assert child_section["section_role"] == "subsection"
 
 
+def test_build_publication_paper_payload_keeps_seed_abstract_when_full_text_lacks_one() -> None:
+    payload, _ = publication_console_service._build_publication_paper_payload(
+        publication={
+            "title": "PMC reader paper",
+            "journal": "Reader Journal",
+            "abstract": (
+                "Objective: Evaluate reader structure. "
+                "Methods: Prefer PMC sections. "
+                "Results: Preserve the abstract. "
+                "Conclusion: Keep the reader trustworthy."
+            ),
+            "authors_json": "[]",
+            "keywords_json": "[]",
+            "year": 2026,
+            "publication_type": "journal-article",
+            "article_type": "Original research",
+            "doi": "10.1000/pmc-reader-paper",
+            "pmid": "12345679",
+            "openalex_id": None,
+            "citations": 0,
+        },
+        structured_abstract_payload={
+            "format": "structured",
+            "sections": [
+                {
+                    "key": "introduction",
+                    "label": "Objective",
+                    "content": "Evaluate reader structure.",
+                },
+                {
+                    "key": "methods",
+                    "label": "Methods",
+                    "content": "Prefer PMC sections.",
+                },
+                {
+                    "key": "results",
+                    "label": "Results",
+                    "content": "Preserve the abstract.",
+                },
+            ],
+        },
+        structured_abstract_status="READY",
+        files=[],
+        parsed_paper={
+            "sections": [
+                {
+                    "id": "paper-section-introduction",
+                    "title": "Introduction",
+                    "raw_label": "Introduction",
+                    "label_original": "Introduction",
+                    "label_normalized": "Introduction",
+                    "kind": "introduction",
+                    "canonical_kind": "introduction",
+                    "section_type": "canonical",
+                    "canonical_map": "introduction",
+                    "content": "Full PMC introduction text.",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "order": 0,
+                    "page_start": None,
+                    "page_end": None,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": None,
+                    "is_generated_heading": False,
+                    "word_count": 4,
+                    "paragraph_count": 1,
+                    "document_zone": "body",
+                    "section_role": "major",
+                    "journal_section_family": None,
+                    "major_section_key": "introduction",
+                },
+                {
+                    "id": "paper-section-methods",
+                    "title": "Methods",
+                    "raw_label": "Methods",
+                    "label_original": "Methods",
+                    "label_normalized": "Methods",
+                    "kind": "methods",
+                    "canonical_kind": "methods",
+                    "section_type": "canonical",
+                    "canonical_map": "methods",
+                    "content": "Full PMC methods text.",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "order": 1,
+                    "page_start": None,
+                    "page_end": None,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": None,
+                    "is_generated_heading": False,
+                    "word_count": 4,
+                    "paragraph_count": 1,
+                    "document_zone": "body",
+                    "section_role": "major",
+                    "journal_section_family": None,
+                    "major_section_key": "methods",
+                },
+            ],
+            "figures": [],
+            "tables": [],
+            "references": [],
+            "page_count": None,
+            "generation_method": "pmc_bioc_fulltext_v1",
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC,
+        },
+        parser_status="FULL_TEXT_READY",
+        parser_last_error=None,
+    )
+
+    sources = [section["source"] for section in payload["sections"]]
+    titles = [section["title"] for section in payload["sections"]]
+
+    assert sources[:3] == ["structured_abstract", "structured_abstract", "structured_abstract"]
+    assert any(source == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC for source in sources)
+    assert titles[:3] == ["Objective", "Methods", "Results"]
+    assert "Introduction" in titles
+
+
 def test_build_publication_paper_outline_adds_synthetic_main_text_wrappers() -> None:
     outline = publication_console_service._build_publication_paper_outline(
         publication={"title": "Outline paper"},
