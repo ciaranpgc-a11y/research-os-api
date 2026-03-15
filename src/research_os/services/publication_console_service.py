@@ -191,7 +191,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v33"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v34"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -6489,7 +6489,7 @@ def _tei_node_text(node: ET.Element | None) -> str:
     return _normalize_abstract_text(" ".join(chunks))
 
 
-def _tei_targetless_bibr_label(node: ET.Element | None) -> str | None:
+def _tei_visible_numeric_bibr_label(node: ET.Element | None) -> str | None:
     clean = _normalize_abstract_text(_tei_node_text(node))
     if not clean:
         return None
@@ -6516,18 +6516,18 @@ def _tei_node_text_with_citations(node: ET.Element | None) -> str:
         if tag == "ref":
             ref_type = str(el.attrib.get("type") or "").strip().lower()
             if ref_type == "bibr":
-                target = str(el.attrib.get("target") or "").strip()
-                ref_id = target.lstrip("#") if target else ""
-                if ref_id:
-                    parts.append(f"{{{{cite:{ref_id}}}}}")
+                visible_label = _tei_visible_numeric_bibr_label(el)
+                if visible_label:
+                    parts.append(visible_label)
                     if el.tail:
                         t = _normalize_publication_pdf_text_line(el.tail)
                         if t:
                             parts.append(t)
                     return
-                visible_label = _tei_targetless_bibr_label(el)
-                if visible_label:
-                    parts.append(visible_label)
+                target = str(el.attrib.get("target") or "").strip()
+                ref_id = target.lstrip("#") if target else ""
+                if ref_id:
+                    parts.append(f"{{{{cite:{ref_id}}}}}")
                     if el.tail:
                         t = _normalize_publication_pdf_text_line(el.tail)
                         if t:
