@@ -8483,7 +8483,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           <div
             className={cn(
               depth === 0 && isNarrativeGroup
-                ? 'mt-3 space-y-6'
+                ? sectionParagraphs.length > 0
+                  ? 'mt-5 space-y-6'
+                  : 'mt-3 space-y-6'
                 : 'mt-2.25 space-y-5',
               depth === 0 ? 'pl-0' : 'pl-3',
             )}
