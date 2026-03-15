@@ -2460,6 +2460,141 @@ def test_extract_structured_publication_paper_with_pmc_bioc_prefers_archive_asse
     ) == 1
 
 
+def test_extract_structured_publication_paper_with_pmc_bioc_overlays_grobid_inline_citations(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_bioc_payload",
+        lambda _pmcid: {
+            "documents": [
+                {
+                    "passages": [
+                        {
+                            "infons": {"type": "title_1", "section_type": "INTRO"},
+                            "text": "Introduction",
+                        },
+                        {
+                            "infons": {"type": "paragraph", "section_type": "INTRO"},
+                            "text": (
+                                "Prior work informs current practice. "
+                                "Further evidence is needed for complex imaging pathways."
+                            ),
+                        },
+                    ]
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_archive_bytes",
+        lambda _pmcid: b"archive",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_publication_paper_references_from_pmc_archive_content",
+        lambda _archive_content: [
+            {
+                "id": "paper-reference-1",
+                "label": "1",
+                "raw_text": "Reference one.",
+            },
+            {
+                "id": "paper-reference-2",
+                "label": "2",
+                "raw_text": "Reference two.",
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_grobid",
+        lambda **_kwargs: {
+            "sections": [
+                {
+                    "id": "paper-section-introduction",
+                    "title": "Introduction",
+                    "raw_label": "Introduction",
+                    "label_original": "Introduction",
+                    "label_normalized": "Introduction",
+                    "kind": "introduction",
+                    "canonical_kind": "introduction",
+                    "section_type": "canonical",
+                    "canonical_map": "introduction",
+                    "content": (
+                        "Prior work {{cite:b1}} informs current practice. "
+                        "Further evidence {{cite:b2}} is needed for complex imaging pathways."
+                    ),
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "order": 0,
+                    "page_start": None,
+                    "page_end": None,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": None,
+                    "is_generated_heading": False,
+                    "word_count": 14,
+                    "paragraph_count": 1,
+                    "document_zone": "body",
+                    "section_role": "major",
+                    "journal_section_family": None,
+                    "major_section_key": "introduction",
+                }
+            ],
+            "figures": [],
+            "tables": [],
+            "references": [
+                {
+                    "id": "paper-reference-1",
+                    "label": "1",
+                    "raw_text": "Reference one.",
+                    "xml_id": "b1",
+                },
+                {
+                    "id": "paper-reference-2",
+                    "label": "2",
+                    "raw_text": "Reference two.",
+                    "xml_id": "b2",
+                },
+            ],
+            "reference_id_map": {
+                "b1": "paper-reference-1",
+                "b2": "paper-reference-2",
+            },
+            "page_count": None,
+            "generation_method": "grobid_tei_fulltext_v3",
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_GROBID,
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_assets_with_grobid",
+        lambda **_kwargs: ([], []),
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
+        pmcid="PMC1234567",
+        content=b"%PDF-1.7 test",
+        title="PMC citation overlay paper",
+        enrich_assets=False,
+        align_to_pdf=False,
+    )
+
+    intro = next(
+        section for section in payload["sections"] if section["title"] == "Introduction"
+    )
+    assert "{{cite:b1}}" in intro["content"]
+    assert "{{cite:b2}}" in intro["content"]
+    assert payload["reference_id_map"] == {
+        "b1": "paper-reference-1",
+        "b2": "paper-reference-2",
+    }
+    assert payload["generation_method"] == "pmc_bioc_fulltext_v1+grobid_citation_overlay_v1"
+
+
 def test_extract_structured_publication_paper_with_best_available_parser_prefers_pmc_bioc(
     monkeypatch,
 ) -> None:

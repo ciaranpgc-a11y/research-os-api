@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from difflib import SequenceMatcher
 import html
 import hashlib
 from io import BytesIO
@@ -4734,6 +4735,284 @@ def _merge_seed_sections_into_parsed_sections(
     )
 
 
+def _publication_paper_text_has_inline_reference_markers(value: str | None) -> bool:
+    text = str(value or "")
+    return bool(
+        "{{cite:" in text
+        or re.search(
+            r"\[(?:\d+(?:\s*[-–]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-–]\s*\d+)?)*)\]",
+            text,
+        )
+    )
+
+
+def _strip_publication_paper_inline_reference_markers(value: str | None) -> str:
+    clean = _publication_paper_content_cleanup(value)
+    if not clean:
+        return ""
+    clean = re.sub(r"\{\{cite:[^}]+\}\}", " ", clean)
+    clean = re.sub(
+        r"\[(?:\d+(?:\s*[-–]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-–]\s*\d+)?)*)\]",
+        " ",
+        clean,
+    )
+    clean = re.sub(r"\s+([,.;:!?])", r"\1", clean)
+    clean = re.sub(r"\s{2,}", " ", clean)
+    return clean.strip()
+
+
+def _normalize_publication_paper_citation_alignment_text(value: str | None) -> str:
+    clean = _strip_publication_paper_inline_reference_markers(value)
+    if not clean:
+        return ""
+    clean = clean.casefold()
+    clean = re.sub(r"[^a-z0-9]+", " ", clean)
+    return re.sub(r"\s+", " ", clean).strip()
+
+
+def _publication_paper_inline_reference_alignment_score(
+    left: str | None, right: str | None
+) -> float:
+    left_norm = _normalize_publication_paper_citation_alignment_text(left)
+    right_norm = _normalize_publication_paper_citation_alignment_text(right)
+    if not left_norm or not right_norm:
+        return 0.0
+    if left_norm == right_norm:
+        return 1.0
+    if left_norm in right_norm:
+        return len(left_norm) / max(len(right_norm), 1)
+    if right_norm in left_norm:
+        return len(right_norm) / max(len(left_norm), 1)
+    return SequenceMatcher(None, left_norm, right_norm).ratio()
+
+
+def _overlay_inline_reference_markers_onto_paragraph(
+    *,
+    base_paragraph: str,
+    citation_paragraph: str,
+) -> str:
+    base_clean = _publication_paper_content_cleanup(base_paragraph)
+    citation_clean = _publication_paper_content_cleanup(citation_paragraph)
+    if not base_clean or not citation_clean:
+        return base_clean or citation_clean
+    if not _publication_paper_text_has_inline_reference_markers(citation_clean):
+        return base_clean
+    citation_plain = _strip_publication_paper_inline_reference_markers(citation_clean)
+    if not citation_plain:
+        return base_clean
+    if citation_plain == base_clean:
+        return citation_clean
+    if base_clean.startswith(citation_plain):
+        suffix = base_clean[len(citation_plain) :].strip()
+        return _publication_paper_content_cleanup(
+            f"{citation_clean} {suffix}".strip() if suffix else citation_clean
+        )
+    if base_clean.endswith(citation_plain):
+        prefix = base_clean[: len(base_clean) - len(citation_plain)].strip()
+        return _publication_paper_content_cleanup(
+            f"{prefix} {citation_clean}".strip() if prefix else citation_clean
+        )
+    similarity = _publication_paper_inline_reference_alignment_score(
+        base_clean, citation_clean
+    )
+    if similarity >= 0.9 and len(citation_plain) >= int(len(base_clean) * 0.8):
+        return citation_clean
+    return base_clean
+
+
+def _overlay_inline_reference_markers_onto_section_content(
+    *,
+    base_content: str | None,
+    citation_content: str | None,
+) -> str:
+    base_paragraphs = _publication_paper_section_paragraphs(base_content)
+    citation_paragraphs = _publication_paper_section_paragraphs(citation_content)
+    if not base_paragraphs or not citation_paragraphs:
+        return _publication_paper_content_cleanup(base_content)
+
+    overlaid: list[str] = []
+    citation_start_index = 0
+    for base_paragraph in base_paragraphs:
+        best_index: int | None = None
+        best_score = 0.0
+        upper_bound = min(len(citation_paragraphs), citation_start_index + 6)
+        for index in range(citation_start_index, upper_bound):
+            candidate = citation_paragraphs[index]
+            score = _publication_paper_inline_reference_alignment_score(
+                base_paragraph,
+                candidate,
+            )
+            if score > best_score:
+                best_score = score
+                best_index = index
+            if score >= 0.985:
+                break
+        if best_index is not None and best_score >= 0.72:
+            overlaid.append(
+                _overlay_inline_reference_markers_onto_paragraph(
+                    base_paragraph=base_paragraph,
+                    citation_paragraph=citation_paragraphs[best_index],
+                )
+            )
+            citation_start_index = best_index + 1
+            continue
+        overlaid.append(_publication_paper_content_cleanup(base_paragraph))
+    return "\n\n".join(paragraph for paragraph in overlaid if paragraph)
+
+
+def _build_publication_paper_reference_id_bridge(
+    *,
+    citation_references: list[dict[str, Any]],
+    final_references: list[dict[str, Any]],
+) -> dict[str, str]:
+    if not citation_references or not final_references:
+        return {}
+    final_by_label: dict[str, list[str]] = {}
+    final_by_text: dict[str, list[str]] = {}
+    for index, reference in enumerate(final_references):
+        if not isinstance(reference, dict):
+            continue
+        final_id = str(reference.get("id") or "").strip()
+        if not final_id:
+            continue
+        label = _normalize_heading_label(str(reference.get("label") or "")).casefold()
+        if label:
+            final_by_label.setdefault(label, []).append(final_id)
+        raw_text_key = _normalize_publication_paper_citation_alignment_text(
+            str(reference.get("raw_text") or "")[:220]
+        )
+        if raw_text_key:
+            final_by_text.setdefault(raw_text_key, []).append(final_id)
+
+    bridge: dict[str, str] = {}
+    ordered_final_ids = [
+        str(reference.get("id") or "").strip()
+        for reference in final_references
+        if isinstance(reference, dict) and str(reference.get("id") or "").strip()
+    ]
+    for index, reference in enumerate(citation_references):
+        if not isinstance(reference, dict):
+            continue
+        xml_id = str(reference.get("xml_id") or "").strip()
+        if not xml_id:
+            continue
+        label = _normalize_heading_label(str(reference.get("label") or "")).casefold()
+        matched_id: str | None = None
+        if label:
+            label_matches = final_by_label.get(label, [])
+            if len(label_matches) == 1:
+                matched_id = label_matches[0]
+        if matched_id is None:
+            raw_text_key = _normalize_publication_paper_citation_alignment_text(
+                str(reference.get("raw_text") or "")[:220]
+            )
+            text_matches = final_by_text.get(raw_text_key, []) if raw_text_key else []
+            if len(text_matches) == 1:
+                matched_id = text_matches[0]
+        if matched_id is None and index < len(ordered_final_ids):
+            matched_id = ordered_final_ids[index]
+        if matched_id:
+            bridge[xml_id] = matched_id
+    return bridge
+
+
+def _overlay_grobid_inline_references_onto_structured_paper(
+    *,
+    parsed_payload: dict[str, Any],
+    grobid_payload: dict[str, Any],
+) -> dict[str, Any]:
+    base_sections = (
+        [dict(item) for item in parsed_payload.get("sections", []) if isinstance(item, dict)]
+        if isinstance(parsed_payload.get("sections"), list)
+        else []
+    )
+    citation_sections = (
+        [dict(item) for item in grobid_payload.get("sections", []) if isinstance(item, dict)]
+        if isinstance(grobid_payload.get("sections"), list)
+        else []
+    )
+    if not base_sections or not citation_sections:
+        return dict(parsed_payload)
+
+    final_references = (
+        [dict(item) for item in parsed_payload.get("references", []) if isinstance(item, dict)]
+        if isinstance(parsed_payload.get("references"), list)
+        else []
+    )
+    citation_references = (
+        [dict(item) for item in grobid_payload.get("references", []) if isinstance(item, dict)]
+        if isinstance(grobid_payload.get("references"), list)
+        else []
+    )
+    reference_id_map = _build_publication_paper_reference_id_bridge(
+        citation_references=citation_references,
+        final_references=final_references,
+    )
+
+    candidate_by_title: dict[str, list[dict[str, Any]]] = {}
+    for section in citation_sections:
+        title_key = _normalize_publication_paper_citation_alignment_text(
+            section.get("title") or section.get("raw_label")
+        )
+        if not title_key:
+            continue
+        candidate_by_title.setdefault(title_key, []).append(section)
+
+    updated_sections: list[dict[str, Any]] = []
+    any_overlay_applied = False
+    for section in base_sections:
+        section_copy = dict(section)
+        if str(section_copy.get("source") or "").strip() != STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC:
+            updated_sections.append(section_copy)
+            continue
+        title_key = _normalize_publication_paper_citation_alignment_text(
+            section_copy.get("title") or section_copy.get("raw_label")
+        )
+        candidates = candidate_by_title.get(title_key, [])
+        best_candidate: dict[str, Any] | None = None
+        best_score = 0.0
+        for candidate in candidates:
+            score = _publication_paper_inline_reference_alignment_score(
+                section_copy.get("content"),
+                candidate.get("content"),
+            )
+            if score > best_score:
+                best_score = score
+                best_candidate = candidate
+        if best_candidate is None or best_score < 0.45:
+            updated_sections.append(section_copy)
+            continue
+        overlaid_content = _overlay_inline_reference_markers_onto_section_content(
+            base_content=section_copy.get("content"),
+            citation_content=best_candidate.get("content"),
+        )
+        if overlaid_content != _publication_paper_content_cleanup(section_copy.get("content")):
+            any_overlay_applied = True
+            section_copy["content"] = overlaid_content
+            section_copy["word_count"] = len(
+                re.findall(r"[A-Za-z0-9][A-Za-z0-9'/-]*", overlaid_content)
+            )
+            section_copy["paragraph_count"] = len(
+                _publication_paper_section_paragraphs(overlaid_content)
+            )
+        updated_sections.append(section_copy)
+
+    updated_payload = dict(parsed_payload)
+    updated_payload["sections"] = updated_sections
+    if reference_id_map:
+        updated_payload["reference_id_map"] = reference_id_map
+    elif isinstance(parsed_payload.get("reference_id_map"), dict):
+        updated_payload["reference_id_map"] = dict(parsed_payload.get("reference_id_map") or {})
+    if any_overlay_applied:
+        base_generation_method = str(parsed_payload.get("generation_method") or "").strip()
+        updated_payload["generation_method"] = (
+            f"{base_generation_method}+grobid_citation_overlay_v1"
+            if base_generation_method and "grobid_citation_overlay_v1" not in base_generation_method
+            else base_generation_method or "grobid_citation_overlay_v1"
+        )
+    return updated_payload
+
+
 def _serialize_publication_paper_asset(value: dict[str, Any]) -> dict[str, Any]:
     raw_classification = str(value.get("classification") or "").strip() or None
     classification: str | None = None
@@ -9047,6 +9326,18 @@ def _extract_structured_publication_paper_with_pmc_bioc(
             for item in parsed_payload.get("tables", [])
             if isinstance(item, dict)
         ]
+    try:
+        grobid_citation_payload = _extract_structured_publication_paper_with_grobid(
+            content=content,
+            title=title,
+            file_name="publication.pdf",
+        )
+        parsed_payload = _overlay_grobid_inline_references_onto_structured_paper(
+            parsed_payload=parsed_payload,
+            grobid_payload=grobid_citation_payload,
+        )
+    except Exception as exc:
+        logger.warning("GROBID citation overlay skipped for %s: %s", pmcid, exc)
     if enrich_assets and (
         _publication_paper_asset_surface_count(
             parsed_payload.get("figures"),
