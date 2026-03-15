@@ -699,6 +699,13 @@ function resolvePublicationPaperSectionAnchorPage(
   return null
 }
 
+function formatPublicationReaderCoverageRatioLabel(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) {
+    return 'n/a'
+  }
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`
+}
+
 const PUBLICATION_FILE_CLASSIFICATION_OPTIONS: Array<{
   value: PublicationFileClassification
   label: string
@@ -4925,6 +4932,133 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return next
   }, [selectedPaperAttachments, selectedPaperDatasets, selectedPaperRenderableFigures, selectedPaperRenderableTables])
   const selectedPaperComponentSummary = selectedPaperModel?.component_summary || null
+  const selectedPaperSectionConfidenceSummary = useMemo(() => {
+    const values = selectedPaperSections
+      .map((section) => Number(section.confidence))
+      .filter((value) => Number.isFinite(value) && value >= 0 && value <= 1)
+    if (!values.length) {
+      return {
+        average: null as number | null,
+        count: 0,
+      }
+    }
+    const average = values.reduce((sum, value) => sum + value, 0) / values.length
+    return {
+      average,
+      count: values.length,
+    }
+  }, [selectedPaperSections])
+  const selectedPaperFigureSurfaceRatio = selectedPaperFigures.length > 0
+    ? selectedPaperRenderableFigures.length / selectedPaperFigures.length
+    : null
+  const selectedPaperTableSurfaceRatio = selectedPaperTables.length > 0
+    ? selectedPaperRenderableTables.length / selectedPaperTables.length
+    : null
+  const selectedPaperReadQuality = useMemo(() => {
+    if (selectedPaperParsingInProgress || (publicationReaderLoading && !selectedPaperModel)) {
+      return {
+        label: 'Building',
+        toneClassName: 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]',
+        note: 'Structured content is still being assembled.',
+      }
+    }
+
+    const parserStatus = String(selectedPaperDocument?.parser_status || '').toUpperCase()
+    const responseStatus = String(selectedPaperModelResponse?.status || '').toUpperCase()
+    if (parserStatus === 'FAILED' || responseStatus === 'FAILED') {
+      return {
+        label: 'Low confidence',
+        toneClassName: 'border-[hsl(var(--tone-danger-250))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]',
+        note: 'Parser failed; verify content in PDF view.',
+      }
+    }
+
+    const avgSectionConfidence = selectedPaperSectionConfidenceSummary.average
+    const parsedSectionCount = selectedPaperSections.length
+    const hasLowAssetCoverage = (
+      (selectedPaperFigureSurfaceRatio != null && selectedPaperFigureSurfaceRatio < 0.55)
+      || (selectedPaperTableSurfaceRatio != null && selectedPaperTableSurfaceRatio < 0.55)
+    )
+
+    if (parsedSectionCount < 4 || avgSectionConfidence == null || avgSectionConfidence < 0.58 || hasLowAssetCoverage) {
+      return {
+        label: 'Low confidence',
+        toneClassName: 'border-[hsl(var(--tone-danger-250))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]',
+        note: 'Read with PDF cross-checks for section order and assets.',
+      }
+    }
+
+    if (
+      avgSectionConfidence < 0.8
+      || (selectedPaperFigureSurfaceRatio != null && selectedPaperFigureSurfaceRatio < 0.85)
+      || (selectedPaperTableSurfaceRatio != null && selectedPaperTableSurfaceRatio < 0.85)
+    ) {
+      return {
+        label: 'Moderate confidence',
+        toneClassName: 'border-[hsl(var(--tone-warning-250))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-800))]',
+        note: 'Most structure is stable, but verify key figures and tables.',
+      }
+    }
+
+    return {
+      label: 'High confidence',
+      toneClassName: 'border-[hsl(var(--tone-positive-250))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]',
+      note: 'Structure and assets look consistent for quick reading.',
+    }
+  }, [
+    publicationReaderLoading,
+    selectedPaperDocument?.parser_status,
+    selectedPaperFigureSurfaceRatio,
+    selectedPaperModel,
+    selectedPaperModelResponse?.status,
+    selectedPaperParsingInProgress,
+    selectedPaperSectionConfidenceSummary.average,
+    selectedPaperSections.length,
+    selectedPaperTableSurfaceRatio,
+  ])
+  const selectedPaperReaderStatusBadges = useMemo(() => {
+    const parserLabel = selectedPaperDocument?.parser_status
+      ? formatPublicationPaperSectionKindLabel(selectedPaperDocument.parser_status)
+      : 'No parser state'
+    const parserToneClassName = selectedPaperDocument?.parser_status === 'FAILED'
+      ? 'border-[hsl(var(--tone-danger-250))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]'
+      : selectedPaperDocument?.parser_status === 'FULL_TEXT_READY'
+        ? 'border-[hsl(var(--tone-positive-250))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]'
+        : 'border-[hsl(var(--tone-neutral-220))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]'
+
+    const badges = [
+      {
+        label: `Parser: ${parserLabel}`,
+        toneClassName: parserToneClassName,
+      },
+      {
+        label: `Read quality: ${selectedPaperReadQuality.label}`,
+        toneClassName: selectedPaperReadQuality.toneClassName,
+      },
+    ]
+
+    if (selectedPaperFigures.length > 0) {
+      badges.push({
+        label: `Figures surfaced: ${selectedPaperRenderableFigures.length}/${selectedPaperFigures.length}`,
+        toneClassName: 'border-[hsl(var(--tone-neutral-220))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]',
+      })
+    }
+    if (selectedPaperTables.length > 0) {
+      badges.push({
+        label: `Tables surfaced: ${selectedPaperRenderableTables.length}/${selectedPaperTables.length}`,
+        toneClassName: 'border-[hsl(var(--tone-neutral-220))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]',
+      })
+    }
+    return badges
+  }, [
+    selectedPaperDocument?.parser_status,
+    selectedPaperFigures.length,
+    selectedPaperReadQuality.label,
+    selectedPaperReadQuality.toneClassName,
+    selectedPaperRenderableFigures.length,
+    selectedPaperRenderableTables.length,
+    selectedPaperTables.length,
+  ])
   const selectedPaperSectionChildrenByParent = useMemo(() => {
     const next = new Map<string | null, PublicationPaperSectionPayload[]>()
     for (const section of selectedPaperSections) {
@@ -7368,8 +7502,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               <div className="border-t border-dashed border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50)/0.5)] px-3 py-2">
                 <p className="text-[0.78rem] text-[hsl(var(--tone-neutral-500))]">
                   {asset.asset_kind === 'table'
-                    ? 'Table content not available — view in PDF'
-                    : 'Image not extractable from PDF'}
+                    ? 'Table content not available - view in PDF.'
+                    : 'Figure preview not extractable - view in PDF.'}
                 </p>
               </div>
             ) : null}
@@ -7591,6 +7725,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
                       dangerouslySetInnerHTML={{ __html: inlineAsset.structured_html }}
                     />
+                  </div>
+                ) : null}
+                {!inlineAsset.image_data && !inlineAsset.structured_html && inlineAsset.page_start != null ? (
+                  <div className="border-t border-dashed border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50)/0.55)] px-3 py-2.5">
+                    <p className="text-[0.78rem] text-[hsl(var(--tone-neutral-500))]">
+                      {inlineAsset.asset_kind === 'table'
+                        ? 'Table content not available - view in PDF.'
+                        : 'Figure preview not extractable - view in PDF.'}
+                    </p>
                   </div>
                 ) : null}
                 {inlineAsset.caption ? (
@@ -9650,6 +9793,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   : null,
                             ].filter(Boolean).join(' | ')}
                           </p>
+                          {!selectedPaperParsingInProgress ? (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              {selectedPaperReaderStatusBadges.map((badge) => (
+                                <span
+                                  key={badge.label}
+                                  className={cn(
+                                    'inline-flex items-center rounded-full border px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em]',
+                                    badge.toneClassName,
+                                  )}
+                                >
+                                  {badge.label}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-2">
                           <div className="inline-flex items-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50)/0.92)] p-1 shadow-[0_10px_24px_hsl(var(--tone-neutral-900)/0.05)]">
@@ -9941,6 +10099,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                           />
                                         </div>
                                       ) : null}
+                                      {!inlineAsset.image_data && !inlineAsset.structured_html && inlineAsset.page_start != null ? (
+                                        <div className="border-t border-dashed border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50)/0.55)] px-3 py-2.5">
+                                          <p className="text-[0.78rem] text-[hsl(var(--tone-neutral-500))]">
+                                            {inlineAsset.asset_kind === 'table'
+                                              ? 'Table content not available - view in PDF.'
+                                              : 'Figure preview not extractable - view in PDF.'}
+                                          </p>
+                                        </div>
+                                      ) : null}
                                       {inlineAsset.caption ? (
                                         <div className="border-t border-[hsl(var(--tone-neutral-100))] px-3 py-2">
                                           <p className="text-[0.78rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
@@ -10066,6 +10233,25 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 : 'Open a section from the outline to anchor notes and tools here.'}
                             </p>
                           </section>
+                          ) : null}
+
+                          {!selectedPaperParsingInProgress ? (
+                            <section className={cn('rounded-2xl border p-4', selectedPaperReadQuality.toneClassName)}>
+                              <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em]">
+                                Read quality
+                              </p>
+                              <p className="mt-2 text-sm font-medium leading-relaxed">
+                                {selectedPaperReadQuality.label}
+                              </p>
+                              <p className="mt-2 text-[0.82rem] leading-relaxed opacity-90">
+                                {selectedPaperReadQuality.note}
+                              </p>
+                              <div className="mt-3 space-y-1.5 text-[0.78rem] leading-relaxed opacity-95">
+                                <p>Section confidence: {formatPublicationReaderCoverageRatioLabel(selectedPaperSectionConfidenceSummary.average)} ({selectedPaperSectionConfidenceSummary.count} section{selectedPaperSectionConfidenceSummary.count === 1 ? '' : 's'})</p>
+                                <p>Figures surfaced: {selectedPaperRenderableFigures.length}/{selectedPaperFigures.length || 0} ({formatPublicationReaderCoverageRatioLabel(selectedPaperFigureSurfaceRatio)})</p>
+                                <p>Tables surfaced: {selectedPaperRenderableTables.length}/{selectedPaperTables.length || 0} ({formatPublicationReaderCoverageRatioLabel(selectedPaperTableSurfaceRatio)})</p>
+                              </div>
+                            </section>
                           ) : null}
 
                           <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
