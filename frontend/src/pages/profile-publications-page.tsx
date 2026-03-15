@@ -5448,6 +5448,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     () => new Map(selectedStructuredPaperGroups.map((group) => [group.key, group.label])),
     [selectedStructuredPaperGroups],
   )
+  const selectedPublicationReaderPrimaryStructuredGroups = useMemo(
+    () => selectedStructuredPaperGroups.filter((group) => group.key !== 'article_information'),
+    [selectedStructuredPaperGroups],
+  )
+  const selectedPublicationReaderArticleInformationGroup = useMemo(
+    () => selectedStructuredPaperGroups.find((group) => group.key === 'article_information') || null,
+    [selectedStructuredPaperGroups],
+  )
   const selectedPublicationReaderNavigatorGroups = useMemo<PublicationReaderNavigatorGroupPayload[]>(() => {
     const buildSectionItems = (
       section: PublicationPaperSectionPayload,
@@ -10732,9 +10740,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <span>Building the structured paper model...</span>
                               </div>
                             ) : null}
-                            {!selectedPaperParsingInProgress && selectedStructuredPaperGroups.length > 0 ? (
+                            {!selectedPaperParsingInProgress && selectedPublicationReaderPrimaryStructuredGroups.length > 0 ? (
                               <div className="space-y-8">
-                                {selectedStructuredPaperGroups.map((group) => {
+                                {selectedPublicationReaderPrimaryStructuredGroups.map((group) => {
                                   const abstractSupplementSections: PublicationPaperSectionPayload[] = []
                                   const abstractSupplementSectionIds = new Set<string>()
 
@@ -10815,20 +10823,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 </p>
                               </div>
                             ) : null}
-                            {!selectedPaperParsingInProgress && selectedPaperFigures.length > 0 ? (
-                              renderPublicationReaderMajorPanel(
-                                'Figures',
-                                renderPublicationReaderAssetGroup(
-                                  selectedPaperRenderableFigures,
-                                  'No figures surfaced yet.',
-                                  selectedPaperMetadataOnlyFigureMessage,
-                                ),
-                                {
-                                  description: 'Figures surfaced from the source paper.',
-                                  groupKey: 'figures',
-                                },
-                              )
-                            ) : null}
                             {!selectedPaperParsingInProgress && selectedPaperTables.length > 0 ? (
                               renderPublicationReaderMajorPanel(
                                 'Tables',
@@ -10840,6 +10834,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 {
                                   description: 'Tables surfaced from the source paper.',
                                   groupKey: 'tables',
+                                },
+                              )
+                            ) : null}
+                            {!selectedPaperParsingInProgress && selectedPaperFigures.length > 0 ? (
+                              renderPublicationReaderMajorPanel(
+                                'Figures',
+                                renderPublicationReaderAssetGroup(
+                                  selectedPaperRenderableFigures,
+                                  'No figures surfaced yet.',
+                                  selectedPaperMetadataOnlyFigureMessage,
+                                ),
+                                {
+                                  description: 'Figures surfaced from the source paper.',
+                                  groupKey: 'figures',
                                 },
                               )
                             ) : null}
@@ -10871,6 +10879,30 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   },
                                 },
                               )
+                            ) : null}
+                            {!selectedPaperParsingInProgress && selectedPublicationReaderArticleInformationGroup ? (
+                              (() => {
+                                const group = selectedPublicationReaderArticleInformationGroup
+                                return renderPublicationReaderMajorPanel(
+                                  group.label,
+                                  (
+                                    <div className="space-y-6">
+                                      {group.rootSections.map((section) => renderPublicationReaderStructuredSection(
+                                        section,
+                                        0,
+                                        group.key,
+                                        {
+                                          suppressPrimaryHeading: publicationReaderSectionMatchesGroupLabel(section, group.key),
+                                        },
+                                      ))}
+                                    </div>
+                                  ),
+                                  {
+                                    description: 'Funding, ethics, author contributions, declarations, and supporting disclosures.',
+                                    groupKey: group.key,
+                                  },
+                                )
+                              })()
                             ) : null}
                           </div>
                         )}
