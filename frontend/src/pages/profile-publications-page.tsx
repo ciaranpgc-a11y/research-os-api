@@ -266,6 +266,28 @@ const PUBLICATION_READER_GROUP_TITLE_ALIASES: Record<string, string[]> = {
   references: ['references'],
   article_information: ['article information', 'article information and declarations'],
 }
+
+function extractPublicationReaderToneHex(toneClassName: string | null | undefined): string | null {
+  const match = String(toneClassName || '').match(/bg-\[(#[0-9a-fA-F]{6})\]/)
+  return match?.[1] || null
+}
+
+function publicationReaderHexToRgba(hex: string | null, alpha: number): string | undefined {
+  if (!hex) {
+    return undefined
+  }
+  const normalized = hex.replace('#', '')
+  if (normalized.length !== 6) {
+    return undefined
+  }
+  const red = Number.parseInt(normalized.slice(0, 2), 16)
+  const green = Number.parseInt(normalized.slice(2, 4), 16)
+  const blue = Number.parseInt(normalized.slice(4, 6), 16)
+  if ([red, green, blue].some((value) => Number.isNaN(value))) {
+    return undefined
+  }
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+}
 const PUBLICATION_STRUCTURED_TABLE_CLASS_NAME = [
   'publication-structured-table overflow-auto text-[0.84rem] leading-relaxed',
   '[&_table]:min-w-full [&_table]:border-collapse [&_table]:table-auto',
@@ -8148,6 +8170,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       const compact = Boolean(options?.compact)
       const isExpanded = group.items.length > 0 && !(publicationReaderCollapsedNodeIds[group.id] ?? false)
       const isActiveGroup = publicationReaderActiveNavigatorGroupId === group.id
+      const toneHex = extractPublicationReaderToneHex(group.toneClassName)
+      const activeFillColor = publicationReaderHexToRgba(toneHex, compact ? 0.08 : 0.095)
+      const activeSubsectionFillColor = publicationReaderHexToRgba(toneHex, 0.065)
+      const activeSubsectionRailColor = publicationReaderHexToRgba(toneHex, 0.9)
+      const inactiveSubtreeBorderColor = publicationReaderHexToRgba(toneHex, 0.18)
       return (
         <div key={group.id} className={cn('space-y-1.5', compact && 'space-y-1')}>
           <button
@@ -8159,9 +8186,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               'group relative w-full overflow-hidden rounded-[1rem] pl-4 pr-3 text-left transition-colors duration-150 ease-out',
               compact ? 'py-2.5' : 'py-3',
               isActiveGroup
-                ? 'bg-white text-[hsl(var(--tone-accent-900))]'
+                ? 'text-[hsl(var(--tone-neutral-950))]'
                 : 'text-[hsl(var(--tone-neutral-700))] hover:bg-white/72 hover:text-[hsl(var(--tone-neutral-900))]',
             )}
+            style={isActiveGroup && activeFillColor ? { backgroundColor: activeFillColor } : undefined}
             onClick={() => onSelectPublicationReaderNavigatorTarget(group.target)}
             disabled={!group.target}
           >
@@ -8170,6 +8198,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 'absolute left-0 top-2 bottom-2 w-[3px] rounded-full transition-colors duration-150 ease-out',
                 isActiveGroup ? 'bg-[hsl(var(--tone-accent-500))]' : 'bg-transparent',
               )}
+              style={isActiveGroup && toneHex ? { backgroundColor: toneHex } : undefined}
               aria-hidden="true"
             />
             <span className="flex items-start gap-3">
@@ -8188,8 +8217,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   className={cn(
                     'mt-0.5 shrink-0 text-[hsl(var(--tone-neutral-400))] transition-transform duration-150 ease-out',
                     isExpanded ? 'rotate-90' : 'rotate-0',
-                    isActiveGroup && 'text-[hsl(var(--tone-accent-700))]',
                   )}
+                  style={isActiveGroup && toneHex ? { color: toneHex } : undefined}
                   aria-hidden="true"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -8198,7 +8227,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             </span>
           </button>
           {group.items.length > 0 && isExpanded ? (
-            <div className={cn('ml-4 border-l border-[hsl(var(--tone-neutral-200))] pl-4', compact ? 'space-y-0.5' : 'space-y-1')}>
+            <div
+              className={cn('ml-4 border-l border-[hsl(var(--tone-neutral-200))] pl-4', compact ? 'space-y-0.5' : 'space-y-1')}
+              style={inactiveSubtreeBorderColor ? { borderColor: inactiveSubtreeBorderColor } : undefined}
+            >
               {group.items.map((item) => (
                 <button
                   key={item.id}
@@ -8212,7 +8244,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       ? 'text-[hsl(var(--tone-accent-900))]'
                       : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-900))]',
                   )}
-                  style={{ marginLeft: `${Math.max(0, (item.indent - 1) * 0.85)}rem` }}
+                  style={{
+                    marginLeft: `${Math.max(0, (item.indent - 1) * 0.85)}rem`,
+                    ...(item.isActive && activeSubsectionFillColor ? { backgroundColor: activeSubsectionFillColor } : {}),
+                  }}
                   onClick={() => onSelectPublicationReaderNavigatorTarget(item.target)}
                 >
                   <span
@@ -8220,6 +8255,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       'absolute left-0 top-2 bottom-2 w-[2px] rounded-full transition-colors duration-150 ease-out',
                       item.isActive ? 'bg-[hsl(var(--tone-accent-400))]' : 'bg-transparent',
                     )}
+                    style={item.isActive && activeSubsectionRailColor ? { backgroundColor: activeSubsectionRailColor } : undefined}
                     aria-hidden="true"
                   />
                   <span
@@ -8228,6 +8264,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       item.indent > 1 && 'text-[0.8rem] leading-[1.42]',
                       item.isActive && 'font-medium',
                     )}
+                    style={item.isActive && toneHex ? { color: toneHex } : undefined}
                   >
                     {item.label}
                   </span>
