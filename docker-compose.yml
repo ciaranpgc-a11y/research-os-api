@@ -28,6 +28,7 @@ services:
       - "443:443/udp"          # HTTP/3
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/Caddyfile.preview:/etc/caddy/Caddyfile.preview:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
@@ -119,7 +120,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile.production
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://preview-api.axiomos.studio}
+        VITE_API_BASE_URL: https://preview-api.axiomos.studio
         VITE_TEST_ACCOUNT_EMAIL: ${VITE_TEST_ACCOUNT_EMAIL:-}
         VITE_TEST_ACCOUNT_PASSWORD: ${VITE_TEST_ACCOUNT_PASSWORD:-}
     restart: unless-stopped

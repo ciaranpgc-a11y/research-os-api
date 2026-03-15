@@ -16,3 +16,6 @@ api.axiomos.studio {
 grobid.axiomos.studio {
 	reverse_proxy grobid:8070
 }
+
+# Optional preview routes live in deploy/Caddyfile.preview.
+import /etc/caddy/Caddyfile.preview

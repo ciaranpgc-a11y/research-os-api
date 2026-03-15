@@ -1,0 +1,3116 @@
+{
+  "aggregate": {
+    "average_figure_surface_coverage": 0.0,
+    "average_section_anchor_coverage": 0.0,
+    "average_table_surface_coverage": 0.8611,
+    "finding_code_counts": {
+      "BACK_MATTER_MAPPED_TO_BODY": 6,
+      "BODY_SECTION_CLASSIFIED_AS_METADATA": 4,
+      "CROSS_ZONE_SECTION_PARENT": 6,
+      "DUPLICATE_REFERENCE_PRESENTATION_RISK": 7,
+      "FIGURE_SURFACE_COVERAGE_LOW": 7,
+      "HIGH_GENERIC_SECTION_RATE": 6,
+      "LOW_FIDELITY_TABLE_HTML": 3,
+      "MISSING_ASSET_PAGE_ANCHORS": 7,
+      "MISSING_READER_PROVENANCE": 7,
+      "MISSING_SECTION_PAGE_ANCHORS": 7,
+      "PARSE_NOT_READY": 8,
+      "TABLE_SURFACE_COVERAGE_LOW": 2
+    },
+    "highest_severity_counts": {
+      "critical": 3,
+      "high": 7,
+      "medium": 5
+    },
+    "parser_status_counts": {
+      "FULL_TEXT_READY": 7,
+      "PARSING": 3,
+      "STRUCTURE_ONLY": 5
+    },
+    "publication_count": 15
+  },
+  "api_base_url": "https://api.axiomos.studio",
+  "audits": [
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "PARSE_NOT_READY",
+            "evidence": {
+              "has_viewable_pdf": false,
+              "parser_status": "STRUCTURE_ONLY",
+              "response_status": "READY"
+            },
+            "message": "Reader payload is not in FULL_TEXT_READY state, so quality metrics reflect a seed or in-flight parse rather than a completed structured reader.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "Medical Teacher",
+          "publication_id": "38516c97-c17e-423d-8bfd-0eaac8cbae7e",
+          "title": "A scoping review of artificial intelligence in medical education: BEME Guide No. 84",
+          "year": 2024
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 4
+            },
+            "tables": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null,
+              "with_coords": 0,
+              "with_graphic_coords": 0
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 0,
+            "numeric_reference_labels": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "structured_references": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "unique_inline_citation_ids": [],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 0,
+            "reference_sections": 0,
+            "references": 0,
+            "sections": 4,
+            "tables": 0
+          },
+          "provenance": {
+            "missing_fields": [
+              "full_text_generation_method",
+              "parser_provider",
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": false,
+            "has_viewable_pdf": false,
+            "parser_status": "STRUCTURE_ONLY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [],
+            "body_metadata_sections": [],
+            "cross_zone_children": [],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 0,
+              "coverage_ratio": 0.0
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 1,
+          "highest_severity": "medium",
+          "severity_counts": {
+            "medium": 1
+          }
+        }
+      },
+      "publication_id": "38516c97-c17e-423d-8bfd-0eaac8cbae7e"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "PARSE_NOT_READY",
+            "evidence": {
+              "has_viewable_pdf": true,
+              "parser_status": "PARSING",
+              "response_status": "RUNNING"
+            },
+            "message": "Reader payload is not in FULL_TEXT_READY state, so quality metrics reflect a seed or in-flight parse rather than a completed structured reader.",
+            "severity": "critical"
+          }
+        ],
+        "metadata": {
+          "journal": "Medical Teacher",
+          "publication_id": "54ff4952-69e9-49d8-8c29-b6286a1d04df",
+          "title": "Online learning developments in undergraduate medical education in response to the COVID-19 pandemic: A BEME systematic review: BEME Guide No. 69",
+          "year": 2021
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 4
+            },
+            "tables": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null,
+              "with_coords": 0,
+              "with_graphic_coords": 0
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 0,
+            "numeric_reference_labels": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "structured_references": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "unique_inline_citation_ids": [],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 0,
+            "reference_sections": 0,
+            "references": 0,
+            "sections": 4,
+            "tables": 0
+          },
+          "provenance": {
+            "missing_fields": [
+              "full_text_generation_method",
+              "parser_provider",
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": false,
+            "has_viewable_pdf": true,
+            "parser_status": "PARSING",
+            "reader_entry_available": true,
+            "response_status": "RUNNING",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [],
+            "body_metadata_sections": [],
+            "cross_zone_children": [],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 0,
+              "coverage_ratio": 0.0
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 1,
+          "highest_severity": "critical",
+          "severity_counts": {
+            "critical": 1
+          }
+        }
+      },
+      "publication_id": "54ff4952-69e9-49d8-8c29-b6286a1d04df"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "MISSING_SECTION_PAGE_ANCHORS",
+            "evidence": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 35
+            },
+            "message": "Full-text sections have no page anchors, which weakens ordering confidence, left-nav parity, and inline asset placement.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_ASSET_PAGE_ANCHORS",
+            "evidence": {
+              "figures": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 1
+              },
+              "tables": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 3
+              }
+            },
+            "message": "Parsed assets have no page anchors, so section placement and PDF jumps rely on weaker heuristics.",
+            "severity": "medium"
+          },
+          {
+            "code": "DUPLICATE_REFERENCE_PRESENTATION_RISK",
+            "evidence": {
+              "reference_count": 54,
+              "reference_sections": [
+                "References"
+              ]
+            },
+            "message": "The payload contains both parsed reference sections and a normalized reference list, which creates a strong risk of double-rendering in the structured reader.",
+            "severity": "high"
+          },
+          {
+            "code": "CROSS_ZONE_SECTION_PARENT",
+            "evidence": {
+              "items": [
+                {
+                  "id": "paper-section-25-results",
+                  "parent_id": "paper-section-8-results",
+                  "parent_title": "Results",
+                  "parent_zone": "body",
+                  "section_zone": "back",
+                  "title": "Table 2 continued. Main outcomes relating to primary care component of the oral cancer diagnostic journey"
+                }
+              ]
+            },
+            "message": "One or more sections are parented across document zones, which creates duplication and grouping conflicts between body and end matter.",
+            "severity": "high"
+          },
+          {
+            "code": "BACK_MATTER_MAPPED_TO_BODY",
+            "evidence": {
+              "items": [
+                {
+                  "canonical_map": "results",
+                  "id": "paper-section-25-results",
+                  "title": "Table 2 continued. Main outcomes relating to primary care component of the oral cancer diagnostic journey"
+                }
+              ]
+            },
+            "message": "Back-matter sections are mapped into main narrative groups, which is a strong indicator of reader ordering and duplication defects.",
+            "severity": "high"
+          },
+          {
+            "code": "HIGH_GENERIC_SECTION_RATE",
+            "evidence": {
+              "count": 12,
+              "coverage_ratio": 0.3429
+            },
+            "message": "A large share of sections remain generic `section` kinds, which reduces confidence in ordering, grouping, and section-specific rendering.",
+            "severity": "medium"
+          },
+          {
+            "code": "FIGURE_SURFACE_COVERAGE_LOW",
+            "evidence": {
+              "missing_surface_count": 1,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 0
+            },
+            "message": "Figure extraction coverage is low, so the reader is mostly showing figure metadata instead of actual figure images.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_READER_PROVENANCE",
+            "evidence": {
+              "missing_fields": [
+                "grobid_base_url",
+                "parse_duration_ms",
+                "asset_enrichment_status",
+                "parse_steps"
+              ]
+            },
+            "message": "Reader provenance is incomplete, so the UI has to infer parse/enrichment state instead of reporting it explicitly.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "British Journal of General Practice",
+          "publication_id": "235a19a8-73cb-4370-9672-02b7bc8be2d5",
+          "title": "Diagnosis and referral delays in primary care for oral squamous cell cancer: a systematic review",
+          "year": 2018
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 1
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 35
+            },
+            "tables": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 3
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 1,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 0
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 3,
+              "surface_ratio": 1.0
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 144,
+            "numeric_reference_labels": {
+              "count": 54,
+              "coverage_ratio": 1.0
+            },
+            "structured_references": {
+              "count": 53,
+              "coverage_ratio": 0.9815
+            },
+            "unique_inline_citation_ids": [
+              "b1",
+              "b10",
+              "b11",
+              "b12",
+              "b13",
+              "b14",
+              "b15",
+              "b16",
+              "b17",
+              "b18",
+              "b19",
+              "b2",
+              "b20",
+              "b21",
+              "b22",
+              "b23",
+              "b24",
+              "b25",
+              "b26",
+              "b27",
+              "b28",
+              "b29",
+              "b3",
+              "b30",
+              "b31",
+              "b32",
+              "b33",
+              "b34",
+              "b35",
+              "b36",
+              "b37",
+              "b38",
+              "b39",
+              "b4",
+              "b40",
+              "b41",
+              "b42",
+              "b43",
+              "b44",
+              "b45",
+              "b46",
+              "b47",
+              "b48",
+              "b49",
+              "b50",
+              "b51",
+              "b52",
+              "b53",
+              "b6",
+              "b7",
+              "b8",
+              "b9"
+            ],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 1,
+            "reference_sections": 1,
+            "references": 54,
+            "sections": 35,
+            "tables": 3
+          },
+          "provenance": {
+            "missing_fields": [
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version",
+              "full_text_generation_method",
+              "parser_provider"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": true,
+            "has_viewable_pdf": true,
+            "parser_status": "FULL_TEXT_READY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [
+              {
+                "canonical_map": "results",
+                "id": "paper-section-25-results",
+                "title": "Table 2 continued. Main outcomes relating to primary care component of the oral cancer diagnostic journey"
+              }
+            ],
+            "body_metadata_sections": [],
+            "cross_zone_children": [
+              {
+                "id": "paper-section-25-results",
+                "parent_id": "paper-section-8-results",
+                "parent_title": "Results",
+                "parent_zone": "body",
+                "section_zone": "back",
+                "title": "Table 2 continued. Main outcomes relating to primary care component of the oral cancer diagnostic journey"
+              }
+            ],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 12,
+              "coverage_ratio": 0.3429
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 8,
+          "highest_severity": "high",
+          "severity_counts": {
+            "high": 5,
+            "medium": 3
+          }
+        }
+      },
+      "publication_id": "235a19a8-73cb-4370-9672-02b7bc8be2d5"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "PARSE_NOT_READY",
+            "evidence": {
+              "has_viewable_pdf": false,
+              "parser_status": "STRUCTURE_ONLY",
+              "response_status": "READY"
+            },
+            "message": "Reader payload is not in FULL_TEXT_READY state, so quality metrics reflect a seed or in-flight parse rather than a completed structured reader.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "Journal of Vascular Surgery",
+          "publication_id": "e4d0a15b-21d5-461f-8849-071f15e94044",
+          "title": "Systematic review and meta-analysis of acute type B thoracic aortic dissection, open, or endovascular repair",
+          "year": 2018
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 4
+            },
+            "tables": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null,
+              "with_coords": 0,
+              "with_graphic_coords": 0
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 0,
+            "numeric_reference_labels": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "structured_references": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "unique_inline_citation_ids": [],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 0,
+            "reference_sections": 0,
+            "references": 0,
+            "sections": 4,
+            "tables": 0
+          },
+          "provenance": {
+            "missing_fields": [
+              "full_text_generation_method",
+              "parser_provider",
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": false,
+            "has_viewable_pdf": false,
+            "parser_status": "STRUCTURE_ONLY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [],
+            "body_metadata_sections": [],
+            "cross_zone_children": [],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 0,
+              "coverage_ratio": 0.0
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 1,
+          "highest_severity": "medium",
+          "severity_counts": {
+            "medium": 1
+          }
+        }
+      },
+      "publication_id": "e4d0a15b-21d5-461f-8849-071f15e94044"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "PARSE_NOT_READY",
+            "evidence": {
+              "has_viewable_pdf": false,
+              "parser_status": "STRUCTURE_ONLY",
+              "response_status": "READY"
+            },
+            "message": "Reader payload is not in FULL_TEXT_READY state, so quality metrics reflect a seed or in-flight parse rather than a completed structured reader.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "Medical Teacher",
+          "publication_id": "cd1c4132-a51c-409d-a147-37fc20138eb7",
+          "title": "Pivot to online learning for adapting or continuing workplace-based clinical learning in medical education following the COVID-19 pandemic: A BEME systematic review: BEME Guide No. 70",
+          "year": 2021
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 4
+            },
+            "tables": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null,
+              "with_coords": 0,
+              "with_graphic_coords": 0
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 0,
+            "numeric_reference_labels": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "structured_references": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "unique_inline_citation_ids": [],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 0,
+            "reference_sections": 0,
+            "references": 0,
+            "sections": 4,
+            "tables": 0
+          },
+          "provenance": {
+            "missing_fields": [
+              "full_text_generation_method",
+              "parser_provider",
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": false,
+            "has_viewable_pdf": false,
+            "parser_status": "STRUCTURE_ONLY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [],
+            "body_metadata_sections": [],
+            "cross_zone_children": [],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 0,
+              "coverage_ratio": 0.0
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 1,
+          "highest_severity": "medium",
+          "severity_counts": {
+            "medium": 1
+          }
+        }
+      },
+      "publication_id": "cd1c4132-a51c-409d-a147-37fc20138eb7"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "PARSE_NOT_READY",
+            "evidence": {
+              "has_viewable_pdf": false,
+              "parser_status": "STRUCTURE_ONLY",
+              "response_status": "READY"
+            },
+            "message": "Reader payload is not in FULL_TEXT_READY state, so quality metrics reflect a seed or in-flight parse rather than a completed structured reader.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "Medical Teacher",
+          "publication_id": "2defd006-855e-4a93-875d-39f7aa3aa624",
+          "title": "Non-technical skills assessments in undergraduate medical education: A focused BEME systematic review: BEME Guide No. 54",
+          "year": 2019
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 1
+            },
+            "tables": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null,
+              "with_coords": 0,
+              "with_graphic_coords": 0
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 0,
+            "numeric_reference_labels": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "structured_references": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "unique_inline_citation_ids": [],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 0,
+            "reference_sections": 0,
+            "references": 0,
+            "sections": 1,
+            "tables": 0
+          },
+          "provenance": {
+            "missing_fields": [
+              "full_text_generation_method",
+              "parser_provider",
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": false,
+            "has_viewable_pdf": false,
+            "parser_status": "STRUCTURE_ONLY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [],
+            "body_metadata_sections": [],
+            "cross_zone_children": [],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 1,
+              "coverage_ratio": 1.0
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 1,
+          "highest_severity": "medium",
+          "severity_counts": {
+            "medium": 1
+          }
+        }
+      },
+      "publication_id": "2defd006-855e-4a93-875d-39f7aa3aa624"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "MISSING_SECTION_PAGE_ANCHORS",
+            "evidence": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 72
+            },
+            "message": "Full-text sections have no page anchors, which weakens ordering confidence, left-nav parity, and inline asset placement.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_ASSET_PAGE_ANCHORS",
+            "evidence": {
+              "figures": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 5
+              },
+              "tables": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 2
+              }
+            },
+            "message": "Parsed assets have no page anchors, so section placement and PDF jumps rely on weaker heuristics.",
+            "severity": "medium"
+          },
+          {
+            "code": "DUPLICATE_REFERENCE_PRESENTATION_RISK",
+            "evidence": {
+              "reference_count": 107,
+              "reference_sections": [
+                "References"
+              ]
+            },
+            "message": "The payload contains both parsed reference sections and a normalized reference list, which creates a strong risk of double-rendering in the structured reader.",
+            "severity": "high"
+          },
+          {
+            "code": "CROSS_ZONE_SECTION_PARENT",
+            "evidence": {
+              "items": [
+                {
+                  "id": "paper-section-63-section",
+                  "parent_id": "paper-section-44-discussion",
+                  "parent_title": "Discussion",
+                  "parent_zone": "body",
+                  "section_zone": "back",
+                  "title": "Authors' contributions"
+                },
+                {
+                  "id": "paper-section-64-section",
+                  "parent_id": "paper-section-44-discussion",
+                  "parent_title": "Discussion",
+                  "parent_zone": "body",
+                  "section_zone": "back",
+                  "title": "Authors' information"
+                },
+                {
+                  "id": "paper-section-69-section",
+                  "parent_id": "paper-section-3-introduction",
+                  "parent_title": "Background",
+                  "parent_zone": "body",
+                  "section_zone": "back",
+                  "title": "Publisher's Note"
+                }
+              ]
+            },
+            "message": "One or more sections are parented across document zones, which creates duplication and grouping conflicts between body and end matter.",
+            "severity": "high"
+          },
+          {
+            "code": "BACK_MATTER_MAPPED_TO_BODY",
+            "evidence": {
+              "items": [
+                {
+                  "canonical_map": "discussion",
+                  "id": "paper-section-63-section",
+                  "title": "Authors' contributions"
+                },
+                {
+                  "canonical_map": "discussion",
+                  "id": "paper-section-64-section",
+                  "title": "Authors' information"
+                },
+                {
+                  "canonical_map": "introduction",
+                  "id": "paper-section-69-section",
+                  "title": "Publisher's Note"
+                }
+              ]
+            },
+            "message": "Back-matter sections are mapped into main narrative groups, which is a strong indicator of reader ordering and duplication defects.",
+            "severity": "high"
+          },
+          {
+            "code": "BODY_SECTION_CLASSIFIED_AS_METADATA",
+            "evidence": {
+              "items": [
+                {
+                  "canonical_kind": "data_availability",
+                  "canonical_map": "data_availability",
+                  "id": "paper-section-32-data-availability",
+                  "title": "Data availability"
+                }
+              ]
+            },
+            "message": "Body sections are classified as metadata/article information, which will distort display order and move narrative content into Declarations-like groups.",
+            "severity": "high"
+          },
+          {
+            "code": "HIGH_GENERIC_SECTION_RATE",
+            "evidence": {
+              "count": 49,
+              "coverage_ratio": 0.6806
+            },
+            "message": "A large share of sections remain generic `section` kinds, which reduces confidence in ordering, grouping, and section-specific rendering.",
+            "severity": "medium"
+          },
+          {
+            "code": "FIGURE_SURFACE_COVERAGE_LOW",
+            "evidence": {
+              "missing_surface_count": 5,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 4
+            },
+            "message": "Figure extraction coverage is low, so the reader is mostly showing figure metadata instead of actual figure images.",
+            "severity": "high"
+          },
+          {
+            "code": "TABLE_SURFACE_COVERAGE_LOW",
+            "evidence": {
+              "likely_low_fidelity_count": 1,
+              "missing_surface_count": 1,
+              "surface_count": 1,
+              "surface_ratio": 0.5
+            },
+            "message": "Table HTML coverage is low, so readers will frequently fall back to metadata-only table cards.",
+            "severity": "medium"
+          },
+          {
+            "code": "LOW_FIDELITY_TABLE_HTML",
+            "evidence": {
+              "count": 1
+            },
+            "message": "At least one table appears to have very thin HTML content, which often indicates a poor match or a collapsed extraction result.",
+            "severity": "medium"
+          },
+          {
+            "code": "MISSING_READER_PROVENANCE",
+            "evidence": {
+              "missing_fields": [
+                "grobid_base_url",
+                "parse_duration_ms",
+                "asset_enrichment_status",
+                "parse_steps"
+              ]
+            },
+            "message": "Reader provenance is incomplete, so the UI has to infer parse/enrichment state instead of reporting it explicitly.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "BMC Medicine",
+          "publication_id": "03c31417-cb16-4d6a-a906-d5b99dc78f94",
+          "title": "Exploring UK medical school differences: the MedDifs study of selection, teaching, student and F1 perceptions, postgraduate outcomes and fitness to practise",
+          "year": 2020
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 5
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 72
+            },
+            "tables": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 2
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 5,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 4
+            },
+            "tables": {
+              "likely_low_fidelity_count": 1,
+              "missing_surface_count": 1,
+              "surface_count": 1,
+              "surface_ratio": 0.5
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 199,
+            "numeric_reference_labels": {
+              "count": 107,
+              "coverage_ratio": 1.0
+            },
+            "structured_references": {
+              "count": 102,
+              "coverage_ratio": 0.9533
+            },
+            "unique_inline_citation_ids": [
+              "b0",
+              "b10",
+              "b100",
+              "b101",
+              "b102",
+              "b103",
+              "b104",
+              "b105",
+              "b106",
+              "b11",
+              "b12",
+              "b13",
+              "b14",
+              "b15",
+              "b16",
+              "b17",
+              "b18",
+              "b19",
+              "b20",
+              "b21",
+              "b22",
+              "b23",
+              "b24",
+              "b26",
+              "b27",
+              "b28",
+              "b29",
+              "b3",
+              "b30",
+              "b31",
+              "b32",
+              "b33",
+              "b34",
+              "b35",
+              "b36",
+              "b37",
+              "b38",
+              "b39",
+              "b4",
+              "b40",
+              "b41",
+              "b42",
+              "b44",
+              "b45",
+              "b46",
+              "b47",
+              "b48",
+              "b49",
+              "b5",
+              "b50",
+              "b51",
+              "b52",
+              "b53",
+              "b54",
+              "b55",
+              "b56",
+              "b57",
+              "b58",
+              "b59",
+              "b6",
+              "b60",
+              "b61",
+              "b62",
+              "b63",
+              "b64",
+              "b65",
+              "b66",
+              "b67",
+              "b68",
+              "b69",
+              "b7",
+              "b70",
+              "b71",
+              "b72",
+              "b73",
+              "b74",
+              "b75",
+              "b76",
+              "b77",
+              "b78",
+              "b79",
+              "b8",
+              "b80",
+              "b81",
+              "b82",
+              "b83",
+              "b84",
+              "b85",
+              "b86",
+              "b87",
+              "b88",
+              "b89",
+              "b9",
+              "b90",
+              "b91",
+              "b92",
+              "b93",
+              "b94",
+              "b95",
+              "b96",
+              "b97",
+              "b98",
+              "b99"
+            ],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 5,
+            "reference_sections": 1,
+            "references": 107,
+            "sections": 72,
+            "tables": 2
+          },
+          "provenance": {
+            "missing_fields": [
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version",
+              "full_text_generation_method",
+              "parser_provider"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": true,
+            "has_viewable_pdf": true,
+            "parser_status": "FULL_TEXT_READY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [
+              {
+                "canonical_map": "discussion",
+                "id": "paper-section-63-section",
+                "title": "Authors' contributions"
+              },
+              {
+                "canonical_map": "discussion",
+                "id": "paper-section-64-section",
+                "title": "Authors' information"
+              },
+              {
+                "canonical_map": "introduction",
+                "id": "paper-section-69-section",
+                "title": "Publisher's Note"
+              }
+            ],
+            "body_metadata_sections": [
+              {
+                "canonical_kind": "data_availability",
+                "canonical_map": "data_availability",
+                "id": "paper-section-32-data-availability",
+                "title": "Data availability"
+              }
+            ],
+            "cross_zone_children": [
+              {
+                "id": "paper-section-63-section",
+                "parent_id": "paper-section-44-discussion",
+                "parent_title": "Discussion",
+                "parent_zone": "body",
+                "section_zone": "back",
+                "title": "Authors' contributions"
+              },
+              {
+                "id": "paper-section-64-section",
+                "parent_id": "paper-section-44-discussion",
+                "parent_title": "Discussion",
+                "parent_zone": "body",
+                "section_zone": "back",
+                "title": "Authors' information"
+              },
+              {
+                "id": "paper-section-69-section",
+                "parent_id": "paper-section-3-introduction",
+                "parent_title": "Background",
+                "parent_zone": "body",
+                "section_zone": "back",
+                "title": "Publisher's Note"
+              }
+            ],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 49,
+              "coverage_ratio": 0.6806
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 11,
+          "highest_severity": "high",
+          "severity_counts": {
+            "high": 6,
+            "medium": 5
+          }
+        }
+      },
+      "publication_id": "03c31417-cb16-4d6a-a906-d5b99dc78f94"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "MISSING_SECTION_PAGE_ANCHORS",
+            "evidence": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 48
+            },
+            "message": "Full-text sections have no page anchors, which weakens ordering confidence, left-nav parity, and inline asset placement.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_ASSET_PAGE_ANCHORS",
+            "evidence": {
+              "figures": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 6
+              },
+              "tables": {
+                "coverage_ratio": null,
+                "known": 0,
+                "total": 0
+              }
+            },
+            "message": "Parsed assets have no page anchors, so section placement and PDF jumps rely on weaker heuristics.",
+            "severity": "medium"
+          },
+          {
+            "code": "DUPLICATE_REFERENCE_PRESENTATION_RISK",
+            "evidence": {
+              "reference_count": 77,
+              "reference_sections": [
+                "References"
+              ]
+            },
+            "message": "The payload contains both parsed reference sections and a normalized reference list, which creates a strong risk of double-rendering in the structured reader.",
+            "severity": "high"
+          },
+          {
+            "code": "CROSS_ZONE_SECTION_PARENT",
+            "evidence": {
+              "items": [
+                {
+                  "id": "paper-section-43-section",
+                  "parent_id": "paper-section-2-introduction",
+                  "parent_title": "Background",
+                  "parent_zone": "body",
+                  "section_zone": "back",
+                  "title": "Publisher's Note"
+                }
+              ]
+            },
+            "message": "One or more sections are parented across document zones, which creates duplication and grouping conflicts between body and end matter.",
+            "severity": "high"
+          },
+          {
+            "code": "BACK_MATTER_MAPPED_TO_BODY",
+            "evidence": {
+              "items": [
+                {
+                  "canonical_map": "introduction",
+                  "id": "paper-section-43-section",
+                  "title": "Publisher's Note"
+                }
+              ]
+            },
+            "message": "Back-matter sections are mapped into main narrative groups, which is a strong indicator of reader ordering and duplication defects.",
+            "severity": "high"
+          },
+          {
+            "code": "HIGH_GENERIC_SECTION_RATE",
+            "evidence": {
+              "count": 26,
+              "coverage_ratio": 0.5417
+            },
+            "message": "A large share of sections remain generic `section` kinds, which reduces confidence in ordering, grouping, and section-specific rendering.",
+            "severity": "medium"
+          },
+          {
+            "code": "FIGURE_SURFACE_COVERAGE_LOW",
+            "evidence": {
+              "missing_surface_count": 6,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 5
+            },
+            "message": "Figure extraction coverage is low, so the reader is mostly showing figure metadata instead of actual figure images.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_READER_PROVENANCE",
+            "evidence": {
+              "missing_fields": [
+                "grobid_base_url",
+                "parse_duration_ms",
+                "asset_enrichment_status",
+                "parse_steps"
+              ]
+            },
+            "message": "Reader provenance is incomplete, so the UI has to infer parse/enrichment state instead of reporting it explicitly.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "BMC Medicine",
+          "publication_id": "297f1e00-ebc1-4bc4-9fbe-d01cd6ab74dc",
+          "title": "The Analysis of Teaching of Medical Schools (AToMS) survey: an analysis of 47,258 timetabled teaching events in 25 UK medical schools relating to timing, duration, teaching formats, teaching content, and problem-based learning",
+          "year": 2020
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 6
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 48
+            },
+            "tables": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 6,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 5
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 84,
+            "numeric_reference_labels": {
+              "count": 77,
+              "coverage_ratio": 1.0
+            },
+            "structured_references": {
+              "count": 66,
+              "coverage_ratio": 0.8571
+            },
+            "unique_inline_citation_ids": [
+              "b14",
+              "b15",
+              "b17",
+              "b19",
+              "b20",
+              "b21",
+              "b22",
+              "b23",
+              "b24",
+              "b26",
+              "b27",
+              "b29",
+              "b31",
+              "b32",
+              "b33",
+              "b34",
+              "b35",
+              "b36",
+              "b37",
+              "b38",
+              "b40",
+              "b41",
+              "b42",
+              "b43",
+              "b44",
+              "b45",
+              "b46",
+              "b47",
+              "b48",
+              "b49",
+              "b50",
+              "b51",
+              "b52",
+              "b53",
+              "b54",
+              "b55",
+              "b56",
+              "b57",
+              "b58",
+              "b59",
+              "b60",
+              "b61",
+              "b62",
+              "b63",
+              "b64",
+              "b65",
+              "b66",
+              "b67",
+              "b68",
+              "b69",
+              "b70",
+              "b71",
+              "b72",
+              "b73",
+              "b74",
+              "b75",
+              "b76"
+            ],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 6,
+            "reference_sections": 1,
+            "references": 77,
+            "sections": 48,
+            "tables": 0
+          },
+          "provenance": {
+            "missing_fields": [
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version",
+              "full_text_generation_method",
+              "parser_provider"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": true,
+            "has_viewable_pdf": true,
+            "parser_status": "FULL_TEXT_READY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [
+              {
+                "canonical_map": "introduction",
+                "id": "paper-section-43-section",
+                "title": "Publisher's Note"
+              }
+            ],
+            "body_metadata_sections": [],
+            "cross_zone_children": [
+              {
+                "id": "paper-section-43-section",
+                "parent_id": "paper-section-2-introduction",
+                "parent_title": "Background",
+                "parent_zone": "body",
+                "section_zone": "back",
+                "title": "Publisher's Note"
+              }
+            ],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 26,
+              "coverage_ratio": 0.5417
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 8,
+          "highest_severity": "high",
+          "severity_counts": {
+            "high": 5,
+            "medium": 3
+          }
+        }
+      },
+      "publication_id": "297f1e00-ebc1-4bc4-9fbe-d01cd6ab74dc"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "PARSE_NOT_READY",
+            "evidence": {
+              "has_viewable_pdf": true,
+              "parser_status": "PARSING",
+              "response_status": "RUNNING"
+            },
+            "message": "Reader payload is not in FULL_TEXT_READY state, so quality metrics reflect a seed or in-flight parse rather than a completed structured reader.",
+            "severity": "critical"
+          }
+        ],
+        "metadata": {
+          "journal": "Frontline Gastroenterology",
+          "publication_id": "74754eb1-ab24-4c1e-86bc-f5d239b21f42",
+          "title": "Gastrointestinal manifestations of COVID-19 in children: a systematic review and meta-analysis",
+          "year": 2020
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 5
+            },
+            "tables": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null,
+              "with_coords": 0,
+              "with_graphic_coords": 0
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 0,
+            "numeric_reference_labels": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "structured_references": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "unique_inline_citation_ids": [],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 0,
+            "reference_sections": 0,
+            "references": 0,
+            "sections": 5,
+            "tables": 0
+          },
+          "provenance": {
+            "missing_fields": [
+              "full_text_generation_method",
+              "parser_provider",
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": false,
+            "has_viewable_pdf": true,
+            "parser_status": "PARSING",
+            "reader_entry_available": true,
+            "response_status": "RUNNING",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [],
+            "body_metadata_sections": [],
+            "cross_zone_children": [],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 0,
+              "coverage_ratio": 0.0
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 1,
+          "highest_severity": "critical",
+          "severity_counts": {
+            "critical": 1
+          }
+        }
+      },
+      "publication_id": "74754eb1-ab24-4c1e-86bc-f5d239b21f42"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "PARSE_NOT_READY",
+            "evidence": {
+              "has_viewable_pdf": false,
+              "parser_status": "STRUCTURE_ONLY",
+              "response_status": "READY"
+            },
+            "message": "Reader payload is not in FULL_TEXT_READY state, so quality metrics reflect a seed or in-flight parse rather than a completed structured reader.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "Interactive Cardiovascular and Thoracic Surgery",
+          "publication_id": "20ffb471-526d-4852-afeb-1f4f2f9a3996",
+          "title": "Epidural analgesia versus paravertebral block in video-assisted thoracoscopic surgery",
+          "year": 2018
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 1
+            },
+            "tables": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null,
+              "with_coords": 0,
+              "with_graphic_coords": 0
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 0,
+            "numeric_reference_labels": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "structured_references": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "unique_inline_citation_ids": [],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 0,
+            "reference_sections": 0,
+            "references": 0,
+            "sections": 1,
+            "tables": 0
+          },
+          "provenance": {
+            "missing_fields": [
+              "full_text_generation_method",
+              "parser_provider",
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": false,
+            "has_viewable_pdf": false,
+            "parser_status": "STRUCTURE_ONLY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [],
+            "body_metadata_sections": [],
+            "cross_zone_children": [],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 1,
+              "coverage_ratio": 1.0
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 1,
+          "highest_severity": "medium",
+          "severity_counts": {
+            "medium": 1
+          }
+        }
+      },
+      "publication_id": "20ffb471-526d-4852-afeb-1f4f2f9a3996"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "MISSING_SECTION_PAGE_ANCHORS",
+            "evidence": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 29
+            },
+            "message": "Full-text sections have no page anchors, which weakens ordering confidence, left-nav parity, and inline asset placement.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_ASSET_PAGE_ANCHORS",
+            "evidence": {
+              "figures": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 4
+              },
+              "tables": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 7
+              }
+            },
+            "message": "Parsed assets have no page anchors, so section placement and PDF jumps rely on weaker heuristics.",
+            "severity": "medium"
+          },
+          {
+            "code": "DUPLICATE_REFERENCE_PRESENTATION_RISK",
+            "evidence": {
+              "reference_count": 24,
+              "reference_sections": [
+                "References"
+              ]
+            },
+            "message": "The payload contains both parsed reference sections and a normalized reference list, which creates a strong risk of double-rendering in the structured reader.",
+            "severity": "high"
+          },
+          {
+            "code": "CROSS_ZONE_SECTION_PARENT",
+            "evidence": {
+              "items": [
+                {
+                  "id": "paper-section-24-section",
+                  "parent_id": "paper-section-2-introduction",
+                  "parent_title": "Introduction",
+                  "parent_zone": "body",
+                  "section_zone": "back",
+                  "title": "Lead author biography"
+                }
+              ]
+            },
+            "message": "One or more sections are parented across document zones, which creates duplication and grouping conflicts between body and end matter.",
+            "severity": "high"
+          },
+          {
+            "code": "BACK_MATTER_MAPPED_TO_BODY",
+            "evidence": {
+              "items": [
+                {
+                  "canonical_map": "introduction",
+                  "id": "paper-section-24-section",
+                  "title": "Lead author biography"
+                }
+              ]
+            },
+            "message": "Back-matter sections are mapped into main narrative groups, which is a strong indicator of reader ordering and duplication defects.",
+            "severity": "high"
+          },
+          {
+            "code": "BODY_SECTION_CLASSIFIED_AS_METADATA",
+            "evidence": {
+              "items": [
+                {
+                  "canonical_kind": "registration",
+                  "canonical_map": "registration",
+                  "id": "paper-section-11-registration",
+                  "title": "Volumetric and functional assessment"
+                }
+              ]
+            },
+            "message": "Body sections are classified as metadata/article information, which will distort display order and move narrative content into Declarations-like groups.",
+            "severity": "high"
+          },
+          {
+            "code": "HIGH_GENERIC_SECTION_RATE",
+            "evidence": {
+              "count": 11,
+              "coverage_ratio": 0.3793
+            },
+            "message": "A large share of sections remain generic `section` kinds, which reduces confidence in ordering, grouping, and section-specific rendering.",
+            "severity": "medium"
+          },
+          {
+            "code": "FIGURE_SURFACE_COVERAGE_LOW",
+            "evidence": {
+              "missing_surface_count": 4,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 3
+            },
+            "message": "Figure extraction coverage is low, so the reader is mostly showing figure metadata instead of actual figure images.",
+            "severity": "high"
+          },
+          {
+            "code": "LOW_FIDELITY_TABLE_HTML",
+            "evidence": {
+              "count": 1
+            },
+            "message": "At least one table appears to have very thin HTML content, which often indicates a poor match or a collapsed extraction result.",
+            "severity": "medium"
+          },
+          {
+            "code": "MISSING_READER_PROVENANCE",
+            "evidence": {
+              "missing_fields": [
+                "grobid_base_url",
+                "parse_duration_ms",
+                "asset_enrichment_status",
+                "parse_steps"
+              ]
+            },
+            "message": "Reader provenance is incomplete, so the UI has to infer parse/enrichment state instead of reporting it explicitly.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "European Heart Journal - Imaging Methods and Practice",
+          "publication_id": "330defb3-b816-4073-821b-51e67c4a6d73",
+          "title": "Standard breath-hold versus free-breathing real-time cine cardiac MRI\u2014a prospective randomized comparison in patients with known or suspected cardiac disease",
+          "year": 2025
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 4
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 29
+            },
+            "tables": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 7
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 4,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 3
+            },
+            "tables": {
+              "likely_low_fidelity_count": 1,
+              "missing_surface_count": 0,
+              "surface_count": 7,
+              "surface_ratio": 1.0
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 25,
+            "numeric_reference_labels": {
+              "count": 24,
+              "coverage_ratio": 1.0
+            },
+            "structured_references": {
+              "count": 24,
+              "coverage_ratio": 1.0
+            },
+            "unique_inline_citation_ids": [
+              "b0",
+              "b1",
+              "b10",
+              "b11",
+              "b12",
+              "b13",
+              "b15",
+              "b16",
+              "b17",
+              "b18",
+              "b19",
+              "b2",
+              "b20",
+              "b21",
+              "b22",
+              "b23",
+              "b3",
+              "b4",
+              "b5",
+              "b6",
+              "b7",
+              "b8",
+              "b9"
+            ],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 4,
+            "reference_sections": 1,
+            "references": 24,
+            "sections": 29,
+            "tables": 7
+          },
+          "provenance": {
+            "missing_fields": [
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version",
+              "full_text_generation_method",
+              "parser_provider"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": true,
+            "has_viewable_pdf": true,
+            "parser_status": "FULL_TEXT_READY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [
+              {
+                "canonical_map": "introduction",
+                "id": "paper-section-24-section",
+                "title": "Lead author biography"
+              }
+            ],
+            "body_metadata_sections": [
+              {
+                "canonical_kind": "registration",
+                "canonical_map": "registration",
+                "id": "paper-section-11-registration",
+                "title": "Volumetric and functional assessment"
+              }
+            ],
+            "cross_zone_children": [
+              {
+                "id": "paper-section-24-section",
+                "parent_id": "paper-section-2-introduction",
+                "parent_title": "Introduction",
+                "parent_zone": "body",
+                "section_zone": "back",
+                "title": "Lead author biography"
+              }
+            ],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 11,
+              "coverage_ratio": 0.3793
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 10,
+          "highest_severity": "high",
+          "severity_counts": {
+            "high": 6,
+            "medium": 4
+          }
+        }
+      },
+      "publication_id": "330defb3-b816-4073-821b-51e67c4a6d73"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "MISSING_SECTION_PAGE_ANCHORS",
+            "evidence": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 31
+            },
+            "message": "Full-text sections have no page anchors, which weakens ordering confidence, left-nav parity, and inline asset placement.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_ASSET_PAGE_ANCHORS",
+            "evidence": {
+              "figures": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 6
+              },
+              "tables": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 1
+              }
+            },
+            "message": "Parsed assets have no page anchors, so section placement and PDF jumps rely on weaker heuristics.",
+            "severity": "medium"
+          },
+          {
+            "code": "DUPLICATE_REFERENCE_PRESENTATION_RISK",
+            "evidence": {
+              "reference_count": 53,
+              "reference_sections": [
+                "References"
+              ]
+            },
+            "message": "The payload contains both parsed reference sections and a normalized reference list, which creates a strong risk of double-rendering in the structured reader.",
+            "severity": "high"
+          },
+          {
+            "code": "HIGH_GENERIC_SECTION_RATE",
+            "evidence": {
+              "count": 11,
+              "coverage_ratio": 0.3548
+            },
+            "message": "A large share of sections remain generic `section` kinds, which reduces confidence in ordering, grouping, and section-specific rendering.",
+            "severity": "medium"
+          },
+          {
+            "code": "FIGURE_SURFACE_COVERAGE_LOW",
+            "evidence": {
+              "missing_surface_count": 6,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 6
+            },
+            "message": "Figure extraction coverage is low, so the reader is mostly showing figure metadata instead of actual figure images.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_READER_PROVENANCE",
+            "evidence": {
+              "missing_fields": [
+                "grobid_base_url",
+                "parse_duration_ms",
+                "asset_enrichment_status",
+                "parse_steps"
+              ]
+            },
+            "message": "Reader provenance is incomplete, so the UI has to infer parse/enrichment state instead of reporting it explicitly.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "European Heart Journal Open",
+          "publication_id": "9b5e1434-112f-4c33-9d24-ccc65f5fa70c",
+          "title": "Sex-specific cardiac magnetic resonance pulmonary capillary wedge pressure",
+          "year": 2024
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 6
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 31
+            },
+            "tables": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 1
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 6,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 6
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 1,
+              "surface_ratio": 1.0
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 63,
+            "numeric_reference_labels": {
+              "count": 53,
+              "coverage_ratio": 1.0
+            },
+            "structured_references": {
+              "count": 52,
+              "coverage_ratio": 0.9811
+            },
+            "unique_inline_citation_ids": [
+              "b0",
+              "b1",
+              "b10",
+              "b11",
+              "b12",
+              "b13",
+              "b14",
+              "b15",
+              "b16",
+              "b17",
+              "b18",
+              "b19",
+              "b2",
+              "b20",
+              "b21",
+              "b22",
+              "b23",
+              "b24",
+              "b25",
+              "b26",
+              "b27",
+              "b28",
+              "b29",
+              "b3",
+              "b30",
+              "b31",
+              "b32",
+              "b33",
+              "b34",
+              "b35",
+              "b36",
+              "b37",
+              "b38",
+              "b39",
+              "b4",
+              "b40",
+              "b41",
+              "b42",
+              "b43",
+              "b44",
+              "b45",
+              "b46",
+              "b47",
+              "b48",
+              "b49",
+              "b5",
+              "b50",
+              "b51",
+              "b52",
+              "b6",
+              "b7",
+              "b8",
+              "b9"
+            ],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 6,
+            "reference_sections": 1,
+            "references": 53,
+            "sections": 31,
+            "tables": 1
+          },
+          "provenance": {
+            "missing_fields": [
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version",
+              "full_text_generation_method",
+              "parser_provider"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": true,
+            "has_viewable_pdf": true,
+            "parser_status": "FULL_TEXT_READY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [],
+            "body_metadata_sections": [],
+            "cross_zone_children": [],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 11,
+              "coverage_ratio": 0.3548
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 6,
+          "highest_severity": "high",
+          "severity_counts": {
+            "high": 3,
+            "medium": 3
+          }
+        }
+      },
+      "publication_id": "9b5e1434-112f-4c33-9d24-ccc65f5fa70c"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "PARSE_NOT_READY",
+            "evidence": {
+              "has_viewable_pdf": true,
+              "parser_status": "PARSING",
+              "response_status": "RUNNING"
+            },
+            "message": "Reader payload is not in FULL_TEXT_READY state, so quality metrics reflect a seed or in-flight parse rather than a completed structured reader.",
+            "severity": "critical"
+          }
+        ],
+        "metadata": {
+          "journal": "ESC Heart Failure",
+          "publication_id": "600aa572-f4c4-4890-8134-66cff6947957",
+          "title": "Cardiac Magnetic Resonance Left Ventricular Filling Pressure is Linked to Symptoms, Signs and Prognosis in Heart Failure",
+          "year": 2023
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 3
+            },
+            "tables": {
+              "coverage_ratio": null,
+              "known": 0,
+              "total": 0
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null,
+              "with_coords": 0,
+              "with_graphic_coords": 0
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 0,
+              "surface_ratio": null
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 0,
+            "numeric_reference_labels": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "structured_references": {
+              "count": 0,
+              "coverage_ratio": null
+            },
+            "unique_inline_citation_ids": [],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 0,
+            "reference_sections": 0,
+            "references": 0,
+            "sections": 3,
+            "tables": 0
+          },
+          "provenance": {
+            "missing_fields": [
+              "full_text_generation_method",
+              "parser_provider",
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": false,
+            "has_viewable_pdf": true,
+            "parser_status": "PARSING",
+            "reader_entry_available": true,
+            "response_status": "RUNNING",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [],
+            "body_metadata_sections": [],
+            "cross_zone_children": [],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 0,
+              "coverage_ratio": 0.0
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 1,
+          "highest_severity": "critical",
+          "severity_counts": {
+            "critical": 1
+          }
+        }
+      },
+      "publication_id": "600aa572-f4c4-4890-8134-66cff6947957"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "MISSING_SECTION_PAGE_ANCHORS",
+            "evidence": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 29
+            },
+            "message": "Full-text sections have no page anchors, which weakens ordering confidence, left-nav parity, and inline asset placement.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_ASSET_PAGE_ANCHORS",
+            "evidence": {
+              "figures": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 4
+              },
+              "tables": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 1
+              }
+            },
+            "message": "Parsed assets have no page anchors, so section placement and PDF jumps rely on weaker heuristics.",
+            "severity": "medium"
+          },
+          {
+            "code": "DUPLICATE_REFERENCE_PRESENTATION_RISK",
+            "evidence": {
+              "reference_count": 19,
+              "reference_sections": [
+                "References"
+              ]
+            },
+            "message": "The payload contains both parsed reference sections and a normalized reference list, which creates a strong risk of double-rendering in the structured reader.",
+            "severity": "high"
+          },
+          {
+            "code": "CROSS_ZONE_SECTION_PARENT",
+            "evidence": {
+              "items": [
+                {
+                  "id": "paper-section-25-section",
+                  "parent_id": "paper-section-2-introduction",
+                  "parent_title": "Introduction",
+                  "parent_zone": "body",
+                  "section_zone": "back",
+                  "title": "Publisher's Note"
+                }
+              ]
+            },
+            "message": "One or more sections are parented across document zones, which creates duplication and grouping conflicts between body and end matter.",
+            "severity": "high"
+          },
+          {
+            "code": "BACK_MATTER_MAPPED_TO_BODY",
+            "evidence": {
+              "items": [
+                {
+                  "canonical_map": "introduction",
+                  "id": "paper-section-25-section",
+                  "title": "Publisher's Note"
+                }
+              ]
+            },
+            "message": "Back-matter sections are mapped into main narrative groups, which is a strong indicator of reader ordering and duplication defects.",
+            "severity": "high"
+          },
+          {
+            "code": "BODY_SECTION_CLASSIFIED_AS_METADATA",
+            "evidence": {
+              "items": [
+                {
+                  "canonical_kind": "registration",
+                  "canonical_map": "registration",
+                  "id": "paper-section-13-registration",
+                  "title": "Left atrial volume and function"
+                },
+                {
+                  "canonical_kind": "registration",
+                  "canonical_map": "registration",
+                  "id": "paper-section-14-registration",
+                  "title": "Right atrial volume and function"
+                }
+              ]
+            },
+            "message": "Body sections are classified as metadata/article information, which will distort display order and move narrative content into Declarations-like groups.",
+            "severity": "high"
+          },
+          {
+            "code": "HIGH_GENERIC_SECTION_RATE",
+            "evidence": {
+              "count": 8,
+              "coverage_ratio": 0.2759
+            },
+            "message": "A large share of sections remain generic `section` kinds, which reduces confidence in ordering, grouping, and section-specific rendering.",
+            "severity": "medium"
+          },
+          {
+            "code": "FIGURE_SURFACE_COVERAGE_LOW",
+            "evidence": {
+              "missing_surface_count": 4,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 4
+            },
+            "message": "Figure extraction coverage is low, so the reader is mostly showing figure metadata instead of actual figure images.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_READER_PROVENANCE",
+            "evidence": {
+              "missing_fields": [
+                "grobid_base_url",
+                "parse_duration_ms",
+                "asset_enrichment_status",
+                "parse_steps"
+              ]
+            },
+            "message": "Reader provenance is incomplete, so the UI has to infer parse/enrichment state instead of reporting it explicitly.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "BMC Cardiovascular Disorders",
+          "publication_id": "9297ba37-fd13-41a4-a6df-b549947621cd",
+          "title": "An acute increase in Left Atrial volume and left ventricular filling pressure during Adenosine administered myocardial hyperaemia: CMR First-Pass Perfusion Study",
+          "year": 2023
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 4
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 29
+            },
+            "tables": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 1
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 4,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 4
+            },
+            "tables": {
+              "likely_low_fidelity_count": 0,
+              "missing_surface_count": 0,
+              "surface_count": 1,
+              "surface_ratio": 1.0
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 28,
+            "numeric_reference_labels": {
+              "count": 19,
+              "coverage_ratio": 1.0
+            },
+            "structured_references": {
+              "count": 19,
+              "coverage_ratio": 1.0
+            },
+            "unique_inline_citation_ids": [
+              "b0",
+              "b1",
+              "b10",
+              "b11",
+              "b12",
+              "b13",
+              "b14",
+              "b15",
+              "b16",
+              "b17",
+              "b18",
+              "b2",
+              "b3",
+              "b4",
+              "b5",
+              "b6",
+              "b7",
+              "b8",
+              "b9"
+            ],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 4,
+            "reference_sections": 1,
+            "references": 19,
+            "sections": 29,
+            "tables": 1
+          },
+          "provenance": {
+            "missing_fields": [
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version",
+              "full_text_generation_method",
+              "parser_provider"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": true,
+            "has_viewable_pdf": true,
+            "parser_status": "FULL_TEXT_READY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [
+              {
+                "canonical_map": "introduction",
+                "id": "paper-section-25-section",
+                "title": "Publisher's Note"
+              }
+            ],
+            "body_metadata_sections": [
+              {
+                "canonical_kind": "registration",
+                "canonical_map": "registration",
+                "id": "paper-section-13-registration",
+                "title": "Left atrial volume and function"
+              },
+              {
+                "canonical_kind": "registration",
+                "canonical_map": "registration",
+                "id": "paper-section-14-registration",
+                "title": "Right atrial volume and function"
+              }
+            ],
+            "cross_zone_children": [
+              {
+                "id": "paper-section-25-section",
+                "parent_id": "paper-section-2-introduction",
+                "parent_title": "Introduction",
+                "parent_zone": "body",
+                "section_zone": "back",
+                "title": "Publisher's Note"
+              }
+            ],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 8,
+              "coverage_ratio": 0.2759
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 9,
+          "highest_severity": "high",
+          "severity_counts": {
+            "high": 6,
+            "medium": 3
+          }
+        }
+      },
+      "publication_id": "9297ba37-fd13-41a4-a6df-b549947621cd"
+    },
+    {
+      "audit": {
+        "findings": [
+          {
+            "code": "MISSING_SECTION_PAGE_ANCHORS",
+            "evidence": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 24
+            },
+            "message": "Full-text sections have no page anchors, which weakens ordering confidence, left-nav parity, and inline asset placement.",
+            "severity": "high"
+          },
+          {
+            "code": "MISSING_ASSET_PAGE_ANCHORS",
+            "evidence": {
+              "figures": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 2
+              },
+              "tables": {
+                "coverage_ratio": 0.0,
+                "known": 0,
+                "total": 3
+              }
+            },
+            "message": "Parsed assets have no page anchors, so section placement and PDF jumps rely on weaker heuristics.",
+            "severity": "medium"
+          },
+          {
+            "code": "DUPLICATE_REFERENCE_PRESENTATION_RISK",
+            "evidence": {
+              "reference_count": 34,
+              "reference_sections": [
+                "References"
+              ]
+            },
+            "message": "The payload contains both parsed reference sections and a normalized reference list, which creates a strong risk of double-rendering in the structured reader.",
+            "severity": "high"
+          },
+          {
+            "code": "CROSS_ZONE_SECTION_PARENT",
+            "evidence": {
+              "items": [
+                {
+                  "id": "paper-section-15-section",
+                  "parent_id": "paper-section-3-methods",
+                  "parent_title": "Methods",
+                  "parent_zone": "body",
+                  "section_zone": "back",
+                  "title": "Authors' contributions"
+                },
+                {
+                  "id": "paper-section-19-section",
+                  "parent_id": "paper-section-2-introduction",
+                  "parent_title": "Background",
+                  "parent_zone": "body",
+                  "section_zone": "back",
+                  "title": "Publisher's Note"
+                }
+              ]
+            },
+            "message": "One or more sections are parented across document zones, which creates duplication and grouping conflicts between body and end matter.",
+            "severity": "high"
+          },
+          {
+            "code": "BACK_MATTER_MAPPED_TO_BODY",
+            "evidence": {
+              "items": [
+                {
+                  "canonical_map": "methods",
+                  "id": "paper-section-15-section",
+                  "title": "Authors' contributions"
+                },
+                {
+                  "canonical_map": "introduction",
+                  "id": "paper-section-19-section",
+                  "title": "Publisher's Note"
+                }
+              ]
+            },
+            "message": "Back-matter sections are mapped into main narrative groups, which is a strong indicator of reader ordering and duplication defects.",
+            "severity": "high"
+          },
+          {
+            "code": "BODY_SECTION_CLASSIFIED_AS_METADATA",
+            "evidence": {
+              "items": [
+                {
+                  "canonical_kind": "ethics",
+                  "canonical_map": "ethics",
+                  "id": "paper-section-5-ethics",
+                  "title": "Ethics approval"
+                }
+              ]
+            },
+            "message": "Body sections are classified as metadata/article information, which will distort display order and move narrative content into Declarations-like groups.",
+            "severity": "high"
+          },
+          {
+            "code": "FIGURE_SURFACE_COVERAGE_LOW",
+            "evidence": {
+              "missing_surface_count": 2,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 2
+            },
+            "message": "Figure extraction coverage is low, so the reader is mostly showing figure metadata instead of actual figure images.",
+            "severity": "high"
+          },
+          {
+            "code": "TABLE_SURFACE_COVERAGE_LOW",
+            "evidence": {
+              "likely_low_fidelity_count": 1,
+              "missing_surface_count": 1,
+              "surface_count": 2,
+              "surface_ratio": 0.6667
+            },
+            "message": "Table HTML coverage is low, so readers will frequently fall back to metadata-only table cards.",
+            "severity": "medium"
+          },
+          {
+            "code": "LOW_FIDELITY_TABLE_HTML",
+            "evidence": {
+              "count": 1
+            },
+            "message": "At least one table appears to have very thin HTML content, which often indicates a poor match or a collapsed extraction result.",
+            "severity": "medium"
+          },
+          {
+            "code": "MISSING_READER_PROVENANCE",
+            "evidence": {
+              "missing_fields": [
+                "grobid_base_url",
+                "parse_duration_ms",
+                "asset_enrichment_status",
+                "parse_steps"
+              ]
+            },
+            "message": "Reader provenance is incomplete, so the UI has to infer parse/enrichment state instead of reporting it explicitly.",
+            "severity": "medium"
+          }
+        ],
+        "metadata": {
+          "journal": "European Radiology Experimental",
+          "publication_id": "8620828d-78c7-4bdb-b752-81c810dd2705",
+          "title": "Kat-ARC accelerated 4D flow CMR: clinical validation for transvalvular flow and peak velocity assessment",
+          "year": 2022
+        },
+        "metrics": {
+          "anchors": {
+            "figures": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 2
+            },
+            "sections": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 24
+            },
+            "tables": {
+              "coverage_ratio": 0.0,
+              "known": 0,
+              "total": 3
+            }
+          },
+          "assets": {
+            "figures": {
+              "missing_surface_count": 2,
+              "surface_count": 0,
+              "surface_ratio": 0.0,
+              "with_coords": 0,
+              "with_graphic_coords": 2
+            },
+            "tables": {
+              "likely_low_fidelity_count": 1,
+              "missing_surface_count": 1,
+              "surface_count": 2,
+              "surface_ratio": 0.6667
+            }
+          },
+          "citations": {
+            "duplicate_reference_ids": [],
+            "inline_citation_markers": 40,
+            "numeric_reference_labels": {
+              "count": 34,
+              "coverage_ratio": 1.0
+            },
+            "structured_references": {
+              "count": 34,
+              "coverage_ratio": 1.0
+            },
+            "unique_inline_citation_ids": [
+              "b0",
+              "b1",
+              "b10",
+              "b11",
+              "b12",
+              "b13",
+              "b14",
+              "b15",
+              "b16",
+              "b17",
+              "b18",
+              "b19",
+              "b2",
+              "b20",
+              "b21",
+              "b22",
+              "b23",
+              "b24",
+              "b25",
+              "b27",
+              "b28",
+              "b29",
+              "b3",
+              "b30",
+              "b31",
+              "b32",
+              "b33",
+              "b4",
+              "b5",
+              "b6",
+              "b7",
+              "b8",
+              "b9"
+            ],
+            "unresolved_inline_citations": []
+          },
+          "counts": {
+            "figures": 2,
+            "reference_sections": 1,
+            "references": 34,
+            "sections": 24,
+            "tables": 3
+          },
+          "provenance": {
+            "missing_fields": [
+              "grobid_base_url",
+              "parse_duration_ms",
+              "asset_enrichment_status",
+              "parse_steps"
+            ],
+            "present_fields": [
+              "structured_abstract_status",
+              "structured_abstract_format",
+              "parser_version",
+              "full_text_generation_method",
+              "parser_provider"
+            ]
+          },
+          "readiness": {
+            "has_full_text_sections": true,
+            "has_viewable_pdf": true,
+            "parser_status": "FULL_TEXT_READY",
+            "reader_entry_available": true,
+            "response_status": "READY",
+            "search_ready": true
+          },
+          "structure": {
+            "back_mapped_to_body_sections": [
+              {
+                "canonical_map": "methods",
+                "id": "paper-section-15-section",
+                "title": "Authors' contributions"
+              },
+              {
+                "canonical_map": "introduction",
+                "id": "paper-section-19-section",
+                "title": "Publisher's Note"
+              }
+            ],
+            "body_metadata_sections": [
+              {
+                "canonical_kind": "ethics",
+                "canonical_map": "ethics",
+                "id": "paper-section-5-ethics",
+                "title": "Ethics approval"
+              }
+            ],
+            "cross_zone_children": [
+              {
+                "id": "paper-section-15-section",
+                "parent_id": "paper-section-3-methods",
+                "parent_title": "Methods",
+                "parent_zone": "body",
+                "section_zone": "back",
+                "title": "Authors' contributions"
+              },
+              {
+                "id": "paper-section-19-section",
+                "parent_id": "paper-section-2-introduction",
+                "parent_title": "Background",
+                "parent_zone": "body",
+                "section_zone": "back",
+                "title": "Publisher's Note"
+              }
+            ],
+            "duplicate_section_ids": [],
+            "generic_sections": {
+              "count": 5,
+              "coverage_ratio": 0.2083
+            },
+            "orphaned_parent_links": []
+          }
+        },
+        "summary": {
+          "finding_count": 10,
+          "highest_severity": "high",
+          "severity_counts": {
+            "high": 6,
+            "medium": 4
+          }
+        }
+      },
+      "publication_id": "8620828d-78c7-4bdb-b752-81c810dd2705"
+    }
+  ],
+  "publication_ids": [
+    "38516c97-c17e-423d-8bfd-0eaac8cbae7e",
+    "54ff4952-69e9-49d8-8c29-b6286a1d04df",
+    "235a19a8-73cb-4370-9672-02b7bc8be2d5",
+    "e4d0a15b-21d5-461f-8849-071f15e94044",
+    "cd1c4132-a51c-409d-a147-37fc20138eb7",
+    "2defd006-855e-4a93-875d-39f7aa3aa624",
+    "03c31417-cb16-4d6a-a906-d5b99dc78f94",
+    "297f1e00-ebc1-4bc4-9fbe-d01cd6ab74dc",
+    "74754eb1-ab24-4c1e-86bc-f5d239b21f42",
+    "20ffb471-526d-4852-afeb-1f4f2f9a3996",
+    "330defb3-b816-4073-821b-51e67c4a6d73",
+    "9b5e1434-112f-4c33-9d24-ccc65f5fa70c",
+    "600aa572-f4c4-4890-8134-66cff6947957",
+    "9297ba37-fd13-41a4-a6df-b549947621cd",
+    "8620828d-78c7-4bdb-b752-81c810dd2705"
+  ]
+}

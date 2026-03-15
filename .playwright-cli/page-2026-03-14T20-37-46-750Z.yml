@@ -1,0 +1,29 @@
+- main [ref=e3]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - img "Axiomos mark" [ref=e8]
+        - generic [ref=e12]:
+          - generic [ref=e13]: Axiomos
+          - generic [ref=e14]: The Research Operating System
+      - button "Sign in" [ref=e15] [cursor=pointer]
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - paragraph [ref=e18]: Research writing workspace
+        - generic [ref=e19]:
+          - generic [ref=e20]:
+            - heading "Plan, draft, and quality-check manuscripts in one workflow" [level=1] [ref=e21]
+            - paragraph [ref=e22]: Axiomos helps you structure research context, build a rigorous manuscript plan, and produce draft-ready sections with transparent guardrails.
+          - generic [ref=e24]:
+            - button "Get started" [ref=e25] [cursor=pointer]
+            - button "Create account" [ref=e26] [cursor=pointer]
+      - generic [ref=e27]:
+        - generic [ref=e31]:
+          - heading "Structured planning" [level=2] [ref=e33]
+          - paragraph [ref=e34]: Build manuscript plans section-by-section with explicit assumptions and unresolved items.
+        - generic [ref=e38]:
+          - heading "Profile-driven context" [level=2] [ref=e40]
+          - paragraph [ref=e41]: Connect account and publication context so planning decisions are traceable and reusable.
+        - generic [ref=e45]:
+          - heading "QC-ready outputs" [level=2] [ref=e47]
+          - paragraph [ref=e48]: Keep methods and interpretations constrained before generation and export.

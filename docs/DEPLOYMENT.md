@@ -40,6 +40,12 @@ Optional preview services can also be started with the `preview` profile:
 | `frontend-preview` | `preview` | Preview SPA |
 | `api-preview` | `preview` | Preview API with separate data volume |
 
+Preview routing is intentionally kept separate from the live Caddy routes. The
+main `deploy/Caddyfile` always imports `deploy/Caddyfile.preview`, which is a
+comments-only placeholder by default. That lets you prepare preview
+configuration in Git without making Caddy request certificates for preview
+hostnames before DNS exists.
+
 ### Prerequisites
 
 - Hetzner VPS with Docker and Docker Compose installed
@@ -98,7 +104,9 @@ Bring it up like this:
 ```bash
 cp deploy/.env.preview.example .env.preview
 nano .env.preview
+cp deploy/Caddyfile.preview.example deploy/Caddyfile.preview
 docker compose --profile preview up -d --build
+docker compose restart caddy
 ```
 
 This gives you:
@@ -236,6 +244,15 @@ Then add DNS for:
 
 - `preview.axiomos.studio`
 - `preview-api.axiomos.studio`
+
+Recommended order for preview activation:
+
+1. Create the two preview DNS records and point them at the Hetzner IP.
+2. Wait for public DNS to resolve to the Hetzner host.
+3. Copy `deploy/Caddyfile.preview.example` to `deploy/Caddyfile.preview`.
+4. Create `.env.preview` from the example and fill in secrets.
+5. Run `docker compose --profile preview up -d --build`.
+6. Restart Caddy so it loads the preview routes and obtains certificates.
 
 That preview stack uses its own data volume, `api-preview-data`, so it does not overwrite live SQLite or publication files.
 
