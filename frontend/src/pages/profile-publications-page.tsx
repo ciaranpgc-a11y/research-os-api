@@ -243,7 +243,7 @@ const PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS = [
   },
   {
     key: 'article_information',
-    label: 'Declarations',
+    label: 'Additional information',
     toneClassName: 'bg-[#516170]',
   },
 ] as const
@@ -462,7 +462,7 @@ function formatPublicationPaperStructuredGroupLabel(value: string | null | undef
     case 'main_text':
       return 'Main text'
     case 'article_information':
-      return 'Declarations'
+      return 'Additional information'
     default:
       return formatPublicationPaperSectionKindLabel(value)
   }
@@ -3433,7 +3433,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationReaderPdfPage, setPublicationReaderPdfPage] = useState(1)
   const [publicationReaderViewMode, setPublicationReaderViewMode] = useState<PublicationReaderViewMode>('structured')
   const [publicationReaderCollapsedNodeIds, setPublicationReaderCollapsedNodeIds] = useState<Record<string, boolean>>({})
-  const [publicationReaderEndMatterExpanded, setPublicationReaderEndMatterExpanded] = useState(false)
   const [publicationReaderInspectorOpen, setPublicationReaderInspectorOpen] = useState(false)
   const [publicationReaderFigureLightboxAsset, setPublicationReaderFigureLightboxAsset] = useState<PublicationPaperAssetPayload | null>(null)
   const [publicationReaderFigureLightboxFitToViewport, setPublicationReaderFigureLightboxFitToViewport] = useState(true)
@@ -5599,17 +5598,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     [selectedPublicationReaderNavigatorGroups],
   )
   const selectedPublicationReaderEndMatterNavigatorGroups = useMemo(
-    () => selectedPublicationReaderNavigatorGroups.filter((group) => !selectedPublicationReaderNarrativeNavigatorGroups.includes(group)),
+    () => {
+      const order = ['tables', 'figures', 'references', 'article_information']
+      return selectedPublicationReaderNavigatorGroups
+        .filter((group) => !selectedPublicationReaderNarrativeNavigatorGroups.includes(group))
+        .sort((left, right) => {
+          const leftIndex = order.indexOf(left.id)
+          const rightIndex = order.indexOf(right.id)
+          const safeLeftIndex = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex
+          const safeRightIndex = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex
+          return safeLeftIndex - safeRightIndex
+        })
+    },
     [selectedPublicationReaderNarrativeNavigatorGroups, selectedPublicationReaderNavigatorGroups],
   )
-  const publicationReaderEndMatterIsActive = useMemo(
-    () => Boolean(
-      publicationReaderActiveNavigatorGroupId
-      && selectedPublicationReaderEndMatterNavigatorGroups.some((group) => group.id === publicationReaderActiveNavigatorGroupId),
-    ),
-    [publicationReaderActiveNavigatorGroupId, selectedPublicationReaderEndMatterNavigatorGroups],
-  )
-  const publicationReaderEndMatterIsExpanded = publicationReaderEndMatterExpanded || publicationReaderEndMatterIsActive
   const selectedPaperFirstReaderSection = useMemo(
     () => selectedStructuredPaperGroups.flatMap((group) => group.rootSections)[0] || selectedPaperSections[0] || null,
     [selectedPaperSections, selectedStructuredPaperGroups],
@@ -5709,7 +5711,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       setPublicationReaderPdfPage(1)
       setPublicationReaderViewMode('structured')
       setPublicationReaderCollapsedNodeIds({})
-      setPublicationReaderEndMatterExpanded(false)
       setPublicationReaderInspectorOpen(false)
       setPublicationReaderReferencePopover(null)
       publicationReaderSectionRefs.current = {}
@@ -6771,7 +6772,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderOpen(true)
     setPublicationReaderError('')
     setPublicationReaderCollapsedNodeIds({})
-    setPublicationReaderEndMatterExpanded(false)
     setPublicationReaderInspectorOpen(false)
     setPublicationReaderPdfPage(initialPdfPage)
     setPublicationReaderViewMode('structured')
@@ -7298,7 +7298,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [
     publicationReaderActiveNavigatorGroupId,
     publicationReaderActiveNavigatorSubsectionId,
-    publicationReaderEndMatterIsExpanded,
     publicationReaderOpen,
     publicationReaderViewMode,
   ])
@@ -8646,32 +8645,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
         {selectedPublicationReaderEndMatterNavigatorGroups.length > 0 ? (
           <div className="border-t border-[hsl(var(--tone-neutral-180))] pt-4">
-            <button
-              type="button"
-              className="flex w-full items-start justify-between gap-3 rounded-[1rem] bg-[hsl(var(--tone-neutral-50)/0.85)] px-4 py-3 text-left transition-colors duration-150 ease-out hover:bg-white"
-              onClick={() => setPublicationReaderEndMatterExpanded((current) => !current)}
-              aria-expanded={publicationReaderEndMatterIsExpanded}
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--tone-neutral-500))]">
-                  End matter
-                </span>
-                <span className="mt-1 block whitespace-normal break-words text-[0.92rem] font-semibold leading-[1.34] text-[hsl(var(--tone-neutral-900))]">
-                  Figures, tables, references and declarations
-                </span>
-              </span>
-              <ChevronDown
-                className={cn(
-                  'mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-ui)] ease-out',
-                  publicationReaderEndMatterIsExpanded ? 'rotate-180' : 'rotate-0',
-                )}
-              />
-            </button>
-            {publicationReaderEndMatterIsExpanded ? (
-              <div className="mt-3 space-y-1.5">
-                {selectedPublicationReaderEndMatterNavigatorGroups.map((group) => renderNavigatorGroup(group, { compact: true }))}
-              </div>
-            ) : null}
+            <div className="space-y-1.5">
+              {selectedPublicationReaderEndMatterNavigatorGroups.map((group) => renderNavigatorGroup(group))}
+            </div>
           </div>
         ) : null}
       </div>
@@ -10525,7 +10501,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   setPublicationReaderError('')
                   setPublicationReaderViewMode('structured')
                   setPublicationReaderCollapsedNodeIds({})
-                  setPublicationReaderEndMatterExpanded(false)
                   setPublicationReaderInspectorOpen(false)
                 }
               }}
@@ -10807,7 +10782,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         ),
                                         {
                                           description: group.key === 'article_information'
-                                            ? 'Declarations, author notes, and supporting disclosures.'
+                                            ? 'Funding, ethics, author contributions, declarations, and supporting disclosures.'
                                             : null,
                                           groupKey: group.key,
                                         },
