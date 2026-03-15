@@ -383,6 +383,22 @@ function formatPublicationReaderReferenceTokenLabel(value: string): string {
   return compactRuns.join(', ')
 }
 
+function formatPublicationReaderReferenceAuthors(
+  authors: string[] | null | undefined,
+  options?: { concise?: boolean },
+): string {
+  const resolvedAuthors = Array.isArray(authors)
+    ? authors.map((author) => String(author || '').trim()).filter(Boolean)
+    : []
+  if (resolvedAuthors.length === 0) {
+    return ''
+  }
+  if (!options?.concise || resolvedAuthors.length <= 3) {
+    return resolvedAuthors.join(', ')
+  }
+  return `${resolvedAuthors.slice(0, 3).join(', ')}, et al.`
+}
+
 function comparePublicationPaperSections(
   left: PublicationPaperSectionPayload,
   right: PublicationPaperSectionPayload,
@@ -11155,7 +11171,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         'mt-1.5 leading-snug text-[hsl(var(--tone-neutral-600))]',
                         isPinnedReferencePopover ? 'text-[0.82rem]' : 'text-[0.78rem]',
                       )}>
-                        {reference.authors.join(', ')}
+                        {formatPublicationReaderReferenceAuthors(
+                          reference.authors,
+                          { concise: !isPinnedReferencePopover },
+                        )}
                       </p>
                     ) : null}
                     {(reference.journal || reference.year || reference.volume || reference.pages) ? (
