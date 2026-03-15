@@ -9031,8 +9031,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           </div>
                       </DrilldownSheet.Header>
 
-                      <DrilldownSheet.TabPanel id={activeDetailTab} isActive={true}>
-                          <div className="house-drilldown-stack-3" data-metric-key="publication-library-drilldown">
+                      <DrilldownSheet.TabPanel id={activeDetailTab} isActive={true} className="flex h-full min-h-0 flex-col">
+                          <div className="house-drilldown-stack-3 min-h-0 flex-1 overflow-y-auto" data-metric-key="publication-library-drilldown">
                             <div className={cn(houseSurfaces.sectionPanel, 'house-drilldown-panel-no-pad')}>
                         {activeDetailTab === 'overview' ? (
                           <>
@@ -9712,7 +9712,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             </div>
                           </div>
                           {selectedPublicationReaderEntryAvailable ? (
-                            <div className="house-drilldown-content-block pt-0">
+                            <div className="shrink-0 border-t border-[hsl(var(--tone-neutral-200))] bg-white/95 px-4 py-4 backdrop-blur">
                               <Button
                                 type="button"
                                 variant="cta"
