@@ -4935,7 +4935,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedPaperSectionConfidenceSummary = useMemo(() => {
     const values = selectedPaperSections
       .map((section) => Number(section.confidence))
-      .filter((value) => Number.isFinite(value) && value >= 0 && value <= 1)
+      .filter((value) => Number.isFinite(value) && value > 0 && value <= 1)
     if (!values.length) {
       return {
         average: null as number | null,
@@ -4980,7 +4980,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       || (selectedPaperTableSurfaceRatio != null && selectedPaperTableSurfaceRatio < 0.55)
     )
 
-    if (parsedSectionCount < 4 || avgSectionConfidence == null || avgSectionConfidence < 0.58 || hasLowAssetCoverage) {
+    if (
+      parsedSectionCount < 4
+      || hasLowAssetCoverage
+      || (avgSectionConfidence != null && avgSectionConfidence < 0.58)
+    ) {
       return {
         label: 'Low confidence',
         toneClassName: 'border-[hsl(var(--tone-danger-250))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]',
@@ -4989,7 +4993,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
 
     if (
-      avgSectionConfidence < 0.8
+      (avgSectionConfidence != null && avgSectionConfidence < 0.8)
       || (selectedPaperFigureSurfaceRatio != null && selectedPaperFigureSurfaceRatio < 0.85)
       || (selectedPaperTableSurfaceRatio != null && selectedPaperTableSurfaceRatio < 0.85)
     ) {
@@ -10247,7 +10251,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 {selectedPaperReadQuality.note}
                               </p>
                               <div className="mt-3 space-y-1.5 text-[0.78rem] leading-relaxed opacity-95">
-                                <p>Section confidence: {formatPublicationReaderCoverageRatioLabel(selectedPaperSectionConfidenceSummary.average)} ({selectedPaperSectionConfidenceSummary.count} section{selectedPaperSectionConfidenceSummary.count === 1 ? '' : 's'})</p>
+                                <p>
+                                  Section confidence: {selectedPaperSectionConfidenceSummary.count > 0
+                                    ? `${formatPublicationReaderCoverageRatioLabel(selectedPaperSectionConfidenceSummary.average)} (${selectedPaperSectionConfidenceSummary.count} section${selectedPaperSectionConfidenceSummary.count === 1 ? '' : 's'})`
+                                    : 'n/a'}
+                                </p>
                                 <p>Figures surfaced: {selectedPaperRenderableFigures.length}/{selectedPaperFigures.length || 0} ({formatPublicationReaderCoverageRatioLabel(selectedPaperFigureSurfaceRatio)})</p>
                                 <p>Tables surfaced: {selectedPaperRenderableTables.length}/{selectedPaperTables.length || 0} ({formatPublicationReaderCoverageRatioLabel(selectedPaperTableSurfaceRatio)})</p>
                               </div>
