@@ -6800,8 +6800,14 @@ def _extract_biblstruct_fields(node: ET.Element) -> dict[str, Any]:
             persname = _tei_first_direct_child(child, "persname")
             if persname is None:
                 continue
-            forename = _tei_node_text(_tei_first_direct_child(persname, "forename")).strip()
+            forename_parts = [
+                _tei_node_text(name_part).strip()
+                for name_part in list(persname)
+                if _xml_local_name(getattr(name_part, "tag", "")) == "forename"
+                and _tei_node_text(name_part).strip()
+            ]
             surname = _tei_node_text(_tei_first_direct_child(persname, "surname")).strip()
+            forename = " ".join(forename_parts).strip()
             name_parts = [p for p in [forename, surname] if p]
             if name_parts:
                 authors.append(" ".join(name_parts))
@@ -6829,6 +6835,8 @@ def _extract_biblstruct_fields(node: ET.Element) -> dict[str, Any]:
                     val = _tei_node_text(child).strip() or str(child.attrib.get("from") or "").strip()
                     if unit == "volume" and val:
                         fields["volume"] = val
+                    elif unit == "issue" and val:
+                        fields["issue"] = val
                     elif unit == "page":
                         pg_from = str(child.attrib.get("from") or "").strip()
                         pg_to = str(child.attrib.get("to") or "").strip()
@@ -6842,10 +6850,105 @@ def _extract_biblstruct_fields(node: ET.Element) -> dict[str, Any]:
         idno_type = str(idno_node.attrib.get("type") or "").strip().upper()
         idno_val = _tei_node_text(idno_node).strip()
         if idno_type == "DOI" and idno_val:
-            fields["doi"] = idno_val
+            fields["doi"] = _normalize_doi(idno_val) or idno_val
         elif idno_type == "PMID" and idno_val:
-            fields["pmid"] = idno_val
+            fields["pmid"] = _normalize_pmid(idno_val) or idno_val
+        elif idno_type in {"PMCID", "PMC"} and idno_val:
+            clean_pmcid = _normalize_abstract_text(idno_val).upper()
+            if clean_pmcid and not clean_pmcid.startswith("PMC"):
+                clean_pmcid = f"PMC{clean_pmcid}"
+            if clean_pmcid:
+                fields["pmcid"] = clean_pmcid
     return fields
+
+
+def _format_grobid_biblstruct_reference(
+    node: ET.Element,
+    *,
+    structured_fields: dict[str, Any],
+    raw_fallback: str,
+) -> str:
+    def _author_display_name(author_node: ET.Element) -> str | None:
+        persname = _tei_first_direct_child(author_node, "persname")
+        if persname is None:
+            return None
+        surname = _normalize_abstract_text(
+            _tei_node_text(_tei_first_direct_child(persname, "surname"))
+        )
+        forenames = [
+            _normalize_abstract_text(_tei_node_text(name_part))
+            for name_part in list(persname)
+            if _xml_local_name(getattr(name_part, "tag", "")) == "forename"
+        ]
+        forename_tokens = [
+            token
+            for value in forenames
+            if value
+            for token in re.findall(r"[A-Za-z0-9]+", value)
+        ]
+        initials = "".join(token[:1].upper() for token in forename_tokens if token[:1])
+        if surname and initials:
+            return f"{surname} {initials}"
+        full_name = " ".join(part for part in [" ".join(forenames).strip(), surname] if part).strip()
+        return full_name or None
+
+    analytic = _tei_first_direct_child(node, "analytic")
+    monogr = _tei_first_direct_child(node, "monogr")
+    authors_display: list[str] = []
+    for source in [analytic, monogr]:
+        if source is None:
+            continue
+        for child in list(source):
+            if _xml_local_name(getattr(child, "tag", "")) != "author":
+                continue
+            display_name = _author_display_name(child)
+            if display_name:
+                authors_display.append(display_name)
+        if authors_display:
+            break
+
+    title = str(structured_fields.get("title") or "").strip()
+    journal = str(structured_fields.get("journal") or "").strip()
+    year = str(structured_fields.get("year") or "").strip()
+    volume = str(structured_fields.get("volume") or "").strip()
+    issue = str(structured_fields.get("issue") or "").strip()
+    pages = str(structured_fields.get("pages") or "").strip()
+    doi = str(structured_fields.get("doi") or "").strip()
+    pmid = str(structured_fields.get("pmid") or "").strip()
+    pmcid = str(structured_fields.get("pmcid") or "").strip()
+
+    parts: list[str] = []
+    if authors_display:
+        parts.append(", ".join(authors_display).rstrip("."))
+    if title:
+        parts.append(title.rstrip("."))
+
+    journal_bits = [bit for bit in [journal, year] if bit]
+    journal_text = ". ".join(journal_bits).strip().rstrip(".")
+    if volume:
+        journal_text = f"{journal_text};{volume}" if journal_text else volume
+        if issue:
+            journal_text = f"{journal_text}({issue})"
+    elif issue and journal_text:
+        journal_text = f"{journal_text}({issue})"
+    if pages:
+        journal_text = f"{journal_text}:{pages}" if journal_text else pages
+    if journal_text:
+        parts.append(journal_text.rstrip("."))
+    if doi:
+        parts.append(f"doi: {doi}")
+    if pmid:
+        parts.append(f"PMID: {pmid}")
+    if pmcid:
+        parts.append(f"PMCID: {pmcid}")
+
+    formatted = ". ".join(part for part in parts if part).strip()
+    if formatted and not formatted.endswith("."):
+        formatted += "."
+    fallback = str(raw_fallback or "").strip()
+    if fallback and not fallback.endswith("."):
+        fallback += "."
+    return formatted or fallback
 
 
 def _extract_publication_paper_reference_entries_from_tei(
@@ -6886,6 +6989,13 @@ def _extract_publication_paper_reference_entries_from_tei(
             if tag_lower == "biblstruct":
                 structured = _extract_biblstruct_fields(node)
                 entry.update(structured)
+                formatted_raw_text = _format_grobid_biblstruct_reference(
+                    node,
+                    structured_fields=structured,
+                    raw_fallback=raw_text,
+                )
+                if formatted_raw_text:
+                    entry["raw_text"] = formatted_raw_text
                 original_label = structured.get("original_label")
                 xml_id = structured.get("xml_id", "")
                 if original_label:
