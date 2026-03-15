@@ -421,6 +421,45 @@ function stripPublicationReaderHeadingPrefix(value: string | null | undefined): 
   return stripped || raw
 }
 
+function shouldPreservePublicationReaderHeadingWord(value: string): boolean {
+  if (!value) {
+    return false
+  }
+  if (/\d/.test(value)) {
+    return true
+  }
+  if (/[A-Z].*[A-Z]/.test(value.slice(1))) {
+    return true
+  }
+  if (value.toUpperCase() === value && value.length <= 5) {
+    return true
+  }
+  return false
+}
+
+function formatPublicationReaderHeadingSentenceCase(value: string | null | undefined): string {
+  const stripped = stripPublicationReaderHeadingPrefix(value)
+  if (!stripped) {
+    return ''
+  }
+  let seenWord = false
+  return stripped.replace(/\S+/g, (token) => {
+    const match = token.match(/^([^A-Za-z0-9]*)([A-Za-z0-9][A-Za-z0-9'’./-]*)([^A-Za-z0-9]*)$/)
+    if (!match) {
+      return token
+    }
+    const [, leading, core, trailing] = match
+    const lower = core.toLowerCase()
+    const formattedCore = shouldPreservePublicationReaderHeadingWord(core)
+      ? core
+      : seenWord
+        ? lower
+        : `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`
+    seenWord = true
+    return `${leading}${formattedCore}${trailing}`
+  })
+}
+
 function publicationReaderLabelSuggestsAbstractSummary(labelText: string): boolean {
   const normalized = String(labelText || '').trim().toLowerCase()
   if (!normalized) {
@@ -5253,7 +5292,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
       items.push({
         id: section.id,
-        label: stripPublicationReaderHeadingPrefix(section.title || section.raw_label || 'Untitled section'),
+        label: formatPublicationReaderHeadingSentenceCase(section.title || section.raw_label || 'Untitled section'),
         indent,
         target: { kind: 'section', id: section.id },
         isActive: section.id === publicationReaderActiveSectionId,
@@ -7989,7 +8028,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     )
     const showMarker = isMajorHeading && !suppressHeadingRow && !isArticleInformationGroup
     const showSummaryIcon = shouldRenderAsCalloutTile
-    const displaySectionTitle = stripPublicationReaderHeadingPrefix(section.title || section.raw_label || 'Untitled section')
+    const displaySectionTitle = formatPublicationReaderHeadingSentenceCase(section.title || section.raw_label || 'Untitled section')
     const rawLabelRedundant = !section.raw_label
       || normalizePublicationReaderHeadingLabel(section.raw_label) === normalizePublicationReaderHeadingLabel(section.title)
       || normalizePublicationReaderHeadingLabel(section.raw_label) === normalizePublicationReaderHeadingLabel(displaySectionTitle)
@@ -8031,7 +8070,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               </h3>
               {!rawLabelRedundant ? (
                 <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-500))]">
-                  {section.raw_label}
+                  {formatPublicationReaderHeadingSentenceCase(section.raw_label)}
                 </p>
               ) : null}
             </div>
@@ -10453,7 +10492,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       {abstractSupplementSections.length > 0 ? (
                                         <div className="space-y-5">
                                           {abstractSupplementSections.map((section) => renderPublicationReaderSupplementPanel(
-                                            stripPublicationReaderHeadingPrefix(section.title || section.raw_label || 'Study note'),
+                                            formatPublicationReaderHeadingSentenceCase(section.title || section.raw_label || 'Study note'),
                                             renderPublicationReaderStructuredSection(
                                               section,
                                               0,
@@ -10596,7 +10635,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               Current focus
                             </p>
                             <p className="mt-2 text-sm font-medium leading-relaxed text-[hsl(var(--tone-neutral-900))]">
-                              {stripPublicationReaderHeadingPrefix(selectedReaderActiveSection?.title || 'No section selected')}
+                              {formatPublicationReaderHeadingSentenceCase(selectedReaderActiveSection?.title || 'No section selected')}
                             </p>
                             {selectedReaderActiveSection ? (
                               <p className="mt-2 text-[0.72rem] uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
