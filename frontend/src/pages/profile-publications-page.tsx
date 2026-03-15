@@ -11098,21 +11098,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               {!isPinnedReferencePopover ? (
                 <div className="-mx-3.5 -mt-3.5 mb-3 h-1 bg-[hsl(var(--tone-accent-300))]" />
               ) : null}
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  {isPinnedReferencePopover ? (
+              {isPinnedReferencePopover ? (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
                       Citation
                     </p>
-                  ) : null}
-                  <h3 className={cn(
-                    'font-semibold text-[hsl(var(--tone-neutral-900))]',
-                    isPinnedReferencePopover ? 'mt-1 text-sm' : 'text-[0.92rem]',
-                  )}>
-                    {publicationReaderReferencePopover.tokenLabel}
-                  </h3>
-                </div>
-                {isPinnedReferencePopover ? (
+                    <h3 className="mt-1 text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
+                      {publicationReaderReferencePopover.tokenLabel}
+                    </h3>
+                  </div>
                   <button
                     type="button"
                     className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-500))] transition-colors hover:border-[hsl(var(--tone-neutral-300))] hover:text-[hsl(var(--tone-neutral-900))]"
@@ -11121,10 +11116,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   >
                     <X className="h-4 w-4" />
                   </button>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
               <div className={cn(
-                'mt-3 overflow-y-auto',
+                'overflow-y-auto',
+                isPinnedReferencePopover && 'mt-3',
                 isPinnedReferencePopover ? 'max-h-[60vh] space-y-3' : 'max-h-[18rem] space-y-2',
               )}>
                 {publicationReaderReferencePopover.references.map((reference, index) => (
