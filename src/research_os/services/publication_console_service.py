@@ -190,7 +190,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v28"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v29"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -5599,6 +5599,19 @@ def _is_publication_paper_boilerplate_block(value: str | None) -> bool:
     if not clean:
         return False
     lowered = clean.casefold()
+    if (
+        len(clean) < 260
+        and re.search(r"\bdoi\s*:?\s*10\.\d{4,9}/[-._;()/:a-z0-9]+", lowered)
+        and (
+            "et al." in lowered
+            or re.search(r"\b\d{4}\s*;\s*[a-z]?\d", clean, flags=re.IGNORECASE)
+            or re.search(
+                r"^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z])?(?:,\s*[A-Z][A-Za-z'’.-]+(?:\s+[A-Z])?){0,6}(?:,\s*et al\.)?",
+                clean,
+            )
+        )
+    ):
+        return True
     if "protected by copyright" in lowered:
         return True
     if "all rights reserved" in lowered:

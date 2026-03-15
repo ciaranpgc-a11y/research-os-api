@@ -1153,6 +1153,41 @@ def test_parse_grobid_tei_ignores_body_note_blocks_when_div_sections_exist() -> 
     assert titles == ["Introduction"]
 
 
+def test_parse_grobid_tei_ignores_body_citation_lines_before_real_sections() -> None:
+    tei_xml = """
+    <TEI xmlns="http://www.tei-c.org/ns/1.0">
+      <text>
+        <body>
+          <p>Smith J, et al. Example Journal 2026;16:e102836. doi:10.1136/example-2025-102836</p>
+          <div>
+            <head>Introduction</head>
+            <p>Main introduction text.</p>
+          </div>
+          <div>
+            <head>Methods</head>
+            <p>Main methods text.</p>
+          </div>
+        </body>
+      </text>
+    </TEI>
+    """
+    payload = publication_console_service._parse_grobid_tei_into_structured_paper(
+        tei_xml=tei_xml,
+        title="Test paper title",
+    )
+
+    titles = [section["title"] for section in payload["sections"]]
+    combined_content = "\n".join(
+        str(section.get("content") or "")
+        for section in payload["sections"]
+        if isinstance(section, dict)
+    )
+
+    assert titles == ["Introduction", "Methods"]
+    assert "Smith J, et al. Example Journal 2026;16:e102836." not in combined_content
+    assert "doi:10.1136/example-2025-102836" not in combined_content
+
+
 def test_parse_grobid_tei_splits_headed_back_matter_blocks_without_duplicate_listorg_noise() -> None:
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
