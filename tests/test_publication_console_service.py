@@ -2557,6 +2557,7 @@ def test_extract_structured_publication_paper_with_pmc_bioc_overlays_grobid_inli
                 "id": "paper-reference-2",
                 "label": "2",
                 "raw_text": "Reference two.",
+                "authors_truncated": True,
                 "doi": "10.1000/pmc-two",
             },
         ],
@@ -2667,11 +2668,68 @@ def test_extract_structured_publication_paper_with_pmc_bioc_overlays_grobid_inli
     assert payload["references"][1]["xml_id"] == "b2"
     assert payload["references"][1]["title"] == "Reference Two Title"
     assert payload["references"][1]["authors"] == ["Gamma C"]
+    assert payload["references"][1]["authors_truncated"] is True
     assert payload["references"][1]["journal"] == "Overlay Journal"
     assert payload["references"][1]["year"] == "2024"
     assert payload["references"][1]["doi"] == "10.1000/pmc-two"
     assert payload["references"][1]["pmid"] == "87654321"
     assert payload["generation_method"] == "pmc_bioc_fulltext_v1+grobid_citation_overlay_v1"
+
+
+def test_format_pmc_archive_reference_preserves_explicit_etal_marker() -> None:
+    ref_node = ET.fromstring(
+        """
+        <ref>
+          <label>14</label>
+          <element-citation publication-type="journal">
+            <person-group person-group-type="author">
+              <name><surname>Roifman</surname><given-names>I</given-names></name>
+              <name><surname>Hammer</surname><given-names>M</given-names></name>
+              <name><surname>Sparkes</surname><given-names>J</given-names></name>
+              <etal>et al</etal>
+            </person-group>
+            <article-title>Cardiac magnetic resonance left ventricular filling pressure is linked to symptoms, signs and prognosis in heart failure</article-title>
+            <source>ESC Heart Fail</source>
+            <year>2023</year>
+            <volume>10</volume>
+            <fpage>3067</fpage>
+            <lpage>3076</lpage>
+            <pub-id pub-id-type="doi">10.1002/ehf2.14499</pub-id>
+          </element-citation>
+        </ref>
+        """
+    )
+
+    reference = publication_console_service._format_pmc_archive_reference(ref_node, 14)
+
+    assert reference is not None
+    assert reference["authors"] == ["Roifman I", "Hammer M", "Sparkes J"]
+    assert reference["authors_truncated"] is True
+    assert reference["raw_text"].startswith("Roifman I, Hammer M, Sparkes J, et al.")
+
+
+def test_merge_publication_paper_reference_metadata_preserves_author_truncation_flag() -> None:
+    merged = publication_console_service._merge_publication_paper_reference_metadata(
+        citation_references=[
+            {
+                "xml_id": "b14",
+                "authors": ["Roifman I", "Hammer M", "Sparkes J"],
+                "authors_truncated": True,
+            }
+        ],
+        final_references=[
+            {
+                "id": "paper-reference-14",
+                "label": "14",
+                "raw_text": "Reference fourteen.",
+                "xml_id": "b14",
+                "authors": ["Roifman I", "Hammer M", "Sparkes J"],
+            }
+        ],
+        reference_id_map={"b14": "paper-reference-14"},
+    )
+
+    assert merged[0]["authors_truncated"] is True
 
 
 def test_extract_structured_publication_paper_with_best_available_parser_prefers_pmc_bioc(

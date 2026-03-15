@@ -191,7 +191,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v35"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v36"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -4972,6 +4972,9 @@ def _merge_publication_paper_reference_metadata(
                     if str(author).strip()
                 ]
 
+            if bool(citation_reference.get("authors_truncated")):
+                reference_copy["authors_truncated"] = True
+
             for field_name in (
                 "title",
                 "journal",
@@ -8584,11 +8587,20 @@ def _pmc_archive_reference_author_list(citation_node: ET.Element | None) -> list
     return names
 
 
+def _pmc_archive_reference_has_etal(citation_node: ET.Element | None) -> bool:
+    if citation_node is None:
+        return False
+    return any(
+        _xml_local_name(getattr(node, "tag", "")) == "etal"
+        for node in citation_node.iter()
+    )
+
+
 def _pmc_archive_reference_names(citation_node: ET.Element | None) -> str | None:
     names = _pmc_archive_reference_author_list(citation_node)
     if not names:
         return None
-    if len(names) <= 6:
+    if len(names) <= 6 and not _pmc_archive_reference_has_etal(citation_node):
         return ", ".join(names)
     return ", ".join(names[:6]) + ", et al."
 
@@ -8626,6 +8638,7 @@ def _format_pmc_archive_reference(
         citation_node = ref_node
     raw_fallback = _normalize_abstract_text(_tei_node_text(citation_node))
     authors_list = _pmc_archive_reference_author_list(citation_node)
+    authors_truncated = _pmc_archive_reference_has_etal(citation_node)
     authors = _pmc_archive_reference_names(citation_node)
     article_title = _normalize_abstract_text(
         _tei_node_text(_tei_first_direct_child(citation_node, "article-title"))
@@ -8703,6 +8716,8 @@ def _format_pmc_archive_reference(
         reference_payload["title"] = article_title
     if authors_list:
         reference_payload["authors"] = authors_list
+    if authors_truncated:
+        reference_payload["authors_truncated"] = True
     if source_title:
         reference_payload["journal"] = source_title
     if year:

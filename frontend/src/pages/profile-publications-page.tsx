@@ -144,6 +144,7 @@ type PublicationReaderReferencePayload = {
   rawText: string
   title?: string
   authors?: string[]
+  authorsTruncated?: boolean
   year?: string
   journal?: string
   doi?: string
@@ -396,7 +397,7 @@ function formatPublicationReaderReferenceClusterLabel(labels: string[]): string 
 
 function formatPublicationReaderReferenceAuthors(
   authors: string[] | null | undefined,
-  options?: { concise?: boolean },
+  options?: { concise?: boolean; authorsTruncated?: boolean },
 ): string {
   const rawAuthors = Array.isArray(authors)
     ? authors.map((author) => String(author || '').trim()).filter(Boolean)
@@ -419,7 +420,8 @@ function formatPublicationReaderReferenceAuthors(
   if (resolvedAuthors.length === 0) {
     return ''
   }
-  if (!options?.concise || resolvedAuthors.length <= 3) {
+  const shouldUseEtAl = resolvedAuthors.length > 3 || Boolean(options?.authorsTruncated)
+  if (!options?.concise || !shouldUseEtAl) {
     return resolvedAuthors.join(', ')
   }
   return `${resolvedAuthors.slice(0, 3).join(', ')}, et al.`
@@ -5109,6 +5111,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         rawText: String(reference.raw_text || reference.text || '').trim(),
         ...(reference.title ? { title: String(reference.title) } : {}),
         ...(Array.isArray(reference.authors) && reference.authors.length ? { authors: reference.authors.map(String) } : {}),
+        ...(reference.authors_truncated ? { authorsTruncated: true } : {}),
         ...(reference.year ? { year: String(reference.year) } : {}),
         ...(reference.journal ? { journal: String(reference.journal) } : {}),
         ...(reference.doi ? { doi: String(reference.doi) } : {}),
@@ -11237,7 +11240,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       )}>
                         {formatPublicationReaderReferenceAuthors(
                           reference.authors,
-                          { concise: !isPinnedReferencePopover },
+                          {
+                            concise: !isPinnedReferencePopover,
+                            authorsTruncated: reference.authorsTruncated,
+                          },
                         )}
                       </p>
                     ) : null}
