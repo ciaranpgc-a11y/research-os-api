@@ -7726,6 +7726,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     style?: CSSProperties,
   ): ReactNode => {
     const citationPattern = /(\[(?:\d+(?:\s*[-–]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-–]\s*\d+)?)*)\]|\{\{cite:[^}]+\}\})/g
+    const referenceChipClassName = 'relative -top-[0.18em] mx-[0.08rem] inline-flex min-h-[1.45rem] min-w-[1.45rem] items-center justify-center rounded-[0.72rem] border border-[hsl(var(--tone-accent-300))] bg-[linear-gradient(180deg,hsl(var(--tone-accent-100))_0%,hsl(var(--tone-accent-50))_100%)] px-1.5 py-[0.12rem] text-left text-[0.72em] font-semibold leading-none tracking-[0.01em] text-[hsl(var(--tone-accent-800))] transition-[background-color,border-color,color] duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-accent-500))] hover:bg-[hsl(var(--tone-accent-200))] hover:text-[hsl(var(--tone-accent-900))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-300))] focus-visible:ring-offset-2'
     const parts = String(paragraph || '').split(citationPattern)
     if (parts.length <= 1) {
       return (
@@ -7743,15 +7744,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             const refEntryId = selectedPaperReferenceIdMap[xmlId]
             const reference = refEntryId ? selectedPaperReferencesById.get(refEntryId) : undefined
             if (reference) {
-              const displayLabel = reference.label || String(selectedPaperReferences.indexOf(reference) + 1)
+              const displayLabel = String(
+                reference.label || String(selectedPaperReferences.indexOf(reference) + 1),
+              ).replace(/^\[|\]$/g, '').trim()
               return (
                 <button
                   key={`${keyPrefix}-cite-${partIndex}`}
                   type="button"
-                  className="relative -top-[0.2em] inline-flex min-w-[1.35rem] items-center justify-center rounded-full border border-[hsl(var(--tone-accent-200))] bg-white px-1 py-[0.08rem] text-left text-[0.68em] font-semibold text-[hsl(var(--tone-accent-700))] shadow-[0_1px_2px_hsl(var(--tone-accent-900)/0.04)] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))]"
-                  onClick={(event) => openPublicationReaderReferencePopover(event, `[${displayLabel}]`, [reference])}
+                  className={referenceChipClassName}
+                  onClick={(event) => openPublicationReaderReferencePopover(event, displayLabel, [reference])}
                 >
-                  [{displayLabel}]
+                  {displayLabel}
                 </button>
               )
             }
@@ -7767,14 +7770,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           if (references.length === 0) {
             return <span key={`${keyPrefix}-token-${partIndex}`}>{part}</span>
           }
+          const displayTokenLabel = tokenMatch[1].trim()
           return (
             <button
               key={`${keyPrefix}-token-${partIndex}`}
               type="button"
-              className="relative -top-[0.2em] inline-flex min-w-[1.35rem] items-center justify-center rounded-full border border-[hsl(var(--tone-accent-200))] bg-white px-1 py-[0.08rem] text-left text-[0.68em] font-semibold text-[hsl(var(--tone-accent-700))] shadow-[0_1px_2px_hsl(var(--tone-accent-900)/0.04)] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))]"
-              onClick={(event) => openPublicationReaderReferencePopover(event, part, references)}
+              className={referenceChipClassName}
+              onClick={(event) => openPublicationReaderReferencePopover(event, displayTokenLabel, references)}
             >
-              {part}
+              {displayTokenLabel}
             </button>
           )
         })}
