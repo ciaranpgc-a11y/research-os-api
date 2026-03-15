@@ -2256,6 +2256,102 @@ def test_extract_structured_publication_paper_with_pmc_bioc_prefers_archive_asse
     ) == 1
 
 
+def test_extract_structured_publication_paper_with_best_available_parser_overlays_pmc_archive(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_resolve_pmcid",
+        lambda **_kwargs: "PMC1234567",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_grobid",
+        lambda **_kwargs: {
+            "sections": [{"id": "s1", "title": "Introduction", "content": "Body"}],
+            "figures": [],
+            "tables": [],
+            "references": [],
+            "generation_method": "grobid_tei_fulltext_v3",
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_GROBID,
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_overlay_pmc_archive_content_onto_structured_paper",
+        lambda *, parsed_payload, pmcid: {
+            **parsed_payload,
+            "pmcid": pmcid,
+            "figures": [
+                {
+                    "classification": "FIGURE",
+                    "title": "Figure 1",
+                    "image_data": "data:image/png;base64,abc",
+                    "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS,
+                }
+            ],
+            "generation_method": "grobid_tei_fulltext_v3+pmc_native_assets_v1",
+        },
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_best_available_parser(
+        content=b"%PDF-1.7 test",
+        title="PMC overlay paper",
+        file_name="paper.pdf",
+        pmid="12345",
+        doi="10.1000/example",
+        year=2026,
+    )
+
+    assert payload["pmcid"] == "PMC1234567"
+    assert payload["generation_method"] == "grobid_tei_fulltext_v3+pmc_native_assets_v1"
+    assert payload["figures"][0]["source_parser"] == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS
+
+
+def test_extract_structured_publication_paper_with_best_available_parser_falls_back_to_pmc_bioc(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_resolve_pmcid",
+        lambda **_kwargs: "PMC1234567",
+    )
+
+    def _raise_grobid(**_kwargs):  # noqa: ANN001
+        raise publication_console_service.PublicationConsoleValidationError("grobid down")
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_grobid",
+        _raise_grobid,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_pmc_bioc",
+        lambda **_kwargs: {
+            "sections": [{"id": "s1", "title": "Introduction", "content": "Body"}],
+            "figures": [],
+            "tables": [],
+            "references": [],
+            "pmcid": "PMC1234567",
+            "generation_method": "pmc_bioc_fulltext_v1",
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC,
+        },
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_best_available_parser(
+        content=b"%PDF-1.7 test",
+        title="PMC fallback paper",
+        file_name="paper.pdf",
+        pmid="12345",
+        doi="10.1000/example",
+        year=2026,
+    )
+
+    assert payload["pmcid"] == "PMC1234567"
+    assert payload["generation_method"] == "pmc_bioc_fulltext_v1"
+
+
 def test_publication_paper_model_auto_links_oa_pdf_for_reader(
     monkeypatch, tmp_path
 ) -> None:
