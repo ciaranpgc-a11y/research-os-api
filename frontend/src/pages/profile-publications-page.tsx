@@ -11081,7 +11081,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           const popoverCard = (
             <div
               className={cn(
-                'absolute rounded-[1.15rem] border bg-white shadow-[0_20px_50px_hsl(var(--tone-neutral-950)/0.16)]',
+                'absolute overflow-hidden rounded-[1.15rem] border bg-white shadow-[0_20px_50px_hsl(var(--tone-neutral-950)/0.16)]',
                 isPinnedReferencePopover
                   ? 'w-[min(26rem,calc(100vw-2rem))] border-[hsl(var(--tone-neutral-200))] p-4'
                   : 'pointer-events-none w-[min(22rem,calc(100vw-2rem))] border-[hsl(var(--tone-neutral-200))] px-3.5 py-3.5 shadow-[0_18px_40px_hsl(var(--tone-neutral-950)/0.14)]',
@@ -11095,6 +11095,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               aria-modal={isPinnedReferencePopover ? 'false' : undefined}
               aria-label={`${isPinnedReferencePopover ? 'Reference details' : 'Reference preview'} for ${publicationReaderReferencePopover.tokenLabel}`}
             >
+              {!isPinnedReferencePopover ? (
+                <div className="-mx-3.5 -mt-3.5 mb-3 h-1 bg-[hsl(var(--tone-accent-300))]" />
+              ) : null}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   {isPinnedReferencePopover ? (
@@ -11146,14 +11149,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       <p className={cn(
                         'font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]',
                         isPinnedReferencePopover && 'mt-2',
-                        isPinnedReferencePopover ? 'text-[0.88rem]' : 'text-[0.84rem]',
+                        isPinnedReferencePopover ? 'text-[0.88rem]' : 'text-[0.86rem]',
                       )}>
                         {reference.title}
                       </p>
                     ) : null}
                     {reference.authors?.length ? (
                       <p className={cn(
-                        'mt-1 leading-snug text-[hsl(var(--tone-neutral-600))]',
+                        'mt-1.5 leading-snug text-[hsl(var(--tone-neutral-600))]',
                         isPinnedReferencePopover ? 'text-[0.82rem]' : 'text-[0.78rem]',
                       )}>
                         {reference.authors.join(', ')}
