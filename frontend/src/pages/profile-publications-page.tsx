@@ -2545,19 +2545,19 @@ function splitLongTextIntoParagraphs(value: string, maxParagraphLength = 800): s
     .map((paragraph) => paragraph.replace(/\s*\n+\s*/g, ' ').replace(/\s+/g, ' ').trim())
     .filter(Boolean)
   if (manualParagraphs.length > 1) {
-    return manualParagraphs
+    return reattachLeadingCitationParagraphTokens(manualParagraphs)
   }
 
   const normalized = raw.replace(/\s+/g, ' ').trim()
   if (normalized.length <= Math.round(maxParagraphLength * 1.2)) {
-    return [normalized]
+    return reattachLeadingCitationParagraphTokens([normalized])
   }
   const sentences = normalized
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean)
   if (sentences.length < 4) {
-    return [normalized]
+    return reattachLeadingCitationParagraphTokens([normalized])
   }
 
   const paragraphs: string[] = []
@@ -2582,7 +2582,46 @@ function splitLongTextIntoParagraphs(value: string, maxParagraphLength = 800): s
     paragraphs.push(current)
   }
 
-  return paragraphs
+  return reattachLeadingCitationParagraphTokens(paragraphs)
+}
+
+const PUBLICATION_READER_CITATION_TOKEN_SOURCE = String.raw`\[(?:\d+(?:\s*[-\u2013]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-\u2013]\s*\d+)?)*)\]|\{\{cite:[^}]+\}\}`
+const PUBLICATION_READER_CITATION_TOKEN_GLOBAL_PATTERN = new RegExp(`(${PUBLICATION_READER_CITATION_TOKEN_SOURCE})`, 'g')
+const PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN = new RegExp(`^${PUBLICATION_READER_CITATION_TOKEN_SOURCE}$`)
+const PUBLICATION_READER_CITATION_TOKEN_LEADING_PATTERN = new RegExp(`^(${PUBLICATION_READER_CITATION_TOKEN_SOURCE})(?:\\s+|$)(.*)$`)
+
+function reattachLeadingCitationParagraphTokens(paragraphs: string[]): string[] {
+  if (paragraphs.length < 2) {
+    return paragraphs
+  }
+
+  const normalizedParagraphs = [...paragraphs]
+  for (let index = 1; index < normalizedParagraphs.length; index += 1) {
+    const previousParagraph = normalizedParagraphs[index - 1]?.trim()
+    let currentParagraph = normalizedParagraphs[index]?.trim()
+    if (!previousParagraph || !currentParagraph) {
+      continue
+    }
+
+    const leadingTokens: string[] = []
+    while (currentParagraph) {
+      const match = currentParagraph.match(PUBLICATION_READER_CITATION_TOKEN_LEADING_PATTERN)
+      if (!match) {
+        break
+      }
+      leadingTokens.push(match[1].trim())
+      currentParagraph = String(match[2] || '').trim()
+    }
+
+    if (leadingTokens.length === 0 || !currentParagraph) {
+      continue
+    }
+
+    normalizedParagraphs[index - 1] = `${previousParagraph} ${leadingTokens.join(' ')}`
+    normalizedParagraphs[index] = currentParagraph
+  }
+
+  return normalizedParagraphs.filter(Boolean)
 }
 
 function extractRegistrationSectionContent(value: string): string {
@@ -7987,6 +8026,87 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       </p>
     )
   }
+  void renderPublicationReaderParagraphWithReferences
+
+  const renderPublicationReaderParagraphWithAnchoredReferences = (
+    paragraph: string,
+    keyPrefix: string,
+    className: string,
+    style?: CSSProperties,
+  ): ReactNode => {
+    const referenceChipClassName = 'relative -top-[0.12em] inline-flex min-h-[1.22rem] min-w-[1.22rem] items-center justify-center whitespace-nowrap rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-100))] px-[0.36rem] py-[0.04rem] text-left text-[0.67em] font-semibold leading-none tracking-[0.01em] text-[hsl(var(--tone-accent-850))] transition-[background-color,border-color,color] duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-accent-500))] hover:bg-[hsl(var(--tone-accent-150))] hover:text-[hsl(var(--tone-accent-900))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-300))] focus-visible:ring-offset-2'
+    const parts = String(paragraph || '').split(PUBLICATION_READER_CITATION_TOKEN_GLOBAL_PATTERN)
+    if (parts.length <= 1) {
+      return (
+        <p key={keyPrefix} className={className} style={style}>
+          {paragraph}
+        </p>
+      )
+    }
+
+    return (
+      <p key={keyPrefix} className={className} style={style}>
+        {parts.map((part, partIndex) => {
+          const nextPart = parts[partIndex + 1] || ''
+          const nextPartIsCitationToken = PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(nextPart)
+          const citeMarkerMatch = part.match(/^\{\{cite:([^}]+)\}\}$/)
+          if (citeMarkerMatch) {
+            const xmlId = citeMarkerMatch[1]
+            const refEntryId = selectedPaperReferenceIdMap[xmlId]
+            const reference = refEntryId ? selectedPaperReferencesById.get(refEntryId) : undefined
+            if (reference) {
+              const displayLabel = String(
+                reference.label || String(selectedPaperReferences.indexOf(reference) + 1),
+              ).replace(/^\[|\]$/g, '').trim()
+              return (
+                <button
+                  key={`${keyPrefix}-cite-${partIndex}`}
+                  type="button"
+                  className={referenceChipClassName}
+                  onClick={(event) => openPublicationReaderReferencePopover(event, displayLabel, [reference])}
+                >
+                  {displayLabel}
+                </button>
+              )
+            }
+            return <span key={`${keyPrefix}-cite-${partIndex}`} />
+          }
+
+          const tokenMatch = part.match(/^\[(.+)\]$/)
+          if (!tokenMatch) {
+            const normalizedText = nextPartIsCitationToken
+              ? part.replace(/\s+$/g, '')
+              : part
+            return (
+              <span key={`${keyPrefix}-text-${partIndex}`}>
+                {normalizedText}
+                {nextPartIsCitationToken ? '\u00A0' : null}
+              </span>
+            )
+          }
+
+          const references = expandPublicationReaderReferenceToken(tokenMatch[1])
+            .map((token) => selectedPaperReferencesByLookupKey.get(normalizePublicationReaderReferenceLookupKey(token)) || null)
+            .filter((reference): reference is PublicationReaderReferencePayload => Boolean(reference))
+          if (references.length === 0) {
+            return <span key={`${keyPrefix}-token-${partIndex}`}>{part}</span>
+          }
+
+          const displayTokenLabel = tokenMatch[1].trim()
+          return (
+            <button
+              key={`${keyPrefix}-token-${partIndex}`}
+              type="button"
+              className={referenceChipClassName}
+              onClick={(event) => openPublicationReaderReferencePopover(event, displayTokenLabel, references)}
+            >
+              {displayTokenLabel}
+            </button>
+          )
+        })}
+      </p>
+    )
+  }
 
   const renderPublicationReaderStructuredSection = (
     section: PublicationPaperSectionPayload,
@@ -8101,7 +8221,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             )}
           >
             {sectionParagraphs.map((paragraph, paragraphIndex) => (
-              renderPublicationReaderParagraphWithReferences(
+              renderPublicationReaderParagraphWithAnchoredReferences(
                 paragraph,
                 `${section.id}-paragraph-${paragraphIndex}`,
                 cn(
