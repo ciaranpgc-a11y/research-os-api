@@ -3325,6 +3325,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationReaderScrollViewportRef = useRef<HTMLElement | null>(null)
   const publicationReaderNavigatorViewportRef = useRef<HTMLDivElement | null>(null)
   const publicationReaderNavigatorTargetRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const publicationReaderProgrammaticTargetIdRef = useRef<string | null>(null)
+  const publicationReaderProgrammaticTargetTimerRef = useRef<number | null>(null)
   const openPublicationReaderFigureLightbox = useCallback((asset: PublicationPaperAssetPayload) => {
     if (!String(asset.image_data || '').trim()) {
       return
@@ -5388,6 +5390,26 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return accumulator
     }, {})
   ), [selectedPublicationReaderNavigatorGroups])
+  const clearPublicationReaderProgrammaticTarget = useCallback(() => {
+    publicationReaderProgrammaticTargetIdRef.current = null
+    if (publicationReaderProgrammaticTargetTimerRef.current != null && typeof window !== 'undefined') {
+      window.clearTimeout(publicationReaderProgrammaticTargetTimerRef.current)
+      publicationReaderProgrammaticTargetTimerRef.current = null
+    }
+  }, [])
+  const beginPublicationReaderProgrammaticTarget = useCallback((targetId: string) => {
+    publicationReaderProgrammaticTargetIdRef.current = targetId
+    if (typeof window === 'undefined') {
+      return
+    }
+    if (publicationReaderProgrammaticTargetTimerRef.current != null) {
+      window.clearTimeout(publicationReaderProgrammaticTargetTimerRef.current)
+    }
+    publicationReaderProgrammaticTargetTimerRef.current = window.setTimeout(() => {
+      publicationReaderProgrammaticTargetIdRef.current = null
+      publicationReaderProgrammaticTargetTimerRef.current = null
+    }, 1400)
+  }, [])
   const selectedReaderActiveSection = useMemo(
     () => {
       if (publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID) {
@@ -6527,6 +6549,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
   const onSelectPublicationReaderSection = useCallback((sectionId: string) => {
     const selectedSection = selectedPaperSections.find((section) => section.id === sectionId) || null
+    beginPublicationReaderProgrammaticTarget(sectionId)
     setPublicationReaderActiveSectionId(sectionId)
     const targetPdfPage = resolvePublicationPaperSectionAnchorPage(selectedSection)
     if (publicationReaderViewMode === 'pdf' && targetPdfPage) {
@@ -6549,7 +6572,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     scrollToSection()
-  }, [publicationReaderViewMode, selectedPaperSections])
+  }, [beginPublicationReaderProgrammaticTarget, publicationReaderViewMode, selectedPaperSections])
 
   const onEnterPublicationReaderPdfView = useCallback(() => {
     if (!selectedPaperPrimaryPdfContentFileId) {
@@ -6848,6 +6871,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     if (target.kind === 'references') {
+      beginPublicationReaderProgrammaticTarget(PUBLICATION_READER_REFERENCES_TARGET_ID)
       setPublicationReaderActiveSectionId(PUBLICATION_READER_REFERENCES_TARGET_ID)
       const scrollToReferences = () => {
         const node = publicationReaderReferencesRef.current
@@ -6871,7 +6895,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (matchedAsset) {
       onOpenPublicationReaderAsset(matchedAsset)
     }
-  }, [onOpenPublicationReaderAsset, onSelectPublicationReaderSection, publicationReaderViewMode, selectedPaperAssetsById])
+  }, [
+    beginPublicationReaderProgrammaticTarget,
+    onOpenPublicationReaderAsset,
+    onSelectPublicationReaderSection,
+    publicationReaderViewMode,
+    selectedPaperAssetsById,
+  ])
 
   useEffect(() => {
     const activeGroupId = publicationReaderActiveNavigatorGroupId
@@ -6919,6 +6949,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const updateActiveTarget = () => {
       const viewportRect = viewportNode.getBoundingClientRect()
       const anchorOffset = 132
+      const lockedTargetId = publicationReaderProgrammaticTargetIdRef.current
+      if (lockedTargetId) {
+        const lockedNode = lockedTargetId === PUBLICATION_READER_REFERENCES_TARGET_ID
+          ? publicationReaderReferencesRef.current
+          : publicationReaderSectionRefs.current[lockedTargetId]
+        if (!lockedNode) {
+          return
+        }
+        const lockedOffset = lockedNode.getBoundingClientRect().top - viewportRect.top - anchorOffset
+        if (Math.abs(lockedOffset) > 28) {
+          return
+        }
+        clearPublicationReaderProgrammaticTarget()
+      }
       const candidates = selectedPaperSections
         .map((section) => {
           const node = publicationReaderSectionRefs.current[section.id]
@@ -6983,6 +7027,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
     }
   }, [
+    clearPublicationReaderProgrammaticTarget,
     publicationReaderOpen,
     publicationReaderViewMode,
     selectedPaperReferences.length,
@@ -7010,7 +7055,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     let frame = window.requestAnimationFrame(() => {
-      targetNode.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+      targetNode.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' })
     })
     return () => {
       window.cancelAnimationFrame(frame)
@@ -7022,6 +7067,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     publicationReaderOpen,
     publicationReaderViewMode,
   ])
+  useEffect(() => () => {
+    clearPublicationReaderProgrammaticTarget()
+  }, [clearPublicationReaderProgrammaticTarget])
 
   const onOpenPublicationReaderPrimaryPdf = () => {
     if (selectedPaperPrimaryFile) {
@@ -8099,7 +8147,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     ) => {
       const compact = Boolean(options?.compact)
       const isExpanded = group.items.length > 0 && !(publicationReaderCollapsedNodeIds[group.id] ?? false)
-      const isActiveGroup = publicationReaderActiveNavigatorGroupId === group.id || group.isActive
+      const isActiveGroup = publicationReaderActiveNavigatorGroupId === group.id
       return (
         <div key={group.id} className={cn('space-y-1.5', compact && 'space-y-1')}>
           <button
@@ -8108,18 +8156,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             }}
             type="button"
             className={cn(
-              'group relative w-full overflow-hidden rounded-[1rem] pl-4 pr-3 text-left transition-[background-color,color] duration-[var(--motion-duration-ui)] ease-out',
+              'group relative w-full overflow-hidden rounded-[1rem] pl-4 pr-3 text-left transition-colors duration-150 ease-out',
               compact ? 'py-2.5' : 'py-3',
               isActiveGroup
-                ? 'bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-900))]'
-                : 'text-[hsl(var(--tone-neutral-700))] hover:bg-white/90 hover:text-[hsl(var(--tone-neutral-900))]',
+                ? 'bg-white text-[hsl(var(--tone-accent-900))]'
+                : 'text-[hsl(var(--tone-neutral-700))] hover:bg-white/72 hover:text-[hsl(var(--tone-neutral-900))]',
             )}
             onClick={() => onSelectPublicationReaderNavigatorTarget(group.target)}
             disabled={!group.target}
           >
             <span
               className={cn(
-                'absolute left-0 top-2 bottom-2 w-[3px] rounded-full transition-colors duration-[var(--motion-duration-ui)] ease-out',
+                'absolute left-0 top-2 bottom-2 w-[3px] rounded-full transition-colors duration-150 ease-out',
                 isActiveGroup ? 'bg-[hsl(var(--tone-accent-500))]' : 'bg-transparent',
               )}
               aria-hidden="true"
@@ -8138,7 +8186,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               {group.items.length > 0 ? (
                 <span
                   className={cn(
-                    'mt-0.5 shrink-0 text-[hsl(var(--tone-neutral-400))] transition-transform duration-[var(--motion-duration-ui)] ease-out',
+                    'mt-0.5 shrink-0 text-[hsl(var(--tone-neutral-400))] transition-transform duration-150 ease-out',
                     isExpanded ? 'rotate-90' : 'rotate-0',
                     isActiveGroup && 'text-[hsl(var(--tone-accent-700))]',
                   )}
@@ -8159,18 +8207,26 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   }}
                   type="button"
                   className={cn(
-                    'block w-full rounded-[0.9rem] bg-transparent py-1.5 text-left transition-[background-color,color] duration-[var(--motion-duration-ui)] ease-out',
+                    'relative block w-full rounded-[0.9rem] bg-transparent py-1.5 pl-3 text-left transition-colors duration-150 ease-out',
                     item.isActive
-                      ? 'bg-[hsl(var(--tone-accent-50)/0.72)] text-[hsl(var(--tone-accent-900))]'
-                      : 'text-[hsl(var(--tone-neutral-600))] hover:bg-white/80 hover:text-[hsl(var(--tone-neutral-900))]',
+                      ? 'text-[hsl(var(--tone-accent-900))]'
+                      : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-900))]',
                   )}
-                  style={{ paddingLeft: `${Math.max(0, (item.indent - 1) * 0.85)}rem` }}
+                  style={{ marginLeft: `${Math.max(0, (item.indent - 1) * 0.85)}rem` }}
                   onClick={() => onSelectPublicationReaderNavigatorTarget(item.target)}
                 >
                   <span
                     className={cn(
+                      'absolute left-0 top-2 bottom-2 w-[2px] rounded-full transition-colors duration-150 ease-out',
+                      item.isActive ? 'bg-[hsl(var(--tone-accent-400))]' : 'bg-transparent',
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span
+                    className={cn(
                       'block whitespace-normal break-words pr-2 text-[0.84rem] leading-[1.45]',
                       item.indent > 1 && 'text-[0.8rem] leading-[1.42]',
+                      item.isActive && 'font-medium',
                     )}
                   >
                     {item.label}
@@ -8185,15 +8241,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
     return (
       <div className="space-y-5">
-        <div className="space-y-1 px-1">
-          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--tone-neutral-500))]">
-            Manuscript map
-          </p>
-          <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
-            Follow the paper as you read, with one active branch open at a time.
-          </p>
-        </div>
-
         <div className="space-y-1.5">
           {selectedPublicationReaderNarrativeNavigatorGroups.map((group) => renderNavigatorGroup(group))}
         </div>
@@ -8202,7 +8249,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           <div className="border-t border-[hsl(var(--tone-neutral-180))] pt-4">
             <button
               type="button"
-              className="flex w-full items-start justify-between gap-3 rounded-[1rem] bg-[hsl(var(--tone-neutral-50)/0.85)] px-4 py-3 text-left transition-[background-color,color] duration-[var(--motion-duration-ui)] ease-out hover:bg-white"
+              className="flex w-full items-start justify-between gap-3 rounded-[1rem] bg-[hsl(var(--tone-neutral-50)/0.85)] px-4 py-3 text-left transition-colors duration-150 ease-out hover:bg-white"
               onClick={() => setPublicationReaderEndMatterExpanded((current) => !current)}
               aria-expanded={publicationReaderEndMatterIsExpanded}
             >
