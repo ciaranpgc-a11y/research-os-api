@@ -398,9 +398,24 @@ function formatPublicationReaderReferenceAuthors(
   authors: string[] | null | undefined,
   options?: { concise?: boolean },
 ): string {
-  const resolvedAuthors = Array.isArray(authors)
+  const rawAuthors = Array.isArray(authors)
     ? authors.map((author) => String(author || '').trim()).filter(Boolean)
     : []
+  const resolvedAuthors = rawAuthors.flatMap((author) => {
+    const semicolonSplit = author.split(/\s*;\s*/).map((part) => part.trim()).filter(Boolean)
+    if (semicolonSplit.length > 1) {
+      return semicolonSplit
+    }
+    const commaSplit = author.split(/\s*,\s*/).map((part) => part.trim()).filter(Boolean)
+    if (
+      rawAuthors.length === 1
+      && commaSplit.length >= 4
+      && commaSplit.every((part) => part.length <= 48 && /[A-Za-z]/.test(part))
+    ) {
+      return commaSplit
+    }
+    return [author]
+  })
   if (resolvedAuthors.length === 0) {
     return ''
   }
@@ -11142,13 +11157,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       {publicationReaderReferencePopover && typeof document !== 'undefined' ? createPortal(
         (() => {
           const isPinnedReferencePopover = publicationReaderReferencePopover.interaction === 'pinned'
-          const previewReferences = isPinnedReferencePopover
-            ? publicationReaderReferencePopover.references
-            : publicationReaderReferencePopover.references.slice(0, 3)
-          const hiddenPreviewReferenceCount = Math.max(
-            0,
-            publicationReaderReferencePopover.references.length - previewReferences.length,
-          )
+          const previewReferences = publicationReaderReferencePopover.references
           const popoverCard = (
             <div
               className={cn(
@@ -11190,9 +11199,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 </div>
               ) : null}
               <div className={cn(
-                'overflow-y-auto',
+                'overflow-visible',
                 isPinnedReferencePopover && 'mt-3',
-                isPinnedReferencePopover ? 'max-h-[60vh] space-y-3' : 'max-h-[18rem] space-y-2',
+                isPinnedReferencePopover ? 'max-h-[60vh] overflow-y-auto space-y-3' : 'space-y-2',
               )}>
                 {previewReferences.map((reference, index) => (
                   <div
@@ -11270,11 +11279,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     ) : null}
                   </div>
                 ))}
-                {!isPinnedReferencePopover && hiddenPreviewReferenceCount > 0 ? (
-                  <p className="border-t border-[hsl(var(--tone-neutral-150))] pt-2 text-[0.72rem] font-medium text-[hsl(var(--tone-neutral-500))]">
-                    {publicationReaderReferencePopover.references.length} references
-                  </p>
-                ) : null}
               </div>
             </div>
           )
