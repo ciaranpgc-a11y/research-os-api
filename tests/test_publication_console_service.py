@@ -2330,13 +2330,70 @@ def test_extract_structured_publication_paper_with_pmc_bioc_prefers_archive_asse
     ) == 1
 
 
-def test_extract_structured_publication_paper_with_best_available_parser_overlays_pmc_archive(
+def test_extract_structured_publication_paper_with_best_available_parser_prefers_pmc_bioc(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
         publication_console_service,
         "_resolve_pmcid",
         lambda **_kwargs: "PMC1234567",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_pmc_bioc",
+        lambda **_kwargs: {
+            "sections": [{"id": "s1", "title": "Introduction", "content": "Body"}],
+            "figures": [],
+            "tables": [],
+            "references": [],
+            "pmcid": "PMC1234567",
+            "generation_method": "pmc_bioc_fulltext_v1",
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC,
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_grobid",
+        lambda **_kwargs: {
+            "sections": [{"id": "g1", "title": "Introduction", "content": "GROBID Body"}],
+            "figures": [],
+            "tables": [],
+            "references": [],
+            "generation_method": "grobid_tei_fulltext_v3",
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_GROBID,
+        },
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_best_available_parser(
+        content=b"%PDF-1.7 test",
+        title="PMC preferred paper",
+        file_name="paper.pdf",
+        pmid="12345",
+        doi="10.1000/example",
+        year=2026,
+    )
+
+    assert payload["pmcid"] == "PMC1234567"
+    assert payload["generation_method"] == "pmc_bioc_fulltext_v1"
+    assert payload["parser_provider"] == publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC
+
+
+def test_extract_structured_publication_paper_with_best_available_parser_falls_back_to_grobid_overlay_when_pmc_bioc_unavailable(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_resolve_pmcid",
+        lambda **_kwargs: "PMC1234567",
+    )
+
+    def _raise_pmc_bioc(**_kwargs):  # noqa: ANN001
+        raise publication_console_service.PublicationConsoleValidationError("pmc bioc down")
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_pmc_bioc",
+        _raise_pmc_bioc,
     )
     monkeypatch.setattr(
         publication_console_service,
@@ -2370,7 +2427,7 @@ def test_extract_structured_publication_paper_with_best_available_parser_overlay
 
     payload = publication_console_service._extract_structured_publication_paper_with_best_available_parser(
         content=b"%PDF-1.7 test",
-        title="PMC overlay paper",
+        title="PMC fallback paper",
         file_name="paper.pdf",
         pmid="12345",
         doi="10.1000/example",
@@ -2380,50 +2437,6 @@ def test_extract_structured_publication_paper_with_best_available_parser_overlay
     assert payload["pmcid"] == "PMC1234567"
     assert payload["generation_method"] == "grobid_tei_fulltext_v3+pmc_native_assets_v1"
     assert payload["figures"][0]["source_parser"] == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS
-
-
-def test_extract_structured_publication_paper_with_best_available_parser_falls_back_to_pmc_bioc(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        publication_console_service,
-        "_resolve_pmcid",
-        lambda **_kwargs: "PMC1234567",
-    )
-
-    def _raise_grobid(**_kwargs):  # noqa: ANN001
-        raise publication_console_service.PublicationConsoleValidationError("grobid down")
-
-    monkeypatch.setattr(
-        publication_console_service,
-        "_extract_structured_publication_paper_with_grobid",
-        _raise_grobid,
-    )
-    monkeypatch.setattr(
-        publication_console_service,
-        "_extract_structured_publication_paper_with_pmc_bioc",
-        lambda **_kwargs: {
-            "sections": [{"id": "s1", "title": "Introduction", "content": "Body"}],
-            "figures": [],
-            "tables": [],
-            "references": [],
-            "pmcid": "PMC1234567",
-            "generation_method": "pmc_bioc_fulltext_v1",
-            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC,
-        },
-    )
-
-    payload = publication_console_service._extract_structured_publication_paper_with_best_available_parser(
-        content=b"%PDF-1.7 test",
-        title="PMC fallback paper",
-        file_name="paper.pdf",
-        pmid="12345",
-        doi="10.1000/example",
-        year=2026,
-    )
-
-    assert payload["pmcid"] == "PMC1234567"
-    assert payload["generation_method"] == "pmc_bioc_fulltext_v1"
 
 
 def test_publication_paper_model_auto_links_oa_pdf_for_reader(

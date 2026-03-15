@@ -8989,6 +8989,18 @@ def _extract_structured_publication_paper_with_best_available_parser(
         title=title,
         year=year,
     )
+    if pmcid:
+        try:
+            return _extract_structured_publication_paper_with_pmc_bioc(
+                pmcid=pmcid,
+                content=content,
+                title=title,
+                enrich_assets=True,
+                align_to_pdf=True,
+            )
+        except Exception as exc:
+            logger.warning("PMC BioC parse skipped for %s: %s", pmcid, exc)
+
     grobid_error: Exception | None = None
     try:
         grobid_payload = _extract_structured_publication_paper_with_grobid(
@@ -9008,18 +9020,6 @@ def _extract_structured_publication_paper_with_best_available_parser(
         return grobid_payload
     except Exception as exc:
         grobid_error = exc
-
-    if pmcid:
-        try:
-            return _extract_structured_publication_paper_with_pmc_bioc(
-                pmcid=pmcid,
-                content=content,
-                title=title,
-                enrich_assets=True,
-                align_to_pdf=True,
-            )
-        except Exception as exc:
-            logger.warning("PMC BioC parse skipped for %s: %s", pmcid, exc)
 
     if grobid_error is not None:
         raise grobid_error
