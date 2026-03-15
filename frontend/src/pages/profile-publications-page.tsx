@@ -11084,7 +11084,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 'absolute rounded-[1.15rem] border bg-white shadow-[0_20px_50px_hsl(var(--tone-neutral-950)/0.16)]',
                 isPinnedReferencePopover
                   ? 'w-[min(26rem,calc(100vw-2rem))] border-[hsl(var(--tone-neutral-200))] p-4'
-                  : 'pointer-events-none w-[min(22rem,calc(100vw-2rem))] border-[hsl(var(--tone-accent-200))] bg-[linear-gradient(180deg,hsl(var(--tone-accent-50)/0.92)_0%,white_100%)] px-3.5 py-3.5 shadow-[0_18px_40px_hsl(var(--tone-neutral-950)/0.14)]',
+                  : 'pointer-events-none w-[min(22rem,calc(100vw-2rem))] border-[hsl(var(--tone-neutral-200))] px-3.5 py-3.5 shadow-[0_18px_40px_hsl(var(--tone-neutral-950)/0.14)]',
               )}
               style={{
                 top: publicationReaderReferencePopover.top,
@@ -11097,17 +11097,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className={cn(
-                    'font-semibold uppercase tracking-[0.1em]',
-                    isPinnedReferencePopover
-                      ? 'text-[0.72rem] text-[hsl(var(--tone-neutral-500))]'
-                      : 'text-[0.68rem] text-[hsl(var(--tone-accent-700))]',
-                  )}>
-                    {isPinnedReferencePopover ? 'Citation' : 'Reference preview'}
-                  </p>
+                  {isPinnedReferencePopover ? (
+                    <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                      Citation
+                    </p>
+                  ) : null}
                   <h3 className={cn(
-                    'mt-1 font-semibold text-[hsl(var(--tone-neutral-900))]',
-                    isPinnedReferencePopover ? 'text-sm' : 'text-[0.92rem]',
+                    'font-semibold text-[hsl(var(--tone-neutral-900))]',
+                    isPinnedReferencePopover ? 'mt-1 text-sm' : 'text-[0.92rem]',
                   )}>
                     {publicationReaderReferencePopover.tokenLabel}
                   </h3>
@@ -11125,24 +11122,30 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               </div>
               <div className={cn(
                 'mt-3 overflow-y-auto',
-                isPinnedReferencePopover ? 'max-h-[60vh] space-y-3' : 'max-h-[18rem] space-y-2.5',
+                isPinnedReferencePopover ? 'max-h-[60vh] space-y-3' : 'max-h-[18rem] space-y-2',
               )}>
                 {publicationReaderReferencePopover.references.map((reference, index) => (
                   <div
                     key={`${reference.id}-${index}`}
                     className={cn(
-                      'rounded-[0.95rem] px-3 py-3',
+                      'px-3 py-3',
                       isPinnedReferencePopover
-                        ? 'border border-[hsl(var(--tone-neutral-150))] bg-[hsl(var(--tone-neutral-50)/0.75)]'
-                        : 'border border-[hsl(var(--tone-accent-150))] bg-white/88',
+                        ? 'rounded-[0.95rem] border border-[hsl(var(--tone-neutral-150))] bg-[hsl(var(--tone-neutral-50)/0.75)]'
+                        : cn(
+                            index > 0 && 'border-t border-[hsl(var(--tone-neutral-150))]',
+                            'px-0 py-0',
+                          ),
                     )}
                   >
-                    <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-                      {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
-                    </p>
+                    {isPinnedReferencePopover ? (
+                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                        {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
+                      </p>
+                    ) : null}
                     {reference.title ? (
                       <p className={cn(
-                        'mt-2 font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]',
+                        'font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]',
+                        isPinnedReferencePopover && 'mt-2',
                         isPinnedReferencePopover ? 'text-[0.88rem]' : 'text-[0.84rem]',
                       )}>
                         {reference.title}
