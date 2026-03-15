@@ -5319,17 +5319,19 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       )
       const items: PublicationReaderNavigatorItemPayload[] = []
 
-      if (promoteSingleRoot && primarySection) {
-        const childSections = (selectedPaperSectionChildrenByParent.get(primarySection.id) || [])
-          .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === group.key)
-          .filter((child) => !(group.key === 'abstract' && publicationReaderSectionIsAbstractSupplement(child)))
-          .sort(comparePublicationPaperSections)
-        for (const childSection of childSections) {
-          buildSectionItems(childSection, group.key, 1, items)
-        }
-      } else {
-        for (const rootSection of group.rootSections) {
-          buildSectionItems(rootSection, group.key, 1, items)
+      if (group.key !== 'abstract') {
+        if (promoteSingleRoot && primarySection) {
+          const childSections = (selectedPaperSectionChildrenByParent.get(primarySection.id) || [])
+            .filter((child) => (selectedPaperDisplayGroupKeyBySectionId.get(child.id) || null) === group.key)
+            .filter((child) => !(group.key === 'abstract' && publicationReaderSectionIsAbstractSupplement(child)))
+            .sort(comparePublicationPaperSections)
+          for (const childSection of childSections) {
+            buildSectionItems(childSection, group.key, 1, items)
+          }
+        } else {
+          for (const rootSection of group.rootSections) {
+            buildSectionItems(rootSection, group.key, 1, items)
+          }
         }
       }
 
@@ -7112,6 +7114,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     const targetNode = publicationReaderNavigatorTargetRefs.current[targetKey]
+      || (publicationReaderActiveNavigatorGroupId
+        ? publicationReaderNavigatorTargetRefs.current[`group:${publicationReaderActiveNavigatorGroupId}`]
+        : null)
     if (!targetNode) {
       return
     }
