@@ -1188,6 +1188,32 @@ def test_parse_grobid_tei_ignores_body_citation_lines_before_real_sections() -> 
     assert "doi:10.1136/example-2025-102836" not in combined_content
 
 
+def test_parse_grobid_tei_wraps_targetless_numeric_bibliography_refs() -> None:
+    tei_xml = """
+    <TEI xmlns="http://www.tei-c.org/ns/1.0">
+      <text>
+        <body>
+          <div>
+            <head>Introduction</head>
+            <p>
+              Despite its potential, the comparative diagnostic yield of CMR over TTE
+              <ref type="bibr">7</ref>
+              in patients with raised LVFP remains underexplored.
+            </p>
+          </div>
+        </body>
+      </text>
+    </TEI>
+    """
+    payload = publication_console_service._parse_grobid_tei_into_structured_paper(
+        tei_xml=tei_xml,
+        title="Test paper title",
+    )
+
+    intro = next(section for section in payload["sections"] if section["title"] == "Introduction")
+    assert "TTE [7] in patients" in intro["content"]
+
+
 def test_parse_grobid_tei_splits_headed_back_matter_blocks_without_duplicate_listorg_noise() -> None:
     tei_xml = """
     <TEI xmlns="http://www.tei-c.org/ns/1.0">
