@@ -190,7 +190,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v26"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v28"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -2457,8 +2457,16 @@ def _publication_paper_content_cleanup(value: str | None) -> str:
         clean,
     )
     clean = re.sub(r"(?is)\bhttps?://\S+", " ", clean)
-    clean = re.sub(r"(?is)\bbmj\.com/\s+\d{1,2}\s+[a-z]+\s+\d{4}\.", " ", clean)
-    clean = re.sub(r"(?is)\bbmj\.com/", " ", clean)
+    clean = re.sub(
+        r"(?is)\b[a-z0-9.-]+\.(?:com|org|net|edu|gov|co\.uk|ac\.uk)/\s+\d{1,2}\s+[a-z]+\s+\d{4}\.",
+        " ",
+        clean,
+    )
+    clean = re.sub(
+        r"(?is)\b[a-z0-9.-]+\.(?:com|org|net|edu|gov|co\.uk|ac\.uk)(?:/\S*)?",
+        " ",
+        clean,
+    )
     clean = re.sub(
         r"(?is)\bby guest on\s.{0,200}?\sdownloaded from(?:\s+\d{1,2}\s+[a-z]+\s+\d{4}\.?)?",
         " ",
@@ -3830,51 +3838,30 @@ def _publication_paper_section_role(
     return "section"
 
 
-def _publication_paper_journal_section_family(
-    *, title: str | None, journal: str | None
-) -> str | None:
-    clean_title = re.sub(
-        r"[\s_-]+",
-        " ",
-        _strip_publication_paper_heading_prefix(title).lower(),
-    ).strip()
-    clean_journal = re.sub(r"\s+", " ", str(journal or "").lower()).strip()
-    if not clean_title:
-        return None
-    if "bmj" in clean_journal:
-        if clean_title in {
-            "what is already known on this topic",
-            "what this study adds",
-            "how this study might affect research practice or policy",
-            "strengths and limitations of this study",
-        }:
-            return "bmj_summary_box"
-        if clean_title in {"patient and public involvement", "patient involvement"}:
-            return "bmj_house_style"
-    return None
-
-
-def _split_publication_paper_editorial_overflow(
+def _trim_publication_paper_summary_box_overflow(
     *,
-    title: str | None,
     canonical_kind: str | None,
-    journal: str | None,
+    section_role: str | None,
     content: str | None,
 ) -> tuple[str, str | None, str | None]:
     clean_content = _publication_paper_content_cleanup(content)
     if not clean_content:
         return "", None, None
-    normalized_kind = _normalize_publication_paper_section_kind(
-        canonical_kind or title
-    )
-    if normalized_kind not in PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS:
-        return clean_content, None, None
+    normalized_kind = _normalize_publication_paper_section_kind(canonical_kind)
     if (
-        _publication_paper_journal_section_family(title=title, journal=journal)
-        != "bmj_summary_box"
+        str(section_role or "").strip() != "summary_box"
+        and normalized_kind not in PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS
     ):
         return clean_content, None, None
-    sentences = _split_sentences(clean_content)
+    sentences = [
+        sentence
+        for sentence in _split_sentences(clean_content)
+        if sentence.strip()
+        and not re.fullmatch(
+            r"[\?\u2022\u2023\u25e6\u2043\u2219\u25aa\u25cf\u27a4\u2192\u21d2]+",
+            sentence.strip(),
+        )
+    ]
     if len(sentences) < 4:
         return clean_content, None, None
 
@@ -3889,10 +3876,19 @@ def _split_publication_paper_editorial_overflow(
         "the main objective",
         "the main aim",
     )
-    for index in range(2, len(sentences)):
+    for index in range(3, len(sentences)):
+        leading_sentences = sentences[:index]
         leading = _publication_paper_content_cleanup(" ".join(sentences[:index]))
         trailing = _publication_paper_content_cleanup(" ".join(sentences[index:]))
         if len(leading) < 120 or len(trailing) < 160:
+            continue
+        if any(
+            "{{cite:" in sentence
+            or re.search(r"\[\d+(?:\s*[-,;]\s*\d+)*\]", sentence)
+            for sentence in leading_sentences
+        ):
+            continue
+        if sum(1 for sentence in leading_sentences if len(sentence.strip()) <= 280) < min(3, len(leading_sentences)):
             continue
         trailing_hints = _publication_paper_major_map_hints_from_text(trailing)
         if not trailing_hints:
@@ -3900,9 +3896,10 @@ def _split_publication_paper_editorial_overflow(
         trailing_hint = trailing_hints[0]
         if trailing_hint not in PUBLICATION_PAPER_MAJOR_MAIN_SECTION_KINDS:
             continue
-        sentence_marker = sentences[index].strip().lower()
+        sentence_raw = sentences[index].strip()
+        sentence_marker = sentence_raw.lower()
         if not (
-            re.match(r"^[a-z]", sentence_marker)
+            re.match(r"^[a-z]", sentence_raw)
             or any(sentence_marker.startswith(prefix) for prefix in overflow_starters)
         ):
             continue
@@ -3936,8 +3933,6 @@ def _nest_publication_paper_summary_boxes_under_abstract(
         if str(section.get("parent_id") or "").strip():
             continue
         if str(section.get("section_role") or "").strip() != "summary_box":
-            continue
-        if str(section.get("journal_section_family") or "").strip() != "bmj_summary_box":
             continue
         section["parent_id"] = abstract_root_id
         section["level"] = max(
@@ -4049,10 +4044,19 @@ def _refine_publication_paper_sections(
         refined["canonical_map"] = canonical_map
         refined["section_type"] = _publication_paper_section_type(canonical_kind)
         refined["document_zone"] = document_zone
-        refined["journal_section_family"] = _publication_paper_journal_section_family(
-            title=clean_title,
-            journal=journal,
+        cleaned_content, _, _ = _trim_publication_paper_summary_box_overflow(
+            canonical_kind=canonical_kind,
+            section_role=_publication_paper_section_role(
+                canonical_map=canonical_map,
+                canonical_kind=canonical_kind,
+                document_zone=document_zone,
+                is_explicit_major_heading=is_explicit_major_heading,
+                parent_id=str(refined.get("parent_id") or "").strip() or None,
+                level=int(_safe_int(refined.get("level")) or 1),
+            ),
+            content=refined.get("content"),
         )
+        refined["content"] = cleaned_content
 
         if canonical_map in PUBLICATION_PAPER_MAJOR_MAIN_SECTION_KINDS:
             explicit_parent_id = explicit_main_section_id_by_map.get(canonical_map)
@@ -4090,6 +4094,12 @@ def _refine_publication_paper_sections(
             is_explicit_major_heading=is_explicit_major_heading,
             parent_id=str(refined.get("parent_id") or "").strip() or None,
             level=int(_safe_int(refined.get("level")) or 1),
+        )
+        refined["word_count"] = len(
+            re.findall(r"[A-Za-z0-9][A-Za-z0-9'/-]*", refined.get("content") or "")
+        )
+        refined["paragraph_count"] = len(
+            _publication_paper_section_paragraphs(refined.get("content"))
         )
         refined_sections.append(refined)
 
@@ -4152,7 +4162,6 @@ def _refine_publication_paper_sections(
                 "paragraph_count": len(_publication_paper_section_paragraphs(child_content)),
                 "document_zone": document_zone,
                 "section_role": "subsection",
-                "journal_section_family": refined.get("journal_section_family"),
                 "major_section_key": major_section_key,
             }
             refined_sections.append(child_section)
@@ -5364,15 +5373,7 @@ def _build_publication_paper_payload(
         journal = str(publication.get("journal") or "").strip() or None
         for item in parsed_section_items:
             serialized_section = dict(item)
-            if not str(serialized_section.get("journal_section_family") or "").strip():
-                serialized_section["journal_section_family"] = (
-                    _publication_paper_journal_section_family(
-                        title=serialized_section.get("title")
-                        or serialized_section.get("label_original")
-                        or serialized_section.get("raw_label"),
-                        journal=journal,
-                    )
-                )
+            serialized_section.pop("journal_section_family", None)
             sections.append(serialized_section)
     else:
         sections = (
@@ -5606,12 +5607,22 @@ def _is_publication_paper_boilerplate_block(value: str | None) -> bool:
         return True
     if "prepublication history for this paper is available online" in lowered:
         return True
-    if "downloaded from" in lowered and "bmj" in lowered:
+    if "downloaded from" in lowered:
         return True
     if (
-        "bmj open" in lowered
-        and "doi:" in lowered
+        "doi:" in lowered
+        and re.search(r"\b10\.\d{4,9}/[-._;()/:a-z0-9]+", lowered)
         and len(clean) < 220
+        and any(
+            marker in lowered
+            for marker in (
+                "open access",
+                "published",
+                "copyright",
+                "downloaded from",
+                "original research",
+            )
+        )
     ):
         return True
     if lowered in {"open access", "original research"}:
@@ -5622,7 +5633,10 @@ def _is_publication_paper_boilerplate_block(value: str | None) -> bool:
         return True
     if "to cite:" in lowered and len(clean) < 200:
         return True
-    if re.match(r"^(bmj|doi|http)\s", lowered) and len(clean) < 120:
+    if re.match(
+        r"^(?:doi|http|www\.|[a-z0-9.-]+\.(?:com|org|net|edu|gov|co\.uk|ac\.uk))\s",
+        lowered,
+    ) and len(clean) < 120:
         return True
     return False
 

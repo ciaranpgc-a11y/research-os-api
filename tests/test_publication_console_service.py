@@ -876,7 +876,7 @@ def test_refine_publication_paper_sections_does_not_attach_body_subsections_to_f
     assert statistical_analysis["parent_id"] is None
 
 
-def test_refine_publication_paper_sections_nests_bmj_summary_boxes_under_abstract() -> None:
+def test_refine_publication_paper_sections_nests_summary_boxes_under_abstract() -> None:
     refined_sections = publication_console_service._refine_publication_paper_sections(
         [
             {
@@ -937,13 +937,11 @@ def test_refine_publication_paper_sections_nests_bmj_summary_boxes_under_abstrac
 
     assert known_section["canonical_kind"] == "key_summary_known"
     assert known_section["section_role"] == "summary_box"
-    assert known_section["journal_section_family"] == "bmj_summary_box"
     assert known_section["parent_id"] == "paper-section-abstract"
     assert known_section["level"] >= 2
 
     assert adds_section["canonical_kind"] == "key_summary_adds"
     assert adds_section["section_role"] == "summary_box"
-    assert adds_section["journal_section_family"] == "bmj_summary_box"
     assert adds_section["parent_id"] == "paper-section-abstract"
     assert adds_section["level"] >= 2
 
@@ -975,6 +973,47 @@ def test_refine_publication_paper_sections_classifies_abbreviations_as_metadata(
     assert abbreviations["section_type"] == "metadata"
     assert abbreviations["major_section_key"] == "article_information"
     assert abbreviations["section_role"] == "metadata"
+
+
+def test_refine_publication_paper_sections_trims_summary_box_overflow() -> None:
+    contaminated_content = (
+        "⇒ Prospective design with data from a real-world clinical registry, which reflects current clinical practice. "
+        "⇒ The 'all-comers' approach for the registry enhances the generalisability of findings to patients who are referred "
+        "for multi-modality imaging due to diagnostic uncertainty. "
+        "⇒ A key limitation is that the cohort was derived from a single centre, which may introduce referral bias and limit applicability to other settings. "
+        "⇒ Left ventricular filling pressure was estimated using a non-invasive Cardiovascular Magnetic Resonance (CMR)-derived equation without validation "
+        "against the gold standard of invasive catheterisation. "
+        "⇒ The study population included only patients referred for both Transthoracic Echocardiography and CMR, potentially skewing the cohort towards "
+        "more diagnostically challenging cases. "
+        "assess myocardial scar and extracellular matrix expansion through techniques like late gadolinium enhancement (LGE) and T1 mapping. "
+        "{{cite:b3}} {{cite:b4}} {{cite:b5}} Despite its potential, the comparative diagnostic yield of CMR over TTE {{cite:b6}} in patients with raised LVFP remains underexplored."
+    )
+    refined_sections = publication_console_service._refine_publication_paper_sections(
+        [
+            {
+                "id": "paper-section-strengths",
+                "title": "Strengths And Limitations Of This Study",
+                "raw_label": "Strengths And Limitations Of This Study",
+                "label_original": "Strengths And Limitations Of This Study",
+                "label_normalized": "Strengths And Limitations Of This Study",
+                "canonical_kind": "highlights",
+                "kind": "highlights",
+                "content": contaminated_content,
+                "source": "grobid",
+                "order": 0,
+                "level": 1,
+                "parent_id": None,
+                "document_zone": "body",
+            },
+        ],
+        journal="BMJ Open",
+    )
+
+    strengths_section = refined_sections[0]
+    assert "Prospective design with data from a real-world clinical registry" in strengths_section["content"]
+    assert "The study population included only patients referred for both Transthoracic Echocardiography and CMR" in strengths_section["content"]
+    assert "assess myocardial scar and extracellular matrix expansion" not in strengths_section["content"]
+    assert "Despite its potential" not in strengths_section["content"]
 
 
 def test_parse_grobid_tei_merges_headingless_body_continuation_into_current_major_section() -> None:
