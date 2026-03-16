@@ -5204,6 +5204,67 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     () => selectedPaperFigures.filter(publicationReaderAssetHasSurfaceContent),
     [selectedPaperFigures],
   )
+  const publicationReaderFigureLightboxIndex = useMemo(
+    () => (
+      publicationReaderFigureLightboxAsset
+        ? selectedPaperRenderableFigures.findIndex((asset) => asset.id === publicationReaderFigureLightboxAsset.id)
+        : -1
+    ),
+    [publicationReaderFigureLightboxAsset, selectedPaperRenderableFigures],
+  )
+  const publicationReaderHasPreviousFigure = publicationReaderFigureLightboxIndex > 0
+  const publicationReaderHasNextFigure = (
+    publicationReaderFigureLightboxIndex >= 0
+    && publicationReaderFigureLightboxIndex < selectedPaperRenderableFigures.length - 1
+  )
+  const goToPublicationReaderAdjacentFigure = useCallback((direction: -1 | 1) => {
+    if (publicationReaderFigureLightboxIndex < 0) {
+      return
+    }
+    const nextAsset = selectedPaperRenderableFigures[publicationReaderFigureLightboxIndex + direction]
+    if (!nextAsset) {
+      return
+    }
+    setPublicationReaderFigureLightboxAsset(nextAsset)
+    setPublicationReaderFigureLightboxFitToViewport(true)
+  }, [publicationReaderFigureLightboxIndex, selectedPaperRenderableFigures])
+  useEffect(() => {
+    if (!publicationReaderFigureLightboxAsset) {
+      return undefined
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (
+        target instanceof HTMLElement
+        && (
+          target.tagName === 'INPUT'
+          || target.tagName === 'TEXTAREA'
+          || target.isContentEditable
+        )
+      ) {
+        return
+      }
+      if (event.key === 'Escape') {
+        closePublicationReaderFigureLightbox()
+        return
+      }
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        goToPublicationReaderAdjacentFigure(-1)
+        return
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        goToPublicationReaderAdjacentFigure(1)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [
+    closePublicationReaderFigureLightbox,
+    goToPublicationReaderAdjacentFigure,
+    publicationReaderFigureLightboxAsset,
+  ])
   const selectedPaperRenderableTables = useMemo(
     () => selectedPaperTables.filter(publicationReaderAssetHasSurfaceContent),
     [selectedPaperTables],
@@ -11696,6 +11757,37 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {selectedPaperRenderableFigures.length > 1 ? (
+                  <p className="mr-1 text-xs font-medium uppercase tracking-[0.18em] text-white/55">
+                    Figure {publicationReaderFigureLightboxIndex + 1} of {selectedPaperRenderableFigures.length}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  aria-label="Previous figure"
+                  disabled={!publicationReaderHasPreviousFigure}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/16 bg-white/6 text-white transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--tone-neutral-950))]"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    goToPublicationReaderAdjacentFigure(-1)
+                  }}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next figure"
+                  disabled={!publicationReaderHasNextFigure}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/16 bg-white/6 text-white transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--tone-neutral-950))]"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    goToPublicationReaderAdjacentFigure(1)
+                  }}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
                 <button
                   type="button"
                   className="inline-flex h-9 shrink-0 items-center rounded-xl border border-white/16 bg-white/6 px-3.5 text-sm font-medium text-white transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-white/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--tone-neutral-950))]"
@@ -11705,7 +11797,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     closePublicationReaderFigureLightbox()
                   }}
                 >
-                  <ChevronLeft className="mr-1.5 h-4 w-4" />
                   Back to reader
                 </button>
               </div>
