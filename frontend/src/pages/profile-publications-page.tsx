@@ -8337,12 +8337,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     )}
                     loading="lazy"
                   />
-                  <p className={cn(
-                    'mt-2 text-[hsl(var(--tone-neutral-500))]',
-                    useReaderAssetCards ? 'text-[0.74rem]' : 'text-[0.72rem]',
-                  )}>
-                    Open full-size figure
-                  </p>
                 </button>
               </div>
             ) : null}
@@ -8355,18 +8349,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
                   dangerouslySetInnerHTML={{ __html: asset.structured_html }}
                 />
-                {asset.asset_kind === 'table' ? (
-                  <button
-                    type="button"
-                    className="mt-3 text-[0.75rem] font-medium text-[hsl(var(--tone-accent-700))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))] hover:underline"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      openPublicationReaderTableLightbox(asset)
-                    }}
-                  >
-                    Open full-size table
-                  </button>
-                ) : null}
               </div>
             ) : null}
             {!asset.image_data && !asset.structured_html && asset.page_start != null ? (
