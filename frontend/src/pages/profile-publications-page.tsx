@@ -162,6 +162,11 @@ type PublicationReaderReferencePopoverState = {
   left: number
   interaction: 'hover' | 'pinned'
 }
+type PublicationReaderInspectorReferenceState = {
+  tokenLabel: string
+  referenceIds: string[]
+  activeReferenceId: string
+}
 const PUBLICATION_READER_REFERENCES_TARGET_ID = '__references__'
 type PublicationReaderNavigatorTarget =
   | { kind: 'section'; id: string }
@@ -3573,6 +3578,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationReaderFigureLightboxFitToViewport, setPublicationReaderFigureLightboxFitToViewport] = useState(true)
   const [publicationReaderTableLightboxAsset, setPublicationReaderTableLightboxAsset] = useState<PublicationPaperAssetPayload | null>(null)
   const [publicationReaderReferencePopover, setPublicationReaderReferencePopover] = useState<PublicationReaderReferencePopoverState | null>(null)
+  const [publicationReaderInspectorReference, setPublicationReaderInspectorReference] = useState<PublicationReaderInspectorReferenceState | null>(null)
   const [filesDragOver, setFilesDragOver] = useState(false)
   const [publicationLibraryVisible, setPublicationLibraryVisible] = useState(true)
   const [publicationLibraryFiltersVisible, setPublicationLibraryFiltersVisible] = useState(false)
@@ -3703,22 +3709,45 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       current?.interaction === 'hover' ? null : current
     ))
   }, [])
-  const openPublicationReaderReferencePopover = useCallback((
-    event: ReactMouseEvent<HTMLElement>,
+  const openPublicationReaderInspectorReference = useCallback((
     tokenLabel: string,
     references: PublicationReaderReferencePayload[],
   ) => {
-    const nextState = resolvePublicationReaderReferencePopoverState(
-      event.currentTarget,
-      tokenLabel,
-      references,
-      'pinned',
-    )
-    if (!nextState) {
+    const uniqueReferenceIds = references
+      .map((reference) => reference.id)
+      .filter((referenceId, index, allReferenceIds) => (
+        referenceId && allReferenceIds.indexOf(referenceId) === index
+      ))
+    if (uniqueReferenceIds.length === 0) {
       return
     }
-    setPublicationReaderReferencePopover(nextState)
-  }, [resolvePublicationReaderReferencePopoverState])
+    setPublicationReaderReferencePopover(null)
+    setPublicationReaderInspectorOpen(true)
+    setPublicationReaderInspectorReference((current) => {
+      const nextActiveReferenceId = (
+        current
+        && current.tokenLabel === tokenLabel
+        && uniqueReferenceIds.includes(current.activeReferenceId)
+      )
+        ? current.activeReferenceId
+        : uniqueReferenceIds[0]
+      return {
+        tokenLabel,
+        referenceIds: uniqueReferenceIds,
+        activeReferenceId: nextActiveReferenceId,
+      }
+    })
+  }, [])
+  const setPublicationReaderInspectorActiveReferenceId = useCallback((referenceId: string) => {
+    setPublicationReaderInspectorReference((current) => (
+      current && current.referenceIds.includes(referenceId)
+        ? {
+            ...current,
+            activeReferenceId: referenceId,
+          }
+        : current
+    ))
+  }, [])
   const buildPublicationReaderReferenceTriggerProps = useCallback((
     tokenLabel: string,
     references: PublicationReaderReferencePayload[],
@@ -3732,11 +3761,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     },
     onBlur: closePublicationReaderReferencePreview,
     onClick: (event: ReactMouseEvent<HTMLElement>) => {
-      openPublicationReaderReferencePopover(event, tokenLabel, references)
+      event.preventDefault()
+      openPublicationReaderInspectorReference(tokenLabel, references)
     },
   }), [
     closePublicationReaderReferencePreview,
-    openPublicationReaderReferencePopover,
+    openPublicationReaderInspectorReference,
     previewPublicationReaderReferencePopover,
   ])
   const resolvePublicationTableAvailableWidth = useCallback(() => {
@@ -3786,6 +3816,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       closePublicationReaderReferencePopover()
     }
   }, [closePublicationReaderReferencePopover, publicationReaderOpen, publicationReaderReferencePopover])
+  useEffect(() => {
+    if (!publicationReaderOpen) {
+      setPublicationReaderInspectorReference(null)
+    }
+  }, [publicationReaderOpen])
+  useEffect(() => {
+    setPublicationReaderInspectorReference(null)
+  }, [selectedWorkId])
 
   const loadData = useCallback(async (
     sessionToken: string,
@@ -5442,6 +5480,51 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     return next
   }, [selectedPaperReferences])
+  const selectedPublicationReaderInspectorReferences = useMemo(
+    () => (publicationReaderInspectorReference?.referenceIds || [])
+      .map((referenceId) => selectedPaperReferencesById.get(referenceId) || null)
+      .filter((reference): reference is PublicationReaderReferencePayload => Boolean(reference)),
+    [publicationReaderInspectorReference?.referenceIds, selectedPaperReferencesById],
+  )
+  const selectedPublicationReaderInspectorActiveReference = useMemo(() => {
+    if (selectedPublicationReaderInspectorReferences.length === 0) {
+      return null
+    }
+    const activeReferenceId = publicationReaderInspectorReference?.activeReferenceId || null
+    return selectedPublicationReaderInspectorReferences.find((reference) => reference.id === activeReferenceId)
+      || selectedPublicationReaderInspectorReferences[0]
+      || null
+  }, [publicationReaderInspectorReference?.activeReferenceId, selectedPublicationReaderInspectorReferences])
+  const selectedPublicationReaderInspectorActiveReferenceAuthorsText = useMemo(
+    () => formatPublicationReaderReferenceAuthors(
+      selectedPublicationReaderInspectorActiveReference?.authors,
+      {
+        authorsTruncated: selectedPublicationReaderInspectorActiveReference?.authorsTruncated,
+        maxVisibleAuthors: 999,
+      },
+    ),
+    [selectedPublicationReaderInspectorActiveReference],
+  )
+  const selectedPublicationReaderInspectorActiveReferenceTitleText = useMemo(
+    () => trimTrailingReferencePunctuation(selectedPublicationReaderInspectorActiveReference?.title),
+    [selectedPublicationReaderInspectorActiveReference?.title],
+  )
+  const selectedPublicationReaderInspectorActiveReferenceSourceLine = useMemo(
+    () => (
+      selectedPublicationReaderInspectorActiveReference
+        ? formatPublicationReaderReferenceSourceLine(selectedPublicationReaderInspectorActiveReference)
+        : ''
+    ),
+    [selectedPublicationReaderInspectorActiveReference],
+  )
+  const selectedPublicationReaderInspectorActiveReferenceFallbackText = useMemo(
+    () => (
+      selectedPublicationReaderInspectorActiveReference
+        ? formatPublicationReaderReferenceListText(selectedPublicationReaderInspectorActiveReference)
+        : ''
+    ),
+    [selectedPublicationReaderInspectorActiveReference],
+  )
   const selectedPaperAssetEnrichmentStatus = String(
     (selectedPaperProvenance as Record<string, unknown> | null)?.asset_enrichment_status || '',
   ).trim().toUpperCase()
@@ -8446,7 +8529,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   key={`${keyPrefix}-cite-${partIndex}`}
                   type="button"
                   className={referenceChipClassName}
-                  onClick={(event) => openPublicationReaderReferencePopover(event, displayLabel, [reference])}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    openPublicationReaderInspectorReference(displayLabel, [reference])
+                  }}
                 >
                   {displayLabel}
                 </button>
@@ -8470,7 +8556,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               key={`${keyPrefix}-token-${partIndex}`}
               type="button"
               className={referenceChipClassName}
-              onClick={(event) => openPublicationReaderReferencePopover(event, displayTokenLabel, references)}
+              onClick={(event) => {
+                event.preventDefault()
+                openPublicationReaderInspectorReference(displayTokenLabel, references)
+              }}
             >
               {displayTokenLabel}
             </button>
@@ -11301,8 +11390,125 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <ChevronRight className="h-4 w-4" />
                               </button>
                             </div>
-                            {/*
-                            <div className="space-y-5">
+                            <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+                              <section className="rounded-[1.15rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-4 py-4">
+                                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                                  Tools
+                                </p>
+                                <p className="mt-2 text-[0.88rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                  Reader tools will live here.
+                                </p>
+                              </section>
+
+                              <section className="rounded-[1.15rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-4 py-4">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                                      Reference
+                                    </p>
+                                    {publicationReaderInspectorReference?.tokenLabel ? (
+                                      <p className="mt-1 text-[0.82rem] font-medium text-[hsl(var(--tone-neutral-700))]">
+                                        Citation {publicationReaderInspectorReference.tokenLabel}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                </div>
+
+                                {selectedPublicationReaderInspectorActiveReference ? (
+                                  <div className="mt-4 space-y-4">
+                                    {selectedPublicationReaderInspectorReferences.length > 1 ? (
+                                      <div className="space-y-2">
+                                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                                          Reference in selection
+                                        </p>
+                                        <SelectPrimitive
+                                          value={selectedPublicationReaderInspectorActiveReference.id}
+                                          onValueChange={setPublicationReaderInspectorActiveReferenceId}
+                                        >
+                                          <SelectTrigger className={cn('h-10 w-full rounded-[0.95rem] border-[hsl(var(--tone-neutral-250))] bg-white text-left text-sm', HOUSE_INPUT_CLASS)}>
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent className="max-w-[24rem]">
+                                            {selectedPublicationReaderInspectorReferences.map((reference, index) => (
+                                              <SelectItem key={reference.id} value={reference.id}>
+                                                {formatPublicationReaderReferenceDisplayLabel(reference.label, index)} {trimTrailingReferencePunctuation(reference.title) || formatPublicationReaderReferenceListText(reference)}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </SelectPrimitive>
+                                      </div>
+                                    ) : null}
+
+                                    <div className="space-y-2.5">
+                                      <p className="text-[0.78rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                                        {formatPublicationReaderReferenceDisplayLabel(
+                                          selectedPublicationReaderInspectorActiveReference.label,
+                                          0,
+                                        )}
+                                      </p>
+                                      {selectedPublicationReaderInspectorActiveReferenceAuthorsText ? (
+                                        <p className="text-[0.9rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
+                                          {selectedPublicationReaderInspectorActiveReferenceAuthorsText}
+                                        </p>
+                                      ) : null}
+                                      {selectedPublicationReaderInspectorActiveReferenceTitleText ? (
+                                        <p className="text-[1rem] font-medium leading-[1.65] text-[hsl(var(--tone-neutral-900))]">
+                                          {selectedPublicationReaderInspectorActiveReferenceTitleText}.
+                                        </p>
+                                      ) : null}
+                                      {selectedPublicationReaderInspectorActiveReferenceSourceLine ? (
+                                        <p className="text-[0.84rem] leading-[1.7] text-[hsl(var(--tone-neutral-500))]">
+                                          {selectedPublicationReaderInspectorActiveReferenceSourceLine}.
+                                        </p>
+                                      ) : null}
+                                      {!selectedPublicationReaderInspectorActiveReferenceAuthorsText && !selectedPublicationReaderInspectorActiveReferenceTitleText && !selectedPublicationReaderInspectorActiveReferenceSourceLine ? (
+                                        <p className="text-[0.9rem] leading-[1.8] text-[hsl(var(--tone-neutral-700))]">
+                                          {selectedPublicationReaderInspectorActiveReferenceFallbackText}
+                                        </p>
+                                      ) : null}
+                                      {selectedPublicationReaderInspectorActiveReference.doi || selectedPublicationReaderInspectorActiveReference.pmid || selectedPublicationReaderInspectorActiveReference.pmcid ? (
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
+                                          {selectedPublicationReaderInspectorActiveReference.doi ? (
+                                            <a
+                                              href={`https://doi.org/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.doi)}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                            >
+                                              DOI: {selectedPublicationReaderInspectorActiveReference.doi}
+                                            </a>
+                                          ) : null}
+                                          {selectedPublicationReaderInspectorActiveReference.pmid ? (
+                                            <a
+                                              href={`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.pmid)}/`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                            >
+                                              PMID: {selectedPublicationReaderInspectorActiveReference.pmid}
+                                            </a>
+                                          ) : null}
+                                          {selectedPublicationReaderInspectorActiveReference.pmcid ? (
+                                            <a
+                                              href={`https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.pmcid)}/`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                            >
+                                              PMCID: {selectedPublicationReaderInspectorActiveReference.pmcid}
+                                            </a>
+                                          ) : null}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="mt-4 text-[0.9rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                    Click a citation in the manuscript to inspect it here.
+                                  </p>
+                                )}
+                              </section>
+                              {/*
                           <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
                             <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
                               Document map
@@ -11506,8 +11712,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </div>
                             </details>
                           </section>
+                              */}
                             </div>
-                            */}
                           </div>
                         ) : (
                           <div className="flex h-full items-start justify-center p-2 pt-4">
