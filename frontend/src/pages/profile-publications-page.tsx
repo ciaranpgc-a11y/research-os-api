@@ -291,14 +291,27 @@ function publicationReaderHexToRgba(hex: string | null, alpha: number): string |
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`
 }
 const PUBLICATION_STRUCTURED_TABLE_CLASS_NAME = [
-  'publication-structured-table overflow-x-auto overflow-y-visible text-[0.84rem] leading-relaxed',
-  '[&_table]:min-w-full [&_table]:border-collapse [&_table]:table-auto',
-  '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-200))] [&_th]:px-3.5 [&_th]:py-2.5 [&_th]:text-left [&_th]:align-top [&_th]:text-[0.68rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.08em] [&_th]:text-[hsl(var(--tone-neutral-500))]',
-  '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-200))] [&_td]:px-3.5 [&_td]:py-2.5 [&_td]:align-top [&_td]:text-[0.83rem] [&_td]:leading-relaxed [&_td]:text-[hsl(var(--tone-neutral-700))]',
+  'publication-structured-table overflow-x-hidden overflow-y-visible text-[0.84rem] leading-relaxed',
+  '[&_button]:hidden [&_select]:hidden [&_option]:hidden',
+  '[&_table]:w-full [&_table]:max-w-full [&_table]:border-collapse [&_table]:table-fixed',
+  '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-200))] [&_th]:px-3.5 [&_th]:py-2.5 [&_th]:text-left [&_th]:align-top [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-[0.68rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.08em] [&_th]:text-[hsl(var(--tone-neutral-500))]',
+  '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-200))] [&_td]:px-3.5 [&_td]:py-2.5 [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:text-[0.83rem] [&_td]:leading-relaxed [&_td]:text-[hsl(var(--tone-neutral-700))]',
   '[&_tbody_tr:nth-child(even)]:bg-[hsl(var(--tone-neutral-50)/0.55)]',
   '[&_caption]:mb-2 [&_caption]:text-left [&_caption]:text-[0.75rem] [&_caption]:font-medium [&_caption]:text-[hsl(var(--tone-neutral-500))]',
   '[&_.publication-structured-table-notes]:mt-3 [&_.publication-structured-table-notes]:space-y-2 [&_.publication-structured-table-notes]:rounded-[0.9rem] [&_.publication-structured-table-notes]:border [&_.publication-structured-table-notes]:border-[hsl(var(--tone-neutral-200))] [&_.publication-structured-table-notes]:bg-[hsl(var(--tone-neutral-50)/0.7)] [&_.publication-structured-table-notes]:px-3 [&_.publication-structured-table-notes]:py-2.5',
   '[&_.publication-structured-table-notes_p]:m-0 [&_.publication-structured-table-notes_p]:text-[0.75rem] [&_.publication-structured-table-notes_p]:leading-relaxed [&_.publication-structured-table-notes_p]:text-[hsl(var(--tone-neutral-600))]',
+].join(' ')
+
+const PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME = [
+  'publication-structured-table-lightbox overflow-auto text-[0.92rem] leading-relaxed',
+  '[&_button]:hidden [&_select]:hidden [&_option]:hidden',
+  '[&_table]:min-w-[64rem] [&_table]:border-collapse [&_table]:table-auto',
+  '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-200))] [&_th]:bg-[hsl(var(--tone-neutral-50))] [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:align-top [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-[0.72rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.08em] [&_th]:text-[hsl(var(--tone-neutral-500))]',
+  '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-200))] [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:text-[0.9rem] [&_td]:leading-relaxed [&_td]:text-[hsl(var(--tone-neutral-700))]',
+  '[&_tbody_tr:nth-child(even)]:bg-[hsl(var(--tone-neutral-50)/0.55)]',
+  '[&_caption]:mb-3 [&_caption]:text-left [&_caption]:text-[0.78rem] [&_caption]:font-medium [&_caption]:text-[hsl(var(--tone-neutral-500))]',
+  '[&_.publication-structured-table-notes]:mt-4 [&_.publication-structured-table-notes]:space-y-2 [&_.publication-structured-table-notes]:rounded-[0.9rem] [&_.publication-structured-table-notes]:border [&_.publication-structured-table-notes]:border-[hsl(var(--tone-neutral-200))] [&_.publication-structured-table-notes]:bg-[hsl(var(--tone-neutral-50)/0.7)] [&_.publication-structured-table-notes]:px-4 [&_.publication-structured-table-notes]:py-3',
+  '[&_.publication-structured-table-notes_p]:m-0 [&_.publication-structured-table-notes_p]:text-[0.82rem] [&_.publication-structured-table-notes_p]:leading-relaxed [&_.publication-structured-table-notes_p]:text-[hsl(var(--tone-neutral-600))]',
 ].join(' ')
 
 function formatPublicationReaderReferenceDisplayLabel(
@@ -3518,6 +3531,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationReaderInspectorOpen, setPublicationReaderInspectorOpen] = useState(false)
   const [publicationReaderFigureLightboxAsset, setPublicationReaderFigureLightboxAsset] = useState<PublicationPaperAssetPayload | null>(null)
   const [publicationReaderFigureLightboxFitToViewport, setPublicationReaderFigureLightboxFitToViewport] = useState(true)
+  const [publicationReaderTableLightboxAsset, setPublicationReaderTableLightboxAsset] = useState<PublicationPaperAssetPayload | null>(null)
   const [publicationReaderReferencePopover, setPublicationReaderReferencePopover] = useState<PublicationReaderReferencePopoverState | null>(null)
   const [filesDragOver, setFilesDragOver] = useState(false)
   const [publicationLibraryVisible, setPublicationLibraryVisible] = useState(true)
@@ -3592,6 +3606,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const closePublicationReaderFigureLightbox = useCallback(() => {
     setPublicationReaderFigureLightboxAsset(null)
     setPublicationReaderFigureLightboxFitToViewport(true)
+  }, [])
+  const openPublicationReaderTableLightbox = useCallback((asset: PublicationPaperAssetPayload) => {
+    if (!String(asset.structured_html || '').trim()) {
+      return
+    }
+    setPublicationReaderTableLightboxAsset(asset)
+  }, [])
+  const closePublicationReaderTableLightbox = useCallback(() => {
+    setPublicationReaderTableLightboxAsset(null)
   }, [])
   const closePublicationReaderReferencePopover = useCallback(() => {
     setPublicationReaderReferencePopover(null)
@@ -3705,6 +3728,24 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       closePublicationReaderFigureLightbox()
     }
   }, [closePublicationReaderFigureLightbox, publicationReaderFigureLightboxAsset, publicationReaderOpen])
+  useEffect(() => {
+    if (!publicationReaderTableLightboxAsset) {
+      return undefined
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closePublicationReaderTableLightbox()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [closePublicationReaderTableLightbox, publicationReaderTableLightboxAsset])
+
+  useEffect(() => {
+    if (!publicationReaderOpen && publicationReaderTableLightboxAsset) {
+      closePublicationReaderTableLightbox()
+    }
+  }, [closePublicationReaderTableLightbox, publicationReaderOpen, publicationReaderTableLightboxAsset])
   useEffect(() => {
     if (!publicationReaderReferencePopover) {
       return undefined
@@ -7121,6 +7162,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const onOpenPublicationReaderAsset = (
     asset: PublicationPaperAssetPayload,
   ) => {
+    if (asset.asset_kind === 'table' && String(asset.structured_html || '').trim()) {
+      openPublicationReaderTableLightbox(asset)
+      return
+    }
     const matchedFile = asset.file_id
       ? selectedFiles.find((file) => file.id === asset.file_id) || null
       : null
@@ -8067,7 +8112,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       <div className={cn(useReaderAssetCards ? 'space-y-5' : 'space-y-3')}>
         {items.map((asset) => (
           (() => {
-            const renderSourceAsChip = useReaderAssetCards || asset.asset_kind === 'table'
+            const hideAssetHeaderTags = asset.asset_kind === 'table' || asset.asset_kind === 'figure'
+            const renderSourceAsChip = !hideAssetHeaderTags && (useReaderAssetCards || asset.asset_kind === 'table')
             const assetSourceLabel = publicationReaderAssetSourceLabel(asset)
             const assetSourceChipLabel = publicationReaderAssetSourceChipLabel(asset)
             return (
@@ -8104,7 +8150,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 >
                   {asset.title || asset.file_name}
                 </p>
-                {!renderSourceAsChip ? (
+                {!renderSourceAsChip && !hideAssetHeaderTags ? (
                   <p className="mt-1 text-[0.72rem] uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
                     {assetSourceLabel}
                   </p>
@@ -8137,7 +8183,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     {assetSourceChipLabel}
                   </span>
                 ) : null}
-                {asset.classification_label ? (
+                {!hideAssetHeaderTags && asset.classification_label ? (
                   <Badge
                     size="sm"
                     variant="outline"
@@ -8192,6 +8238,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
                   dangerouslySetInnerHTML={{ __html: asset.structured_html }}
                 />
+                {asset.asset_kind === 'table' ? (
+                  <button
+                    type="button"
+                    className="mt-3 text-[0.75rem] font-medium text-[hsl(var(--tone-accent-700))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))] hover:underline"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      openPublicationReaderTableLightbox(asset)
+                    }}
+                  >
+                    Open full-size table
+                  </button>
+                ) : null}
               </div>
             ) : null}
             {!asset.image_data && !asset.structured_html && asset.page_start != null ? (
@@ -8672,6 +8730,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
                       dangerouslySetInnerHTML={{ __html: inlineAsset.structured_html }}
                     />
+                    {inlineAsset.asset_kind === 'table' ? (
+                      <button
+                        type="button"
+                        className="mt-3 text-[0.75rem] font-medium text-[hsl(var(--tone-accent-700))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))] hover:underline"
+                        onClick={() => openPublicationReaderTableLightbox(inlineAsset)}
+                      >
+                        Open full-size table
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
                 {!inlineAsset.image_data && !inlineAsset.structured_html && inlineAsset.page_start != null ? (
@@ -11602,6 +11669,68 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               <div className="border-t border-white/10 px-5 py-4">
                 <p className="text-sm leading-relaxed text-white/72">
                   {publicationReaderFigureLightboxAsset.caption}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+      {publicationReaderTableLightboxAsset && typeof document !== 'undefined' ? createPortal(
+        <div
+          className="fixed inset-0 z-[150] bg-[hsl(var(--tone-neutral-900)/0.48)] backdrop-blur-sm"
+          onClick={closePublicationReaderTableLightbox}
+          role="presentation"
+        >
+          <div
+            className="absolute inset-4 flex min-h-0 flex-col overflow-hidden rounded-[1.5rem] border border-[hsl(var(--tone-neutral-200))] bg-white text-[hsl(var(--tone-neutral-900))] shadow-[0_30px_80px_hsl(var(--tone-neutral-950)/0.24)]"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={publicationReaderTableLightboxAsset.title || publicationReaderTableLightboxAsset.file_name || 'Full-size table'}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-[hsl(var(--tone-neutral-200))] px-6 py-4">
+              <div className="min-w-0">
+                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                  Table preview
+                </p>
+                <h2 className="mt-1 text-lg font-semibold text-[hsl(var(--tone-neutral-950))]">
+                  {publicationReaderTableLightboxAsset.title || publicationReaderTableLightboxAsset.file_name || 'Table'}
+                </h2>
+                {formatPublicationPaperSectionPageLabel({
+                  page_start: publicationReaderTableLightboxAsset.page_start,
+                  page_end: publicationReaderTableLightboxAsset.page_end,
+                }) ? (
+                  <p className="mt-1 text-sm text-[hsl(var(--tone-neutral-500))]">
+                    {formatPublicationPaperSectionPageLabel({
+                      page_start: publicationReaderTableLightboxAsset.page_start,
+                      page_end: publicationReaderTableLightboxAsset.page_end,
+                    })}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-800))] hover:bg-[hsl(var(--tone-neutral-50))]"
+                  onClick={closePublicationReaderTableLightbox}
+                >
+                  <X className="mr-1.5 h-4 w-4" />
+                  Close
+                </Button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto bg-[hsl(var(--tone-neutral-50))] px-6 py-5">
+              <div
+                className={PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME}
+                dangerouslySetInnerHTML={{ __html: publicationReaderTableLightboxAsset.structured_html || '' }}
+              />
+            </div>
+            {publicationReaderTableLightboxAsset.caption ? (
+              <div className="border-t border-[hsl(var(--tone-neutral-200))] px-6 py-4">
+                <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                  {publicationReaderTableLightboxAsset.caption}
                 </p>
               </div>
             ) : null}
