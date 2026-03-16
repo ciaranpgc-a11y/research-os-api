@@ -3592,6 +3592,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationReaderSectionRefs = useRef<Record<string, HTMLElement | null>>({})
   const publicationReaderReferencesRef = useRef<HTMLElement | null>(null)
   const publicationReaderScrollViewportRef = useRef<HTMLElement | null>(null)
+  const publicationReaderTableLightboxViewportRef = useRef<HTMLDivElement | null>(null)
   const publicationReaderNavigatorViewportRef = useRef<HTMLDivElement | null>(null)
   const publicationReaderNavigatorTargetRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const publicationReaderProgrammaticTargetIdRef = useRef<string | null>(null)
@@ -3728,24 +3729,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       closePublicationReaderFigureLightbox()
     }
   }, [closePublicationReaderFigureLightbox, publicationReaderFigureLightboxAsset, publicationReaderOpen])
-  useEffect(() => {
-    if (!publicationReaderTableLightboxAsset) {
-      return undefined
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closePublicationReaderTableLightbox()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [closePublicationReaderTableLightbox, publicationReaderTableLightboxAsset])
-
-  useEffect(() => {
-    if (!publicationReaderOpen && publicationReaderTableLightboxAsset) {
-      closePublicationReaderTableLightbox()
-    }
-  }, [closePublicationReaderTableLightbox, publicationReaderOpen, publicationReaderTableLightboxAsset])
   useEffect(() => {
     if (!publicationReaderReferencePopover) {
       return undefined
@@ -5225,6 +5208,79 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     () => selectedPaperTables.filter(publicationReaderAssetHasSurfaceContent),
     [selectedPaperTables],
   )
+  const publicationReaderTableLightboxIndex = useMemo(
+    () => (
+      publicationReaderTableLightboxAsset
+        ? selectedPaperRenderableTables.findIndex((asset) => asset.id === publicationReaderTableLightboxAsset.id)
+        : -1
+    ),
+    [publicationReaderTableLightboxAsset, selectedPaperRenderableTables],
+  )
+  const publicationReaderHasPreviousTable = publicationReaderTableLightboxIndex > 0
+  const publicationReaderHasNextTable = (
+    publicationReaderTableLightboxIndex >= 0
+    && publicationReaderTableLightboxIndex < selectedPaperRenderableTables.length - 1
+  )
+  const goToPublicationReaderAdjacentTable = useCallback((direction: -1 | 1) => {
+    if (publicationReaderTableLightboxIndex < 0) {
+      return
+    }
+    const nextAsset = selectedPaperRenderableTables[publicationReaderTableLightboxIndex + direction]
+    if (!nextAsset) {
+      return
+    }
+    setPublicationReaderTableLightboxAsset(nextAsset)
+  }, [publicationReaderTableLightboxIndex, selectedPaperRenderableTables])
+  useEffect(() => {
+    if (!publicationReaderTableLightboxAsset) {
+      return undefined
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (
+        target instanceof HTMLElement
+        && (
+          target.tagName === 'INPUT'
+          || target.tagName === 'TEXTAREA'
+          || target.isContentEditable
+        )
+      ) {
+        return
+      }
+      if (event.key === 'Escape') {
+        closePublicationReaderTableLightbox()
+        return
+      }
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        goToPublicationReaderAdjacentTable(-1)
+        return
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        goToPublicationReaderAdjacentTable(1)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [
+    closePublicationReaderTableLightbox,
+    goToPublicationReaderAdjacentTable,
+    publicationReaderTableLightboxAsset,
+  ])
+  useEffect(() => {
+    if (!publicationReaderOpen && publicationReaderTableLightboxAsset) {
+      closePublicationReaderTableLightbox()
+    }
+  }, [closePublicationReaderTableLightbox, publicationReaderOpen, publicationReaderTableLightboxAsset])
+  useEffect(() => {
+    const viewport = publicationReaderTableLightboxViewportRef.current
+    if (!viewport || !publicationReaderTableLightboxAsset) {
+      return
+    }
+    viewport.scrollTop = 0
+    viewport.scrollLeft = 0
+  }, [publicationReaderTableLightboxAsset])
   const selectedPaperReferences = useMemo<PublicationReaderReferencePayload[]>(
     () => ((selectedPaperModel?.references || []) as Array<Record<string, unknown>>)
       .map((reference, index) => ({
@@ -11711,21 +11767,56 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     </p>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  className="inline-flex h-9 shrink-0 items-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white px-3.5 text-sm font-medium text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    closePublicationReaderTableLightbox()
-                  }}
-                >
-                  <ChevronLeft className="mr-1.5 h-4 w-4" />
-                  Back to reader
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  {selectedPaperRenderableTables.length > 1 ? (
+                    <p className="mr-1 text-xs font-medium uppercase tracking-[0.18em] text-[hsl(var(--tone-neutral-500))]">
+                      Table {publicationReaderTableLightboxIndex + 1} of {selectedPaperRenderableTables.length}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label="Previous table"
+                    disabled={!publicationReaderHasPreviousTable}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      goToPublicationReaderAdjacentTable(-1)
+                    }}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next table"
+                    disabled={!publicationReaderHasNextTable}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      goToPublicationReaderAdjacentTable(1)
+                    }}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-9 shrink-0 items-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white px-3.5 text-sm font-medium text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      closePublicationReaderTableLightbox()
+                    }}
+                  >
+                    Back to reader
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto bg-[hsl(var(--tone-neutral-50))] px-6 py-5">
+            <div
+              ref={publicationReaderTableLightboxViewportRef}
+              className="min-h-0 flex-1 overflow-auto bg-[hsl(var(--tone-neutral-50))] px-6 py-5"
+            >
               <div
                 className={PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME}
                 dangerouslySetInnerHTML={{ __html: publicationReaderTableLightboxAsset.structured_html || '' }}
