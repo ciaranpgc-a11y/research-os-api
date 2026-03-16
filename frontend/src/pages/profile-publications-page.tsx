@@ -440,7 +440,13 @@ function formatPublicationReaderReferenceAuthors(
   }
   const maxVisibleAuthors = Math.max(1, options?.maxVisibleAuthors ?? 3)
   const shouldUseEtAl = resolvedAuthors.length > maxVisibleAuthors || Boolean(options?.authorsTruncated)
-  if (!options?.concise || !shouldUseEtAl) {
+  if (!options?.concise) {
+    if (Boolean(options?.authorsTruncated)) {
+      return `${resolvedAuthors.join(', ')}, et al.`
+    }
+    return resolvedAuthors.join(', ')
+  }
+  if (!shouldUseEtAl) {
     return resolvedAuthors.join(', ')
   }
   return `${resolvedAuthors.slice(0, maxVisibleAuthors).join(', ')}, et al.`
@@ -509,6 +515,41 @@ function formatPublicationReaderReferenceListText(
     return formattedCitation
   }
   return normalizeCompactText(reference.rawText)
+}
+
+function formatPublicationReaderReferenceSourceLine(
+  reference: PublicationReaderReferencePayload,
+): string {
+  const journalSegment = trimTrailingReferencePunctuation(reference.journal)
+  const yearSegment = trimTrailingReferencePunctuation(reference.year)
+  const volumeSegment = trimTrailingReferencePunctuation(reference.volume)
+  const issueSegment = trimTrailingReferencePunctuation(reference.issue)
+  const pagesSegment = trimTrailingReferencePunctuation(reference.pages)
+
+  const sourceParts: string[] = []
+  if (journalSegment) {
+    sourceParts.push(formatJournalName(journalSegment))
+  }
+
+  const yearVolumeParts: string[] = []
+  if (yearSegment) {
+    yearVolumeParts.push(yearSegment)
+  }
+  if (volumeSegment) {
+    yearVolumeParts.push(issueSegment ? `${volumeSegment}(${issueSegment})` : volumeSegment)
+  } else if (issueSegment) {
+    yearVolumeParts.push(`(${issueSegment})`)
+  }
+
+  let yearVolumeText = yearVolumeParts.join(';')
+  if (pagesSegment) {
+    yearVolumeText = yearVolumeText ? `${yearVolumeText}:${pagesSegment}` : pagesSegment
+  }
+  if (yearVolumeText) {
+    sourceParts.push(yearVolumeText)
+  }
+
+  return sourceParts.join('. ').trim()
 }
 
 function comparePublicationPaperSections(
@@ -11228,20 +11269,83 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               renderPublicationReaderMajorPanel(
                                 'References',
                                 (
-                                  <ol className="space-y-3 text-[0.92rem] leading-[1.8] text-[hsl(var(--tone-neutral-700))]">
-                                    {selectedPaperReferences.map((reference, index) => (
-                                      <li
-                                        key={reference.id}
-                                        className="grid grid-cols-[auto,minmax(0,1fr)] gap-3 border-t border-[hsl(var(--tone-neutral-150))] pt-3 first:border-t-0 first:pt-0"
-                                      >
-                                        <span className="pt-0.5 text-[0.74rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
-                                          {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
-                                        </span>
-                                        <span className="min-w-0 flex-1 text-[0.9rem] leading-[1.85] text-[hsl(var(--tone-neutral-700))]">
-                                          {formatPublicationReaderReferenceListText(reference)}
-                                        </span>
-                                      </li>
-                                    ))}
+                                  <ol className="space-y-4 text-[0.92rem] leading-[1.8] text-[hsl(var(--tone-neutral-700))]">
+                                    {selectedPaperReferences.map((reference, index) => {
+                                      const authorsText = formatPublicationReaderReferenceAuthors(reference.authors, {
+                                        authorsTruncated: reference.authorsTruncated,
+                                        maxVisibleAuthors: 999,
+                                      })
+                                      const titleText = trimTrailingReferencePunctuation(reference.title)
+                                      const sourceLine = formatPublicationReaderReferenceSourceLine(reference)
+                                      const fallbackText = formatPublicationReaderReferenceListText(reference)
+                                      const hasStructuredReference = Boolean(authorsText || titleText || sourceLine)
+                                      return (
+                                        <li
+                                          key={reference.id}
+                                          className="grid grid-cols-[auto,minmax(0,1fr)] gap-4 border-t border-[hsl(var(--tone-neutral-150))] pt-4 first:border-t-0 first:pt-0"
+                                        >
+                                          <span className="pt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-500))]">
+                                            {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
+                                          </span>
+                                          <div className="min-w-0 space-y-1.5">
+                                            {authorsText ? (
+                                              <p className="text-[0.88rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
+                                                {authorsText}
+                                              </p>
+                                            ) : null}
+                                            {titleText ? (
+                                              <p className="text-[0.98rem] font-medium leading-[1.65] text-[hsl(var(--tone-neutral-900))]">
+                                                {titleText}.
+                                              </p>
+                                            ) : null}
+                                            {sourceLine ? (
+                                              <p className="text-[0.84rem] leading-[1.7] text-[hsl(var(--tone-neutral-500))]">
+                                                {sourceLine}.
+                                              </p>
+                                            ) : null}
+                                            {!hasStructuredReference ? (
+                                              <p className="text-[0.92rem] leading-[1.85] text-[hsl(var(--tone-neutral-700))]">
+                                                {fallbackText}
+                                              </p>
+                                            ) : null}
+                                            {reference.doi || reference.pmid || reference.pmcid ? (
+                                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
+                                                {reference.doi ? (
+                                                  <a
+                                                    href={`https://doi.org/${encodeURIComponent(reference.doi)}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                                  >
+                                                    DOI: {reference.doi}
+                                                  </a>
+                                                ) : null}
+                                                {reference.pmid ? (
+                                                  <a
+                                                    href={`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(reference.pmid)}/`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                                  >
+                                                    PMID: {reference.pmid}
+                                                  </a>
+                                                ) : null}
+                                                {reference.pmcid ? (
+                                                  <a
+                                                    href={`https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(reference.pmcid)}/`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                                  >
+                                                    PMCID: {reference.pmcid}
+                                                  </a>
+                                                ) : null}
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        </li>
+                                      )
+                                    })}
                                   </ol>
                                 ),
                                 {
