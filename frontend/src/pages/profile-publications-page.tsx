@@ -11605,15 +11605,28 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             aria-modal="true"
             aria-label={publicationReaderFigureLightboxAsset.title || publicationReaderFigureLightboxAsset.file_name || 'Full-size figure'}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4">
-              <div className="min-w-0">
-                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-white/55">
-                  Figure preview
-                </p>
-                <h2 className="mt-1 truncate text-lg font-semibold text-white">
+            <div className="flex items-start justify-between gap-6 border-b border-white/10 px-5 py-4">
+              <div className="min-w-0 max-w-[48rem]">
+                <h2 className="truncate text-lg font-semibold text-white">
                   {publicationReaderFigureLightboxAsset.title || publicationReaderFigureLightboxAsset.file_name || 'Figure'}
                 </h2>
-                <p className="mt-1 text-sm text-white/65">
+                {publicationReaderFigureLightboxAsset.caption ? (
+                  <p className="mt-1 text-sm leading-relaxed text-white/72">
+                    {publicationReaderFigureLightboxAsset.caption}
+                  </p>
+                ) : null}
+                {formatPublicationPaperSectionPageLabel({
+                  page_start: publicationReaderFigureLightboxAsset.page_start,
+                  page_end: publicationReaderFigureLightboxAsset.page_end,
+                }) ? (
+                  <p className="mt-2 text-sm text-white/60">
+                    {formatPublicationPaperSectionPageLabel({
+                      page_start: publicationReaderFigureLightboxAsset.page_start,
+                      page_end: publicationReaderFigureLightboxAsset.page_end,
+                    })}
+                  </p>
+                ) : null}
+                <p className="hidden">
                   {publicationReaderAssetSourceLabel(publicationReaderFigureLightboxAsset)}
                   {formatPublicationPaperSectionPageLabel({
                     page_start: publicationReaderFigureLightboxAsset.page_start,
@@ -11627,36 +11640,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Button
+                <button
                   type="button"
-                  variant="outline"
-                  className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
-                  onClick={() => setPublicationReaderFigureLightboxFitToViewport((current) => !current)}
-                >
-                  {publicationReaderFigureLightboxFitToViewport ? 'Natural size' : 'Fit to viewport'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
-                  onClick={() => {
-                    if (publicationReaderFigureLightboxAsset.image_data) {
-                      window.open(publicationReaderFigureLightboxAsset.image_data, '_blank', 'noopener,noreferrer')
-                    }
+                  className="inline-flex h-9 shrink-0 items-center rounded-xl border border-white/16 bg-white/6 px-3.5 text-sm font-medium text-white transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-white/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--tone-neutral-950))]"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    closePublicationReaderFigureLightbox()
                   }}
                 >
-                  <ArrowUpRight className="mr-1.5 h-4 w-4" />
-                  Open original
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
-                  onClick={closePublicationReaderFigureLightbox}
-                >
-                  <X className="mr-1.5 h-4 w-4" />
-                  Close
-                </Button>
+                  <ChevronLeft className="mr-1.5 h-4 w-4" />
+                  Back to reader
+                </button>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-auto px-5 py-5">
@@ -11676,13 +11671,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 />
               </div>
             </div>
-            {publicationReaderFigureLightboxAsset.caption ? (
-              <div className="border-t border-white/10 px-5 py-4">
-                <p className="text-sm leading-relaxed text-white/72">
-                  {publicationReaderFigureLightboxAsset.caption}
-                </p>
-              </div>
-            ) : null}
           </div>
         </div>,
         document.body,
