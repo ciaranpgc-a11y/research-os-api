@@ -7242,6 +7242,22 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderActiveAssetId,
   ])
 
+  const onTogglePublicationReaderNavigatorGroup = useCallback((groupId: string) => {
+    setPublicationReaderCollapsedNodeIds((current) => {
+      const isExpanded = !(current[groupId] ?? false)
+      const next = isExpanded
+        ? buildPublicationReaderSingleOpenCollapsedState(null)
+        : buildPublicationReaderSingleOpenCollapsedState(groupId)
+      const nextEntries = Object.entries(next)
+      return (
+        nextEntries.length === Object.keys(current).length
+        && nextEntries.every(([candidateGroupId, isCollapsed]) => current[candidateGroupId] === isCollapsed)
+      )
+        ? current
+        : next
+    })
+  }, [buildPublicationReaderSingleOpenCollapsedState])
+
   useEffect(() => {
     const activeGroupId = publicationReaderActiveNavigatorGroupId
     if (!activeGroupId) {
@@ -8738,21 +8754,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       const inactiveSubtreeBorderColor = publicationReaderHexToRgba(toneHex, 0.18)
       return (
         <div key={group.id} className={cn('space-y-1.5', compact && 'space-y-1')}>
-          <button
-            ref={(node) => {
-              publicationReaderNavigatorTargetRefs.current[`group:${group.id}`] = node
-            }}
-            type="button"
+          <div
             className={cn(
-              'group relative w-full overflow-hidden rounded-[1rem] pl-4 pr-3 text-left transition-colors duration-150 ease-out',
+              'group relative flex w-full items-start gap-2 overflow-hidden rounded-[1rem] pl-4 pr-3 transition-colors duration-150 ease-out',
               compact ? 'py-2.5' : 'py-3',
               isActiveGroup
                 ? 'text-[hsl(var(--tone-neutral-950))]'
                 : 'text-[hsl(var(--tone-neutral-700))] hover:bg-white/72 hover:text-[hsl(var(--tone-neutral-900))]',
             )}
             style={isActiveGroup && activeFillColor ? { backgroundColor: activeFillColor } : undefined}
-            onClick={() => onSelectPublicationReaderNavigatorTarget(group.target)}
-            disabled={!group.target}
           >
             <span
               className={cn(
@@ -8762,8 +8772,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               style={isActiveGroup && toneHex ? { backgroundColor: toneHex } : undefined}
               aria-hidden="true"
             />
-            <span className="flex items-start gap-3">
-              <span className="min-w-0 flex-1">
+            <button
+              ref={(node) => {
+                publicationReaderNavigatorTargetRefs.current[`group:${group.id}`] = node
+              }}
+              type="button"
+              className="min-w-0 flex-1 text-left"
+              onClick={() => onSelectPublicationReaderNavigatorTarget(group.target)}
+              disabled={!group.target}
+            >
+              <span className="block min-w-0">
                 <span
                   className={cn(
                     'block whitespace-normal break-words font-semibold tracking-[-0.01em]',
@@ -8773,20 +8791,34 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   {group.label}
                 </span>
               </span>
-              {group.items.length > 0 ? (
+            </button>
+            {group.items.length > 0 ? (
+              <button
+                type="button"
+                className={cn(
+                  'mt-0.5 shrink-0 rounded-full p-1 text-[hsl(var(--tone-neutral-400))] transition-[transform,color,background-color] duration-150 ease-out hover:bg-white/72',
+                  isExpanded ? 'rotate-90' : 'rotate-0',
+                )}
+                style={isActiveGroup && toneHex ? { color: toneHex } : undefined}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onTogglePublicationReaderNavigatorGroup(group.id)
+                }}
+                aria-label={isExpanded ? `Collapse ${group.label}` : `Expand ${group.label}`}
+                aria-expanded={isExpanded}
+              >
                 <span
                   className={cn(
-                    'mt-0.5 shrink-0 text-[hsl(var(--tone-neutral-400))] transition-transform duration-150 ease-out',
-                    isExpanded ? 'rotate-90' : 'rotate-0',
+                    'block transition-transform duration-150 ease-out',
+                    isExpanded ? 'rotate-0' : 'rotate-0',
                   )}
-                  style={isActiveGroup && toneHex ? { color: toneHex } : undefined}
                   aria-hidden="true"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </span>
-              ) : null}
-            </span>
-          </button>
+              </button>
+            ) : null}
+          </div>
           {group.items.length > 0 && isExpanded ? (
             <div
               className={cn('ml-4 border-l border-[hsl(var(--tone-neutral-200))] pl-4', compact ? 'space-y-0.5' : 'space-y-1')}
