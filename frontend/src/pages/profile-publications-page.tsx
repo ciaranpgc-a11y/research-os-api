@@ -166,6 +166,20 @@ type PublicationReaderInspectorReferenceState = {
   tokenLabel: string
   referenceIds: string[]
   activeReferenceId: string
+  occurrenceKey: string | null
+}
+type PublicationReaderCitationCluster = {
+  label: string
+  references: PublicationReaderReferencePayload[]
+}
+type PublicationReaderCitationOccurrence = {
+  key: string
+  label: string
+  referenceIds: string[]
+}
+type PublicationReaderReferenceUsageSummary = {
+  instance: number
+  total: number
 }
 const PUBLICATION_READER_REFERENCES_TARGET_ID = '__references__'
 type PublicationReaderNavigatorTarget =
@@ -3712,6 +3726,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const openPublicationReaderInspectorReference = useCallback((
     tokenLabel: string,
     references: PublicationReaderReferencePayload[],
+    occurrenceKey: string | null = null,
   ) => {
     const uniqueReferenceIds = references
       .map((reference) => reference.id)
@@ -3735,6 +3750,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         tokenLabel,
         referenceIds: uniqueReferenceIds,
         activeReferenceId: nextActiveReferenceId,
+        occurrenceKey,
       }
     })
   }, [])
@@ -3751,6 +3767,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const buildPublicationReaderReferenceTriggerProps = useCallback((
     tokenLabel: string,
     references: PublicationReaderReferencePayload[],
+    occurrenceKey: string | null = null,
   ) => ({
     onMouseEnter: (event: ReactMouseEvent<HTMLElement>) => {
       previewPublicationReaderReferencePopover(event.currentTarget, tokenLabel, references)
@@ -3762,7 +3779,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     onBlur: closePublicationReaderReferencePreview,
     onClick: (event: ReactMouseEvent<HTMLElement>) => {
       event.preventDefault()
-      openPublicationReaderInspectorReference(tokenLabel, references)
+      openPublicationReaderInspectorReference(tokenLabel, references, occurrenceKey)
     },
   }), [
     closePublicationReaderReferencePreview,
@@ -5480,6 +5497,140 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     return next
   }, [selectedPaperReferences])
+  const resolveSelectedPublicationReaderCitationToken = useCallback((token: string): PublicationReaderCitationCluster | null => {
+    const citeMarkerMatch = token.match(/^\{\{cite:([^}]+)\}\}$/)
+    if (citeMarkerMatch) {
+      const xmlId = citeMarkerMatch[1]
+      const refEntryId = selectedPaperReferenceIdMap[xmlId]
+      const reference = refEntryId ? selectedPaperReferencesById.get(refEntryId) : undefined
+      if (!reference) {
+        return null
+      }
+      return {
+        label: String(
+          reference.label || String(selectedPaperReferences.indexOf(reference) + 1),
+        ).replace(/^\[|\]$/g, '').trim(),
+        references: [reference],
+      }
+    }
+
+    const tokenMatch = token.match(/^\[(.+)\]$/)
+    if (!tokenMatch) {
+      return null
+    }
+    const references = expandPublicationReaderReferenceToken(tokenMatch[1])
+      .map((value) => selectedPaperReferencesByLookupKey.get(normalizePublicationReaderReferenceLookupKey(value)) || null)
+      .filter((reference): reference is PublicationReaderReferencePayload => Boolean(reference))
+    if (references.length === 0) {
+      return null
+    }
+    return {
+      label: formatPublicationReaderReferenceTokenLabel(tokenMatch[1]),
+      references,
+    }
+  }, [
+    selectedPaperReferenceIdMap,
+    selectedPaperReferences,
+    selectedPaperReferencesById,
+    selectedPaperReferencesByLookupKey,
+  ])
+  const collectPublicationReaderCitationClustersFromText = useCallback((text: string): PublicationReaderCitationCluster[] => {
+    const parts = String(text || '').split(PUBLICATION_READER_CITATION_TOKEN_GLOBAL_PATTERN)
+    if (parts.length <= 1) {
+      return []
+    }
+
+    const clusters: PublicationReaderCitationCluster[] = []
+    for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+      const part = parts[partIndex]
+      if (!PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(part)) {
+        continue
+      }
+
+      const currentToken = resolveSelectedPublicationReaderCitationToken(part)
+      if (!currentToken) {
+        continue
+      }
+
+      const clusterLabels: string[] = [currentToken.label]
+      const clusterReferences: PublicationReaderReferencePayload[] = [...currentToken.references]
+      let clusterEndIndex = partIndex
+      while (true) {
+        const spacer = parts[clusterEndIndex + 1] || ''
+        const nextTokenValue = parts[clusterEndIndex + 2] || ''
+        if (!/^\s+$/.test(spacer) || !PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(nextTokenValue)) {
+          break
+        }
+        const nextToken = resolveSelectedPublicationReaderCitationToken(nextTokenValue)
+        if (!nextToken) {
+          break
+        }
+        clusterLabels.push(nextToken.label)
+        nextToken.references.forEach((reference) => {
+          if (!clusterReferences.some((existing) => existing.id === reference.id)) {
+            clusterReferences.push(reference)
+          }
+        })
+        clusterEndIndex += 2
+      }
+
+      clusters.push({
+        label: formatPublicationReaderReferenceClusterLabel(clusterLabels),
+        references: clusterReferences,
+      })
+      partIndex = clusterEndIndex
+    }
+
+    return clusters
+  }, [resolveSelectedPublicationReaderCitationToken])
+  const selectedPaperCitationOccurrencesBySectionId = useMemo(() => {
+    const occurrencesBySectionId = new Map<string, PublicationReaderCitationOccurrence[]>()
+    const allOccurrences: PublicationReaderCitationOccurrence[] = []
+
+    for (const section of selectedPaperSections) {
+      const clusters = collectPublicationReaderCitationClustersFromText(section.content)
+      if (clusters.length === 0) {
+        continue
+      }
+      const sectionOccurrences = clusters.map((cluster, index) => {
+        const occurrence = {
+          key: `${section.id}:citation:${index}`,
+          label: cluster.label,
+          referenceIds: cluster.references.map((reference) => reference.id),
+        } satisfies PublicationReaderCitationOccurrence
+        allOccurrences.push(occurrence)
+        return occurrence
+      })
+      occurrencesBySectionId.set(section.id, sectionOccurrences)
+    }
+
+    const totalsByReferenceId = new Map<string, number>()
+    allOccurrences.forEach((occurrence) => {
+      occurrence.referenceIds.forEach((referenceId) => {
+        totalsByReferenceId.set(referenceId, (totalsByReferenceId.get(referenceId) || 0) + 1)
+      })
+    })
+
+    const seenByReferenceId = new Map<string, number>()
+    const usageByOccurrenceKey = new Map<string, Map<string, PublicationReaderReferenceUsageSummary>>()
+    allOccurrences.forEach((occurrence) => {
+      const perReferenceUsage = new Map<string, PublicationReaderReferenceUsageSummary>()
+      occurrence.referenceIds.forEach((referenceId) => {
+        const nextSeen = (seenByReferenceId.get(referenceId) || 0) + 1
+        seenByReferenceId.set(referenceId, nextSeen)
+        perReferenceUsage.set(referenceId, {
+          instance: nextSeen,
+          total: totalsByReferenceId.get(referenceId) || nextSeen,
+        })
+      })
+      usageByOccurrenceKey.set(occurrence.key, perReferenceUsage)
+    })
+
+    return {
+      occurrencesBySectionId,
+      usageByOccurrenceKey,
+    }
+  }, [collectPublicationReaderCitationClustersFromText, selectedPaperSections])
   const selectedPublicationReaderInspectorReferences = useMemo(
     () => (publicationReaderInspectorReference?.referenceIds || [])
       .map((referenceId) => selectedPaperReferencesById.get(referenceId) || null)
@@ -5525,6 +5676,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     ),
     [selectedPublicationReaderInspectorActiveReference],
   )
+  const selectedPublicationReaderInspectorActiveReferenceUsage = useMemo(() => {
+    const occurrenceKey = publicationReaderInspectorReference?.occurrenceKey || null
+    const referenceId = selectedPublicationReaderInspectorActiveReference?.id || null
+    if (!occurrenceKey || !referenceId) {
+      return null
+    }
+    return selectedPaperCitationOccurrencesBySectionId.usageByOccurrenceKey.get(occurrenceKey)?.get(referenceId) || null
+  }, [
+    publicationReaderInspectorReference?.occurrenceKey,
+    selectedPaperCitationOccurrencesBySectionId.usageByOccurrenceKey,
+    selectedPublicationReaderInspectorActiveReference?.id,
+  ])
   const selectedPaperAssetEnrichmentStatus = String(
     (selectedPaperProvenance as Record<string, unknown> | null)?.asset_enrichment_status || '',
   ).trim().toUpperCase()
@@ -8575,6 +8738,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     keyPrefix: string,
     className: string,
     style?: CSSProperties,
+    options?: {
+      citationOccurrences?: PublicationReaderCitationOccurrence[]
+      citationOccurrenceOffset?: number
+    },
   ): ReactNode => {
     const referenceChipClassName = 'align-super inline-flex min-h-[1.14rem] min-w-[1.14rem] items-center justify-center whitespace-nowrap rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-100))] px-[0.3rem] py-0 text-left text-[0.64em] font-semibold leading-none tracking-[0.005em] text-[hsl(var(--tone-accent-850))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-accent-500))] hover:bg-[hsl(var(--tone-accent-150))] hover:text-[hsl(var(--tone-accent-900))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-300))] focus-visible:ring-offset-2'
     const parts = String(paragraph || '').split(PUBLICATION_READER_CITATION_TOKEN_GLOBAL_PATTERN)
@@ -8586,40 +8753,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       )
     }
 
-    const resolvePublicationReaderCitationToken = (token: string): { label: string; references: PublicationReaderReferencePayload[] } | null => {
-      const citeMarkerMatch = token.match(/^\{\{cite:([^}]+)\}\}$/)
-      if (citeMarkerMatch) {
-        const xmlId = citeMarkerMatch[1]
-        const refEntryId = selectedPaperReferenceIdMap[xmlId]
-        const reference = refEntryId ? selectedPaperReferencesById.get(refEntryId) : undefined
-        if (!reference) {
-          return null
-        }
-        return {
-          label: String(
-            reference.label || String(selectedPaperReferences.indexOf(reference) + 1),
-          ).replace(/^\[|\]$/g, '').trim(),
-          references: [reference],
-        }
-      }
-
-      const tokenMatch = token.match(/^\[(.+)\]$/)
-      if (!tokenMatch) {
-        return null
-      }
-      const references = expandPublicationReaderReferenceToken(tokenMatch[1])
-        .map((value) => selectedPaperReferencesByLookupKey.get(normalizePublicationReaderReferenceLookupKey(value)) || null)
-        .filter((reference): reference is PublicationReaderReferencePayload => Boolean(reference))
-      if (references.length === 0) {
-        return null
-      }
-      return {
-        label: formatPublicationReaderReferenceTokenLabel(tokenMatch[1]),
-        references,
-      }
-    }
-
     const nodes: ReactNode[] = []
+    let citationOccurrenceIndex = 0
     for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
       const part = parts[partIndex]
       const previousPart = parts[partIndex - 1] || ''
@@ -8643,7 +8778,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         continue
       }
 
-      const currentToken = resolvePublicationReaderCitationToken(part)
+      const currentToken = resolveSelectedPublicationReaderCitationToken(part)
       if (!currentToken) {
         nodes.push(<span key={`${keyPrefix}-token-${partIndex}`}>{part}</span>)
         continue
@@ -8658,7 +8793,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         if (!/^\s+$/.test(spacer) || !PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN.test(nextTokenValue)) {
           break
         }
-        const nextToken = resolvePublicationReaderCitationToken(nextTokenValue)
+        const nextToken = resolveSelectedPublicationReaderCitationToken(nextTokenValue)
         if (!nextToken) {
           break
         }
@@ -8672,16 +8807,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
 
       const displayClusterLabel = formatPublicationReaderReferenceClusterLabel(clusterLabels)
+      const occurrenceKey = options?.citationOccurrences?.[
+        (options?.citationOccurrenceOffset || 0) + citationOccurrenceIndex
+      ]?.key || null
       nodes.push(
         <button
           key={`${keyPrefix}-token-${partIndex}`}
           type="button"
           className={referenceChipClassName}
-          {...buildPublicationReaderReferenceTriggerProps(displayClusterLabel, clusterReferences)}
+          {...buildPublicationReaderReferenceTriggerProps(displayClusterLabel, clusterReferences, occurrenceKey)}
         >
           {displayClusterLabel}
         </button>,
       )
+      citationOccurrenceIndex += 1
       partIndex = clusterEndIndex
     }
 
@@ -8756,6 +8895,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           wordBreak: 'normal',
           overflowWrap: 'normal',
         }
+    const sectionCitationOccurrences = selectedPaperCitationOccurrencesBySectionId.occurrencesBySectionId.get(section.id) || []
+    let sectionCitationOccurrenceOffset = 0
 
     const sectionContent = (
       <>
@@ -8805,19 +8946,28 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             )}
           >
             {sectionParagraphs.map((paragraph, paragraphIndex) => (
-              renderPublicationReaderParagraphWithAnchoredReferences(
-                paragraph,
-                `${section.id}-paragraph-${paragraphIndex}`,
-                cn(
-                  'leading-[1.9]',
-                  shouldRenderAsCalloutTile
-                    ? 'text-[0.9rem] text-[hsl(var(--tone-neutral-700))]'
-                    : isArticleInformationGroup
-                      ? 'text-[0.9rem] leading-[1.75] text-[hsl(var(--tone-neutral-700))]'
-                    : 'text-[0.95rem] text-[hsl(var(--tone-neutral-800))]',
-                ),
-                sectionParagraphStyle,
-              )
+              (() => {
+                const paragraphCitationCount = collectPublicationReaderCitationClustersFromText(paragraph).length
+                const paragraphNode = renderPublicationReaderParagraphWithAnchoredReferences(
+                  paragraph,
+                  `${section.id}-paragraph-${paragraphIndex}`,
+                  cn(
+                    'leading-[1.9]',
+                    shouldRenderAsCalloutTile
+                      ? 'text-[0.9rem] text-[hsl(var(--tone-neutral-700))]'
+                      : isArticleInformationGroup
+                        ? 'text-[0.9rem] leading-[1.75] text-[hsl(var(--tone-neutral-700))]'
+                        : 'text-[0.95rem] text-[hsl(var(--tone-neutral-800))]',
+                  ),
+                  sectionParagraphStyle,
+                  {
+                    citationOccurrences: sectionCitationOccurrences,
+                    citationOccurrenceOffset: sectionCitationOccurrenceOffset,
+                  },
+                )
+                sectionCitationOccurrenceOffset += paragraphCitationCount
+                return paragraphNode
+              })()
             ))}
           </div>
         ) : null}
@@ -11406,9 +11556,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
                                       Reference
                                     </p>
-                                    {publicationReaderInspectorReference?.tokenLabel ? (
-                                      <p className="mt-1 text-[0.82rem] font-medium text-[hsl(var(--tone-neutral-700))]">
-                                        Citation {publicationReaderInspectorReference.tokenLabel}
+                                    {selectedPublicationReaderInspectorActiveReferenceUsage ? (
+                                      <p className="mt-1 text-[0.8rem] text-[hsl(var(--tone-neutral-600))]">
+                                        Instance {selectedPublicationReaderInspectorActiveReferenceUsage.instance}/{selectedPublicationReaderInspectorActiveReferenceUsage.total}
                                       </p>
                                     ) : null}
                                   </div>
