@@ -11777,42 +11777,42 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         </div>
                                       ) : null}
                                       {selectedPublicationReaderInspectorActiveReferenceUsage ? (
-                                        <div className="mt-4 border-t border-[hsl(var(--tone-neutral-200))] pt-3">
-                                          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
+                                        <div className="mt-3.5 border-t border-[hsl(var(--tone-neutral-200))] pt-2.5">
+                                          <p className="text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
                                             In manuscript
                                           </p>
-                                          <div className="mt-2">
-                                            <p className="text-[0.92rem] font-medium leading-snug text-[hsl(var(--tone-neutral-900))]">
+                                          <div className="mt-1.5">
+                                            <p className="text-[0.82rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-850))]">
                                               Mention {selectedPublicationReaderInspectorActiveReferenceUsage.instance} of {selectedPublicationReaderInspectorActiveReferenceUsage.total}
                                             </p>
                                             {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel ? (
-                                              <p className="mt-1 text-[0.82rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                              <p className="mt-0.5 text-[0.76rem] leading-snug text-[hsl(var(--tone-neutral-600))]">
                                                 {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel}
                                               </p>
                                             ) : null}
                                           </div>
-                                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                                             <button
                                               type="button"
-                                              className="inline-flex h-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] px-3 text-[0.78rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:border-[hsl(var(--tone-neutral-200))] disabled:text-[hsl(var(--tone-neutral-400))]"
+                                              className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
                                               disabled={!selectedPublicationReaderInspectorHasPreviousOccurrence}
                                               onClick={() => onStepPublicationReaderInspectorOccurrence(-1)}
                                             >
-                                              <ChevronLeft className="mr-1.5 h-3.5 w-3.5" />
+                                              <ChevronLeft className="h-3.25 w-3.25" />
                                               Previous
                                             </button>
                                             <button
                                               type="button"
-                                              className="inline-flex h-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] px-3 text-[0.78rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:border-[hsl(var(--tone-neutral-200))] disabled:text-[hsl(var(--tone-neutral-400))]"
+                                              className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
                                               disabled={!selectedPublicationReaderInspectorHasNextOccurrence}
                                               onClick={() => onStepPublicationReaderInspectorOccurrence(1)}
                                             >
                                               Next
-                                              <ChevronRight className="ml-1.5 h-3.5 w-3.5" />
+                                              <ChevronRight className="h-3.25 w-3.25" />
                                             </button>
                                             <button
                                               type="button"
-                                              className="inline-flex h-8 items-center justify-center rounded-full border border-[hsl(var(--tone-accent-250))] bg-[hsl(var(--tone-accent-50))] px-3 text-[0.78rem] font-medium text-[hsl(var(--tone-accent-800))] transition-colors hover:border-[hsl(var(--tone-accent-350))] hover:bg-[hsl(var(--tone-accent-100))]"
+                                              className="inline-flex h-7 items-center justify-center rounded-md px-1 text-[0.75rem] font-semibold text-[hsl(var(--tone-accent-750))] underline decoration-[hsl(var(--tone-accent-250))] underline-offset-[0.2em] transition-colors hover:text-[hsl(var(--tone-accent-850))] hover:decoration-[hsl(var(--tone-accent-400))]"
                                               onClick={() => onSelectPublicationReaderInspectorOccurrence(selectedPublicationReaderInspectorActiveOccurrence)}
                                             >
                                               Jump to mention
