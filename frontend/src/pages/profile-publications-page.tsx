@@ -10911,36 +10911,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </div>
                             ) : null}
                             {!selectedPaperParsingInProgress && selectedPaperTables.length > 0 ? (
-                              renderPublicationReaderMajorPanel(
-                                'Tables',
-                                renderPublicationReaderAssetGroup(
-                                  selectedPaperRenderableTables,
-                                  'No tables surfaced yet.',
-                                  selectedPaperMetadataOnlyTableMessage,
-                                  {
-                                    assetCardMode: 'reader',
-                                    groupKey: 'tables',
-                                  },
-                                ),
+                              renderPublicationReaderAssetGroup(
+                                selectedPaperRenderableTables,
+                                'No tables surfaced yet.',
+                                selectedPaperMetadataOnlyTableMessage,
                                 {
+                                  assetCardMode: 'reader',
                                   groupKey: 'tables',
                                 },
                               )
                             ) : null}
                             {!selectedPaperParsingInProgress && selectedPaperFigures.length > 0 ? (
-                              renderPublicationReaderMajorPanel(
-                                'Figures',
-                                renderPublicationReaderAssetGroup(
-                                  selectedPaperRenderableFigures,
-                                  'No figures surfaced yet.',
-                                  selectedPaperMetadataOnlyFigureMessage,
-                                  {
-                                    assetCardMode: 'reader',
-                                    groupKey: 'figures',
-                                  },
-                                ),
+                              renderPublicationReaderAssetGroup(
+                                selectedPaperRenderableFigures,
+                                'No figures surfaced yet.',
+                                selectedPaperMetadataOnlyFigureMessage,
                                 {
-                                  description: 'Figures surfaced from the source paper.',
+                                  assetCardMode: 'reader',
                                   groupKey: 'figures',
                                 },
                               )
