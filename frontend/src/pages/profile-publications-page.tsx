@@ -3445,6 +3445,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationReaderLoading, setPublicationReaderLoading] = useState(false)
   const [publicationReaderError, setPublicationReaderError] = useState('')
   const [publicationReaderActiveSectionId, setPublicationReaderActiveSectionId] = useState<string | null>(null)
+  const [publicationReaderActiveAssetId, setPublicationReaderActiveAssetId] = useState<string | null>(null)
   const [publicationReaderPdfPage, setPublicationReaderPdfPage] = useState(1)
   const [publicationReaderViewMode, setPublicationReaderViewMode] = useState<PublicationReaderViewMode>('structured')
   const [publicationReaderCollapsedNodeIds, setPublicationReaderCollapsedNodeIds] = useState<Record<string, boolean>>({})
@@ -5205,6 +5206,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     return next
   }, [selectedPaperAttachments, selectedPaperDatasets, selectedPaperRenderableFigures, selectedPaperRenderableTables])
+  const selectedPublicationReaderAssetGroupKeyById = useMemo(() => {
+    const next = new Map<string, 'tables' | 'figures'>()
+    for (const asset of selectedPaperRenderableTables) {
+      if (asset.id) {
+        next.set(asset.id, 'tables')
+      }
+    }
+    for (const asset of selectedPaperRenderableFigures) {
+      if (asset.id) {
+        next.set(asset.id, 'figures')
+      }
+    }
+    return next
+  }, [selectedPaperRenderableFigures, selectedPaperRenderableTables])
   const selectedPaperComponentSummary = selectedPaperModel?.component_summary || null
   const selectedPaperSectionConfidenceSummary = useMemo(() => {
     const values = selectedPaperSections
@@ -5550,14 +5565,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         label: selectedPaperStructuredGroupLabelByKey.get(key) || definition?.label || formatPublicationPaperStructuredGroupLabel(key),
         toneClassName: definition?.toneClassName || 'bg-[hsl(var(--tone-neutral-300))]',
         target: assets[0]?.id ? { kind: 'asset', id: assets[0].id } : null,
-        isActive: false,
+        isActive: assets.some((asset) => asset.id === publicationReaderActiveAssetId),
         badgeCount: assets.length,
         items: assets.map((asset) => ({
           id: asset.id,
           label: asset.title || asset.file_name || definition?.label || key,
           indent: 1,
           target: { kind: 'asset', id: asset.id },
-          isActive: false,
+          isActive: asset.id === publicationReaderActiveAssetId,
         })),
       })
     }
@@ -5587,30 +5602,37 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPaperRenderableFigures,
     selectedPaperSectionChildrenByParent,
     selectedPaperRenderableTables,
+    publicationReaderActiveAssetId,
     publicationReaderActiveSectionId,
   ])
   const publicationReaderActiveNavigatorGroupId = useMemo(
     () => (
-      publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID
+      publicationReaderActiveAssetId
+        ? selectedPublicationReaderAssetGroupKeyById.get(publicationReaderActiveAssetId) || null
+        : publicationReaderActiveSectionId === PUBLICATION_READER_REFERENCES_TARGET_ID
         ? 'references'
         : publicationReaderActiveSectionId
           ? selectedPaperDisplayGroupKeyBySectionId.get(publicationReaderActiveSectionId) || null
           : selectedPublicationReaderNavigatorGroups[0]?.id || null
     ),
     [
+      publicationReaderActiveAssetId,
       publicationReaderActiveSectionId,
+      selectedPublicationReaderAssetGroupKeyById,
       selectedPaperDisplayGroupKeyBySectionId,
       selectedPublicationReaderNavigatorGroups,
     ],
   )
   const publicationReaderActiveNavigatorSubsectionId = useMemo(
     () => (
-      publicationReaderActiveSectionId
+      publicationReaderActiveAssetId
+        ? publicationReaderActiveAssetId
+        : publicationReaderActiveSectionId
       && publicationReaderActiveSectionId !== PUBLICATION_READER_REFERENCES_TARGET_ID
         ? publicationReaderActiveSectionId
         : null
     ),
-    [publicationReaderActiveSectionId],
+    [publicationReaderActiveAssetId, publicationReaderActiveSectionId],
   )
   const selectedPublicationReaderNarrativeNavigatorGroups = useMemo(
     () => selectedPublicationReaderNavigatorGroups.filter((group) => (
@@ -5731,6 +5753,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderLoading(false)
     setPublicationReaderError('')
     setPublicationReaderActiveSectionId(null)
+    setPublicationReaderActiveAssetId(null)
       setPublicationReaderPdfPage(1)
       setPublicationReaderViewMode('structured')
       setPublicationReaderCollapsedNodeIds({})
@@ -6799,6 +6822,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderPdfPage(initialPdfPage)
     setPublicationReaderViewMode('structured')
     setPublicationReaderActiveSectionId(initialSection?.id || null)
+    setPublicationReaderActiveAssetId(null)
     void loadPublicationPaperModelData(selectedWorkId, true)
   }, [loadPublicationPaperModelData, selectedPaperFirstReaderSection, selectedPublicationReaderEntryAvailable, selectedWorkId])
 
@@ -6806,6 +6830,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const selectedSection = selectedPaperSections.find((section) => section.id === sectionId) || null
     beginPublicationReaderProgrammaticTarget(sectionId)
     setPublicationReaderActiveSectionId(sectionId)
+    setPublicationReaderActiveAssetId(null)
     const targetPdfPage = resolvePublicationPaperSectionAnchorPage(selectedSection)
     if (publicationReaderViewMode === 'pdf' && targetPdfPage) {
       setPublicationReaderPdfPage(targetPdfPage)
@@ -7117,6 +7142,44 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }
 
+  const onSelectPublicationReaderAsset = useCallback((assetId: string) => {
+    const matchedAsset = selectedPaperAssetsById.get(assetId)
+    if (!matchedAsset) {
+      return
+    }
+    beginPublicationReaderProgrammaticTarget(assetId)
+    setPublicationReaderActiveAssetId(assetId)
+    const inlineNode = publicationReaderInlineAssetRefs.current[assetId]
+    if (inlineNode) {
+      if (publicationReaderViewMode !== 'structured') {
+        setPublicationReaderViewMode('structured')
+        if (typeof window !== 'undefined') {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              inlineNode.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            })
+          })
+        }
+      } else {
+        inlineNode.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+      return
+    }
+    const targetPage = resolvePublicationPaperSectionAnchorPage({
+      page_start: matchedAsset.page_start,
+      page_end: matchedAsset.page_end,
+    })
+    if (targetPage && selectedPaperPrimaryPdfContentFileId) {
+      setPublicationReaderPdfPage(targetPage)
+      setPublicationReaderViewMode('pdf')
+    }
+  }, [
+    beginPublicationReaderProgrammaticTarget,
+    publicationReaderViewMode,
+    selectedPaperAssetsById,
+    selectedPaperPrimaryPdfContentFileId,
+  ])
+
   const onSelectPublicationReaderNavigatorTarget = useCallback((target: PublicationReaderNavigatorTarget) => {
     if (!target) {
       return
@@ -7128,6 +7191,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (target.kind === 'references') {
       beginPublicationReaderProgrammaticTarget(PUBLICATION_READER_REFERENCES_TARGET_ID)
       setPublicationReaderActiveSectionId(PUBLICATION_READER_REFERENCES_TARGET_ID)
+      setPublicationReaderActiveAssetId(null)
       const scrollToReferences = () => {
         const node = publicationReaderReferencesRef.current
         if (node) {
@@ -7146,16 +7210,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       scrollToReferences()
       return
     }
-    const matchedAsset = selectedPaperAssetsById.get(target.id)
-    if (matchedAsset) {
-      onOpenPublicationReaderAsset(matchedAsset)
-    }
+    onSelectPublicationReaderAsset(target.id)
   }, [
     beginPublicationReaderProgrammaticTarget,
-    onOpenPublicationReaderAsset,
+    onSelectPublicationReaderAsset,
     onSelectPublicationReaderSection,
     publicationReaderViewMode,
-    selectedPaperAssetsById,
+    setPublicationReaderActiveAssetId,
   ])
 
   useEffect(() => {
@@ -7208,7 +7269,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       if (lockedTargetId) {
         const lockedNode = lockedTargetId === PUBLICATION_READER_REFERENCES_TARGET_ID
           ? publicationReaderReferencesRef.current
-          : publicationReaderSectionRefs.current[lockedTargetId]
+          : publicationReaderInlineAssetRefs.current[lockedTargetId]
+            || publicationReaderSectionRefs.current[lockedTargetId]
         if (!lockedNode) {
           return
         }
@@ -7238,6 +7300,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         })
       }
 
+      for (const asset of [...selectedPaperRenderableTables, ...selectedPaperRenderableFigures]) {
+        const node = publicationReaderInlineAssetRefs.current[asset.id]
+        if (!node) {
+          continue
+        }
+        candidates.push({
+          id: asset.id,
+          offsetTop: node.getBoundingClientRect().top - viewportRect.top - anchorOffset,
+        })
+      }
+
       if (candidates.length === 0) {
         return
       }
@@ -7257,6 +7330,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         return
       }
 
+      if (selectedPublicationReaderAssetGroupKeyById.has(nextActiveId)) {
+        setPublicationReaderActiveAssetId((current) => (current === nextActiveId ? current : nextActiveId))
+        return
+      }
+
+      setPublicationReaderActiveAssetId((current) => (current === null ? current : null))
       setPublicationReaderActiveSectionId((current) => (current === nextActiveId ? current : nextActiveId))
     }
 
@@ -7285,8 +7364,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     clearPublicationReaderProgrammaticTarget,
     publicationReaderOpen,
     publicationReaderViewMode,
+    selectedPaperRenderableFigures,
+    selectedPaperRenderableTables,
     selectedPaperReferences.length,
     selectedPaperSections,
+    selectedPublicationReaderAssetGroupKeyById,
   ])
 
   useEffect(() => {
@@ -10592,6 +10674,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 setPublicationReaderOpen(open)
                 if (!open) {
                   setPublicationReaderActiveSectionId(null)
+                  setPublicationReaderActiveAssetId(null)
                   setPublicationReaderPdfPage(1)
                   setPublicationReaderError('')
                   setPublicationReaderViewMode('structured')
