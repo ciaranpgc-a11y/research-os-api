@@ -7920,7 +7920,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     items: PublicationPaperAssetPayload[],
     emptyMessage: string,
     metadataMessage?: string | null,
+    options?: {
+      assetCardMode?: 'compact' | 'reader'
+      groupKey?: string | null
+    },
   ) => {
+    const assetCardMode = options?.assetCardMode || 'compact'
+    const useReaderAssetCards = assetCardMode === 'reader'
+    const assetGroupToneClassName = options?.groupKey
+      ? PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITIONS.find((definition) => definition.key === options.groupKey)?.toneClassName
+      : null
     if (items.length === 0) {
       return (
         <div className="space-y-2">
@@ -7934,44 +7943,76 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       )
     }
     return (
-      <div className="space-y-3">
+      <div className={cn(useReaderAssetCards ? 'space-y-5' : 'space-y-3')}>
         {items.map((asset) => (
           (() => {
-            const renderSourceAsChip = asset.asset_kind === 'table'
+            const renderSourceAsChip = useReaderAssetCards || asset.asset_kind === 'table'
             const assetSourceLabel = publicationReaderAssetSourceLabel(asset)
             const assetSourceChipLabel = publicationReaderAssetSourceChipLabel(asset)
             return (
           <div
             key={asset.id}
             ref={(node) => { publicationReaderInlineAssetRefs.current[asset.id] = node }}
-            className="overflow-hidden rounded-xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] transition-[border-color,background-color] duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))]"
+            className={cn(
+              'overflow-hidden transition-[border-color,background-color] duration-[var(--motion-duration-ui)] ease-out',
+              useReaderAssetCards
+                ? 'rounded-[1.12rem] border border-[#d8e1ea] bg-white hover:border-[hsl(var(--tone-neutral-280))]'
+                : 'rounded-xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))]',
+            )}
           >
+            {useReaderAssetCards && assetGroupToneClassName ? (
+              <div className={cn('h-1.5 w-full opacity-75', assetGroupToneClassName)} />
+            ) : null}
             <button
               type="button"
-              className="flex w-full items-start justify-between gap-3 px-3 py-2 text-left"
+              className={cn(
+                'flex w-full items-start justify-between text-left',
+                useReaderAssetCards
+                  ? 'gap-4 bg-[linear-gradient(180deg,#fafcfe_0%,#ffffff_100%)] px-4 pb-3 pt-4'
+                  : 'gap-3 px-3 py-2',
+              )}
               onClick={() => onOpenPublicationReaderAsset(asset)}
             >
               <div className="min-w-0">
-                <p className="line-clamp-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">{asset.title || asset.file_name}</p>
+                <p className={cn(
+                  'text-[hsl(var(--tone-neutral-900))]',
+                  useReaderAssetCards
+                    ? 'text-[1rem] font-semibold leading-snug tracking-[-0.01em]'
+                    : 'line-clamp-2 text-sm font-medium',
+                )}
+                >
+                  {asset.title || asset.file_name}
+                </p>
                 {!renderSourceAsChip ? (
                   <p className="mt-1 text-[0.72rem] uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
                     {assetSourceLabel}
                   </p>
                 ) : null}
                 {asset.caption ? (
-                  <p className="mt-1 line-clamp-3 text-[0.82rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                  <p className={cn(
+                    'mt-1 text-[hsl(var(--tone-neutral-600))]',
+                    useReaderAssetCards
+                      ? 'text-[0.86rem] leading-relaxed'
+                      : 'line-clamp-3 text-[0.82rem] leading-relaxed',
+                  )}>
                     {asset.caption}
                   </p>
                 ) : null}
                 {formatPublicationPaperSectionPageLabel({ page_start: asset.page_start, page_end: asset.page_end }) ? (
-                  <p className="mt-1 text-[0.72rem] text-[hsl(var(--tone-neutral-500))]">
+                  <p className={cn(
+                    'mt-1 text-[hsl(var(--tone-neutral-500))]',
+                    useReaderAssetCards ? 'text-[0.76rem]' : 'text-[0.72rem]',
+                  )}>
                     {formatPublicationPaperSectionPageLabel({ page_start: asset.page_start, page_end: asset.page_end })}
                   </p>
                 ) : null}
               </div>
-              <div className="flex shrink-0 items-start gap-2">
+              <div className={cn('flex shrink-0 items-start gap-2', useReaderAssetCards && 'pt-0.5')}>
                 {renderSourceAsChip ? (
-                  <span className="inline-flex whitespace-nowrap rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white px-2.5 py-1 text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                  <span className={cn(
+                    'inline-flex whitespace-nowrap rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]',
+                    useReaderAssetCards ? 'px-2.5 py-1 text-[0.64rem]' : 'px-2.5 py-1 text-[0.66rem]',
+                  )}>
                     {assetSourceChipLabel}
                   </span>
                 ) : null}
@@ -7991,7 +8032,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               </div>
             </button>
             {asset.image_data ? (
-              <div className="border-t border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-2">
+              <div className={cn(
+                'border-t border-[hsl(var(--tone-neutral-200))] bg-white',
+                useReaderAssetCards ? 'px-4 py-3' : 'px-3 py-2',
+              )}>
                 <button
                   type="button"
                   className="group block w-full text-left"
@@ -8003,17 +8047,26 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   <img
                     src={asset.image_data}
                     alt={asset.title || asset.file_name || 'Figure'}
-                    className="max-h-[280px] w-full rounded-md object-contain transition-transform duration-[var(--motion-duration-ui)] ease-out group-hover:scale-[1.01]"
+                    className={cn(
+                      'w-full object-contain transition-transform duration-[var(--motion-duration-ui)] ease-out group-hover:scale-[1.01]',
+                      useReaderAssetCards ? 'max-h-[420px] rounded-[0.85rem]' : 'max-h-[280px] rounded-md',
+                    )}
                     loading="lazy"
                   />
-                  <p className="mt-2 text-[0.72rem] text-[hsl(var(--tone-neutral-500))]">
+                  <p className={cn(
+                    'mt-2 text-[hsl(var(--tone-neutral-500))]',
+                    useReaderAssetCards ? 'text-[0.74rem]' : 'text-[0.72rem]',
+                  )}>
                     Open full-size figure
                   </p>
                 </button>
               </div>
             ) : null}
             {asset.structured_html ? (
-              <div className="border-t border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-2">
+              <div className={cn(
+                'border-t border-[hsl(var(--tone-neutral-200))] bg-white',
+                useReaderAssetCards ? 'px-4 py-3' : 'px-3 py-2',
+              )}>
                 <div
                   className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
                   dangerouslySetInnerHTML={{ __html: asset.structured_html }}
@@ -8021,7 +8074,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               </div>
             ) : null}
             {!asset.image_data && !asset.structured_html && asset.page_start != null ? (
-              <div className="border-t border-dashed border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50)/0.5)] px-3 py-2">
+              <div className={cn(
+                'border-t border-dashed border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50)/0.5)]',
+                useReaderAssetCards ? 'px-4 py-3' : 'px-3 py-2',
+              )}>
                 <p className="text-[0.78rem] text-[hsl(var(--tone-neutral-500))]">
                   {asset.asset_kind === 'table'
                     ? 'Table content not available - view in PDF.'
@@ -10861,6 +10917,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   selectedPaperRenderableTables,
                                   'No tables surfaced yet.',
                                   selectedPaperMetadataOnlyTableMessage,
+                                  {
+                                    assetCardMode: 'reader',
+                                    groupKey: 'tables',
+                                  },
                                 ),
                                 {
                                   groupKey: 'tables',
@@ -10874,6 +10934,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   selectedPaperRenderableFigures,
                                   'No figures surfaced yet.',
                                   selectedPaperMetadataOnlyFigureMessage,
+                                  {
+                                    assetCardMode: 'reader',
+                                    groupKey: 'figures',
+                                  },
                                 ),
                                 {
                                   description: 'Figures surfaced from the source paper.',
