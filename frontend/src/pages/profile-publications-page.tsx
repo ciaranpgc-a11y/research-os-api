@@ -10809,6 +10809,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 side="right"
                 data-ui="publication-paper-reader-shell"
                 className="inset-[1.2vh_1vw_1.2vh_2vw] h-auto max-w-none overflow-hidden rounded-[1.55rem] border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--surface-drilldown-elevated))] p-0 shadow-[0_28px_90px_hsl(var(--tone-neutral-900)/0.18)]"
+                onInteractOutside={(event) => {
+                  if (publicationReaderFigureLightboxAsset || publicationReaderTableLightboxAsset) {
+                    event.preventDefault()
+                  }
+                }}
+                onPointerDownOutside={(event) => {
+                  if (publicationReaderFigureLightboxAsset || publicationReaderTableLightboxAsset) {
+                    event.preventDefault()
+                  }
+                }}
               >
                 {selectedWork ? (
                   <div
