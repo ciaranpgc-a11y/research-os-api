@@ -11025,7 +11025,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       className={cn(
                         'grid min-h-0 flex-1 grid-cols-1',
                         publicationReaderInspectorOpen
-                          ? 'xl:grid-cols-[16rem_minmax(0,1fr)_18.5rem]'
+                          ? 'xl:grid-cols-[16rem_minmax(0,1fr)_22rem]'
                           : 'xl:grid-cols-[16rem_minmax(0,1fr)_4.5rem]',
                       )}
                     >
@@ -11377,7 +11377,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         )}
                       </main>
 
-                      <aside className="min-h-0 border-t border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] xl:border-l xl:border-t-0">
+                      <aside className="min-h-0 border-t border-[hsl(var(--tone-neutral-200))] bg-white xl:border-l xl:border-t-0">
                         {publicationReaderInspectorOpen ? (
                           <div className="flex h-full flex-col p-4">
                             <div className="flex items-center justify-end">
@@ -11390,129 +11390,123 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <ChevronRight className="h-4 w-4" />
                               </button>
                             </div>
-                            <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-                              <section className="overflow-hidden rounded-[1.15rem] border border-[hsl(var(--tone-neutral-200))] bg-white">
-                                <div className="h-1 bg-[hsl(var(--tone-accent-300))]" />
-                                <div className="px-4 py-4">
-                                  <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
-                                    Tools
-                                  </p>
-                                  <p className="mt-2 text-[0.88rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
-                                    Reader tools will live here.
-                                  </p>
-                                </div>
+                            <div className="mt-5 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pr-2">
+                              <section className="border-t border-[hsl(var(--tone-neutral-200))] pt-3">
+                                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
+                                  Tools
+                                </p>
+                                <p className="mt-2 text-[0.88rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                  Reader tools will live here.
+                                </p>
                               </section>
 
-                              <section className="overflow-hidden rounded-[1.15rem] border border-[hsl(var(--tone-neutral-200))] bg-white">
-                                <div className="h-1 bg-[hsl(var(--tone-accent-300))]" />
-                                <div className="px-4 py-4">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
-                                        Reference
+                              <section className="border-t border-[hsl(var(--tone-neutral-200))] pt-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
+                                      Reference
+                                    </p>
+                                    {publicationReaderInspectorReference?.tokenLabel ? (
+                                      <p className="mt-1 text-[0.82rem] font-medium text-[hsl(var(--tone-neutral-700))]">
+                                        Citation {publicationReaderInspectorReference.tokenLabel}
                                       </p>
-                                      {publicationReaderInspectorReference?.tokenLabel ? (
-                                        <p className="mt-1 text-[0.82rem] font-medium text-[hsl(var(--tone-neutral-700))]">
-                                          Citation {publicationReaderInspectorReference.tokenLabel}
+                                    ) : null}
+                                  </div>
+                                </div>
+
+                                {selectedPublicationReaderInspectorActiveReference ? (
+                                  <div className="mt-4 space-y-4">
+                                    {selectedPublicationReaderInspectorReferences.length > 1 ? (
+                                      <div className="space-y-2">
+                                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                                          Reference in selection
                                         </p>
+                                        <SelectPrimitive
+                                          value={selectedPublicationReaderInspectorActiveReference.id}
+                                          onValueChange={setPublicationReaderInspectorActiveReferenceId}
+                                        >
+                                          <SelectTrigger className={cn('h-10 w-full rounded-[0.95rem] border-[hsl(var(--tone-neutral-250))] bg-white text-left text-sm', HOUSE_INPUT_CLASS)}>
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent className="max-w-[26rem]">
+                                            {selectedPublicationReaderInspectorReferences.map((reference, index) => (
+                                              <SelectItem key={reference.id} value={reference.id}>
+                                                {formatPublicationReaderReferenceDisplayLabel(reference.label, index)} {trimTrailingReferencePunctuation(reference.title) || formatPublicationReaderReferenceListText(reference)}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </SelectPrimitive>
+                                      </div>
+                                    ) : null}
+
+                                    <div className="space-y-0">
+                                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                                        {formatPublicationReaderReferenceDisplayLabel(
+                                          selectedPublicationReaderInspectorActiveReference.label,
+                                          0,
+                                        )}
+                                      </p>
+                                      {selectedPublicationReaderInspectorActiveReferenceTitleText ? (
+                                        <p className="mt-2 text-[0.96rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]">
+                                          {selectedPublicationReaderInspectorActiveReferenceTitleText}.
+                                        </p>
+                                      ) : null}
+                                      {selectedPublicationReaderInspectorActiveReferenceAuthorsText ? (
+                                        <p className="mt-1.5 text-[0.82rem] leading-snug text-[hsl(var(--tone-neutral-600))]">
+                                          {selectedPublicationReaderInspectorActiveReferenceAuthorsText}
+                                        </p>
+                                      ) : null}
+                                      {selectedPublicationReaderInspectorActiveReferenceSourceLine ? (
+                                        <p className="mt-1 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
+                                          {selectedPublicationReaderInspectorActiveReferenceSourceLine}.
+                                        </p>
+                                      ) : null}
+                                      {!selectedPublicationReaderInspectorActiveReferenceAuthorsText && !selectedPublicationReaderInspectorActiveReferenceTitleText && !selectedPublicationReaderInspectorActiveReferenceSourceLine ? (
+                                        <p className="mt-2 text-[0.88rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
+                                          {selectedPublicationReaderInspectorActiveReferenceFallbackText}
+                                        </p>
+                                      ) : null}
+                                      {selectedPublicationReaderInspectorActiveReference.doi || selectedPublicationReaderInspectorActiveReference.pmid || selectedPublicationReaderInspectorActiveReference.pmcid ? (
+                                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
+                                          {selectedPublicationReaderInspectorActiveReference.doi ? (
+                                            <a
+                                              href={`https://doi.org/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.doi)}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                            >
+                                              DOI: {selectedPublicationReaderInspectorActiveReference.doi}
+                                            </a>
+                                          ) : null}
+                                          {selectedPublicationReaderInspectorActiveReference.pmid ? (
+                                            <a
+                                              href={`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.pmid)}/`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                            >
+                                              PMID: {selectedPublicationReaderInspectorActiveReference.pmid}
+                                            </a>
+                                          ) : null}
+                                          {selectedPublicationReaderInspectorActiveReference.pmcid ? (
+                                            <a
+                                              href={`https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.pmcid)}/`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                            >
+                                              PMCID: {selectedPublicationReaderInspectorActiveReference.pmcid}
+                                            </a>
+                                          ) : null}
+                                        </div>
                                       ) : null}
                                     </div>
                                   </div>
-
-                                  {selectedPublicationReaderInspectorActiveReference ? (
-                                    <div className="mt-4 space-y-4">
-                                      {selectedPublicationReaderInspectorReferences.length > 1 ? (
-                                        <div className="space-y-2">
-                                          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-                                            Reference in selection
-                                          </p>
-                                          <SelectPrimitive
-                                            value={selectedPublicationReaderInspectorActiveReference.id}
-                                            onValueChange={setPublicationReaderInspectorActiveReferenceId}
-                                          >
-                                            <SelectTrigger className={cn('h-10 w-full rounded-[0.95rem] border-[hsl(var(--tone-neutral-250))] bg-white text-left text-sm', HOUSE_INPUT_CLASS)}>
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent className="max-w-[24rem]">
-                                              {selectedPublicationReaderInspectorReferences.map((reference, index) => (
-                                                <SelectItem key={reference.id} value={reference.id}>
-                                                  {formatPublicationReaderReferenceDisplayLabel(reference.label, index)} {trimTrailingReferencePunctuation(reference.title) || formatPublicationReaderReferenceListText(reference)}
-                                                </SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </SelectPrimitive>
-                                        </div>
-                                      ) : null}
-
-                                      <div className="space-y-0">
-                                        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-                                          {formatPublicationReaderReferenceDisplayLabel(
-                                            selectedPublicationReaderInspectorActiveReference.label,
-                                            0,
-                                          )}
-                                        </p>
-                                        {selectedPublicationReaderInspectorActiveReferenceTitleText ? (
-                                          <p className="mt-2 text-[0.92rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]">
-                                            {selectedPublicationReaderInspectorActiveReferenceTitleText}.
-                                          </p>
-                                        ) : null}
-                                        {selectedPublicationReaderInspectorActiveReferenceAuthorsText ? (
-                                          <p className="mt-1.5 text-[0.82rem] leading-snug text-[hsl(var(--tone-neutral-600))]">
-                                            {selectedPublicationReaderInspectorActiveReferenceAuthorsText}
-                                          </p>
-                                        ) : null}
-                                        {selectedPublicationReaderInspectorActiveReferenceSourceLine ? (
-                                          <p className="mt-1 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
-                                            {selectedPublicationReaderInspectorActiveReferenceSourceLine}.
-                                          </p>
-                                        ) : null}
-                                        {!selectedPublicationReaderInspectorActiveReferenceAuthorsText && !selectedPublicationReaderInspectorActiveReferenceTitleText && !selectedPublicationReaderInspectorActiveReferenceSourceLine ? (
-                                          <p className="mt-2 text-[0.88rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
-                                            {selectedPublicationReaderInspectorActiveReferenceFallbackText}
-                                          </p>
-                                        ) : null}
-                                        {selectedPublicationReaderInspectorActiveReference.doi || selectedPublicationReaderInspectorActiveReference.pmid || selectedPublicationReaderInspectorActiveReference.pmcid ? (
-                                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
-                                            {selectedPublicationReaderInspectorActiveReference.doi ? (
-                                              <a
-                                                href={`https://doi.org/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.doi)}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
-                                              >
-                                                DOI: {selectedPublicationReaderInspectorActiveReference.doi}
-                                              </a>
-                                            ) : null}
-                                            {selectedPublicationReaderInspectorActiveReference.pmid ? (
-                                              <a
-                                                href={`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.pmid)}/`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
-                                              >
-                                                PMID: {selectedPublicationReaderInspectorActiveReference.pmid}
-                                              </a>
-                                            ) : null}
-                                            {selectedPublicationReaderInspectorActiveReference.pmcid ? (
-                                              <a
-                                                href={`https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.pmcid)}/`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
-                                              >
-                                                PMCID: {selectedPublicationReaderInspectorActiveReference.pmcid}
-                                              </a>
-                                            ) : null}
-                                          </div>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <p className="mt-4 text-[0.88rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
-                                      Click a citation in the manuscript to inspect it here.
-                                    </p>
-                                  )}
-                                </div>
+                                ) : (
+                                  <p className="mt-4 text-[0.88rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                    Click a citation in the manuscript to inspect it here.
+                                  </p>
+                                )}
                               </section>
                               {/*
                           <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
