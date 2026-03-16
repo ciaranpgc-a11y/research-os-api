@@ -291,9 +291,8 @@ function publicationReaderHexToRgba(hex: string | null, alpha: number): string |
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`
 }
 const PUBLICATION_STRUCTURED_TABLE_CLASS_NAME = [
-  'publication-structured-table overflow-auto text-[0.84rem] leading-relaxed',
+  'publication-structured-table overflow-x-auto overflow-y-visible text-[0.84rem] leading-relaxed',
   '[&_table]:min-w-full [&_table]:border-collapse [&_table]:table-auto',
-  '[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-[1] [&_thead_th]:bg-white/95 [&_thead_th]:backdrop-blur',
   '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-200))] [&_th]:px-3.5 [&_th]:py-2.5 [&_th]:text-left [&_th]:align-top [&_th]:text-[0.68rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.08em] [&_th]:text-[hsl(var(--tone-neutral-500))]',
   '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-200))] [&_td]:px-3.5 [&_td]:py-2.5 [&_td]:align-top [&_td]:text-[0.83rem] [&_td]:leading-relaxed [&_td]:text-[hsl(var(--tone-neutral-700))]',
   '[&_tbody_tr:nth-child(even)]:bg-[hsl(var(--tone-neutral-50)/0.55)]',
@@ -754,6 +753,22 @@ function publicationReaderAssetSourceLabel(asset: PublicationPaperAssetPayload):
   }
   if (asset.source === 'PARSED') {
     return `${formatPublicationPaperSectionKindLabel(asset.asset_kind)} · GROBID`
+  }
+  if (asset.source === 'OA_LINK') {
+    return 'Open access'
+  }
+  if (asset.source === 'SUPPLEMENTARY_LINK') {
+    return 'Supplementary'
+  }
+  return 'Saved file'
+}
+
+function publicationReaderAssetSourceChipLabel(asset: PublicationPaperAssetPayload): string {
+  if (asset.source_parser === 'pmc_jats') {
+    return 'PMC'
+  }
+  if (asset.source === 'PARSED') {
+    return 'GROBID'
   }
   if (asset.source === 'OA_LINK') {
     return 'Open access'
@@ -7921,6 +7936,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return (
       <div className="space-y-3">
         {items.map((asset) => (
+          (() => {
+            const renderSourceAsChip = asset.asset_kind === 'table'
+            const assetSourceLabel = publicationReaderAssetSourceLabel(asset)
+            const assetSourceChipLabel = publicationReaderAssetSourceChipLabel(asset)
+            return (
           <div
             key={asset.id}
             ref={(node) => { publicationReaderInlineAssetRefs.current[asset.id] = node }}
@@ -7933,9 +7953,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             >
               <div className="min-w-0">
                 <p className="line-clamp-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">{asset.title || asset.file_name}</p>
-                <p className="mt-1 text-[0.72rem] uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-                  {publicationReaderAssetSourceLabel(asset)}
-                </p>
+                {!renderSourceAsChip ? (
+                  <p className="mt-1 text-[0.72rem] uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                    {assetSourceLabel}
+                  </p>
+                ) : null}
                 {asset.caption ? (
                   <p className="mt-1 line-clamp-3 text-[0.82rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
                     {asset.caption}
@@ -7947,19 +7969,26 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   </p>
                 ) : null}
               </div>
-              {asset.classification_label ? (
-                <Badge
-                  size="sm"
-                  variant="outline"
-                  className={cn(
-                    'shrink-0 whitespace-nowrap',
-                    publicationFileClassificationOption(asset.classification)?.badgeClassName
-                      || 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]',
-                  )}
-                >
-                  {asset.classification_label}
-                </Badge>
-              ) : null}
+              <div className="flex shrink-0 items-start gap-2">
+                {renderSourceAsChip ? (
+                  <span className="inline-flex whitespace-nowrap rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white px-2.5 py-1 text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                    {assetSourceChipLabel}
+                  </span>
+                ) : null}
+                {asset.classification_label ? (
+                  <Badge
+                    size="sm"
+                    variant="outline"
+                    className={cn(
+                      'shrink-0 whitespace-nowrap',
+                      publicationFileClassificationOption(asset.classification)?.badgeClassName
+                        || 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]',
+                    )}
+                  >
+                    {asset.classification_label}
+                  </Badge>
+                ) : null}
+              </div>
             </button>
             {asset.image_data ? (
               <div className="border-t border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-2">
@@ -7986,7 +8015,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             {asset.structured_html ? (
               <div className="border-t border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-2">
                 <div
-                  className={cn(PUBLICATION_STRUCTURED_TABLE_CLASS_NAME, 'max-h-[320px]')}
+                  className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
                   dangerouslySetInnerHTML={{ __html: asset.structured_html }}
                 />
               </div>
@@ -8001,6 +8030,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               </div>
             ) : null}
           </div>
+            )
+          })()
         ))}
         {metadataMessage ? (
           <p className="rounded-xl border border-dashed border-[hsl(var(--tone-neutral-250))] bg-white/80 px-3 py-2 text-[0.8rem] leading-relaxed text-[hsl(var(--tone-neutral-500))]">
@@ -10832,7 +10863,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   selectedPaperMetadataOnlyTableMessage,
                                 ),
                                 {
-                                  description: 'Tables surfaced from the source paper.',
                                   groupKey: 'tables',
                                 },
                               )
