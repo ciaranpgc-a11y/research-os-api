@@ -11689,19 +11689,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             aria-modal="true"
             aria-label={publicationReaderTableLightboxAsset.title || publicationReaderTableLightboxAsset.file_name || 'Full-size table'}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-[hsl(var(--tone-neutral-200))] px-6 py-4">
+            <div className="flex items-start justify-between gap-4 border-b border-[hsl(var(--tone-neutral-200))] px-6 pb-4 pt-5">
               <div className="min-w-0">
-                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
-                  Table preview
-                </p>
-                <h2 className="mt-1 text-lg font-semibold text-[hsl(var(--tone-neutral-950))]">
+                <h2 className="text-lg font-semibold text-[hsl(var(--tone-neutral-950))]">
                   {publicationReaderTableLightboxAsset.title || publicationReaderTableLightboxAsset.file_name || 'Table'}
                 </h2>
+                {publicationReaderTableLightboxAsset.caption ? (
+                  <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                    {publicationReaderTableLightboxAsset.caption}
+                  </p>
+                ) : null}
                 {formatPublicationPaperSectionPageLabel({
                   page_start: publicationReaderTableLightboxAsset.page_start,
                   page_end: publicationReaderTableLightboxAsset.page_end,
                 }) ? (
-                  <p className="mt-1 text-sm text-[hsl(var(--tone-neutral-500))]">
+                  <p className="mt-2 text-sm text-[hsl(var(--tone-neutral-500))]">
                     {formatPublicationPaperSectionPageLabel({
                       page_start: publicationReaderTableLightboxAsset.page_start,
                       page_end: publicationReaderTableLightboxAsset.page_end,
@@ -11710,15 +11712,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Button
+                <button
                   type="button"
-                  variant="outline"
-                  className="border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-800))] hover:bg-[hsl(var(--tone-neutral-50))]"
-                  onClick={closePublicationReaderTableLightbox}
+                  className="inline-flex h-9 items-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white px-3.5 text-sm font-medium text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    closePublicationReaderTableLightbox()
+                  }}
                 >
                   <X className="mr-1.5 h-4 w-4" />
                   Close
-                </Button>
+                </button>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-auto bg-[hsl(var(--tone-neutral-50))] px-6 py-5">
@@ -11727,13 +11732,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 dangerouslySetInnerHTML={{ __html: publicationReaderTableLightboxAsset.structured_html || '' }}
               />
             </div>
-            {publicationReaderTableLightboxAsset.caption ? (
-              <div className="border-t border-[hsl(var(--tone-neutral-200))] px-6 py-4">
-                <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
-                  {publicationReaderTableLightboxAsset.caption}
-                </p>
-              </div>
-            ) : null}
           </div>
         </div>,
         document.body,
