@@ -434,6 +434,7 @@ function trimTrailingReferencePunctuation(value: string | null | undefined): str
 function formatPublicationReaderReferenceListText(
   reference: PublicationReaderReferencePayload,
 ): string {
+  const withTerminalPeriod = (value: string): string => (/[.!?]$/.test(value) ? value : `${value}.`)
   const authorSegment = formatPublicationReaderReferenceAuthors(reference.authors, {
     concise: true,
     authorsTruncated: reference.authorsTruncated,
@@ -449,10 +450,10 @@ function formatPublicationReaderReferenceListText(
 
   const citationSegments: string[] = []
   if (authorSegment) {
-    citationSegments.push(`${authorSegment}.`)
+    citationSegments.push(withTerminalPeriod(authorSegment))
   }
   if (titleSegment) {
-    citationSegments.push(`${titleSegment}.`)
+    citationSegments.push(withTerminalPeriod(titleSegment))
   }
 
   const journalDetailsParts: string[] = []
