@@ -176,6 +176,7 @@ type PublicationReaderCitationOccurrence = {
   key: string
   label: string
   referenceIds: string[]
+  sectionId: string
 }
 type PublicationReaderReferenceUsageSummary = {
   instance: number
@@ -3650,6 +3651,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   } | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
   const publicationReaderSectionRefs = useRef<Record<string, HTMLElement | null>>({})
+  const publicationReaderCitationOccurrenceRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const publicationReaderReferencesRef = useRef<HTMLElement | null>(null)
   const publicationReaderScrollViewportRef = useRef<HTMLElement | null>(null)
   const publicationReaderTableLightboxViewportRef = useRef<HTMLDivElement | null>(null)
@@ -5497,6 +5499,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     return next
   }, [selectedPaperReferences])
+  const selectedPaperSectionsById = useMemo(() => {
+    const next = new Map<string, PublicationPaperSectionPayload>()
+    selectedPaperSections.forEach((section) => {
+      next.set(section.id, section)
+    })
+    return next
+  }, [selectedPaperSections])
   const resolveSelectedPublicationReaderCitationToken = useCallback((token: string): PublicationReaderCitationCluster | null => {
     const citeMarkerMatch = token.match(/^\{\{cite:([^}]+)\}\}$/)
     if (citeMarkerMatch) {
@@ -5597,6 +5606,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           key: `${section.id}:citation:${index}`,
           label: cluster.label,
           referenceIds: cluster.references.map((reference) => reference.id),
+          sectionId: section.id,
         } satisfies PublicationReaderCitationOccurrence
         allOccurrences.push(occurrence)
         return occurrence
@@ -5612,12 +5622,19 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     })
 
     const seenByReferenceId = new Map<string, number>()
+    const occurrencesByReferenceId = new Map<string, PublicationReaderCitationOccurrence[]>()
     const usageByOccurrenceKey = new Map<string, Map<string, PublicationReaderReferenceUsageSummary>>()
     allOccurrences.forEach((occurrence) => {
       const perReferenceUsage = new Map<string, PublicationReaderReferenceUsageSummary>()
       occurrence.referenceIds.forEach((referenceId) => {
         const nextSeen = (seenByReferenceId.get(referenceId) || 0) + 1
         seenByReferenceId.set(referenceId, nextSeen)
+        const existingOccurrences = occurrencesByReferenceId.get(referenceId)
+        if (existingOccurrences) {
+          existingOccurrences.push(occurrence)
+        } else {
+          occurrencesByReferenceId.set(referenceId, [occurrence])
+        }
         perReferenceUsage.set(referenceId, {
           instance: nextSeen,
           total: totalsByReferenceId.get(referenceId) || nextSeen,
@@ -5628,6 +5645,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
     return {
       occurrencesBySectionId,
+      occurrencesByReferenceId,
       usageByOccurrenceKey,
     }
   }, [collectPublicationReaderCitationClustersFromText, selectedPaperSections])
@@ -5688,6 +5706,48 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPaperCitationOccurrencesBySectionId.usageByOccurrenceKey,
     selectedPublicationReaderInspectorActiveReference?.id,
   ])
+  const selectedPublicationReaderInspectorActiveReferenceOccurrences = useMemo(
+    () => (
+      selectedPublicationReaderInspectorActiveReference?.id
+        ? selectedPaperCitationOccurrencesBySectionId.occurrencesByReferenceId.get(selectedPublicationReaderInspectorActiveReference.id) || []
+        : []
+    ),
+    [
+      selectedPaperCitationOccurrencesBySectionId.occurrencesByReferenceId,
+      selectedPublicationReaderInspectorActiveReference?.id,
+    ],
+  )
+  const selectedPublicationReaderInspectorActiveOccurrence = useMemo(
+    () => {
+      const occurrenceKey = publicationReaderInspectorReference?.occurrenceKey || null
+      if (!occurrenceKey) {
+        return selectedPublicationReaderInspectorActiveReferenceOccurrences[0] || null
+      }
+      return selectedPublicationReaderInspectorActiveReferenceOccurrences.find((occurrence) => occurrence.key === occurrenceKey)
+        || selectedPublicationReaderInspectorActiveReferenceOccurrences[0]
+        || null
+    },
+    [
+      publicationReaderInspectorReference?.occurrenceKey,
+      selectedPublicationReaderInspectorActiveReferenceOccurrences,
+    ],
+  )
+  const selectedPublicationReaderInspectorActiveOccurrenceSectionLabel = useMemo(() => {
+    const section = selectedPublicationReaderInspectorActiveOccurrence
+      ? selectedPaperSectionsById.get(selectedPublicationReaderInspectorActiveOccurrence.sectionId) || null
+      : null
+    if (!section) {
+      return ''
+    }
+    return formatPublicationReaderHeadingSentenceCase(section.title || section.raw_label || 'Manuscript')
+  }, [selectedPaperSectionsById, selectedPublicationReaderInspectorActiveOccurrence])
+  const selectedPublicationReaderInspectorHasPreviousOccurrence = Boolean(
+    (selectedPublicationReaderInspectorActiveReferenceUsage?.instance || 0) > 1,
+  )
+  const selectedPublicationReaderInspectorHasNextOccurrence = Boolean(
+    selectedPublicationReaderInspectorActiveReferenceUsage
+    && selectedPublicationReaderInspectorActiveReferenceUsage.instance < selectedPublicationReaderInspectorActiveReferenceUsage.total,
+  )
   const selectedPaperAssetEnrichmentStatus = String(
     (selectedPaperProvenance as Record<string, unknown> | null)?.asset_enrichment_status || '',
   ).trim().toUpperCase()
@@ -6135,10 +6195,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       setPublicationReaderPdfPage(1)
       setPublicationReaderViewMode('structured')
       setPublicationReaderCollapsedNodeIds({})
-      setPublicationReaderInspectorOpen(false)
-      setPublicationReaderReferencePopover(null)
-      publicationReaderSectionRefs.current = {}
-      publicationReaderReferencesRef.current = null
+    setPublicationReaderInspectorOpen(false)
+    setPublicationReaderReferencePopover(null)
+    publicationReaderSectionRefs.current = {}
+    publicationReaderCitationOccurrenceRefs.current = {}
+    publicationReaderReferencesRef.current = null
     publicationReaderInlineAssetRefs.current = {}
   }, [selectedWorkId])
 
@@ -7231,6 +7292,70 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     scrollToSection()
   }, [beginPublicationReaderProgrammaticTarget, publicationReaderViewMode, selectedPaperSections])
+  const jumpToPublicationReaderCitationOccurrence = useCallback((occurrence: PublicationReaderCitationOccurrence | null) => {
+    if (!occurrence) {
+      return
+    }
+    beginPublicationReaderProgrammaticTarget(occurrence.sectionId)
+    setPublicationReaderActiveSectionId(occurrence.sectionId)
+    setPublicationReaderActiveAssetId(null)
+    const scrollToOccurrence = () => {
+      const occurrenceNode = publicationReaderCitationOccurrenceRefs.current[occurrence.key]
+      if (occurrenceNode) {
+        occurrenceNode.scrollIntoView({ behavior: 'auto', block: 'center' })
+        occurrenceNode.focus({ preventScroll: true })
+        return
+      }
+      const sectionNode = publicationReaderSectionRefs.current[occurrence.sectionId]
+      if (sectionNode) {
+        sectionNode.scrollIntoView({ behavior: 'auto', block: 'start' })
+      }
+    }
+    if (publicationReaderViewMode !== 'structured') {
+      setPublicationReaderViewMode('structured')
+      if (typeof window !== 'undefined') {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(scrollToOccurrence)
+        })
+      }
+      return
+    }
+    scrollToOccurrence()
+  }, [beginPublicationReaderProgrammaticTarget, publicationReaderViewMode])
+  const onSelectPublicationReaderInspectorOccurrence = useCallback((occurrence: PublicationReaderCitationOccurrence | null) => {
+    if (!occurrence) {
+      return
+    }
+    setPublicationReaderInspectorReference((current) => (
+      current
+        ? {
+            ...current,
+            occurrenceKey: occurrence.key,
+          }
+        : current
+    ))
+    jumpToPublicationReaderCitationOccurrence(occurrence)
+  }, [jumpToPublicationReaderCitationOccurrence])
+  const onStepPublicationReaderInspectorOccurrence = useCallback((direction: -1 | 1) => {
+    if (!selectedPublicationReaderInspectorActiveOccurrence || selectedPublicationReaderInspectorActiveReferenceOccurrences.length <= 1) {
+      return
+    }
+    const currentIndex = selectedPublicationReaderInspectorActiveReferenceOccurrences.findIndex(
+      (occurrence) => occurrence.key === selectedPublicationReaderInspectorActiveOccurrence.key,
+    )
+    if (currentIndex < 0) {
+      return
+    }
+    const nextOccurrence = selectedPublicationReaderInspectorActiveReferenceOccurrences[currentIndex + direction]
+    if (!nextOccurrence) {
+      return
+    }
+    onSelectPublicationReaderInspectorOccurrence(nextOccurrence)
+  }, [
+    onSelectPublicationReaderInspectorOccurrence,
+    selectedPublicationReaderInspectorActiveOccurrence,
+    selectedPublicationReaderInspectorActiveReferenceOccurrences,
+  ])
 
   const onEnterPublicationReaderPdfView = useCallback(() => {
     if (!selectedPaperPrimaryPdfContentFileId) {
@@ -8814,6 +8939,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         <button
           key={`${keyPrefix}-token-${partIndex}`}
           type="button"
+          ref={(node) => {
+            if (!occurrenceKey) {
+              return
+            }
+            publicationReaderCitationOccurrenceRefs.current[occurrenceKey] = node
+          }}
           className={referenceChipClassName}
           {...buildPublicationReaderReferenceTriggerProps(displayClusterLabel, clusterReferences, occurrenceKey)}
         >
@@ -11556,11 +11687,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
                                       Reference
                                     </p>
-                                    {selectedPublicationReaderInspectorActiveReferenceUsage ? (
-                                      <p className="mt-1 text-[0.8rem] text-[hsl(var(--tone-neutral-600))]">
-                                        Instance {selectedPublicationReaderInspectorActiveReferenceUsage.instance}/{selectedPublicationReaderInspectorActiveReferenceUsage.total}
-                                      </p>
-                                    ) : null}
                                   </div>
                                 </div>
 
@@ -11648,6 +11774,50 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                               PMCID: {selectedPublicationReaderInspectorActiveReference.pmcid}
                                             </a>
                                           ) : null}
+                                        </div>
+                                      ) : null}
+                                      {selectedPublicationReaderInspectorActiveReferenceUsage ? (
+                                        <div className="mt-4 border-t border-[hsl(var(--tone-neutral-200))] pt-3">
+                                          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
+                                            In manuscript
+                                          </p>
+                                          <div className="mt-2">
+                                            <p className="text-[0.92rem] font-medium leading-snug text-[hsl(var(--tone-neutral-900))]">
+                                              Mention {selectedPublicationReaderInspectorActiveReferenceUsage.instance} of {selectedPublicationReaderInspectorActiveReferenceUsage.total}
+                                            </p>
+                                            {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel ? (
+                                              <p className="mt-1 text-[0.82rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                                {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel}
+                                              </p>
+                                            ) : null}
+                                          </div>
+                                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                                            <button
+                                              type="button"
+                                              className="inline-flex h-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] px-3 text-[0.78rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:border-[hsl(var(--tone-neutral-200))] disabled:text-[hsl(var(--tone-neutral-400))]"
+                                              disabled={!selectedPublicationReaderInspectorHasPreviousOccurrence}
+                                              onClick={() => onStepPublicationReaderInspectorOccurrence(-1)}
+                                            >
+                                              <ChevronLeft className="mr-1.5 h-3.5 w-3.5" />
+                                              Previous
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="inline-flex h-8 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] px-3 text-[0.78rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:border-[hsl(var(--tone-neutral-200))] disabled:text-[hsl(var(--tone-neutral-400))]"
+                                              disabled={!selectedPublicationReaderInspectorHasNextOccurrence}
+                                              onClick={() => onStepPublicationReaderInspectorOccurrence(1)}
+                                            >
+                                              Next
+                                              <ChevronRight className="ml-1.5 h-3.5 w-3.5" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="inline-flex h-8 items-center justify-center rounded-full border border-[hsl(var(--tone-accent-250))] bg-[hsl(var(--tone-accent-50))] px-3 text-[0.78rem] font-medium text-[hsl(var(--tone-accent-800))] transition-colors hover:border-[hsl(var(--tone-accent-350))] hover:bg-[hsl(var(--tone-accent-100))]"
+                                              onClick={() => onSelectPublicationReaderInspectorOccurrence(selectedPublicationReaderInspectorActiveOccurrence)}
+                                            >
+                                              Jump to mention
+                                            </button>
+                                          </div>
                                         </div>
                                       ) : null}
                                     </div>
