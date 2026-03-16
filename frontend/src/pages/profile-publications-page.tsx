@@ -396,7 +396,7 @@ function formatPublicationReaderReferenceClusterLabel(labels: string[]): string 
 
 function formatPublicationReaderReferenceAuthors(
   authors: string[] | null | undefined,
-  options?: { concise?: boolean; authorsTruncated?: boolean },
+  options?: { concise?: boolean; authorsTruncated?: boolean; maxVisibleAuthors?: number },
 ): string {
   const rawAuthors = Array.isArray(authors)
     ? authors.map((author) => String(author || '').trim()).filter(Boolean)
@@ -419,11 +419,76 @@ function formatPublicationReaderReferenceAuthors(
   if (resolvedAuthors.length === 0) {
     return ''
   }
-  const shouldUseEtAl = resolvedAuthors.length > 3 || Boolean(options?.authorsTruncated)
+  const maxVisibleAuthors = Math.max(1, options?.maxVisibleAuthors ?? 3)
+  const shouldUseEtAl = resolvedAuthors.length > maxVisibleAuthors || Boolean(options?.authorsTruncated)
   if (!options?.concise || !shouldUseEtAl) {
     return resolvedAuthors.join(', ')
   }
-  return `${resolvedAuthors.slice(0, 3).join(', ')}, et al.`
+  return `${resolvedAuthors.slice(0, maxVisibleAuthors).join(', ')}, et al.`
+}
+
+function trimTrailingReferencePunctuation(value: string | null | undefined): string {
+  return normalizeCompactText(value).replace(/[.;:,]+$/g, '').trim()
+}
+
+function formatPublicationReaderReferenceListText(
+  reference: PublicationReaderReferencePayload,
+): string {
+  const authorSegment = formatPublicationReaderReferenceAuthors(reference.authors, {
+    concise: true,
+    authorsTruncated: reference.authorsTruncated,
+    maxVisibleAuthors: 6,
+  })
+  const titleSegment = trimTrailingReferencePunctuation(reference.title)
+  const journalSegment = trimTrailingReferencePunctuation(reference.journal)
+  const yearSegment = trimTrailingReferencePunctuation(reference.year)
+  const volumeSegment = trimTrailingReferencePunctuation(reference.volume)
+  const issueSegment = trimTrailingReferencePunctuation(reference.issue)
+  const pagesSegment = trimTrailingReferencePunctuation(reference.pages)
+  const doiSegment = trimTrailingReferencePunctuation(reference.doi)
+
+  const citationSegments: string[] = []
+  if (authorSegment) {
+    citationSegments.push(`${authorSegment}.`)
+  }
+  if (titleSegment) {
+    citationSegments.push(`${titleSegment}.`)
+  }
+
+  const journalDetailsParts: string[] = []
+  if (journalSegment) {
+    journalDetailsParts.push(`${journalSegment}.`)
+  }
+  const yearVolumeParts: string[] = []
+  if (yearSegment) {
+    yearVolumeParts.push(yearSegment)
+  }
+  if (volumeSegment) {
+    yearVolumeParts.push(
+      issueSegment ? `${volumeSegment}(${issueSegment})` : volumeSegment,
+    )
+  } else if (issueSegment) {
+    yearVolumeParts.push(`(${issueSegment})`)
+  }
+  let yearVolumeText = yearVolumeParts.join(';')
+  if (pagesSegment) {
+    yearVolumeText = yearVolumeText ? `${yearVolumeText}:${pagesSegment}` : pagesSegment
+  }
+  if (yearVolumeText) {
+    journalDetailsParts.push(`${yearVolumeText}.`)
+  }
+  if (journalDetailsParts.length > 0) {
+    citationSegments.push(journalDetailsParts.join(' '))
+  }
+  if (doiSegment) {
+    citationSegments.push(`doi:${doiSegment}.`)
+  }
+
+  const formattedCitation = citationSegments.join(' ').replace(/\s+/g, ' ').trim()
+  if (formattedCitation) {
+    return formattedCitation
+  }
+  return normalizeCompactText(reference.rawText)
 }
 
 function comparePublicationPaperSections(
@@ -5309,49 +5374,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPaperSections.length,
     selectedPaperTableSurfaceRatio,
   ])
-  const selectedPaperReaderStatusBadges = useMemo(() => {
-    const parserLabel = selectedPaperDocument?.parser_status
-      ? formatPublicationPaperSectionKindLabel(selectedPaperDocument.parser_status)
-      : 'No parser state'
-    const parserToneClassName = selectedPaperDocument?.parser_status === 'FAILED'
-      ? 'border-[hsl(var(--tone-danger-250))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]'
-      : selectedPaperDocument?.parser_status === 'FULL_TEXT_READY'
-        ? 'border-[hsl(var(--tone-positive-250))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]'
-        : 'border-[hsl(var(--tone-neutral-220))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]'
-
-    const badges = [
-      {
-        label: `Parser: ${parserLabel}`,
-        toneClassName: parserToneClassName,
-      },
-      {
-        label: `Read quality: ${selectedPaperReadQuality.label}`,
-        toneClassName: selectedPaperReadQuality.toneClassName,
-      },
-    ]
-
-    if (selectedPaperFigures.length > 0) {
-      badges.push({
-        label: `Figures surfaced: ${selectedPaperRenderableFigures.length}/${selectedPaperFigures.length}`,
-        toneClassName: 'border-[hsl(var(--tone-neutral-220))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]',
-      })
-    }
-    if (selectedPaperTables.length > 0) {
-      badges.push({
-        label: `Tables surfaced: ${selectedPaperRenderableTables.length}/${selectedPaperTables.length}`,
-        toneClassName: 'border-[hsl(var(--tone-neutral-220))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]',
-      })
-    }
-    return badges
-  }, [
-    selectedPaperDocument?.parser_status,
-    selectedPaperFigures.length,
-    selectedPaperReadQuality.label,
-    selectedPaperReadQuality.toneClassName,
-    selectedPaperRenderableFigures.length,
-    selectedPaperRenderableTables.length,
-    selectedPaperTables.length,
-  ])
   const selectedPaperSectionChildrenByParent = useMemo(() => {
     const next = new Map<string | null, PublicationPaperSectionPayload[]>()
     for (const section of selectedPaperSections) {
@@ -6839,7 +6861,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const scrollToSection = () => {
       const node = publicationReaderSectionRefs.current[sectionId]
       if (node) {
-        node.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        node.scrollIntoView({ behavior: 'auto', block: 'start' })
       }
     }
     if (publicationReaderViewMode !== 'structured') {
@@ -7156,12 +7178,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         if (typeof window !== 'undefined') {
           window.requestAnimationFrame(() => {
             window.requestAnimationFrame(() => {
-              inlineNode.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              inlineNode.scrollIntoView({ behavior: 'auto', block: 'start' })
             })
           })
         }
       } else {
-        inlineNode.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        inlineNode.scrollIntoView({ behavior: 'auto', block: 'start' })
       }
       return
     }
@@ -7195,7 +7217,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       const scrollToReferences = () => {
         const node = publicationReaderReferencesRef.current
         if (node) {
-          node.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          node.scrollIntoView({ behavior: 'auto', block: 'start' })
         }
       }
       if (publicationReaderViewMode !== 'structured') {
@@ -10706,26 +10728,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               selectedPaperDocument?.page_count ? `${selectedPaperDocument.page_count} pages` : null,
                               selectedPaperParsingInProgress
                                 ? 'Parsing full paper…'
-                                : selectedPaperSections.length > 0
-                                  ? `${selectedPaperSections.length} sections`
-                                  : null,
+                                : null,
                             ].filter(Boolean).join(' | ')}
                           </p>
-                          {!selectedPaperParsingInProgress ? (
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              {selectedPaperReaderStatusBadges.map((badge) => (
-                                <span
-                                  key={badge.label}
-                                  className={cn(
-                                    'inline-flex items-center rounded-full border px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em]',
-                                    badge.toneClassName,
-                                  )}
-                                >
-                                  {badge.label}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-2">
                           <div className="inline-flex items-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50)/0.92)] p-1 shadow-[0_10px_24px_hsl(var(--tone-neutral-900)/0.05)]">
@@ -10757,18 +10762,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               <span>Structured</span>
                             </button>
                           </div>
-                          {selectedPaperDocument?.has_viewable_pdf ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="gap-2 rounded-full border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-100))]"
-                              onClick={onOpenPublicationReaderPrimaryPdf}
-                            >
-                              <Download className="h-4 w-4" />
-                              <span>Open PDF</span>
-                            </Button>
-                          ) : null}
                         </div>
                       </div>
                       {publicationReaderError ? (
@@ -11019,24 +11012,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               renderPublicationReaderMajorPanel(
                                 'References',
                                 (
-                                  <ol className="space-y-2.5 text-[0.9rem] leading-[1.75] text-[hsl(var(--tone-neutral-700))]">
+                                  <ol className="space-y-3 text-[0.92rem] leading-[1.8] text-[hsl(var(--tone-neutral-700))]">
                                     {selectedPaperReferences.map((reference, index) => (
                                       <li
                                         key={reference.id}
-                                        className="grid grid-cols-[auto,minmax(0,1fr)] gap-3 border-t border-[hsl(var(--tone-neutral-150))] pt-2.5 first:border-t-0 first:pt-0"
+                                        className="grid grid-cols-[auto,minmax(0,1fr)] gap-3 border-t border-[hsl(var(--tone-neutral-150))] pt-3 first:border-t-0 first:pt-0"
                                       >
                                         <span className="pt-0.5 text-[0.74rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-500))]">
                                           {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
                                         </span>
                                         <span className="min-w-0 flex-1 text-[0.9rem] leading-[1.85] text-[hsl(var(--tone-neutral-700))]">
-                                          {String(reference.rawText || '').replace(/\s+/g, ' ').trim()}
+                                          {formatPublicationReaderReferenceListText(reference)}
                                         </span>
                                       </li>
                                     ))}
                                   </ol>
                                 ),
                                 {
-                                  description: 'Source citations extracted from the parsed manuscript.',
                                   groupKey: 'references',
                                   sectionRef: (node) => {
                                     publicationReaderReferencesRef.current = node
