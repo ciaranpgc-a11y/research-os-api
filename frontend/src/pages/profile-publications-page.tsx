@@ -11689,8 +11689,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             aria-modal="true"
             aria-label={publicationReaderTableLightboxAsset.title || publicationReaderTableLightboxAsset.file_name || 'Full-size table'}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-[hsl(var(--tone-neutral-200))] px-6 pb-4 pt-5">
-              <div className="min-w-0">
+            <div className="border-b border-[hsl(var(--tone-neutral-200))] px-6 pb-4 pt-5">
+              <div className="min-w-0 max-w-[48rem]">
                 <h2 className="text-lg font-semibold text-[hsl(var(--tone-neutral-950))]">
                   {publicationReaderTableLightboxAsset.title || publicationReaderTableLightboxAsset.file_name || 'Table'}
                 </h2>
@@ -11710,19 +11710,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     })}
                   </p>
                 ) : null}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
-                  className="inline-flex h-9 items-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white px-3.5 text-sm font-medium text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
+                  className="mt-3 inline-flex h-9 items-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white px-3.5 text-sm font-medium text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
                   onMouseDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation()
                     closePublicationReaderTableLightbox()
                   }}
                 >
-                  <X className="mr-1.5 h-4 w-4" />
-                  Close
+                  <ChevronLeft className="mr-1.5 h-4 w-4" />
+                  Back to reader
                 </button>
               </div>
             </div>
