@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, Filter, Hammer, Loader2, Mail, Paperclip, Pencil, RefreshCw, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, Filter, Hammer, Loader2, Mail, Paperclip, Pencil, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
@@ -12,7 +12,7 @@ import { drilldownTabFlexGrow } from '@/components/publications/house-drilldown-
 import { publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
 import { Badge, Button, DrilldownSheet, Input, SelectContent, SelectItem, SelectPrimitive, SelectTrigger, SelectValue, Sheet, SheetContent, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
 import { API_BASE_URL } from '@/lib/api'
-import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import { houseForms, houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
   downloadPublicationFile,
@@ -995,13 +995,6 @@ function resolvePublicationPaperSectionAnchorPage(
     return Math.max(1, Number(section.page_end))
   }
   return null
-}
-
-function formatPublicationReaderCoverageRatioLabel(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) {
-    return 'n/a'
-  }
-  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`
 }
 
 const PUBLICATION_FILE_CLASSIFICATION_OPTIONS: Array<{
@@ -5491,95 +5484,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     return next
   }, [selectedPaperRenderableFigures, selectedPaperRenderableTables])
-  const selectedPaperComponentSummary = selectedPaperModel?.component_summary || null
-  const selectedPaperSectionConfidenceSummary = useMemo(() => {
-    const values = selectedPaperSections
-      .map((section) => Number(section.confidence))
-      .filter((value) => Number.isFinite(value) && value > 0 && value <= 1)
-    if (!values.length) {
-      return {
-        average: null as number | null,
-        count: 0,
-      }
-    }
-    const average = values.reduce((sum, value) => sum + value, 0) / values.length
-    return {
-      average,
-      count: values.length,
-    }
-  }, [selectedPaperSections])
-  const selectedPaperFigureSurfaceRatio = selectedPaperFigures.length > 0
-    ? selectedPaperRenderableFigures.length / selectedPaperFigures.length
-    : null
-  const selectedPaperTableSurfaceRatio = selectedPaperTables.length > 0
-    ? selectedPaperRenderableTables.length / selectedPaperTables.length
-    : null
-  const selectedPaperReadQuality = useMemo(() => {
-    if (selectedPaperParsingInProgress || (publicationReaderLoading && !selectedPaperModel)) {
-      return {
-        label: 'Building',
-        toneClassName: 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]',
-        note: 'Structured content is still being assembled.',
-      }
-    }
-
-    const parserStatus = String(selectedPaperDocument?.parser_status || '').toUpperCase()
-    const responseStatus = String(selectedPaperModelResponse?.status || '').toUpperCase()
-    if (parserStatus === 'FAILED' || responseStatus === 'FAILED') {
-      return {
-        label: 'Low confidence',
-        toneClassName: 'border-[hsl(var(--tone-danger-250))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]',
-        note: 'Parser failed; verify content in PDF view.',
-      }
-    }
-
-    const avgSectionConfidence = selectedPaperSectionConfidenceSummary.average
-    const parsedSectionCount = selectedPaperSections.length
-    const hasLowAssetCoverage = (
-      (selectedPaperFigureSurfaceRatio != null && selectedPaperFigureSurfaceRatio < 0.55)
-      || (selectedPaperTableSurfaceRatio != null && selectedPaperTableSurfaceRatio < 0.55)
-    )
-
-    if (
-      parsedSectionCount < 4
-      || hasLowAssetCoverage
-      || (avgSectionConfidence != null && avgSectionConfidence < 0.58)
-    ) {
-      return {
-        label: 'Low confidence',
-        toneClassName: 'border-[hsl(var(--tone-danger-250))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]',
-        note: 'Read with PDF cross-checks for section order and assets.',
-      }
-    }
-
-    if (
-      (avgSectionConfidence != null && avgSectionConfidence < 0.8)
-      || (selectedPaperFigureSurfaceRatio != null && selectedPaperFigureSurfaceRatio < 0.85)
-      || (selectedPaperTableSurfaceRatio != null && selectedPaperTableSurfaceRatio < 0.85)
-    ) {
-      return {
-        label: 'Moderate confidence',
-        toneClassName: 'border-[hsl(var(--tone-warning-250))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-800))]',
-        note: 'Most structure is stable, but verify key figures and tables.',
-      }
-    }
-
-    return {
-      label: 'High confidence',
-      toneClassName: 'border-[hsl(var(--tone-positive-250))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]',
-      note: 'Structure and assets look consistent for quick reading.',
-    }
-  }, [
-    publicationReaderLoading,
-    selectedPaperDocument?.parser_status,
-    selectedPaperFigureSurfaceRatio,
-    selectedPaperModel,
-    selectedPaperModelResponse?.status,
-    selectedPaperParsingInProgress,
-    selectedPaperSectionConfidenceSummary.average,
-    selectedPaperSections.length,
-    selectedPaperTableSurfaceRatio,
-  ])
   const selectedPaperSectionChildrenByParent = useMemo(() => {
     const next = new Map<string | null, PublicationPaperSectionPayload[]>()
     for (const section of selectedPaperSections) {
@@ -11386,11 +11290,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                       <aside className="min-h-0 border-t border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] xl:border-l xl:border-t-0">
                         {publicationReaderInspectorOpen ? (
-                          <div className="h-full overflow-y-auto p-4">
-                            <div className="mb-4 flex items-center justify-between">
-                              <p className={cn(houseNavigation.sectionLabel, 'px-1 text-[0.68rem] tracking-[0.12em]')}>
-                                Details
-                              </p>
+                          <div className="flex h-full flex-col p-4">
+                            <div className="flex items-center justify-end">
                               <button
                                 type="button"
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-600))] transition-[background-color,color,border-color] duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-neutral-300))] hover:text-[hsl(var(--tone-neutral-900))]"
@@ -11400,6 +11301,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <ChevronRight className="h-4 w-4" />
                               </button>
                             </div>
+                            {/*
                             <div className="space-y-5">
                           <section className="rounded-2xl border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-4">
                             <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
@@ -11605,6 +11507,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             </details>
                           </section>
                             </div>
+                            */}
                           </div>
                         ) : (
                           <div className="flex h-full items-start justify-center p-2 pt-4">
