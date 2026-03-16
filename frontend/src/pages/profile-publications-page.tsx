@@ -11594,12 +11594,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       ) : null}
       {publicationReaderFigureLightboxAsset && typeof document !== 'undefined' ? createPortal(
         <div
-          className="fixed inset-0 z-[150] bg-[hsl(var(--tone-neutral-900)/0.82)] backdrop-blur-sm"
+          className="pointer-events-auto fixed inset-0 z-[150] bg-[hsl(var(--tone-neutral-900)/0.82)] backdrop-blur-sm"
           onClick={closePublicationReaderFigureLightbox}
           role="presentation"
         >
           <div
-            className="absolute inset-4 flex min-h-0 flex-col overflow-hidden rounded-[1.5rem] border border-white/12 bg-[hsl(var(--tone-neutral-950))] text-white shadow-[0_30px_80px_hsl(var(--tone-neutral-950)/0.55)]"
+            className="pointer-events-auto absolute inset-4 flex min-h-0 flex-col overflow-hidden rounded-[1.5rem] border border-white/12 bg-[hsl(var(--tone-neutral-950))] text-white shadow-[0_30px_80px_hsl(var(--tone-neutral-950)/0.55)]"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
