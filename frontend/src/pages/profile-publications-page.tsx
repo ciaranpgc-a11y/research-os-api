@@ -7737,7 +7737,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       setPublicationReaderActiveAssetId(null)
       const scrollToGroup = () => {
         const node = publicationReaderGroupRefs.current[target.id]
-        scrollPublicationReaderNodeIntoView(node, { topInset: 92 })
+        scrollPublicationReaderNodeIntoView(node, { topInset: 116 })
       }
       if (publicationReaderViewMode !== 'structured') {
         setPublicationReaderViewMode('structured')
