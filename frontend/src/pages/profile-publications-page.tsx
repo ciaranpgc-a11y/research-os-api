@@ -11778,8 +11778,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         </div>
                                       ) : null}
                                       {selectedPublicationReaderInspectorActiveReferenceUsage ? (
-                                        <div className="mt-4.5 border-t border-[hsl(var(--tone-neutral-200))] pt-3.5">
-                                          <div>
+                                        <div className="mt-5 pt-2">
+                                          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-[hsl(var(--tone-neutral-180))] pt-3">
                                             <p className="text-[0.82rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-850))]">
                                               {selectedPublicationReaderInspectorOccurrenceSummary}
                                               {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel ? (
@@ -11797,29 +11797,27 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                                 ' in manuscript'
                                               )}
                                             </p>
-                                          </div>
-                                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                                             {selectedPublicationReaderInspectorHasMultipleOccurrences ? (
-                                              <button
-                                                type="button"
-                                                className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
-                                                disabled={!selectedPublicationReaderInspectorHasPreviousOccurrence}
-                                                onClick={() => onStepPublicationReaderInspectorOccurrence(-1)}
-                                              >
-                                                <ChevronLeft className="h-3.25 w-3.25" />
-                                                Previous
-                                              </button>
-                                            ) : null}
-                                            {selectedPublicationReaderInspectorHasMultipleOccurrences ? (
-                                              <button
-                                                type="button"
-                                                className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
-                                                disabled={!selectedPublicationReaderInspectorHasNextOccurrence}
-                                                onClick={() => onStepPublicationReaderInspectorOccurrence(1)}
-                                              >
-                                                Next
-                                                <ChevronRight className="h-3.25 w-3.25" />
-                                              </button>
+                                              <div className="flex items-center gap-2">
+                                                <button
+                                                  type="button"
+                                                  className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
+                                                  disabled={!selectedPublicationReaderInspectorHasPreviousOccurrence}
+                                                  onClick={() => onStepPublicationReaderInspectorOccurrence(-1)}
+                                                >
+                                                  <ChevronLeft className="h-3.25 w-3.25" />
+                                                  Previous
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
+                                                  disabled={!selectedPublicationReaderInspectorHasNextOccurrence}
+                                                  onClick={() => onStepPublicationReaderInspectorOccurrence(1)}
+                                                >
+                                                  Next
+                                                  <ChevronRight className="h-3.25 w-3.25" />
+                                                </button>
+                                              </div>
                                             ) : null}
                                           </div>
                                         </div>
