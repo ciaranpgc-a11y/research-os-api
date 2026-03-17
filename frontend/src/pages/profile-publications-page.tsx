@@ -7280,6 +7280,32 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     void loadPublicationPaperModelData(selectedWorkId, true)
   }, [loadPublicationPaperModelData, selectedPaperFirstReaderSection, selectedPublicationReaderEntryAvailable, selectedWorkId])
 
+  const scrollPublicationReaderNodeIntoView = useCallback((
+    node: HTMLElement | null,
+    options?: {
+      topInset?: number
+      behavior?: ScrollBehavior
+    },
+  ) => {
+    if (!node) {
+      return
+    }
+    const viewportNode = publicationReaderScrollViewportRef.current
+    const behavior = options?.behavior ?? 'auto'
+    if (!viewportNode) {
+      node.scrollIntoView({ behavior, block: 'start', inline: 'nearest' })
+      return
+    }
+    const viewportRect = viewportNode.getBoundingClientRect()
+    const nodeRect = node.getBoundingClientRect()
+    const topInset = options?.topInset ?? 24
+    const targetTop = viewportNode.scrollTop + (nodeRect.top - viewportRect.top) - topInset
+    viewportNode.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior,
+    })
+  }, [])
+
   const onSelectPublicationReaderSection = useCallback((sectionId: string) => {
     const selectedSection = selectedPaperSections.find((section) => section.id === sectionId) || null
     beginPublicationReaderProgrammaticTarget(sectionId)
@@ -7292,9 +7318,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     const scrollToSection = () => {
       const node = publicationReaderSectionRefs.current[sectionId]
-      if (node) {
-        node.scrollIntoView({ behavior: 'auto', block: 'start' })
-      }
+      scrollPublicationReaderNodeIntoView(node, { topInset: 28 })
     }
     if (publicationReaderViewMode !== 'structured') {
       setPublicationReaderViewMode('structured')
@@ -7322,9 +7346,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         return
       }
       const sectionNode = publicationReaderSectionRefs.current[occurrence.sectionId]
-      if (sectionNode) {
-        sectionNode.scrollIntoView({ behavior: 'auto', block: 'start' })
-      }
+      scrollPublicationReaderNodeIntoView(sectionNode, { topInset: 28 })
     }
     if (publicationReaderViewMode !== 'structured') {
       setPublicationReaderViewMode('structured')
@@ -7716,9 +7738,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       setPublicationReaderActiveAssetId(null)
       const scrollToReferences = () => {
         const node = publicationReaderReferencesRef.current
-        if (node) {
-          node.scrollIntoView({ behavior: 'auto', block: 'start' })
-        }
+        scrollPublicationReaderNodeIntoView(node, { topInset: 28 })
       }
       if (publicationReaderViewMode !== 'structured') {
         setPublicationReaderViewMode('structured')
@@ -7738,6 +7758,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     onSelectPublicationReaderAsset,
     onSelectPublicationReaderSection,
     publicationReaderViewMode,
+    scrollPublicationReaderNodeIntoView,
     setPublicationReaderActiveAssetId,
   ])
 
