@@ -5930,6 +5930,45 @@
   color: var(--reader-reference-link-hover-color);
 }
 
+.reader-shell-grid {
+  display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1280px) {
+  .reader-shell-grid--inspector-open {
+    grid-template-columns:
+      clamp(13rem, 15.5vw, 15rem)
+      minmax(0, 1fr)
+      clamp(19rem, 23vw, 22.5rem);
+  }
+
+  .reader-shell-grid--inspector-closed {
+    grid-template-columns:
+      clamp(13rem, 15.5vw, 15rem)
+      minmax(0, 1fr)
+      4.5rem;
+  }
+}
+
+@media (min-width: 1536px) {
+  .reader-shell-grid--inspector-open {
+    grid-template-columns:
+      clamp(14rem, 16vw, 16rem)
+      minmax(0, 1fr)
+      clamp(21rem, 24vw, 26rem);
+  }
+
+  .reader-shell-grid--inspector-closed {
+    grid-template-columns:
+      clamp(14rem, 16vw, 16rem)
+      minmax(0, 1fr)
+      4.5rem;
+  }
+}
+
 .reader-inspector-shell {
   min-height: 0;
   min-width: 0;
@@ -5942,9 +5981,9 @@
   .reader-inspector-shell {
     border-top: 0;
     border-left: 1px solid var(--reader-inspector-border-color);
-    width: min(100%, var(--reader-inspector-width));
-    max-width: 100%;
-    flex: 0 1 var(--reader-inspector-width);
+    width: 100%;
+    max-width: none;
+    flex: none;
   }
 }
 
@@ -5957,6 +5996,7 @@
 .reader-inspector-expanded {
   display: flex;
   height: 100%;
+  min-width: 0;
   flex-direction: column;
   padding: var(--reader-inspector-padding);
 }
@@ -5973,6 +6013,7 @@
 .reader-inspector-scroll {
   margin-top: 0.85rem;
   min-height: 0;
+  min-width: 0;
   flex: 1;
   overflow-y: auto;
   padding-right: 0.35rem;
@@ -5982,6 +6023,7 @@
 }
 
 .reader-inspector-section {
+  min-width: 0;
   border-top: 1px solid var(--reader-inspector-divider-color);
   padding-top: 0.75rem;
 }
@@ -6035,6 +6077,7 @@
 
 .reader-inspector-reference-links {
   margin-top: 0.5rem;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -6066,6 +6109,7 @@
 .reader-inspector-usage-row {
   display: flex;
   flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem 0.75rem;
@@ -6075,6 +6119,7 @@
 
 .reader-inspector-usage-text {
   margin: 0;
+  min-width: 0;
   font-size: 0.82rem;
   line-height: 1.35;
   font-weight: 600;
@@ -6116,18 +6161,16 @@
 }
 
 .reader-nav-divider {
-  margin-top: 0.8rem;
-  padding-top: 0;
-  border-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid hsl(var(--tone-neutral-850) / 0.46);
 }
 
 .reader-nav-divider-line {
-  display: block;
-  width: 100%;
-  height: 2px;
-  border-radius: 9999px;
-  background: hsl(var(--tone-neutral-900) / 0.36);
-  margin-bottom: 0.8rem;
+  display: none;
 }
 
 .reader-nav-group-row {

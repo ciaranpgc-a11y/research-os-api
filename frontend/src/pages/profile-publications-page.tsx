@@ -11385,10 +11385,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                     <div
                       className={cn(
-                        'grid min-h-0 flex-1 grid-cols-1',
+                        'reader-shell-grid',
                         publicationReaderInspectorOpen
-                          ? 'xl:grid-cols-[15rem_minmax(0,1fr)_22rem] 2xl:grid-cols-[16rem_minmax(0,1fr)_26rem]'
-                          : 'xl:grid-cols-[15rem_minmax(0,1fr)_4.5rem] 2xl:grid-cols-[16rem_minmax(0,1fr)_4.5rem]',
+                          ? 'reader-shell-grid--inspector-open'
+                          : 'reader-shell-grid--inspector-closed',
                       )}
                     >
                       <aside className="min-h-0 px-3 pb-6 pt-14 sm:px-4 sm:pt-16">
