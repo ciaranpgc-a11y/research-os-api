@@ -21,7 +21,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -197,6 +197,53 @@ STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
 STRUCTURED_PAPER_STATUS_FULL_TEXT_READY = "FULL_TEXT_READY"
 STRUCTURED_PAPER_STATUS_FAILED = "FAILED"
+STRUCTURED_PAPER_PROGRESS_STAGE_PREPARING = "PREPARING"
+STRUCTURED_PAPER_PROGRESS_STAGE_PARSING_MANUSCRIPT = "PARSING_MANUSCRIPT"
+STRUCTURED_PAPER_PROGRESS_STAGE_ALIGNING_CONTENT = "ALIGNING_CONTENT"
+STRUCTURED_PAPER_PROGRESS_STAGE_LINKING_REFERENCES = "LINKING_REFERENCES"
+STRUCTURED_PAPER_PROGRESS_STAGE_RESOLVING_ASSETS = "RESOLVING_ASSETS"
+STRUCTURED_PAPER_PROGRESS_STAGE_FINALIZING = "FINALIZING"
+STRUCTURED_PAPER_PROGRESS_STAGE_COMPLETE = "COMPLETE"
+STRUCTURED_PAPER_PROGRESS_STAGE_ORDER = (
+    STRUCTURED_PAPER_PROGRESS_STAGE_PREPARING,
+    STRUCTURED_PAPER_PROGRESS_STAGE_PARSING_MANUSCRIPT,
+    STRUCTURED_PAPER_PROGRESS_STAGE_ALIGNING_CONTENT,
+    STRUCTURED_PAPER_PROGRESS_STAGE_LINKING_REFERENCES,
+    STRUCTURED_PAPER_PROGRESS_STAGE_RESOLVING_ASSETS,
+    STRUCTURED_PAPER_PROGRESS_STAGE_FINALIZING,
+)
+STRUCTURED_PAPER_PROGRESS_STAGE_DETAILS = {
+    STRUCTURED_PAPER_PROGRESS_STAGE_PREPARING: {
+        "weight": 0.08,
+        "expected_seconds": 4,
+        "label": "Preparing manuscript",
+    },
+    STRUCTURED_PAPER_PROGRESS_STAGE_PARSING_MANUSCRIPT: {
+        "weight": 0.42,
+        "expected_seconds": 24,
+        "label": "Parsing manuscript",
+    },
+    STRUCTURED_PAPER_PROGRESS_STAGE_ALIGNING_CONTENT: {
+        "weight": 0.16,
+        "expected_seconds": 8,
+        "label": "Aligning content",
+    },
+    STRUCTURED_PAPER_PROGRESS_STAGE_LINKING_REFERENCES: {
+        "weight": 0.12,
+        "expected_seconds": 6,
+        "label": "Linking citations",
+    },
+    STRUCTURED_PAPER_PROGRESS_STAGE_RESOLVING_ASSETS: {
+        "weight": 0.17,
+        "expected_seconds": 12,
+        "label": "Resolving figures and tables",
+    },
+    STRUCTURED_PAPER_PROGRESS_STAGE_FINALIZING: {
+        "weight": 0.05,
+        "expected_seconds": 3,
+        "label": "Finalizing reader",
+    },
+}
 STRUCTURED_PAPER_SECTION_SOURCE_GROBID = "grobid"
 STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC = "pmc_bioc"
 STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS = "pmc_jats"
@@ -241,6 +288,177 @@ def _coerce_utc_or_none(value: datetime | None) -> datetime | None:
     if not isinstance(value, datetime):
         return None
     return _coerce_utc(value)
+
+
+def _serialize_utc_datetime(value: datetime | None) -> str | None:
+    normalized = _coerce_utc_or_none(value)
+    return normalized.isoformat() if normalized is not None else None
+
+
+def _structured_paper_progress_stage_detail(stage: str | None) -> dict[str, Any] | None:
+    clean = str(stage or "").strip().upper()
+    return (
+        dict(STRUCTURED_PAPER_PROGRESS_STAGE_DETAILS[clean])
+        if clean in STRUCTURED_PAPER_PROGRESS_STAGE_DETAILS
+        else None
+    )
+
+
+def _structured_paper_progress_snapshot(
+    *,
+    stage: str | None,
+    parse_started_at: datetime | None,
+    stage_started_at: datetime | None,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    detail = _structured_paper_progress_stage_detail(stage)
+    if detail is None:
+        return None
+    current_stage = str(stage or "").strip().upper()
+    current_index = STRUCTURED_PAPER_PROGRESS_STAGE_ORDER.index(current_stage)
+    current_weight = float(detail["weight"])
+    expected_current_seconds = max(1, int(detail["expected_seconds"]))
+    current_now = _coerce_utc(now or _utcnow())
+    parse_started = _coerce_utc(parse_started_at) if parse_started_at else current_now
+    stage_started = _coerce_utc(stage_started_at) if stage_started_at else parse_started
+    elapsed_stage_seconds = max(
+        0,
+        int((current_now - stage_started).total_seconds()),
+    )
+    current_fraction = min(0.97, elapsed_stage_seconds / expected_current_seconds)
+    completed_weight = sum(
+        float(STRUCTURED_PAPER_PROGRESS_STAGE_DETAILS[item]["weight"])
+        for item in STRUCTURED_PAPER_PROGRESS_STAGE_ORDER[:current_index]
+    )
+    percent = int(round(min(0.99, completed_weight + (current_weight * current_fraction)) * 100))
+    remaining_current_seconds = max(
+        0,
+        int(round(expected_current_seconds * (1.0 - current_fraction))),
+    )
+    remaining_future_seconds = sum(
+        int(STRUCTURED_PAPER_PROGRESS_STAGE_DETAILS[item]["expected_seconds"])
+        for item in STRUCTURED_PAPER_PROGRESS_STAGE_ORDER[current_index + 1 :]
+    )
+    return {
+        "stage": current_stage,
+        "label": str(detail["label"]),
+        "percent": max(1, min(99, percent)),
+        "estimated_seconds_remaining": max(
+            1,
+            remaining_current_seconds + remaining_future_seconds,
+        ),
+        "parse_started_at": _serialize_utc_datetime(parse_started),
+        "stage_started_at": _serialize_utc_datetime(stage_started),
+        "updated_at": _serialize_utc_datetime(current_now),
+    }
+
+
+def _apply_publication_paper_progress_state(
+    *,
+    payload: dict[str, Any] | None,
+    stage: str | None,
+    parse_started_at: datetime | None,
+    stage_started_at: datetime | None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    next_payload = dict(payload) if isinstance(payload, dict) else {}
+    snapshot = _structured_paper_progress_snapshot(
+        stage=stage,
+        parse_started_at=parse_started_at,
+        stage_started_at=stage_started_at,
+        now=now,
+    )
+    document = (
+        dict(next_payload.get("document"))
+        if isinstance(next_payload.get("document"), dict)
+        else {}
+    )
+    provenance = (
+        dict(next_payload.get("provenance"))
+        if isinstance(next_payload.get("provenance"), dict)
+        else {}
+    )
+    if snapshot is None:
+        document["parse_progress_percent"] = None
+        document["parse_estimated_seconds_remaining"] = None
+        document["parse_progress_stage"] = None
+        provenance.pop("parse_progress_stage", None)
+        provenance.pop("parse_progress_label", None)
+        provenance.pop("parse_progress_started_at", None)
+        provenance.pop("parse_progress_updated_at", None)
+        provenance.pop("parse_started_at", None)
+    else:
+        document["parse_progress_percent"] = int(snapshot["percent"])
+        document["parse_estimated_seconds_remaining"] = int(
+            snapshot["estimated_seconds_remaining"]
+        )
+        document["parse_progress_stage"] = str(snapshot["stage"])
+        provenance["parse_progress_stage"] = str(snapshot["stage"])
+        provenance["parse_progress_label"] = str(snapshot["label"])
+        provenance["parse_progress_started_at"] = snapshot["stage_started_at"]
+        provenance["parse_progress_updated_at"] = snapshot["updated_at"]
+        provenance["parse_started_at"] = snapshot["parse_started_at"]
+    next_payload["document"] = document
+    next_payload["provenance"] = provenance
+    return next_payload
+
+
+def _finalize_publication_paper_progress_state(
+    *,
+    payload: dict[str, Any] | None,
+    parse_started_at: datetime | None,
+    completed_at: datetime | None = None,
+) -> dict[str, Any]:
+    next_payload = dict(payload) if isinstance(payload, dict) else {}
+    document = (
+        dict(next_payload.get("document"))
+        if isinstance(next_payload.get("document"), dict)
+        else {}
+    )
+    provenance = (
+        dict(next_payload.get("provenance"))
+        if isinstance(next_payload.get("provenance"), dict)
+        else {}
+    )
+    finished_at = _coerce_utc(completed_at or _utcnow())
+    started_at = _coerce_utc(parse_started_at) if parse_started_at else finished_at
+    duration_seconds = max(0, int((finished_at - started_at).total_seconds()))
+    document["parse_progress_percent"] = 100
+    document["parse_estimated_seconds_remaining"] = 0
+    document["parse_progress_stage"] = STRUCTURED_PAPER_PROGRESS_STAGE_COMPLETE
+    provenance["parse_progress_stage"] = STRUCTURED_PAPER_PROGRESS_STAGE_COMPLETE
+    provenance["parse_progress_label"] = "Complete"
+    provenance["parse_progress_started_at"] = _serialize_utc_datetime(finished_at)
+    provenance["parse_progress_updated_at"] = _serialize_utc_datetime(finished_at)
+    provenance["parse_started_at"] = _serialize_utc_datetime(started_at)
+    provenance["parse_completed_at"] = _serialize_utc_datetime(finished_at)
+    provenance["parse_duration_seconds"] = duration_seconds
+    next_payload["document"] = document
+    next_payload["provenance"] = provenance
+    return next_payload
+
+
+def _refresh_publication_paper_running_progress(
+    *, payload: dict[str, Any] | None, now: datetime | None = None
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    document = payload.get("document") if isinstance(payload.get("document"), dict) else {}
+    if str(document.get("parser_status") or "").strip().upper() != STRUCTURED_PAPER_STATUS_PARSING:
+        return payload
+    provenance = payload.get("provenance") if isinstance(payload.get("provenance"), dict) else {}
+    stage = str(provenance.get("parse_progress_stage") or "").strip().upper() or None
+    parse_started_at = _parse_iso_datetime(provenance.get("parse_started_at"))
+    stage_started_at = _parse_iso_datetime(provenance.get("parse_progress_started_at"))
+    if not stage or parse_started_at is None:
+        return payload
+    return _apply_publication_paper_progress_state(
+        payload=payload,
+        stage=stage,
+        parse_started_at=parse_started_at,
+        stage_started_at=stage_started_at,
+        now=now,
+    )
 
 
 def _safe_int(value: Any) -> int | None:
@@ -10021,7 +10239,10 @@ def _extract_structured_publication_paper_with_pmc_bioc(
     title: str | None = None,
     enrich_assets: bool = True,
     align_to_pdf: bool = True,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
+    if progress_callback is not None:
+        progress_callback(STRUCTURED_PAPER_PROGRESS_STAGE_PARSING_MANUSCRIPT)
     payload = _request_pmc_bioc_payload(pmcid)
     if payload is None:
         raise PublicationConsoleValidationError(
@@ -10061,6 +10282,8 @@ def _extract_structured_publication_paper_with_pmc_bioc(
             logger.warning("PMC archive asset enrichment skipped for %s: %s", pmcid, exc)
     aligned_page_count: int | None = None
     if align_to_pdf:
+        if progress_callback is not None:
+            progress_callback(STRUCTURED_PAPER_PROGRESS_STAGE_ALIGNING_CONTENT)
         aligned_sections, aligned_page_count = _align_structured_publication_sections_to_pdf_pages(
             sections=(
                 parsed_payload.get("sections")
@@ -10107,6 +10330,8 @@ def _extract_structured_publication_paper_with_pmc_bioc(
             for item in parsed_payload.get("tables", [])
             if isinstance(item, dict)
         ]
+    if progress_callback is not None:
+        progress_callback(STRUCTURED_PAPER_PROGRESS_STAGE_LINKING_REFERENCES)
     try:
         grobid_citation_payload = _extract_structured_publication_paper_with_grobid(
             content=content,
@@ -10133,6 +10358,8 @@ def _extract_structured_publication_paper_with_pmc_bioc(
         )
         == 0
     )
+    if progress_callback is not None:
+        progress_callback(STRUCTURED_PAPER_PROGRESS_STAGE_RESOLVING_ASSETS)
     if need_grobid_figure_assets or need_grobid_table_assets:
         try:
             grobid_figures, grobid_tables = _extract_structured_publication_assets_with_grobid(
@@ -10179,6 +10406,7 @@ def _extract_structured_publication_paper_with_best_available_parser(
     pmid: str | None = None,
     doi: str | None = None,
     year: int | None = None,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     pmcid = _resolve_pmcid(
         pmid=pmid,
@@ -10194,6 +10422,7 @@ def _extract_structured_publication_paper_with_best_available_parser(
                 title=title,
                 enrich_assets=True,
                 align_to_pdf=True,
+                progress_callback=progress_callback,
             )
         except Exception as exc:
             logger.warning("PMC BioC parse skipped for %s: %s", pmcid, exc)
@@ -10204,6 +10433,7 @@ def _extract_structured_publication_paper_with_best_available_parser(
             content=content,
             title=title,
             file_name=file_name,
+            progress_callback=progress_callback,
         )
         if pmcid:
             try:
@@ -10226,8 +10456,14 @@ def _extract_structured_publication_paper_with_best_available_parser(
 
 
 def _extract_structured_publication_paper_with_grobid(
-    *, content: bytes, title: str | None = None, file_name: str | None = None
+    *,
+    content: bytes,
+    title: str | None = None,
+    file_name: str | None = None,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
+    if progress_callback is not None:
+        progress_callback(STRUCTURED_PAPER_PROGRESS_STAGE_PARSING_MANUSCRIPT)
     tei_xml = _request_grobid_fulltext_tei(
         content=content,
         file_name=file_name or "publication.pdf",
@@ -10239,6 +10475,8 @@ def _extract_structured_publication_paper_with_grobid(
     except Exception:
         pass
     parsed_payload = _parse_grobid_tei_into_structured_paper(tei_xml=tei_xml, title=title)
+    if progress_callback is not None:
+        progress_callback(STRUCTURED_PAPER_PROGRESS_STAGE_ALIGNING_CONTENT)
     aligned_sections, aligned_page_count = _align_structured_publication_sections_to_pdf_pages(
         sections=(
             parsed_payload.get("sections")
@@ -10277,7 +10515,11 @@ def _extract_structured_publication_paper_with_grobid(
         if isinstance(parsed_payload.get("tables"), list)
         else []
     )
+    if progress_callback is not None:
+        progress_callback(STRUCTURED_PAPER_PROGRESS_STAGE_LINKING_REFERENCES)
     if figures or tables:
+        if progress_callback is not None:
+            progress_callback(STRUCTURED_PAPER_PROGRESS_STAGE_RESOLVING_ASSETS)
         enriched_figures, enriched_tables = _enrich_grobid_publication_paper_assets(
             content=content,
             figures=figures,
@@ -10910,7 +11152,8 @@ def _run_structured_abstract_compute_job(
 
 
 def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> None:
-    now = _utcnow()
+    parse_started_at = _utcnow()
+    now = parse_started_at
     source_state: dict[str, Any] | None = None
     source_signature: str | None = None
     try:
@@ -10924,8 +11167,59 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
             files=source_state["files"],
             parser_status=STRUCTURED_PAPER_STATUS_PARSING,
         )
+        current_payload = _apply_publication_paper_progress_state(
+            payload=seed_payload,
+            stage=STRUCTURED_PAPER_PROGRESS_STAGE_PREPARING,
+            parse_started_at=parse_started_at,
+            stage_started_at=parse_started_at,
+            now=parse_started_at,
+        )
+        current_stage = STRUCTURED_PAPER_PROGRESS_STAGE_PREPARING
+
+        def _persist_running_payload(next_payload: dict[str, Any]) -> None:
+            with session_scope() as session:
+                _resolve_work_or_raise(
+                    session, user_id=user_id, publication_id=publication_id
+                )
+                row = _load_structured_paper_cache(
+                    session,
+                    user_id=user_id,
+                    publication_id=publication_id,
+                    for_update=True,
+                )
+                if row is None:
+                    row = PublicationStructuredPaperCache(
+                        owner_user_id=user_id,
+                        publication_id=publication_id,
+                    )
+                    session.add(row)
+                    session.flush()
+                row.payload_json = next_payload
+                row.source_signature_sha256 = source_signature
+                row.parser_version = STRUCTURED_PAPER_CACHE_VERSION
+                row.computed_at = _utcnow()
+                row.status = RUNNING_STATUS
+                row.last_error = None
+                session.flush()
+
+        def _report_progress(stage: str) -> None:
+            nonlocal current_payload, current_stage
+            clean_stage = str(stage or "").strip().upper()
+            if not clean_stage or clean_stage == current_stage:
+                return
+            stage_now = _utcnow()
+            current_payload = _apply_publication_paper_progress_state(
+                payload=current_payload,
+                stage=clean_stage,
+                parse_started_at=parse_started_at,
+                stage_started_at=stage_now,
+                now=stage_now,
+            )
+            current_stage = clean_stage
+            _persist_running_payload(current_payload)
+
         primary_pdf_file_id = str(
-            ((seed_payload.get("document") or {}).get("primary_pdf_file_id")) or ""
+            ((current_payload.get("document") or {}).get("primary_pdf_file_id")) or ""
         ).strip()
         if not primary_pdf_file_id:
             with session_scope() as session:
@@ -10945,7 +11239,11 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
                     )
                     session.add(row)
                     session.flush()
-                row.payload_json = seed_payload
+                row.payload_json = _finalize_publication_paper_progress_state(
+                    payload=current_payload,
+                    parse_started_at=parse_started_at,
+                    completed_at=now,
+                )
                 row.source_signature_sha256 = source_signature
                 row.parser_version = STRUCTURED_PAPER_CACHE_VERSION
                 row.computed_at = now
@@ -10954,6 +11252,7 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
                 session.flush()
             return
 
+        _report_progress(STRUCTURED_PAPER_PROGRESS_STAGE_PARSING_MANUSCRIPT)
         binary_payload = _resolve_publication_file_binary_payload(
             user_id=user_id,
             publication_id=publication_id,
@@ -10967,7 +11266,9 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
             pmid=str(source_state["publication"].get("pmid") or "").strip() or None,
             doi=str(source_state["publication"].get("doi") or "").strip() or None,
             year=_safe_int(source_state["publication"].get("year")),
+            progress_callback=_report_progress,
         )
+        _report_progress(STRUCTURED_PAPER_PROGRESS_STAGE_FINALIZING)
         payload, source_signature = _build_publication_paper_payload(
             publication=source_state["publication"],
             structured_abstract_payload=source_state["structured_abstract_payload"],
@@ -10975,6 +11276,12 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
             files=source_state["files"],
             parsed_paper=parsed_paper,
             parser_status=STRUCTURED_PAPER_STATUS_FULL_TEXT_READY,
+        )
+        completed_at = _utcnow()
+        payload = _finalize_publication_paper_progress_state(
+            payload=payload,
+            parse_started_at=parse_started_at,
+            completed_at=completed_at,
         )
         with session_scope() as session:
             _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
@@ -10991,7 +11298,7 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
             row.payload_json = payload
             row.source_signature_sha256 = source_signature
             row.parser_version = STRUCTURED_PAPER_CACHE_VERSION
-            row.computed_at = now
+            row.computed_at = completed_at
             row.status = READY_STATUS
             row.last_error = None
             session.flush()
@@ -11031,7 +11338,7 @@ def _run_structured_paper_parse_job(*, user_id: str, publication_id: str) -> Non
             if source_signature:
                 row.source_signature_sha256 = source_signature
             row.parser_version = STRUCTURED_PAPER_CACHE_VERSION
-            row.computed_at = now
+            row.computed_at = _utcnow()
             row.status = FAILED_STATUS
             row.last_error = failure_message
             session.flush()
@@ -11178,6 +11485,15 @@ def get_publication_paper_model(*, user_id: str, publication_id: str, force_repa
         if has_viewable_pdf
         else seed_payload
     )
+    if has_viewable_pdf:
+        parse_progress_now = _utcnow()
+        parsing_payload = _apply_publication_paper_progress_state(
+            payload=parsing_payload,
+            stage=STRUCTURED_PAPER_PROGRESS_STAGE_PREPARING,
+            parse_started_at=parse_progress_now,
+            stage_started_at=parse_progress_now,
+            now=parse_progress_now,
+        )
     should_enqueue_structured_paper = False
     response_payload: dict[str, Any] | None = None
     with session_scope() as session:
@@ -11268,6 +11584,11 @@ def get_publication_paper_model(*, user_id: str, publication_id: str, force_repa
                 cached_payload = row.payload_json if isinstance(row.payload_json, dict) else {}
 
             payload = cached_payload or (parsing_payload if has_viewable_pdf else seed_payload)
+            if current_status == RUNNING_STATUS:
+                payload = _refresh_publication_paper_running_progress(
+                    payload=payload,
+                    now=now,
+                )
         response_payload = {
             "payload": payload,
             "computed_at": _coerce_utc_or_none(row.computed_at),

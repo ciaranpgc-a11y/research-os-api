@@ -2429,6 +2429,9 @@ class PublicationPaperModelDocumentResponse(BaseModel):
     search_ready: bool = False
     outline_depth: int = 1
     reader_entry_available: bool = True
+    parse_progress_percent: int | None = None
+    parse_estimated_seconds_remaining: int | None = None
+    parse_progress_stage: str | None = None
 
 
 class PublicationPaperModelSectionResponse(BaseModel):
@@ -2578,6 +2581,7 @@ class PublicationFileResponse(BaseModel):
     ] | None = None
     classification_label: str | None = None
     classification_other_label: str | None = None
+    is_stored_locally: bool = False
     can_delete: bool = True
     can_rename: bool = True
     can_classify: bool = True

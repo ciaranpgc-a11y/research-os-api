@@ -930,6 +930,13 @@ function publicationFileDirectUrl(file: Pick<PublicationFilePayload, 'download_u
   return String(file.download_url || file.oa_url || '').trim()
 }
 
+function publicationFileIsStoredLocally(file: Pick<PublicationFilePayload, 'is_stored_locally' | 'source'>): boolean {
+  if (file.source === 'USER_UPLOAD') {
+    return true
+  }
+  return Boolean(file.is_stored_locally)
+}
+
 function resolvePublicationAssetUrl(value: string | null | undefined): string {
   const trimmed = String(value || '').trim()
   if (!trimmed) {
@@ -961,6 +968,19 @@ function resolvePublicationPdfViewerUrl(value: string | null | undefined): strin
 
 function isLinkedPublicationFile(file: Pick<PublicationFilePayload, 'source'>): boolean {
   return file.source === 'OA_LINK' || file.source === 'SUPPLEMENTARY_LINK'
+}
+
+function canOpenPublicationFileExternally(
+  file: Pick<PublicationFilePayload, 'source' | 'download_url' | 'oa_url' | 'is_stored_locally'>,
+): boolean {
+  const directUrl = publicationFileDirectUrl(file)
+  if (!directUrl || !isLinkedPublicationFile(file)) {
+    return false
+  }
+  if (file.source === 'SUPPLEMENTARY_LINK') {
+    return true
+  }
+  return !publicationFileIsStoredLocally(file)
 }
 
 function canRenamePublicationFile(file: Pick<PublicationFilePayload, 'source' | 'can_delete'> & { can_rename?: boolean }): boolean {
@@ -5772,6 +5792,26 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPaperModelResponse?.status === 'RUNNING'
     || selectedPaperDocument?.parser_status === 'PARSING'
   )
+  const selectedPaperParsingProgressPercent = Math.max(
+    0,
+    Math.min(
+      100,
+      Number(selectedPaperDocument?.parse_progress_percent ?? 0) || 0,
+    ),
+  )
+  const selectedPaperParsingEtaLabel = useMemo(() => {
+    const remainingSeconds = Number(
+      selectedPaperDocument?.parse_estimated_seconds_remaining ?? 0,
+    ) || 0
+    if (remainingSeconds <= 0) {
+      return 'Estimating time...'
+    }
+    if (remainingSeconds < 60) {
+      return `~${remainingSeconds}s remaining`
+    }
+    const roundedMinutes = Math.max(1, Math.round(remainingSeconds / 60))
+    return `~${roundedMinutes} min remaining`
+  }, [selectedPaperDocument?.parse_estimated_seconds_remaining])
   const selectedPaperAssetEnrichmentInFlight = Boolean(
     !selectedPaperParsingInProgress
     && selectedPaperDocument?.has_viewable_pdf
@@ -7631,7 +7671,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [])
 
   const onOpenPublicationFile = (file: PublicationFilePayload) => {
-    if (isLinkedPublicationFile(file) && publicationFileDirectUrl(file)) {
+    if (canOpenPublicationFileExternally(file)) {
       onOpenLinkedPublicationFile(file)
       return
     }
@@ -8248,7 +8288,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationFileShareContext = (file: PublicationFilePayload): { subject: string; url: string | null; body: string } => {
     const fileName = (file.file_name || file.label || 'Publication file').trim() || 'Publication file'
     const publicationTitle = (selectedDetail?.title || selectedWork?.title || 'Publication').trim()
-    const directUrl = publicationFileDirectUrl(file) || null
+    const directUrl = canOpenPublicationFileExternally(file)
+      ? publicationFileDirectUrl(file) || null
+      : null
     const body = directUrl
       ? `Publication: ${publicationTitle}\nFile: ${fileName}\nDownload link: ${directUrl}`
       : `Publication: ${publicationTitle}\nFile: ${fileName}\nDownload the file from Publications > Files in Axiomos and attach it before sending.`
@@ -8277,7 +8319,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           const fileLabel = (file.label || 'File').trim() || 'File'
           const normalizedLabel = fileLabel.toLowerCase().replace(/\s+/g, ' ').trim()
           const showFileLabel = normalizedLabel !== 'oa manuscript download'
-          const canOpenExternalFile = isLinkedPublicationFile(file) && Boolean(publicationFileDirectUrl(file))
+          const canOpenExternalFile = canOpenPublicationFileExternally(file)
           const isRenamingFile = renamingPublicationFileId === file.id
           const isSavingFile = savingPublicationFileId === file.id
           const isSavingRename = isRenamingFile && isSavingFile
@@ -11325,7 +11367,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               selectedPaperMetadata?.year ? String(selectedPaperMetadata.year) : detailYear ? String(detailYear) : null,
                               selectedPaperDocument?.page_count ? `${selectedPaperDocument.page_count} pages` : null,
                               selectedPaperParsingInProgress
-                                ? 'Parsing full paper…'
+                                ? `In progress (${selectedPaperParsingEtaLabel})`
                                 : null,
                             ].filter(Boolean).join(' | ')}
                           </p>
@@ -11398,11 +11440,22 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         >
                           {selectedPaperParsingInProgress ? (
                             <div className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-3">
-                              <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-150))]">
-                                <div className="h-full w-1/3 animate-pulse rounded-full bg-[linear-gradient(90deg,hsl(var(--tone-accent-500))_0%,hsl(var(--tone-positive-500))_100%)]" />
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                                  In progress
+                                </p>
+                                <span className="text-[0.78rem] text-[hsl(var(--tone-neutral-500))]">
+                                  {selectedPaperParsingProgressPercent}%
+                                </span>
                               </div>
-                              <p className="mt-3 text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
-                                Parsing the full paper. Navigation will appear when the manuscript is ready.
+                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-150))]">
+                                <div
+                                  className="h-full rounded-full bg-[hsl(var(--tone-accent-500))] transition-[width] duration-500 ease-out"
+                                  style={{ width: `${selectedPaperParsingProgressPercent}%` }}
+                                />
+                              </div>
+                              <p className="mt-2 text-[0.82rem] text-[hsl(var(--tone-neutral-600))]">
+                                {selectedPaperParsingEtaLabel}
                               </p>
                             </div>
                           ) : publicationReaderLoading && selectedPublicationReaderNavigatorGroups.length === 0 ? (
@@ -11471,42 +11524,25 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         ) : (
                           <div className="mx-auto flex w-full max-w-[62rem] flex-col gap-6 px-5 py-7 sm:px-7 sm:py-8">
                             {selectedPaperParsingInProgress ? (
-                              <div className="overflow-hidden rounded-[1.4rem] border border-[hsl(var(--tone-neutral-200))] bg-white shadow-[0_18px_48px_hsl(var(--tone-neutral-900)/0.06)]">
-                                <div className="border-b border-[hsl(var(--tone-neutral-150))] bg-[linear-gradient(180deg,hsl(var(--tone-accent-50))_0%,white_100%)] px-5 py-4">
-                                  <div className="flex items-center gap-3">
-                                    <Loader2 className="h-4 w-4 animate-spin text-[hsl(var(--tone-accent-700))]" />
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                                        Parsing full paper
-                                      </p>
-                                      <p className="text-sm leading-relaxed text-[hsl(var(--tone-neutral-600))]">
-                                        We’re building the structured paper first, then tables and figures will fill in just after that.
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-150))]">
-                                    <div className="h-full w-1/3 animate-pulse rounded-full bg-[linear-gradient(90deg,hsl(var(--tone-accent-500))_0%,hsl(var(--tone-positive-500))_100%)]" />
-                                  </div>
+                              <div className="rounded-[1.35rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-5 py-5 shadow-[0_18px_48px_hsl(var(--tone-neutral-900)/0.04)]">
+                                <div className="flex items-center justify-between gap-4">
+                                  <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                                    In progress
+                                  </p>
+                                  <span className="text-sm text-[hsl(var(--tone-neutral-500))]">
+                                    {selectedPaperParsingProgressPercent}%
+                                  </span>
                                 </div>
-                                <div className="grid gap-4 px-5 py-5 sm:grid-cols-3">
-                                  {['Resolving sections', 'Anchoring full text', 'Recovering tables & figures'].map((step, index) => (
-                                    <div
-                                      key={step}
-                                      className={cn(
-                                        'rounded-[1rem] border px-4 py-4',
-                                        index === 0
-                                          ? 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.6)]'
-                                          : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]',
-                                      )}
-                                    >
-                                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
-                                        Step {index + 1}
-                                      </p>
-                                      <p className="mt-2 text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                                        {step}
-                                      </p>
-                                    </div>
-                                  ))}
+                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-150))]">
+                                  <div
+                                    className="h-full rounded-full bg-[hsl(var(--tone-accent-500))] transition-[width] duration-500 ease-out"
+                                    style={{ width: `${selectedPaperParsingProgressPercent}%` }}
+                                  />
+                                </div>
+                                <div className="mt-3 min-w-0">
+                                  <p className="text-sm text-[hsl(var(--tone-neutral-600))]">
+                                    {selectedPaperParsingEtaLabel}
+                                  </p>
                                 </div>
                               </div>
                             ) : publicationReaderLoading && !selectedPaperModel ? (

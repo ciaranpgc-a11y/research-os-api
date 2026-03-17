@@ -1042,6 +1042,9 @@ export type PublicationPaperModelPayload = {
     search_ready: boolean
     outline_depth: number
     reader_entry_available: boolean
+    parse_progress_percent: number | null
+    parse_estimated_seconds_remaining: number | null
+    parse_progress_stage: string | null
   }
   sections: Array<{
     id: string
@@ -1212,6 +1215,7 @@ export type PublicationFilePayload = {
   classification: PublicationFileClassification | null
   classification_label: string | null
   classification_other_label?: string | null
+  is_stored_locally?: boolean
   can_delete: boolean
   can_rename?: boolean
   can_classify?: boolean

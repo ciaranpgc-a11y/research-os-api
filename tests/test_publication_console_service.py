@@ -1624,6 +1624,55 @@ def test_build_publication_paper_payload_keeps_seed_abstract_when_full_text_lack
     assert "Introduction" in titles
 
 
+def test_apply_publication_paper_progress_state_sets_percent_and_eta() -> None:
+    started_at = datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+
+    payload = publication_console_service._apply_publication_paper_progress_state(
+        payload={"document": {"parser_status": "PARSING"}, "provenance": {}},
+        stage=publication_console_service.STRUCTURED_PAPER_PROGRESS_STAGE_PARSING_MANUSCRIPT,
+        parse_started_at=started_at,
+        stage_started_at=started_at,
+        now=started_at + timedelta(seconds=6),
+    )
+
+    document = payload["document"]
+    provenance = payload["provenance"]
+
+    assert int(document["parse_progress_percent"]) > 0
+    assert int(document["parse_estimated_seconds_remaining"]) > 0
+    assert (
+        document["parse_progress_stage"]
+        == publication_console_service.STRUCTURED_PAPER_PROGRESS_STAGE_PARSING_MANUSCRIPT
+    )
+    assert provenance["parse_progress_label"] == "Parsing manuscript"
+    assert provenance["parse_started_at"] == "2026-03-17T12:00:00+00:00"
+
+
+def test_refresh_publication_paper_running_progress_advances_with_elapsed_time() -> None:
+    started_at = datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+    initial_payload = publication_console_service._apply_publication_paper_progress_state(
+        payload={"document": {"parser_status": "PARSING"}, "provenance": {}},
+        stage=publication_console_service.STRUCTURED_PAPER_PROGRESS_STAGE_RESOLVING_ASSETS,
+        parse_started_at=started_at,
+        stage_started_at=started_at + timedelta(seconds=20),
+        now=started_at + timedelta(seconds=20),
+    )
+
+    refreshed_payload = publication_console_service._refresh_publication_paper_running_progress(
+        payload=initial_payload,
+        now=started_at + timedelta(seconds=28),
+    )
+
+    assert (
+        int(refreshed_payload["document"]["parse_progress_percent"])
+        > int(initial_payload["document"]["parse_progress_percent"])
+    )
+    assert (
+        int(refreshed_payload["document"]["parse_estimated_seconds_remaining"])
+        < int(initial_payload["document"]["parse_estimated_seconds_remaining"])
+    )
+
+
 def test_build_publication_paper_outline_adds_synthetic_main_text_wrappers() -> None:
     outline = publication_console_service._build_publication_paper_outline(
         publication={"title": "Outline paper"},
@@ -2511,6 +2560,241 @@ def test_extract_structured_publication_paper_with_pmc_bioc_prefers_archive_asse
         payload.get("tables"),
         classification="TABLE",
     ) == 1
+
+
+def test_extract_structured_publication_paper_with_pmc_bioc_keeps_archive_figure_when_surface_exists(
+    monkeypatch,
+) -> None:
+    weak_gif = (
+        b"GIF89a"
+        + (172).to_bytes(2, "little")
+        + (80).to_bytes(2, "little")
+        + (b"x" * 6000)
+    )
+    strong_png = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + (640).to_bytes(4, "big")
+        + (420).to_bytes(4, "big")
+        + b"\x08\x02\x00\x00\x00"
+        + (b"y" * 20000)
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_bioc_payload",
+        lambda _pmcid: {
+            "documents": [
+                {
+                    "passages": [
+                        {
+                            "infons": {"type": "title_1", "section_type": "INTRO"},
+                            "text": "Introduction",
+                        },
+                        {
+                            "infons": {"type": "paragraph", "section_type": "INTRO"},
+                            "text": "Full-text introduction paragraph.",
+                        },
+                        {
+                            "infons": {"type": "fig_caption", "section_type": "FIG"},
+                            "text": "Figure 2 Caption only.",
+                        },
+                    ]
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_archive_bytes",
+        lambda _pmcid: b"archive",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_publication_paper_references_from_pmc_archive_content",
+        lambda _archive_content: [],
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_assets_from_pmc_archive",
+        lambda _pmcid: (
+            [
+                {
+                    "id": "pmc-jats-figure-2",
+                    "classification": "FIGURE",
+                    "title": "Figure 2",
+                    "caption": "Figure 2 caption",
+                    "source": "parsed",
+                    "source_parser": "pmc_jats",
+                    "image_data": "data:image/gif;base64,"
+                    + base64.b64encode(weak_gif).decode("ascii"),
+                }
+            ],
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_grobid",
+        lambda **_kwargs: {
+            "sections": [],
+            "figures": [],
+            "tables": [],
+            "references": [],
+            "reference_id_map": {},
+            "page_count": None,
+            "generation_method": "grobid_tei_fulltext_v3",
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_GROBID,
+        },
+    )
+    grobid_asset_calls: list[int] = []
+
+    def _fake_grobid_assets(**_kwargs):
+        grobid_asset_calls.append(1)
+        return (
+            [
+                {
+                    "id": "parsed-figure-2",
+                    "classification": "FIGURE",
+                    "title": "Figure 2",
+                    "caption": "Figure 2 caption",
+                    "source": "parsed",
+                    "source_parser": "grobid",
+                    "image_data": "data:image/png;base64,"
+                    + base64.b64encode(strong_png).decode("ascii"),
+                }
+            ],
+            [],
+        )
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_assets_with_grobid",
+        _fake_grobid_assets,
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
+        pmcid="PMC1234567",
+        content=b"%PDF-1.7 test",
+        title="PMC BioC paper",
+        enrich_assets=True,
+        align_to_pdf=False,
+    )
+
+    assert len(grobid_asset_calls) == 1
+    figure = next(asset for asset in payload["figures"] if asset["title"] == "Figure 2")
+    assert figure["image_data"].endswith(base64.b64encode(weak_gif).decode("ascii"))
+    assert (
+        figure["source_parser"]
+        == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS
+    )
+
+
+def test_extract_structured_publication_paper_with_pmc_bioc_uses_grobid_figure_when_archive_figures_missing(
+    monkeypatch,
+) -> None:
+    weak_gif = (
+        b"GIF89a"
+        + (172).to_bytes(2, "little")
+        + (80).to_bytes(2, "little")
+        + (b"x" * 6000)
+    )
+    strong_png = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + (948).to_bytes(4, "big")
+        + (556).to_bytes(4, "big")
+        + b"\x08\x02\x00\x00\x00"
+        + (b"z" * 20000)
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_bioc_payload",
+        lambda _pmcid: {
+            "documents": [
+                {
+                    "passages": [
+                        {
+                            "infons": {"type": "title_1", "section_type": "INTRO"},
+                            "text": "Introduction",
+                        },
+                        {
+                            "infons": {"type": "paragraph", "section_type": "INTRO"},
+                            "text": "Full-text introduction paragraph.",
+                        },
+                        {
+                            "infons": {"type": "fig_caption", "section_type": "FIG"},
+                            "text": "Figure 2 Caption only.",
+                        },
+                    ]
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_archive_bytes",
+        lambda _pmcid: b"archive",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_publication_paper_references_from_pmc_archive_content",
+        lambda _archive_content: [],
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_assets_from_pmc_archive",
+        lambda _pmcid: ([], []),
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_paper_with_grobid",
+        lambda **_kwargs: {
+            "sections": [],
+            "figures": [],
+            "tables": [],
+            "references": [],
+            "reference_id_map": {},
+            "page_count": None,
+            "generation_method": "grobid_tei_fulltext_v3",
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_GROBID,
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_assets_with_grobid",
+        lambda **_kwargs: (
+            [
+                {
+                    "id": "parsed-figure-6",
+                    "classification": "FIGURE",
+                    "title": "Figure 2",
+                    "caption": "Figure 2 caption",
+                    "source": "parsed",
+                    "source_parser": "grobid",
+                    "image_data": "data:image/png;base64,"
+                    + base64.b64encode(strong_png).decode("ascii"),
+                }
+            ],
+            [],
+        ),
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
+        pmcid="PMC1234567",
+        content=b"%PDF-1.7 test",
+        title="PMC BioC paper",
+        enrich_assets=True,
+        align_to_pdf=False,
+    )
+
+    assert [asset["title"] for asset in payload["figures"]] == ["Figure 2"]
+    figure = payload["figures"][0]
+    assert figure["image_data"].endswith(base64.b64encode(strong_png).decode("ascii"))
+    assert (
+        figure["source_parser"]
+        == publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID
+    )
+    assert figure["caption"] == "Figure 2 Caption only."
 
 
 def test_extract_structured_publication_paper_with_pmc_bioc_overlays_grobid_inline_citations(
