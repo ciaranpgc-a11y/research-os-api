@@ -191,7 +191,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v36"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v40"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -200,6 +200,7 @@ STRUCTURED_PAPER_STATUS_FAILED = "FAILED"
 STRUCTURED_PAPER_SECTION_SOURCE_GROBID = "grobid"
 STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC = "pmc_bioc"
 STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS = "pmc_jats"
+STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH = "pdf_title_match"
 STRUCTURED_PAPER_PARSER_PROVIDER_GROBID = "GROBID"
 STRUCTURED_PAPER_PARSER_PROVIDER_PMC_BIOC = "PMC_BIOC"
 STRUCTURED_PAPER_ASSET_ENRICHMENT_STATUS_PENDING = "PENDING"
@@ -7184,6 +7185,43 @@ def _publication_paper_asset_title_score(value: str | None) -> int:
     return 2
 
 
+def _publication_paper_asset_source_priority(value: str | None) -> int:
+    clean = str(value or "").strip().lower()
+    priorities = {
+        STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH: 5,
+        STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS: 4,
+        STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC: 3,
+        STRUCTURED_PAPER_SECTION_SOURCE_GROBID: 2,
+        "docling": 2,
+    }
+    return priorities.get(clean, 0)
+
+
+def _publication_paper_figure_image_preference_score(asset: dict[str, Any] | None) -> tuple[int, int, int, int]:
+    metrics = _publication_paper_figure_image_metrics(asset)
+    if not metrics:
+        return (0, 0, 0, 0)
+    quality_band = 1 if _publication_paper_figure_image_is_low_quality(asset) else 2
+    area = int(metrics.get("area") or 0)
+    byte_length = int(metrics.get("byte_length") or 0)
+    source_priority = _publication_paper_asset_source_priority(
+        asset.get("source_parser") if isinstance(asset, dict) else None
+    )
+    return (quality_band, area, byte_length, source_priority)
+
+
+def _publication_paper_table_html_preference_score(asset: dict[str, Any] | None) -> tuple[int, int, int]:
+    if not isinstance(asset, dict):
+        return (0, 0, 0)
+    html_content = str(asset.get("structured_html") or "").strip()
+    if not html_content:
+        return (0, 0, 0)
+    quality_band = 1 if _publication_paper_table_html_is_low_quality(asset) else 2
+    source_priority = _publication_paper_asset_source_priority(asset.get("source_parser"))
+    content_length = len(html_content)
+    return (quality_band, source_priority, content_length)
+
+
 def _merge_publication_paper_asset_candidate(
     existing: dict[str, Any], candidate: dict[str, Any]
 ) -> dict[str, Any]:
@@ -7231,10 +7269,26 @@ def _merge_publication_paper_asset_candidate(
         merged["coords"] = candidate.get("coords")
     if not merged.get("graphic_coords") and candidate.get("graphic_coords"):
         merged["graphic_coords"] = candidate.get("graphic_coords")
-    if not merged.get("image_data") and candidate.get("image_data"):
+    if candidate.get("image_data") and (
+        not merged.get("image_data")
+        or _publication_paper_figure_image_preference_score(candidate)
+        > _publication_paper_figure_image_preference_score(existing)
+    ):
         merged["image_data"] = candidate.get("image_data")
-    if not merged.get("structured_html") and candidate.get("structured_html"):
+        if candidate.get("source_parser"):
+            merged["source_parser"] = candidate.get("source_parser")
+        if candidate.get("coords"):
+            merged["coords"] = candidate.get("coords")
+        if candidate.get("graphic_coords"):
+            merged["graphic_coords"] = candidate.get("graphic_coords")
+    if candidate.get("structured_html") and (
+        not merged.get("structured_html")
+        or _publication_paper_table_html_preference_score(candidate)
+        > _publication_paper_table_html_preference_score(existing)
+    ):
         merged["structured_html"] = candidate.get("structured_html")
+        if candidate.get("source_parser"):
+            merged["source_parser"] = candidate.get("source_parser")
     return merged
 
 
@@ -7979,6 +8033,15 @@ def _parse_grobid_tei_into_structured_paper(
 
 _FIGURE_CROP_MIN_BYTES = 2048
 _FIGURE_CROP_SCALE = 2.0
+_FIGURE_CROP_RENDER_SCALES = (4.0, 6.0)
+_FIGURE_CROP_TEXT_HEAVY_WORD_THRESHOLD = 200
+_FIGURE_CROP_PAGE_AREA_THRESHOLD = 0.9
+_FIGURE_CROP_TARGET_MIN_WIDTH = 1200
+_FIGURE_CROP_TARGET_MIN_HEIGHT = 700
+_FIGURE_CROP_TARGET_MIN_BYTES = 25000
+_PDF_EMBEDDED_FIGURE_MIN_RECT_WIDTH = 80.0
+_PDF_EMBEDDED_FIGURE_MIN_RECT_HEIGHT = 60.0
+_PDF_EMBEDDED_FIGURE_MIN_PIXEL_AREA = 120000
 
 
 def _parse_grobid_coords(coords_str: str | None) -> list[tuple[int, float, float, float, float]]:
@@ -7999,6 +8062,367 @@ def _parse_grobid_coords(coords_str: str | None) -> list[tuple[int, float, float
     return entries
 
 
+def _pdf_rect_width(rect: Any) -> float:
+    if rect is None:
+        return 0.0
+    width = getattr(rect, "width", None)
+    if isinstance(width, (int, float)):
+        return float(width)
+    return max(
+        0.0,
+        float(getattr(rect, "x1", 0.0) or 0.0) - float(getattr(rect, "x0", 0.0) or 0.0),
+    )
+
+
+def _pdf_rect_height(rect: Any) -> float:
+    if rect is None:
+        return 0.0
+    height = getattr(rect, "height", None)
+    if isinstance(height, (int, float)):
+        return float(height)
+    return max(
+        0.0,
+        float(getattr(rect, "y1", 0.0) or 0.0) - float(getattr(rect, "y0", 0.0) or 0.0),
+    )
+
+
+def _pdf_rect_area(rect: Any) -> float:
+    return _pdf_rect_width(rect) * _pdf_rect_height(rect)
+
+
+def _pdf_rect_key(rect: Any) -> tuple[int, int, int, int]:
+    return (
+        int(round(float(getattr(rect, "x0", 0.0) or 0.0))),
+        int(round(float(getattr(rect, "y0", 0.0) or 0.0))),
+        int(round(float(getattr(rect, "x1", 0.0) or 0.0))),
+        int(round(float(getattr(rect, "y1", 0.0) or 0.0))),
+    )
+
+
+def _pdf_rect_overlap_area(first: Any, second: Any) -> float:
+    if first is None or second is None:
+        return 0.0
+    x0 = max(float(getattr(first, "x0", 0.0) or 0.0), float(getattr(second, "x0", 0.0) or 0.0))
+    y0 = max(float(getattr(first, "y0", 0.0) or 0.0), float(getattr(second, "y0", 0.0) or 0.0))
+    x1 = min(float(getattr(first, "x1", 0.0) or 0.0), float(getattr(second, "x1", 0.0) or 0.0))
+    y1 = min(float(getattr(first, "y1", 0.0) or 0.0), float(getattr(second, "y1", 0.0) or 0.0))
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    return (x1 - x0) * (y1 - y0)
+
+
+def _figure_caption_anchor_terms(figure: dict[str, Any] | None) -> list[str]:
+    if not isinstance(figure, dict):
+        return []
+    terms: list[str] = []
+    title = _normalize_abstract_text(str(figure.get("title") or ""))
+    if title:
+        terms.append(title)
+    caption = _normalize_abstract_text(str(figure.get("caption") or ""))
+    if caption:
+        caption = re.sub(
+            r"^(?:figure|fig\.?)\s+\d+[a-z]?(?:[:.\s-]+)",
+            "",
+            caption,
+            flags=re.IGNORECASE,
+        ).strip()
+        if caption:
+            first_sentence = re.split(r"(?<=[.!?])\s+", caption, maxsplit=1)[0].strip()
+            anchor = first_sentence or caption
+            anchor = re.sub(r"\s+", " ", anchor).strip().rstrip(".")
+            if anchor:
+                terms.append(anchor[:160].strip())
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        key = term.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(term)
+    return deduped
+
+
+def _pdf_image_ext_to_mime(ext: str | None) -> str | None:
+    clean_ext = str(ext or "").strip().lower().lstrip(".")
+    if not clean_ext:
+        return None
+    guessed = mimetypes.types_map.get(f".{clean_ext}")
+    if guessed and guessed.startswith("image/"):
+        return guessed
+    fallback = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "svg": "image/svg+xml",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
+        "webp": "image/webp",
+    }
+    return fallback.get(clean_ext)
+
+
+def _pdf_image_bytes_to_data_uri(image_bytes: bytes, ext: str | None) -> str | None:
+    if not image_bytes:
+        return None
+    mime_type = _pdf_image_ext_to_mime(ext) or "image/png"
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def _rendered_crop_meets_quality_target(data_uri: str | None) -> bool:
+    metrics = _publication_paper_figure_image_metrics(
+        {
+            "classification": FILE_CLASSIFICATION_FIGURE,
+            "image_data": data_uri,
+        }
+    )
+    if not metrics:
+        return False
+    width = int(metrics.get("width") or 0)
+    height = int(metrics.get("height") or 0)
+    byte_length = int(metrics.get("byte_length") or 0)
+    return (
+        width >= _FIGURE_CROP_TARGET_MIN_WIDTH
+        and height >= _FIGURE_CROP_TARGET_MIN_HEIGHT
+        and byte_length >= _FIGURE_CROP_TARGET_MIN_BYTES
+    )
+
+
+def _extract_pdf_embedded_figure_candidates_for_page(
+    *,
+    doc: Any,
+    page_index: int,
+    page: Any,
+    cache: dict[int, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    cached = cache.get(page_index)
+    if cached is not None:
+        return [dict(item) for item in cached]
+    candidates: list[dict[str, Any]] = []
+    seen_keys: set[tuple[int, tuple[int, int, int, int]]] = set()
+    try:
+        page_images = page.get_images(full=True)
+    except Exception:
+        page_images = []
+    for image_entry in page_images or []:
+        if not image_entry:
+            continue
+        xref = _safe_int(image_entry[0])
+        if xref is None or xref <= 0:
+            continue
+        try:
+            rects = page.get_image_rects(xref)
+        except Exception:
+            rects = []
+        try:
+            image_payload = doc.extract_image(xref)
+        except Exception:
+            image_payload = None
+        if not isinstance(image_payload, dict):
+            continue
+        image_bytes = image_payload.get("image")
+        if not isinstance(image_bytes, (bytes, bytearray)) or not image_bytes:
+            continue
+        data_uri = _pdf_image_bytes_to_data_uri(bytes(image_bytes), image_payload.get("ext"))
+        if not data_uri:
+            continue
+        metrics = _publication_paper_figure_image_metrics(
+            {
+                "classification": FILE_CLASSIFICATION_FIGURE,
+                "image_data": data_uri,
+            }
+        ) or {}
+        width = _safe_int(image_payload.get("width")) or int(metrics.get("width") or 0)
+        height = _safe_int(image_payload.get("height")) or int(metrics.get("height") or 0)
+        if width * height < _PDF_EMBEDDED_FIGURE_MIN_PIXEL_AREA:
+            continue
+        for rect in rects or []:
+            if (
+                _pdf_rect_width(rect) < _PDF_EMBEDDED_FIGURE_MIN_RECT_WIDTH
+                or _pdf_rect_height(rect) < _PDF_EMBEDDED_FIGURE_MIN_RECT_HEIGHT
+            ):
+                continue
+            candidate_key = (xref, _pdf_rect_key(rect))
+            if candidate_key in seen_keys:
+                continue
+            seen_keys.add(candidate_key)
+            candidates.append(
+                {
+                    "xref": xref,
+                    "page_index": page_index,
+                    "rect": rect,
+                    "data_uri": data_uri,
+                    "width": width,
+                    "height": height,
+                    "area": width * height,
+                    "source_parser": STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH,
+                }
+            )
+    candidates.sort(
+        key=lambda item: (
+            float(getattr(item["rect"], "y0", 0.0) or 0.0),
+            float(getattr(item["rect"], "x0", 0.0) or 0.0),
+        )
+    )
+    cache[page_index] = [dict(item) for item in candidates]
+    return [dict(item) for item in candidates]
+
+
+def _extract_title_matched_pdf_figure_candidate(
+    *,
+    doc: Any,
+    figure: dict[str, Any],
+    used_candidates_by_page: dict[int, set[tuple[int, tuple[int, int, int, int]]]] | None = None,
+    page_candidate_cache: dict[int, list[dict[str, Any]]] | None = None,
+) -> dict[str, Any] | None:
+    page_count = len(doc)
+    if page_count <= 0:
+        return None
+    page_start = _safe_int(figure.get("page_start"))
+    candidate_page_indexes: list[int] = []
+    if page_start is not None and page_start > 0 and page_start <= page_count:
+        candidate_page_indexes.append(page_start - 1)
+    elif page_start is not None and 0 <= page_start < page_count:
+        candidate_page_indexes.append(page_start)
+    coord_entries = _parse_grobid_coords(figure.get("graphic_coords") or figure.get("coords"))
+    for page_index, *_rest in coord_entries:
+        if 0 <= page_index < page_count and page_index not in candidate_page_indexes:
+            candidate_page_indexes.append(page_index)
+        elif 1 <= page_index <= page_count and (page_index - 1) not in candidate_page_indexes:
+            candidate_page_indexes.append(page_index - 1)
+    if not candidate_page_indexes:
+        candidate_page_indexes = list(range(page_count))
+    page_candidate_cache = page_candidate_cache if page_candidate_cache is not None else {}
+    used_candidates_by_page = (
+        used_candidates_by_page if used_candidates_by_page is not None else {}
+    )
+    anchor_terms = _figure_caption_anchor_terms(figure)
+    for page_index in candidate_page_indexes:
+        if page_index < 0 or page_index >= page_count:
+            continue
+        page = doc[page_index]
+        candidates = _extract_pdf_embedded_figure_candidates_for_page(
+            doc=doc,
+            page_index=page_index,
+            page=page,
+            cache=page_candidate_cache,
+        )
+        if not candidates:
+            continue
+        used_keys = used_candidates_by_page.setdefault(page_index, set())
+        available_candidates = [
+            item
+            for item in candidates
+            if (item["xref"], _pdf_rect_key(item["rect"])) not in used_keys
+        ]
+        if not available_candidates:
+            continue
+        anchor_rect = None
+        if anchor_terms:
+            search_for = getattr(page, "search_for", None)
+            if callable(search_for):
+                for term in anchor_terms:
+                    try:
+                        rects = search_for(term)
+                    except Exception:
+                        rects = []
+                    if rects:
+                        anchor_rect = rects[0]
+                        break
+        selected_candidate: dict[str, Any] | None = None
+        if anchor_rect is not None:
+            def _candidate_sort_key(item: dict[str, Any]) -> tuple[int, float, float]:
+                rect = item["rect"]
+                if float(getattr(rect, "y1", 0.0) or 0.0) <= float(getattr(anchor_rect, "y0", 0.0) or 0.0):
+                    relation_rank = 0
+                    gap = float(getattr(anchor_rect, "y0", 0.0) or 0.0) - float(getattr(rect, "y1", 0.0) or 0.0)
+                elif float(getattr(rect, "y0", 0.0) or 0.0) >= float(getattr(anchor_rect, "y1", 0.0) or 0.0):
+                    relation_rank = 1
+                    gap = float(getattr(rect, "y0", 0.0) or 0.0) - float(getattr(anchor_rect, "y1", 0.0) or 0.0)
+                else:
+                    relation_rank = 2
+                    gap = 0.0
+                return (relation_rank, gap, -float(item.get("area") or 0.0))
+
+            available_candidates.sort(key=_candidate_sort_key)
+            selected_candidate = available_candidates[0]
+        elif len(available_candidates) == 1:
+            selected_candidate = available_candidates[0]
+        if selected_candidate is None:
+            continue
+        used_keys.add((selected_candidate["xref"], _pdf_rect_key(selected_candidate["rect"])))
+        return selected_candidate
+    return None
+
+
+def _extract_title_matched_pdf_figure_image(
+    *,
+    doc: Any,
+    figure: dict[str, Any],
+) -> str | None:
+    candidate = _extract_title_matched_pdf_figure_candidate(doc=doc, figure=figure)
+    if candidate is None:
+        return None
+    return str(candidate.get("data_uri") or "").strip() or None
+
+
+def _extract_native_pdf_figure_image_for_rect(
+    *,
+    doc: Any,
+    page_index: int,
+    page: Any,
+    rect: Any,
+    used_candidates_by_page: dict[int, set[tuple[int, tuple[int, int, int, int]]]],
+    page_candidate_cache: dict[int, list[dict[str, Any]]],
+) -> dict[str, Any] | None:
+    candidates = _extract_pdf_embedded_figure_candidates_for_page(
+        doc=doc,
+        page_index=page_index,
+        page=page,
+        cache=page_candidate_cache,
+    )
+    if not candidates:
+        return None
+    used_keys = used_candidates_by_page.setdefault(page_index, set())
+    best_candidate: dict[str, Any] | None = None
+    best_score = 0.0
+    for candidate in candidates:
+        candidate_key = (candidate["xref"], _pdf_rect_key(candidate["rect"]))
+        if candidate_key in used_keys:
+            continue
+        overlap = _pdf_rect_overlap_area(rect, candidate["rect"])
+        if overlap <= 0:
+            continue
+        candidate_area = _pdf_rect_area(candidate["rect"]) or 1.0
+        clip_area = _pdf_rect_area(rect) or 1.0
+        overlap_ratio = max(overlap / candidate_area, overlap / clip_area)
+        if overlap_ratio > best_score:
+            best_score = overlap_ratio
+            best_candidate = candidate
+    if best_candidate is None or best_score < 0.5:
+        return None
+    used_keys.add((best_candidate["xref"], _pdf_rect_key(best_candidate["rect"])))
+    return best_candidate
+
+
+def _should_skip_pdf_crop(*, page: Any, rect: Any) -> bool:
+    page_rect = getattr(page, "rect", None)
+    if page_rect is None or _pdf_rect_area(page_rect) <= 0:
+        return False
+    if _pdf_rect_area(rect) < (_pdf_rect_area(page_rect) * _FIGURE_CROP_PAGE_AREA_THRESHOLD):
+        return False
+    get_text = getattr(page, "get_text", None)
+    if not callable(get_text):
+        return False
+    try:
+        words = get_text("words", clip=rect)
+    except Exception:
+        return False
+    return len(words or []) >= _FIGURE_CROP_TEXT_HEAVY_WORD_THRESHOLD
+
+
 def _crop_figure_images_from_pdf(
     content: bytes,
     figures: list[dict[str, Any]],
@@ -8011,9 +8435,22 @@ def _crop_figure_images_from_pdf(
         logger.warning("PyMuPDF could not open PDF for figure cropping")
         return figures
     try:
+        used_candidates_by_page: dict[int, set[tuple[int, tuple[int, int, int, int]]]] = {}
+        page_candidate_cache: dict[int, list[dict[str, Any]]] = {}
         updated_figures: list[dict[str, Any]] = []
         for figure in figures:
             figure_copy = dict(figure)
+            title_match_candidate = _extract_title_matched_pdf_figure_candidate(
+                doc=doc,
+                figure=figure_copy,
+                used_candidates_by_page=used_candidates_by_page,
+                page_candidate_cache=page_candidate_cache,
+            )
+            if title_match_candidate is not None:
+                figure_copy["image_data"] = title_match_candidate["data_uri"]
+                figure_copy["source_parser"] = STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH
+                updated_figures.append(figure_copy)
+                continue
             coords_str = figure_copy.get("graphic_coords") or figure_copy.get("coords")
             coord_entries = _parse_grobid_coords(coords_str)
             if not coord_entries:
@@ -8025,18 +8462,40 @@ def _crop_figure_images_from_pdf(
                 continue
             page = doc[page_num]
             rect = _fitz.Rect(x1, y1, x2, y2)
-            mat = _fitz.Matrix(_FIGURE_CROP_SCALE, _FIGURE_CROP_SCALE)
-            try:
-                pix = page.get_pixmap(matrix=mat, clip=rect)
-                img_bytes = pix.tobytes("png")
-            except Exception:
+            native_candidate = _extract_native_pdf_figure_image_for_rect(
+                doc=doc,
+                page_index=page_num,
+                page=page,
+                rect=rect,
+                used_candidates_by_page=used_candidates_by_page,
+                page_candidate_cache=page_candidate_cache,
+            )
+            if native_candidate is not None:
+                figure_copy["image_data"] = native_candidate["data_uri"]
+                figure_copy["source_parser"] = STRUCTURED_PAPER_SECTION_SOURCE_PDF_TITLE_MATCH
                 updated_figures.append(figure_copy)
                 continue
-            if len(img_bytes) < _FIGURE_CROP_MIN_BYTES:
+            if _should_skip_pdf_crop(page=page, rect=rect):
                 updated_figures.append(figure_copy)
                 continue
-            b64 = base64.b64encode(img_bytes).decode("ascii")
-            figure_copy["image_data"] = f"data:image/png;base64,{b64}"
+            img_bytes = b""
+            for scale in _FIGURE_CROP_RENDER_SCALES:
+                mat = _fitz.Matrix(scale, scale)
+                try:
+                    pix = page.get_pixmap(matrix=mat, clip=rect)
+                    candidate_bytes = pix.tobytes("png")
+                except Exception:
+                    candidate_bytes = b""
+                if len(candidate_bytes) < _FIGURE_CROP_MIN_BYTES:
+                    continue
+                candidate_uri = f"data:image/png;base64,{base64.b64encode(candidate_bytes).decode('ascii')}"
+                img_bytes = candidate_bytes
+                figure_copy["image_data"] = candidate_uri
+                if _rendered_crop_meets_quality_target(candidate_uri):
+                    break
+            if not img_bytes:
+                updated_figures.append(figure_copy)
+                continue
             updated_figures.append(figure_copy)
         return updated_figures
     finally:
@@ -8098,6 +8557,37 @@ def _extract_docling_tables_html(content: bytes) -> list[dict[str, Any]]:
                 tmp_path.unlink(missing_ok=True)
             except Exception:
                 pass
+
+
+def _enrich_grobid_publication_paper_assets(
+    *,
+    content: bytes,
+    figures: list[dict[str, Any]],
+    tables: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    enriched_figures = _align_structured_publication_assets_to_pdf_pages(
+        assets=figures,
+        content=content,
+    )
+    if enriched_figures:
+        enriched_figures = _crop_figure_images_from_pdf(content, enriched_figures)
+
+    enriched_tables = _align_structured_publication_assets_to_pdf_pages(
+        assets=tables,
+        content=content,
+    )
+    if enriched_tables:
+        try:
+            docling_tables = _extract_docling_tables_html(content)
+            if docling_tables:
+                enriched_tables = _match_docling_tables_to_assets(
+                    docling_tables,
+                    enriched_tables,
+                )
+        except Exception as exc:
+            logger.warning("Docling table enrichment skipped: %s", exc)
+
+    return enriched_figures, enriched_tables
 
 
 def _match_docling_tables_to_assets(
@@ -8932,6 +9422,24 @@ def _publication_paper_figure_image_metrics(
     if mime_type == "image/png" and len(content) >= 24:
         width = int.from_bytes(content[16:20], "big")
         height = int.from_bytes(content[20:24], "big")
+    elif mime_type == "image/jpeg":
+        index = 2 if content[:2] == b"\xff\xd8" else 0
+        while index + 9 < len(content):
+            if content[index] != 0xFF:
+                index += 1
+                continue
+            marker = content[index + 1]
+            if marker in {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}:
+                height = int.from_bytes(content[index + 5:index + 7], "big")
+                width = int.from_bytes(content[index + 7:index + 9], "big")
+                break
+            if marker in {0xD8, 0xD9}:
+                index += 2
+                continue
+            segment_length = int.from_bytes(content[index + 2:index + 4], "big")
+            if segment_length <= 2:
+                break
+            index += 2 + segment_length
     elif mime_type == "image/gif" and len(content) >= 10:
         width = int.from_bytes(content[6:8], "little")
         height = int.from_bytes(content[8:10], "little")
@@ -9578,6 +10086,11 @@ def _extract_structured_publication_paper_with_pmc_bioc(
             ),
             content=content,
         )
+        if isinstance(parsed_payload.get("figures"), list) and parsed_payload["figures"]:
+            parsed_payload["figures"] = _crop_figure_images_from_pdf(
+                content,
+                parsed_payload["figures"],
+            )
     else:
         parsed_payload["sections"] = [
             dict(item)
@@ -9606,25 +10119,33 @@ def _extract_structured_publication_paper_with_pmc_bioc(
         )
     except Exception as exc:
         logger.warning("GROBID citation overlay skipped for %s: %s", pmcid, exc)
-    if enrich_assets and (
+    need_grobid_figure_assets = enrich_assets and (
         _publication_paper_asset_surface_count(
             parsed_payload.get("figures"),
             classification=FILE_CLASSIFICATION_FIGURE,
         )
         == 0
-        or _publication_paper_asset_surface_count(
+    )
+    need_grobid_table_assets = enrich_assets and (
+        _publication_paper_asset_surface_count(
             parsed_payload.get("tables"),
             classification=FILE_CLASSIFICATION_TABLE,
         )
         == 0
-    ):
+    )
+    if need_grobid_figure_assets or need_grobid_table_assets:
         try:
             grobid_figures, grobid_tables = _extract_structured_publication_assets_with_grobid(
                 content=content,
                 file_name="publication.pdf",
                 title=title,
             )
-            if grobid_figures:
+            grobid_figures, grobid_tables = _enrich_grobid_publication_paper_assets(
+                content=content,
+                figures=grobid_figures,
+                tables=grobid_tables,
+            )
+            if need_grobid_figure_assets and grobid_figures:
                 parsed_payload["figures"] = _merge_publication_paper_asset_collections(
                     parsed_assets=grobid_figures,
                     file_assets=(
@@ -9633,7 +10154,7 @@ def _extract_structured_publication_paper_with_pmc_bioc(
                         else []
                     ),
                 )
-            if grobid_tables:
+            if need_grobid_table_assets and grobid_tables:
                 parsed_payload["tables"] = _merge_publication_paper_asset_collections(
                     parsed_assets=grobid_tables,
                     file_assets=(
@@ -9751,23 +10272,19 @@ def _extract_structured_publication_paper_with_grobid(
         if isinstance(parsed_payload.get("figures"), list)
         else []
     )
-    if figures:
-        parsed_payload["figures"] = _crop_figure_images_from_pdf(content, figures)
-
     tables = (
         parsed_payload.get("tables")
         if isinstance(parsed_payload.get("tables"), list)
         else []
     )
-    if tables:
-        try:
-            docling_tables = _extract_docling_tables_html(content)
-            if docling_tables:
-                parsed_payload["tables"] = _match_docling_tables_to_assets(
-                    docling_tables, tables
-                )
-        except Exception as exc:
-            logger.warning("Docling table enrichment skipped: %s", exc)
+    if figures or tables:
+        enriched_figures, enriched_tables = _enrich_grobid_publication_paper_assets(
+            content=content,
+            figures=figures,
+            tables=tables,
+        )
+        parsed_payload["figures"] = enriched_figures
+        parsed_payload["tables"] = enriched_tables
 
     return parsed_payload
 
