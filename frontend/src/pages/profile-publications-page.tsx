@@ -184,6 +184,7 @@ type PublicationReaderReferenceUsageSummary = {
 }
 const PUBLICATION_READER_REFERENCES_TARGET_ID = '__references__'
 type PublicationReaderNavigatorTarget =
+  | { kind: 'group'; id: string; sectionId: string | null }
   | { kind: 'section'; id: string }
   | { kind: 'asset'; id: string }
   | { kind: 'references'; id: typeof PUBLICATION_READER_REFERENCES_TARGET_ID }
@@ -3651,6 +3652,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   } | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
   const publicationReaderSectionRefs = useRef<Record<string, HTMLElement | null>>({})
+  const publicationReaderGroupRefs = useRef<Record<string, HTMLElement | null>>({})
   const publicationReaderCitationOccurrenceRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const publicationReaderReferencesRef = useRef<HTMLElement | null>(null)
   const publicationReaderScrollViewportRef = useRef<HTMLElement | null>(null)
@@ -5998,7 +6000,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         id: group.key,
         label: group.label,
         toneClassName: definition?.toneClassName || 'bg-[hsl(var(--tone-neutral-300))]',
-        target: primarySection?.id ? { kind: 'section', id: primarySection.id } : null,
+        target: { kind: 'group', id: group.key, sectionId: primarySection?.id || null },
         isActive: items.some((item) => item.isActive) || primarySection?.id === publicationReaderActiveSectionId,
         badgeCount: items.length || group.rootSections.length,
         items,
@@ -6213,6 +6215,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderInspectorOpen(false)
     setPublicationReaderReferencePopover(null)
     publicationReaderSectionRefs.current = {}
+    publicationReaderGroupRefs.current = {}
     publicationReaderCitationOccurrenceRefs.current = {}
     publicationReaderReferencesRef.current = null
     publicationReaderInlineAssetRefs.current = {}
@@ -7728,6 +7731,26 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!target) {
       return
     }
+    if (target.kind === 'group') {
+      beginPublicationReaderProgrammaticTarget(target.id)
+      setPublicationReaderActiveSectionId(target.sectionId)
+      setPublicationReaderActiveAssetId(null)
+      const scrollToGroup = () => {
+        const node = publicationReaderGroupRefs.current[target.id]
+        scrollPublicationReaderNodeIntoView(node, { topInset: 28 })
+      }
+      if (publicationReaderViewMode !== 'structured') {
+        setPublicationReaderViewMode('structured')
+        if (typeof window !== 'undefined') {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(scrollToGroup)
+          })
+        }
+        return
+      }
+      scrollToGroup()
+      return
+    }
     if (target.kind === 'section') {
       onSelectPublicationReaderSection(target.id)
       return
@@ -7759,6 +7782,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     onSelectPublicationReaderSection,
     publicationReaderViewMode,
     scrollPublicationReaderNodeIntoView,
+    setPublicationReaderActiveSectionId,
     setPublicationReaderActiveAssetId,
   ])
 
@@ -7830,6 +7854,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           ? publicationReaderReferencesRef.current
           : publicationReaderInlineAssetRefs.current[lockedTargetId]
             || publicationReaderSectionRefs.current[lockedTargetId]
+            || publicationReaderGroupRefs.current[lockedTargetId]
         if (!lockedNode) {
           return
         }
@@ -11532,6 +11557,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                             ? 'Funding, ethics, author contributions, declarations, and supporting disclosures.'
                                             : null,
                                           groupKey: group.key,
+                                          sectionRef: (node) => {
+                                            publicationReaderGroupRefs.current[group.key] = node
+                                          },
                                         },
                                       ) : null}
                                       {abstractSupplementSections.length > 0 ? (
