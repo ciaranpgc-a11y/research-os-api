@@ -5757,13 +5757,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return ''
     }
     if (selectedPublicationReaderInspectorActiveReferenceUsage.total <= 1) {
-      return selectedPublicationReaderInspectorActiveOccurrenceSectionLabel
-        ? `Used once in ${selectedPublicationReaderInspectorActiveOccurrenceSectionLabel}`
-        : 'Used once in manuscript'
+      return 'Used once'
     }
     return `Mention ${selectedPublicationReaderInspectorActiveReferenceUsage.instance} of ${selectedPublicationReaderInspectorActiveReferenceUsage.total}`
   }, [
-    selectedPublicationReaderInspectorActiveOccurrenceSectionLabel,
     selectedPublicationReaderInspectorActiveReferenceUsage,
   ])
   const selectedPaperAssetEnrichmentStatus = String(
@@ -11785,12 +11782,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                           <div>
                                             <p className="text-[0.82rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-850))]">
                                               {selectedPublicationReaderInspectorOccurrenceSummary}
+                                              {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel ? (
+                                                <>
+                                                  {' in '}
+                                                  <button
+                                                    type="button"
+                                                    className="inline p-0 font-semibold text-[hsl(var(--tone-accent-750))] underline decoration-[hsl(var(--tone-accent-250))] underline-offset-[0.18em] transition-colors hover:text-[hsl(var(--tone-accent-850))] hover:decoration-[hsl(var(--tone-accent-400))]"
+                                                    onClick={() => onSelectPublicationReaderInspectorOccurrence(selectedPublicationReaderInspectorActiveOccurrence)}
+                                                  >
+                                                    {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel}
+                                                  </button>
+                                                </>
+                                              ) : (
+                                                ' in manuscript'
+                                              )}
                                             </p>
-                                            {selectedPublicationReaderInspectorHasMultipleOccurrences && selectedPublicationReaderInspectorActiveOccurrenceSectionLabel ? (
-                                              <p className="mt-0.5 text-[0.76rem] leading-snug text-[hsl(var(--tone-neutral-600))]">
-                                                {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel}
-                                              </p>
-                                            ) : null}
                                           </div>
                                           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                                             {selectedPublicationReaderInspectorHasMultipleOccurrences ? (
@@ -11815,13 +11821,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                                 <ChevronRight className="h-3.25 w-3.25" />
                                               </button>
                                             ) : null}
-                                            <button
-                                              type="button"
-                                              className="inline-flex h-7 items-center justify-center rounded-md px-1 text-[0.75rem] font-semibold text-[hsl(var(--tone-accent-750))] underline decoration-[hsl(var(--tone-accent-250))] underline-offset-[0.2em] transition-colors hover:text-[hsl(var(--tone-accent-850))] hover:decoration-[hsl(var(--tone-accent-400))]"
-                                              onClick={() => onSelectPublicationReaderInspectorOccurrence(selectedPublicationReaderInspectorActiveOccurrence)}
-                                            >
-                                              Jump to mention
-                                            </button>
                                           </div>
                                         </div>
                                       ) : null}
