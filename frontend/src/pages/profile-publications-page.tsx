@@ -8779,26 +8779,26 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         ref={options?.sectionRef}
         className={cn('scroll-mt-6', options?.sectionClassName)}
       >
-        <div className="overflow-hidden rounded-[1.32rem] border border-[#d8e1ea] bg-white">
+        <div className="reader-major-panel-shell">
           {groupToneClassName ? (
-            <div className={cn('h-1.5 w-full rounded-t-[1.32rem] opacity-80', groupToneClassName)} />
+            <div className={cn('reader-major-panel-accent', groupToneClassName)} />
           ) : null}
-          <div className="bg-[linear-gradient(180deg,#fafcfe_0%,#ffffff_100%)] px-3.5 pb-2 pt-5 sm:px-4 sm:pt-5.5">
-            <div className={cn('flex items-start gap-3', isNarrativePanel && 'mx-auto w-full max-w-[48rem]')}>
+          <div className="reader-major-panel-header">
+            <div className={cn('reader-major-panel-header-inner flex items-start gap-3', isNarrativePanel && 'mx-auto')} data-reader-measure={isNarrativePanel ? 'narrative' : 'full'}>
               <div className="min-w-0 flex-1">
-                <h2 className="text-[1.32rem] font-semibold tracking-[-0.022em] text-[hsl(var(--tone-neutral-950))] sm:text-[1.38rem]">
+                <h2 className="reader-major-panel-title">
                   {title}
                 </h2>
                 {options?.description ? (
-                  <p className="mt-2 text-[0.8rem] leading-relaxed text-[hsl(var(--tone-neutral-500))]">
+                  <p className="reader-major-panel-description">
                     {options.description}
                   </p>
                 ) : null}
               </div>
             </div>
           </div>
-          <div className={cn('px-3.5 pb-8 pt-2 sm:px-4 sm:pb-9', options?.contentClassName)}>
-            <div className={cn(isNarrativePanel && 'mx-auto w-full max-w-[48rem]')}>
+          <div className={cn('reader-major-panel-body', options?.contentClassName)}>
+            <div className={cn('reader-major-panel-body-inner', isNarrativePanel && 'mx-auto')} data-reader-measure={isNarrativePanel ? 'narrative' : 'full'}>
               {content}
             </div>
           </div>
@@ -8813,31 +8813,31 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     description?: string | null,
   ): ReactNode => (
     <section className="scroll-mt-6">
-      <div className="overflow-hidden rounded-[1.32rem] border border-[hsl(var(--tone-accent-200))] bg-[linear-gradient(180deg,hsl(var(--tone-accent-50)/0.7)_0%,white_100%)]">
-        <div className="px-3.5 pb-2 pt-4.5 sm:px-4 sm:pt-5">
-          <div className="mx-auto w-full max-w-[48rem]">
-            <div className="flex items-start gap-3">
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[hsl(var(--tone-accent-700))] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-200))]">
+      <div className="reader-supplement-panel-shell">
+        <div className="reader-supplement-panel-header">
+          <div className="reader-supplement-panel-header-inner">
+            <div className="reader-supplement-panel-header-row">
+              <span className="reader-supplement-panel-icon">
                 <FileText className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-accent-700))]">
+                <p className="reader-supplement-panel-eyebrow">
                   Journal note
                 </p>
-                <h2 className="mt-1 text-[1.16rem] font-semibold tracking-[-0.016em] text-[hsl(var(--tone-neutral-900))]">
+                <h2 className="reader-supplement-panel-title">
                   {title}
                 </h2>
               </div>
             </div>
             {description ? (
-              <p className="mt-3 text-[0.84rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+              <p className="reader-supplement-panel-description">
                 {description}
               </p>
             ) : null}
           </div>
         </div>
-        <div className="px-3.5 pb-7 pt-1.5 sm:px-4 sm:pb-8">
-          <div className="mx-auto w-full max-w-[48rem]">
+        <div className="reader-supplement-panel-body">
+          <div className="reader-supplement-panel-body-inner">
             {content}
           </div>
         </div>
@@ -9306,11 +9306,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         <div key={group.id} className={cn('space-y-1.5', compact && 'space-y-1')}>
           <div
             className={cn(
-              'group relative flex w-full items-start gap-2 overflow-hidden rounded-[1rem] pl-4 pr-3 transition-colors duration-150 ease-out',
+              'reader-nav-group-row group',
               compact ? 'py-2.5' : 'py-3',
               isActiveGroup
-                ? 'text-[hsl(var(--tone-neutral-950))]'
-                : 'text-[hsl(var(--tone-neutral-700))] hover:bg-[var(--reader-nav-hover-fill)] hover:text-[hsl(var(--tone-neutral-900))]',
+                ? 'reader-nav-group-row--active'
+                : 'hover:bg-[var(--reader-nav-hover-fill)]',
             )}
             style={{
               ...(isActiveGroup && activeFillColor ? { backgroundColor: activeFillColor } : {}),
@@ -9319,7 +9319,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           >
             <span
               className={cn(
-                'absolute left-0 top-2 bottom-2 w-[3px] rounded-full transition-colors duration-150 ease-out',
+                'reader-nav-group-rail transition-colors duration-150 ease-out',
                 isActiveGroup ? 'bg-[hsl(var(--tone-accent-500))]' : 'bg-transparent',
               )}
               style={isActiveGroup && toneHex ? { backgroundColor: toneHex } : undefined}
@@ -9335,12 +9335,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               disabled={!group.target}
             >
               <span className="block min-w-0">
-                <span
-                  className={cn(
-                    'block whitespace-normal break-words font-semibold tracking-[-0.01em]',
-                    compact ? 'text-[0.9rem] leading-[1.32]' : 'text-[0.98rem] leading-[1.3]',
-                  )}
-                >
+                <span className={cn('reader-nav-group-label', compact ? 'text-[0.9rem] leading-[1.32]' : 'text-[0.98rem] leading-[1.3]')}>
                   {group.label}
                 </span>
               </span>
@@ -9349,7 +9344,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               <button
                 type="button"
                 className={cn(
-                  'mt-0.5 shrink-0 rounded-full p-1 text-[hsl(var(--tone-neutral-400))] transition-[transform,color,background-color] duration-150 ease-out hover:bg-[var(--reader-nav-hover-fill)]',
+                  'reader-nav-toggle mt-0.5 shrink-0 hover:bg-[var(--reader-nav-hover-fill)]',
                   isExpanded ? 'rotate-90' : 'rotate-0',
                 )}
                 style={{
@@ -9377,7 +9372,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           </div>
           {group.items.length > 0 && isExpanded ? (
             <div
-              className={cn('ml-4 border-l border-[hsl(var(--tone-neutral-200))] pl-4', compact ? 'space-y-0.5' : 'space-y-1')}
+              className={cn('reader-nav-subtree ml-4', compact ? 'space-y-0.5' : 'space-y-1')}
               style={inactiveSubtreeBorderColor ? { borderColor: inactiveSubtreeBorderColor } : undefined}
             >
               {group.items.map((item) => (
@@ -9388,10 +9383,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   }}
                   type="button"
                   className={cn(
-                    'relative block w-full rounded-[0.9rem] bg-transparent py-1.5 pl-3 text-left transition-colors duration-150 ease-out',
+                    'reader-nav-subitem',
                     item.isActive
-                      ? 'text-[hsl(var(--tone-accent-900))]'
-                      : 'text-[hsl(var(--tone-neutral-600))] hover:bg-[var(--reader-nav-subitem-hover-fill)] hover:text-[hsl(var(--tone-neutral-900))]',
+                      ? 'reader-nav-subitem--active'
+                      : 'hover:bg-[var(--reader-nav-subitem-hover-fill)]',
                   )}
                   style={{
                     marginLeft: `${Math.max(0, (item.indent - 1) * 0.85)}rem`,
@@ -9402,7 +9397,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 >
                   <span
                     className={cn(
-                      'absolute left-0 top-2 bottom-2 w-[2px] rounded-full transition-colors duration-150 ease-out',
+                      'reader-nav-subitem-rail transition-colors duration-150 ease-out',
                       item.isActive ? 'bg-[hsl(var(--tone-accent-400))]' : 'bg-transparent',
                     )}
                     style={item.isActive && activeSubsectionRailColor ? { backgroundColor: activeSubsectionRailColor } : undefined}
@@ -9410,10 +9405,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   />
                   <span
                     className={cn(
-                      'block whitespace-normal break-words pr-2 text-[0.84rem] leading-[1.45]',
+                      'reader-nav-subitem-label',
                       item.indent > 1 && 'text-[0.8rem] leading-[1.42]',
                       item.isActive && 'font-medium',
                     )}
+                    data-reader-indent={item.indent > 1 ? 'deep' : 'base'}
                     style={item.isActive && toneHex ? { color: toneHex } : undefined}
                   >
                     {item.label}
@@ -9428,13 +9424,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
     return (
       <div className="space-y-5">
-        <div className="space-y-1.5">
+        <div className="reader-nav-groups">
           {selectedPublicationReaderNarrativeNavigatorGroups.map((group) => renderNavigatorGroup(group))}
         </div>
 
         {selectedPublicationReaderEndMatterNavigatorGroups.length > 0 ? (
-          <div className="border-t border-[hsl(var(--tone-neutral-180))] pt-4">
-            <div className="space-y-1.5">
+          <div className="reader-nav-divider">
+            <div className="reader-nav-groups">
               {selectedPublicationReaderEndMatterNavigatorGroups.map((group) => renderNavigatorGroup(group))}
             </div>
           </div>
@@ -11383,7 +11379,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       <aside className="min-h-0 px-3 pb-6 pt-14 sm:px-4 sm:pt-16">
                         <div
                           ref={publicationReaderNavigatorViewportRef}
-                          className="sticky top-8 max-h-[calc(100vh-11rem)] overflow-y-auto rounded-[1.45rem] border border-[hsl(var(--tone-neutral-200))] bg-[linear-gradient(180deg,hsl(var(--surface-drilldown-elevated)/0.96)_0%,hsl(var(--tone-neutral-50)/0.94)_100%)] px-4 py-4 backdrop-blur"
+                          className="reader-nav-shell sticky top-8 max-h-[calc(100vh-11rem)] overflow-y-auto backdrop-blur"
                         >
                           {selectedPaperParsingInProgress ? (
                             <div className="rounded-[1rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-3 py-3">
@@ -11616,7 +11612,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               renderPublicationReaderMajorPanel(
                                 'References',
                                 (
-                                  <ol className="space-y-4 text-[0.92rem] leading-[1.8] text-[hsl(var(--tone-neutral-700))]">
+                                  <ol className="reader-reference-list text-[0.92rem] leading-[1.8] text-[hsl(var(--tone-neutral-700))]">
                                     {selectedPaperReferences.map((reference, index) => {
                                       const authorsText = formatPublicationReaderReferenceAuthors(reference.authors, {
                                         authorsTruncated: reference.authorsTruncated,
@@ -11629,40 +11625,40 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       return (
                                         <li
                                           key={reference.id}
-                                          className="grid grid-cols-[auto,minmax(0,1fr)] gap-4 border-t border-[hsl(var(--tone-neutral-150))] pt-4 first:border-t-0 first:pt-0"
+                                          className="reader-reference-item"
                                         >
-                                          <span className="pt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-500))]">
+                                          <span className="reader-reference-index">
                                             {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
                                           </span>
-                                          <div className="min-w-0 space-y-1.5">
+                                          <div className="reader-reference-content">
                                             {titleText ? (
-                                              <p className="text-[0.98rem] font-medium leading-[1.65] text-[hsl(var(--tone-neutral-900))]">
+                                              <p className="reader-reference-title">
                                                 {titleText}.
                                               </p>
                                             ) : null}
                                             {authorsText ? (
-                                              <p className="text-[0.88rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
+                                              <p className="reader-reference-authors">
                                                 {authorsText}
                                               </p>
                                             ) : null}
                                             {sourceLine ? (
-                                              <p className="text-[0.84rem] leading-[1.7] text-[hsl(var(--tone-neutral-500))]">
+                                              <p className="reader-reference-source">
                                                 {sourceLine}.
                                               </p>
                                             ) : null}
                                             {!hasStructuredReference ? (
-                                              <p className="text-[0.92rem] leading-[1.85] text-[hsl(var(--tone-neutral-700))]">
+                                              <p className="reader-reference-fallback">
                                                 {fallbackText}
                                               </p>
                                             ) : null}
                                             {reference.doi || reference.pmid || reference.pmcid ? (
-                                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
+                                              <div className="reader-reference-links">
                                                 {reference.doi ? (
                                                   <a
                                                     href={`https://doi.org/${encodeURIComponent(reference.doi)}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                                    className="reader-reference-link"
                                                   >
                                                     DOI: {reference.doi}
                                                   </a>
@@ -11672,7 +11668,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                                     href={`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(reference.pmid)}/`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                                    className="reader-reference-link"
                                                   >
                                                     PMID: {reference.pmid}
                                                   </a>
@@ -11682,7 +11678,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                                     href={`https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(reference.pmcid)}/`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                                    className="reader-reference-link"
                                                   >
                                                     PMCID: {reference.pmcid}
                                                   </a>
@@ -11731,9 +11727,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         )}
                       </main>
 
-                      <aside className="min-h-0 border-t border-[hsl(var(--tone-neutral-200))] bg-white xl:border-l xl:border-t-0">
+                      <aside className="reader-inspector-shell">
                         {publicationReaderInspectorOpen ? (
-                          <div className="flex h-full flex-col p-4">
+                          <div className="reader-inspector-expanded">
                             <div className="flex items-center justify-end">
                               <button
                                 type="button"
@@ -11744,17 +11740,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <ChevronRight className="h-4 w-4" />
                               </button>
                             </div>
-                            <div className="mt-5 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pr-2">
-                              <section className="border-t border-[hsl(var(--tone-neutral-200))] pt-3">
-                                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
+                            <div className="reader-inspector-scroll">
+                              <section className="reader-inspector-section">
+                                <p className="reader-inspector-label">
                                   Tools
                                 </p>
-                                <p className="mt-2 text-[0.88rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                <p className="reader-inspector-copy">
                                   Reader tools will live here.
                                 </p>
                               </section>
 
-                              <section className="border-t border-[hsl(var(--tone-neutral-200))] pt-3">
+                              <section className="reader-inspector-section">
                                 {selectedPublicationReaderInspectorActiveReference ? (
                                   <div className="space-y-4">
                                     {selectedPublicationReaderInspectorReferences.length > 1 ? (
@@ -11782,17 +11778,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                                     <div className="space-y-0">
                                       {selectedPublicationReaderInspectorActiveReferenceTitleText ? (
-                                        <p className="text-[0.96rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]">
+                                        <p className="reader-inspector-reference-title">
                                           {selectedPublicationReaderInspectorActiveReferenceTitleText}.
                                         </p>
                                       ) : null}
                                       {selectedPublicationReaderInspectorActiveReferenceAuthorsText ? (
-                                        <p className="mt-1.5 text-[0.82rem] leading-snug text-[hsl(var(--tone-neutral-600))]">
+                                        <p className="reader-inspector-reference-authors">
                                           {selectedPublicationReaderInspectorActiveReferenceAuthorsText}
                                         </p>
                                       ) : null}
                                       {selectedPublicationReaderInspectorActiveReferenceSourceLine ? (
-                                        <p className="mt-1 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
+                                        <p className="reader-inspector-reference-source">
                                           {selectedPublicationReaderInspectorActiveReferenceSourceLine}.
                                         </p>
                                       ) : null}
@@ -11802,13 +11798,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         </p>
                                       ) : null}
                                       {selectedPublicationReaderInspectorActiveReference.doi || selectedPublicationReaderInspectorActiveReference.pmid || selectedPublicationReaderInspectorActiveReference.pmcid ? (
-                                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8rem] text-[hsl(var(--tone-neutral-500))]">
+                                        <div className="reader-inspector-reference-links">
                                           {selectedPublicationReaderInspectorActiveReference.doi ? (
                                             <a
                                               href={`https://doi.org/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.doi)}`}
                                               target="_blank"
                                               rel="noopener noreferrer"
-                                              className="text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                              className="reader-inspector-reference-link"
                                             >
                                               DOI: {selectedPublicationReaderInspectorActiveReference.doi}
                                             </a>
@@ -11818,7 +11814,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                               href={`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.pmid)}/`}
                                               target="_blank"
                                               rel="noopener noreferrer"
-                                              className="text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                              className="reader-inspector-reference-link"
                                             >
                                               PMID: {selectedPublicationReaderInspectorActiveReference.pmid}
                                             </a>
@@ -11828,7 +11824,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                               href={`https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(selectedPublicationReaderInspectorActiveReference.pmcid)}/`}
                                               target="_blank"
                                               rel="noopener noreferrer"
-                                              className="text-[0.78rem] text-[hsl(var(--tone-accent-600))] underline decoration-[hsl(var(--tone-accent-300))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))]"
+                                              className="reader-inspector-reference-link"
                                             >
                                               PMCID: {selectedPublicationReaderInspectorActiveReference.pmcid}
                                             </a>
@@ -11836,16 +11832,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         </div>
                                       ) : null}
                                       {selectedPublicationReaderInspectorActiveReferenceUsage ? (
-                                        <div className="mt-5 pt-2">
-                                          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-[hsl(var(--tone-neutral-180))] pt-3">
-                                            <p className="text-[0.82rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-850))]">
+                                        <div className="reader-inspector-usage">
+                                          <div className="reader-inspector-usage-row">
+                                            <p className="reader-inspector-usage-text">
                                               {selectedPublicationReaderInspectorOccurrenceSummary}
                                               {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel ? (
                                                 <>
                                                   {' in '}
                                                   <button
                                                     type="button"
-                                                    className="inline p-0 font-semibold text-[hsl(var(--tone-accent-750))] underline decoration-[hsl(var(--tone-accent-250))] underline-offset-[0.18em] transition-colors hover:text-[hsl(var(--tone-accent-850))] hover:decoration-[hsl(var(--tone-accent-400))]"
+                                                    className="reader-inspector-usage-link inline p-0 font-semibold"
                                                     onClick={() => onSelectPublicationReaderInspectorOccurrence(selectedPublicationReaderInspectorActiveOccurrence)}
                                                   >
                                                     {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel}
@@ -11856,7 +11852,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                               )}
                                             </p>
                                             {selectedPublicationReaderInspectorHasMultipleOccurrences ? (
-                                              <div className="flex items-center gap-2">
+                                              <div className="reader-inspector-usage-actions">
                                                 <button
                                                   type="button"
                                                   className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
@@ -11883,7 +11879,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     </div>
                                   </div>
                                 ) : (
-                                  <p className="mt-4 text-[0.88rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                                  <p className="reader-inspector-copy mt-4">
                                     Click a citation in the manuscript to inspect it here.
                                   </p>
                                 )}
