@@ -238,7 +238,7 @@
     --reader-nav-border-color: hsl(var(--tone-neutral-200));
     --reader-nav-surface: hsl(var(--tone-neutral-50) / 0.96);
     --reader-nav-padding: 1rem;
-    --reader-nav-divider-color: hsl(var(--tone-neutral-850));
+    --reader-nav-divider-color: hsl(var(--tone-neutral-800));
     --reader-nav-row-radius: 1rem;
     --reader-nav-row-padding-y: 0.75rem;
     --reader-nav-row-padding-x: 0.75rem;
@@ -6123,7 +6123,7 @@
   font-size: 0.82rem;
   line-height: 1.35;
   font-weight: 600;
-  color: hsl(var(--tone-neutral-850));
+  color: hsl(var(--tone-neutral-800));
 }
 
 .reader-inspector-usage-link {
@@ -6163,14 +6163,18 @@
 .reader-nav-divider {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 0.95rem;
   margin-top: 0.85rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid hsl(var(--tone-neutral-850) / 0.46);
+  padding-top: 0.1rem;
 }
 
 .reader-nav-divider-line {
-  display: none;
+  display: block;
+  height: 1px;
+  width: 100%;
+  border-radius: 999px;
+  background: hsl(var(--tone-neutral-800) / 0.42);
+  box-shadow: 0 1px 0 hsl(var(--tone-neutral-0) / 0.32);
 }
 
 .reader-nav-group-row {
