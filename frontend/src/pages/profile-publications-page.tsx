@@ -9251,7 +9251,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       const isActiveGroup = publicationReaderActiveNavigatorGroupId === group.id
       const toneHex = extractPublicationReaderToneHex(group.toneClassName)
       const activeFillColor = publicationReaderHexToRgba(toneHex, compact ? 0.08 : 0.095)
+      const hoverFillColor = publicationReaderHexToRgba(toneHex, compact ? 0.038 : 0.045)
       const activeSubsectionFillColor = publicationReaderHexToRgba(toneHex, 0.065)
+      const hoverSubsectionFillColor = publicationReaderHexToRgba(toneHex, 0.04)
       const activeSubsectionRailColor = publicationReaderHexToRgba(toneHex, 0.9)
       const inactiveSubtreeBorderColor = publicationReaderHexToRgba(toneHex, 0.18)
       return (
@@ -9262,9 +9264,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               compact ? 'py-2.5' : 'py-3',
               isActiveGroup
                 ? 'text-[hsl(var(--tone-neutral-950))]'
-                : 'text-[hsl(var(--tone-neutral-700))] hover:bg-white/72 hover:text-[hsl(var(--tone-neutral-900))]',
+                : 'text-[hsl(var(--tone-neutral-700))] hover:bg-[var(--reader-nav-hover-fill)] hover:text-[hsl(var(--tone-neutral-900))]',
             )}
-            style={isActiveGroup && activeFillColor ? { backgroundColor: activeFillColor } : undefined}
+            style={{
+              ...(isActiveGroup && activeFillColor ? { backgroundColor: activeFillColor } : {}),
+              ...(!isActiveGroup && hoverFillColor ? { ['--reader-nav-hover-fill' as string]: hoverFillColor } : {}),
+            }}
           >
             <span
               className={cn(
@@ -9298,10 +9303,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               <button
                 type="button"
                 className={cn(
-                  'mt-0.5 shrink-0 rounded-full p-1 text-[hsl(var(--tone-neutral-400))] transition-[transform,color,background-color] duration-150 ease-out hover:bg-white/72',
+                  'mt-0.5 shrink-0 rounded-full p-1 text-[hsl(var(--tone-neutral-400))] transition-[transform,color,background-color] duration-150 ease-out hover:bg-[var(--reader-nav-hover-fill)]',
                   isExpanded ? 'rotate-90' : 'rotate-0',
                 )}
-                style={isActiveGroup && toneHex ? { color: toneHex } : undefined}
+                style={{
+                  ...(isActiveGroup && toneHex ? { color: toneHex } : {}),
+                  ...(!isActiveGroup && hoverFillColor ? { ['--reader-nav-hover-fill' as string]: hoverFillColor } : {}),
+                }}
                 onClick={(event) => {
                   event.stopPropagation()
                   onTogglePublicationReaderNavigatorGroup(group.id)
@@ -9337,11 +9345,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     'relative block w-full rounded-[0.9rem] bg-transparent py-1.5 pl-3 text-left transition-colors duration-150 ease-out',
                     item.isActive
                       ? 'text-[hsl(var(--tone-accent-900))]'
-                      : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-900))]',
+                      : 'text-[hsl(var(--tone-neutral-600))] hover:bg-[var(--reader-nav-subitem-hover-fill)] hover:text-[hsl(var(--tone-neutral-900))]',
                   )}
                   style={{
                     marginLeft: `${Math.max(0, (item.indent - 1) * 0.85)}rem`,
                     ...(item.isActive && activeSubsectionFillColor ? { backgroundColor: activeSubsectionFillColor } : {}),
+                    ...(!item.isActive && hoverSubsectionFillColor ? { ['--reader-nav-subitem-hover-fill' as string]: hoverSubsectionFillColor } : {}),
                   }}
                   onClick={() => onSelectPublicationReaderNavigatorTarget(item.target)}
                 >
