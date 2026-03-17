@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, Filter, Hammer, Loader2, Mail, Paperclip, Pencil, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Download, Ellipsis, Eye, EyeOff, FileText, Filter, Hammer, Loader2, Mail, Paperclip, Pencil, RefreshCw, Save, Search, Settings, Share2, Tag, Trash2, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
@@ -9430,6 +9430,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
         {selectedPublicationReaderEndMatterNavigatorGroups.length > 0 ? (
           <div className="reader-nav-divider">
+            <div className="reader-nav-divider-line" aria-hidden="true" />
             <div className="reader-nav-groups">
               {selectedPublicationReaderEndMatterNavigatorGroups.map((group) => renderNavigatorGroup(group))}
             </div>
@@ -11329,7 +11330,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             ].filter(Boolean).join(' | ')}
                           </p>
                         </div>
-                        <div className="flex flex-wrap items-center justify-end gap-2">
+                        <div className="flex flex-col items-end gap-2">
                           <div className="inline-flex items-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50)/0.92)] p-1 shadow-[0_10px_24px_hsl(var(--tone-neutral-900)/0.05)]">
                             <button
                               type="button"
@@ -11359,6 +11360,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               <span>Structured</span>
                             </button>
                           </div>
+                          {selectedWorkId ? (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white px-3 py-1.5 text-[0.72rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-neutral-350))] hover:text-[hsl(var(--tone-neutral-900))] disabled:opacity-50"
+                              disabled={publicationReaderLoading}
+                              onClick={() => {
+                                invalidatePublicationPaperModelCache(selectedWorkId)
+                                void loadPublicationPaperModelData(selectedWorkId, true, { serverForce: true })
+                              }}
+                            >
+                              <RefreshCw className={cn('h-3 w-3', publicationReaderLoading && 'animate-spin')} />
+                              <span>Refresh parse</span>
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                       {publicationReaderError ? (
@@ -11372,8 +11387,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       className={cn(
                         'grid min-h-0 flex-1 grid-cols-1',
                         publicationReaderInspectorOpen
-                          ? 'xl:grid-cols-[16rem_minmax(0,1fr)_22rem]'
-                          : 'xl:grid-cols-[16rem_minmax(0,1fr)_4.5rem]',
+                          ? 'xl:grid-cols-[15rem_minmax(0,1fr)_22rem] 2xl:grid-cols-[16rem_minmax(0,1fr)_26rem]'
+                          : 'xl:grid-cols-[15rem_minmax(0,1fr)_4.5rem] 2xl:grid-cols-[16rem_minmax(0,1fr)_4.5rem]',
                       )}
                     >
                       <aside className="min-h-0 px-3 pb-6 pt-14 sm:px-4 sm:pt-16">
@@ -11730,7 +11745,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       <aside className="reader-inspector-shell">
                         {publicationReaderInspectorOpen ? (
                           <div className="reader-inspector-expanded">
-                            <div className="flex items-center justify-end">
+                            <div className="reader-inspector-header">
+                              <p className="reader-inspector-label">
+                                Tools
+                              </p>
                               <button
                                 type="button"
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white text-[hsl(var(--tone-neutral-600))] transition-[background-color,color,border-color] duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-neutral-300))] hover:text-[hsl(var(--tone-neutral-900))]"
@@ -11741,15 +11759,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </button>
                             </div>
                             <div className="reader-inspector-scroll">
-                              <section className="reader-inspector-section">
-                                <p className="reader-inspector-label">
-                                  Tools
-                                </p>
-                                <p className="reader-inspector-copy">
-                                  Reader tools will live here.
-                                </p>
-                              </section>
-
                               <section className="reader-inspector-section">
                                 {selectedPublicationReaderInspectorActiveReference ? (
                                   <div className="space-y-4">

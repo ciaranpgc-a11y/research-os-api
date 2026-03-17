@@ -93,6 +93,11 @@ type CollaboratorFormState = {
 
 type CollaboratorAffiliationSlotKey = 'primary' | 'secondary'
 
+type CollaboratorIdentityDraft = Pick<
+  CollaboratorFormState,
+  'salutation' | 'first_name' | 'middle_initial' | 'surname'
+>
+
 type CollaboratorAffiliationBylineDraft = {
   department: string
   address_line_1: string
@@ -670,6 +675,83 @@ function collaboratorBylineDraftFromForm(
     region: form.primary_affiliation_region,
     postal_code: form.primary_affiliation_postal_code,
     country: form.primary_affiliation_country,
+  }
+}
+
+function collaboratorIdentityDraftFromForm(form: CollaboratorFormState): CollaboratorIdentityDraft {
+  return {
+    salutation: form.salutation,
+    first_name: form.first_name,
+    middle_initial: form.middle_initial,
+    surname: form.surname,
+  }
+}
+
+function collaboratorBylineDraftFromSuggestion(suggestion: AffiliationSuggestionItem): CollaboratorAffiliationBylineDraft {
+  return {
+    department: '',
+    address_line_1: sanitizeAffiliation(suggestion.address),
+    city: sanitizeAffiliation(suggestion.city),
+    region: sanitizeAffiliation(suggestion.region),
+    postal_code: sanitizeAffiliation(suggestion.postalCode),
+    country: sanitizeAffiliation(suggestion.countryName),
+  }
+}
+
+function collaboratorInstitutionSlotNeedsHydration(
+  form: CollaboratorFormState,
+  slot: CollaboratorAffiliationSlotKey,
+): boolean {
+  const institution = sanitizeAffiliation(slot === 'secondary' ? form.secondary_institution : form.primary_institution)
+  const openalexId = sanitizeAffiliation(slot === 'secondary' ? form.secondary_institution_openalex_id : form.primary_institution_openalex_id)
+  const draft = collaboratorBylineDraftFromForm(form, slot)
+  const hasAddress = Boolean(
+    sanitizeAffiliation(draft.address_line_1)
+    || sanitizeAffiliation(draft.city)
+    || sanitizeAffiliation(draft.region)
+    || sanitizeAffiliation(draft.postal_code)
+    || sanitizeAffiliation(draft.country),
+  )
+  return Boolean(institution) && (!openalexId || !hasAddress)
+}
+
+function institutionSuggestionMatchesValue(
+  suggestion: AffiliationSuggestionItem | null | undefined,
+  value: string,
+): boolean {
+  return Boolean(suggestion) && normalizeInstitutionKey(suggestion?.name || '') === normalizeInstitutionKey(value)
+}
+
+function applyInstitutionResolutionToForm(
+  form: CollaboratorFormState,
+  slot: CollaboratorAffiliationSlotKey,
+  resolvedInstitution: string,
+  openalexId: string,
+  metadata: CollaboratorAffiliationBylineDraft,
+): CollaboratorFormState {
+  if (slot === 'secondary') {
+    return {
+      ...form,
+      secondary_institution: resolvedInstitution,
+      secondary_institution_openalex_id: openalexId,
+      secondary_affiliation_department: form.secondary_affiliation_department,
+      secondary_affiliation_address_line_1: metadata.address_line_1,
+      secondary_affiliation_city: metadata.city,
+      secondary_affiliation_region: metadata.region,
+      secondary_affiliation_postal_code: metadata.postal_code,
+      secondary_affiliation_country: metadata.country,
+    }
+  }
+  return {
+    ...form,
+    primary_institution: resolvedInstitution,
+    primary_institution_openalex_id: openalexId,
+    primary_affiliation_department: form.primary_affiliation_department,
+    primary_affiliation_address_line_1: metadata.address_line_1,
+    primary_affiliation_city: metadata.city,
+    primary_affiliation_region: metadata.region,
+    primary_affiliation_postal_code: metadata.postal_code,
+    primary_affiliation_country: metadata.country,
   }
 }
 
@@ -1524,6 +1606,8 @@ export function ProfileCollaborationPage() {
   const [collaboratorDrilldownOpen, setCollaboratorDrilldownOpen] = useState(false)
   const [activeCollaboratorDrilldownTab, setActiveCollaboratorDrilldownTab] = useState<CollaboratorDrilldownTab>('details')
   const [form, setForm] = useState<CollaboratorFormState>(EMPTY_FORM)
+  const [identityDraft, setIdentityDraft] = useState<CollaboratorIdentityDraft>(() => collaboratorIdentityDraftFromForm(EMPTY_FORM))
+  const [editingIdentity, setEditingIdentity] = useState(false)
   const [primaryEmailDraft, setPrimaryEmailDraft] = useState('')
   const [editingPrimaryEmail, setEditingPrimaryEmail] = useState(false)
   const [institutionDraft, setInstitutionDraft] = useState('')
@@ -1557,6 +1641,10 @@ export function ProfileCollaborationPage() {
   const [editingSecondaryEmail, setEditingSecondaryEmail] = useState(false)
   const [institutionInputFocused, setInstitutionInputFocused] = useState<'primary' | 'secondary' | null>(null)
   const [institutionSuggestions, setInstitutionSuggestions] = useState<AffiliationSuggestionItem[]>([])
+  const [selectedInstitutionSuggestions, setSelectedInstitutionSuggestions] = useState<Record<CollaboratorAffiliationSlotKey, AffiliationSuggestionItem | null>>({
+    primary: null,
+    secondary: null,
+  })
   const [institutionSuggestionsLoading, setInstitutionSuggestionsLoading] = useState(false)
   const [institutionSuggestionsError, setInstitutionSuggestionsError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -1573,6 +1661,7 @@ export function ProfileCollaborationPage() {
   const [sharedWorksLoadingByCollaboratorId, setSharedWorksLoadingByCollaboratorId] = useState<Record<string, boolean>>({})
   const [sharedWorksErrorByCollaboratorId, setSharedWorksErrorByCollaboratorId] = useState<Record<string, string>>({})
   const collaboratorInstitutionLookupSequenceRef = useRef(0)
+  const collaboratorFormRef = useRef<CollaboratorFormState>(EMPTY_FORM)
   const selectedCollaboratorIdRef = useRef<string | null>(null)
   const collaboratorContactSnapshotByIdRef = useRef<Map<string, string>>(new Map())
   const collaboratorContactQueuedSnapshotByIdRef = useRef<Map<string, string>>(new Map())
@@ -2375,13 +2464,77 @@ export function ProfileCollaborationPage() {
     () => collaboratorAuthorAffiliations(form),
     [form],
   )
-  const hasCommittedPrimaryInstitution = Boolean(sanitizeAffiliation(form.primary_institution))
-  const primaryInstitutionEditingActive = editingInstitution || !hasCommittedPrimaryInstitution
+  const identityDraftDirty = useMemo(() => {
+    const committed = collaboratorIdentityDraftFromForm(form)
+    return (
+      committed.salutation !== identityDraft.salutation
+      || committed.first_name !== identityDraft.first_name
+      || committed.middle_initial !== identityDraft.middle_initial
+      || committed.surname !== identityDraft.surname
+    )
+  }, [form, identityDraft])
+  const hasPrimaryEmail = Boolean(primaryEmailDraft.trim())
+  const hasPrimaryInstitution = Boolean(sanitizeAffiliation(institutionDraft))
+  const primaryInstitutionNeedsHydration = collaboratorInstitutionSlotNeedsHydration(form, 'primary')
+  const secondaryInstitutionNeedsHydration = collaboratorInstitutionSlotNeedsHydration(form, 'secondary')
+  const primaryInstitutionEditingActive = editingInstitution
+  const activeCollaboratorEditor = useMemo(() => {
+    if (editingIdentity) {
+      return 'identity'
+    }
+    if (editingPrimaryEmail) {
+      return 'primary-email'
+    }
+    if (editingSecondaryEmail) {
+      return 'secondary-email'
+    }
+    if (editingInstitution) {
+      return 'primary-institution'
+    }
+    if (editingSecondaryInstitution) {
+      return 'secondary-institution'
+    }
+    if (editingAffiliationBylineSlot) {
+      return `byline-${editingAffiliationBylineSlot}`
+    }
+    return null
+  }, [
+    editingAffiliationBylineSlot,
+    editingIdentity,
+    editingInstitution,
+    editingPrimaryEmail,
+    editingSecondaryEmail,
+    editingSecondaryInstitution,
+  ])
+
+  useEffect(() => {
+    collaboratorFormRef.current = form
+  }, [form])
 
   const resetInstitutionSuggestionState = useCallback(() => {
     setInstitutionInputFocused(null)
     setInstitutionSuggestions([])
     setInstitutionSuggestionsError('')
+  }, [])
+
+  const onInstitutionDraftInputChange = useCallback((
+    slot: CollaboratorAffiliationSlotKey,
+    value: string,
+  ) => {
+    if (slot === 'secondary') {
+      setSecondaryInstitutionDraft(value)
+    } else {
+      setInstitutionDraft(value)
+    }
+    setSelectedInstitutionSuggestions((current) => {
+      if (!institutionSuggestionMatchesValue(current[slot], value)) {
+        if (!current[slot]) {
+          return current
+        }
+        return { ...current, [slot]: null }
+      }
+      return current
+    })
   }, [])
 
   const syncAffiliationBylineDraftsFromForm = useCallback((nextForm: CollaboratorFormState) => {
@@ -2446,7 +2599,7 @@ export function ProfileCollaborationPage() {
           updateCollaboratorInListing(saved)
           markCollaboratorContactSnapshot(saved.id, toFormState(saved))
           if (selectedCollaboratorIdRef.current === saved.id) {
-            setStatus('Collaborator details saved.')
+            setStatus('')
             setError('')
           }
         } catch (saveError) {
@@ -2520,7 +2673,10 @@ export function ProfileCollaborationPage() {
   ) => {
     collaboratorInstitutionLookupSequenceRef.current += 1
     const nextForm = toFormState(collaborator)
+    collaboratorFormRef.current = nextForm
     setForm(nextForm)
+    setIdentityDraft(collaboratorIdentityDraftFromForm(nextForm))
+    setEditingIdentity(false)
     setPrimaryEmailDraft(collaborator.contact_email || '')
     setEditingPrimaryEmail(false)
     setInstitutionDraft(nextForm.primary_institution)
@@ -2531,6 +2687,7 @@ export function ProfileCollaborationPage() {
     syncAffiliationBylineDraftsFromForm(nextForm)
     setEditingAffiliationBylineSlot(null)
     resetInstitutionSuggestionState()
+    setSelectedInstitutionSuggestions({ primary: null, secondary: null })
     setShowSecondaryEmailInput(Boolean(collaborator.contact_secondary_email))
     setSecondaryEmailDraft(collaborator.contact_secondary_email || '')
     setEditingSecondaryEmail(false)
@@ -2544,7 +2701,10 @@ export function ProfileCollaborationPage() {
 
   const clearCollaboratorFormState = useCallback(() => {
     collaboratorInstitutionLookupSequenceRef.current += 1
+    collaboratorFormRef.current = EMPTY_FORM
     setForm(EMPTY_FORM)
+    setIdentityDraft(collaboratorIdentityDraftFromForm(EMPTY_FORM))
+    setEditingIdentity(false)
     setPrimaryEmailDraft('')
     setEditingPrimaryEmail(false)
     setInstitutionDraft('')
@@ -2555,6 +2715,7 @@ export function ProfileCollaborationPage() {
     syncAffiliationBylineDraftsFromForm(EMPTY_FORM)
     setEditingAffiliationBylineSlot(null)
     resetInstitutionSuggestionState()
+    setSelectedInstitutionSuggestions({ primary: null, secondary: null })
     setShowSecondaryEmailInput(false)
     setSecondaryEmailDraft('')
     setEditingSecondaryEmail(false)
@@ -2619,6 +2780,8 @@ export function ProfileCollaborationPage() {
     options?: {
       clearInstitutionOnFailure?: boolean
       markPending?: boolean
+      persist?: boolean
+      preferredSuggestion?: AffiliationSuggestionItem | null
     },
   ) => {
     const clean = sanitizeAffiliation(sourceName)
@@ -2626,37 +2789,21 @@ export function ProfileCollaborationPage() {
     collaboratorInstitutionLookupSequenceRef.current = requestId
     const clearInstitutionOnFailure = Boolean(options?.clearInstitutionOnFailure)
     const markPending = Boolean(options?.markPending)
+    const persist = Boolean(options?.persist)
     const setSlotState = (
       resolvedInstitution: string,
       openalexId: string,
       metadata: CollaboratorAffiliationBylineDraft,
     ) => {
-      setForm((current) => {
-        if (slot === 'secondary') {
-          return {
-            ...current,
-            secondary_institution: resolvedInstitution,
-            secondary_institution_openalex_id: openalexId,
-            secondary_affiliation_department: current.secondary_affiliation_department,
-            secondary_affiliation_address_line_1: metadata.address_line_1,
-            secondary_affiliation_city: metadata.city,
-            secondary_affiliation_region: metadata.region,
-            secondary_affiliation_postal_code: metadata.postal_code,
-            secondary_affiliation_country: metadata.country,
-          }
-        }
-        return {
-          ...current,
-          primary_institution: resolvedInstitution,
-          primary_institution_openalex_id: openalexId,
-          primary_affiliation_department: current.primary_affiliation_department,
-          primary_affiliation_address_line_1: metadata.address_line_1,
-          primary_affiliation_city: metadata.city,
-          primary_affiliation_region: metadata.region,
-          primary_affiliation_postal_code: metadata.postal_code,
-          primary_affiliation_country: metadata.country,
-        }
-      })
+      const nextForm = applyInstitutionResolutionToForm(
+        collaboratorFormRef.current,
+        slot,
+        resolvedInstitution,
+        openalexId,
+        metadata,
+      )
+      collaboratorFormRef.current = nextForm
+      setForm(nextForm)
       if (slot === 'secondary') {
         setSecondaryInstitutionDraft(resolvedInstitution)
         setShowSecondaryInstitutionInput(Boolean(resolvedInstitution))
@@ -2680,6 +2827,9 @@ export function ProfileCollaborationPage() {
         }))
       }
       setPendingInstitutionReview((current) => ({ ...current, [slot]: markPending }))
+      if (persist && selectedId) {
+        queueCollaboratorContactSave(selectedId, nextForm, { immediate: true })
+      }
     }
     if (!clean) {
       setSlotState('', '', {
@@ -2693,17 +2843,22 @@ export function ProfileCollaborationPage() {
       return false
     }
     try {
-      const suggestionsPayload = await fetchAffiliationSuggestionsForMe(token, {
-        query: clean,
-        limit: 5,
-      })
-      if (collaboratorInstitutionLookupSequenceRef.current !== requestId) {
-        return false
+      let matched = institutionSuggestionMatchesValue(options?.preferredSuggestion, clean)
+        ? options?.preferredSuggestion || null
+        : null
+      if (!matched) {
+        const suggestionsPayload = await fetchAffiliationSuggestionsForMe(token, {
+          query: clean,
+          limit: 5,
+        })
+        if (collaboratorInstitutionLookupSequenceRef.current !== requestId) {
+          return false
+        }
+        const suggestions = suggestionsPayload.items
+          .map(mapAffiliationSuggestionItem)
+          .filter((item): item is AffiliationSuggestionItem => Boolean(item))
+        matched = pickClearOpenAlexInstitutionMatch(clean, suggestions)
       }
-      const suggestions = suggestionsPayload.items
-        .map(mapAffiliationSuggestionItem)
-        .filter((item): item is AffiliationSuggestionItem => Boolean(item))
-      const matched = pickClearOpenAlexInstitutionMatch(clean, suggestions)
       if (!matched) {
         setSlotState(clearInstitutionOnFailure ? '' : clean, '', {
           department: '',
@@ -2715,14 +2870,9 @@ export function ProfileCollaborationPage() {
         })
         return false
       }
-      let metadata: CollaboratorAffiliationBylineDraft = {
-        department: '',
-        address_line_1: sanitizeAffiliation(matched.address),
-        city: sanitizeAffiliation(matched.city),
-        region: sanitizeAffiliation(matched.region),
-        postal_code: sanitizeAffiliation(matched.postalCode),
-        country: sanitizeAffiliation(matched.countryName),
-      }
+      let metadata = collaboratorBylineDraftFromSuggestion(matched)
+      const matchedOpenAlexId = sanitizeAffiliation(matched.openalexId)
+      setSlotState(matched.name, matchedOpenAlexId, metadata)
       try {
         const resolved = await fetchAffiliationAddressForMe(token, {
           name: matched.name,
@@ -2744,7 +2894,7 @@ export function ProfileCollaborationPage() {
       } catch {
         // Keep the suggestion metadata when address resolution misses.
       }
-      setSlotState(matched.name, sanitizeAffiliation(matched.openalexId), metadata)
+      setSlotState(matched.name, matchedOpenAlexId, metadata)
       return true
     } catch {
       if (collaboratorInstitutionLookupSequenceRef.current === requestId) {
@@ -2759,7 +2909,7 @@ export function ProfileCollaborationPage() {
       }
       return false
     }
-  }, [])
+  }, [queueCollaboratorContactSave, selectedId])
 
   const bootstrapCollaboratorAffiliations = useCallback(async (
     token: string,
@@ -2773,21 +2923,25 @@ export function ProfileCollaborationPage() {
     const secondarySource = existingSecondary || rawCandidates.find(
       (candidate) => normalizeInstitutionKey(candidate) !== normalizeInstitutionKey(primarySource),
     ) || ''
+    const primaryNeedsHydration = collaboratorInstitutionSlotNeedsHydration(initialForm, 'primary')
+    const secondaryNeedsHydration = collaboratorInstitutionSlotNeedsHydration(initialForm, 'secondary')
 
-    if (!initialForm.primary_institution_openalex_id && primarySource) {
+    if (primarySource && primaryNeedsHydration) {
       await syncInstitutionSlotFromSuggestion(token, 'primary', primarySource, {
         clearInstitutionOnFailure: !existingPrimary,
         markPending: !existingPrimary,
+        persist: true,
       })
     }
     if (
       secondarySource
       && normalizeInstitutionKey(secondarySource) !== normalizeInstitutionKey(primarySource)
-      && !initialForm.secondary_institution_openalex_id
+      && secondaryNeedsHydration
     ) {
       await syncInstitutionSlotFromSuggestion(token, 'secondary', secondarySource, {
         clearInstitutionOnFailure: !existingSecondary,
         markPending: !existingSecondary,
+        persist: true,
       })
     }
   }, [syncInstitutionSlotFromSuggestion])
@@ -3787,23 +3941,64 @@ export function ProfileCollaborationPage() {
     queueCollaboratorContactSave(selectedId, nextForm, options)
   }, [queueCollaboratorContactSave, selectedId])
 
+  const onStartIdentityEdit = () => {
+    if (activeCollaboratorEditor) {
+      return
+    }
+    setIdentityDraft(collaboratorIdentityDraftFromForm(form))
+    setEditingIdentity(true)
+  }
+
+  const onCommitIdentityDraft = () => {
+    const nextForm = {
+      ...form,
+      salutation: identityDraft.salutation,
+      first_name: identityDraft.first_name,
+      middle_initial: identityDraft.middle_initial.trim().toUpperCase(),
+      surname: identityDraft.surname,
+    }
+    setForm(nextForm)
+    setIdentityDraft(collaboratorIdentityDraftFromForm(nextForm))
+    setEditingIdentity(false)
+    saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
+  }
+
+  const onCancelIdentityDraft = () => {
+    setIdentityDraft(collaboratorIdentityDraftFromForm(form))
+    setEditingIdentity(false)
+  }
+
   const onStartPrimaryEmailEdit = () => {
+    if (activeCollaboratorEditor) {
+      return
+    }
     setPrimaryEmailDraft(form.email || '')
     setEditingPrimaryEmail(true)
   }
 
   const onStartInstitutionEdit = () => {
+    if (activeCollaboratorEditor) {
+      return
+    }
     setInstitutionDraft(form.primary_institution || '')
+    setSelectedInstitutionSuggestions((current) => ({ ...current, primary: null }))
     setEditingInstitution(true)
   }
 
   const onOpenSecondaryInstitutionDraft = () => {
+    if (activeCollaboratorEditor) {
+      return
+    }
     setShowSecondaryInstitutionInput(true)
     setSecondaryInstitutionDraft(form.secondary_institution || '')
+    setSelectedInstitutionSuggestions((current) => ({ ...current, secondary: null }))
     setEditingSecondaryInstitution(true)
   }
 
   const onOpenSecondaryEmailDraft = () => {
+    if (activeCollaboratorEditor) {
+      return
+    }
     setShowSecondaryEmailInput(true)
     setSecondaryEmailDraft(form.secondary_email || '')
     setEditingSecondaryEmail(true)
@@ -3829,31 +4024,42 @@ export function ProfileCollaborationPage() {
       ...form,
       primary_institution: clean,
     }
+    collaboratorFormRef.current = nextForm
     setInstitutionDraft(clean)
     setEditingInstitution(false)
     resetInstitutionSuggestionState()
     setPendingInstitutionReview((current) => ({ ...current, primary: false }))
     setForm(nextForm)
-    saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
+    const preferredSuggestion = institutionSuggestionMatchesValue(selectedInstitutionSuggestions.primary, clean)
+      ? selectedInstitutionSuggestions.primary
+      : null
     const token = getAuthSessionToken()
     if (!token) {
+      saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
       return
     }
     await syncInstitutionSlotFromSuggestion(token, 'primary', clean, {
       clearInstitutionOnFailure: false,
       markPending: false,
+      persist: true,
+      preferredSuggestion,
     })
   }
 
   const onCancelInstitutionDraft = () => {
     setInstitutionDraft(form.primary_institution || '')
-    setEditingInstitution(!hasCommittedPrimaryInstitution)
+    setEditingInstitution(false)
     resetInstitutionSuggestionState()
+    setSelectedInstitutionSuggestions((current) => ({ ...current, primary: null }))
   }
 
   const onStartSecondaryInstitutionEdit = () => {
+    if (activeCollaboratorEditor) {
+      return
+    }
     setShowSecondaryInstitutionInput(true)
     setSecondaryInstitutionDraft(form.secondary_institution || '')
+    setSelectedInstitutionSuggestions((current) => ({ ...current, secondary: null }))
     setEditingSecondaryInstitution(true)
   }
 
@@ -3863,20 +4069,26 @@ export function ProfileCollaborationPage() {
       ...form,
       secondary_institution: clean,
     }
+    collaboratorFormRef.current = nextForm
     setSecondaryInstitutionDraft(clean)
     setShowSecondaryInstitutionInput(Boolean(clean))
     setEditingSecondaryInstitution(false)
     resetInstitutionSuggestionState()
     setPendingInstitutionReview((current) => ({ ...current, secondary: false }))
     setForm(nextForm)
-    saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
+    const preferredSuggestion = institutionSuggestionMatchesValue(selectedInstitutionSuggestions.secondary, clean)
+      ? selectedInstitutionSuggestions.secondary
+      : null
     const token = getAuthSessionToken()
     if (!token) {
+      saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
       return
     }
     await syncInstitutionSlotFromSuggestion(token, 'secondary', clean, {
       clearInstitutionOnFailure: false,
       markPending: false,
+      persist: true,
+      preferredSuggestion,
     })
   }
 
@@ -3886,9 +4098,13 @@ export function ProfileCollaborationPage() {
     setShowSecondaryInstitutionInput(Boolean(committed))
     setEditingSecondaryInstitution(false)
     resetInstitutionSuggestionState()
+    setSelectedInstitutionSuggestions((current) => ({ ...current, secondary: null }))
   }
 
   const onStartSecondaryEmailEdit = () => {
+    if (activeCollaboratorEditor) {
+      return
+    }
     setShowSecondaryEmailInput(true)
     setSecondaryEmailDraft(form.secondary_email || '')
     setEditingSecondaryEmail(true)
@@ -3897,8 +4113,10 @@ export function ProfileCollaborationPage() {
   const onSelectInstitutionSuggestion = (suggestion: AffiliationSuggestionItem) => {
     if (institutionInputFocused === 'secondary') {
       setSecondaryInstitutionDraft(suggestion.name)
+      setSelectedInstitutionSuggestions((current) => ({ ...current, secondary: suggestion }))
     } else {
       setInstitutionDraft(suggestion.name)
+      setSelectedInstitutionSuggestions((current) => ({ ...current, primary: suggestion }))
     }
     setInstitutionSuggestions([])
     setInstitutionSuggestionsError('')
@@ -3943,6 +4161,10 @@ export function ProfileCollaborationPage() {
     setEditingInstitution(false)
     setEditingSecondaryInstitution(false)
     resetInstitutionSuggestionState()
+    setSelectedInstitutionSuggestions((current) => ({
+      primary: current.secondary,
+      secondary: current.primary,
+    }))
     saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
   }
 
@@ -4992,75 +5214,113 @@ export function ProfileCollaborationPage() {
                     </div>
                     <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
                       <div className="space-y-3">
-                        {status || error ? (
+                        {collaboratorContactSaving || error ? (
                           <div className="space-y-1">
-                            {status ? (
+                            {collaboratorContactSaving ? (
                               <p className="text-xs text-emerald-700">
-                                {collaboratorContactSaving ? 'Saving collaborator details...' : status}
+                                Saving collaborator details...
                               </p>
                             ) : null}
                             {error ? <p className="text-xs text-destructive">{error}</p> : null}
                           </div>
                         ) : null}
-                        <div className="grid gap-3 sm:grid-cols-[5.1rem_minmax(0,1fr)_4.5rem_minmax(0,1fr)]">
-                          <label className="space-y-1">
-                            <span className="house-field-label">Title</span>
-                            <SelectPrimitive
-                              value={form.salutation || undefined}
-                              onValueChange={(value) => {
-                                const nextForm = { ...form, salutation: value }
-                                setForm(nextForm)
-                                saveCurrentCollaboratorContactForm(nextForm, { immediate: true })
-                              }}
-                            >
-                              <SelectTrigger aria-label="Title">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent showScrollButtons={false} viewportStyle={{ maxHeight: 'none' }}>
-                                {COLLABORATOR_SALUTATION_OPTIONS.map((option) => (
-                                  <SelectItem key={option} value={option}>
-                                    {option}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </SelectPrimitive>
-                          </label>
-                          <label className="space-y-1">
-                            <span className="house-field-label">First name</span>
-                            <Input
-                              value={form.first_name}
-                              onChange={(event) => setForm((current) => ({ ...current, first_name: event.target.value }))}
-                              onBlur={(event) => {
-                                saveCurrentCollaboratorContactForm({ ...form, first_name: event.target.value }, { immediate: true })
-                              }}
-                              autoComplete="given-name"
-                            />
-                          </label>
-                          <label className="space-y-1">
-                            <span className="house-field-label">Initial</span>
-                            <Input
-                              value={form.middle_initial}
-                              onChange={(event) => setForm((current) => ({ ...current, middle_initial: event.target.value.toUpperCase() }))}
-                              onBlur={(event) => {
-                                saveCurrentCollaboratorContactForm(
-                                  { ...form, middle_initial: event.target.value.toUpperCase() },
-                                  { immediate: true },
-                                )
-                              }}
-                              maxLength={4}
-                            />
-                          </label>
-                          <label className="space-y-1">
-                            <span className="house-field-label">Surname</span>
-                            <Input
-                              value={form.surname}
-                              onChange={(event) => setForm((current) => ({ ...current, surname: event.target.value }))}
-                              onBlur={(event) => {
-                                saveCurrentCollaboratorContactForm({ ...form, surname: event.target.value }, { immediate: true })
-                              }}
-                              autoComplete="family-name"
-                            />
-                          </label>
+                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem_2rem]">
+                          <div className="grid gap-x-2 gap-y-3 sm:col-span-2 [grid-template-columns:4.4rem_minmax(6.25rem,0.72fr)_3.3rem_minmax(6.75rem,0.88fr)]">
+                            <label className="space-y-1">
+                              <span className="house-field-label">Title</span>
+                              <SelectPrimitive
+                                value={identityDraft.salutation || undefined}
+                                onValueChange={(value) => {
+                                  setIdentityDraft((current) => ({ ...current, salutation: value }))
+                                }}
+                                disabled={!editingIdentity}
+                              >
+                                <SelectTrigger aria-label="Title">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent showScrollButtons={false} viewportStyle={{ maxHeight: 'none' }}>
+                                  {COLLABORATOR_SALUTATION_OPTIONS.map((option) => (
+                                    <SelectItem key={option} value={option}>
+                                      {option}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </SelectPrimitive>
+                            </label>
+                            <label className="space-y-1">
+                              <span className="house-field-label">First name</span>
+                              <Input
+                                value={identityDraft.first_name}
+                                onChange={(event) => setIdentityDraft((current) => ({ ...current, first_name: event.target.value }))}
+                                readOnly={!editingIdentity}
+                                autoComplete="given-name"
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="house-field-label">Initial</span>
+                              <Input
+                                value={identityDraft.middle_initial}
+                                onChange={(event) => setIdentityDraft((current) => ({
+                                  ...current,
+                                  middle_initial: event.target.value.toUpperCase(),
+                                }))}
+                                readOnly={!editingIdentity}
+                                maxLength={4}
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="house-field-label">Surname</span>
+                              <Input
+                                value={identityDraft.surname}
+                                onChange={(event) => setIdentityDraft((current) => ({ ...current, surname: event.target.value }))}
+                                readOnly={!editingIdentity}
+                                autoComplete="family-name"
+                              />
+                            </label>
+                          </div>
+                          {editingIdentity ? (
+                            <>
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-save shrink-0"
+                                  aria-label="Save collaborator details"
+                                  title="Save collaborator details"
+                                  onClick={onCommitIdentityDraft}
+                                  disabled={!identityDraftDirty}
+                                >
+                                  <Save className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-discard shrink-0"
+                                  aria-label="Discard collaborator details edits"
+                                  title="Discard collaborator details edits"
+                                  onClick={onCancelIdentityDraft}
+                                >
+                                  <X className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="h-9 self-end" aria-hidden="true" />
+                              <div className="flex h-9 items-center justify-start self-end sm:justify-center">
+                                <button
+                                  type="button"
+                                  className="house-collaborator-action-icon house-collaborator-action-icon-edit shrink-0"
+                                  aria-label="Edit collaborator details"
+                                  title="Edit collaborator details"
+                                  onClick={onStartIdentityEdit}
+                                  disabled={Boolean(activeCollaboratorEditor)}
+                                >
+                                  <Pencil className="h-4 w-4" strokeWidth={2.2} />
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem_2rem]">
                           <label className="space-y-1 sm:col-span-2">
@@ -5100,16 +5360,20 @@ export function ProfileCollaborationPage() {
                           ) : (
                             <>
                               <div className="flex h-9 items-center justify-start self-end sm:justify-center">
-                                <button
-                                  type="button"
-                                  className="house-collaborator-action-icon house-collaborator-action-icon-add shrink-0"
-                                  aria-label="Add second email"
-                                  title="Add second email"
-                                  onClick={onOpenSecondaryEmailDraft}
-                                  disabled={showSecondaryEmailInput}
-                                >
-                                  <Plus className="h-4 w-4" strokeWidth={2.2} />
-                                </button>
+                                {hasPrimaryEmail ? (
+                                  <button
+                                    type="button"
+                                    className="house-collaborator-action-icon house-collaborator-action-icon-add shrink-0"
+                                    aria-label="Add second email"
+                                    title="Add second email"
+                                    onClick={onOpenSecondaryEmailDraft}
+                                    disabled={showSecondaryEmailInput || Boolean(activeCollaboratorEditor)}
+                                  >
+                                    <Plus className="h-4 w-4" strokeWidth={2.2} />
+                                  </button>
+                                ) : (
+                                  <div className="h-9 self-end" aria-hidden="true" />
+                                )}
                               </div>
                               <div className="flex h-9 items-center justify-start self-end sm:justify-center">
                                 <button
@@ -5118,6 +5382,7 @@ export function ProfileCollaborationPage() {
                                   aria-label="Edit email"
                                   title="Edit email"
                                   onClick={onStartPrimaryEmailEdit}
+                                  disabled={Boolean(activeCollaboratorEditor)}
                                 >
                                   <Pencil className="h-4 w-4" strokeWidth={2.2} />
                                 </button>
@@ -5169,11 +5434,12 @@ export function ProfileCollaborationPage() {
                                       aria-label="Edit second email"
                                       title="Edit second email"
                                       onClick={onStartSecondaryEmailEdit}
+                                      disabled={Boolean(activeCollaboratorEditor)}
                                     >
                                       <Pencil className="h-4 w-4" strokeWidth={2.2} />
                                     </button>
                                   </div>
-                                  <div className="hidden sm:block" aria-hidden="true" />
+                                  <div className="h-9 self-end" aria-hidden="true" />
                                 </>
                               )}
                             </>
@@ -5185,7 +5451,7 @@ export function ProfileCollaborationPage() {
                             <div className="relative">
                               <Input
                                 value={institutionDraft}
-                                onChange={(event) => setInstitutionDraft(event.target.value)}
+                                onChange={(event) => onInstitutionDraftInputChange('primary', event.target.value)}
                                 onFocus={() => {
                                   if (primaryInstitutionEditingActive) {
                                     setInstitutionInputFocused('primary')
@@ -5263,7 +5529,11 @@ export function ProfileCollaborationPage() {
                                   aria-label="Save institution draft"
                                   title="Save institution draft"
                                   onClick={onCommitInstitutionDraft}
-                                  disabled={sanitizeAffiliation(institutionDraft) === sanitizeAffiliation(form.primary_institution)}
+                                  disabled={
+                                    sanitizeAffiliation(institutionDraft) === sanitizeAffiliation(form.primary_institution)
+                                    && !primaryInstitutionNeedsHydration
+                                    && !institutionSuggestionMatchesValue(selectedInstitutionSuggestions.primary, institutionDraft)
+                                  }
                                 >
                                   <Save className="h-4 w-4" strokeWidth={2.2} />
                                 </button>
@@ -5283,16 +5553,20 @@ export function ProfileCollaborationPage() {
                           ) : (
                             <>
                               <div className="flex h-9 items-center justify-start self-end sm:justify-center">
-                                <button
-                                  type="button"
-                                  className="house-collaborator-action-icon house-collaborator-action-icon-add shrink-0"
-                                  aria-label="Add second institution"
-                                  title="Add second institution"
-                                  onClick={onOpenSecondaryInstitutionDraft}
-                                  disabled={showSecondaryInstitutionInput}
-                                >
-                                  <Plus className="h-4 w-4" strokeWidth={2.2} />
-                                </button>
+                                {hasPrimaryInstitution && !showSecondaryInstitutionInput ? (
+                                  <button
+                                    type="button"
+                                    className="house-collaborator-action-icon house-collaborator-action-icon-add shrink-0"
+                                    aria-label="Add second institution"
+                                    title="Add second institution"
+                                    onClick={onOpenSecondaryInstitutionDraft}
+                                    disabled={Boolean(activeCollaboratorEditor)}
+                                  >
+                                    <Plus className="h-4 w-4" strokeWidth={2.2} />
+                                  </button>
+                                ) : (
+                                  <div className="h-9 self-end" aria-hidden="true" />
+                                )}
                               </div>
                               <div className="flex h-9 items-center justify-start self-end sm:justify-center">
                                 <button
@@ -5301,6 +5575,7 @@ export function ProfileCollaborationPage() {
                                   aria-label="Edit institution"
                                   title="Edit institution"
                                   onClick={onStartInstitutionEdit}
+                                  disabled={Boolean(activeCollaboratorEditor)}
                                 >
                                   <Pencil className="h-4 w-4" strokeWidth={2.2} />
                                 </button>
@@ -5314,7 +5589,7 @@ export function ProfileCollaborationPage() {
                                 <div className="relative">
                                   <Input
                                     value={secondaryInstitutionDraft}
-                                    onChange={(event) => setSecondaryInstitutionDraft(event.target.value)}
+                                    onChange={(event) => onInstitutionDraftInputChange('secondary', event.target.value)}
                                     onFocus={() => {
                                       if (editingSecondaryInstitution) {
                                         setInstitutionInputFocused('secondary')
@@ -5392,7 +5667,11 @@ export function ProfileCollaborationPage() {
                                       aria-label="Save second institution draft"
                                       title="Save second institution draft"
                                       onClick={onCommitSecondaryInstitutionDraft}
-                                      disabled={sanitizeAffiliation(secondaryInstitutionDraft) === sanitizeAffiliation(form.secondary_institution)}
+                                      disabled={
+                                        sanitizeAffiliation(secondaryInstitutionDraft) === sanitizeAffiliation(form.secondary_institution)
+                                        && !secondaryInstitutionNeedsHydration
+                                        && !institutionSuggestionMatchesValue(selectedInstitutionSuggestions.secondary, secondaryInstitutionDraft)
+                                      }
                                     >
                                       <Save className="h-4 w-4" strokeWidth={2.2} />
                                     </button>
@@ -5411,6 +5690,7 @@ export function ProfileCollaborationPage() {
                                 </>
                               ) : (
                                 <>
+                                  <div className="h-9 self-end" aria-hidden="true" />
                                   <div className="flex h-9 items-center justify-start self-end sm:justify-center">
                                     <button
                                       type="button"
@@ -5418,11 +5698,11 @@ export function ProfileCollaborationPage() {
                                       aria-label="Edit second institution"
                                       title="Edit second institution"
                                       onClick={onStartSecondaryInstitutionEdit}
+                                      disabled={Boolean(activeCollaboratorEditor)}
                                     >
                                       <Pencil className="h-4 w-4" strokeWidth={2.2} />
                                     </button>
                                   </div>
-                                  <div className="hidden sm:block" aria-hidden="true" />
                                 </>
                               )}
                             </>
@@ -5454,6 +5734,7 @@ export function ProfileCollaborationPage() {
                                     <Button
                                       type="button"
                                       onClick={() => onSetPrimaryInstitution(institution.label)}
+                                      disabled={Boolean(activeCollaboratorEditor)}
                                       variant="default"
                                       size="sm"
                                       className="w-[6.75rem] min-h-0 h-auto justify-center px-2 py-1 text-micro font-medium leading-tight hover:border-[hsl(var(--tone-neutral-900))] hover:bg-white hover:text-[hsl(var(--tone-neutral-900))] active:border-[hsl(var(--tone-neutral-900))] active:bg-white active:text-[hsl(var(--tone-neutral-900))]"
@@ -5530,7 +5811,13 @@ export function ProfileCollaborationPage() {
                                             className="house-collaborator-action-icon house-collaborator-action-icon-edit shrink-0"
                                             aria-label={`Edit ${institution.label} byline`}
                                             title={`Edit ${institution.label} byline`}
-                                            onClick={() => setEditingAffiliationBylineSlot(institution.slot)}
+                                            onClick={() => {
+                                              if (activeCollaboratorEditor) {
+                                                return
+                                              }
+                                              setEditingAffiliationBylineSlot(institution.slot)
+                                            }}
+                                            disabled={Boolean(activeCollaboratorEditor)}
                                           >
                                             <Pencil className="h-4 w-4" strokeWidth={2.2} />
                                           </button>
