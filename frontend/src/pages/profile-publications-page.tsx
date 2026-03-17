@@ -5748,6 +5748,24 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPublicationReaderInspectorActiveReferenceUsage
     && selectedPublicationReaderInspectorActiveReferenceUsage.instance < selectedPublicationReaderInspectorActiveReferenceUsage.total,
   )
+  const selectedPublicationReaderInspectorHasMultipleOccurrences = Boolean(
+    selectedPublicationReaderInspectorActiveReferenceUsage
+    && selectedPublicationReaderInspectorActiveReferenceUsage.total > 1,
+  )
+  const selectedPublicationReaderInspectorOccurrenceSummary = useMemo(() => {
+    if (!selectedPublicationReaderInspectorActiveReferenceUsage) {
+      return ''
+    }
+    if (selectedPublicationReaderInspectorActiveReferenceUsage.total <= 1) {
+      return selectedPublicationReaderInspectorActiveOccurrenceSectionLabel
+        ? `Used once in ${selectedPublicationReaderInspectorActiveOccurrenceSectionLabel}`
+        : 'Used once in manuscript'
+    }
+    return `Mention ${selectedPublicationReaderInspectorActiveReferenceUsage.instance} of ${selectedPublicationReaderInspectorActiveReferenceUsage.total}`
+  }, [
+    selectedPublicationReaderInspectorActiveOccurrenceSectionLabel,
+    selectedPublicationReaderInspectorActiveReferenceUsage,
+  ])
   const selectedPaperAssetEnrichmentStatus = String(
     (selectedPaperProvenance as Record<string, unknown> | null)?.asset_enrichment_status || '',
   ).trim().toUpperCase()
@@ -11682,19 +11700,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </section>
 
                               <section className="border-t border-[hsl(var(--tone-neutral-200))] pt-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
-                                      Reference
-                                    </p>
-                                  </div>
-                                </div>
-
                                 {selectedPublicationReaderInspectorActiveReference ? (
-                                  <div className="mt-4 space-y-4">
+                                  <div className="space-y-4">
                                     {selectedPublicationReaderInspectorReferences.length > 1 ? (
                                       <div className="space-y-2">
-                                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                                        <p className="text-[0.7rem] font-semibold text-[hsl(var(--tone-neutral-500))]">
                                           Reference in selection
                                         </p>
                                         <SelectPrimitive
@@ -11716,14 +11726,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     ) : null}
 
                                     <div className="space-y-0">
-                                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-                                        {formatPublicationReaderReferenceDisplayLabel(
-                                          selectedPublicationReaderInspectorActiveReference.label,
-                                          0,
-                                        )}
-                                      </p>
                                       {selectedPublicationReaderInspectorActiveReferenceTitleText ? (
-                                        <p className="mt-2 text-[0.96rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]">
+                                        <p className="text-[0.96rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-900))]">
                                           {selectedPublicationReaderInspectorActiveReferenceTitleText}.
                                         </p>
                                       ) : null}
@@ -11778,38 +11782,42 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       ) : null}
                                       {selectedPublicationReaderInspectorActiveReferenceUsage ? (
                                         <div className="mt-3.5 border-t border-[hsl(var(--tone-neutral-200))] pt-2.5">
-                                          <p className="text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">
+                                          <p className="text-[0.7rem] font-semibold text-[hsl(var(--tone-neutral-500))]">
                                             In manuscript
                                           </p>
                                           <div className="mt-1.5">
                                             <p className="text-[0.82rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-850))]">
-                                              Mention {selectedPublicationReaderInspectorActiveReferenceUsage.instance} of {selectedPublicationReaderInspectorActiveReferenceUsage.total}
+                                              {selectedPublicationReaderInspectorOccurrenceSummary}
                                             </p>
-                                            {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel ? (
+                                            {selectedPublicationReaderInspectorHasMultipleOccurrences && selectedPublicationReaderInspectorActiveOccurrenceSectionLabel ? (
                                               <p className="mt-0.5 text-[0.76rem] leading-snug text-[hsl(var(--tone-neutral-600))]">
                                                 {selectedPublicationReaderInspectorActiveOccurrenceSectionLabel}
                                               </p>
                                             ) : null}
                                           </div>
                                           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                                            <button
-                                              type="button"
-                                              className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
-                                              disabled={!selectedPublicationReaderInspectorHasPreviousOccurrence}
-                                              onClick={() => onStepPublicationReaderInspectorOccurrence(-1)}
-                                            >
-                                              <ChevronLeft className="h-3.25 w-3.25" />
-                                              Previous
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
-                                              disabled={!selectedPublicationReaderInspectorHasNextOccurrence}
-                                              onClick={() => onStepPublicationReaderInspectorOccurrence(1)}
-                                            >
-                                              Next
-                                              <ChevronRight className="h-3.25 w-3.25" />
-                                            </button>
+                                            {selectedPublicationReaderInspectorHasMultipleOccurrences ? (
+                                              <button
+                                                type="button"
+                                                className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
+                                                disabled={!selectedPublicationReaderInspectorHasPreviousOccurrence}
+                                                onClick={() => onStepPublicationReaderInspectorOccurrence(-1)}
+                                              >
+                                                <ChevronLeft className="h-3.25 w-3.25" />
+                                                Previous
+                                              </button>
+                                            ) : null}
+                                            {selectedPublicationReaderInspectorHasMultipleOccurrences ? (
+                                              <button
+                                                type="button"
+                                                className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-1 text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-650))] transition-colors hover:text-[hsl(var(--tone-accent-800))] disabled:cursor-not-allowed disabled:text-[hsl(var(--tone-neutral-400))]"
+                                                disabled={!selectedPublicationReaderInspectorHasNextOccurrence}
+                                                onClick={() => onStepPublicationReaderInspectorOccurrence(1)}
+                                              >
+                                                Next
+                                                <ChevronRight className="h-3.25 w-3.25" />
+                                              </button>
+                                            ) : null}
                                             <button
                                               type="button"
                                               className="inline-flex h-7 items-center justify-center rounded-md px-1 text-[0.75rem] font-semibold text-[hsl(var(--tone-accent-750))] underline decoration-[hsl(var(--tone-accent-250))] underline-offset-[0.2em] transition-colors hover:text-[hsl(var(--tone-accent-850))] hover:decoration-[hsl(var(--tone-accent-400))]"
