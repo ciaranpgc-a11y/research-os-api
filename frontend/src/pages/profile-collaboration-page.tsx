@@ -896,20 +896,20 @@ function collaboratorHistoryWindowThumbStyle(mode: CollaboratorHistoryWindowMode
   }
 }
 
-function collaborationStrengthTone(mixedScore: number, rawScore: number): string {
+function collaborationStrengthTone(rawScore: number): string {
   if (rawScore <= 0) {
     return 'bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
   }
-  if (mixedScore >= 0.85) {
+  if (rawScore >= 0.75) {
     return 'bg-[hsl(var(--tone-positive-600))] text-white'
   }
-  if (mixedScore >= 0.7) {
+  if (rawScore >= 0.6) {
     return 'bg-[hsl(var(--tone-positive-400))] text-white'
   }
-  if (mixedScore >= 0.55) {
+  if (rawScore >= 0.5) {
     return 'bg-[hsl(var(--tone-positive-200))] text-[hsl(var(--tone-positive-900))]'
   }
-  if (mixedScore >= 0.4) {
+  if (rawScore >= 0.4) {
     return 'bg-[hsl(var(--tone-positive-100))] text-[hsl(var(--tone-positive-800))]'
   }
   return 'bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
@@ -2887,30 +2887,10 @@ export function ProfileCollaborationPage() {
 
 
   const collaborationStrengthToneById = useMemo(() => {
-    const positiveScores = canonicalCollaborators
-      .map((item) => Math.max(0, Number(item.metrics.collaboration_strength_score || 0)))
-      .filter((value) => value > 0)
-      .sort((left, right) => left - right)
-    const fallbackTone = collaborationStrengthTone(0, 0)
-    const minScore = positiveScores[0] || 0
-    const maxScore = positiveScores[positiveScores.length - 1] || 0
+    const fallbackTone = collaborationStrengthTone(0)
     return canonicalCollaborators.reduce<Map<string, string>>((accumulator, item) => {
       const rawScore = Math.max(0, Number(item.metrics.collaboration_strength_score || 0))
-      if (positiveScores.length === 0 || rawScore <= 0) {
-        accumulator.set(item.id, fallbackTone)
-        return accumulator
-      }
-      let upperBoundIndex = 0
-      while (upperBoundIndex < positiveScores.length && positiveScores[upperBoundIndex] <= rawScore) {
-        upperBoundIndex += 1
-      }
-      const rankIndex = Math.max(0, upperBoundIndex - 1)
-      const rankShare = positiveScores.length === 1 ? 1 : rankIndex / Math.max(1, positiveScores.length - 1)
-      const absoluteShare = maxScore <= minScore
-        ? 1
-        : Math.max(0, Math.min(1, (rawScore - minScore) / Math.max(1e-6, maxScore - minScore)))
-      const mixedScore = (absoluteShare * 0.7) + (rankShare * 0.3)
-      accumulator.set(item.id, collaborationStrengthTone(mixedScore, rawScore))
+      accumulator.set(item.id, rawScore > 0 ? collaborationStrengthTone(rawScore) : fallbackTone)
       return accumulator
     }, new Map<string, string>())
   }, [canonicalCollaborators])
@@ -4725,7 +4705,7 @@ export function ProfileCollaborationPage() {
                               <span
                                 className={cn(
                                   'inline-flex min-w-[4.75rem] items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
-                                  collaborationStrengthToneById.get(item.id) || collaborationStrengthTone(0, 0),
+                                  collaborationStrengthToneById.get(item.id) || collaborationStrengthTone(0),
                                 )}
                               >
                                 {Number(item.metrics.collaboration_strength_score || 0).toFixed(2)}
@@ -4771,7 +4751,7 @@ export function ProfileCollaborationPage() {
                     <span
                       className={cn(
                         'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums',
-                        collaborationStrengthToneById.get(item.id) || collaborationStrengthTone(0, 0),
+                        collaborationStrengthToneById.get(item.id) || collaborationStrengthTone(0),
                       )}
                     >
                       Score {Number(item.metrics.collaboration_strength_score || 0).toFixed(2)}
@@ -5651,7 +5631,7 @@ export function ProfileCollaborationPage() {
                               <span
                                 className={cn(
                                   'inline-flex min-w-[4.75rem] items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
-                                  collaborationStrengthToneById.get(selectedCollaborator.id) || collaborationStrengthTone(0, 0),
+                                  collaborationStrengthToneById.get(selectedCollaborator.id) || collaborationStrengthTone(0),
                                 )}
                               >
                                 {Number(selectedCollaborator.metrics.collaboration_strength_score || 0).toFixed(2)}
