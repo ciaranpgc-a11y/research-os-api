@@ -11635,14 +11635,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                             {formatPublicationReaderReferenceDisplayLabel(reference.label, index)}
                                           </span>
                                           <div className="min-w-0 space-y-1.5">
-                                            {authorsText ? (
-                                              <p className="text-[0.88rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
-                                                {authorsText}
-                                              </p>
-                                            ) : null}
                                             {titleText ? (
                                               <p className="text-[0.98rem] font-medium leading-[1.65] text-[hsl(var(--tone-neutral-900))]">
                                                 {titleText}.
+                                              </p>
+                                            ) : null}
+                                            {authorsText ? (
+                                              <p className="text-[0.88rem] leading-[1.7] text-[hsl(var(--tone-neutral-700))]">
+                                                {authorsText}
                                               </p>
                                             ) : null}
                                             {sourceLine ? (
