@@ -11781,11 +11781,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         </div>
                                       ) : null}
                                       {selectedPublicationReaderInspectorActiveReferenceUsage ? (
-                                        <div className="mt-3.5 border-t border-[hsl(var(--tone-neutral-200))] pt-2.5">
-                                          <p className="text-[0.7rem] font-semibold text-[hsl(var(--tone-neutral-500))]">
-                                            In manuscript
-                                          </p>
-                                          <div className="mt-1.5">
+                                        <div className="mt-4.5 border-t border-[hsl(var(--tone-neutral-200))] pt-3.5">
+                                          <div>
                                             <p className="text-[0.82rem] font-semibold leading-snug text-[hsl(var(--tone-neutral-850))]">
                                               {selectedPublicationReaderInspectorOccurrenceSummary}
                                             </p>
