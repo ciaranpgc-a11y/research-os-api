@@ -74,6 +74,8 @@ curl -I https://app.axiomos.studio
 curl -sf https://api.axiomos.studio/v1/health/ready && echo OK
 ```
 
+Set `AXIOMOS_BOOTSTRAP_ROLE=admin` in `.env` for the bootstrap account to retain admin access on Hetzner. The preferred bootstrap env names now use the `AXIOMOS_` prefix. Older `AAWE_BOOTSTRAP_*`, `ADMIN_USERNAME`, and `ADMIN_EMAIL` names are still accepted as compatibility fallbacks.
+
 ### Updating
 
 ```bash

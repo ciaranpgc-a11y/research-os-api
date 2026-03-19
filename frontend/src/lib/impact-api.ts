@@ -1423,22 +1423,6 @@ export async function fetchPublicationPaperModel(
   )
 }
 
-export async function enhancePublicationTable(
-  token: string,
-  publicationId: string,
-  tableId: string,
-): Promise<{ enhanced_html: string }> {
-  return requestJson<{ enhanced_html: string }>(
-    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/tables/${encodeURIComponent(tableId)}/enhance`,
-    {
-      method: 'POST',
-      headers: authHeaders(token),
-    },
-    'Could not enhance table.',
-    { timeoutMs: 60_000 },
-  )
-}
-
 export async function fetchPublicationImpact(
   token: string,
   publicationId: string,

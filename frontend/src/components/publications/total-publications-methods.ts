@@ -160,13 +160,13 @@ export function buildTotalPublicationsMethodsSections(tile: PublicationMetricTil
       facts: [
         { label: 'Series coverage', value: firstYear !== null && lastYear !== null ? `${firstYear} to ${lastYear}` : 'Not available' },
         { label: 'Observed span', value: trajectorySpan > 0 ? `${formatInt(trajectorySpan)} years` : 'Not available' },
-        { label: 'Mode options', value: 'Raw, moving avg, cumulative' },
+        { label: 'Mode options', value: 'Raw, moving average, cumulative' },
         { label: 'Slider range', value: `${formatInt(trajectorySliderMin)} to ${formatInt(trajectorySliderMax)} years` },
       ],
       bullets: [
-        'Raw mode plots annual publication counts and inserts zero-valued years so the time series stays continuous.',
-        'Moving average uses a trailing 3-year mean. Cumulative mode converts the yearly series into a running lifetime total.',
-        'Volatility index is yearly standard deviation divided by mean output. Growth slope is a simple linear-regression slope. Phase is Expanding above 0.2, Contracting below -0.2, otherwise Stable.',
+        'Year-over-year trajectory uses the full yearly publication series. Raw shows annual counts, moving average smooths that with a trailing 3-year average, and cumulative shows the running total across the same series.',
+        'The trajectory summary is also derived from that yearly series: one read captures how uneven output is from year to year, one captures the overall direction, and one classifies the pattern as Expanding, Stable, or Contracting.',
+        'Raw mode keeps the annual series continuous by inserting zero-publication years where needed.',
       ],
     },
     {

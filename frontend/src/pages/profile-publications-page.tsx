@@ -22,7 +22,6 @@ import {
   fetchPublicationFiles,
   fetchPublicationImpact,
   fetchPublicationPaperModel,
-  enhancePublicationTable,
   fetchPersonaSyncJob,
   fetchMe,
   fetchPersonaState,
@@ -313,35 +312,53 @@ function publicationReaderHexToRgba(hex: string | null, alpha: number): string |
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`
 }
 const PUBLICATION_STRUCTURED_TABLE_CLASS_NAME = [
-  'publication-structured-table overflow-x-hidden overflow-y-visible text-[0.84rem] leading-relaxed',
+  'publication-structured-table overflow-x-hidden overflow-y-visible text-[0.84rem] leading-[1.72]',
   '[&_button]:hidden [&_select]:hidden [&_option]:hidden',
   '[&_table]:w-full [&_table]:max-w-full [&_table]:border-collapse [&_table]:table-auto',
-  '[&_th]:border-b-2 [&_th]:border-[hsl(var(--tone-neutral-300))] [&_th]:px-3.5 [&_th]:py-2.5 [&_th]:text-left [&_th]:align-top [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-[0.68rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.08em] [&_th]:text-[hsl(var(--tone-neutral-500))]',
-  '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-200))] [&_td]:px-3.5 [&_td]:py-2.5 [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:text-[0.83rem] [&_td]:leading-relaxed [&_td]:text-[hsl(var(--tone-neutral-700))]',
-  '[&_tr>*:first-child]:w-[44%] [&_tr>*:first-child]:pr-6',
+  '[&_thead]:bg-[linear-gradient(180deg,hsl(var(--tone-neutral-50))_0%,hsl(var(--tone-neutral-100)/0.8)_100%)]',
+  '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-250))] [&_th]:px-4 [&_th]:py-3.25 [&_th]:text-left [&_th]:align-top [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-[0.68rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.1em] [&_th]:text-[hsl(var(--tone-neutral-500))]',
+  '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-220)/0.9)] [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:text-[0.83rem] [&_td]:leading-[1.72] [&_td]:text-[hsl(var(--tone-neutral-700))] [&_table>tbody:last-of-type>tr:last-child>td]:border-b-0 [&_table:has(+_.publication-structured-table-notes)>tbody:last-of-type>tr:last-child>td]:border-b [&_table:has(+_.publication-structured-table-notes)>tbody:last-of-type>tr:last-child>td]:border-[hsl(var(--tone-neutral-800)/0.58)]',
+  '[&_tr>*:first-child]:w-[44%] [&_tr>*:first-child]:pr-7',
   '[&_tr>*:last-child]:w-[12%] [&_tr>*:last-child]:whitespace-nowrap',
   '[&_tr>*:nth-child(2)]:w-[22%] [&_tr>*:nth-child(3)]:w-[22%]',
-  '[&_tbody_tr:nth-child(even)]:bg-[hsl(var(--tone-neutral-50)/0.55)]',
+  '[&_tbody_tr:nth-child(even)]:bg-[hsl(var(--tone-neutral-50)/0.28)]',
+  '[&_tbody_td:not(:first-child)]:text-right [&_tbody_td:not(:first-child)]:font-medium [&_tbody_td:not(:first-child)]:tabular-nums',
   '[&_caption]:mb-2 [&_caption]:text-left [&_caption]:text-[0.75rem] [&_caption]:font-medium [&_caption]:text-[hsl(var(--tone-neutral-500))]',
-  '[&_.publication-structured-table-notes]:mt-3 [&_.publication-structured-table-notes]:space-y-2 [&_.publication-structured-table-notes]:rounded-[0.9rem] [&_.publication-structured-table-notes]:border [&_.publication-structured-table-notes]:border-[hsl(var(--tone-neutral-200))] [&_.publication-structured-table-notes]:bg-[hsl(var(--tone-neutral-50)/0.7)] [&_.publication-structured-table-notes]:px-3 [&_.publication-structured-table-notes]:py-2.5',
-  '[&_.publication-structured-table-notes_p]:m-0 [&_.publication-structured-table-notes_p]:text-[0.75rem] [&_.publication-structured-table-notes_p]:leading-relaxed [&_.publication-structured-table-notes_p]:text-[hsl(var(--tone-neutral-600))]',
+  '[&_.publication-structured-table-section-cell]:border-b [&_.publication-structured-table-section-cell]:border-b-[hsl(var(--tone-neutral-220)/0.9)] [&_.publication-structured-table-section-cell]:bg-[hsl(var(--tone-neutral-100)/0.82)] [&_.publication-structured-table-section-cell]:px-4 [&_.publication-structured-table-section-cell]:py-3 [&_.publication-structured-table-section-cell]:text-[0.8rem] [&_.publication-structured-table-section-cell]:font-semibold [&_.publication-structured-table-section-cell]:text-[hsl(var(--tone-neutral-700))]',
+  '[&_.publication-structured-table-block-preamble_td]:bg-[hsl(var(--tone-neutral-50)/0.6)] [&_.publication-structured-table-block-preamble_td]:py-2.5 [&_.publication-structured-table-block-preamble_td]:text-[0.8rem] [&_.publication-structured-table-block-preamble_td]:text-[hsl(var(--tone-neutral-600))]',
+  '[&_.publication-structured-table-block-ungrouped>tr:first-child>td]:border-t [&_.publication-structured-table-block-ungrouped>tr:first-child>td]:border-[hsl(var(--tone-neutral-260)/0.92)] [&_.publication-structured-table-block-ungrouped>tr:first-child>td]:pt-4',
+  '[&_.publication-structured-table-notes]:mt-0 [&_.publication-structured-table-notes]:bg-[hsl(var(--tone-neutral-50)/0.72)]',
+  '[&_.publication-structured-table-note-group]:space-y-1.5 [&_.publication-structured-table-note-group]:border-t [&_.publication-structured-table-note-group]:border-[hsl(var(--tone-neutral-220)/0.7)] [&_.publication-structured-table-note-group]:px-4 [&_.publication-structured-table-note-group]:py-3 [&_.publication-structured-table-note-group]:first:border-t-0',
+  '[&_.publication-structured-table-note-group-label]:m-0 [&_.publication-structured-table-note-group-label]:text-[0.72rem] [&_.publication-structured-table-note-group-label]:font-medium [&_.publication-structured-table-note-group-label]:tracking-[0.02em] [&_.publication-structured-table-note-group-label]:text-[hsl(var(--tone-neutral-600))]',
+  '[&_.publication-structured-table-note-list]:m-0 [&_.publication-structured-table-note-list]:list-none [&_.publication-structured-table-note-list]:space-y-1 [&_.publication-structured-table-note-list]:p-0',
+  '[&_.publication-structured-table-note-item]:text-[0.83rem] [&_.publication-structured-table-note-item]:leading-[1.72] [&_.publication-structured-table-note-item]:text-[hsl(var(--tone-neutral-600))]',
   '[&_.publication-table-group-row_td]:border-none [&_.publication-table-group-row_td]:bg-[hsl(var(--tone-neutral-100)/0.8)] [&_.publication-table-group-row_td]:px-3.5 [&_.publication-table-group-row_td]:py-1.5 [&_.publication-table-group-row_td]:text-[0.68rem] [&_.publication-table-group-row_td]:font-semibold [&_.publication-table-group-row_td]:uppercase [&_.publication-table-group-row_td]:tracking-[0.08em] [&_.publication-table-group-row_td]:text-[hsl(var(--tone-neutral-600))]',
+  '[&_.publication-table-pvalue-significant]:font-bold [&_.publication-table-pvalue-significant]:text-[hsl(var(--tone-neutral-900))]',
 ].join(' ')
 
 const PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME = [
-  'publication-structured-table-lightbox overflow-auto text-[0.92rem] leading-relaxed',
+  'publication-structured-table-lightbox overflow-auto text-[0.92rem] leading-[1.72]',
   '[&_button]:hidden [&_select]:hidden [&_option]:hidden',
   '[&_table]:w-full [&_table]:border-collapse [&_table]:table-auto',
-  '[&_th]:border-b-2 [&_th]:border-[hsl(var(--tone-neutral-300))] [&_th]:bg-[hsl(var(--tone-neutral-50))] [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:align-top [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-[0.72rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.08em] [&_th]:text-[hsl(var(--tone-neutral-500))]',
-  '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-200))] [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:text-[0.9rem] [&_td]:leading-relaxed [&_td]:text-[hsl(var(--tone-neutral-700))]',
-  '[&_tr>*:first-child]:w-[40%] [&_tr>*:first-child]:pr-8',
+  '[&_thead]:bg-[linear-gradient(180deg,hsl(var(--tone-neutral-50))_0%,hsl(var(--tone-neutral-100)/0.82)_100%)]',
+  '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-250))] [&_th]:px-5 [&_th]:py-4 [&_th]:text-left [&_th]:align-top [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-[0.72rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.1em] [&_th]:text-[hsl(var(--tone-neutral-500))]',
+  '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-220)/0.9)] [&_td]:px-5 [&_td]:py-3.5 [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:text-[0.9rem] [&_td]:leading-[1.72] [&_td]:text-[hsl(var(--tone-neutral-700))] [&_table>tbody:last-of-type>tr:last-child>td]:border-b-0 [&_table:has(+_.publication-structured-table-notes)>tbody:last-of-type>tr:last-child>td]:border-b [&_table:has(+_.publication-structured-table-notes)>tbody:last-of-type>tr:last-child>td]:border-[hsl(var(--tone-neutral-800)/0.6)]',
+  '[&_tr>*:first-child]:w-[40%] [&_tr>*:first-child]:pr-9',
   '[&_tr>*:last-child]:w-[10%] [&_tr>*:last-child]:whitespace-nowrap',
   '[&_tr>*:nth-child(2)]:w-[25%] [&_tr>*:nth-child(3)]:w-[25%]',
-  '[&_tbody_tr:nth-child(even)]:bg-[hsl(var(--tone-neutral-50)/0.55)]',
+  '[&_tbody_tr:nth-child(even)]:bg-[hsl(var(--tone-neutral-50)/0.28)]',
+  '[&_tbody_td:not(:first-child)]:text-right [&_tbody_td:not(:first-child)]:font-medium [&_tbody_td:not(:first-child)]:tabular-nums',
   '[&_caption]:mb-3 [&_caption]:text-left [&_caption]:text-[0.78rem] [&_caption]:font-medium [&_caption]:text-[hsl(var(--tone-neutral-500))]',
-  '[&_.publication-structured-table-notes]:mt-4 [&_.publication-structured-table-notes]:space-y-2 [&_.publication-structured-table-notes]:rounded-[0.9rem] [&_.publication-structured-table-notes]:border [&_.publication-structured-table-notes]:border-[hsl(var(--tone-neutral-200))] [&_.publication-structured-table-notes]:bg-[hsl(var(--tone-neutral-50)/0.7)] [&_.publication-structured-table-notes]:px-4 [&_.publication-structured-table-notes]:py-3',
-  '[&_.publication-structured-table-notes_p]:m-0 [&_.publication-structured-table-notes_p]:text-[0.82rem] [&_.publication-structured-table-notes_p]:leading-relaxed [&_.publication-structured-table-notes_p]:text-[hsl(var(--tone-neutral-600))]',
+  '[&_.publication-structured-table-section-cell]:border-b [&_.publication-structured-table-section-cell]:border-b-[hsl(var(--tone-neutral-220)/0.9)] [&_.publication-structured-table-section-cell]:bg-[hsl(var(--tone-neutral-100)/0.82)] [&_.publication-structured-table-section-cell]:px-5 [&_.publication-structured-table-section-cell]:py-3.5 [&_.publication-structured-table-section-cell]:text-[0.88rem] [&_.publication-structured-table-section-cell]:font-semibold [&_.publication-structured-table-section-cell]:text-[hsl(var(--tone-neutral-700))]',
+  '[&_.publication-structured-table-block-preamble_td]:bg-[hsl(var(--tone-neutral-50)/0.62)] [&_.publication-structured-table-block-preamble_td]:py-3 [&_.publication-structured-table-block-preamble_td]:text-[0.88rem] [&_.publication-structured-table-block-preamble_td]:text-[hsl(var(--tone-neutral-600))]',
+  '[&_.publication-structured-table-block-ungrouped>tr:first-child>td]:border-t [&_.publication-structured-table-block-ungrouped>tr:first-child>td]:border-[hsl(var(--tone-neutral-260)/0.92)] [&_.publication-structured-table-block-ungrouped>tr:first-child>td]:pt-[1.125rem]',
+  '[&_.publication-structured-table-notes]:mt-0 [&_.publication-structured-table-notes]:bg-[hsl(var(--tone-neutral-50)/0.76)]',
+  '[&_.publication-structured-table-note-group]:space-y-2 [&_.publication-structured-table-note-group]:border-t [&_.publication-structured-table-note-group]:border-[hsl(var(--tone-neutral-220)/0.72)] [&_.publication-structured-table-note-group]:px-5 [&_.publication-structured-table-note-group]:py-5 [&_.publication-structured-table-note-group]:first:border-t-0',
+  '[&_.publication-structured-table-note-group-label]:m-0 [&_.publication-structured-table-note-group-label]:text-[0.8rem] [&_.publication-structured-table-note-group-label]:font-medium [&_.publication-structured-table-note-group-label]:tracking-[0.02em] [&_.publication-structured-table-note-group-label]:text-[hsl(var(--tone-neutral-600))]',
+  '[&_.publication-structured-table-note-list]:m-0 [&_.publication-structured-table-note-list]:list-none [&_.publication-structured-table-note-list]:space-y-1.5 [&_.publication-structured-table-note-list]:p-0',
+  '[&_.publication-structured-table-note-item]:text-[0.9rem] [&_.publication-structured-table-note-item]:leading-[1.72] [&_.publication-structured-table-note-item]:text-[hsl(var(--tone-neutral-600))]',
   '[&_.publication-table-group-row_td]:border-none [&_.publication-table-group-row_td]:bg-[hsl(var(--tone-neutral-100)/0.8)] [&_.publication-table-group-row_td]:px-4 [&_.publication-table-group-row_td]:py-2 [&_.publication-table-group-row_td]:text-[0.72rem] [&_.publication-table-group-row_td]:font-semibold [&_.publication-table-group-row_td]:uppercase [&_.publication-table-group-row_td]:tracking-[0.08em] [&_.publication-table-group-row_td]:text-[hsl(var(--tone-neutral-600))]',
+  '[&_.publication-table-pvalue-significant]:font-bold [&_.publication-table-pvalue-significant]:text-[hsl(var(--tone-neutral-900))]',
 ].join(' ')
 
 function formatPublicationReaderReferenceDisplayLabel(
@@ -480,10 +497,13 @@ function trimTrailingReferencePunctuation(value: string | null | undefined): str
   return normalizeCompactText(value).replace(/[.;:,]+$/g, '').trim()
 }
 
+function ensurePublicationReaderReferenceTerminalPunctuation(value: string): string {
+  return /[.!?]$/.test(value) ? value : `${value}.`
+}
+
 function formatPublicationReaderReferenceListText(
   reference: PublicationReaderReferencePayload,
 ): string {
-  const withTerminalPeriod = (value: string): string => (/[.!?]$/.test(value) ? value : `${value}.`)
   const authorSegment = formatPublicationReaderReferenceAuthors(reference.authors, {
     concise: true,
     authorsTruncated: reference.authorsTruncated,
@@ -499,10 +519,10 @@ function formatPublicationReaderReferenceListText(
 
   const citationSegments: string[] = []
   if (authorSegment) {
-    citationSegments.push(withTerminalPeriod(authorSegment))
+    citationSegments.push(ensurePublicationReaderReferenceTerminalPunctuation(authorSegment))
   }
   if (titleSegment) {
-    citationSegments.push(withTerminalPeriod(titleSegment))
+    citationSegments.push(ensurePublicationReaderReferenceTerminalPunctuation(titleSegment))
   }
 
   const journalDetailsParts: string[] = []
@@ -552,7 +572,7 @@ function formatPublicationReaderReferenceSourceLine(
 
   const sourceParts: string[] = []
   if (journalSegment) {
-    sourceParts.push(formatJournalName(journalSegment))
+    sourceParts.push(journalSegment)
   }
 
   const yearVolumeParts: string[] = []
@@ -644,17 +664,69 @@ function stripPublicationReaderHeadingPrefix(value: string | null | undefined): 
   return stripped || raw
 }
 
+const PUBLICATION_READER_HEADING_ACRONYM_MAP: Record<string, string> = {
+  ajrccm: 'AJRCCM',
+  as: 'AS',
+  av: 'AV',
+  bmj: 'BMJ',
+  cmr: 'CMR',
+  ct: 'CT',
+  ehj: 'EHJ',
+  erj: 'ERJ',
+  esc: 'ESC',
+  hfpef: 'HFpEF',
+  hfref: 'HFrEF',
+  jacc: 'JACC',
+  lv: 'LV',
+  lvfp: 'LVFP',
+  mri: 'MRI',
+  ra: 'RA',
+  rv: 'RV',
+  tte: 'TTE',
+}
+
+const PUBLICATION_READER_HEADING_COMMON_UPPERCASE_WORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'as',
+  'at',
+  'by',
+  'for',
+  'from',
+  'how',
+  'in',
+  'is',
+  'of',
+  'on',
+  'or',
+  'that',
+  'the',
+  'this',
+  'to',
+  'what',
+  'with',
+])
+
 function shouldPreservePublicationReaderHeadingWord(value: string): boolean {
   if (!value) {
     return false
   }
+  if (PUBLICATION_READER_HEADING_ACRONYM_MAP[value.toLowerCase()]) {
+    return true
+  }
   if (/\d/.test(value)) {
     return true
   }
-  if (/[A-Z].*[A-Z]/.test(value.slice(1))) {
+  const isAllCaps = value.toUpperCase() === value
+  if (!isAllCaps && /[A-Z]/.test(value.slice(1))) {
     return true
   }
-  if (value.toUpperCase() === value && value.length <= 5) {
+  if (
+    isAllCaps
+    && value.length <= 4
+    && !PUBLICATION_READER_HEADING_COMMON_UPPERCASE_WORDS.has(value.toLowerCase())
+  ) {
     return true
   }
   return false
@@ -673,6 +745,11 @@ function formatPublicationReaderHeadingSentenceCase(value: string | null | undef
     }
     const [, leading, core, trailing] = match
     const lower = core.toLowerCase()
+    const forcedAcronym = PUBLICATION_READER_HEADING_ACRONYM_MAP[lower]
+    if (forcedAcronym) {
+      seenWord = true
+      return `${leading}${forcedAcronym}${trailing}`
+    }
     const formattedCore = shouldPreservePublicationReaderHeadingWord(core)
       ? core
       : seenWord
@@ -895,6 +972,29 @@ function publicationReaderAssetHasSurfaceContent(asset: PublicationPaperAssetPay
     return Boolean(String(asset.image_data || '').trim())
   }
   return Boolean(String(asset.image_data || asset.structured_html || '').trim())
+}
+
+function publicationReaderIsGraphicalAbstractAsset(
+  asset: PublicationPaperAssetPayload | null | undefined,
+): boolean {
+  if (!asset) {
+    return false
+  }
+  if (String(asset.asset_kind || '').trim().toLowerCase() === 'graphical_abstract') {
+    return true
+  }
+  if (String(asset.asset_kind || '').trim().toLowerCase() === 'table') {
+    return false
+  }
+  const text = [
+    asset.title,
+    asset.file_name,
+    asset.caption,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+  return /\bgraphical abstract\b/i.test(text)
 }
 
 function publicationReaderAssetSourceLabel(asset: PublicationPaperAssetPayload): string {
@@ -2837,9 +2937,154 @@ function splitLongTextIntoParagraphs(value: string, maxParagraphLength = 800): s
   return reattachLeadingCitationParagraphTokens(paragraphs)
 }
 
+function inferPublicationReaderListItems(
+  value: string,
+  options?: { allowSentenceFallback?: boolean },
+): { kind: 'ordered' | 'unordered'; items: string[] } | null {
+  const source = String(value || '').replace(/\r\n/g, '\n').trim()
+  if (!source) {
+    return null
+  }
+
+  const paragraphItems = source
+    .split(/\n{2,}/)
+    .map((item) => normalizeAbstractDisplayText(item))
+    .filter(Boolean)
+  if (
+    paragraphItems.length >= 3
+    && paragraphItems.every((item) => item.length <= 360)
+  ) {
+    return {
+      kind: 'unordered',
+      items: paragraphItems,
+    }
+  }
+
+  const raw = normalizeAbstractDisplayText(source)
+  if (!raw) {
+    return null
+  }
+
+  const normalized = raw.replace(/\s+/g, ' ').trim()
+  if (!normalized) {
+    return null
+  }
+
+  const numberedInlineItems = normalized
+    .split(/\s+(?=\d{1,2}[.)]\s+)/)
+    .map((item) => item.replace(/^\d{1,2}[.)]\s*/, '').trim())
+    .filter(Boolean)
+  if (
+    numberedInlineItems.length >= 3
+    && numberedInlineItems.every((item) => item.length <= 320)
+  ) {
+    return {
+      kind: 'ordered',
+      items: numberedInlineItems,
+    }
+  }
+
+  const bulletInlineItems = normalized
+    .split(/\s*(?:[\u2022\u2023\u25e6\u2043\u2219\u25aa\u25cf\u27a4\u2192\u21d2\u2794])\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+  if (
+    bulletInlineItems.length >= 3
+    && bulletInlineItems.every((item) => item.length <= 360)
+  ) {
+    return {
+      kind: 'unordered',
+      items: bulletInlineItems,
+    }
+  }
+
+  if (!options?.allowSentenceFallback) {
+    return null
+  }
+
+  const sentences = normalized
+    .split(/(?<=[.!?])\s+(?=(?:[A-Z0-9"']))/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+  const citationMarkerPattern = /\[(?:\d+(?:\s*[-\u2013]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-\u2013]\s*\d+)?)*)\]|\{\{cite:[^}]+\}\}/
+  if (
+    sentences.length >= 4
+    && sentences.length <= 8
+    && sentences.every((sentence) => sentence.length <= 320)
+    && sentences.every((sentence) => !citationMarkerPattern.test(sentence))
+  ) {
+    return {
+      kind: 'unordered',
+      items: sentences,
+    }
+  }
+
+  return null
+}
+
 const PUBLICATION_READER_CITATION_TOKEN_SOURCE = String.raw`\[(?:\d+(?:\s*[-\u2013]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-\u2013]\s*\d+)?)*)\]|\{\{cite:[^}]+\}\}`
 const PUBLICATION_READER_CITATION_TOKEN_GLOBAL_PATTERN = new RegExp(`(${PUBLICATION_READER_CITATION_TOKEN_SOURCE})`, 'g')
 const PUBLICATION_READER_CITATION_TOKEN_STANDALONE_PATTERN = new RegExp(`^${PUBLICATION_READER_CITATION_TOKEN_SOURCE}$`)
+const PUBLICATION_READER_ASSET_MENTION_PATTERN_SOURCE = String.raw`\b(fig(?:ure)?\.?|table)\s+(\d{1,3}[a-z]?)\b`
+
+function getPublicationReaderAssetMentionMatches(value: string): RegExpMatchArray[] {
+  return Array.from(String(value || '').matchAll(new RegExp(PUBLICATION_READER_ASSET_MENTION_PATTERN_SOURCE, 'gi')))
+}
+
+function normalizePublicationReaderAssetMentionKey(value: string): string | null {
+  const match = String(value || '').match(/\b(fig(?:ure)?\.?|table)\s+(\d{1,3}[a-z]?)\b/i)
+  if (!match) {
+    return null
+  }
+  const kind = /^fig/i.test(String(match[1] || '').trim()) ? 'figure' : 'table'
+  const label = String(match[2] || '').trim().toLowerCase()
+  if (!label) {
+    return null
+  }
+  return `${kind} ${label}`
+}
+
+function formatPublicationReaderAssetMentionDisplayText(value: string): string {
+  const match = String(value || '').match(/\b(fig(?:ure)?\.?|table)\s+(\d{1,3}[a-z]?)\b/i)
+  if (!match) {
+    return String(value || '')
+  }
+  const kindLabel = /^fig/i.test(String(match[1] || '').trim()) ? 'Figure' : 'Table'
+  const assetLabel = String(match[2] || '').trim()
+  if (!assetLabel) {
+    return String(value || '')
+  }
+  return `${kindLabel} ${assetLabel}`
+}
+
+function collectPublicationReaderAssetMentionKeys(
+  asset: PublicationPaperAssetPayload,
+  fallbackIndex: number,
+): string[] {
+  const next = new Set<string>()
+  const add = (value: string | null | undefined) => {
+    const source = String(value || '').trim()
+    if (!source) {
+      return
+    }
+    const directKey = normalizePublicationReaderAssetMentionKey(source)
+    if (directKey) {
+      next.add(directKey)
+    }
+    for (const match of getPublicationReaderAssetMentionMatches(source)) {
+      const key = normalizePublicationReaderAssetMentionKey(match[0] || '')
+      if (key) {
+        next.add(key)
+      }
+    }
+  }
+
+  add(asset.title)
+  add(asset.file_name)
+  add(`${asset.asset_kind === 'figure' ? 'Figure' : 'Table'} ${fallbackIndex + 1}`)
+
+  return Array.from(next)
+}
 const PUBLICATION_READER_CITATION_TOKEN_LEADING_PATTERN = new RegExp(`^(${PUBLICATION_READER_CITATION_TOKEN_SOURCE})(?:\\s+|$)(.*)$`)
 
 function reattachLeadingCitationParagraphTokens(paragraphs: string[]): string[] {
@@ -2886,7 +3131,7 @@ function extractRegistrationSectionContent(value: string): string {
     .map((sentence) => sentence.trim())
     .filter(Boolean)
   const registrationPattern =
-    /\b(prospero|trial registration|registration number|clinicaltrials\.gov|nct\d{8}|crd\d{6,}|isrctn\d+)\b/i
+    /^(?:trial registration(?: number)?|registration(?: number)?|prospero registration|prospero)\b/i
   const matches = sentences.filter((sentence) => registrationPattern.test(sentence))
   return matches.join(' ').trim()
 }
@@ -2895,6 +3140,75 @@ type LocalAbstractSection = {
   key: string
   label: string
   content: string
+}
+
+const ABSTRACT_HEADING_PATTERN_SOURCE = String.raw`background|introduction|aims?|objective|objectives|purpose|design|setting|study population|main outcome measures?|methods?|materials and methods|study design|results?|findings?|conclusion|conclusions|discussion|trial registration(?: number)?|registration(?: number)?|prospero registration|prospero`
+const ABSTRACT_HEADING_PATTERN = new RegExp(
+  String.raw`(?:^|(?<=[\n\r])|(?<=[.!?\]]\s)|(?<=[;:]\s))(${ABSTRACT_HEADING_PATTERN_SOURCE})\s*:?\s*`,
+  'gim',
+)
+
+const ARTICLE_INFORMATION_HEADING_PATTERN = new RegExp(
+  String.raw`(?:^|(?<=[\n\r])|(?<=[.!?]\s))(` +
+    String.raw`acknowledg(?:e)?ments?|contributors?|author contributions?|funding|competing interests?|conflicts? of interest|` +
+    String.raw`patient and public involvement|patient consent for publication|ethics(?: approval)?|provenance and peer review|` +
+    String.raw`data availability(?: statement)?|open access` +
+  String.raw`)\s*:?\s*`,
+  'gim',
+)
+
+type LocalArticleInformationSection = {
+  label: string
+  content: string
+}
+
+function splitArticleInformationContentIntoLabeledSegments(
+  value: string,
+  fallbackLabel: string,
+): LocalArticleInformationSection[] {
+  const text = normalizeAbstractDisplayText(value)
+  if (!text) {
+    return []
+  }
+  const matches = Array.from(text.matchAll(ARTICLE_INFORMATION_HEADING_PATTERN))
+  if (!matches.length) {
+    return [{
+      label: formatPublicationReaderHeadingSentenceCase(fallbackLabel || 'Additional information'),
+      content: text,
+    }]
+  }
+
+  const sections: LocalArticleInformationSection[] = []
+  let cursor = 0
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index]
+    const matchIndex = Number(match.index || 0)
+    if (matchIndex > cursor) {
+      const leadingContent = normalizeAbstractDisplayText(text.slice(cursor, matchIndex))
+      if (leadingContent) {
+        sections.push({
+          label: formatPublicationReaderHeadingSentenceCase(fallbackLabel || 'Additional information'),
+          content: leadingContent,
+        })
+      }
+    }
+
+    const label = formatPublicationReaderHeadingSentenceCase(String(match[1] || '').trim())
+    const start = matchIndex + String(match[0] || '').length
+    const end = index + 1 < matches.length ? Number(matches[index + 1].index || text.length) : text.length
+    const content = normalizeAbstractDisplayText(text.slice(start, end))
+    if (content) {
+      sections.push({ label, content })
+    }
+    cursor = end
+  }
+
+  return sections.length > 0
+    ? sections
+    : [{
+      label: formatPublicationReaderHeadingSentenceCase(fallbackLabel || 'Additional information'),
+      content: text,
+    }]
 }
 
 function canonicalAbstractSectionKey(value: string): string {
@@ -2925,31 +3239,53 @@ function normalizeAbstractHeadingLabel(value: string): string {
   if (!clean) {
     return 'Summary'
   }
-  if (clean.toUpperCase() === clean) {
-    return clean.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
+  if (/^[A-Z0-9 /-]{2,}$/.test(clean)) {
+    const lowered = clean.toLowerCase()
+    return lowered.charAt(0).toUpperCase() + lowered.slice(1)
   }
   return clean.charAt(0).toUpperCase() + clean.slice(1)
 }
 
-function extractHeadingSectionsFromAbstractSource(value: string): LocalAbstractSection[] {
+function splitAbstractContentIntoLabeledSegments(
+  value: string,
+  fallbackLabel: string,
+): LocalAbstractSection[] {
   const text = normalizeAbstractDisplayText(value)
   if (!text) {
     return []
   }
-  const headingPattern = /(?:^|(?<=[\n\r])|(?<=[.!?]\s))(background|introduction|aims?|objective|objectives|purpose|methods?|materials and methods|study design|design|results?|findings?|conclusion|conclusions|discussion|trial registration(?: number)?|registration(?: number)?|prospero registration|prospero)\s*:?\s*/gim
-  const matches = Array.from(text.matchAll(headingPattern))
+  const matches = Array.from(text.matchAll(ABSTRACT_HEADING_PATTERN))
+  const normalizedFallbackLabel = normalizeAbstractHeadingLabel(fallbackLabel || 'Summary')
   if (!matches.length) {
-    return []
+    return [{
+      key: canonicalAbstractSectionKey(normalizedFallbackLabel),
+      label: normalizedFallbackLabel,
+      content: text,
+    }]
   }
 
   const sections: LocalAbstractSection[] = []
+  let cursor = 0
   for (let index = 0; index < matches.length; index += 1) {
     const match = matches[index]
+    const matchIndex = Number(match.index || 0)
+    if (matchIndex > cursor) {
+      const leadingContent = normalizeAbstractDisplayText(text.slice(cursor, matchIndex))
+      if (leadingContent) {
+        sections.push({
+          key: canonicalAbstractSectionKey(normalizedFallbackLabel),
+          label: normalizedFallbackLabel,
+          content: leadingContent,
+        })
+      }
+    }
+
     const heading = normalizeAbstractHeadingLabel(String(match[1] || '').trim())
-    const start = Number(match.index || 0) + String(match[0] || '').length
+    const start = matchIndex + String(match[0] || '').length
     const end = index + 1 < matches.length ? Number(matches[index + 1].index || text.length) : text.length
     const content = normalizeAbstractDisplayText(text.slice(start, end))
     if (!content) {
+      cursor = end
       continue
     }
     sections.push({
@@ -2957,8 +3293,68 @@ function extractHeadingSectionsFromAbstractSource(value: string): LocalAbstractS
       label: heading,
       content,
     })
+    cursor = end
+  }
+  if (sections.length === 0) {
+    return [{
+      key: canonicalAbstractSectionKey(normalizedFallbackLabel),
+      label: normalizedFallbackLabel,
+      content: text,
+    }]
   }
   return sections
+}
+
+function extractHeadingSectionsFromAbstractSource(value: string): LocalAbstractSection[] {
+  const text = normalizeAbstractDisplayText(value)
+  if (!text) {
+    return []
+  }
+  const matches = Array.from(text.matchAll(ABSTRACT_HEADING_PATTERN))
+  if (!matches.length) {
+    return []
+  }
+  return splitAbstractContentIntoLabeledSegments(text, 'Summary')
+}
+
+function expandInlineHeadingsWithinStructuredAbstractSections(
+  sections: LocalAbstractSection[],
+): LocalAbstractSection[] {
+  const shouldTrustStructuredSections = (
+    sections.length > 1
+    && sections.every((section) => {
+      const label = normalizeAbstractHeadingLabel(section.label || 'Summary')
+      return Boolean(normalizeAbstractDisplayText(section.content))
+        && label !== 'Summary'
+    })
+  )
+  if (shouldTrustStructuredSections) {
+    return sections.map((section) => {
+      const label = normalizeAbstractHeadingLabel(section.label || 'Summary')
+      return {
+        ...section,
+        label,
+        key: section.key || canonicalAbstractSectionKey(label),
+        content: normalizeAbstractDisplayText(section.content),
+      }
+    })
+  }
+  const expanded: LocalAbstractSection[] = []
+  for (const section of sections) {
+    const fallbackLabel = normalizeAbstractHeadingLabel(section.label || 'Summary')
+    const splitSections = splitAbstractContentIntoLabeledSegments(section.content, fallbackLabel)
+    if (splitSections.length <= 1) {
+      expanded.push({
+        ...section,
+        label: fallbackLabel,
+        key: section.key || canonicalAbstractSectionKey(fallbackLabel),
+        content: normalizeAbstractDisplayText(section.content),
+      })
+      continue
+    }
+    expanded.push(...splitSections)
+  }
+  return expanded
 }
 
 function buildPublicationReaderSyntheticAbstractSections(
@@ -3051,6 +3447,46 @@ function normalizePublicationReaderSections(
     const groupKey = normalizePublicationPaperDisplayGroupKey(section)
     if (groupKey === 'abstract') {
       hasAbstractGroup = true
+    }
+    const inlineStructuredSections = (
+      groupKey === 'abstract'
+      && Boolean(section.content)
+      && (childCounts.get(section.id) || 0) === 0
+    )
+      ? splitAbstractContentIntoLabeledSegments(
+        section.content,
+        section.title || section.raw_label || 'Summary',
+      )
+      : []
+    if (groupKey === 'abstract' && inlineStructuredSections.length > 1) {
+      inlineStructuredSections.forEach((subsection, index) => {
+        const content = normalizeAbstractDisplayText(subsection.content)
+        next.push({
+          ...section,
+          id: `${section.id}-inline-${index + 1}`,
+          title: subsection.label || 'Summary',
+          raw_label: subsection.label || 'Summary',
+          label_original: subsection.label || 'Summary',
+          label_normalized: (subsection.label || 'Summary').toLowerCase(),
+          canonical_map: 'abstract',
+          canonical_kind: 'abstract',
+          kind: 'abstract',
+          content,
+          order: section.order + (index * 0.001),
+          level: section.level || 1,
+          parent_id: publicationReaderSectionDisplayParentId(section),
+          is_generated_heading: true,
+          word_count: content ? content.split(/\s+/).filter(Boolean).length : 0,
+          paragraph_count: content ? splitLongTextIntoParagraphs(content, 800).length : 0,
+          section_role: 'abstract_summary',
+          major_section_key: 'overview',
+          document_zone: 'front',
+          display_group: 'abstract',
+          display_parent_id: publicationReaderSectionDisplayParentId(section),
+          display_order: (section.display_order ?? section.order) + (index * 0.001),
+        })
+      })
+      continue
     }
     const shouldExpandStructuredAbstract = (
       groupKey === 'abstract'
@@ -3583,8 +4019,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [impactCacheByWorkId, setImpactCacheByWorkId] = useState<Record<string, PublicationImpactResponsePayload>>({})
   const [aiCacheByWorkId, setAiCacheByWorkId] = useState<Record<string, PublicationAiInsightsResponsePayload>>({})
   const [paperModelCacheByWorkId, setPaperModelCacheByWorkId] = useState<Record<string, PublicationPaperModelResponsePayload>>({})
-  const [tableEnhanceLoadingIds, setTableEnhanceLoadingIds] = useState<Set<string>>(new Set())
-  const [tableEnhancedHtmlById, setTableEnhancedHtmlById] = useState<Record<string, string>>({})
   const [filesCacheByWorkId, setFilesCacheByWorkId] = useState<Record<string, PublicationFilesListPayload>>(
     () => fixture?.filesByWorkId ?? {},
   )
@@ -3615,6 +4049,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationReaderViewMode, setPublicationReaderViewMode] = useState<PublicationReaderViewMode>('structured')
   const [publicationReaderCollapsedNodeIds, setPublicationReaderCollapsedNodeIds] = useState<Record<string, boolean>>({})
   const [publicationReaderInspectorOpen, setPublicationReaderInspectorOpen] = useState(false)
+  const [publicationReaderDisplayedParseProgressPercent, setPublicationReaderDisplayedParseProgressPercent] = useState(0)
+  const [publicationReaderDisplayedParseEtaSeconds, setPublicationReaderDisplayedParseEtaSeconds] = useState(0)
   const [publicationReaderFigureLightboxAsset, setPublicationReaderFigureLightboxAsset] = useState<PublicationPaperAssetPayload | null>(null)
   const [publicationReaderFigureLightboxFitToViewport, setPublicationReaderFigureLightboxFitToViewport] = useState(true)
   const [publicationReaderTableLightboxAsset, setPublicationReaderTableLightboxAsset] = useState<PublicationPaperAssetPayload | null>(null)
@@ -3656,6 +4092,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   selectedWorkIdRef.current = selectedWorkId
   const filesWarmupCompletedRef = useRef<Set<string>>(new Set())
   const autoOaStatusClearTimerRef = useRef<number | null>(null)
+  const publicationReaderParseDisplayBaseRef = useRef({
+    percent: 0,
+    etaSeconds: 0,
+    capturedAt: 0,
+  })
   const localTopMetricsBootstrapAttemptedRef = useRef(false)
   const publicationTableLayoutRef = useRef<HTMLDivElement | null>(null)
   const publicationLibraryFilterButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -4398,23 +4839,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
     }
   }, [token])
-
-  const handleEnhancePublicationTable = useCallback(async (publicationId: string, tableId: string) => {
-    if (!token || tableEnhanceLoadingIds.has(tableId)) return
-    setTableEnhanceLoadingIds((prev) => new Set(prev).add(tableId))
-    try {
-      const result = await enhancePublicationTable(token, publicationId, tableId)
-      setTableEnhancedHtmlById((prev) => ({ ...prev, [tableId]: result.enhanced_html }))
-    } catch {
-      // silently ignore - table stays unenhanced
-    } finally {
-      setTableEnhanceLoadingIds((prev) => {
-        const next = new Set(prev)
-        next.delete(tableId)
-        return next
-      })
-    }
-  }, [token, tableEnhanceLoadingIds])
 
   const loadPublicationFilesData = useCallback(async (workId: string, force = false) => {
     if (!token || !workId) {
@@ -5341,9 +5765,22 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [selectedPaperDocument?.primary_pdf_download_url, selectedPaperPrimaryFile])
   const selectedPaperFigures = selectedPaperModel?.figures || []
   const selectedPaperTables = selectedPaperModel?.tables || []
+  const selectedPaperFeaturedGraphicalAbstract = useMemo(
+    () => selectedPaperFigures.find((asset) => publicationReaderIsGraphicalAbstractAsset(asset)) || null,
+    [selectedPaperFigures],
+  )
+  const selectedPaperFeaturedGraphicalAbstractId = selectedPaperFeaturedGraphicalAbstract?.id || null
   const selectedPaperRenderableFigures = useMemo(
     () => selectedPaperFigures.filter(publicationReaderAssetHasSurfaceContent),
     [selectedPaperFigures],
+  )
+  const selectedPaperFigureGroupAssets = useMemo(
+    () => selectedPaperFigures.filter((asset) => asset.id !== selectedPaperFeaturedGraphicalAbstractId),
+    [selectedPaperFeaturedGraphicalAbstractId, selectedPaperFigures],
+  )
+  const selectedPaperRenderableFigureGroupAssets = useMemo(
+    () => selectedPaperRenderableFigures.filter((asset) => asset.id !== selectedPaperFeaturedGraphicalAbstractId),
+    [selectedPaperFeaturedGraphicalAbstractId, selectedPaperRenderableFigures],
   )
   const publicationReaderFigureLightboxIndex = useMemo(
     () => (
@@ -5433,6 +5870,65 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     setPublicationReaderTableLightboxAsset(nextAsset)
   }, [publicationReaderTableLightboxIndex, selectedPaperRenderableTables])
+  const getSelectedPublicationReaderAssetMentionCandidates = useCallback((value: string) => {
+    const key = normalizePublicationReaderAssetMentionKey(value)
+    if (!key) {
+      return {
+        key: null,
+        candidateAssets: [] as PublicationPaperAssetPayload[],
+      }
+    }
+    return {
+      key,
+      candidateAssets: key.startsWith('figure ')
+        ? selectedPaperRenderableFigures
+        : key.startsWith('table ')
+          ? selectedPaperRenderableTables
+          : [],
+    }
+  }, [selectedPaperRenderableFigures, selectedPaperRenderableTables])
+  const resolveSelectedPublicationReaderAssetMention = useCallback((value: string) => {
+    const { key, candidateAssets } = getSelectedPublicationReaderAssetMentionCandidates(value)
+    if (!key || candidateAssets.length === 0) {
+      return null
+    }
+    const matchedAsset = candidateAssets.find((asset, index) => (
+      collectPublicationReaderAssetMentionKeys(asset, index).includes(key)
+    ))
+    if (matchedAsset) {
+      return matchedAsset
+    }
+    const ordinalMatch = key.match(/^(figure|table)\s+(\d+)([a-z]?)$/i)
+    if (ordinalMatch && !ordinalMatch[3]) {
+      const ordinalIndex = Number(ordinalMatch[2]) - 1
+      if (ordinalIndex >= 0 && ordinalIndex < candidateAssets.length) {
+        return candidateAssets[ordinalIndex]
+      }
+    }
+    return null
+  }, [getSelectedPublicationReaderAssetMentionCandidates])
+  const openPublicationReaderAssetMention = useCallback((asset: PublicationPaperAssetPayload) => {
+    if (!asset?.id) {
+      return
+    }
+    setPublicationReaderActiveAssetId(asset.id)
+    if (asset.asset_kind === 'figure' || asset.asset_kind === 'graphical_abstract') {
+      openPublicationReaderFigureLightbox(asset)
+      return
+    }
+    if (asset.asset_kind === 'table') {
+      openPublicationReaderTableLightbox(asset)
+    }
+  }, [
+    openPublicationReaderFigureLightbox,
+    openPublicationReaderTableLightbox,
+  ])
+  const openPublicationReaderAssetMentionByText = useCallback((value: string) => {
+    const matchedAsset = resolveSelectedPublicationReaderAssetMention(value)
+    if (matchedAsset) {
+      openPublicationReaderAssetMention(matchedAsset)
+    }
+  }, [openPublicationReaderAssetMention, resolveSelectedPublicationReaderAssetMention])
   useEffect(() => {
     if (!publicationReaderTableLightboxAsset) {
       return undefined
@@ -5505,10 +6001,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       .filter((reference) => reference.rawText),
     [selectedPaperModel?.references],
   )
-  const selectedPaperMetadataOnlyFigureCount = Math.max(0, selectedPaperFigures.length - selectedPaperRenderableFigures.length)
   const selectedPaperMetadataOnlyTableCount = Math.max(0, selectedPaperTables.length - selectedPaperRenderableTables.length)
-  const selectedPaperMetadataOnlyFigureMessage = selectedPaperMetadataOnlyFigureCount > 0
-    ? `${selectedPaperMetadataOnlyFigureCount} figure ${selectedPaperMetadataOnlyFigureCount === 1 ? 'reference has' : 'references have'} been identified, but preview extraction is still incomplete.`
+  const selectedPaperFigureGroupMetadataOnlyCount = Math.max(
+    0,
+    selectedPaperFigureGroupAssets.length - selectedPaperRenderableFigureGroupAssets.length,
+  )
+  const selectedPaperMetadataOnlyFigureMessage = selectedPaperFigureGroupMetadataOnlyCount > 0
+    ? `${selectedPaperFigureGroupMetadataOnlyCount} figure ${selectedPaperFigureGroupMetadataOnlyCount === 1 ? 'reference has' : 'references have'} been identified, but preview extraction is still incomplete.`
     : null
   const selectedPaperMetadataOnlyTableMessage = selectedPaperMetadataOnlyTableCount > 0
     ? `${selectedPaperMetadataOnlyTableCount} table ${selectedPaperMetadataOnlyTableCount === 1 ? 'reference has' : 'references have'} been identified, but the structured table body is not available yet.`
@@ -5814,17 +6313,68 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPaperModelResponse?.status === 'RUNNING'
     || selectedPaperDocument?.parser_status === 'PARSING'
   )
-  const selectedPaperParsingProgressPercent = Math.max(
+  const selectedPaperReportedParsingProgressPercent = Math.max(
     0,
     Math.min(
       100,
       Number(selectedPaperDocument?.parse_progress_percent ?? 0) || 0,
     ),
   )
+  const selectedPaperReportedParsingEtaSeconds = Math.max(
+    0,
+    Number(selectedPaperDocument?.parse_estimated_seconds_remaining ?? 0) || 0,
+  )
+  useEffect(() => {
+    publicationReaderParseDisplayBaseRef.current = {
+      percent: selectedPaperReportedParsingProgressPercent,
+      etaSeconds: selectedPaperReportedParsingEtaSeconds,
+      capturedAt: Date.now(),
+    }
+    setPublicationReaderDisplayedParseProgressPercent(selectedPaperReportedParsingProgressPercent)
+    setPublicationReaderDisplayedParseEtaSeconds(selectedPaperReportedParsingEtaSeconds)
+  }, [
+    selectedPaperDocument?.parse_progress_stage,
+    selectedPaperParsingInProgress,
+    selectedPaperReportedParsingEtaSeconds,
+    selectedPaperReportedParsingProgressPercent,
+    selectedWorkId,
+  ])
+  useEffect(() => {
+    if (!selectedPaperParsingInProgress) {
+      return undefined
+    }
+    const intervalId = window.setInterval(() => {
+      const base = publicationReaderParseDisplayBaseRef.current
+      const elapsedSeconds = Math.max(
+        0,
+        Math.floor((Date.now() - base.capturedAt) / 1000),
+      )
+      const nextEtaSeconds = Math.max(0, base.etaSeconds - elapsedSeconds)
+      let nextPercent = base.percent
+      if (base.etaSeconds > 0 && base.percent < 99) {
+        const percentPerSecond = (99 - base.percent) / base.etaSeconds
+        nextPercent = Math.min(99, base.percent + (percentPerSecond * elapsedSeconds))
+      }
+      setPublicationReaderDisplayedParseEtaSeconds(nextEtaSeconds)
+      setPublicationReaderDisplayedParseProgressPercent(nextPercent)
+    }, 1000)
+    return () => window.clearInterval(intervalId)
+  }, [selectedPaperParsingInProgress])
+  const selectedPaperParsingProgressPercent = selectedPaperParsingInProgress
+    ? Math.max(
+      selectedPaperReportedParsingProgressPercent,
+      Math.round(publicationReaderDisplayedParseProgressPercent),
+    )
+    : selectedPaperReportedParsingProgressPercent
+  const selectedPaperParsingEtaSeconds = selectedPaperParsingInProgress
+    ? (
+      publicationReaderDisplayedParseEtaSeconds > 0
+        ? publicationReaderDisplayedParseEtaSeconds
+        : selectedPaperReportedParsingEtaSeconds
+    )
+    : selectedPaperReportedParsingEtaSeconds
   const selectedPaperParsingEtaLabel = useMemo(() => {
-    const remainingSeconds = Number(
-      selectedPaperDocument?.parse_estimated_seconds_remaining ?? 0,
-    ) || 0
+    const remainingSeconds = selectedPaperParsingEtaSeconds
     if (remainingSeconds <= 0) {
       return 'Estimating time...'
     }
@@ -5833,7 +6383,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     const roundedMinutes = Math.max(1, Math.round(remainingSeconds / 60))
     return `~${roundedMinutes} min remaining`
-  }, [selectedPaperDocument?.parse_estimated_seconds_remaining])
+  }, [selectedPaperParsingEtaSeconds])
   const selectedPaperAssetEnrichmentInFlight = Boolean(
     !selectedPaperParsingInProgress
     && selectedPaperDocument?.has_viewable_pdf
@@ -5862,13 +6412,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         next.set(asset.id, 'tables')
       }
     }
-    for (const asset of selectedPaperRenderableFigures) {
+    for (const asset of selectedPaperRenderableFigureGroupAssets) {
       if (asset.id) {
         next.set(asset.id, 'figures')
       }
     }
     return next
-  }, [selectedPaperRenderableFigures, selectedPaperRenderableTables])
+  }, [selectedPaperRenderableFigureGroupAssets, selectedPaperRenderableTables])
   const selectedPaperSectionChildrenByParent = useMemo(() => {
     const next = new Map<string | null, PublicationPaperSectionPayload[]>()
     for (const section of selectedPaperSections) {
@@ -5889,7 +6439,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationReaderInlineAssetRefs = useRef<Record<string, HTMLElement | null>>({})
 
   const selectedPaperInlineAssetsBySectionId = useMemo(() => {
-    const allAssets = [...selectedPaperRenderableFigures, ...selectedPaperRenderableTables]
+    const allAssets = [...selectedPaperRenderableFigureGroupAssets, ...selectedPaperRenderableTables]
     if (!allAssets.length || !selectedPaperSections.length) {
       return new Map<string, PublicationPaperAssetPayload[]>()
     }
@@ -5931,7 +6481,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
     }
     return result
-  }, [selectedPaperRenderableFigures, selectedPaperRenderableTables, selectedPaperSections])
+  }, [selectedPaperRenderableFigureGroupAssets, selectedPaperRenderableTables, selectedPaperSections])
 
   const selectedPaperDisplayGroupKeyBySectionId = useMemo(
     () => buildPublicationPaperDisplayGroupKeyBySectionId(selectedPaperSections),
@@ -6095,7 +6645,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
 
     appendAssetGroup('tables', selectedPaperRenderableTables)
-    appendAssetGroup('figures', selectedPaperRenderableFigures)
+    appendAssetGroup('figures', selectedPaperRenderableFigureGroupAssets)
 
     if (selectedPaperReferences.length > 0) {
       const definition = PUBLICATION_READER_NAVIGATOR_GROUP_DEFINITION_BY_KEY.get('references')
@@ -6116,7 +6666,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedPaperStructuredGroupLabelByKey,
     selectedPaperDisplayGroupKeyBySectionId,
     selectedPaperReferences.length,
-    selectedPaperRenderableFigures,
+    selectedPaperRenderableFigureGroupAssets,
     selectedPaperSectionChildrenByParent,
     selectedPaperRenderableTables,
     publicationReaderActiveAssetId,
@@ -6271,10 +6821,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationReaderError('')
     setPublicationReaderActiveSectionId(null)
     setPublicationReaderActiveAssetId(null)
-      setPublicationReaderPdfPage(1)
-      setPublicationReaderViewMode('structured')
-      setPublicationReaderCollapsedNodeIds({})
+    setPublicationReaderPdfPage(1)
+    setPublicationReaderViewMode('structured')
+    setPublicationReaderCollapsedNodeIds({})
     setPublicationReaderInspectorOpen(false)
+    setPublicationReaderDisplayedParseProgressPercent(0)
+    setPublicationReaderDisplayedParseEtaSeconds(0)
     setPublicationReaderReferencePopover(null)
     publicationReaderSectionRefs.current = {}
     publicationReaderGroupRefs.current = {}
@@ -6337,26 +6889,38 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }, [publicationReaderOpen, publicationReaderViewMode, selectedPaperPrimaryPdfContentFileId])
 
-  const publicationReaderPollingStartRef = useRef<number>(0)
+  const publicationReaderPollInFlightRef = useRef(false)
   useEffect(() => {
     if (!publicationReaderOpen || !selectedWorkId) {
       return
     }
     if (!selectedPaperParsingInProgress && !selectedPaperAssetEnrichmentInFlight) {
-      publicationReaderPollingStartRef.current = 0
+      publicationReaderPollInFlightRef.current = false
       return
     }
-    if (publicationReaderPollingStartRef.current === 0) {
-      publicationReaderPollingStartRef.current = Date.now()
+    let cancelled = false
+    const poll = async () => {
+      if (publicationReaderPollInFlightRef.current) {
+        return
+      }
+      publicationReaderPollInFlightRef.current = true
+      try {
+        await loadPublicationPaperModelData(selectedWorkId, true, { silent: true })
+      } finally {
+        if (!cancelled) {
+          publicationReaderPollInFlightRef.current = false
+        }
+      }
     }
-    const elapsedMs = Date.now() - publicationReaderPollingStartRef.current
-    if (elapsedMs > 300_000) {
-      return
+    void poll()
+    const intervalId = window.setInterval(() => {
+      void poll()
+    }, 1000)
+    return () => {
+      cancelled = true
+      publicationReaderPollInFlightRef.current = false
+      window.clearInterval(intervalId)
     }
-    const timeoutId = window.setTimeout(() => {
-      void loadPublicationPaperModelData(selectedWorkId, true, { silent: true })
-    }, 2400)
-    return () => window.clearTimeout(timeoutId)
   }, [
     loadPublicationPaperModelData,
     publicationReaderOpen,
@@ -7247,13 +7811,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     [structuredSourceAbstract],
   )
   const resolvedStructuredSections = useMemo(() => {
-    if (!structuredSections.length) {
-      return []
-    }
-    if (structuredCoverageRatio < 0.62 && fallbackSectionsFromSource.length >= 2) {
-      return fallbackSectionsFromSource
-    }
-    return structuredSections
+    const baseSections = !structuredSections.length
+      ? []
+      : structuredCoverageRatio < 0.62 && fallbackSectionsFromSource.length >= 2
+        ? fallbackSectionsFromSource
+        : structuredSections
+    return expandInlineHeadingsWithinStructuredAbstractSections(baseSections)
   }, [fallbackSectionsFromSource, structuredCoverageRatio, structuredSections])
   const hasStructuredRegistrationSection = resolvedStructuredSections.some((section) =>
     /\b(registration|prospero)\b/i.test(String(section?.label || section?.key || '')),
@@ -8794,25 +9357,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               )}>
                 <div
                   className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
-                  dangerouslySetInnerHTML={{ __html: tableEnhancedHtmlById[asset.id] || asset.enhanced_html || asset.structured_html }}
+                  dangerouslySetInnerHTML={{ __html: asset.structured_html }}
                 />
-                {asset.asset_kind === 'table' && !tableEnhancedHtmlById[asset.id] && !asset.enhanced_html ? (
-                  <button
-                    type="button"
-                    className="mt-2 text-[0.75rem] font-medium text-[hsl(var(--tone-accent-700))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))] hover:underline disabled:opacity-50"
-                    disabled={tableEnhanceLoadingIds.has(asset.id)}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      if (selectedWorkId) handleEnhancePublicationTable(selectedWorkId, asset.id)
-                    }}
-                  >
-                    {tableEnhanceLoadingIds.has(asset.id) ? 'Enhancing…' : 'Enhance with AI'}
-                  </button>
-                ) : null}
-                {(tableEnhancedHtmlById[asset.id] || asset.enhanced_html) ? (
-                  <p className="mt-2 text-[0.72rem] text-[hsl(var(--tone-accent-600))]">AI-enhanced</p>
-                ) : null}
               </div>
             ) : null}
             {!asset.image_data && !asset.structured_html && asset.page_start != null ? (
@@ -8888,6 +9434,96 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     )
   }
 
+  const renderPublicationReaderFeaturedGraphicalAbstractPanel = (
+    asset: PublicationPaperAssetPayload,
+  ): ReactNode => {
+    const distinctAssetTitle = String(asset.title || asset.file_name || '').trim()
+    const showAssetTitle = distinctAssetTitle.length > 0 && !/^graphical abstract$/i.test(distinctAssetTitle)
+    const pageLabel = formatPublicationPaperSectionPageLabel({
+      page_start: asset.page_start,
+      page_end: asset.page_end,
+    })
+    return renderPublicationReaderMajorPanel(
+      'Graphical abstract',
+      (
+        <div
+          ref={(node) => { publicationReaderInlineAssetRefs.current[asset.id] = node }}
+          className="space-y-4"
+        >
+          <div className="overflow-hidden rounded-[1.15rem] border border-[hsl(var(--tone-neutral-220))] bg-[linear-gradient(180deg,#f7fafc_0%,#ffffff_100%)] shadow-[0_16px_36px_hsl(var(--tone-neutral-900)/0.05)]">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[hsl(var(--tone-neutral-150))] px-4 py-3">
+              <div className="min-w-0 flex-1">
+                {showAssetTitle ? (
+                  <p className="text-[0.98rem] font-semibold tracking-[-0.014em] text-[hsl(var(--tone-neutral-900))]">
+                    {distinctAssetTitle}
+                  </p>
+                ) : null}
+                {asset.caption ? (
+                  <p className={cn(
+                    'text-[0.88rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]',
+                    showAssetTitle ? 'mt-1' : '',
+                  )}>
+                    {asset.caption}
+                  </p>
+                ) : null}
+              </div>
+              {pageLabel ? (
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <span className="text-[0.74rem] text-[hsl(var(--tone-neutral-500))]">
+                    {pageLabel}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+            {asset.image_data ? (
+              <div className="bg-[hsl(var(--tone-neutral-50)/0.6)] px-4 py-4">
+                <button
+                  type="button"
+                  aria-label="Open graphical abstract"
+                  className="group block w-full text-left"
+                  onClick={() => {
+                    setPublicationReaderActiveAssetId(asset.id)
+                    openPublicationReaderFigureLightbox(asset)
+                  }}
+                >
+                  <img
+                    src={asset.image_data}
+                    alt={asset.title || asset.file_name || 'Graphical abstract'}
+                    className="max-h-[32rem] w-full rounded-[0.92rem] object-contain transition-transform duration-[var(--motion-duration-ui)] ease-out group-hover:scale-[1.004]"
+                    loading="lazy"
+                  />
+                </button>
+              </div>
+            ) : (
+              <div className="px-4 py-4">
+                <div className="rounded-[0.95rem] border border-dashed border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--tone-neutral-50)/0.65)] px-4 py-4">
+                  <p className="text-[0.86rem] leading-relaxed text-[hsl(var(--tone-neutral-600))]">
+                    Graphical abstract preview not extractable yet. Open the source figure to review it in the manuscript PDF.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 rounded-full"
+                    onClick={() => {
+                      setPublicationReaderActiveAssetId(asset.id)
+                      onOpenPublicationReaderAsset(asset)
+                    }}
+                  >
+                    Open source figure
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ),
+      {
+        groupKey: 'figures',
+      },
+    )
+  }
+
   const renderPublicationReaderSupplementPanel = (
     title: string,
     content: ReactNode,
@@ -8925,6 +9561,66 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       </div>
     </section>
   )
+
+  const renderPublicationReaderArticleInformationPanel = (
+    group: {
+      key: string
+      label: string
+      sections: PublicationPaperSectionPayload[]
+    },
+    options?: {
+      sectionRef?: (node: HTMLElement | null) => void
+    },
+  ): ReactNode => {
+    const visibleSections = group.sections
+      .filter((section) => {
+        const label = formatPublicationReaderHeadingSentenceCase(section.title || section.raw_label || '')
+        const hasContent = Boolean(String(section.content || '').trim())
+        return hasContent && !publicationReaderSectionMatchesGroupLabel(section, group.key) && Boolean(label)
+      })
+      .sort(comparePublicationPaperSections)
+
+    if (visibleSections.length === 0) {
+      return null
+    }
+
+    return renderPublicationReaderMajorPanel(
+      group.label,
+      (
+        <div className="space-y-4">
+          {visibleSections.map((section) => {
+            const displayTitle = formatPublicationReaderHeadingSentenceCase(section.title || section.raw_label || 'Untitled section')
+            const splitSections = splitArticleInformationContentIntoLabeledSegments(section.content || '', displayTitle)
+            return (
+              <section key={`article-information-${section.id}`} className="space-y-2">
+                {splitSections.map((item, itemIndex) => {
+                  const paragraphs = splitLongTextIntoParagraphs(item.content || '', 520)
+                  return (
+                    <div key={`${section.id}-article-information-item-${itemIndex}`} className="space-y-1.5">
+                      <h3 className="text-[0.96rem] font-semibold tracking-[-0.01em] text-[hsl(var(--tone-neutral-900))]">
+                        {item.label || displayTitle}
+                      </h3>
+                      <div className="space-y-2">
+                        {paragraphs.map((paragraph, paragraphIndex) => renderPublicationReaderParagraphWithAnchoredReferences(
+                          paragraph,
+                          `${section.id}-article-information-${itemIndex}-${paragraphIndex}`,
+                          'm-0 text-[0.94rem] leading-[1.85] text-[hsl(var(--tone-neutral-800))]',
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </section>
+            )
+          })}
+        </div>
+      ),
+      {
+        groupKey: group.key,
+        sectionRef: options?.sectionRef,
+      },
+    )
+  }
 
   const renderPublicationReaderParagraphWithReferences = (
     paragraph: string,
@@ -9011,11 +9707,65 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     },
   ): ReactNode => {
     const referenceChipClassName = 'align-super inline-flex min-h-[1.14rem] min-w-[1.14rem] items-center justify-center whitespace-nowrap rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-100))] px-[0.3rem] py-0 text-left text-[0.64em] font-semibold leading-none tracking-[0.005em] text-[hsl(var(--tone-accent-850))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:border-[hsl(var(--tone-accent-500))] hover:bg-[hsl(var(--tone-accent-150))] hover:text-[hsl(var(--tone-accent-900))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-300))] focus-visible:ring-offset-2'
+    const assetMentionClassName = 'inline-flex items-center gap-[0.22rem] rounded-[0.28rem] border-0 bg-transparent px-[0.08rem] py-0 align-baseline text-[0.86em] font-semibold leading-[1.3] text-[hsl(var(--tone-accent-825))] underline decoration-[hsl(var(--tone-accent-350))] decoration-[0.08em] underline-offset-[0.2em] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-900))] hover:decoration-[hsl(var(--tone-accent-500))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-300))] focus-visible:ring-offset-2'
+    const renderTextWithAssetMentions = (text: string, textKeyPrefix: string): ReactNode[] => {
+      const matches = getPublicationReaderAssetMentionMatches(text)
+      if (!matches.length) {
+        return [<span key={`${textKeyPrefix}-text`}>{text}</span>]
+      }
+      const nodes: ReactNode[] = []
+      let lastIndex = 0
+      matches.forEach((match, matchIndex) => {
+        const startIndex = Number(match.index || 0)
+        const matchText = String(match[0] || '')
+        const displayText = formatPublicationReaderAssetMentionDisplayText(matchText)
+        if (startIndex > lastIndex) {
+          nodes.push(
+            <span key={`${textKeyPrefix}-text-${matchIndex}`}>
+              {text.slice(lastIndex, startIndex)}
+            </span>,
+          )
+        }
+        const { key: assetMentionKey, candidateAssets } = getSelectedPublicationReaderAssetMentionCandidates(matchText)
+        if (assetMentionKey && candidateAssets.length > 0) {
+          nodes.push(
+            <button
+              key={`${textKeyPrefix}-asset-${matchIndex}`}
+              type="button"
+              className={assetMentionClassName}
+              aria-label={`Open ${displayText}`}
+              onClick={(event) => {
+                event.preventDefault()
+                openPublicationReaderAssetMentionByText(matchText)
+              }}
+            >
+              <span>{displayText}</span>
+              <ArrowUpRight aria-hidden="true" className="h-[0.68rem] w-[0.68rem] shrink-0 opacity-65" />
+            </button>,
+          )
+        } else {
+          nodes.push(
+            <span key={`${textKeyPrefix}-asset-fallback-${matchIndex}`}>
+              {matchText}
+            </span>,
+          )
+        }
+        lastIndex = startIndex + matchText.length
+      })
+      if (lastIndex < text.length) {
+        nodes.push(
+          <span key={`${textKeyPrefix}-text-tail`}>
+            {text.slice(lastIndex)}
+          </span>,
+        )
+      }
+      return nodes
+    }
     const parts = String(paragraph || '').split(PUBLICATION_READER_CITATION_TOKEN_GLOBAL_PATTERN)
     if (parts.length <= 1) {
       return (
         <p key={keyPrefix} className={className} style={style}>
-          {paragraph}
+          {renderTextWithAssetMentions(paragraph, keyPrefix)}
         </p>
       )
     }
@@ -9036,9 +9786,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         const normalizedText = nextPartIsCitationToken
           ? part.replace(/\s+$/g, '')
           : part
+        const textNodes = renderTextWithAssetMentions(normalizedText, `${keyPrefix}-text-${partIndex}`)
         nodes.push(
-          <span key={`${keyPrefix}-text-${partIndex}`}>
-            {normalizedText}
+          <span key={`${keyPrefix}-text-fragment-${partIndex}`}>
+            {textNodes}
             {nextPartIsCitationToken ? '\u00A0' : null}
           </span>,
         )
@@ -9156,6 +9907,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         : depth === 0
           ? 600
           : 520
+    const shouldInferSectionListItems = (
+      String(section.section_role || '') === 'summary_box'
+      || isAbstractCallout
+      || (Boolean(options?.renderPlainBody) && publicationReaderSectionIsAbstractSupplement(section))
+    )
+    const sectionListItems = shouldInferSectionListItems
+      ? inferPublicationReaderListItems(section.content, { allowSentenceFallback: true })
+      : null
     const sectionParagraphs = splitLongTextIntoParagraphs(section.content, sectionParagraphMaxLength)
     const rawLabelRedundant = !section.raw_label
       || normalizePublicationReaderHeadingLabel(section.raw_label) === normalizePublicationReaderHeadingLabel(section.title)
@@ -9163,11 +9922,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const sectionParagraphStyle: CSSProperties | undefined = shouldRenderAsCalloutTile
       ? undefined
       : {
-          textAlign: 'justify',
-          hyphens: 'none',
-          wordBreak: 'normal',
-          overflowWrap: 'normal',
-        }
+        textAlign: 'justify',
+        hyphens: 'none',
+        wordBreak: 'normal',
+        overflowWrap: 'normal',
+      }
     const sectionCitationOccurrences = selectedPaperCitationOccurrencesBySectionId.occurrencesBySectionId.get(section.id) || []
     let sectionCitationOccurrenceOffset = 0
 
@@ -9206,7 +9965,60 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             </div>
           </div>
         ) : null}
-        {sectionParagraphs.length > 0 ? (
+        {sectionListItems && sectionListItems.items.length > 0 ? (
+          <div
+            className={cn(
+              'mt-1.5',
+              showMarker ? 'pl-[0.95rem]' : '',
+            )}
+          >
+            {sectionListItems.kind === 'ordered' ? (
+              <ol className="list-decimal list-outside space-y-3 pl-5 text-[hsl(var(--tone-neutral-800))] marker:font-semibold marker:text-[hsl(var(--tone-neutral-500))]">
+                {sectionListItems.items.map((item, itemIndex) => {
+                  const itemCitationCount = collectPublicationReaderCitationClustersFromText(item).length
+                  const itemNode = renderPublicationReaderParagraphWithAnchoredReferences(
+                    item,
+                    `${section.id}-list-item-${itemIndex}`,
+                    'm-0 text-[0.95rem] leading-[1.8] text-[hsl(var(--tone-neutral-800))]',
+                    sectionParagraphStyle,
+                    {
+                      citationOccurrences: sectionCitationOccurrences,
+                      citationOccurrenceOffset: sectionCitationOccurrenceOffset,
+                    },
+                  )
+                  sectionCitationOccurrenceOffset += itemCitationCount
+                  return (
+                    <li key={`${section.id}-list-${itemIndex}`} className="pl-1">
+                      {itemNode}
+                    </li>
+                  )
+                })}
+              </ol>
+            ) : (
+              <ul className="list-disc list-outside space-y-3 pl-5 text-[hsl(var(--tone-neutral-800))] marker:text-[hsl(var(--tone-neutral-500))]">
+                {sectionListItems.items.map((item, itemIndex) => {
+                  const itemCitationCount = collectPublicationReaderCitationClustersFromText(item).length
+                  const itemNode = renderPublicationReaderParagraphWithAnchoredReferences(
+                    item,
+                    `${section.id}-list-item-${itemIndex}`,
+                    'm-0 text-[0.95rem] leading-[1.8] text-[hsl(var(--tone-neutral-800))]',
+                    sectionParagraphStyle,
+                    {
+                      citationOccurrences: sectionCitationOccurrences,
+                      citationOccurrenceOffset: sectionCitationOccurrenceOffset,
+                    },
+                  )
+                  sectionCitationOccurrenceOffset += itemCitationCount
+                  return (
+                    <li key={`${section.id}-list-${itemIndex}`} className="pl-1">
+                      {itemNode}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        ) : sectionParagraphs.length > 0 ? (
           <div
             className={cn(
               'mt-1.25',
@@ -9290,7 +10102,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   <div className="border-t border-[hsl(var(--tone-neutral-100))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
                     <div
                       className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
-                      dangerouslySetInnerHTML={{ __html: tableEnhancedHtmlById[inlineAsset.id] || inlineAsset.enhanced_html || inlineAsset.structured_html }}
+                      dangerouslySetInnerHTML={{ __html: inlineAsset.structured_html }}
                     />
                     <div className="mt-3 flex items-center gap-3">
                       {inlineAsset.asset_kind === 'table' ? (
@@ -9301,21 +10113,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         >
                           Open full-size table
                         </button>
-                      ) : null}
-                      {inlineAsset.asset_kind === 'table' && !tableEnhancedHtmlById[inlineAsset.id] && !inlineAsset.enhanced_html ? (
-                        <button
-                          type="button"
-                          className="text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-500))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-neutral-700))] hover:underline disabled:opacity-50"
-                          disabled={tableEnhanceLoadingIds.has(inlineAsset.id)}
-                          onClick={() => {
-                            if (selectedWorkId) handleEnhancePublicationTable(selectedWorkId, inlineAsset.id)
-                          }}
-                        >
-                          {tableEnhanceLoadingIds.has(inlineAsset.id) ? 'Enhancing…' : 'Enhance with AI'}
-                        </button>
-                      ) : null}
-                      {(tableEnhancedHtmlById[inlineAsset.id] || inlineAsset.enhanced_html) ? (
-                        <p className="text-[0.72rem] text-[hsl(var(--tone-accent-600))]">AI-enhanced</p>
                       ) : null}
                     </div>
                   </div>
@@ -9347,7 +10144,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 ? sectionParagraphs.length > 0
                   ? 'mt-5 space-y-6'
                   : 'mt-3 space-y-6'
-                : 'mt-2.25 space-y-5',
+                : 'mt-2.5 space-y-5',
               depth === 0 ? 'pl-0' : 'pl-3',
             )}
           >
@@ -11656,14 +12453,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                           </div>
                                         ),
                                         {
-                                          description: group.key === 'article_information'
-                                            ? 'Funding, ethics, author contributions, declarations, and supporting disclosures.'
-                                            : null,
                                           groupKey: group.key,
                                           sectionRef: (node) => {
                                             publicationReaderGroupRefs.current[group.key] = node
                                           },
                                         },
+                                      ) : null}
+                                      {group.key === 'abstract' && selectedPaperFeaturedGraphicalAbstract ? (
+                                        renderPublicationReaderFeaturedGraphicalAbstractPanel(
+                                          selectedPaperFeaturedGraphicalAbstract,
+                                        )
                                       ) : null}
                                       {abstractSupplementSections.length > 0 ? (
                                         <div className="space-y-5">
@@ -11704,9 +12503,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 },
                               )
                             ) : null}
-                            {!selectedPaperParsingInProgress && selectedPaperFigures.length > 0 ? (
+                            {!selectedPaperParsingInProgress && selectedPaperFigureGroupAssets.length > 0 ? (
                               renderPublicationReaderAssetGroup(
-                                selectedPaperRenderableFigures,
+                                selectedPaperRenderableFigureGroupAssets,
                                 'No figures surfaced yet.',
                                 selectedPaperMetadataOnlyFigureMessage,
                                 {
@@ -11740,7 +12539,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                           <div className="reader-reference-content">
                                             {titleText ? (
                                               <p className="reader-reference-title">
-                                                {titleText}.
+                                                {ensurePublicationReaderReferenceTerminalPunctuation(titleText)}
                                               </p>
                                             ) : null}
                                             {authorsText ? (
@@ -11750,7 +12549,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                             ) : null}
                                             {sourceLine ? (
                                               <p className="reader-reference-source">
-                                                {sourceLine}.
+                                                {ensurePublicationReaderReferenceTerminalPunctuation(sourceLine)}
                                               </p>
                                             ) : null}
                                             {!hasStructuredReference ? (
@@ -11809,25 +12608,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             {!selectedPaperParsingInProgress && selectedPublicationReaderArticleInformationGroup ? (
                               (() => {
                                 const group = selectedPublicationReaderArticleInformationGroup
-                                return renderPublicationReaderMajorPanel(
-                                  group.label,
-                                  (
-                                    <div className="space-y-6">
-                                      {group.rootSections.map((section) => renderPublicationReaderStructuredSection(
-                                        section,
-                                        0,
-                                        group.key,
-                                        {
-                                          suppressPrimaryHeading: publicationReaderSectionMatchesGroupLabel(section, group.key),
-                                        },
-                                      ))}
-                                    </div>
-                                  ),
-                                  {
-                                    description: 'Funding, ethics, author contributions, declarations, and supporting disclosures.',
-                                    groupKey: group.key,
+                                return renderPublicationReaderArticleInformationPanel(group, {
+                                  sectionRef: (node) => {
+                                    publicationReaderGroupRefs.current[group.key] = node
                                   },
-                                )
+                                })
                               })()
                             ) : null}
                           </div>
@@ -11880,7 +12665,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     <div className="space-y-0">
                                       {selectedPublicationReaderInspectorActiveReferenceTitleText ? (
                                         <p className="reader-inspector-reference-title">
-                                          {selectedPublicationReaderInspectorActiveReferenceTitleText}.
+                                          {ensurePublicationReaderReferenceTerminalPunctuation(
+                                            selectedPublicationReaderInspectorActiveReferenceTitleText,
+                                          )}
                                         </p>
                                       ) : null}
                                       {selectedPublicationReaderInspectorActiveReferenceAuthorsText ? (
@@ -11890,7 +12677,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       ) : null}
                                       {selectedPublicationReaderInspectorActiveReferenceSourceLine ? (
                                         <p className="reader-inspector-reference-source">
-                                          {selectedPublicationReaderInspectorActiveReferenceSourceLine}.
+                                          {ensurePublicationReaderReferenceTerminalPunctuation(
+                                            selectedPublicationReaderInspectorActiveReferenceSourceLine,
+                                          )}
                                         </p>
                                       ) : null}
                                       {!selectedPublicationReaderInspectorActiveReferenceAuthorsText && !selectedPublicationReaderInspectorActiveReferenceTitleText && !selectedPublicationReaderInspectorActiveReferenceSourceLine ? (
@@ -12568,23 +13357,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   >
                     <ChevronRight className="h-4 w-4" />
                   </button>
-                  {!tableEnhancedHtmlById[publicationReaderTableLightboxAsset.id] && !publicationReaderTableLightboxAsset.enhanced_html ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-9 shrink-0 items-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white px-3.5 text-sm font-medium text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
-                      disabled={tableEnhanceLoadingIds.has(publicationReaderTableLightboxAsset.id)}
-                      onMouseDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        if (selectedWorkId) handleEnhancePublicationTable(selectedWorkId, publicationReaderTableLightboxAsset.id)
-                      }}
-                    >
-                      {tableEnhanceLoadingIds.has(publicationReaderTableLightboxAsset.id) ? 'Enhancing…' : 'Enhance with AI'}
-                    </button>
-                  ) : null}
-                  {(tableEnhancedHtmlById[publicationReaderTableLightboxAsset.id] || publicationReaderTableLightboxAsset.enhanced_html) ? (
-                    <span className="text-sm text-[hsl(var(--tone-accent-600))]">AI-enhanced</span>
-                  ) : null}
                   <button
                     type="button"
                     className="inline-flex h-9 shrink-0 items-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white px-3.5 text-sm font-medium text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
@@ -12605,7 +13377,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             >
               <div
                 className={PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME}
-                dangerouslySetInnerHTML={{ __html: tableEnhancedHtmlById[publicationReaderTableLightboxAsset.id] || publicationReaderTableLightboxAsset.enhanced_html || publicationReaderTableLightboxAsset.structured_html || '' }}
+                dangerouslySetInnerHTML={{ __html: publicationReaderTableLightboxAsset.structured_html || '' }}
               />
             </div>
           </div>

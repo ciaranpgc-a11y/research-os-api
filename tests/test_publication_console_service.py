@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from io import BytesIO
 import tarfile
 import time
@@ -17,6 +18,7 @@ from research_os.db import (
     PublicationAiCache,
     PublicationFile,
     PublicationImpactCache,
+    PublicationStructuredAbstractCache,
     PublicationStructuredPaperCache,
     User,
     Work,
@@ -735,6 +737,175 @@ def test_refine_publication_paper_sections_creates_inline_subsections_for_major_
     ]
     assert all(section["major_section_key"] == "methods" for section in methods_children)
     assert all(section["section_role"] == "subsection" for section in methods_children)
+
+
+def test_extract_structured_abstract_from_pubmed_merges_sentence_fragment_subsections(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_text_with_retry",
+        lambda **_: """
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <Article>
+        <Abstract>
+          <AbstractText Label="AIMS">Cardiovascular magnetic resonance is established as the reference standard.</AbstractText>
+          <AbstractText Label="METHODS AND RESULTS">Consecutive patients with known or suspected cardiac disease referred for clinical CMR were studied at 3-Tesla.</AbstractText>
+          <AbstractText Label="PARTICIPANTS">underwent short-axis standard SSFP and real-time cine imaging in a randomized order within the same scan.</AbstractText>
+          <AbstractText Label="CONCLUSION">Real-time cine imaging demonstrates good-excellent reproducibility.</AbstractText>
+        </Abstract>
+        <KeywordList>
+          <Keyword>CINE imaging</Keyword>
+        </KeywordList>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+</PubmedArticleSet>
+""",
+    )
+
+    _, sections, keywords = publication_console_service._extract_structured_abstract_from_pubmed(
+        "40308862"
+    )
+
+    assert [section["label"] for section in sections] == [
+        "Aims",
+        "Methods and results",
+        "Conclusion",
+    ]
+    assert (
+        sections[1]["content"]
+        == "Consecutive patients with known or suspected cardiac disease referred for "
+        "clinical CMR were studied at 3-Tesla. Participants underwent short-axis "
+        "standard SSFP and real-time cine imaging in a randomized order within the "
+        "same scan."
+    )
+    assert keywords == ["CINE imaging"]
+
+
+def test_structured_abstract_view_payload_ignores_stale_cached_parser_version() -> None:
+    abstract = (
+        "Objectives: Evaluate intervention. Methods: Cohort study. "
+        "Results: Improved outcomes."
+    )
+    source_hash = publication_console_service._structured_abstract_seed_hash(
+        abstract=abstract,
+        pmid="12345678",
+        doi="10.1000/test-abstract",
+        title="Structured abstract cache test",
+        year=2025,
+    )
+    row = PublicationStructuredAbstractCache(
+        owner_user_id="user-1",
+        publication_id="work-1",
+        payload_json={
+            "format": "structured",
+            "sections": [
+                {
+                    "key": "methods",
+                    "label": "Methods And Results",
+                    "content": "Stale cached abstract content.",
+                }
+            ],
+            "keywords": [],
+            "source_abstract": abstract,
+            "metadata": {
+                "parser_version": "publication_structured_abstract_v5",
+                "source_abstract_sha256": source_hash,
+                "generation_method": "pubmed",
+            },
+        },
+        source_abstract_sha256=source_hash,
+        parser_version="publication_structured_abstract_v5",
+        computed_at=datetime(2026, 3, 18, tzinfo=timezone.utc),
+        status="READY",
+        last_error=None,
+    )
+
+    payload, status, computed_at, last_error = (
+        publication_console_service._structured_abstract_view_payload(
+            row=row,
+            abstract=abstract,
+            pmid="12345678",
+            doi="10.1000/test-abstract",
+            title="Structured abstract cache test",
+            year=2025,
+        )
+    )
+
+    assert payload["metadata"]["parser_version"] == (
+        publication_console_service.STRUCTURED_ABSTRACT_CACHE_VERSION
+    )
+    assert payload["metadata"]["generation_method"] == "raw_fallback"
+    assert payload["source_abstract"] == abstract
+    assert status == "MISSING"
+    assert computed_at is None
+    assert last_error is None
+
+
+def test_refine_publication_paper_sections_does_not_resplit_structured_abstract_children() -> None:
+    sections = publication_console_service._build_publication_paper_sections(
+        structured_abstract_payload={
+            "sections": [
+                {
+                    "key": "introduction",
+                    "label": "AIMS",
+                    "content": "Cardiovascular magnetic resonance is established as the reference standard.",
+                },
+                {
+                    "key": "methods",
+                    "label": "METHODS AND RESULTS",
+                    "content": (
+                        "Consecutive patients with known or suspected cardiac disease "
+                        "referred for clinical CMR were studied at 3-Tesla. "
+                        "Participants underwent short-axis standard SSFP and real-time "
+                        "cine imaging in a randomized order within the same scan."
+                    ),
+                },
+                {
+                    "key": "conclusions",
+                    "label": "CONCLUSION",
+                    "content": (
+                        "Real-time cine imaging demonstrates good-excellent "
+                        "reproducibility."
+                    ),
+                },
+            ]
+        },
+        abstract=None,
+    )
+
+    refined_sections = publication_console_service._refine_publication_paper_sections(
+        sections,
+        journal="European Heart Journal - Imaging Methods and Practice",
+    )
+
+    abstract_section = next(
+        section for section in refined_sections if section["title"] == "Abstract"
+    )
+    abstract_children = [
+        section
+        for section in refined_sections
+        if section.get("parent_id") == abstract_section["id"]
+    ]
+    methods_section = next(
+        section for section in abstract_children if section["title"] == "Methods and results"
+    )
+
+    assert [section["title"] for section in abstract_children] == [
+        "Aims",
+        "Methods and results",
+        "Conclusion",
+    ]
+    assert "Participants underwent short-axis standard SSFP" in methods_section["content"]
+    assert not any(section["title"] == "Participants" for section in refined_sections)
+    assert not any(
+        str(section.get("parent_id") or "").strip()
+        == str(methods_section.get("id") or "").strip()
+        for section in refined_sections
+    )
 
 
 def test_refine_publication_paper_sections_dedupes_exact_repeated_leaf_sections() -> None:
@@ -1673,6 +1844,21 @@ def test_refresh_publication_paper_running_progress_advances_with_elapsed_time()
     )
 
 
+def test_apply_publication_paper_progress_state_uses_observed_runtime_for_eta() -> None:
+    started_at = datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+
+    payload = publication_console_service._apply_publication_paper_progress_state(
+        payload={"document": {"parser_status": "PARSING"}, "provenance": {}},
+        stage=publication_console_service.STRUCTURED_PAPER_PROGRESS_STAGE_PARSING_MANUSCRIPT,
+        parse_started_at=started_at,
+        stage_started_at=started_at,
+        now=started_at + timedelta(seconds=60),
+    )
+
+    assert int(payload["document"]["parse_progress_percent"]) < 40
+    assert int(payload["document"]["parse_estimated_seconds_remaining"]) >= 120
+
+
 def test_build_publication_paper_outline_adds_synthetic_main_text_wrappers() -> None:
     outline = publication_console_service._build_publication_paper_outline(
         publication={"title": "Outline paper"},
@@ -2168,6 +2354,1053 @@ def test_extract_structured_publication_assets_from_pmc_archive_content_returns_
     assert "LVFP" in str(tables[0]["structured_html"] or "")
     assert "publication-structured-table-notes" in str(
         tables[0]["structured_html"] or ""
+    )
+
+
+def test_extract_structured_publication_assets_from_pmc_archive_content_passes_abstract_context_to_table_grouping(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    archive_buffer = BytesIO()
+    with tarfile.open(fileobj=archive_buffer, mode="w:gz") as archive:
+        article_xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <article xmlns:xlink="http://www.w3.org/1999/xlink">
+          <front>
+            <article-meta>
+              <abstract>
+                <p>This study compares echocardiography and cardiovascular magnetic resonance in heart failure.</p>
+              </abstract>
+            </article-meta>
+          </front>
+          <body>
+            <table-wrap id="t1">
+              <label>Table 1</label>
+              <caption>
+                <title>Baseline findings</title>
+              </caption>
+              <table>
+                <tbody>
+                  <tr><td>Age (years)</td><td>79.9 +/- 5.1</td><td>72.1 +/- 6.8</td></tr>
+                  <tr><td>NT-proBNP (pg/mL)</td><td>6810.4 +/- 10299.1</td><td>1639.2 +/- 3731.1</td></tr>
+                </tbody>
+              </table>
+            </table-wrap>
+          </body>
+        </article>
+        """.encode("utf-8")
+        xml_info = tarfile.TarInfo("PMC0000001/article.nxml")
+        xml_info.size = len(article_xml)
+        archive.addfile(xml_info, BytesIO(article_xml))
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_canonicalize_docling_table_html",
+        lambda html_text, **kwargs: (
+            captured.update(kwargs) or "<table></table>"
+        ),
+    )
+
+    _figures, tables = (
+        publication_console_service._extract_structured_publication_assets_from_pmc_archive_content(
+            archive_buffer.getvalue()
+        )
+    )
+
+    assert len(tables) == 1
+    assert str(captured.get("abstract_context") or "").startswith(
+        "This study compares echocardiography"
+    )
+
+
+def test_publication_table_text_cleanup_repairs_symbols_and_units() -> None:
+    assert (
+        publication_console_service._publication_table_text_cleanup(
+            "Body Surface Area (m 2 )"
+        )
+        == "Body Surface Area (m\u00b2)"
+    )
+    assert (
+        publication_console_service._publication_table_text_cleanup("2.0 +/- 0.3")
+        == "2.0 \u00b1 0.3"
+    )
+    assert (
+        publication_console_service._publication_table_text_cleanup(
+            "Creatinine (umol/L)"
+        )
+        == "Creatinine (\u00b5mol/L)"
+    )
+    assert (
+        publication_console_service._publication_table_text_cleanup(
+            "eGFR (mL/min/1.73 m 2)"
+        )
+        == "eGFR (mL/min/1.73 m\u00b2)"
+    )
+
+
+def test_canonicalize_docling_table_html_preserves_section_rows_inside_table() -> None:
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td colspan="2">Demographics</td></tr>
+            <tr><td>Age (years)</td><td>61 ± 14</td></tr>
+            <tr><td colspan="2">Clinical indications for CMR</td></tr>
+            <tr><td>Volumetric assessment</td><td>77 (38%)</td></tr>
+            <tr><td>Viability assessment</td><td>24 (12%)</td></tr>
+            <tr><td colspan="2">Data are presented as mean ± SD or absolute value (%).</td></tr>
+          </tbody>
+        </table>
+        """
+    )
+
+    assert 'publication-structured-table-section-row' in html_text
+    assert '<thead>' in html_text
+    assert 'Characteristic' in html_text
+    assert 'Value' in html_text
+    assert 'Clinical indications for CMR' in html_text
+    assert (
+        html_text.index('Clinical indications for CMR')
+        < html_text.index('Volumetric assessment')
+    )
+    assert (
+        html_text.index('Clinical indications for CMR')
+        < html_text.index('publication-structured-table-notes')
+    )
+    assert 'Conventions' in html_text
+    assert 'Data are presented as mean ± SD or absolute value (%).' in html_text
+
+
+def test_canonicalize_docling_table_html_does_not_add_synthetic_header_to_wide_tables() -> None:
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td></td><td>Real-time</td><td>Standard SSFP</td><td>P-value</td></tr>
+            <tr><td>EDV (mL)</td><td>170.5 ± 51.0</td><td>168.7 ± 51.7</td><td>0.069</td></tr>
+            <tr><td>ESV (mL)</td><td>85.3 ± 44.1</td><td>81.8 ± 42.4</td><td>&lt;0.001</td></tr>
+          </tbody>
+        </table>
+        """
+    )
+
+    assert 'Characteristic' not in html_text
+    assert 'Value' not in html_text
+
+
+def test_canonicalize_docling_table_html_infers_repeated_family_groups_without_llm(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: False,
+    )
+
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>NYHA class I</td><td>2 (15%)</td></tr>
+            <tr><td>NYHA class II</td><td>7 (54%)</td></tr>
+            <tr><td>NYHA class III</td><td>2 (15%)</td></tr>
+            <tr><td>NYHA class IV</td><td>2 (15%)</td></tr>
+            <tr><td>CCS class I</td><td>5 (38%)</td></tr>
+            <tr><td>CCS class II</td><td>3 (23%)</td></tr>
+            <tr><td>CCS class III</td><td>1 (8%)</td></tr>
+            <tr><td>CCS class IV</td><td>1 (8%)</td></tr>
+          </tbody>
+        </table>
+        """
+    )
+
+    assert html_text.count('publication-structured-table-section-row') >= 2
+    assert 'NYHA class' in html_text
+    assert 'CCS class' in html_text
+    assert html_text.index('>NYHA class<') < html_text.index('NYHA class I')
+    assert html_text.index('>CCS class<') < html_text.index('CCS class I')
+
+
+def test_canonicalize_docling_table_html_does_not_call_llm_when_explicit_sections_exist(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: True,
+    )
+
+    def _unexpected_response(**_kwargs):
+        raise AssertionError("LLM grouping should not run for explicitly sectioned tables.")
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        _unexpected_response,
+    )
+
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td colspan="2">Demographics</td></tr>
+            <tr><td>Age (years)</td><td>61 ± 14</td></tr>
+            <tr><td>Male</td><td>103 (51%)</td></tr>
+            <tr><td colspan="2">Clinical indications</td></tr>
+            <tr><td>Volumetric assessment</td><td>77 (38%)</td></tr>
+            <tr><td>Viability assessment</td><td>24 (12%)</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Table 1",
+        table_caption="Baseline characteristics and indications.",
+    )
+
+    assert 'Demographics' in html_text
+    assert 'Clinical indications' in html_text
+
+
+def test_canonicalize_docling_table_html_merges_llm_groups_with_deterministic_families(
+    monkeypatch,
+) -> None:
+    class _FakeResponse:
+        output_text = """
+        {
+          "groups": [
+                {
+                  "label": "Baseline characteristics",
+                  "start_row": 1,
+                  "end_row": 4,
+                  "confidence": 0.93
+                },
+                {
+                  "label": "Laboratory Measurements",
+                  "start_row": 16,
+                  "end_row": 20,
+                  "confidence": 0.91
+                }
+          ]
+        }
+        """
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_infer_generic_row_groups",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        lambda **_kwargs: _FakeResponse(),
+    )
+
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>N</td><td>13</td><td>17</td></tr>
+            <tr><td>Age (years)</td><td>79.9 ± 5.1</td><td>72.1 ± 6.8</td></tr>
+            <tr><td>Height (cm)</td><td>170.9 ± 12.9</td><td>173.2 ± 10.0</td></tr>
+            <tr><td>Weight (kg)</td><td>73.9 ± 20.9</td><td>89.7 ± 22.8</td></tr>
+            <tr><td>Male N (%)</td><td>9 (69)</td><td>11 (65)</td></tr>
+            <tr><td>NYHA class I</td><td>2 (15%)</td><td>5 (29%)</td></tr>
+            <tr><td>NYHA class II</td><td>7 (54%)</td><td>5 (29%)</td></tr>
+            <tr><td>NYHA class III</td><td>2 (15%)</td><td>6 (35%)</td></tr>
+            <tr><td>NYHA class IV</td><td>2 (15%)</td><td>1 (6%)</td></tr>
+            <tr><td>CCS class I</td><td>5 (38%)</td><td>10 (59%)</td></tr>
+            <tr><td>CCS class II</td><td>3 (23%)</td><td>3 (18%)</td></tr>
+            <tr><td>CCS class III</td><td>1 (8%)</td><td>1 (6%)</td></tr>
+            <tr><td>CCS class IV</td><td>1 (8%)</td><td>2 (12%)</td></tr>
+            <tr><td>Hypertension N (%)</td><td>9 (69)</td><td>11 (65)</td></tr>
+            <tr><td>Diabetes mellitus N (%)</td><td>11 (85)</td><td>11 (65)</td></tr>
+            <tr><td>Smoking N (%)</td><td>10 (77)</td><td>12 (71)</td></tr>
+            <tr><td>Haemoglobin (g/L)</td><td>154.5 ± 76.8</td><td>133.5 ± 17.9</td></tr>
+            <tr><td>NT-proBNP (pg/mL)</td><td>6810.4 ± 10299.1</td><td>1639.2 ± 3731.1</td></tr>
+            <tr><td>Creatinine (umol/L)</td><td>107.8 ± 36.3</td><td>85.8 ± 24.0</td></tr>
+            <tr><td>Urea (mmol/L)</td><td>9.3 ± 5.9</td><td>6.9 ± 4.4</td></tr>
+            <tr><td>eGFR (mL/min/1.73 m2)</td><td>56.3 ± 16.6</td><td>72.2 ± 18.6</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Study demographics and results of baseline investigations for patients",
+        table_caption="Baseline data stratified by intervention recommendation.",
+    )
+
+    assert 'Baseline characteristics' in html_text
+    assert 'NYHA class' in html_text
+    assert 'CCS class' in html_text
+    assert 'Laboratory measurements' in html_text
+    assert 'publication-structured-table-block-preamble' in html_text
+    assert html_text.index('>N<') < html_text.index('>Baseline characteristics<')
+    assert html_text.index('>Baseline characteristics<') < html_text.index('Age (years)')
+    assert html_text.index('>NYHA class<') < html_text.index('NYHA class I')
+    assert html_text.index('>Laboratory measurements<') < html_text.index('Haemoglobin (g/L)')
+
+
+def test_canonicalize_docling_table_html_falls_back_to_generic_groups_after_llm_failure(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: True,
+    )
+
+    def _raise_response(**_kwargs):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        _raise_response,
+    )
+
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>N</td><td>13</td><td>17</td></tr>
+            <tr><td>Age (years)</td><td>79.9 ± 5.1</td><td>72.1 ± 6.8</td></tr>
+            <tr><td>Height (cm)</td><td>170.9 ± 12.9</td><td>173.2 ± 10.0</td></tr>
+            <tr><td>Weight (kg)</td><td>73.9 ± 20.9</td><td>89.7 ± 22.8</td></tr>
+            <tr><td>Male N (%)</td><td>9 (69)</td><td>11 (65)</td></tr>
+            <tr><td>Hypertension N (%)</td><td>9 (69)</td><td>11 (65)</td></tr>
+            <tr><td>Diabetes mellitus N (%)</td><td>11 (85)</td><td>11 (65)</td></tr>
+            <tr><td>Smoking N (%)</td><td>10 (77)</td><td>12 (71)</td></tr>
+            <tr><td>Haemoglobin (g/L)</td><td>154.5 ± 76.8</td><td>133.5 ± 17.9</td></tr>
+            <tr><td>Creatinine (umol/L)</td><td>107.8 ± 36.3</td><td>85.8 ± 24.0</td></tr>
+            <tr><td>Urea (mmol/L)</td><td>9.3 ± 5.9</td><td>6.9 ± 4.4</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Baseline characteristics",
+        table_caption="Population characteristics, comorbidities, and blood results.",
+    )
+
+    assert 'publication-structured-table-block-preamble' in html_text
+    assert 'Characteristics' in html_text
+    assert 'Categorical variables' in html_text
+    assert 'Measurements' in html_text
+    assert html_text.index('>N<') < html_text.index('>Characteristics<')
+    assert html_text.index('>Categorical variables<') < html_text.index('Hypertension N (%)')
+    assert html_text.index('>Measurements<') < html_text.index('Haemoglobin (g/L)')
+
+
+def test_canonicalize_docling_table_html_separates_residual_rows_into_ungrouped_block() -> None:
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>Hypertension (yes)</td><td>81 (42%)</td><td>29 (43%)</td></tr>
+            <tr><td>Diabetes mellitus (yes)</td><td>24 (12%)</td><td>13 (19%)</td></tr>
+            <tr><td>Current smoker (yes)</td><td>19 (10%)</td><td>2 (3%)</td></tr>
+            <tr><td>Heart rate (beats per minute)</td><td>65.1 ± 13.0</td><td>64.8 ± 11.6</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Baseline characteristics",
+        table_caption="Comorbidities and physiological measurements.",
+    )
+
+    assert 'Categorical variables' in html_text
+    assert 'publication-structured-table-block-ungrouped' in html_text
+    assert html_text.index('>Categorical variables<') < html_text.index('Current smoker (yes)')
+    assert html_text.index('Current smoker (yes)') < html_text.index('publication-structured-table-block-ungrouped')
+    assert html_text.index('publication-structured-table-block-ungrouped') < html_text.index('Heart rate (beats per minute)')
+
+
+def _deprecated_test_canonicalize_docling_table_html_infers_medical_measurement_subgroups(
+    monkeypatch,
+) -> None:
+    class _FakeResponse:
+        output_text = """
+        {
+          "groups": [
+            {
+              "label": "Participant characteristics",
+              "start_row": 1,
+              "end_row": 3,
+              "confidence": 0.95
+            },
+            {
+              "label": "Renal function",
+              "start_row": 4,
+              "end_row": 6,
+              "confidence": 0.91
+            },
+            {
+              "label": "Cardiac biomarkers",
+              "start_row": 7,
+              "end_row": 8,
+              "confidence": 0.89
+            }
+          ]
+        }
+        """
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        lambda **_kwargs: _FakeResponse(),
+    )
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>Age [years]</td><td>56.3 ± 16.3</td><td>59.9 ± 15.2</td></tr>
+            <tr><td>Height [cm]</td><td>179.7 ± 26.2</td><td>163.1 ± 6.1</td></tr>
+            <tr><td>Weight [kg]</td><td>90.5 ± 16.8</td><td>79.4 ± 19.4</td></tr>
+            <tr><td>Estimated Glomerular Filtration Rate [mL/min/1.73 m2]</td><td>80.6 ± 13.0</td><td>76.2 ± 17.3</td></tr>
+            <tr><td>Creatinine [mg/dL]</td><td>88.6 ± 25.6</td><td>80.9 ± 68.1</td></tr>
+            <tr><td>Haemoglobin [g/dL]</td><td>145.6 ± 14.2</td><td>135.6 ± 13.6</td></tr>
+            <tr><td>N-Terminal Pro-B-Type Natriuretic Peptide [pg/mL]</td><td>1080.2 ± 2972.0</td><td>2526.1 ± 7281.0</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Patient demographics stratified by sex.",
+        table_caption="Demographic, renal, and biomarker comparisons.",
+    )
+
+    assert 'Participant characteristics' in html_text
+    assert 'Renal function' in html_text
+    assert 'Blood biomarkers' in html_text
+    assert html_text.index('>Participant characteristics<') < html_text.index('Age [years]')
+    assert html_text.index('>Renal function<') < html_text.index('Estimated Glomerular Filtration Rate [mL/min/1.73 m2]')
+    assert html_text.index('>Blood biomarkers<') < html_text.index('Haemoglobin [g/dL]')
+
+
+def _legacy_test_canonicalize_docling_table_html_infers_medical_measurement_subgroups(
+    monkeypatch,
+) -> None:
+    class _FakeResponse:
+        output_text = """
+        {
+          "groups": [
+            {
+              "label": "Participant characteristics",
+              "start_row": 1,
+              "end_row": 3,
+              "confidence": 0.95
+            },
+            {
+              "label": "Renal function",
+              "start_row": 4,
+              "end_row": 6,
+              "confidence": 0.91
+            },
+            {
+              "label": "Cardiac biomarkers",
+              "start_row": 7,
+              "end_row": 8,
+              "confidence": 0.89
+            }
+          ]
+        }
+        """
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        lambda **_kwargs: _FakeResponse(),
+    )
+
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>Age [years]</td><td>56.3 ± 16.3</td><td>59.9 ± 15.2</td></tr>
+            <tr><td>Height [cm]</td><td>179.7 ± 26.2</td><td>163.1 ± 6.1</td></tr>
+            <tr><td>Weight [kg]</td><td>90.5 ± 16.8</td><td>79.4 ± 19.4</td></tr>
+            <tr><td>Estimated Glomerular Filtration Rate [mL/min/1.73 m2]</td><td>80.6 ± 13.0</td><td>76.2 ± 17.3</td></tr>
+            <tr><td>Creatinine [mg/dL]</td><td>88.6 ± 25.6</td><td>80.9 ± 68.1</td></tr>
+            <tr><td>Urea [mmol/L]</td><td>9.3 ± 5.9</td><td>6.9 ± 4.4</td></tr>
+            <tr><td>NT-proBNP [pg/mL]</td><td>1080.2 ± 2972.0</td><td>2526.1 ± 7281.0</td></tr>
+            <tr><td>Troponin [ng/L]</td><td>19.4 ± 4.0</td><td>28.1 ± 6.2</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Patient demographics stratified by sex.",
+        table_caption="Demographic, renal, and cardiac biomarker comparisons.",
+    )
+
+    assert 'Participant characteristics' in html_text
+    assert 'Renal function' in html_text
+    assert 'Cardiac biomarkers' in html_text
+    assert html_text.index('>Participant characteristics<') < html_text.index('Age [years]')
+    assert html_text.index('>Renal function<') < html_text.index('Estimated Glomerular Filtration Rate [mL/min/1.73 m2]')
+    assert html_text.index('>Cardiac biomarkers<') < html_text.index('NT-proBNP [pg/mL]')
+
+
+def test_canonicalize_docling_table_html_infers_prefix_family_groups_for_cmr_measurements() -> None:
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>Left Ventricular Global Longitudinal Strain (%)</td><td>-0.2 ± 0.05</td><td>-0.4 ± 2.0</td></tr>
+            <tr><td>Left Ventricular End-Diastolic Volume (mL)</td><td>155.1 ± 33.7</td><td>155.9 ± 38.2</td></tr>
+            <tr><td>Left Ventricular End-Systolic Volume (mL)</td><td>59.8 ± 18.9</td><td>61.0 ± 22.8</td></tr>
+            <tr><td>Right Ventricular End-Diastolic Volume (mL)</td><td>168.3 ± 41.4</td><td>164.9 ± 48.5</td></tr>
+            <tr><td>Right Ventricular End-Systolic Volume (mL)</td><td>74.4 ± 24.3</td><td>71.9 ± 31.2</td></tr>
+            <tr><td>Extracellular Volume Fraction (%)</td><td>25.4 ± 5.5</td><td>26.1 ± 4.4</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Cardiovascular magnetic resonance findings for the whole cohort",
+        table_caption="Left and right ventricular findings with tissue characterization.",
+    )
+
+    assert 'Left ventricular' in html_text
+    assert 'Right ventricular' in html_text
+    assert html_text.index('>Left ventricular<') < html_text.index('Left Ventricular Global Longitudinal Strain (%)')
+    assert html_text.index('>Right ventricular<') < html_text.index('Right Ventricular End-Diastolic Volume (mL)')
+    assert 'publication-structured-table-block-ungrouped' in html_text
+    assert html_text.index('publication-structured-table-block-ungrouped') < html_text.index('Extracellular Volume Fraction (%)')
+
+
+def _legacy_test_canonicalize_docling_table_html_sends_full_table_and_abstract_context_to_llm(
+    monkeypatch,
+) -> None:
+    captured_input: dict[str, object] = {}
+
+    class _FakeResponse:
+        output_text = '{"groups": []}'
+
+    def _capture_response(**kwargs):
+        captured_input.update(kwargs)
+        return _FakeResponse()
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_min_rows",
+        lambda: 4,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        _capture_response,
+    )
+
+    publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <thead>
+            <tr><th>Variable</th><th>Echo</th><th>CMR</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>N</td><td>13</td><td>17</td></tr>
+            <tr><td>Age (years)</td><td>79.9 +/- 5.1</td><td>72.1 +/- 6.8</td></tr>
+            <tr><td>Height (cm)</td><td>170.9 +/- 12.9</td><td>173.2 +/- 10.0</td></tr>
+            <tr><td>Weight (kg)</td><td>73.9 +/- 20.9</td><td>89.7 +/- 22.8</td></tr>
+            <tr><td>NT-proBNP (pg/mL)</td><td>6810.4 +/- 10299.1</td><td>1639.2 +/- 3731.1</td></tr>
+            <tr><td>Troponin (ng/L)</td><td>19.4 +/- 4.0</td><td>28.1 +/- 6.2</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Baseline investigations",
+        table_caption="Comparison of baseline echo and CMR findings.",
+        abstract_context=(
+            "This study compares echocardiography and cardiovascular magnetic "
+            "resonance in patients with suspected heart failure."
+        ),
+    )
+
+    messages = list(captured_input.get("input") or [])
+    payload = json.loads(str(messages[1]["content"]))
+
+    assert payload["paper_abstract"].startswith("This study compares echocardiography")
+    assert payload["column_headers"] == ["Variable", "Echo", "CMR"]
+    assert payload["preamble_rows"][0]["cells"] == ["N", "13", "17"]
+    assert payload["groupable_rows"][0]["cells"] == [
+        "Age (years)",
+        "79.9 +/- 5.1",
+        "72.1 +/- 6.8",
+    ]
+    assert payload["groupable_rows"][-1]["cells"][0] == "Troponin (ng/L)"
+
+
+def test_canonicalize_docling_table_html_infers_medical_measurement_subgroups(
+    monkeypatch,
+) -> None:
+    class _FakeResponse:
+        output_text = """
+        {
+          "groups": [
+            {
+              "label": "Participant characteristics",
+              "start_row": 1,
+              "end_row": 3,
+              "confidence": 0.95
+            },
+            {
+              "label": "Renal function",
+              "start_row": 4,
+              "end_row": 6,
+              "confidence": 0.91
+            },
+            {
+              "label": "Cardiac biomarkers",
+              "start_row": 7,
+              "end_row": 8,
+              "confidence": 0.89
+            }
+          ]
+        }
+        """
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        lambda **_kwargs: _FakeResponse(),
+    )
+
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>Age [years]</td><td>56.3 Â± 16.3</td><td>59.9 Â± 15.2</td></tr>
+            <tr><td>Height [cm]</td><td>179.7 Â± 26.2</td><td>163.1 Â± 6.1</td></tr>
+            <tr><td>Weight [kg]</td><td>90.5 Â± 16.8</td><td>79.4 Â± 19.4</td></tr>
+            <tr><td>Estimated Glomerular Filtration Rate [mL/min/1.73 m2]</td><td>80.6 Â± 13.0</td><td>76.2 Â± 17.3</td></tr>
+            <tr><td>Creatinine [mg/dL]</td><td>88.6 Â± 25.6</td><td>80.9 Â± 68.1</td></tr>
+            <tr><td>Urea [mmol/L]</td><td>9.3 Â± 5.9</td><td>6.9 Â± 4.4</td></tr>
+            <tr><td>NT-proBNP [pg/mL]</td><td>1080.2 Â± 2972.0</td><td>2526.1 Â± 7281.0</td></tr>
+            <tr><td>Troponin [ng/L]</td><td>19.4 Â± 4.0</td><td>28.1 Â± 6.2</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Patient demographics stratified by sex.",
+        table_caption="Demographic, renal, and cardiac biomarker comparisons.",
+    )
+
+    assert 'Participant characteristics' in html_text
+    assert 'Renal function' in html_text
+    assert 'Cardiac biomarkers' in html_text
+    assert html_text.index('>Participant characteristics<') < html_text.index('Age [years]')
+    assert html_text.index('>Renal function<') < html_text.index(
+        'Estimated Glomerular Filtration Rate [mL/min/1.73 m²]'
+    )
+    assert html_text.index('>Cardiac biomarkers<') < html_text.index('NT-proBNP [pg/mL]')
+
+
+def _legacy_test_render_publication_structured_table_notes_html_groups_note_kinds() -> None:
+    html_text = publication_console_service._render_publication_structured_table_notes_html(
+        [
+            'Data are presented as mean ± SD or absolute value (%).',
+            (
+                'CI, confidence interval; EDV, end-diastolic volume; '
+                'WMSi, wall motion score index. '
+                'Data compared using paired student t-test.'
+            ),
+            'a Compared with baseline scan.',
+        ]
+    )
+
+    assert 'publication-structured-table-note-group' in html_text
+    assert 'Conventions' in html_text
+    assert 'Abbreviations' in html_text
+    assert 'Notes' in html_text
+    assert (
+        'CI, confidence interval; EDV, end-diastolic volume; '
+        'WMSi, wall motion score index.'
+    ) in html_text
+    assert 'Data compared using paired student t-test.' in html_text
+    assert 'Compared with baseline scan.' in html_text
+
+
+def test_canonicalize_docling_table_html_preserves_section_rows_inside_table() -> None:
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td colspan="2">Demographics</td></tr>
+            <tr><td>Age (years)</td><td>61 ± 14</td></tr>
+            <tr><td colspan="2">Clinical indications for CMR</td></tr>
+            <tr><td>Volumetric assessment</td><td>77 (38%)</td></tr>
+            <tr><td>Viability assessment</td><td>24 (12%)</td></tr>
+            <tr><td colspan="2">Data are presented as mean ± SD or absolute value (%).</td></tr>
+          </tbody>
+        </table>
+        """
+    )
+
+    assert 'publication-structured-table-section-row' in html_text
+    assert '<thead>' in html_text
+    assert 'Characteristic' in html_text
+    assert 'Value' in html_text
+    assert 'Clinical indications for CMR' in html_text
+    assert (
+        html_text.index('Clinical indications for CMR')
+        < html_text.index('Volumetric assessment')
+    )
+    assert (
+        html_text.index('Clinical indications for CMR')
+        < html_text.index('publication-structured-table-notes')
+    )
+    assert 'Conventions' in html_text
+    assert 'Data are presented as mean ± SD or absolute value (%).' in html_text
+
+
+def _legacy_test_canonicalize_docling_table_html_infers_shifted_prefix_family_groups() -> None:
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>Early Diastolic Mitral Inflow Velocity (cm/s)</td><td>0.9 Â± 2.6</td><td>2.0 Â± 9.4</td></tr>
+            <tr><td>Late Diastolic Mitral Inflow Velocity (cm/s)</td><td>1.6 Â± 9.0</td><td>3.3 Â± 17.6</td></tr>
+            <tr><td>Tricuspid Regurgitation Velocity (m/s)</td><td>2.4 Â± 0.5</td><td>2.5 Â± 0.6</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Echocardiography findings in the study",
+        table_caption="Mitral inflow and related velocity measurements.",
+    )
+
+    assert 'Mitral Inflow' in html_text
+    assert html_text.index('>Mitral Inflow<') < html_text.index(
+        'Early Diastolic Mitral Inflow Velocity (cm/s)'
+    )
+    assert html_text.index('>Mitral Inflow<') < html_text.index(
+        'Late Diastolic Mitral Inflow Velocity (cm/s)'
+    )
+
+
+def test_canonicalize_docling_table_html_filters_repeated_generic_llm_groups(
+    monkeypatch,
+) -> None:
+    class _FakeResponse:
+        output_text = """
+        {
+          "groups": [
+            {
+              "label": "Physiological Measurements",
+              "start_row": 1,
+              "end_row": 2,
+              "confidence": 0.91
+            },
+            {
+              "label": "Physiological Measurements",
+              "start_row": 3,
+              "end_row": 4,
+              "confidence": 0.90
+            },
+            {
+              "label": "Measurements",
+              "start_row": 5,
+              "end_row": 6,
+              "confidence": 0.88
+            }
+          ]
+        }
+        """
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_infer_generic_row_groups",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        lambda **_kwargs: _FakeResponse(),
+    )
+
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>Left Ventricular End-Diastolic Volume (mL)</td><td>155.1 Â± 33.7</td><td>155.9 Â± 38.2</td></tr>
+            <tr><td>Left Ventricular End-Systolic Volume (mL)</td><td>59.8 Â± 18.9</td><td>61.0 Â± 22.8</td></tr>
+            <tr><td>Right Ventricular End-Diastolic Volume (mL)</td><td>168.3 Â± 41.4</td><td>164.9 Â± 48.5</td></tr>
+            <tr><td>Right Ventricular End-Systolic Volume (mL)</td><td>74.4 Â± 24.3</td><td>71.9 Â± 31.2</td></tr>
+            <tr><td>Myocardial Native T1 Relaxation Time (ms)</td><td>1014.2 Â± 66.4</td><td>1026.0 Â± 54.0</td></tr>
+            <tr><td>Extracellular Volume Fraction (%)</td><td>25.4 Â± 5.5</td><td>26.1 Â± 4.4</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Cardiovascular magnetic resonance findings for the whole cohort",
+        table_caption="Left and right ventricular findings with tissue characterization.",
+    )
+
+    assert 'Physiological measurements' not in html_text
+    assert '>Measurements<' not in html_text
+    assert 'Left ventricular' in html_text
+    assert 'Right ventricular' in html_text
+
+
+def test_canonicalize_docling_table_html_skips_grouping_for_low_fidelity_complex_tables(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: True,
+    )
+
+    def _unexpected_response(**_kwargs):
+        raise AssertionError("LLM grouping should not run for low-fidelity tables.")
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        _unexpected_response,
+    )
+
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>Automated peak trans-mitral velocity tracking against manual tracing with agreement analysis and subgroup comparison</td><td>0.92</td><td>0.88</td><td>0.04</td></tr>
+            <tr><td>Peak trans-mitral velocity tracking with retrospective quality review, adjudication outcomes, and discordant-case follow-up</td><td>0.89</td><td>0.83</td><td>0.06</td></tr>
+            <tr><td>Prospective workflow timing, operator adjudication, repeat analysis burden, and downstream interpretation effects</td><td>12.1</td><td>16.4</td><td>0.03</td></tr>
+            <tr><td>Composite diagnostic agreement, fallback tracing usage, and error-category distribution across study phases</td><td>81%</td><td>74%</td><td>0.12</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Automated peak trans-mitral velocity tracking",
+        table_caption="Complex composite comparison table with merged row labels.",
+    )
+
+    assert 'publication-structured-table-section-row' not in html_text
+    assert 'Characteristic' not in html_text
+    assert (
+        'Automated peak trans-mitral velocity tracking against manual tracing'
+        in html_text
+    )
+
+
+def test_canonicalize_docling_table_html_sends_full_table_and_abstract_context_to_llm(
+    monkeypatch,
+) -> None:
+    captured_input: dict[str, object] = {}
+
+    class _FakeResponse:
+        output_text = '{"groups": []}'
+
+    def _capture_response(**kwargs):
+        captured_input.update(kwargs)
+        return _FakeResponse()
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_grouping_llm_min_rows",
+        lambda: 4,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        _capture_response,
+    )
+
+    publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <thead>
+            <tr><th>Variable</th><th>Echo</th><th>CMR</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>N</td><td>13</td><td>17</td></tr>
+            <tr><td>Age (years)</td><td>79.9 +/- 5.1</td><td>72.1 +/- 6.8</td></tr>
+            <tr><td>Height (cm)</td><td>170.9 +/- 12.9</td><td>173.2 +/- 10.0</td></tr>
+            <tr><td>Weight (kg)</td><td>73.9 +/- 20.9</td><td>89.7 +/- 22.8</td></tr>
+            <tr><td>NT-proBNP (pg/mL)</td><td>6810.4 +/- 10299.1</td><td>1639.2 +/- 3731.1</td></tr>
+            <tr><td>Troponin (ng/L)</td><td>19.4 +/- 4.0</td><td>28.1 +/- 6.2</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Baseline investigations",
+        table_caption="Comparison of baseline echo and CMR findings.",
+        abstract_context=(
+            "This study compares echocardiography and cardiovascular magnetic "
+            "resonance in patients with suspected heart failure."
+        ),
+    )
+
+    messages = list(captured_input.get("input") or [])
+    payload = json.loads(str(messages[1]["content"]))
+
+    assert payload["paper_abstract"].startswith("This study compares echocardiography")
+    assert payload["column_headers"] == ["Variable", "Echo", "CMR"]
+    assert payload["preamble_rows"][0]["cells"] == ["N", "13", "17"]
+    assert payload["groupable_rows"][0]["cells"] == [
+        "Age (years)",
+        "79.9 ± 5.1",
+        "72.1 ± 6.8",
+    ]
+    assert payload["groupable_rows"][-1]["cells"][0] == "Troponin (ng/L)"
+
+
+def test_render_publication_structured_table_notes_html_groups_note_kinds() -> None:
+    html_text = publication_console_service._render_publication_structured_table_notes_html(
+        [
+            'Data are presented as mean ± SD or absolute value (%).',
+            (
+                'CI, confidence interval; EDV, end-diastolic volume; '
+                'WMSi, wall motion score index. '
+                'Data compared using paired student t-test.'
+            ),
+            'a Compared with baseline scan.',
+        ]
+    )
+
+    assert 'publication-structured-table-note-group' in html_text
+    assert 'Conventions' in html_text
+    assert 'Glossary' in html_text
+    assert 'Specific notes' in html_text
+    assert 'Data are presented as mean ± SD or absolute value (%).' in html_text
+    assert (
+        'CI, confidence interval; EDV, end-diastolic volume; '
+        'WMSi, wall motion score index.'
+    ) in html_text
+    assert 'Data compared using paired student t-test.' in html_text
+    assert 'Compared with baseline scan.' in html_text
+
+
+def test_render_publication_structured_table_notes_html_splits_mixed_footer_blob() -> None:
+    html_text = publication_console_service._render_publication_structured_table_notes_html(
+        [
+            (
+                'Abbreviation: LVFP, left ventricular filling pressure; '
+                'a Median (interquartile range). '
+                'b One-way ANOVA. '
+                'c At least three times a week.'
+            )
+        ]
+    )
+
+    assert 'Glossary' in html_text
+    assert 'Conventions' in html_text
+    assert 'Specific notes' in html_text
+    assert 'LVFP, left ventricular filling pressure.' in html_text
+    assert 'a Median (interquartile range); b One-way ANOVA.' in html_text
+    assert 'c At least three times a week.' in html_text
+
+
+def test_render_publication_structured_table_notes_html_promotes_singleton_glossary_entries() -> None:
+    html_text = publication_console_service._render_publication_structured_table_notes_html(
+        [
+            'IQR Interquartile range',
+            'GTN, glyceryl trinitrate.',
+            'CoV Coefficient of variation, ρ Spearman rank correlation coefficient.',
+        ]
+    )
+
+    assert 'Glossary' in html_text
+    assert 'IQR, Interquartile range.' in html_text
+    assert 'GTN, glyceryl trinitrate.' in html_text
+    assert (
+        'CoV, Coefficient of variation; ρ, Spearman rank correlation coefficient.'
+    ) in html_text
+    assert 'Conventions' not in html_text
+    assert 'Specific notes' not in html_text
+
+
+def test_render_publication_structured_table_notes_html_passes_context_to_llm_when_needed(
+    monkeypatch,
+) -> None:
+    captured_input: dict[str, object] = {}
+
+    class _FakeResponse:
+        output_text = (
+            '{"items": ['
+            '{"chunk_index": 1, "category": "glossary", "confidence": 0.93}, '
+            '{"chunk_index": 2, "category": "convention", "confidence": 0.91}'
+            ']}'
+        )
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_publication_table_footer_chunks_need_llm",
+        lambda *_args, **_kwargs: True,
+    )
+
+    def _capture_response(**kwargs):  # noqa: ANN003
+        captured_input.update(kwargs)
+        return _FakeResponse()
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "create_response",
+        _capture_response,
+    )
+
+    html_text = publication_console_service._render_publication_structured_table_notes_html(
+        ['IQR Interquartile range. Data compared using paired student t-test.'],
+        table_title="Baseline characteristics",
+        table_caption="Comparison of two cohorts.",
+        abstract_context="This study compares two cohorts using cardiac imaging and biomarkers.",
+        column_headers=["Variable", "Group A", "Group B", "P value"],
+    )
+
+    messages = list(captured_input.get("input") or [])
+    payload = json.loads(str(messages[1]["content"]))
+
+    assert payload["paper_abstract"].startswith("This study compares two cohorts")
+    assert payload["table_title"] == "Baseline characteristics"
+    assert payload["column_headers"] == ["Variable", "Group A", "Group B", "P value"]
+    assert payload["candidate_chunks"] == [
+        "IQR Interquartile range.",
+        "Data compared using paired student t-test.",
+    ]
+    assert 'Glossary' in html_text
+    assert 'Conventions' in html_text
+
+
+def test_canonicalize_docling_table_html_infers_shifted_prefix_family_groups() -> None:
+    html_text = publication_console_service._canonicalize_docling_table_html(
+        """
+        <table>
+          <tbody>
+            <tr><td>Early Diastolic Mitral Inflow Velocity (cm/s)</td><td>0.9 Â± 2.6</td><td>2.0 Â± 9.4</td></tr>
+            <tr><td>Late Diastolic Mitral Inflow Velocity (cm/s)</td><td>1.6 Â± 9.0</td><td>3.3 Â± 17.6</td></tr>
+            <tr><td>Mitral Inflow Deceleration Time (ms)</td><td>182 Â± 36</td><td>196 Â± 41</td></tr>
+            <tr><td>Tricuspid Regurgitation Velocity (m/s)</td><td>2.4 Â± 0.5</td><td>2.5 Â± 0.6</td></tr>
+          </tbody>
+        </table>
+        """,
+        table_title="Echocardiography findings in the study",
+        table_caption="Mitral inflow and related velocity measurements.",
+    )
+
+    assert 'Mitral inflow' in html_text
+    assert html_text.index('>Mitral inflow<') < html_text.index(
+        'Early Diastolic Mitral Inflow Velocity (cm/s)'
+    )
+    assert html_text.index('>Mitral inflow<') < html_text.index(
+        'Mitral Inflow Deceleration Time (ms)'
     )
 
 
@@ -2848,7 +4081,7 @@ def test_extract_structured_publication_paper_with_pmc_bioc_overlays_grobid_inli
     )
     monkeypatch.setattr(
         publication_console_service,
-        "_extract_structured_publication_paper_with_grobid",
+        "_extract_structured_publication_citation_overlay_with_grobid",
         lambda **_kwargs: {
             "sections": [
                 {
@@ -2960,6 +4193,892 @@ def test_extract_structured_publication_paper_with_pmc_bioc_overlays_grobid_inli
     assert payload["generation_method"] == "pmc_bioc_fulltext_v1+grobid_citation_overlay_v1"
 
 
+def test_overlay_grobid_inline_references_matches_numbered_section_headings() -> None:
+    base_intro = (
+        "Prior work informs current practice. "
+        "Further evidence is needed for complex imaging pathways."
+    )
+    payload = publication_console_service._overlay_grobid_inline_references_onto_structured_paper(
+        parsed_payload={
+            "sections": [
+                {
+                    "id": "paper-section-introduction",
+                    "title": "Introduction",
+                    "raw_label": "Introduction",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "content": base_intro,
+                    "word_count": 12,
+                    "paragraph_count": 1,
+                }
+            ],
+            "references": [
+                {"id": "paper-reference-1", "label": "1", "raw_text": "Reference one."}
+            ],
+            "generation_method": "pmc_bioc_fulltext_v1",
+        },
+        grobid_payload={
+            "sections": [
+                {
+                    "id": "paper-section-1-introduction",
+                    "title": "1. Introduction",
+                    "raw_label": "1. Introduction",
+                    "content": (
+                        "Prior work {{cite:b1}} informs current practice. "
+                        "Further evidence is needed for complex imaging pathways."
+                    ),
+                }
+            ],
+            "references": [
+                {
+                    "id": "paper-reference-1",
+                    "xml_id": "b1",
+                    "label": "1",
+                    "raw_text": "Reference one.",
+                }
+            ],
+        },
+    )
+
+    assert "{{cite:b1}}" in payload["sections"][0]["content"]
+    assert payload["reference_id_map"] == {"b1": "paper-reference-1"}
+    assert payload["generation_method"] == "pmc_bioc_fulltext_v1+grobid_citation_overlay_v1"
+
+
+def test_overlay_grobid_inline_references_uses_paragraph_matches_when_section_score_is_low() -> None:
+    base_intro = (
+        "Aortic stenosis is common in older adults and accurate assessment matters "
+        "for treatment planning. Peak velocity on transthoracic echocardiography "
+        "is used widely in clinical practice.\n\n"
+        "However, beam misalignment and flow-dependence can underestimate or "
+        "overestimate severity in some patients. Cross-sectional imaging may reduce "
+        "those errors and improve reproducibility."
+    )
+    payload = publication_console_service._overlay_grobid_inline_references_onto_structured_paper(
+        parsed_payload={
+            "sections": [
+                {
+                    "id": "paper-section-introduction",
+                    "title": "Introduction",
+                    "raw_label": "Introduction",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "content": base_intro,
+                    "word_count": 48,
+                    "paragraph_count": 2,
+                }
+            ],
+            "references": [
+                {"id": "paper-reference-1", "label": "1", "raw_text": "Reference one."},
+                {"id": "paper-reference-2", "label": "2", "raw_text": "Reference two."},
+            ],
+            "generation_method": "pmc_bioc_fulltext_v1",
+        },
+        grobid_payload={
+            "sections": [
+                {
+                    "id": "paper-section-introduction",
+                    "title": "Introduction",
+                    "raw_label": "Introduction",
+                    "content": (
+                        "Aortic stenosis is common in older adults {{cite:b1}} and "
+                        "accurate assessment matters for treatment planning. Peak "
+                        "velocity on transthoracic echocardiography {{cite:b2}} is "
+                        "used widely in clinical practice.\n\n"
+                        "Participants were recruited prospectively between 2018 and "
+                        "2023 from three hospitals, underwent protocolized magnetic "
+                        "resonance acquisitions, invasive catheterization when "
+                        "clinically indicated, adjudicated imaging review, time-to-event "
+                        "follow-up, and sensitivity analyses spanning valve intervention, "
+                        "hospitalization, and mortality outcomes."
+                    ),
+                }
+            ],
+            "references": [
+                {
+                    "id": "paper-reference-1",
+                    "xml_id": "b1",
+                    "label": "1",
+                    "raw_text": "Reference one.",
+                },
+                {
+                    "id": "paper-reference-2",
+                    "xml_id": "b2",
+                    "label": "2",
+                    "raw_text": "Reference two.",
+                },
+            ],
+        },
+    )
+
+    intro = payload["sections"][0]["content"]
+    assert "{{cite:b1}}" in intro
+    assert "{{cite:b2}}" in intro
+    assert "However, beam misalignment" in intro
+    assert payload["reference_id_map"] == {
+        "b1": "paper-reference-1",
+        "b2": "paper-reference-2",
+    }
+
+
+def test_normalize_publication_paper_inline_reference_markers_brackets_bare_numeric_clusters() -> None:
+    value = (
+        "Aortic valve stenosis is common after age 75 years. [1] Accurate assessment "
+        "matters for treatment planning. 3 4 Peak velocity guides intervention decisions. "
+        "4 5 Furthermore, higher velocities are associated with worse outcomes. "
+        "9 It offers several advantages over traditional assessment."
+    )
+
+    normalized = publication_console_service._normalize_publication_paper_inline_reference_markers(
+        value
+    )
+
+    assert "[1]" in normalized
+    assert "[3,4]" in normalized
+    assert "[4,5]" in normalized
+    assert "[9]" in normalized
+
+
+def test_overlay_grobid_inline_references_accepts_prefix_paragraphs_with_bare_numeric_markers() -> None:
+    base_intro = (
+        "Aortic valve stenosis is common after age 75 years. Accurate assessment "
+        "matters for treatment planning. Transthoracic echocardiography is "
+        "recommended for diagnosis and prognosis. Peak velocity guides intervention "
+        "decisions. Furthermore, higher velocities are associated with worse "
+        "outcomes. However, measurement error can arise from misalignment."
+    )
+    payload = publication_console_service._overlay_grobid_inline_references_onto_structured_paper(
+        parsed_payload={
+            "sections": [
+                {
+                    "id": "paper-section-introduction",
+                    "title": "Introduction",
+                    "raw_label": "Introduction",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "content": base_intro,
+                    "word_count": 48,
+                    "paragraph_count": 1,
+                }
+            ],
+            "references": [
+                {"id": "paper-reference-1", "label": "1", "raw_text": "Reference one."},
+                {"id": "paper-reference-2", "label": "2", "raw_text": "Reference two."},
+                {"id": "paper-reference-3", "label": "3", "raw_text": "Reference three."},
+                {"id": "paper-reference-4", "label": "4", "raw_text": "Reference four."},
+                {"id": "paper-reference-5", "label": "5", "raw_text": "Reference five."},
+            ],
+            "generation_method": "pmc_bioc_fulltext_v1",
+        },
+        grobid_payload={
+            "sections": [
+                {
+                    "id": "paper-section-introduction",
+                    "title": "Introduction",
+                    "raw_label": "Introduction",
+                    "content": (
+                        "Aortic valve stenosis is common after age 75 years. [1] "
+                        "Accurate assessment matters for treatment planning. [2] "
+                        "Transthoracic echocardiography is recommended for diagnosis "
+                        "and prognosis. 3 4 Peak velocity guides intervention decisions. "
+                        "4 5 Furthermore, higher velocities are associated with worse outcomes."
+                    ),
+                }
+            ],
+            "references": [],
+        },
+    )
+
+    intro = payload["sections"][0]["content"]
+    assert "[1]" in intro
+    assert "[2]" in intro
+    assert "[3,4]" in intro
+    assert "[4,5]" in intro
+    assert intro.endswith("However, measurement error can arise from misalignment.")
+    assert (
+        payload["generation_method"]
+        == "pmc_bioc_fulltext_v1+grobid_citation_overlay_v1"
+    )
+
+
+def test_overlay_grobid_inline_references_merges_adjacent_continuation_sections() -> None:
+    base_intro = (
+        "Aortic valve (AV) stenosis (AS) is a common health burden, affecting 5% "
+        "of people aged above 75 years. Accurate assessment of AS is crucial in "
+        "clinical practice, as therapeutic decision-making and prognostication "
+        "depend on it. Transthoracic echocardiography (TTE) is the recommended "
+        "imaging modality for diagnosing AS, assessing haemodynamic severity and "
+        "evaluating the prognosis and timing of valve intervention. Peak velocity "
+        "of blood flow across the AV, as measured using continuous wave doppler "
+        "(CWD) ultrasound, is a crucial parameter for clinical decision-making in "
+        "patients with AS. It is the strongest echocardiographic predictor of "
+        "symptom development and adverse outcomes, with higher velocities "
+        "conferring increased risk. For instance, peak aortic jet velocity plays "
+        "a significant role in the decision to proceed with surgical or "
+        "transcatheter valve replacement for asymptomatic patients with severe AS. "
+        "Furthermore, it is an essential component of risk stratification for AS, "
+        "as higher peak aortic jet velocity is associated with increased risk of "
+        "adverse outcomes, including heart failure and mortality. However, the "
+        "accuracy of TTE assessment can be affected by a range of patient, "
+        "operator and technical factors. Misalignment of the ultrasound beam with "
+        "the AS jet can lead to a significant underestimation of peak jet "
+        "velocity, and the eccentricity of the jet resulting from restriction "
+        "along the leaflet coaptation edges can make it challenging to align the "
+        "CWD ultrasound beam parallel to the jet. Another limitation is that peak "
+        "aortic jet velocity is highly flow-dependent, which can overestimate AS "
+        "severity in high-flow states such as concurrent aortic regurgitation, "
+        "severe anaemia and thyrotoxicosis. Therefore, careful attention to image "
+        "quality and the impact of various technical factors is essential to "
+        "ensure accurate and reliable measurement of peak AV velocity (VPeak) in "
+        "clinical practice. Four-dimensional flow cardiovascular MRI (4D flow CMR) "
+        "has emerged as a novel imaging technique for AS assessment, allowing "
+        "quantification of cross-sectional planar velocities throughout the "
+        "cardiac cycle. It offers several advantages over traditional sonographic "
+        "assessment. First, 4D flow CMR provides a complete spatiotemporal "
+        "representation of blood flow, allowing for the quantification of "
+        "cross-sectional planar velocities throughout the cardiac cycle. This "
+        "reduces the risk of misalignment errors that can occur with Doppler TTE. "
+        "Second, 4D flow CMR enables the identification of the location of maximum "
+        "velocity in three-dimensional space, which is a significant advantage "
+        "over both Doppler TTE and standard two-dimensional phase-contrast CMR. "
+        "Lastly, research evidence suggests that 4D flow CMR-derived valve metrics "
+        "are more closely associated with invasively-obtained estimates of "
+        "pressure gradient assessment than CWD TTE. These features make 4D flow "
+        "CMR a powerful tool in the comprehensive, yet accurate and reproducible "
+        "assessment of AS. Patients with AS require accurate diagnostic tools to "
+        "guide therapeutic decision-making, whether this involves medical "
+        "management, surgical AV replacement or transcatheter AV implantation. "
+        "This study aimed to evaluate the concordance of 4D flow CMR and TTE to "
+        "estimate VPeak and grade AS severity."
+    )
+    payload = publication_console_service._overlay_grobid_inline_references_onto_structured_paper(
+        parsed_payload={
+            "sections": [
+                {
+                    "id": "paper-section-introduction",
+                    "title": "Introduction",
+                    "raw_label": "Introduction",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "content": base_intro,
+                    "word_count": 360,
+                    "paragraph_count": 1,
+                }
+            ],
+            "references": [
+                {"id": "paper-reference-1", "label": "1", "raw_text": "Reference one."},
+                {"id": "paper-reference-2", "label": "2", "raw_text": "Reference two."},
+                {"id": "paper-reference-3", "label": "3", "raw_text": "Reference three."},
+                {"id": "paper-reference-4", "label": "4", "raw_text": "Reference four."},
+                {"id": "paper-reference-5", "label": "5", "raw_text": "Reference five."},
+                {"id": "paper-reference-6", "label": "6", "raw_text": "Reference six."},
+                {"id": "paper-reference-7", "label": "7", "raw_text": "Reference seven."},
+                {"id": "paper-reference-8", "label": "8", "raw_text": "Reference eight."},
+                {"id": "paper-reference-9", "label": "9", "raw_text": "Reference nine."},
+                {"id": "paper-reference-10", "label": "10", "raw_text": "Reference ten."},
+                {"id": "paper-reference-11", "label": "11", "raw_text": "Reference eleven."},
+            ],
+            "generation_method": "pmc_bioc_fulltext_v1",
+        },
+        grobid_payload={
+            "sections": [
+                {
+                    "id": "paper-section-introduction",
+                    "title": "Introduction",
+                    "raw_label": "Introduction",
+                    "content": (
+                        "Aortic valve (AV) stenosis (AS) is a common health burden, "
+                        "affecting 5% of people aged above 75 years. [1] Accurate "
+                        "assessment of AS is crucial in clinical practice, as "
+                        "therapeutic decision-making and prognostication depend on "
+                        "it. [2] Transthoracic echocardiography (TTE) is the "
+                        "recommended imaging modality for diagnosing AS, assessing "
+                        "haemodynamic severity and evaluating the prognosis and "
+                        "timing of valve intervention. 3 4 Peak velocity of blood "
+                        "flow across the AV, as measured using continuous wave "
+                        "doppler (CWD) ultrasound, is a crucial parameter for "
+                        "clinical decision-making in patients with AS. It is the "
+                        "strongest echocardiographic predictor of symptom "
+                        "development and adverse outcomes, with higher velocities "
+                        "conferring increased risk. 5 6 For instance, peak aortic "
+                        "jet velocity plays a significant role in the decision to "
+                        "proceed with surgical or transcatheter valve replacement "
+                        "for asymptomatic patients with severe AS. 4 7 Furthermore, "
+                        "it is an essential component of risk stratification for AS, "
+                        "as higher peak aortic jet velocity is associated"
+                    ),
+                },
+                {
+                    "id": "paper-section-what-this-study-adds",
+                    "title": "What This Study Adds",
+                    "raw_label": "What This Study Adds",
+                    "content": (
+                        "Predictive accuracy: 4D flow CMR peak aortic valve (AV) "
+                        "velocity (VPeak) outperforms TTE in predicting AV "
+                        "intervention (HR=2.51, p<0.01). Threshold insight: "
+                        "identifies >3.5 m/s 4D flow Vpeak as a robust marker for "
+                        "intervention needs. with increased risk of adverse "
+                        "outcomes, including heart failure and mortality. [8] "
+                        "However, the accuracy of TTE assessment can be affected by "
+                        "a range of patient, operator and technical factors. "
+                        "Misalignment of the ultrasound beam with the AS jet can "
+                        "lead to a significant underestimation of peak jet velocity, "
+                        "and the eccentricity of the jet resulting from restriction "
+                        "along the leaflet coaptation edges can make it challenging "
+                        "to align the CWD ultrasound beam parallel to the jet. 2 3 "
+                        "Another limitation is that peak aortic jet velocity is "
+                        "highly flow-dependent, which can overestimate AS severity "
+                        "in high-flow states such as concurrent aortic regurgitation, "
+                        "severe anaemia and thyrotoxicosis. [3] Therefore, careful "
+                        "attention to image quality and the impact of various "
+                        "technical factors is essential to ensure accurate and "
+                        "reliable measurement of peak AV velocity (VPeak) in "
+                        "clinical practice. Four-dimensional flow cardiovascular MRI "
+                        "(4D flow CMR) has emerged as a novel imaging technique for "
+                        "AS assessment, allowing quantification of cross-sectional "
+                        "planar velocities throughout the cardiac cycle. 9 It offers "
+                        "several advantages over traditional sonographic assessment. "
+                        "First, 4D flow CMR provides a complete spatiotemporal "
+                        "representation of blood flow, allowing for the "
+                        "quantification of cross-sectional planar velocities "
+                        "throughout the cardiac cycle. This reduces the risk of "
+                        "misalignment errors that can occur with Doppler TTE. [10] "
+                        "Second, 4D flow CMR enables the identification of the "
+                        "location of maximum velocity in three-dimensional space, "
+                        "which is a significant advantage over both Doppler TTE and "
+                        "standard two-dimensional phase-contrast CMR. [11] Lastly, "
+                        "research evidence suggests that 4D flow CMR-derived valve "
+                        "metrics are more closely associated with invasively-obtained "
+                        "estimates of pressure gradient assessment than CWD TTE. 9 "
+                        "These features make 4D flow CMR a powerful tool in the "
+                        "comprehensive, yet accurate and reproducible assessment of "
+                        "AS. Patients with AS require accurate diagnostic tools to "
+                        "guide therapeutic decision-making, whether this involves "
+                        "medical management, surgical AV replacement or transcatheter "
+                        "AV implantation. This study aimed to evaluate the "
+                        "concordance of 4D flow CMR and TTE to estimate VPeak and "
+                        "grade AS severity."
+                    ),
+                },
+            ],
+            "references": [],
+        },
+    )
+
+    intro = payload["sections"][0]["content"]
+    assert "[1]" in intro
+    assert "[3,4]" in intro
+    assert "[5,6]" in intro
+    assert "[4,7]" in intro
+    assert "[8]" in intro
+    assert "[2,3]" in intro
+    assert intro.count("[9]") >= 2
+    assert "[10]" in intro
+    assert "[11]" in intro
+    assert "Predictive accuracy:" not in intro
+    assert (
+        payload["generation_method"]
+        == "pmc_bioc_fulltext_v1+grobid_citation_overlay_v1"
+    )
+
+
+def test_overlay_grobid_inline_references_recovers_embedded_inline_subsection_citations() -> None:
+    acquisition_content = (
+        "For 4D flow, 30 phases throughout the cardiac cycle were acquired to ensure "
+        "consistency with the cines. The temporal resolution was 40 ms, TR 4.98 ms, "
+        "TE 1.13 ms, FOV 200×256 mm 2, flip angle (5°), GRAPPA acceleration in the "
+        "phase-encoding direction with a factor of 2 and slide direction of 1. The "
+        "ECG was retrospectively gated with free breathing to avoid diastolic temporal "
+        "blurring. A three-dimensional volume with complete coverage of the thoracic "
+        "aorta was acquired in the axial plane. Four-dimensional flow CMR velocity "
+        "assessment CMR images were postprocessed and analysed using CVI42, V.5.14 "
+        "(Circle Cardiovascular Imaging, Calgary, Canada). The 4D flow analysis "
+        "pipeline was conducted independently and blinded to the echocardiographic "
+        "CWD assessment, and conversely, the CWD analysis was performed without "
+        "knowledge of the 4D flow results."
+    )
+    velocity_content = (
+        "CMR images were postprocessed and analysed using CVI42, V.5.14 (Circle "
+        "Cardiovascular Imaging, Calgary, Canada). The 4D flow analysis pipeline was "
+        "conducted independently and blinded to the echocardiographic CWD assessment, "
+        "and conversely, the CWD analysis was performed without knowledge of the 4D "
+        "flow results. All three phase directions were screened for aliasing artefacts "
+        "and, if present, manually corrected using established phase unwrapping "
+        "methods. To determine VPeak, an analysis plane was set perpendicular to the "
+        "forward flow jet at the level and phase recording the highest flow velocity "
+        "values. The grading of AS severity using 4D flow CMR was based on peak "
+        "aortic velocity measurements, similar to TTE."
+    )
+    payload = publication_console_service._overlay_grobid_inline_references_onto_structured_paper(
+        parsed_payload={
+            "sections": [
+                {
+                    "id": "paper-section-methods",
+                    "title": "Methods",
+                    "raw_label": "Methods",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "content": "",
+                    "word_count": 0,
+                    "paragraph_count": 0,
+                },
+                {
+                    "id": "paper-section-methods-acquisition",
+                    "title": "Four-dimensional flow CMR acquisition",
+                    "raw_label": "Four-dimensional flow CMR acquisition",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "parent_id": "paper-section-methods",
+                    "content": acquisition_content,
+                    "word_count": 111,
+                    "paragraph_count": 1,
+                },
+                {
+                    "id": "paper-section-methods-velocity",
+                    "title": "Four-dimensional flow CMR velocity assessment",
+                    "raw_label": "Four-dimensional flow CMR velocity assessment",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "parent_id": "paper-section-methods",
+                    "content": velocity_content,
+                    "word_count": 92,
+                    "paragraph_count": 1,
+                },
+            ],
+            "references": [
+                {"id": "paper-reference-16", "label": "16", "raw_text": "Reference sixteen."}
+            ],
+            "generation_method": "pmc_bioc_fulltext_v1",
+        },
+        grobid_payload={
+            "sections": [
+                {
+                    "id": "paper-section-methods-acquisition",
+                    "title": "Four-dimensional flow CMR acquisition",
+                    "raw_label": "Four-dimensional flow CMR acquisition",
+                    "content": (
+                        "For 4D flow, 30 phases throughout the cardiac cycle were "
+                        "acquired to ensure consistency with the cines. The temporal "
+                        "resolution was 40 ms, TR 4.98 ms, TE 1.13 ms, FOV 200×256 "
+                        "mm 2, flip angle (5°), GRAPPA acceleration in the phase-"
+                        "encoding direction with a factor of 2 and slide direction of "
+                        "1. The ECG was retrospectively gated with free breathing to "
+                        "avoid diastolic temporal blurring. A three-dimensional "
+                        "volume with complete coverage of the thoracic aorta was "
+                        "acquired in the axial plane. Four-dimensional flow CMR "
+                        "velocity assessment CMR images were postprocessed and "
+                        "analysed using CVI42, V.5.14 (Circle Cardiovascular Imaging, "
+                        "Calgary, Canada). The 4D flow analysis pipeline was "
+                        "conducted independently and blinded to the echocardiographic "
+                        "CWD assessment, and conversely, the CWD analysis was "
+                        "performed without knowledge of the 4D flow results. All "
+                        "three phase directions were screened for aliasing artefacts "
+                        "and, if present, manually corrected using established phase "
+                        "unwrapping methods. [16] To determine VPeak, an analysis "
+                        "plane was set perpendicular to the forward flow jet at the "
+                        "level and phase recording the highest flow velocity values. "
+                        "The grading of AS severity using 4D flow CMR was based on "
+                        "peak aortic velocity measurements, similar to TTE."
+                    ),
+                }
+            ],
+            "references": [],
+        },
+    )
+
+    acquisition = payload["sections"][1]["content"]
+    velocity = payload["sections"][2]["content"]
+    assert "[16]" not in acquisition
+    assert "[16]" in velocity
+    assert velocity.startswith("CMR images were postprocessed")
+    assert "A three-dimensional volume with complete coverage" not in velocity
+    assert (
+        payload["generation_method"]
+        == "pmc_bioc_fulltext_v1+grobid_citation_overlay_v1"
+    )
+
+
+def test_overlay_grobid_inline_references_does_not_prepend_nearby_subsection_reference_to_parent_section() -> None:
+    discussion_content = (
+        "The most important finding of this study is that CMR provides substantially "
+        "greater diagnostic yield than TTE, both in refined sub-phenotyping and in "
+        "aiding definitive diagnosis. Our findings align with registry-based evidence "
+        "on the clinical utility of CMR."
+    )
+    guidelines_content = (
+        "Our present study aligns robustly with the 2023 European Society of Cardiology "
+        "(ESC) guidelines for the management of cardiomyopathies. The guidance supports "
+        "CMR when echocardiography is inconclusive."
+    )
+
+    payload = publication_console_service._overlay_grobid_inline_references_onto_structured_paper(
+        parsed_payload={
+            "sections": [
+                {
+                    "id": "paper-section-discussion",
+                    "title": "Discussion",
+                    "raw_label": "Discussion",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "content": discussion_content,
+                    "word_count": 36,
+                    "paragraph_count": 1,
+                },
+                {
+                    "id": "paper-section-guidelines",
+                    "title": "Guidelines and clinical context",
+                    "raw_label": "Guidelines and clinical context",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    "parent_id": "paper-section-discussion",
+                    "content": guidelines_content,
+                    "word_count": 28,
+                    "paragraph_count": 1,
+                },
+            ],
+            "references": [
+                {"id": "paper-reference-14", "label": "14", "raw_text": "Reference fourteen."},
+                {"id": "paper-reference-16", "label": "16", "raw_text": "Reference sixteen."},
+            ],
+            "generation_method": "pmc_bioc_fulltext_v1",
+        },
+        grobid_payload={
+            "sections": [
+                {
+                    "id": "paper-section-discussion",
+                    "title": "Discussion",
+                    "raw_label": "Discussion",
+                    "content": (
+                        "The most important finding of this study is that CMR provides substantially "
+                        "greater diagnostic yield than TTE, both in refined sub-phenotyping and in "
+                        "aiding definitive diagnosis. Our findings align with registry-based evidence "
+                        "on the clinical utility of CMR. [14]"
+                    ),
+                },
+                {
+                    "id": "paper-section-guidelines",
+                    "title": "Guidelines and clinical context",
+                    "raw_label": "Guidelines and clinical context",
+                    "content": (
+                        "Our present study aligns robustly with the 2023 European Society of Cardiology "
+                        "(ESC) guidelines for the management of cardiomyopathies. [16] The guidance supports "
+                        "CMR when echocardiography is inconclusive."
+                    ),
+                },
+            ],
+            "references": [],
+        },
+    )
+
+    discussion = payload["sections"][0]["content"]
+    guidelines = payload["sections"][1]["content"]
+    assert "[14]" in discussion
+    assert not discussion.startswith("[16]")
+    assert "[16]" in guidelines
+    assert (
+        payload["generation_method"]
+        == "pmc_bioc_fulltext_v1+grobid_citation_overlay_v1"
+    )
+
+
+def test_extract_structured_publication_paper_with_pmc_bioc_merges_missing_article_information_from_grobid(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_bioc_payload",
+        lambda _pmcid: {
+            "documents": [
+                {
+                    "passages": [
+                        {
+                            "infons": {"type": "title_1", "section_type": "INTRO"},
+                            "text": "Introduction",
+                        },
+                        {
+                            "infons": {"type": "paragraph", "section_type": "INTRO"},
+                            "text": "Full-text introduction paragraph.",
+                        },
+                        {
+                            "infons": {"type": "title_1", "section_type": "ACK_FUND"},
+                            "text": "Data availability statement",
+                        },
+                        {
+                            "infons": {"type": "paragraph", "section_type": "ACK_FUND"},
+                            "text": "Data are available upon reasonable request.",
+                        },
+                    ]
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_pmc_archive_bytes",
+        lambda _pmcid: b"archive",
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_publication_paper_references_from_pmc_archive_content",
+        lambda _archive_content: [],
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_citation_overlay_with_grobid",
+        lambda **_kwargs: {
+            "sections": [
+                {
+                    "id": "paper-section-introduction",
+                    "title": "Introduction",
+                    "raw_label": "Introduction",
+                    "label_original": "Introduction",
+                    "label_normalized": "Introduction",
+                    "kind": "introduction",
+                    "canonical_kind": "introduction",
+                    "section_type": "canonical",
+                    "canonical_map": "introduction",
+                    "content": "Full-text introduction paragraph.",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "order": 0,
+                    "page_start": None,
+                    "page_end": None,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": None,
+                    "is_generated_heading": False,
+                    "word_count": 4,
+                    "paragraph_count": 1,
+                    "document_zone": "body",
+                    "section_role": "major",
+                    "major_section_key": "introduction",
+                },
+                {
+                    "id": "paper-section-data-availability",
+                    "title": "Data availability statement",
+                    "raw_label": "Data availability statement",
+                    "label_original": "Data availability statement",
+                    "label_normalized": "Data availability statement",
+                    "kind": "data_availability",
+                    "canonical_kind": "data_availability",
+                    "section_type": "metadata",
+                    "canonical_map": "data_availability",
+                    "content": "Data are available upon reasonable request.",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "order": 1,
+                    "page_start": None,
+                    "page_end": None,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": None,
+                    "is_generated_heading": False,
+                    "word_count": 6,
+                    "paragraph_count": 1,
+                    "document_zone": "back",
+                    "section_role": "metadata",
+                    "major_section_key": "article_information",
+                },
+                {
+                    "id": "paper-section-acknowledgements",
+                    "title": "Acknowledgements",
+                    "raw_label": "Acknowledgements",
+                    "label_original": "Acknowledgements",
+                    "label_normalized": "Acknowledgements",
+                    "kind": "acknowledgements",
+                    "canonical_kind": "acknowledgements",
+                    "section_type": "metadata",
+                    "canonical_map": "acknowledgements",
+                    "content": "We thank the study team.",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "order": 2,
+                    "page_start": None,
+                    "page_end": None,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": None,
+                    "is_generated_heading": False,
+                    "word_count": 5,
+                    "paragraph_count": 1,
+                    "document_zone": "back",
+                    "section_role": "metadata",
+                    "major_section_key": "article_information",
+                },
+                {
+                    "id": "paper-section-ethics",
+                    "title": "Ethics approval",
+                    "raw_label": "Ethics approval",
+                    "label_original": "Ethics approval",
+                    "label_normalized": "Ethics approval",
+                    "kind": "ethics",
+                    "canonical_kind": "ethics",
+                    "section_type": "metadata",
+                    "canonical_map": "ethics",
+                    "content": "The study was approved by the local ethics committee.",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "order": 3,
+                    "page_start": None,
+                    "page_end": None,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": None,
+                    "is_generated_heading": False,
+                    "word_count": 9,
+                    "paragraph_count": 1,
+                    "document_zone": "back",
+                    "section_role": "metadata",
+                    "major_section_key": "article_information",
+                },
+                {
+                    "id": "paper-section-open-access",
+                    "title": "Open access",
+                    "raw_label": "Open access",
+                    "label_original": "Open access",
+                    "label_normalized": "Open access",
+                    "kind": "section",
+                    "canonical_kind": "section",
+                    "section_type": "canonical",
+                    "canonical_map": "section",
+                    "content": "This article is distributed under the Creative Commons licence.",
+                    "source": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "source_parser": publication_console_service.STRUCTURED_PAPER_SECTION_SOURCE_GROBID,
+                    "order": 4,
+                    "page_start": None,
+                    "page_end": None,
+                    "level": 1,
+                    "parent_id": None,
+                    "bounding_boxes": [],
+                    "confidence": None,
+                    "is_generated_heading": False,
+                    "word_count": 10,
+                    "paragraph_count": 1,
+                    "document_zone": "back",
+                    "section_role": "section",
+                    "major_section_key": "article_information",
+                },
+            ],
+            "figures": [],
+            "tables": [],
+            "references": [],
+            "reference_id_map": {},
+            "page_count": None,
+            "generation_method": "grobid_tei_citation_overlay_v1",
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_GROBID,
+        },
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_extract_structured_publication_assets_with_grobid",
+        lambda **_kwargs: ([], []),
+    )
+
+    payload = publication_console_service._extract_structured_publication_paper_with_pmc_bioc(
+        pmcid="PMC1234567",
+        content=b"%PDF-1.7 test",
+        title="PMC article information fallback paper",
+        enrich_assets=False,
+        align_to_pdf=False,
+    )
+
+    section_titles = [str(section.get("title") or "").strip() for section in payload["sections"]]
+    assert section_titles.count("Data availability statement") == 1
+    assert "Acknowledgements" in section_titles
+    assert "Ethics approval" in section_titles
+    assert "Open access" in section_titles
+    assert payload["generation_method"] == "pmc_bioc_fulltext_v1+grobid_article_information_fallback_v1"
+
+
+def test_extract_structured_publication_citation_overlay_with_grobid_skips_assets_and_alignment(
+    monkeypatch,
+) -> None:
+    requested: dict[str, object] = {}
+
+    def _fake_request(**kwargs):  # noqa: ANN001
+        requested.update(kwargs)
+        return "<TEI />"
+
+    monkeypatch.setattr(
+        publication_console_service,
+        "_request_grobid_fulltext_tei",
+        _fake_request,
+    )
+    monkeypatch.setattr(
+        publication_console_service,
+        "_parse_grobid_tei_into_structured_paper",
+        lambda **_kwargs: {
+            "sections": [{"title": "Introduction", "content": "Body {{cite:b1}}"}],
+            "figures": [{"id": "fig-1"}],
+            "tables": [{"id": "tbl-1"}],
+            "references": [{"id": "paper-reference-1", "xml_id": "b1"}],
+            "reference_id_map": {"b1": "paper-reference-1"},
+            "page_count": 12,
+            "generation_method": "grobid_tei_fulltext_v3",
+            "parser_provider": publication_console_service.STRUCTURED_PAPER_PARSER_PROVIDER_GROBID,
+        },
+    )
+
+    payload = (
+        publication_console_service._extract_structured_publication_citation_overlay_with_grobid(
+            content=b"%PDF-1.7 test",
+            title="Citation overlay paper",
+            file_name="overlay.pdf",
+        )
+    )
+
+    assert requested == {
+        "content": b"%PDF-1.7 test",
+        "file_name": "overlay.pdf",
+        "tei_coordinates": "head,p,s,ref,biblStruct",
+        "include_raw_affiliations": False,
+    }
+    assert payload["sections"][0]["content"] == "Body {{cite:b1}}"
+    assert payload["references"][0]["xml_id"] == "b1"
+    assert payload["figures"] == []
+    assert payload["tables"] == []
+    assert payload["page_count"] is None
+    assert payload["generation_method"] == "grobid_tei_citation_overlay_v1"
+
+
+def test_merge_missing_grobid_article_information_sections_skips_duplicate_biography_from_asset_section() -> None:
+    merged = publication_console_service._merge_missing_grobid_article_information_sections(
+        parsed_payload={
+            "sections": [
+                {
+                    "id": "paper-section-27-supplementary-materials",
+                    "title": "Lead author biography",
+                    "content": "Existing biography content.",
+                    "level": 1,
+                    "parent_id": None,
+                    "document_zone": "back",
+                    "section_role": "asset",
+                    "section_type": "asset",
+                    "major_section_key": "assets",
+                    "canonical_kind": "supplementary_materials",
+                }
+            ],
+            "generation_method": "pmc_bioc_fulltext_v1",
+        },
+        grobid_payload={
+            "sections": [
+                {
+                    "id": "paper-section-30-section",
+                    "title": "Lead author biography",
+                    "content": "Fallback grobid biography content.",
+                    "level": 2,
+                    "parent_id": "paper-section-5-introduction",
+                    "document_zone": "back",
+                    "section_role": "subsection",
+                    "section_type": "canonical",
+                    "major_section_key": "introduction",
+                    "canonical_kind": "section",
+                }
+            ]
+        },
+    )
+
+    titles = [str(section.get("title") or "").strip() for section in merged["sections"]]
+
+    assert titles.count("Lead author biography") == 1
+    assert merged["generation_method"] == "pmc_bioc_fulltext_v1"
+
+
 def test_format_pmc_archive_reference_preserves_explicit_etal_marker() -> None:
     ref_node = ET.fromstring(
         """
@@ -2990,6 +5109,135 @@ def test_format_pmc_archive_reference_preserves_explicit_etal_marker() -> None:
     assert reference["authors"] == ["Roifman I", "Hammer M", "Sparkes J"]
     assert reference["authors_truncated"] is True
     assert reference["raw_text"].startswith("Roifman I, Hammer M, Sparkes J, et al.")
+
+
+def test_format_pmc_archive_reference_strips_conference_abstract_sequence_number() -> None:
+    ref_node = ET.fromstring(
+        """
+        <ref>
+          <label>18</label>
+          <element-citation publication-type="journal">
+            <person-group person-group-type="author">
+              <name><surname>Parke</surname><given-names>K</given-names></name>
+              <name><surname>Wormleighton</surname><given-names>J</given-names></name>
+              <name><surname>McCann</surname><given-names>GP</given-names></name>
+              <name><surname>Xue</surname><given-names>H</given-names></name>
+              <name><surname>Kellman</surname><given-names>P</given-names></name>
+              <name><surname>Arnold</surname><given-names>JR</given-names></name>
+            </person-group>
+            <article-title>12 comparison of left ventricular volumetric assessment by standard steady-state free precession and real time cine imaging</article-title>
+            <source>Heart</source>
+            <year>2019</year>
+            <volume>105</volume>
+            <issue>Suppl 3</issue>
+            <fpage>A10</fpage>
+          </element-citation>
+        </ref>
+        """
+    )
+
+    reference = publication_console_service._format_pmc_archive_reference(ref_node, 18)
+
+    assert reference is not None
+    assert (
+        reference["title"]
+        == "Comparison of left ventricular volumetric assessment by standard steady-state free precession and real time cine imaging"
+    )
+    assert "12 comparison" not in reference["raw_text"].lower()
+    assert (
+        "Comparison of left ventricular volumetric assessment by standard steady-state free precession and real time cine imaging."
+        in reference["raw_text"]
+    )
+
+
+def test_format_pmc_archive_reference_trims_source_trailing_punctuation() -> None:
+    ref_node = ET.fromstring(
+        """
+        <ref>
+          <label>17</label>
+          <element-citation publication-type="journal">
+            <person-group person-group-type="author">
+              <name><surname>Altman</surname><given-names>DG</given-names></name>
+              <name><surname>Bland</surname><given-names>JM</given-names></name>
+            </person-group>
+            <article-title>Measurement in medicine: the analysis of method comparison studies</article-title>
+            <source>J. R. Stat. Soc. Ser. D (The Statistician).</source>
+            <year>1983</year>
+            <volume>32</volume>
+            <fpage>307</fpage>
+            <lpage>317</lpage>
+          </element-citation>
+        </ref>
+        """
+    )
+
+    reference = publication_console_service._format_pmc_archive_reference(ref_node, 17)
+
+    assert reference is not None
+    assert reference["journal"] == "J. R. Stat. Soc. Ser. D (The Statistician)"
+    assert ".. 1983" not in reference["raw_text"]
+    assert (
+        reference["raw_text"]
+        == "Altman DG, Bland JM. Measurement in medicine: the analysis of method comparison studies. J. R. Stat. Soc. Ser. D (The Statistician). 1983;32:307-317."
+    )
+
+
+def test_build_publication_paper_reference_id_bridge_prefers_text_match_over_misleading_label() -> None:
+    bridge = publication_console_service._build_publication_paper_reference_id_bridge(
+        citation_references=[
+            {
+                "xml_id": "b1",
+                "label": "1",
+                "title": "Retrospective cardiac gating: a review of technical aspects and future directions",
+                "raw_text": "Lenz GW, Haacke EM, White RD. Retrospective cardiac gating: a review of technical aspects and future directions. Magn Reson Imaging. 1989;7:445-55.",
+            }
+        ],
+        final_references=[
+            {
+                "id": "paper-reference-1",
+                "label": "1",
+                "title": "Comparison of left ventricular ejection fraction and volumes in heart failure by echocardiography, radionuclide ventriculography and cardiovascular magnetic resonance; are they interchangeable?",
+                "raw_text": "Bellenger NG, Burgess MI, Ray SG, Lahiri A, Coats AJ, Cleland JG, et al. Comparison of left ventricular ejection fraction and volumes in heart failure by echocardiography, radionuclide ventriculography and cardiovascular magnetic resonance; are they interchangeable?. Eur Heart J. 2000;21:1387-96.",
+            },
+            {
+                "id": "paper-reference-2",
+                "label": "2",
+                "title": "Retrospective cardiac gating: a review of technical aspects and future directions",
+                "raw_text": "Lenz GW, Haacke EM, White RD. Retrospective cardiac gating: a review of technical aspects and future directions. Magn Reson Imaging. 1989;7:445-55.",
+            },
+        ],
+    )
+
+    assert bridge == {"b1": "paper-reference-2"}
+
+
+def test_build_publication_paper_reference_id_bridge_uses_zero_based_xml_id_when_label_is_shifted() -> None:
+    bridge = publication_console_service._build_publication_paper_reference_id_bridge(
+        citation_references=[
+            {
+                "xml_id": "b10",
+                "label": "10",
+                "title": "",
+                "raw_text": "Sparse citation text that does not align cleanly.",
+            }
+        ],
+        final_references=[
+            {
+                "id": "paper-reference-10",
+                "label": "10",
+                "title": "Dynamic autocalibrated parallel imaging using temporal GRAPPA (TGRAPPA)",
+                "raw_text": "Breuer FA, Kellman P, Griswold MA, Jakob PM. Dynamic autocalibrated parallel imaging using temporal GRAPPA (TGRAPPA). Magn Reson Med. 2005;53:981-5.",
+            },
+            {
+                "id": "paper-reference-11",
+                "label": "11",
+                "title": "Fully automatic, retrospective enhancement of real-time acquired cardiac cine MR images using image-based navigators and respiratory motion-corrected averaging",
+                "raw_text": "Kellman P, Chefd'hotel C, Lorenz CH, Mancini C, Arai AE, McVeigh ER. Fully automatic, retrospective enhancement of real-time acquired cardiac cine MR images using image-based navigators and respiratory motion-corrected averaging. Magn Reson Med. 2008;59:771-8.",
+            },
+        ],
+    )
+
+    assert bridge == {"b10": "paper-reference-11"}
 
 
 def test_merge_publication_paper_reference_metadata_preserves_author_truncation_flag() -> None:
@@ -5716,6 +7964,31 @@ def test_extract_assets_from_tei_captures_coords() -> None:
     assert len(tables) == 1
     assert tables[0]["coords"] == "5,50.0,100.0,540.0,700.0"
     assert tables[0]["graphic_coords"] is None
+
+
+def test_extract_assets_from_tei_marks_graphical_abstract_figures() -> None:
+    from research_os.services.publication_console_service import (
+        _extract_publication_paper_assets_from_tei,
+    )
+
+    tei_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <text>
+    <front>
+      <figure coords="1,10.0,10.0,400.0,500.0">
+        <head>Graphical abstract</head>
+        <figDesc>Graphical abstract summarizing the workflow and primary outcome.</figDesc>
+      </figure>
+    </front>
+  </text>
+</TEI>"""
+    root = ET.fromstring(tei_xml)
+    figures, tables = _extract_publication_paper_assets_from_tei(root)
+
+    assert len(figures) == 1
+    assert figures[0]["title"] == "Graphical abstract"
+    assert figures[0]["asset_kind"] == "graphical_abstract"
+    assert tables == []
 
 
 # ---------------------------------------------------------------------------

@@ -975,7 +975,6 @@ export type PublicationPaperModelAssetPayload = {
   graphic_coords: string | null
   image_data: string | null
   structured_html: string | null
-  enhanced_html: string | null
 }
 
 export type PublicationPaperModelComponentSummaryPayload = {

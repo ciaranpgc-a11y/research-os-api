@@ -16,6 +16,12 @@ export type TotalCitationsHeadlineStats = {
   uncitedPapersValue: string
   uncitedPapersCount: number
   uncitedPapersPct: number
+  citedPapers10PlusCount: number
+  citedPapers10PlusPct: number
+  citedPapers25PlusCount: number
+  citedPapers25PlusPct: number
+  citedPapers100PlusCount: number
+  citedPapers100PlusPct: number
   recentConcentrationValue: string
   recentConcentrationPct: number | null
   recentConcentrationTopThreeCitations: number
@@ -26,6 +32,9 @@ export type TotalCitationsHeadlineStats = {
   citationHalfLifeOlderPct: number | null
   citationHalfLifeOlderCitations: number
   citationHalfLifeNewerCitations: number
+  topDecilePaperCount: number
+  topDecileCitationCount: number
+  topDecileCitationSharePct: number | null
   topCitedPaperValue: string
   topCitedPaperRaw: number | null
   bestCitationYear: { year: number; value: number } | null
@@ -227,21 +236,33 @@ export function buildTotalCitationsHeadlineStats(tile: PublicationMetricTilePayl
       : rollingWindowYearsSum(1),
   )
   const publicationCount = publicationRows.length
+  const publicationCitationValues = publicationRows
+    .map((row) => Math.max(0, Math.round(row.citationsLifetime)))
+  const sortedPublicationCitationValuesAsc = [...publicationCitationValues].sort((left, right) => left - right)
+  const sortedPublicationCitationValuesDesc = [...publicationCitationValues].sort((left, right) => right - left)
+  const uncitedCount = publicationCitationValues.filter((value) => value <= 0).length
+  const countAtLeast = (threshold: number) => publicationCitationValues.filter((value) => value >= threshold).length
+  const citedPapers10PlusCount = countAtLeast(10)
+  const citedPapers25PlusCount = countAtLeast(25)
+  const citedPapers100PlusCount = countAtLeast(100)
+  const topDecilePaperCount = publicationCount > 0 ? Math.max(1, Math.ceil(publicationCount * 0.1)) : 0
+  const topDecileCitationCount = topDecilePaperCount > 0
+    ? sortedPublicationCitationValuesDesc.slice(0, topDecilePaperCount).reduce((sum, value) => sum + value, 0)
+    : 0
+  const topDecileCitationSharePctRaw = totalCitations > 0 && topDecilePaperCount > 0
+    ? (topDecileCitationCount / totalCitations) * 100
+    : null
   const citationsPerPaperValue = publicationCount > 0
     ? formatDecimal(totalCitations / publicationCount, 1)
     : '\u2014'
   const medianCitationsValue = (() => {
-    const publicationCitationValues = publicationRows
-      .map((row) => Math.max(0, Math.round(row.citationsLifetime)))
-      .filter((value): value is number => value !== null)
-      .sort((left, right) => left - right)
-    if (!publicationCitationValues.length) {
+    if (!sortedPublicationCitationValuesAsc.length) {
       return '\u2014'
     }
-    const middleIndex = Math.floor(publicationCitationValues.length / 2)
-    const median = publicationCitationValues.length % 2 === 0
-      ? (publicationCitationValues[middleIndex - 1] + publicationCitationValues[middleIndex]) / 2
-      : publicationCitationValues[middleIndex]
+    const middleIndex = Math.floor(sortedPublicationCitationValuesAsc.length / 2)
+    const median = sortedPublicationCitationValuesAsc.length % 2 === 0
+      ? (sortedPublicationCitationValuesAsc[middleIndex - 1] + sortedPublicationCitationValuesAsc[middleIndex]) / 2
+      : sortedPublicationCitationValuesAsc[middleIndex]
     const rounded = Math.round(median * 10) / 10
     return Math.abs(rounded - Math.round(rounded)) <= 1e-9
       ? formatInt(Math.round(rounded))
@@ -251,7 +272,6 @@ export function buildTotalCitationsHeadlineStats(tile: PublicationMetricTilePayl
     if (!publicationCount) {
       return '\u2014'
     }
-    const uncitedCount = publicationRows.filter((row) => row.citationsLifetime <= 0).length
     const uncitedShare = publicationCount > 0 ? (uncitedCount / publicationCount) * 100 : 0
     return `${formatInt(uncitedCount)} (${Math.round(uncitedShare)}%)`
   })()
@@ -316,12 +336,10 @@ export function buildTotalCitationsHeadlineStats(tile: PublicationMetricTilePayl
     ? (citationHalfLifeOlderCitations / totalCitations) * 100
     : null
   const topCitedPaperValue = (() => {
-    const publicationCitationValues = publicationRows
-      .map((row) => Math.max(0, Math.round(row.citationsLifetime)))
-    if (!publicationCitationValues.length) {
+    if (!sortedPublicationCitationValuesDesc.length) {
       return '\u2014'
     }
-    return formatInt(Math.max(...publicationCitationValues))
+    return formatInt(sortedPublicationCitationValuesDesc[0])
   })()
   const bestCitationYear = (() => {
     const completedYears = historyCitations.filter((entry) => entry.year !== projectedYear && entry.value > 0)
@@ -347,10 +365,16 @@ export function buildTotalCitationsHeadlineStats(tile: PublicationMetricTilePayl
       ? parseMetricNumber(medianCitationsValue)
       : null,
     uncitedPapersValue,
-    uncitedPapersCount: publicationCount > 0 ? publicationRows.filter((row) => row.citationsLifetime <= 0).length : 0,
+    uncitedPapersCount: uncitedCount,
     uncitedPapersPct: publicationCount > 0
-      ? (publicationRows.filter((row) => row.citationsLifetime <= 0).length / publicationCount) * 100
+      ? (uncitedCount / publicationCount) * 100
       : 0,
+    citedPapers10PlusCount,
+    citedPapers10PlusPct: publicationCount > 0 ? (citedPapers10PlusCount / publicationCount) * 100 : 0,
+    citedPapers25PlusCount,
+    citedPapers25PlusPct: publicationCount > 0 ? (citedPapers25PlusCount / publicationCount) * 100 : 0,
+    citedPapers100PlusCount,
+    citedPapers100PlusPct: publicationCount > 0 ? (citedPapers100PlusCount / publicationCount) * 100 : 0,
     recentConcentrationValue,
     recentConcentrationPct: recentConcentrationPctRaw,
     recentConcentrationTopThreeCitations,
@@ -361,6 +385,9 @@ export function buildTotalCitationsHeadlineStats(tile: PublicationMetricTilePayl
     citationHalfLifeOlderPct: citationHalfLifeOlderPctRaw,
     citationHalfLifeOlderCitations,
     citationHalfLifeNewerCitations,
+    topDecilePaperCount,
+    topDecileCitationCount,
+    topDecileCitationSharePct: topDecileCitationSharePctRaw,
     topCitedPaperValue,
     topCitedPaperRaw: topCitedPaperValue === '\u2014' ? null : parseMetricNumber(topCitedPaperValue),
     bestCitationYear,
@@ -371,12 +398,12 @@ export function buildTotalCitationsHeadlineMetricTiles(tile: PublicationMetricTi
   const stats = buildTotalCitationsHeadlineStats(tile)
   return [
     { label: 'Total citations', value: formatInt(stats.totalCitations) },
-    { label: `Projected ${stats.projectedYear}`, value: formatInt(stats.projectedCurrentYear) },
+    { label: `Projected in ${stats.projectedYear}`, value: formatInt(stats.projectedCurrentYear) },
     { label: 'Last 1 year (rolling)', value: formatInt(stats.rolling1Year) },
     { label: 'Year-to-date', value: formatInt(stats.resolvedCurrentYearYtd) },
-    { label: 'Citations per paper', value: stats.citationsPerPaperValue },
-    { label: 'Recent concentration', value: stats.recentConcentrationValue },
-    { label: 'Top cited paper', value: stats.topCitedPaperValue },
+    { label: 'Citations per publication', value: stats.citationsPerPaperValue },
+    { label: 'Top 3 publications, last 12 months', value: stats.recentConcentrationValue },
+    { label: 'Top cited publication', value: stats.topCitedPaperValue },
     {
       label: stats.bestCitationYear ? `Best year (${stats.bestCitationYear.year})` : 'Best year',
       value: stats.bestCitationYear ? formatInt(Math.round(stats.bestCitationYear.value)) : '\u2014',

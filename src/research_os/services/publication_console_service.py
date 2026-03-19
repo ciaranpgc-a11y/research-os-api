@@ -50,7 +50,7 @@ from research_os.db import (
     create_all_tables,
     session_scope,
 )
-from research_os.clients.openai_client import ask_gpt, create_response
+from research_os.clients.openai_client import create_response
 from research_os.services.supplementary_work_service import (
     extract_parent_publication_title,
     is_supplementary_material_work,
@@ -70,6 +70,195 @@ DOCLING_TABLE_NOTE_PREFIX_PATTERN = re.compile(
     r"^(?:notes?|abbreviations?|footnotes?|legend|symbols?)\b|^[*\u2020\u2021\u00a7\u00b6#]+|^[a-z0-9]+[.)]\s",
     re.IGNORECASE,
 )
+PUBLICATION_TABLE_NOTE_LABEL_PREFIX_PATTERN = re.compile(
+    r"^\s*(notes?|footnotes?|legend|symbols?|abbreviations?|acronyms?)\s*[:\-]\s*",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_NOTE_MARKER_PREFIX_PATTERN = re.compile(
+    r"^\s*(?:[*\u2020\u2021\u00a7\u00b6#]+|[a-z](?:[.)])?|\d{1,2}[.)])\s+",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_NOTE_SENTENCE_BOUNDARY_PATTERN = re.compile(
+    r"(?<=[.!?])\s+(?=(?:[A-Z]|[a-z0-9][.)]\s))"
+)
+PUBLICATION_TABLE_NOTE_CLAUSE_BOUNDARY_PATTERN = re.compile(r"\s*;\s*")
+PUBLICATION_TABLE_NOTE_MARKER_BOUNDARY_PATTERN = re.compile(
+    r"(?<=[.;])\s+(?=(?:[*\u2020\u2021\u00a7\u00b6#]+|[a-z0-9]+[.)]?)\s+[A-Za-z0-9(])",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_PRESENTATION_NOTE_PATTERN = re.compile(
+    r"\b(?:data|values?|results?)\s+(?:are|were)\s+"
+    r"(?:presented|reported|shown|expressed|summarized)\b"
+    r"|\b(?:presented|reported|shown|expressed)\s+as\b"
+    r"|\b(?:compared|comparison|differences?)\b.*\b(?:t\s*-?\s*test|anova|wilcoxon|mann-?whitney|fisher(?:'s)?(?:\s+exact)?|chi-?square)\b"
+    r"|\b(?:paired|unpaired|student'?s|students|t\s*-?\s*test|anova|wilcoxon|mann-?whitney|fisher(?:'s)?(?:\s+exact)?|chi-?square|\u03c7\s*\u00b2)\b"
+    r"|\bmean\b|\bmedian\b|\bstandard deviation\b|\binterquartile range\b|\biqr\b|\b95% confidence interval\b|\bconfidence interval\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_ABBREVIATION_NOTE_CHUNK_PATTERN = re.compile(
+    r"^(?:[A-Z][A-Z0-9'/%-]{1,12}|[A-Z][a-zA-Z0-9'/%-]{1,8})\s*(?:,|:|=)\s*[A-Za-z]",
+)
+PUBLICATION_TABLE_GLOSSARY_PREFIX_PATTERN = re.compile(
+    r"^\s*(?:abbreviation|abbreviations|acronym|acronyms?)\s*[:\-]\s*",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_GLOSSARY_COMMA_SPLIT_PATTERN = re.compile(
+    r",\s+(?=(?:[A-Z\u0391-\u03a9\u03b1-\u03c9\u00b5\u03bc\u0394\u03c1]"
+    r"[A-Za-z0-9'/%._\u00b0\u00b5\u03bc+\-]{0,12}"
+    r"(?:\s+[A-Za-z0-9'/%._\u00b0\u00b5\u03bc+\-]{1,8})?"
+    r"\s+[A-Za-z]))"
+)
+PUBLICATION_TABLE_TITLE_ROW_PATTERN = re.compile(
+    r"^\s*(?:table|tab\.?)\s+\d+[A-Za-z]?\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_LEGEND_NOTE_PATTERN = re.compile(
+    r"\b(?:legend|symbols?|colour|color|grading|greenest|reddest|asterisk|asterisks|stars?|highlight(?:ed|ing)?|shading|darker|lighter|bold|italics?)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_STATISTICAL_NOTE_PATTERN = re.compile(
+    r"\b(?:anova|icc|correlation|significance|statistical|statistically|test|tests|tested|regression|adjusted)\b"
+    r"|(?:^|[ (;])p\s*(?:=|<|>|≤|≥)\s*0?\.\d+",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_FAMILY_SUFFIX_PATTERN = re.compile(
+    r"\b(?:[IVXLCDM]+|\d+|[A-Z])\b$"
+)
+PUBLICATION_TABLE_FAMILY_ROOT_PATTERN = re.compile(
+    r"^(?P<root>.+?\b(?:class|grade|stage|type|group|arm|cohort|model|quartile|quintile|tertile|decile|phase|step|level|category|cluster|scenario|condition|visit|wave|round|timepoint))\s+(?P<suffix>[IVXLCDM]+|\d+|[A-Z])$",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_UNIT_LIKE_LABEL_PATTERN = re.compile(
+    r"\((?:[^()]*[A-Za-z%°μµ/][^()]*)\)"
+)
+PUBLICATION_TABLE_PARTICIPANT_LABEL_PATTERN = re.compile(
+    r"\b(?:age|sex|gender|male|female|height|weight|body mass index|bmi|body surface area|ethnicity|race|education|employment|income|household|marital|participant|subject|patient|sample size|years? of education|years? of experience)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_CATEGORICAL_LABEL_PATTERN = re.compile(
+    r"\b(?:yes|no|present|absent|history|current smoker|former smoker|status)\b"
+    r"|\bN\s*\(%\)"
+    r"|\bcount\s*\(%\)",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_CLASSIFICATION_LABEL_PATTERN = re.compile(
+    r"\b(?:class|grade|stage|type|group|arm|cohort|phase|level|quartile|quintile|tertile|decile|category|severity|rank|cluster|scenario|condition)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_MEASUREMENT_LABEL_PATTERN = re.compile(
+    r"\b(?:score|index|ratio|rate|volume|mass|area|length|pressure|temperature|concentration|level|value|duration|time|velocity|fraction|thickness|distance|diameter)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_PREAMBLE_LABEL_PATTERN = re.compile(
+    r"^(?:n|total|overall|all participants|participants|subjects?|patients?|events?|cases?|samples?|observations?|records?|respondents?|firms?|countries|sites?)(?:\s*[=:]\s*\d[\d,. ]*)?$",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_HISTORY_LABEL_PATTERN = re.compile(
+    r"\b(?:hypertension|diabetes|smok(?:er|ing)|atrial fibrillation|cerebrovascular|stroke|myocardial infarction|infarction|ische?mi|copd|asthma|heart failure|history|prior|previous|current smoker|former smoker|valvular|ventricular tachycardia)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_PHYSIOLOGY_LABEL_PATTERN = re.compile(
+    r"\b(?:heart rate|pulse|blood pressure|systolic|diastolic|temperature|respiratory rate|oxygen saturation|spo2|o2 saturation|sao2)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_RENAL_LABEL_PATTERN = re.compile(
+    r"\b(?:egfr|gfr|estimated glomerular filtration rate|glomerular filtration rate|creatinine|urea|bun|renal|kidney|cystatin|albuminuria|proteinuria)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_BIOMARKER_LABEL_PATTERN = re.compile(
+    r"\b(?:bnp|nt-?probnp|troponin|crp|hs-?crp|d-?dimer|fibrinogen|natriuretic peptide|procalcitonin)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_LAB_UNIT_PATTERN = re.compile(
+    r"\b(?:mg/dl|mmol/l|umol/l|g/l|pg/ml|ng/l|u/l|iu/l|10\^?\d+/?l|cells?/mm3|x10\^?\d+)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_PHYSIOLOGY_UNIT_PATTERN = re.compile(
+    r"\b(?:beats per minute|bpm|mmhg|breaths per minute|% ?spo2)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_CHARACTERISTIC_UNIT_PATTERN = re.compile(
+    r"\b(?:years?|cm|kg|kg/m2|m2|m\^2|%)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_UNIT_LIKE_LABEL_CLEAN_PATTERN = re.compile(
+    r"\((?:[^()]*[A-Za-z%\u00b0\u00b5\u03bc/][^()]*)\)"
+)
+PUBLICATION_TABLE_LAB_UNIT_CLEAN_PATTERN = re.compile(
+    r"\b(?:mg/dl|mmol/l|(?:u|\u00b5|\u03bc)mol/l|g/l|pg/ml|ng/l|u/l|iu/l|10\^?\d+/?l|cells?/mm(?:3|\u00b3)|x10\^?\d+)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_CHARACTERISTIC_UNIT_CLEAN_PATTERN = re.compile(
+    r"\b(?:years?|cm|kg|kg/m(?:2|\u00b2)|g/m(?:2|\u00b2)|m(?:2|\u00b2)|m\^2|%)\b",
+    re.IGNORECASE,
+)
+PUBLICATION_TABLE_CLEAN_TEXT_REPLACEMENTS = {
+    "Ã‚Â±": "\u00b1",
+    "Â±": "\u00b1",
+    "Ã¢â€°Â¥": "\u2265",
+    "â‰¥": "\u2265",
+    "Ã¢â€°Â¤": "\u2264",
+    "â‰¤": "\u2264",
+    "Ã¢â€°Ë†": "\u2248",
+    "â‰ˆ": "\u2248",
+    "Ã¢â‚¬â€œ": "\u2013",
+    "â€“": "\u2013",
+    "Ã¢â‚¬â€": "\u2014",
+    "â€”": "\u2014",
+    "Ã¢Ë†â€™": "\u2212",
+    "âˆ’": "\u2212",
+    "Ãƒâ€”": "\u00d7",
+    "Ã—": "\u00d7",
+    "Ã‚Âµ": "\u00b5",
+    "Âµ": "\u00b5",
+    "ÃŽÂ¼": "\u03bc",
+    "Î¼": "\u03bc",
+    "Ã‚Â°": "\u00b0",
+    "Â°": "\u00b0",
+    "Ã‚Â²": "\u00b2",
+    "Â²": "\u00b2",
+    "Ã‚Â³": "\u00b3",
+    "Â³": "\u00b3",
+    "â€¦": "\u2026",
+}
+PUBLICATION_TABLE_GROUPING_SCHEMA_NAME = "publication_table_row_groups"
+PUBLICATION_TABLE_FOOTER_SCHEMA_NAME = "publication_table_footer_chunks"
+PUBLICATION_TABLE_GENERIC_PREFIX_SKIP_TOKENS = {
+    "early",
+    "late",
+    "mean",
+    "median",
+    "baseline",
+    "peak",
+    "current",
+    "prior",
+    "previous",
+    "all",
+    "overall",
+    "total",
+}
+PUBLICATION_TABLE_GENERIC_GROUP_MIN_ROWS = {
+    "participant characteristics": 2,
+    "baseline characteristics": 2,
+    "characteristics": 2,
+    "measurements": 3,
+    "physiological measurements": 3,
+    "clinical measurements": 3,
+    "laboratory measurements": 2,
+}
+PUBLICATION_TABLE_MOJIBAKE_REPLACEMENTS = {
+    "Â±": "±",
+    "â‰¥": "≥",
+    "â‰¤": "≤",
+    "â‰ ": "≠",
+    "â‰ˆ": "≈",
+    "â€“": "–",
+    "â€”": "—",
+    "âˆ’": "−",
+    "Ã—": "×",
+    "Âµ": "µ",
+    "Î¼": "μ",
+}
 OPEN_ACCESS_FETCH_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -190,8 +379,8 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
     ),
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v5"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v40"
+STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v6"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v57"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -215,32 +404,32 @@ STRUCTURED_PAPER_PROGRESS_STAGE_ORDER = (
 STRUCTURED_PAPER_PROGRESS_STAGE_DETAILS = {
     STRUCTURED_PAPER_PROGRESS_STAGE_PREPARING: {
         "weight": 0.08,
-        "expected_seconds": 4,
+        "expected_seconds": 8,
         "label": "Preparing manuscript",
     },
     STRUCTURED_PAPER_PROGRESS_STAGE_PARSING_MANUSCRIPT: {
         "weight": 0.42,
-        "expected_seconds": 24,
+        "expected_seconds": 150,
         "label": "Parsing manuscript",
     },
     STRUCTURED_PAPER_PROGRESS_STAGE_ALIGNING_CONTENT: {
         "weight": 0.16,
-        "expected_seconds": 8,
+        "expected_seconds": 50,
         "label": "Aligning content",
     },
     STRUCTURED_PAPER_PROGRESS_STAGE_LINKING_REFERENCES: {
         "weight": 0.12,
-        "expected_seconds": 6,
+        "expected_seconds": 40,
         "label": "Linking citations",
     },
     STRUCTURED_PAPER_PROGRESS_STAGE_RESOLVING_ASSETS: {
         "weight": 0.17,
-        "expected_seconds": 12,
+        "expected_seconds": 90,
         "label": "Resolving figures and tables",
     },
     STRUCTURED_PAPER_PROGRESS_STAGE_FINALIZING: {
         "weight": 0.05,
-        "expected_seconds": 3,
+        "expected_seconds": 10,
         "label": "Finalizing reader",
     },
 }
@@ -331,6 +520,10 @@ def _structured_paper_progress_snapshot(
         for item in STRUCTURED_PAPER_PROGRESS_STAGE_ORDER[:current_index]
     )
     percent = int(round(min(0.99, completed_weight + (current_weight * current_fraction)) * 100))
+    total_elapsed_seconds = max(
+        0,
+        int((current_now - parse_started).total_seconds()),
+    )
     remaining_current_seconds = max(
         0,
         int(round(expected_current_seconds * (1.0 - current_fraction))),
@@ -339,14 +532,21 @@ def _structured_paper_progress_snapshot(
         int(STRUCTURED_PAPER_PROGRESS_STAGE_DETAILS[item]["expected_seconds"])
         for item in STRUCTURED_PAPER_PROGRESS_STAGE_ORDER[current_index + 1 :]
     )
+    estimated_seconds_remaining = remaining_current_seconds + remaining_future_seconds
+    progress_fraction = max(0.0, min(0.99, percent / 100.0))
+    if total_elapsed_seconds >= 15 and progress_fraction >= 0.05:
+        observed_remaining_seconds = int(
+            round(total_elapsed_seconds * ((1.0 - progress_fraction) / progress_fraction))
+        )
+        estimated_seconds_remaining = max(
+            estimated_seconds_remaining,
+            observed_remaining_seconds,
+        )
     return {
         "stage": current_stage,
         "label": str(detail["label"]),
         "percent": max(1, min(99, percent)),
-        "estimated_seconds_remaining": max(
-            1,
-            remaining_current_seconds + remaining_future_seconds,
-        ),
+        "estimated_seconds_remaining": max(1, estimated_seconds_remaining),
         "parse_started_at": _serialize_utc_datetime(parse_started),
         "stage_started_at": _serialize_utc_datetime(stage_started),
         "updated_at": _serialize_utc_datetime(current_now),
@@ -551,6 +751,64 @@ def _structured_abstract_llm_min_marker_recall() -> float:
         os.getenv("PUB_STRUCTURED_ABSTRACT_LLM_MIN_MARKER_RECALL", "0.7")
     )
     return max(0.0, min(1.0, value if value is not None else 0.7))
+
+
+def _publication_table_grouping_model() -> str:
+    return (
+        str(os.getenv("PUB_TABLE_GROUPING_MODEL", "gpt-4.1-mini")).strip()
+        or "gpt-4.1-mini"
+    )
+
+
+def _publication_table_grouping_fallback_model() -> str:
+    return str(os.getenv("PUB_TABLE_GROUPING_FALLBACK_MODEL", "gpt-4.1")).strip()
+
+
+def _publication_table_grouping_llm_enabled() -> bool:
+    enabled = (
+        str(os.getenv("PUB_TABLE_GROUPING_USE_LLM", "true")).strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
+    if not enabled:
+        return False
+    return bool(str(os.getenv("OPENAI_API_KEY", "")).strip())
+
+
+def _publication_table_grouping_llm_min_rows() -> int:
+    value = _safe_int(os.getenv("PUB_TABLE_GROUPING_LLM_MIN_ROWS", "6"))
+    return max(4, value if value is not None else 6)
+
+
+def _publication_table_grouping_llm_min_confidence() -> float:
+    value = _safe_float(os.getenv("PUB_TABLE_GROUPING_LLM_MIN_CONFIDENCE", "0.72"))
+    return max(0.5, min(0.95, value if value is not None else 0.72))
+
+
+def _publication_table_grouping_llm_timeout_seconds() -> float:
+    value = _safe_float(os.getenv("PUB_TABLE_GROUPING_LLM_TIMEOUT_SECONDS", "18"))
+    return max(5.0, min(60.0, value if value is not None else 18.0))
+
+
+def _publication_table_footer_model() -> str:
+    return _publication_table_grouping_model()
+
+
+def _publication_table_footer_fallback_model() -> str:
+    return _publication_table_grouping_fallback_model()
+
+
+def _publication_table_footer_llm_enabled() -> bool:
+    return _publication_table_grouping_llm_enabled()
+
+
+def _publication_table_footer_llm_min_confidence() -> float:
+    value = _safe_float(os.getenv("PUB_TABLE_FOOTER_LLM_MIN_CONFIDENCE", "0.72"))
+    return max(0.5, min(0.95, value if value is not None else 0.72))
+
+
+def _publication_table_footer_llm_timeout_seconds() -> float:
+    value = _safe_float(os.getenv("PUB_TABLE_FOOTER_LLM_TIMEOUT_SECONDS", "18"))
+    return max(5.0, min(60.0, value if value is not None else 18.0))
 
 
 def _openalex_timeout_seconds() -> float:
@@ -1905,7 +2163,11 @@ def _extract_structured_abstract_from_pubmed(
         raw_label = (
             str(node.attrib.get("Label") or node.attrib.get("NlmCategory") or "").strip()
         )
-        label = _normalize_heading_label(raw_label) if raw_label else "Summary"
+        label = (
+            _normalize_structured_abstract_heading_label(raw_label)
+            if raw_label
+            else "Summary"
+        )
         key = _canonical_structured_section_key(raw_label or label) or "other"
         if raw_label:
             summary_parts.append(f"{raw_label}: {content}")
@@ -1923,7 +2185,11 @@ def _extract_structured_abstract_from_pubmed(
 
     if not summary_parts:
         return None, [], keywords
-    return _normalize_abstract_text(" ".join(summary_parts)), sections, keywords
+    return (
+        _normalize_abstract_text(" ".join(summary_parts)),
+        _coalesce_structured_abstract_sections(sections),
+        keywords,
+    )
 
 
 def _extract_authors_from_crossref(
@@ -2537,6 +2803,69 @@ def _extract_key_points_from_abstract(abstract: str | None) -> dict[str, str]:
     }
 
 
+def _coalesce_structured_abstract_sections(
+    sections: list[dict[str, str]] | None,
+) -> list[dict[str, str]]:
+    if not sections:
+        return []
+    coalesced: list[dict[str, str]] = []
+    methods_detail_labels = {
+        "design",
+        "setting",
+        "participants",
+        "study population",
+        "inclusion criteria",
+        "exclusion criteria",
+        "main outcome measures",
+        "patient and public involvement",
+        "patient involvement",
+    }
+    for item in sections:
+        if not isinstance(item, dict):
+            continue
+        label = _normalize_structured_abstract_heading_label(
+            str(item.get("label") or "")
+        ) or "Summary"
+        content = _normalize_structured_content(item.get("content"))
+        if not content:
+            continue
+        key = _canonical_structured_section_key(str(item.get("key") or label)) or "other"
+        lower_label = label.casefold()
+        is_primary_label = key in {
+            "introduction",
+            "methods",
+            "results",
+            "conclusions",
+            "registration",
+        } or ("method" in lower_label and "result" in lower_label)
+        content_starts_lower = bool(re.match(r"^[a-z]", content))
+        if coalesced:
+            previous = coalesced[-1]
+            previous_label = _normalize_structured_abstract_heading_label(
+                str(previous.get("label") or "")
+            )
+            previous_label_lower = previous_label.casefold()
+            previous_is_combined_methods_results = (
+                "method" in previous_label_lower and "result" in previous_label_lower
+            )
+            should_merge = (content_starts_lower and not is_primary_label) or (
+                lower_label in methods_detail_labels
+                and previous_is_combined_methods_results
+            )
+            if should_merge:
+                inline_text = (
+                    f"{label} {content}"
+                    if content_starts_lower
+                    else f"{label}: {content}"
+                )
+                previous["content"] = _normalize_structured_content(
+                    f"{previous.get('content') or ''} {inline_text}"
+                )
+                continue
+        coalesced.append({"key": key, "label": label, "content": content})
+    return coalesced
+
+
 def _classify_trajectory(per_year: list[dict[str, Any]]) -> str:
     if not per_year:
         return "UNKNOWN"
@@ -2645,6 +2974,50 @@ def _normalize_abstract_text(value: str | None) -> str:
     decoded = re.sub(r"(?i)</?p\b[^>]*>", "\n", decoded)
     decoded = decoded.replace("\xa0", " ")
     return re.sub(r"\s+", " ", decoded.strip())
+
+
+def _publication_table_text_cleanup_legacy(value: str | None) -> str:
+    clean = _normalize_abstract_text(value)
+    if not clean:
+        return ""
+    for source, target in PUBLICATION_TABLE_MOJIBAKE_REPLACEMENTS.items():
+        clean = clean.replace(source, target)
+    clean = re.sub(r"(?<=\d)\s*(?:±|\+/-|ą)\s*(?=[<>−-]?\d)", " ± ", clean)
+    clean = re.sub(r"(?<=\d)\s*(?:×|x)\s*10(?=\^?\d)", " × 10", clean)
+    unit_replacements = (
+        (r"(?i)\bkg\s*/\s*m\s*(?:\^?\s*2)\b", "kg/m²"),
+        (r"(?i)\bg\s*/\s*m\s*(?:\^?\s*2)\b", "g/m²"),
+        (r"(?i)\bml\s*/\s*min\s*/\s*1\.73\s*m\s*(?:\^?\s*2)\b", "mL/min/1.73 m²"),
+        (r"(?i)\b([ckm]?m)\s*(?:\^?\s*2)\b", r"\1²"),
+        (r"(?i)\b([ckm]?m)\s*(?:\^?\s*3)\b", r"\1³"),
+        (r"(?i)\bu\s*mol\s*/\s*l\b", "µmol/L"),
+    )
+    for pattern, replacement in unit_replacements:
+        clean = re.sub(pattern, replacement, clean)
+    clean = re.sub(r"\s+([)\]])", r"\1", clean)
+    return re.sub(r"\s+", " ", clean).strip()
+
+
+def _publication_table_text_cleanup(value: str | None) -> str:
+    clean = _normalize_abstract_text(value)
+    if not clean:
+        return ""
+    for source, target in PUBLICATION_TABLE_CLEAN_TEXT_REPLACEMENTS.items():
+        clean = clean.replace(source, target)
+    clean = re.sub(r"(?<=\d)\s*(?:\u00b1|\+/-)\s*(?=[<>\u2212-]?\d)", " \u00b1 ", clean)
+    clean = re.sub(r"(?<=\d)\s*(?:\u00d7|x)\s*10(?=\^?\d)", " \u00d7 10", clean)
+    unit_replacements = (
+        (r"(?i)\bkg\s*/\s*m\s*(?:\^?\s*2)\b", "kg/m\u00b2"),
+        (r"(?i)\bg\s*/\s*m\s*(?:\^?\s*2)\b", "g/m\u00b2"),
+        (r"(?i)\bml\s*/\s*min\s*/\s*1\.73\s*m\s*(?:\^?\s*2)\b", "mL/min/1.73 m\u00b2"),
+        (r"(?i)\b([ckm]?m)\s*(?:\^?\s*2)\b", "\\1\u00b2"),
+        (r"(?i)\b([ckm]?m)\s*(?:\^?\s*3)\b", "\\1\u00b3"),
+        (r"(?i)\bu\s*mol\s*/\s*l\b", "\u00b5mol/L"),
+    )
+    for pattern, replacement in unit_replacements:
+        clean = re.sub(pattern, replacement, clean)
+    clean = re.sub(r"\s+([)\]])", r"\1", clean)
+    return re.sub(r"\s+", " ", clean).strip()
 
 
 def _publication_paper_content_cleanup(value: str | None) -> str:
@@ -2769,6 +3142,16 @@ def _normalize_heading_label(value: str | None) -> str:
         words = [part.capitalize() for part in clean.lower().split(" ")]
         return " ".join(words)
     return clean[0].upper() + clean[1:] if len(clean) > 1 else clean.upper()
+
+
+def _normalize_structured_abstract_heading_label(value: str | None) -> str:
+    source = re.sub(r"\s+", " ", str(value or "").strip())
+    if not source:
+        return ""
+    if re.fullmatch(r"[A-Z0-9 /\-]{2,}", source):
+        lowered = source.lower()
+        return lowered[0].upper() + lowered[1:] if len(lowered) > 1 else lowered.upper()
+    return source[0].upper() + source[1:] if len(source) > 1 else source.upper()
 
 
 def _structured_abstract_seed_hash(
@@ -3056,7 +3439,9 @@ def _extract_inline_heading_sections(text: str | None) -> list[dict[str, str]]:
         if not content:
             continue
         key = _canonical_structured_section_key(raw_label) or "other"
-        label = _normalize_heading_label(raw_label) or _structured_section_label(key)
+        label = _normalize_structured_abstract_heading_label(
+            raw_label
+        ) or _structured_section_label(key)
         sections.append({"key": key, "label": label, "content": content})
     return sections
 
@@ -3314,6 +3699,7 @@ def _build_structured_abstract_payload(
         )
         if pubmed_abstract:
             abstract = _normalize_abstract_text(pubmed_abstract)
+        pubmed_sections = _coalesce_structured_abstract_sections(pubmed_sections)
     effective_keywords = _normalize_keywords(pubmed_keywords) or publication_keywords
     if not abstract:
         empty = _empty_structured_abstract_payload()
@@ -3358,6 +3744,7 @@ def _build_structured_abstract_payload(
                 sections=model_sections,
             )
             if bool(quality.get("passed")):
+                model_sections = _coalesce_structured_abstract_sections(model_sections)
                 return (
                     {
                         "format": model_format,
@@ -3397,6 +3784,7 @@ def _build_structured_abstract_payload(
             }
 
     fallback_format, fallback_sections = _fallback_structured_sections(abstract)
+    fallback_sections = _coalesce_structured_abstract_sections(fallback_sections)
     fallback_metadata: dict[str, Any] = {
         "parser_version": parser_version,
         "source_abstract_sha256": source_hash,
@@ -3441,10 +3829,21 @@ def _structured_abstract_view_payload(
     if row is not None:
         payload = row.payload_json if isinstance(row.payload_json, dict) else {}
         row_hash = _normalize_abstract_text(str(row.source_abstract_sha256 or "")) or None
+        row_version = _normalize_abstract_text(str(row.parser_version or "")) or None
+        payload_metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        payload_version = (
+            _normalize_abstract_text(str(payload_metadata.get("parser_version") or ""))
+            or None
+        )
         status = _normalize_status(row.status, fallback=RUNNING_STATUS)
         computed_at = _coerce_utc_or_none(row.computed_at)
         last_error = _normalize_abstract_text(str(row.last_error or "")) or None
-        if payload and row_hash == source_hash:
+        if (
+            payload
+            and row_hash == source_hash
+            and row_version == STRUCTURED_ABSTRACT_CACHE_VERSION
+            and payload_version == STRUCTURED_ABSTRACT_CACHE_VERSION
+        ):
             return payload, status, computed_at, last_error
         if status in {RUNNING_STATUS, FAILED_STATUS} and normalized_abstract:
             fallback_format, fallback_sections = _fallback_structured_sections(
@@ -4325,6 +4724,11 @@ def _refine_publication_paper_sections(
 
         if section_id in existing_child_parent_ids:
             continue
+        if (
+            str(refined.get("source") or "").strip() == "structured_abstract"
+            and str(refined.get("parent_id") or "").strip()
+        ):
+            continue
         can_split_inline = (
             canonical_map == "abstract"
             or refined["section_role"] == "major"
@@ -4465,6 +4869,180 @@ def _publication_paper_section_paragraphs(value: str) -> list[str]:
     return [normalized] if normalized else []
 
 
+def _publication_paper_should_absorb_leaf_methods_subsection(
+    *,
+    section: dict[str, Any],
+    parent: dict[str, Any] | None,
+    child_parent_ids: set[str],
+) -> bool:
+    section_id = str(section.get("id") or "").strip()
+    parent_id = str(section.get("parent_id") or "").strip()
+    if (
+        not section_id
+        or section_id in child_parent_ids
+        or not parent_id
+        or parent is None
+    ):
+        return False
+    if str(section.get("document_zone") or "").strip().lower() != "body":
+        return False
+    if str(parent.get("document_zone") or "").strip().lower() != "body":
+        return False
+    if str(section.get("section_role") or "").strip().lower() != "subsection":
+        return False
+    if int(_safe_int(section.get("level")) or 1) < 3:
+        return False
+    if str(section.get("major_section_key") or "").strip().lower() != "methods":
+        return False
+    if str(parent.get("major_section_key") or "").strip().lower() != "methods":
+        return False
+
+    title = _normalize_heading_label(section.get("title") or section.get("raw_label"))
+    title_tokens = re.findall(r"[A-Za-z0-9]+", title)
+    title_marker = title.casefold()
+    if len(title_tokens) < 8:
+        return False
+    if not (
+        " using " in title_marker
+        or title_marker.startswith(
+            (
+                "estimation of ",
+                "assessment of ",
+                "evaluation of ",
+                "measurement of ",
+                "quantification of ",
+                "calculation of ",
+            )
+        )
+    ):
+        return False
+
+    child_content = _publication_paper_content_cleanup(section.get("content"))
+    if len(child_content) < 80:
+        return False
+    child_paragraphs = _publication_paper_section_paragraphs(child_content)
+    if not child_paragraphs or len(child_paragraphs) > 4:
+        return False
+
+    parent_content = _publication_paper_content_cleanup(parent.get("content"))
+    if len(parent_content) < 80:
+        return False
+    return True
+
+
+def _publication_paper_candidate_parent_ids(
+    sections: list[dict[str, Any]],
+) -> dict[str, str]:
+    sections_by_id = {
+        str(section.get("id") or "").strip(): section
+        for section in sections
+        if str(section.get("id") or "").strip()
+    }
+    candidate_parent_by_id: dict[str, str] = {}
+    level_stack_by_group_zone: dict[tuple[str, str], dict[int, str]] = {}
+
+    for section in sections:
+        section_id = str(section.get("id") or "").strip()
+        if not section_id:
+            continue
+        group_key = (
+            str(section.get("major_section_key") or section.get("display_group") or "")
+            .strip()
+            .lower()
+        )
+        document_zone = str(section.get("document_zone") or "").strip().lower()
+        section_level = max(1, int(_safe_int(section.get("level")) or 1))
+        stack_key = (group_key, document_zone)
+        level_stack = level_stack_by_group_zone.setdefault(stack_key, {})
+        for stack_level in list(level_stack):
+            if stack_level >= section_level:
+                level_stack.pop(stack_level, None)
+
+        candidate_parent_id = str(section.get("display_parent_id") or "").strip()
+        if not candidate_parent_id:
+            for stack_level in sorted(level_stack.keys(), reverse=True):
+                if stack_level < section_level:
+                    candidate_parent_id = str(level_stack.get(stack_level) or "").strip()
+                    if candidate_parent_id:
+                        break
+        if not candidate_parent_id:
+            candidate_parent_id = str(section.get("parent_id") or "").strip()
+        if candidate_parent_id and candidate_parent_id != section_id:
+            candidate_parent_by_id[section_id] = candidate_parent_id
+
+        level_stack[section_level] = section_id
+
+    return {
+        section_id: parent_id
+        for section_id, parent_id in candidate_parent_by_id.items()
+        if parent_id in sections_by_id
+    }
+
+
+def _collapse_publication_paper_leaf_methods_subsections(
+    sections: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    ordered_sections = [
+        dict(section)
+        for section in sorted(
+            [item for item in sections if isinstance(item, dict)],
+            key=lambda item: int(_safe_int(item.get("order")) or 0),
+        )
+    ]
+    if not ordered_sections:
+        return []
+
+    sections_by_id = {
+        str(section.get("id") or "").strip(): section
+        for section in ordered_sections
+        if str(section.get("id") or "").strip()
+    }
+    child_parent_ids = {
+        str(section.get("parent_id") or "").strip()
+        for section in ordered_sections
+        if str(section.get("parent_id") or "").strip()
+    }
+    candidate_parent_by_id = _publication_paper_candidate_parent_ids(ordered_sections)
+    absorbed_section_ids: set[str] = set()
+
+    for section in ordered_sections:
+        section_id = str(section.get("id") or "").strip()
+        parent_id = candidate_parent_by_id.get(section_id) or str(
+            section.get("parent_id") or ""
+        ).strip()
+        parent = sections_by_id.get(parent_id)
+        if not _publication_paper_should_absorb_leaf_methods_subsection(
+            section=section,
+            parent=parent,
+            child_parent_ids=child_parent_ids,
+        ):
+            continue
+        child_content = _publication_paper_content_cleanup(section.get("content"))
+        parent_content = _publication_paper_content_cleanup(parent.get("content"))
+        merged_content = _publication_paper_content_cleanup(
+            "\n\n".join(part for part in (parent_content, child_content) if part)
+        )
+        if not merged_content:
+            continue
+        parent["content"] = merged_content
+        parent["word_count"] = len(
+            re.findall(r"[A-Za-z0-9][A-Za-z0-9'/-]*", merged_content)
+        )
+        parent["paragraph_count"] = len(
+            _publication_paper_section_paragraphs(merged_content)
+        )
+        absorbed_section_ids.add(section_id)
+
+    collapsed_sections: list[dict[str, Any]] = []
+    for section in ordered_sections:
+        if str(section.get("id") or "").strip() in absorbed_section_ids:
+            continue
+        section_copy = dict(section)
+        section_copy["order"] = len(collapsed_sections)
+        collapsed_sections.append(section_copy)
+    return collapsed_sections
+
+
 def _publication_paper_section_type(kind: str | None) -> str:
     normalized_kind = _normalize_publication_paper_section_kind(kind)
     if normalized_kind in PUBLICATION_PAPER_EDITORIAL_SECTION_KINDS:
@@ -4493,6 +5071,7 @@ def _publication_paper_label_suggests_article_information(label_text: str) -> bo
         token in label_text
         for token in (
             "funding",
+            "biograph",
             "conflict",
             "ethic",
             "acknowledg",
@@ -4535,21 +5114,86 @@ def _normalize_publication_paper_display_heading_label(value: str | None) -> str
     ).strip()
 
 
+def _publication_paper_section_heading_markers(section: dict[str, Any]) -> tuple[str, ...]:
+    markers: list[str] = []
+    seen: set[str] = set()
+    for key in ("title", "raw_label", "label_original", "label_normalized"):
+        marker = _normalize_publication_paper_display_heading_label(section.get(key))
+        if not marker or marker in seen:
+            continue
+        seen.add(marker)
+        markers.append(marker)
+    return tuple(markers)
+
+
+def _publication_paper_candidate_section_indexes(
+    *,
+    section: dict[str, Any],
+    candidate_by_title: dict[str, list[int]],
+    citation_sections: list[dict[str, Any]],
+) -> list[int]:
+    candidate_indexes: list[int] = []
+    candidate_index_set: set[int] = set()
+    for title_key in _publication_paper_section_heading_markers(section):
+        for candidate_index in candidate_by_title.get(title_key, []):
+            for nearby_index in range(
+                candidate_index,
+                min(len(citation_sections), candidate_index + 2),
+            ):
+                if nearby_index in candidate_index_set:
+                    continue
+                candidate_index_set.add(nearby_index)
+                candidate_indexes.append(nearby_index)
+    return candidate_indexes
+
+
+def _publication_paper_embedded_heading_pattern(
+    heading: str | None,
+) -> re.Pattern[str] | None:
+    tokens = re.findall(r"[A-Za-z0-9]+", str(heading or ""))
+    if len(tokens) < 3:
+        return None
+    return re.compile(
+        r"(?is)(?:^|(?<=[\n\r])|(?<=[.!?]\s))"
+        + r"\W+".join(re.escape(token) for token in tokens)
+        + r"\s*:?\s*"
+    )
+
+
+def _trim_publication_paper_citation_content_to_embedded_heading(
+    *,
+    citation_content: str | None,
+    heading_markers: tuple[str, ...],
+) -> str:
+    citation_clean = _normalize_publication_paper_inline_reference_markers(
+        citation_content
+    )
+    if not citation_clean or not heading_markers:
+        return citation_clean
+    for heading_marker in heading_markers:
+        pattern = _publication_paper_embedded_heading_pattern(heading_marker)
+        if pattern is None:
+            continue
+        match = pattern.search(citation_clean)
+        if not match:
+            continue
+        trimmed = _publication_paper_content_cleanup(citation_clean[match.end() :])
+        if trimmed:
+            return trimmed
+    return citation_clean
+
+
 def _publication_paper_section_matches_display_group_label(
     section: dict[str, Any], group_key: str
 ) -> bool:
-    normalized_title = _normalize_publication_paper_display_heading_label(
-        section.get("title")
-        or section.get("raw_label")
-        or section.get("label_original")
-        or section.get("label_normalized")
-    )
-    if not normalized_title:
+    normalized_titles = set(_publication_paper_section_heading_markers(section))
+    if not normalized_titles:
         return False
     aliases = PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES.get(group_key, (group_key,))
-    return normalized_title in {
+    normalized_aliases = {
         _normalize_publication_paper_display_heading_label(alias) for alias in aliases
     }
+    return bool(normalized_titles.intersection(normalized_aliases))
 
 
 def _normalize_publication_paper_display_group_key(
@@ -4587,6 +5231,8 @@ def _normalize_publication_paper_display_group_key(
             else "article_information"
         )
     if section_type == "asset":
+        if suggests_article_information and document_zone == "back":
+            return "article_information"
         return "assets"
     if (
         canonical_map == "abstract"
@@ -4689,17 +5335,32 @@ def _apply_publication_paper_display_metadata(
             display_group_by_id[section_id] = resolved_group
 
     last_group_major_id: dict[str, str] = {}
+    display_level_stack_by_group_zone: dict[tuple[str, str], dict[int, str]] = {}
     for index, section in enumerate(ordered_sections):
         section_id = str(section.get("id") or "").strip()
         group_key = str(section.get("display_group") or "").strip().lower()
         raw_parent_id = str(section.get("parent_id") or "").strip()
         document_zone = str(section.get("document_zone") or "").strip().lower()
+        section_level = max(1, int(_safe_int(section.get("level")) or 1))
         display_parent_id: str | None = None
         is_display_major = _publication_paper_is_display_major_section(
             section, group_key=group_key
         )
+        group_zone_key = (group_key, document_zone)
+        level_stack = display_level_stack_by_group_zone.setdefault(group_zone_key, {})
+        for stack_level in list(level_stack):
+            if stack_level >= section_level:
+                level_stack.pop(stack_level, None)
 
-        if not is_display_major and raw_parent_id:
+        if not is_display_major:
+            for stack_level in sorted(level_stack.keys(), reverse=True):
+                if stack_level < section_level:
+                    candidate_parent_id = level_stack.get(stack_level)
+                    if candidate_parent_id and candidate_parent_id != section_id:
+                        display_parent_id = candidate_parent_id
+                        break
+
+        if not display_parent_id and not is_display_major and raw_parent_id:
             parent = sections_by_id.get(raw_parent_id)
             if parent is not None:
                 parent_zone = str(parent.get("document_zone") or "").strip().lower()
@@ -4718,6 +5379,10 @@ def _apply_publication_paper_display_metadata(
 
         if is_display_major and section_id:
             last_group_major_id[group_key] = section_id
+            level_stack.clear()
+
+        if section_id:
+            level_stack[1 if is_display_major else section_level] = section_id
 
         section["display_parent_id"] = display_parent_id
         section["display_order"] = int(_safe_int(section.get("order")) or index)
@@ -4823,7 +5488,12 @@ def _build_publication_paper_sections(
         for index, item in enumerate(raw_sections, start=1):
             if not isinstance(item, dict):
                 continue
-            title = _normalize_heading_label(str(item.get("label") or "")) or "Summary"
+            title = (
+                _normalize_structured_abstract_heading_label(
+                    str(item.get("label") or "")
+                )
+                or "Summary"
+            )
             kind = (
                 _canonical_structured_section_key(str(item.get("key") or ""))
                 or "section"
@@ -4955,7 +5625,7 @@ def _merge_seed_sections_into_parsed_sections(
 
 
 def _publication_paper_text_has_inline_reference_markers(value: str | None) -> bool:
-    text = str(value or "")
+    text = _normalize_publication_paper_inline_reference_markers(value)
     return bool(
         "{{cite:" in text
         or re.search(
@@ -4965,8 +5635,19 @@ def _publication_paper_text_has_inline_reference_markers(value: str | None) -> b
     )
 
 
-def _strip_publication_paper_inline_reference_markers(value: str | None) -> str:
+def _normalize_publication_paper_inline_reference_markers(value: str | None) -> str:
     clean = _publication_paper_content_cleanup(value)
+    if not clean:
+        return ""
+    return re.sub(
+        r"(?<=[\.;:,\)])\s+(\d{1,3}(?:\s+\d{1,3}){0,4})(?=\s+[A-Z])",
+        lambda match: f" [{','.join(match.group(1).split())}]",
+        clean,
+    )
+
+
+def _strip_publication_paper_inline_reference_markers(value: str | None) -> str:
+    clean = _normalize_publication_paper_inline_reference_markers(value)
     if not clean:
         return ""
     clean = re.sub(r"\{\{cite:[^}]+\}\}", " ", clean)
@@ -5005,28 +5686,46 @@ def _publication_paper_inline_reference_alignment_score(
     return SequenceMatcher(None, left_norm, right_norm).ratio()
 
 
-def _overlay_inline_reference_markers_onto_paragraph(
+def _publication_paper_citation_fragment_is_substantive(value: str | None) -> bool:
+    clean = _strip_publication_paper_inline_reference_markers(value)
+    if not clean:
+        return False
+    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9'/-]*", clean)
+    if len(words) < 4:
+        return False
+    return len(clean) >= 20
+
+
+def _overlay_inline_reference_markers_onto_paragraph_core(
     *,
-    base_paragraph: str,
-    citation_paragraph: str,
+    base_clean: str,
+    citation_clean: str,
 ) -> str:
-    base_clean = _publication_paper_content_cleanup(base_paragraph)
-    citation_clean = _publication_paper_content_cleanup(citation_paragraph)
-    if not base_clean or not citation_clean:
-        return base_clean or citation_clean
-    if not _publication_paper_text_has_inline_reference_markers(citation_clean):
-        return base_clean
     citation_plain = _strip_publication_paper_inline_reference_markers(citation_clean)
     if not citation_plain:
         return base_clean
     if citation_plain == base_clean:
         return citation_clean
-    if base_clean.startswith(citation_plain):
+    if citation_plain.startswith(base_clean):
+        trailing_plain = citation_plain[len(base_clean) :].strip()
+        if trailing_plain:
+            return base_clean
+    if citation_plain.endswith(base_clean):
+        leading_plain = citation_plain[: len(citation_plain) - len(base_clean)].strip()
+        if leading_plain:
+            return base_clean
+    if (
+        base_clean.startswith(citation_plain)
+        and _publication_paper_citation_fragment_is_substantive(citation_clean)
+    ):
         suffix = base_clean[len(citation_plain) :].strip()
         return _publication_paper_content_cleanup(
             f"{citation_clean} {suffix}".strip() if suffix else citation_clean
         )
-    if base_clean.endswith(citation_plain):
+    if (
+        base_clean.endswith(citation_plain)
+        and _publication_paper_citation_fragment_is_substantive(citation_clean)
+    ):
         prefix = base_clean[: len(base_clean) - len(citation_plain)].strip()
         return _publication_paper_content_cleanup(
             f"{prefix} {citation_clean}".strip() if prefix else citation_clean
@@ -5036,6 +5735,89 @@ def _overlay_inline_reference_markers_onto_paragraph(
     )
     if similarity >= 0.9 and len(citation_plain) >= int(len(base_clean) * 0.8):
         return citation_clean
+    citation_words = re.findall(r"[A-Za-z0-9]+", citation_plain.casefold())
+    if len(citation_words) >= 6:
+        base_search = base_clean.casefold()
+        max_prefix_length = min(12, len(citation_words))
+        for prefix_length in range(max_prefix_length, 5, -1):
+            pattern = r"\b" + r"\W+".join(
+                re.escape(word) for word in citation_words[:prefix_length]
+            ) + r"\b"
+            match = re.search(pattern, base_search)
+            if not match:
+                continue
+            base_suffix = base_clean[match.start() :].strip()
+            suffix_similarity = _publication_paper_inline_reference_alignment_score(
+                base_suffix,
+                citation_clean,
+            )
+            if suffix_similarity < 0.72:
+                continue
+            prefix = base_clean[: match.start()].strip()
+            return _publication_paper_content_cleanup(
+                f"{prefix} {citation_clean}".strip() if prefix else citation_clean
+            )
+    return base_clean
+
+
+def _trim_publication_paper_citation_paragraph_to_base(
+    *,
+    base_clean: str,
+    citation_clean: str,
+) -> str:
+    segments = [
+        segment.strip()
+        for segment in re.split(r"(?<=[.!?])\s+", citation_clean)
+        if segment.strip()
+    ]
+    if len(segments) < 2:
+        return citation_clean
+    for window_length in range(len(segments) - 1, 0, -1):
+        for start_index in range(0, len(segments) - window_length + 1):
+            candidate = " ".join(
+                segments[start_index : start_index + window_length]
+            ).strip()
+            if not candidate:
+                continue
+            if not _publication_paper_citation_fragment_is_substantive(candidate):
+                continue
+            overlaid = _overlay_inline_reference_markers_onto_paragraph_core(
+                base_clean=base_clean,
+                citation_clean=candidate,
+            )
+            if overlaid != base_clean:
+                return candidate
+    return citation_clean
+
+
+def _overlay_inline_reference_markers_onto_paragraph(
+    *,
+    base_paragraph: str,
+    citation_paragraph: str,
+) -> str:
+    base_clean = _publication_paper_content_cleanup(base_paragraph)
+    citation_clean = _normalize_publication_paper_inline_reference_markers(
+        citation_paragraph
+    )
+    if not base_clean or not citation_clean:
+        return base_clean or citation_clean
+    if not _publication_paper_text_has_inline_reference_markers(citation_clean):
+        return base_clean
+    overlaid = _overlay_inline_reference_markers_onto_paragraph_core(
+        base_clean=base_clean,
+        citation_clean=citation_clean,
+    )
+    if overlaid != base_clean:
+        return overlaid
+    trimmed_citation = _trim_publication_paper_citation_paragraph_to_base(
+        base_clean=base_clean,
+        citation_clean=citation_clean,
+    )
+    if trimmed_citation != citation_clean:
+        return _overlay_inline_reference_markers_onto_paragraph_core(
+            base_clean=base_clean,
+            citation_clean=trimmed_citation,
+        )
     return base_clean
 
 
@@ -5052,8 +5834,11 @@ def _overlay_inline_reference_markers_onto_section_content(
     overlaid: list[str] = []
     citation_start_index = 0
     for base_paragraph in base_paragraphs:
+        base_clean = _publication_paper_content_cleanup(base_paragraph)
         best_index: int | None = None
-        best_score = 0.0
+        best_score = -1.0
+        best_overlaid_paragraph = base_clean
+        best_overlay_applied = False
         upper_bound = min(len(citation_paragraphs), citation_start_index + 6)
         for index in range(citation_start_index, upper_bound):
             candidate = citation_paragraphs[index]
@@ -5061,21 +5846,27 @@ def _overlay_inline_reference_markers_onto_section_content(
                 base_paragraph,
                 candidate,
             )
-            if score > best_score:
+            overlaid_paragraph = _overlay_inline_reference_markers_onto_paragraph(
+                base_paragraph=base_paragraph,
+                citation_paragraph=candidate,
+            )
+            overlay_applied = overlaid_paragraph != base_clean
+            if (
+                overlay_applied and not best_overlay_applied
+            ) or (
+                overlay_applied == best_overlay_applied and score > best_score
+            ):
                 best_score = score
                 best_index = index
+                best_overlaid_paragraph = overlaid_paragraph
+                best_overlay_applied = overlay_applied
             if score >= 0.985:
                 break
-        if best_index is not None and best_score >= 0.72:
-            overlaid.append(
-                _overlay_inline_reference_markers_onto_paragraph(
-                    base_paragraph=base_paragraph,
-                    citation_paragraph=citation_paragraphs[best_index],
-                )
-            )
+        if best_index is not None and (best_overlay_applied or best_score >= 0.72):
+            overlaid.append(best_overlaid_paragraph)
             citation_start_index = best_index + 1
             continue
-        overlaid.append(_publication_paper_content_cleanup(base_paragraph))
+        overlaid.append(base_clean)
     return "\n\n".join(paragraph for paragraph in overlaid if paragraph)
 
 
@@ -5088,6 +5879,7 @@ def _build_publication_paper_reference_id_bridge(
         return {}
     final_by_label: dict[str, list[str]] = {}
     final_by_text: dict[str, list[str]] = {}
+    final_by_title: dict[str, list[str]] = {}
     for index, reference in enumerate(final_references):
         if not isinstance(reference, dict):
             continue
@@ -5102,6 +5894,11 @@ def _build_publication_paper_reference_id_bridge(
         )
         if raw_text_key:
             final_by_text.setdefault(raw_text_key, []).append(final_id)
+        title_key = _normalize_publication_paper_citation_alignment_text(
+            str(reference.get("title") or "")[:220]
+        )
+        if title_key:
+            final_by_title.setdefault(title_key, []).append(final_id)
 
     bridge: dict[str, str] = {}
     ordered_final_ids = [
@@ -5117,17 +5914,30 @@ def _build_publication_paper_reference_id_bridge(
             continue
         label = _normalize_heading_label(str(reference.get("label") or "")).casefold()
         matched_id: str | None = None
-        if label:
+        raw_text_key = _normalize_publication_paper_citation_alignment_text(
+            str(reference.get("raw_text") or "")[:220]
+        )
+        text_matches = final_by_text.get(raw_text_key, []) if raw_text_key else []
+        if len(text_matches) == 1:
+            matched_id = text_matches[0]
+        if matched_id is None:
+            title_key = _normalize_publication_paper_citation_alignment_text(
+                str(reference.get("title") or "")[:220]
+            )
+            title_matches = final_by_title.get(title_key, []) if title_key else []
+            if len(title_matches) == 1:
+                matched_id = title_matches[0]
+        if matched_id is None:
+            xml_id_match = re.fullmatch(r"[Bb](\d+)", xml_id)
+            if xml_id_match:
+                ordinal_label = str(int(xml_id_match.group(1)) + 1).casefold()
+                ordinal_matches = final_by_label.get(ordinal_label, [])
+                if len(ordinal_matches) == 1:
+                    matched_id = ordinal_matches[0]
+        if matched_id is None and label:
             label_matches = final_by_label.get(label, [])
             if len(label_matches) == 1:
                 matched_id = label_matches[0]
-        if matched_id is None:
-            raw_text_key = _normalize_publication_paper_citation_alignment_text(
-                str(reference.get("raw_text") or "")[:220]
-            )
-            text_matches = final_by_text.get(raw_text_key, []) if raw_text_key else []
-            if len(text_matches) == 1:
-                matched_id = text_matches[0]
         if matched_id is None and index < len(ordered_final_ids):
             matched_id = ordered_final_ids[index]
         if matched_id:
@@ -5247,14 +6057,10 @@ def _overlay_grobid_inline_references_onto_structured_paper(
         final_references=final_references,
     )
 
-    candidate_by_title: dict[str, list[dict[str, Any]]] = {}
-    for section in citation_sections:
-        title_key = _normalize_publication_paper_citation_alignment_text(
-            section.get("title") or section.get("raw_label")
-        )
-        if not title_key:
-            continue
-        candidate_by_title.setdefault(title_key, []).append(section)
+    candidate_by_title: dict[str, list[int]] = {}
+    for index, section in enumerate(citation_sections):
+        for title_key in _publication_paper_section_heading_markers(section):
+            candidate_by_title.setdefault(title_key, []).append(index)
 
     updated_sections: list[dict[str, Any]] = []
     any_overlay_applied = False
@@ -5263,28 +6069,71 @@ def _overlay_grobid_inline_references_onto_structured_paper(
         if str(section_copy.get("source") or "").strip() != STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC:
             updated_sections.append(section_copy)
             continue
-        title_key = _normalize_publication_paper_citation_alignment_text(
-            section_copy.get("title") or section_copy.get("raw_label")
+        candidate_indexes = _publication_paper_candidate_section_indexes(
+            section=section_copy,
+            candidate_by_title=candidate_by_title,
+            citation_sections=citation_sections,
         )
-        candidates = candidate_by_title.get(title_key, [])
-        best_candidate: dict[str, Any] | None = None
-        best_score = 0.0
-        for candidate in candidates:
-            score = _publication_paper_inline_reference_alignment_score(
-                section_copy.get("content"),
-                candidate.get("content"),
+        if not candidate_indexes:
+            candidate_indexes = []
+        base_content = _publication_paper_content_cleanup(section_copy.get("content"))
+        overlaid_content = base_content
+        overlay_applied = False
+        for candidate_index in candidate_indexes:
+            candidate = citation_sections[candidate_index]
+            next_content = _overlay_inline_reference_markers_onto_section_content(
+                base_content=overlaid_content,
+                citation_content=candidate.get("content"),
             )
-            if score > best_score:
-                best_score = score
-                best_candidate = candidate
-        if best_candidate is None or best_score < 0.45:
-            updated_sections.append(section_copy)
-            continue
-        overlaid_content = _overlay_inline_reference_markers_onto_section_content(
-            base_content=section_copy.get("content"),
-            citation_content=best_candidate.get("content"),
-        )
-        if overlaid_content != _publication_paper_content_cleanup(section_copy.get("content")):
+            if next_content != overlaid_content:
+                overlaid_content = next_content
+                overlay_applied = True
+        if not overlay_applied:
+            parent_id = str(section_copy.get("parent_id") or "").strip()
+            heading_markers = _publication_paper_section_heading_markers(section_copy)
+            if parent_id and heading_markers:
+                sibling_candidate_indexes: list[int] = []
+                sibling_candidate_index_set: set[int] = set(candidate_indexes)
+                for sibling in base_sections:
+                    if not isinstance(sibling, dict):
+                        continue
+                    sibling_id = str(sibling.get("id") or "").strip()
+                    if sibling_id == str(section_copy.get("id") or "").strip():
+                        continue
+                    if str(sibling.get("parent_id") or "").strip() != parent_id:
+                        continue
+                    for candidate_index in _publication_paper_candidate_section_indexes(
+                        section=sibling,
+                        candidate_by_title=candidate_by_title,
+                        citation_sections=citation_sections,
+                    ):
+                        if candidate_index in sibling_candidate_index_set:
+                            continue
+                        sibling_candidate_index_set.add(candidate_index)
+                        sibling_candidate_indexes.append(candidate_index)
+                for candidate_index in sibling_candidate_indexes:
+                    candidate_content = (
+                        _trim_publication_paper_citation_content_to_embedded_heading(
+                            citation_content=citation_sections[candidate_index].get(
+                                "content"
+                            ),
+                            heading_markers=heading_markers,
+                        )
+                    )
+                    if not _publication_paper_text_has_inline_reference_markers(
+                        candidate_content
+                    ):
+                        continue
+                    next_content = _overlay_inline_reference_markers_onto_section_content(
+                        base_content=overlaid_content,
+                        citation_content=candidate_content,
+                    )
+                    if next_content == overlaid_content:
+                        continue
+                    overlaid_content = next_content
+                    overlay_applied = True
+                    break
+        if overlay_applied:
             any_overlay_applied = True
             section_copy["content"] = overlaid_content
             section_copy["word_count"] = len(
@@ -5313,6 +6162,119 @@ def _overlay_grobid_inline_references_onto_structured_paper(
             if base_generation_method and "grobid_citation_overlay_v1" not in base_generation_method
             else base_generation_method or "grobid_citation_overlay_v1"
         )
+    return updated_payload
+
+
+def _merge_missing_grobid_article_information_sections(
+    *,
+    parsed_payload: dict[str, Any],
+    grobid_payload: dict[str, Any],
+) -> dict[str, Any]:
+    base_sections = (
+        [dict(item) for item in parsed_payload.get("sections", []) if isinstance(item, dict)]
+        if isinstance(parsed_payload.get("sections"), list)
+        else []
+    )
+    fallback_sections = (
+        [dict(item) for item in grobid_payload.get("sections", []) if isinstance(item, dict)]
+        if isinstance(grobid_payload.get("sections"), list)
+        else []
+    )
+    if not base_sections or not fallback_sections:
+        return dict(parsed_payload)
+
+    generic_title_markers = {
+        "back matter",
+        "article information",
+        "article information and declarations",
+        "declarations",
+    }
+
+    def _is_article_information_candidate(section: dict[str, Any]) -> bool:
+        title_marker = _normalize_publication_paper_display_heading_label(
+            section.get("title")
+            or section.get("raw_label")
+            or section.get("label_original")
+            or section.get("label_normalized")
+        )
+        if not title_marker or title_marker in generic_title_markers:
+            return False
+        display_group = _normalize_publication_paper_display_group_key(section)
+        if display_group != "article_information":
+            return False
+        canonical_kind = _normalize_publication_paper_section_kind(
+            section.get("canonical_kind") or section.get("kind")
+        )
+        section_type = str(section.get("section_type") or "").strip().lower()
+        document_zone = str(section.get("document_zone") or "").strip().lower()
+        content = _publication_paper_content_cleanup(section.get("content"))
+        return bool(content) and (
+            canonical_kind in PUBLICATION_PAPER_METADATA_SECTION_KINDS
+            or section_type == "metadata"
+            or document_zone == "back"
+            or _publication_paper_label_suggests_article_information(title_marker)
+        )
+
+    existing_title_markers = {
+        _normalize_publication_paper_display_heading_label(
+            section.get("title")
+            or section.get("raw_label")
+            or section.get("label_original")
+            or section.get("label_normalized")
+        )
+        for section in base_sections
+        if _is_article_information_candidate(section)
+    }
+
+    merged_sections = [dict(section) for section in base_sections]
+    merged_any = False
+    for section in fallback_sections:
+        if not _is_article_information_candidate(section):
+            continue
+        title_marker = _normalize_publication_paper_display_heading_label(
+            section.get("title")
+            or section.get("raw_label")
+            or section.get("label_original")
+            or section.get("label_normalized")
+        )
+        if title_marker in existing_title_markers:
+            continue
+        section_copy = dict(section)
+        section_copy["parent_id"] = None
+        section_copy["level"] = 1
+        section_copy["document_zone"] = "back"
+        section_copy["major_section_key"] = "article_information"
+        if str(section_copy.get("section_type") or "").strip().lower() in {"", "canonical"}:
+            section_copy["section_type"] = (
+                "metadata"
+                if _normalize_publication_paper_section_kind(
+                    section_copy.get("canonical_kind") or section_copy.get("kind")
+                )
+                in PUBLICATION_PAPER_METADATA_SECTION_KINDS
+                else str(section_copy.get("section_type") or "").strip().lower() or "canonical"
+            )
+        if not str(section_copy.get("section_role") or "").strip():
+            section_copy["section_role"] = (
+                "metadata"
+                if str(section_copy.get("section_type") or "").strip().lower() == "metadata"
+                else "section"
+            )
+        merged_sections.append(section_copy)
+        existing_title_markers.add(title_marker)
+        merged_any = True
+
+    if not merged_any:
+        return dict(parsed_payload)
+
+    updated_payload = dict(parsed_payload)
+    updated_payload["sections"] = _resequence_publication_paper_sections(merged_sections)
+    base_generation_method = str(parsed_payload.get("generation_method") or "").strip()
+    updated_payload["generation_method"] = (
+        f"{base_generation_method}+grobid_article_information_fallback_v1"
+        if base_generation_method
+        and "grobid_article_information_fallback_v1" not in base_generation_method
+        else base_generation_method or "grobid_article_information_fallback_v1"
+    )
     return updated_payload
 
 
@@ -5360,8 +6322,37 @@ def _serialize_publication_paper_asset(value: dict[str, Any]) -> dict[str, Any]:
         "graphic_coords": str(value.get("graphic_coords") or "").strip() or None,
         "image_data": str(value.get("image_data") or "").strip() or None,
         "structured_html": str(value.get("structured_html") or "").strip() or None,
-        "enhanced_html": str(value.get("enhanced_html") or "").strip() or None,
     }
+
+
+def _publication_paper_asset_kind_priority(value: str | None) -> int:
+    clean = str(value or "").strip().lower()
+    if clean == "graphical_abstract":
+        return 3
+    if clean in {"figure", "table", "dataset"}:
+        return 2
+    if clean:
+        return 1
+    return 0
+
+
+def _publication_paper_asset_kind(
+    *,
+    classification: str,
+    title: str | None = None,
+    label_text: str | None = None,
+    head_text: str | None = None,
+    caption: str | None = None,
+) -> str:
+    normalized_classification = _normalize_publication_file_classification(classification)
+    if normalized_classification == FILE_CLASSIFICATION_TABLE:
+        return "table"
+    if normalized_classification != FILE_CLASSIFICATION_FIGURE:
+        return "attachment"
+    for candidate in (title, label_text, head_text, caption):
+        if _normalize_publication_paper_section_kind(candidate) == "graphical_abstract":
+            return "graphical_abstract"
+    return "figure"
 
 
 def _build_parsed_publication_paper_asset(
@@ -5375,14 +6366,16 @@ def _build_parsed_publication_paper_asset(
     coords: str | None = None,
     graphic_coords: str | None = None,
     source_parser: str | None = None,
+    asset_kind: str | None = None,
 ) -> dict[str, Any]:
     normalized_classification = _normalize_publication_file_classification(classification)
-    asset_kind = (
-        "figure"
-        if normalized_classification == FILE_CLASSIFICATION_FIGURE
-        else "table"
-        if normalized_classification == FILE_CLASSIFICATION_TABLE
-        else "attachment"
+    resolved_asset_kind = (
+        str(asset_kind or "").strip().lower()
+        or _publication_paper_asset_kind(
+            classification=classification,
+            title=title,
+            caption=caption,
+        )
     )
     return {
         "id": asset_id,
@@ -5397,14 +6390,13 @@ def _build_parsed_publication_paper_asset(
         "caption": str(caption or "").strip() or None,
         "page_start": page_start,
         "page_end": page_end,
-        "asset_kind": asset_kind,
+        "asset_kind": resolved_asset_kind,
         "origin": "parsed",
         "source_parser": str(source_parser or STRUCTURED_PAPER_SECTION_SOURCE_GROBID),
         "coords": str(coords or "").strip() or None,
         "graphic_coords": str(graphic_coords or "").strip() or None,
         "image_data": None,
         "structured_html": None,
-        "enhanced_html": None,
     }
 
 
@@ -6085,6 +7077,7 @@ def _build_publication_paper_payload(
             seed_sections=seed_sections,
             parsed_sections=sections,
         )
+    sections = _collapse_publication_paper_leaf_methods_subsections(sections)
     sections = _apply_publication_paper_display_metadata(sections)
     references = (
         [
@@ -6951,7 +7944,13 @@ def _tei_section_blocks(node: ET.Element | None) -> list[str]:
     return deduped_blocks
 
 
-def _request_grobid_fulltext_tei(*, content: bytes, file_name: str) -> str:
+def _request_grobid_fulltext_tei(
+    *,
+    content: bytes,
+    file_name: str,
+    tei_coordinates: str = "head,p,s,ref,biblStruct,formula,figure,table",
+    include_raw_affiliations: bool = True,
+) -> str:
     if not content:
         raise PublicationConsoleValidationError("Publication PDF bytes are empty.")
     base_url = _grobid_base_url()
@@ -6979,8 +7978,10 @@ def _request_grobid_fulltext_tei(*, content: bytes, file_name: str) -> str:
                         "consolidateHeader": "0",
                         "consolidateCitations": "0",
                         "includeRawCitations": "1",
-                        "includeRawAffiliations": "1",
-                        "teiCoordinates": "head,p,s,ref,biblStruct,formula,figure,table",
+                        "includeRawAffiliations": (
+                            "1" if include_raw_affiliations else "0"
+                        ),
+                        "teiCoordinates": tei_coordinates,
                     },
                     files={
                         "input": (
@@ -7014,6 +8015,26 @@ def _request_grobid_fulltext_tei(*, content: bytes, file_name: str) -> str:
                 continue
             break
     raise PublicationConsoleValidationError(last_error)
+
+
+def _extract_structured_publication_citation_overlay_with_grobid(
+    *,
+    content: bytes,
+    title: str | None = None,
+    file_name: str | None = None,
+) -> dict[str, Any]:
+    tei_xml = _request_grobid_fulltext_tei(
+        content=content,
+        file_name=file_name or "publication.pdf",
+        tei_coordinates="head,p,s,ref,biblStruct",
+        include_raw_affiliations=False,
+    )
+    parsed_payload = _parse_grobid_tei_into_structured_paper(tei_xml=tei_xml, title=title)
+    parsed_payload["figures"] = []
+    parsed_payload["tables"] = []
+    parsed_payload["page_count"] = None
+    parsed_payload["generation_method"] = "grobid_tei_citation_overlay_v1"
+    return parsed_payload
 
 
 def _extract_biblstruct_fields(node: ET.Element) -> dict[str, Any]:
@@ -7475,7 +8496,12 @@ def _merge_publication_paper_asset_candidate(
         merged["classification"] = candidate.get("classification")
     if not merged.get("classification_label") and candidate.get("classification_label"):
         merged["classification_label"] = candidate.get("classification_label")
-    if not merged.get("asset_kind") and candidate.get("asset_kind"):
+    if (
+        _publication_paper_asset_kind_priority(candidate.get("asset_kind"))
+        > _publication_paper_asset_kind_priority(existing.get("asset_kind"))
+    ):
+        merged["asset_kind"] = candidate.get("asset_kind")
+    elif not merged.get("asset_kind") and candidate.get("asset_kind"):
         merged["asset_kind"] = candidate.get("asset_kind")
     if not merged.get("origin") and candidate.get("origin"):
         merged["origin"] = candidate.get("origin")
@@ -7597,6 +8623,13 @@ def _extract_publication_paper_assets_from_tei(
             page_end=page_end,
             coords=figure_coords,
             graphic_coords=graphic_coords,
+            asset_kind=_publication_paper_asset_kind(
+                classification=classification,
+                title=title_text,
+                label_text=label_text,
+                head_text=head_text,
+                caption=caption_text,
+            ),
         )
         if is_table:
             grobid_html = _grobid_table_node_to_html(node)
@@ -8863,6 +9896,60 @@ def _publication_table_row_cell_total(cells: list[dict[str, Any]]) -> int:
     return total
 
 
+def _publication_table_combined_cell_text(cells: list[dict[str, Any]]) -> str:
+    return _publication_table_text_cleanup(
+        " ".join(
+            str(cell.get("text") or "").strip()
+            for cell in cells
+            if str(cell.get("text") or "").strip()
+        )
+    )
+
+
+def _publication_table_note_text_looks_sentence_like(text: str) -> bool:
+    clean = _publication_table_text_cleanup(text)
+    if not clean:
+        return False
+    words = re.findall(r"[A-Za-z0-9%][A-Za-z0-9%'/+-]*", clean)
+    if len(words) < 6:
+        return False
+    return bool(
+        re.search(r"[.;:]", clean)
+        or PUBLICATION_TABLE_PRESENTATION_NOTE_PATTERN.search(clean)
+        or clean[:1].islower()
+    )
+
+
+def _publication_table_section_like_row(
+    *,
+    cells: list[dict[str, Any]],
+    total_columns: int,
+) -> bool:
+    if total_columns <= 1 or not cells:
+        return False
+    texts = [
+        str(cell.get("text") or "").strip()
+        for cell in cells
+        if str(cell.get("text") or "").strip()
+    ]
+    if len(texts) != 1:
+        return False
+    combined = _publication_table_text_cleanup(texts[0])
+    if not combined:
+        return False
+    if DOCLING_TABLE_NOTE_PREFIX_PATTERN.match(combined):
+        return False
+    if _publication_table_row_cell_total(cells) < max(total_columns - 1, 2):
+        return False
+    if len(combined) > 110:
+        return False
+    if _publication_table_note_text_looks_sentence_like(combined):
+        return False
+    if re.search(r"\b(?:legend|footnote|abbreviations?|acronyms?|symbols?)\b", combined, re.I):
+        return False
+    return len(re.findall(r"[A-Za-z0-9%][A-Za-z0-9%'/+-]*", combined)) <= 12
+
+
 def _publication_table_extract_rows(table_element: ET.Element) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     direct_rows = [
@@ -8892,7 +9979,7 @@ def _publication_table_extract_rows(table_element: ET.Element) -> list[dict[str,
                 cell_tag = _publication_table_xml_local_name(cell.tag)
                 if cell_tag not in {"th", "td"}:
                     continue
-                text = _normalize_abstract_text(" ".join(cell.itertext()))
+                text = _publication_table_text_cleanup(" ".join(cell.itertext()))
                 cells.append(
                     {
                         "tag": cell_tag,
@@ -8904,6 +9991,86 @@ def _publication_table_extract_rows(table_element: ET.Element) -> list[dict[str,
             if cells:
                 rows.append({"section": section_name, "cells": cells})
     return rows
+
+
+def _publication_table_primary_cell_looks_compound(cells: list[dict[str, Any]]) -> bool:
+    label = _publication_table_primary_cell_text(cells)
+    if not label:
+        return False
+    word_count = len(re.findall(r"[A-Za-z0-9%][A-Za-z0-9%'/+-]*", label))
+    if word_count < 8:
+        return False
+    unit_block_count = len(re.findall(r"(?:\([^)]{1,24}\)|\[[^\]]{1,24}\])", label))
+    measurement_hits = len(
+        re.findall(
+            r"\b(?:age|height|weight|sex|gender|male|female|score|index|ratio|rate|volume|mass|pressure|velocity|fraction|class|grade|stage|type|group|smoker|diabetes|hypertension|left|right|ventricular|atrial|echocardiography|cmr|mri)\b",
+            label,
+            re.IGNORECASE,
+        )
+    )
+    return (
+        unit_block_count >= 2
+        or measurement_hits >= 3
+        or ";" in label
+        or " IQR " in f" {label} "
+        or " SD " in f" {label} "
+    )
+
+
+def _publication_table_structure_is_low_fidelity_for_grouping(
+    *,
+    header_rows: list[list[dict[str, Any]]],
+    body_rows: list[dict[str, Any]],
+    total_columns: int,
+) -> bool:
+    if total_columns <= 1:
+        return True
+    all_rows = [*header_rows, *(list(row.get("cells") or []) for row in body_rows)]
+    if not all_rows:
+        return True
+    cell_texts = [
+        _publication_table_text_cleanup(str(cell.get("text") or ""))
+        for row in all_rows
+        for cell in row
+    ]
+    single_char_alpha_cells = sum(
+        1 for text in cell_texts if re.fullmatch(r"[A-Za-z]", text)
+    )
+    fragmented_rows = sum(
+        1
+        for row in all_rows
+        if sum(
+            1
+            for cell in row
+            if re.fullmatch(r"[A-Za-z]", _publication_table_text_cleanup(str(cell.get("text") or "")))
+        )
+        >= 3
+    )
+    compound_primary_rows = sum(
+        1
+        for row in body_rows
+        if str(row.get("row_kind") or "").strip() == "data"
+        and _publication_table_primary_cell_looks_compound(list(row.get("cells") or []))
+    )
+    sparse_header_rows = sum(
+        1
+        for row in header_rows
+        if sum(
+            1
+            for cell in row
+            if _publication_table_text_cleanup(str(cell.get("text") or ""))
+        )
+        <= max(2, total_columns // 2)
+    )
+    if single_char_alpha_cells >= 8 or fragmented_rows >= 2:
+        return True
+    if compound_primary_rows >= 2:
+        return True
+    if total_columns >= 5 and sparse_header_rows >= 2 and (
+        single_char_alpha_cells >= 3 or compound_primary_rows >= 1
+    ):
+        return True
+    return False
 
 
 def _publication_table_note_like_row(
@@ -8929,12 +10096,58 @@ def _publication_table_note_like_row(
     if DOCLING_TABLE_NOTE_PREFIX_PATTERN.match(combined):
         return True
     if non_empty_count == 1 and cell_total >= max(total_columns - 1, 2):
-        return len(combined) >= 18
+        if _publication_table_section_like_row(
+            cells=cells,
+            total_columns=total_columns,
+        ):
+            return False
+        return _publication_table_note_text_looks_sentence_like(combined)
     return False
 
 
-def _publication_table_render_cells(cells: list[dict[str, Any]]) -> str:
+_PUBLICATION_TABLE_PVALUE_HEADER_PATTERN = re.compile(
+    r"^p[\s\-]*val", re.IGNORECASE
+)
+
+
+def _publication_table_detect_pvalue_columns(
+    header_rows: list[list[dict[str, Any]]],
+) -> frozenset[int]:
+    indices: set[int] = set()
+    for row in header_rows:
+        col = 0
+        for cell in row:
+            text = str(cell.get("text") or "").strip()
+            colspan = max(1, _safe_int(cell.get("colspan")) or 1)
+            if colspan == 1 and _PUBLICATION_TABLE_PVALUE_HEADER_PATTERN.match(text):
+                indices.add(col)
+            col += colspan
+    return frozenset(indices)
+
+
+_PUBLICATION_TABLE_PVALUE_SIGNIFICANT_PATTERN = re.compile(
+    r"^[<≤]?\s*0\.0\d*$"
+)
+
+
+def _publication_table_is_significant_pvalue(text: str) -> bool:
+    clean = text.strip()
+    if not _PUBLICATION_TABLE_PVALUE_SIGNIFICANT_PATTERN.match(clean):
+        return False
+    try:
+        numeric = float(re.sub(r"^[<≤]\s*", "", clean))
+        return numeric < 0.05
+    except (ValueError, OverflowError):
+        return False
+
+
+def _publication_table_render_cells(
+    cells: list[dict[str, Any]],
+    *,
+    pvalue_columns: frozenset[int] = frozenset(),
+) -> str:
     rendered: list[str] = []
+    col = 0
     for cell in cells:
         tag = "th" if str(cell.get("tag") or "").lower() == "th" else "td"
         attrs: list[str] = []
@@ -8945,11 +10158,1991 @@ def _publication_table_render_cells(cells: list[dict[str, Any]]) -> str:
         if rowspan > 1:
             attrs.append(f' rowspan="{rowspan}"')
         text = html.escape(str(cell.get("text") or ""))
+        if (
+            tag == "td"
+            and col in pvalue_columns
+            and _publication_table_is_significant_pvalue(text)
+        ):
+            attrs.append(' class="publication-table-pvalue-significant"')
         rendered.append(f"<{tag}{''.join(attrs)}>{text}</{tag}>")
+        col += colspan
     return "".join(rendered)
 
 
-def _canonicalize_docling_table_html(html_text: str) -> str:
+def _publication_table_pymupdf_extract_rows(table: Any) -> list[list[str]]:
+    extracted_rows = table.extract() if hasattr(table, "extract") else []
+    if not isinstance(extracted_rows, list):
+        return []
+    normalized_rows: list[list[str]] = []
+    max_columns = 0
+    for raw_row in extracted_rows:
+        if not isinstance(raw_row, list):
+            continue
+        clean_row = [_publication_table_text_cleanup(str(value or "")) for value in raw_row]
+        if not any(clean_row):
+            continue
+        max_columns = max(max_columns, len(clean_row))
+        normalized_rows.append(clean_row)
+    if max_columns <= 0:
+        return []
+    return [row + ([""] * (max_columns - len(row))) for row in normalized_rows]
+
+
+def _publication_table_pymupdf_header_like_row(
+    row: list[str],
+    *,
+    next_row: list[str] | None = None,
+) -> bool:
+    texts = [text for text in row if text]
+    if len(texts) < 2:
+        return False
+    combined = _normalize_abstract_text(" ".join(texts))
+    if not combined or DOCLING_TABLE_NOTE_PREFIX_PATTERN.match(combined):
+        return False
+    if sum(1 for text in texts if re.search(r"\d", text)) >= len(texts):
+        return False
+    if any(
+        re.search(
+            r"\b(?:variable|variables|characteristic|characteristics|measure|measures|parameter|parameters|group|groups|outcome|outcomes)\b",
+            text,
+            re.IGNORECASE,
+        )
+        for text in texts
+    ):
+        return True
+    if next_row:
+        next_texts = [text for text in next_row if text]
+        numeric_next_cells = sum(1 for text in next_texts[1:] if re.search(r"\d", text))
+        if numeric_next_cells >= 1 and not any(re.search(r"\d", text) for text in texts):
+            return True
+    return False
+
+
+def _publication_table_pymupdf_note_like_row(
+    row: list[str],
+    *,
+    seen_data_rows: bool,
+) -> bool:
+    if not seen_data_rows:
+        return False
+    texts = [text for text in row if text]
+    if len(texts) != 1 or len(row) <= 1:
+        return False
+    combined = _normalize_abstract_text(texts[0])
+    if not combined:
+        return False
+    if DOCLING_TABLE_NOTE_PREFIX_PATTERN.match(combined):
+        return True
+    if PUBLICATION_TABLE_NOTE_MARKER_PREFIX_PATTERN.match(combined):
+        return True
+    return bool(PUBLICATION_TABLE_PRESENTATION_NOTE_PATTERN.search(combined))
+
+
+def _publication_table_render_section_row(
+    cells: list[dict[str, Any]],
+    *,
+    total_columns: int,
+) -> str:
+    section_text = html.escape(_publication_table_combined_cell_text(cells))
+    colspan = max(total_columns, _publication_table_row_cell_total(cells), 1)
+    return (
+        '<tr class="publication-structured-table-section-row">'
+        f'<td class="publication-structured-table-section-cell" colspan="{colspan}">{section_text}</td>'
+        "</tr>"
+    )
+
+
+def _publication_table_should_add_synthetic_two_column_header(
+    *,
+    header_rows: list[list[dict[str, Any]]],
+    body_rows: list[dict[str, Any]],
+    total_columns: int,
+) -> bool:
+    if header_rows or total_columns != 2:
+        return False
+    data_rows = [
+        row
+        for row in body_rows
+        if str(row.get("row_kind") or "").strip() == "data"
+    ]
+    if len(data_rows) < 3:
+        return False
+    return all(
+        _publication_table_row_cell_total(list(row.get("cells") or [])) == 2
+        for row in data_rows
+    )
+
+
+def _publication_table_primary_cell_text(cells: list[dict[str, Any]]) -> str:
+    if not cells:
+        return ""
+    return _publication_table_text_cleanup(str(cells[0].get("text") or ""))
+
+
+def _publication_table_value_cell_texts(cells: list[dict[str, Any]]) -> list[str]:
+    return [
+        _publication_table_text_cleanup(str(cell.get("text") or ""))
+        for cell in cells[1:]
+        if _publication_table_text_cleanup(str(cell.get("text") or ""))
+    ]
+
+
+def _publication_table_is_preamble_row(cells: list[dict[str, Any]]) -> bool:
+    label = _publication_table_primary_cell_text(cells)
+    if not label or not PUBLICATION_TABLE_PREAMBLE_LABEL_PATTERN.match(label):
+        return False
+    values = _publication_table_value_cell_texts(cells)
+    # If the label itself contains an embedded count (e.g. "N = 134"), the value
+    # cells may not be numeric — accept the row as preamble regardless.
+    if re.search(r"[=:]\s*\d", label):
+        return True
+    if not values:
+        return False
+    numeric_like_count = sum(
+        1
+        for value in values
+        if re.fullmatch(r"[<>]?\d+(?:\.\d+)?(?:\s*\([^)]*\))?", value)
+    )
+    return numeric_like_count >= max(1, len(values) - 1)
+
+
+def _publication_table_leading_preamble_row_count(data_rows: list[dict[str, Any]]) -> int:
+    count = 0
+    for row in data_rows[:2]:
+        if _publication_table_is_preamble_row(list(row.get("cells") or [])):
+            count += 1
+            continue
+        break
+    return count
+
+
+def _publication_table_group_label_cleanup(label: str | None) -> str:
+    clean = re.sub(r"\s+", " ", str(label or "").strip(" \t\r\n:;,-"))
+    if not clean or len(clean) > 48:
+        return ""
+    parts: list[str] = []
+    for index, token in enumerate(clean.split(" ")):
+        core_match = re.match(r"^(?P<prefix>[^A-Za-z0-9]*)(?P<core>.*?)(?P<suffix>[^A-Za-z0-9]*)$", token)
+        if not core_match:
+            parts.append(token)
+            continue
+        prefix = core_match.group("prefix") or ""
+        core = core_match.group("core") or ""
+        suffix = core_match.group("suffix") or ""
+        if not core:
+            parts.append(token)
+            continue
+        if (
+            re.fullmatch(r"[A-Z0-9]{2,8}", core)
+            or (core != core.lower() and core != core.upper() and core != core.title())
+            or re.search(r"\d", core)
+        ):
+            normalized_core = core
+        elif index == 0:
+            lowered = core.lower()
+            normalized_core = lowered[:1].upper() + lowered[1:] if lowered else core
+        else:
+            normalized_core = core.lower()
+        parts.append(f"{prefix}{normalized_core}{suffix}")
+    return " ".join(parts)
+
+
+def _publication_table_group_label_minimum_rows(label: str | None) -> int:
+    clean = _publication_table_group_label_cleanup(label)
+    if not clean:
+        return 0
+    return int(PUBLICATION_TABLE_GENERIC_GROUP_MIN_ROWS.get(clean.casefold()) or 0)
+
+
+def _publication_table_filter_llm_groups(
+    groups: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not groups:
+        return []
+    label_counts = Counter(
+        _publication_table_group_label_cleanup(group.get("label")).casefold()
+        for group in groups
+        if _publication_table_group_label_cleanup(group.get("label"))
+    )
+    filtered: list[dict[str, Any]] = []
+    for group in groups:
+        label = _publication_table_group_label_cleanup(group.get("label"))
+        start_index = _safe_int(group.get("start_index"))
+        end_index = _safe_int(group.get("end_index"))
+        if not label or start_index is None or end_index is None or end_index < start_index:
+            continue
+        minimum_rows = _publication_table_group_label_minimum_rows(label)
+        row_count = end_index - start_index + 1
+        if minimum_rows and row_count < minimum_rows:
+            continue
+        if minimum_rows and label_counts.get(label.casefold(), 0) > 1:
+            continue
+        filtered.append(group)
+    return _publication_table_merge_inferred_row_groups(filtered)
+
+
+def _publication_table_row_family_key(
+    label: str | None,
+) -> tuple[str, str] | None:
+    clean = _publication_table_group_label_cleanup(label)
+    if not clean:
+        return None
+    match = PUBLICATION_TABLE_FAMILY_ROOT_PATTERN.match(clean)
+    if match:
+        root = _publication_table_group_label_cleanup(match.group("root"))
+        if not root:
+            return None
+        return _normalize_abstract_text(root).casefold(), root
+    if not PUBLICATION_TABLE_FAMILY_SUFFIX_PATTERN.search(clean):
+        return None
+    tokens = clean.split()
+    if len(tokens) < 2:
+        return None
+    root = _publication_table_group_label_cleanup(" ".join(tokens[:-1]))
+    if not root:
+        return None
+    if len(root.split()) < 2 and not PUBLICATION_TABLE_CLASSIFICATION_LABEL_PATTERN.search(
+        root
+    ):
+        return None
+    return _normalize_abstract_text(root).casefold(), root
+
+
+def _publication_table_row_prefix_family_key(
+    label: str | None,
+) -> tuple[str, str] | None:
+    clean = _publication_table_group_label_cleanup(label)
+    if not clean:
+        return None
+    tokens = re.findall(r"[A-Za-z][A-Za-z0-9'-]*", clean)
+    if len(tokens) < 3:
+        return None
+    start_index = 0
+    while (
+        start_index < len(tokens) - 2
+        and tokens[start_index].casefold() in PUBLICATION_TABLE_GENERIC_PREFIX_SKIP_TOKENS
+    ):
+        start_index += 1
+    if (
+        start_index < len(tokens) - 2
+        and tokens[start_index].casefold() in {"diastolic", "systolic"}
+    ):
+        start_index += 1
+    prefix_tokens = tokens[start_index : start_index + 2]
+    if len(prefix_tokens) < 2:
+        return None
+    if prefix_tokens[0].casefold() in PUBLICATION_TABLE_GENERIC_PREFIX_SKIP_TOKENS:
+        return None
+    if prefix_tokens[1].casefold() in {"class", "grade", "stage", "type", "group"}:
+        return None
+    display_label = " ".join(prefix_tokens)
+    if len(display_label) < 6:
+        return None
+    return _normalize_abstract_text(display_label).casefold(), display_label
+
+
+def _publication_table_row_values_look_categorical(cells: list[dict[str, Any]]) -> bool:
+    values = _publication_table_value_cell_texts(cells)
+    if not values:
+        return False
+    parenthetical_values = sum(
+        1
+        for value in values
+        if re.search(r"\(\s*[<>]?\d+(?:\.\d+)?%?\s*\)", value)
+    )
+    return parenthetical_values >= max(1, (len(values) + 1) // 2)
+
+
+def _publication_table_row_value_shape_legacy_one(cells: list[dict[str, Any]]) -> str:
+    if _publication_table_is_preamble_row(cells):
+        return "sample_size"
+    values = _publication_table_value_cell_texts(cells)
+    if not values:
+        return "label_only"
+    if _publication_table_row_values_look_categorical(cells):
+        return "count_percent"
+    numeric_values = sum(1 for value in values if re.search(r"\d", value))
+    summary_values = sum(
+        1
+        for value in values
+        if re.search(r"(?:±|\+/-|[<>]?\d+(?:\.\d+)?\s*[-–]\s*[<>]?\d+(?:\.\d+)?)", value)
+    )
+    if numeric_values >= max(1, len(values) - 1):
+        if summary_values >= 1:
+            return "continuous_summary"
+        return "numeric"
+    return "text"
+
+
+def _publication_table_row_value_shape_legacy_two(cells: list[dict[str, Any]]) -> str:
+    if _publication_table_is_preamble_row(cells):
+        return "sample_size"
+    values = _publication_table_value_cell_texts(cells)
+    if not values:
+        return "label_only"
+    if _publication_table_row_values_look_categorical(cells):
+        return "count_percent"
+    numeric_values = sum(1 for value in values if re.search(r"\d", value))
+    summary_values = sum(
+        1
+        for value in values
+        if re.search(
+            r"(?:±|\+/-|[<>]?\d+(?:\.\d+)?\s*[-–]\s*[<>]?\d+(?:\.\d+)?)",
+            value,
+        )
+    )
+    if numeric_values >= max(1, len(values) - 1):
+        if summary_values >= 1:
+            return "continuous_summary"
+        return "numeric"
+    return "text"
+
+
+def _publication_table_row_value_shape(cells: list[dict[str, Any]]) -> str:
+    if _publication_table_is_preamble_row(cells):
+        return "sample_size"
+    values = _publication_table_value_cell_texts(cells)
+    if not values:
+        return "label_only"
+    if _publication_table_row_values_look_categorical(cells):
+        return "count_percent"
+    numeric_values = sum(1 for value in values if re.search(r"\d", value))
+    summary_values = sum(
+        1
+        for value in values
+        if re.search(
+            r"(?:\u00b1|\+/-|[<>]?\d+(?:\.\d+)?\s*[-\u2013\u2212]\s*[<>]?\d+(?:\.\d+)?)",
+            value,
+        )
+    )
+    if numeric_values >= max(1, len(values) - 1):
+        if summary_values >= 1:
+            return "continuous_summary"
+        return "numeric"
+    return "text"
+
+
+def _publication_table_row_semantic_category(cells: list[dict[str, Any]]) -> str | None:
+    label = _publication_table_primary_cell_text(cells)
+    if not label:
+        return None
+    if _publication_table_is_preamble_row(cells):
+        return "preamble"
+    if _publication_table_row_family_key(label) is not None:
+        return "classification"
+
+    lowered = label.casefold()
+    categorical_values = _publication_table_row_values_look_categorical(cells)
+    unit_match = PUBLICATION_TABLE_UNIT_LIKE_LABEL_CLEAN_PATTERN.search(label)
+    unit_text = unit_match.group(0) if unit_match else ""
+
+    if PUBLICATION_TABLE_PARTICIPANT_LABEL_PATTERN.search(label):
+        return "participant_characteristics"
+    if PUBLICATION_TABLE_PHYSIOLOGY_LABEL_PATTERN.search(label) or (
+        unit_text and PUBLICATION_TABLE_PHYSIOLOGY_UNIT_PATTERN.search(unit_text)
+    ):
+        return "physiology"
+    if PUBLICATION_TABLE_RENAL_LABEL_PATTERN.search(label):
+        return "renal_measurements"
+    if PUBLICATION_TABLE_BIOMARKER_LABEL_PATTERN.search(label):
+        return "blood_biomarkers"
+    if PUBLICATION_TABLE_HISTORY_LABEL_PATTERN.search(label):
+        return "comorbidities_history"
+    if categorical_values:
+        return "categorical"
+    if unit_text and PUBLICATION_TABLE_LAB_UNIT_CLEAN_PATTERN.search(unit_text):
+        return "laboratory_measurements"
+    if unit_text and PUBLICATION_TABLE_CHARACTERISTIC_UNIT_CLEAN_PATTERN.search(unit_text):
+        if any(token in lowered for token in ("age", "height", "weight", "body mass", "body surface")):
+            return "participant_characteristics"
+    if unit_text or PUBLICATION_TABLE_MEASUREMENT_LABEL_PATTERN.search(label):
+        return "measurements"
+    return None
+
+
+def _publication_table_row_grouping_hint(cells: list[dict[str, Any]]) -> str | None:
+    category = _publication_table_row_semantic_category(cells)
+    if category in {"preamble", "classification"}:
+        return category
+    if category in {"participant_characteristics"}:
+        return "characteristics"
+    if category in {"comorbidities_history", "categorical"}:
+        return "clinical_history_or_risk"
+    if category in {"renal_measurements"}:
+        return "renal_or_kidney_measurement"
+    if category in {"blood_biomarkers"}:
+        return "circulating_biomarker"
+    if category in {"laboratory_measurements"}:
+        return "laboratory_measurement"
+    if category in {"physiology"}:
+        return "physiology_or_vitals"
+    if category in {"measurements"}:
+        return "measurement"
+    return None
+
+
+def _publication_table_grouping_context_excerpt_legacy(
+    value: str | None, *, max_chars: int = 2400
+) -> str | None:
+    clean = _normalize_abstract_text(value)
+    if not clean:
+        return None
+    if len(clean) <= max_chars:
+        return clean
+    return f"{clean[: max_chars - 1].rstrip()}…"
+
+
+def _publication_table_grouping_context_excerpt(
+    value: str | None, *, max_chars: int = 2400
+) -> str | None:
+    clean = _normalize_abstract_text(value)
+    if not clean:
+        return None
+    if len(clean) <= max_chars:
+        return clean
+    return f"{clean[: max_chars - 1].rstrip()}\u2026"
+
+
+def _publication_table_row_descriptor(
+    *, row_number: int, cells: list[dict[str, Any]], anchored_label: str | None = None
+) -> dict[str, Any]:
+    label = _publication_table_primary_cell_text(cells)
+    unit_match = PUBLICATION_TABLE_UNIT_LIKE_LABEL_CLEAN_PATTERN.search(label or "")
+    values = _publication_table_value_cell_texts(cells)
+    descriptor: dict[str, Any] = {
+        "row_number": row_number,
+        "label": label,
+        "cells": [
+            _publication_table_text_cleanup(str(cell.get("text") or ""))
+            for cell in cells
+            if _publication_table_text_cleanup(str(cell.get("text") or ""))
+        ],
+        "unit": _publication_table_text_cleanup(unit_match.group(0)) if unit_match else None,
+        "value_shape": _publication_table_row_value_shape(cells),
+        "semantic_hint": _publication_table_row_grouping_hint(cells),
+        "value_examples": values[:2],
+        "anchor_label": _publication_table_group_label_cleanup(anchored_label),
+    }
+    return {key: value for key, value in descriptor.items() if value not in (None, "", [])}
+
+
+def _publication_table_generic_group_category(cells: list[dict[str, Any]]) -> str | None:
+    category = _publication_table_row_semantic_category(cells)
+    if category in {
+        "participant_characteristics",
+        "comorbidities_history",
+        "physiology",
+        "renal_measurements",
+        "blood_biomarkers",
+        "laboratory_measurements",
+    }:
+        return {
+            "participant_characteristics": "characteristics",
+            "comorbidities_history": "categorical",
+            "physiology": "measurements",
+            "renal_measurements": "measurements",
+            "blood_biomarkers": "measurements",
+            "laboratory_measurements": "measurements",
+        }[category]
+    label = _publication_table_primary_cell_text(cells)
+    if not label:
+        return None
+    lowered = label.casefold()
+    if category == "classification":
+        return "classification"
+    if label.strip().lower() == "n" or PUBLICATION_TABLE_PARTICIPANT_LABEL_PATTERN.search(label):
+        return "characteristics"
+    if PUBLICATION_TABLE_CLASSIFICATION_LABEL_PATTERN.search(label):
+        return "classification"
+    if PUBLICATION_TABLE_CATEGORICAL_LABEL_PATTERN.search(label) or (
+        _publication_table_row_values_look_categorical(cells)
+        and not PUBLICATION_TABLE_UNIT_LIKE_LABEL_CLEAN_PATTERN.search(label)
+    ):
+        return "categorical"
+    if PUBLICATION_TABLE_UNIT_LIKE_LABEL_CLEAN_PATTERN.search(label) or (
+        PUBLICATION_TABLE_MEASUREMENT_LABEL_PATTERN.search(label)
+        and "class" not in lowered
+    ):
+        return "measurements"
+    return None
+
+
+def _publication_table_header_labels(
+    header_rows: list[list[dict[str, Any]]],
+) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for row in header_rows:
+        for cell in row:
+            text = _normalize_abstract_text(str(cell.get("text") or ""))
+            if not text:
+                continue
+            key = text.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            labels.append(text)
+    return labels
+
+
+def _publication_table_merge_inferred_row_groups(
+    *group_lists: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    occupied: set[int] = set()
+    for group_list in group_lists:
+        for group in sorted(
+            group_list,
+            key=lambda item: (
+                _safe_int(item.get("start_index")) or 0,
+                -((_safe_int(item.get("end_index")) or 0) - (_safe_int(item.get("start_index")) or 0)),
+            ),
+        ):
+            start_index = _safe_int(group.get("start_index"))
+            end_index = _safe_int(group.get("end_index"))
+            label = _publication_table_group_label_cleanup(group.get("label"))
+            if (
+                start_index is None
+                or end_index is None
+                or start_index < 0
+                or end_index < start_index
+                or end_index - start_index < 1
+                or not label
+            ):
+                continue
+            row_indexes = set(range(start_index, end_index + 1))
+            if occupied & row_indexes:
+                continue
+            occupied.update(row_indexes)
+            merged.append(
+                {
+                    "label": label,
+                    "start_index": start_index,
+                    "end_index": end_index,
+                    "source": str(group.get("source") or "").strip() or None,
+                    "confidence": _safe_float(group.get("confidence")),
+                }
+            )
+    merged.sort(key=lambda item: _safe_int(item.get("start_index")) or 0)
+    return merged
+
+
+def _publication_table_infer_family_row_groups(
+    data_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    index = 0
+    while index < len(data_rows):
+        row = data_rows[index]
+        family = _publication_table_row_family_key(
+            _publication_table_primary_cell_text(list(row.get("cells") or []))
+        )
+        if family is None:
+            index += 1
+            continue
+        family_key, display_label = family
+        end_index = index
+        while end_index + 1 < len(data_rows):
+            next_family = _publication_table_row_family_key(
+                _publication_table_primary_cell_text(
+                    list(data_rows[end_index + 1].get("cells") or [])
+                )
+            )
+            if next_family is None or next_family[0] != family_key:
+                break
+            end_index += 1
+        if end_index - index >= 1:
+            groups.append(
+                {
+                    "label": display_label,
+                    "start_index": index,
+                    "end_index": end_index,
+                    "source": "deterministic_family",
+                    "confidence": 1.0,
+                }
+            )
+        index = end_index + 1
+    return groups
+
+
+def _publication_table_infer_prefix_row_groups(
+    data_rows: list[dict[str, Any]],
+    *,
+    protected_groups: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    protected_indexes: set[int] = set()
+    for group in protected_groups or []:
+        start_index = _safe_int(group.get("start_index"))
+        end_index = _safe_int(group.get("end_index"))
+        if start_index is None or end_index is None or end_index < start_index:
+            continue
+        protected_indexes.update(range(start_index, end_index + 1))
+
+    groups: list[dict[str, Any]] = []
+    index = 0
+    while index < len(data_rows):
+        if index in protected_indexes:
+            index += 1
+            continue
+        prefix_family = _publication_table_row_prefix_family_key(
+            _publication_table_primary_cell_text(list(data_rows[index].get("cells") or []))
+        )
+        if prefix_family is None:
+            index += 1
+            continue
+        family_key, display_label = prefix_family
+        end_index = index
+        while end_index + 1 < len(data_rows):
+            next_index = end_index + 1
+            if next_index in protected_indexes:
+                break
+            next_family = _publication_table_row_prefix_family_key(
+                _publication_table_primary_cell_text(
+                    list(data_rows[next_index].get("cells") or [])
+                )
+            )
+            if next_family is None or next_family[0] != family_key:
+                break
+            end_index = next_index
+        if end_index - index >= 1:
+            groups.append(
+                {
+                    "label": display_label,
+                    "start_index": index,
+                    "end_index": end_index,
+                    "source": "deterministic_prefix",
+                    "confidence": 0.94,
+                }
+            )
+        index = end_index + 1
+    return groups
+
+
+def _publication_table_offset_inferred_groups(
+    groups: list[dict[str, Any]], *, offset: int
+) -> list[dict[str, Any]]:
+    if offset <= 0:
+        return [dict(group) for group in groups]
+    offset_groups: list[dict[str, Any]] = []
+    for group in groups:
+        start_index = _safe_int(group.get("start_index"))
+        end_index = _safe_int(group.get("end_index"))
+        if start_index is None or end_index is None:
+            continue
+        adjusted = dict(group)
+        adjusted["start_index"] = start_index + offset
+        adjusted["end_index"] = end_index + offset
+        offset_groups.append(adjusted)
+    return offset_groups
+
+
+def _publication_table_semantic_broad_category(category: str | None) -> str | None:
+    clean = str(category or "").strip()
+    if clean in {"participant_characteristics"}:
+        return "participant_characteristics"
+    if clean in {"comorbidities_history", "categorical"}:
+        return "clinical_history_risk"
+    if clean in {"renal_measurements", "blood_biomarkers", "laboratory_measurements"}:
+        return "laboratory_measurements"
+    if clean in {"physiology", "measurements"}:
+        return "measurements"
+    return None
+
+
+def _publication_table_infer_semantic_row_groups(
+    data_rows: list[dict[str, Any]],
+    *,
+    protected_groups: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    protected_indexes: set[int] = set()
+    for group in protected_groups or []:
+        start_index = _safe_int(group.get("start_index"))
+        end_index = _safe_int(group.get("end_index"))
+        if start_index is None or end_index is None or end_index < start_index:
+            continue
+        protected_indexes.update(range(start_index, end_index + 1))
+
+    category_labels = {
+        "participant_characteristics": "Participant characteristics",
+        "clinical_history_risk": "Clinical history and risk factors",
+        "laboratory_measurements": "Laboratory measurements",
+        "measurements": "Measurements",
+    }
+    minimum_lengths = {
+        "participant_characteristics": 2,
+        "clinical_history_risk": 2,
+        "laboratory_measurements": 2,
+        "measurements": 3,
+    }
+    runs: list[dict[str, Any]] = []
+    index = 0
+    while index < len(data_rows):
+        if index in protected_indexes:
+            index += 1
+            continue
+        category = _publication_table_semantic_broad_category(
+            _publication_table_row_semantic_category(
+            list(data_rows[index].get("cells") or [])
+            )
+        )
+        if category is None:
+            index += 1
+            continue
+        end_index = index
+        while end_index + 1 < len(data_rows):
+            next_index = end_index + 1
+            if next_index in protected_indexes:
+                break
+            next_category = _publication_table_semantic_broad_category(
+                _publication_table_row_semantic_category(
+                    list(data_rows[next_index].get("cells") or [])
+                )
+            )
+            if next_category != category:
+                break
+            end_index = next_index
+        runs.append(
+            {
+                "category": category,
+                "start_index": index,
+                "end_index": end_index,
+            }
+        )
+        index = end_index + 1
+
+    distinct_categories = {
+        str(run.get("category") or "")
+        for run in runs
+        if str(run.get("category") or "").strip()
+    }
+    if len(distinct_categories) <= 1:
+        return []
+
+    groups: list[dict[str, Any]] = []
+    for run in runs:
+        category = str(run.get("category") or "")
+        start_index = _safe_int(run.get("start_index"))
+        end_index = _safe_int(run.get("end_index"))
+        if (
+            not category
+            or start_index is None
+            or end_index is None
+            or end_index < start_index
+        ):
+            continue
+        run_length = end_index - start_index + 1
+        if run_length < minimum_lengths.get(category, 2):
+            continue
+        label = category_labels.get(category)
+        if not label:
+            continue
+        groups.append(
+            {
+                "label": label,
+                "start_index": start_index,
+                "end_index": end_index,
+                "source": "deterministic_semantic",
+                "confidence": 0.78,
+            }
+        )
+    return groups
+
+
+def _publication_table_infer_generic_row_groups(
+    data_rows: list[dict[str, Any]],
+    *,
+    protected_groups: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    protected_indexes: set[int] = set()
+    for group in protected_groups or []:
+        start_index = _safe_int(group.get("start_index"))
+        end_index = _safe_int(group.get("end_index"))
+        if start_index is None or end_index is None or end_index < start_index:
+            continue
+        protected_indexes.update(range(start_index, end_index + 1))
+
+    category_labels = {
+        "characteristics": "Characteristics",
+        "classification": "Classification",
+        "categorical": "Categorical variables",
+        "measurements": "Measurements",
+    }
+    minimum_lengths = {
+        "characteristics": 2,
+        "classification": 2,
+        "categorical": 3,
+        "measurements": 3,
+    }
+    groups: list[dict[str, Any]] = []
+    index = 0
+    while index < len(data_rows):
+        if index in protected_indexes:
+            index += 1
+            continue
+        row = data_rows[index]
+        category = _publication_table_generic_group_category(list(row.get("cells") or []))
+        if category is None:
+            index += 1
+            continue
+        end_index = index
+        while end_index + 1 < len(data_rows):
+            next_index = end_index + 1
+            if next_index in protected_indexes:
+                break
+            next_category = _publication_table_generic_group_category(
+                list(data_rows[next_index].get("cells") or [])
+            )
+            if next_category != category:
+                break
+            end_index = next_index
+        if end_index - index + 1 >= minimum_lengths.get(category, 2):
+            groups.append(
+                {
+                    "label": category_labels[category],
+                    "start_index": index,
+                    "end_index": end_index,
+                    "source": "deterministic_generic",
+                    "confidence": 0.68,
+                }
+            )
+        index = end_index + 1
+    if (
+        len(groups) == 1
+        and groups[0]["start_index"] == 0
+        and groups[0]["end_index"] == len(data_rows) - 1
+    ):
+        return []
+    return groups
+
+
+def _publication_table_grouping_text_config() -> dict[str, Any]:
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": PUBLICATION_TABLE_GROUPING_SCHEMA_NAME,
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "groups": {
+                        "type": "array",
+                        "maxItems": 8,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "label": {"type": "string"},
+                                "start_row": {"type": "integer", "minimum": 1},
+                                "end_row": {"type": "integer", "minimum": 1},
+                                "confidence": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1,
+                                },
+                            },
+                            "required": [
+                                "label",
+                                "start_row",
+                                "end_row",
+                                "confidence",
+                            ],
+                        },
+                    }
+                },
+                "required": ["groups"],
+            },
+        }
+    }
+
+
+def _build_publication_table_grouping_messages(
+    *,
+    table_title: str | None,
+    table_caption: str | None,
+    header_rows: list[list[dict[str, Any]]],
+    row_descriptors: list[dict[str, Any]],
+    anchored_groups: list[dict[str, Any]],
+    preamble_rows: list[dict[str, Any]] | None = None,
+    abstract_context: str | None = None,
+) -> list[dict[str, str]]:
+    payload = {
+        "table_title": _normalize_abstract_text(table_title),
+        "table_caption": _normalize_abstract_text(table_caption),
+        "paper_abstract": _publication_table_grouping_context_excerpt(abstract_context),
+        "column_headers": _publication_table_header_labels(header_rows),
+        "preamble_rows": list(preamble_rows or []),
+        "groupable_rows": row_descriptors,
+        "anchored_groups": anchored_groups,
+        "rules": {
+            "contiguous_groups_only": True,
+            "no_reordering": True,
+            "minimum_group_size": 2,
+            "short_labels_only": True,
+            "skip_if_uncertain": True,
+            "do_not_override_anchored_groups": True,
+            "prefer_specific_over_generic": True,
+            "avoid_repeated_generic_labels": True,
+            "leave_mixed_residual_rows_ungrouped_between_named_groups": True,
+            "label_leading_rows_before_first_named_group": True,
+        },
+    }
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You group flat academic table rows into short in-table subsection labels.\n"
+                "Use the full manuscript context provided here: paper abstract, table title, table caption, column headers, preamble rows, ordered table rows, units, value shapes, and any anchored groups already fixed by the parser.\n"
+                "Return only contiguous row ranges that form meaningful subsections.\n"
+                "Do not reorder rows, do not rewrite row labels, do not create one-row groups, and do not overlap or rename anchored groups.\n"
+                "Every contiguous run of rows should be covered by a group when possible, including the initial rows before any obvious subsection. Infer an appropriate label from the rows' content and the table context — do not assume any particular research domain.\n"
+                "Prefer sensible sentence-case labels that reflect the local run, using discipline-appropriate group names when the evidence supports them. Labels must be scientifically precise — classify rows by what they actually measure, not by specimen or method alone.\n"
+                "Never use vague catch-all labels like 'Measurements', 'Other', 'Additional', or 'Miscellaneous'. If rows share a specific theme, name it precisely (e.g. 'Tissue characterisation', 'Haematology', 'Metabolic panel'). If no specific label fits, leave the rows ungrouped.\n"
+                "Avoid repeating generic labels within the same table when a more specific local label is available.\n"
+                "If only a weak generic label is possible for a short or mixed run between named groups, leave those rows ungrouped instead of forcing a heading.\n"
+                "Use broad context from neighboring rows and the abstract before deciding a label.\n"
+                "If a safe grouping is not clear, return an empty groups array."
+            ),
+        },
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=True)},
+    ]
+
+
+def _publication_table_should_try_llm_grouping(
+    *,
+    row_labels: list[str],
+    deterministic_groups: list[dict[str, Any]],
+) -> bool:
+    if not _publication_table_grouping_llm_enabled():
+        return False
+    row_count = len(row_labels)
+    if row_count < _publication_table_grouping_llm_min_rows() or row_count > 64:
+        return False
+    non_empty_ratio = sum(1 for label in row_labels if label) / max(row_count, 1)
+    if non_empty_ratio < 0.75:
+        return False
+    covered_indexes: set[int] = set()
+    for group in deterministic_groups:
+        start_index = _safe_int(group.get("start_index"))
+        end_index = _safe_int(group.get("end_index"))
+        if start_index is None or end_index is None or end_index < start_index:
+            continue
+        covered_indexes.update(range(start_index, end_index + 1))
+    uncovered_rows = row_count - len(covered_indexes)
+    return uncovered_rows >= 4
+
+
+def _publication_table_infer_row_groups_with_llm(
+    *,
+    table_title: str | None,
+    table_caption: str | None,
+    header_rows: list[list[dict[str, Any]]],
+    row_labels: list[str],
+    row_descriptors: list[dict[str, Any]],
+    anchored_groups: list[dict[str, Any]],
+    preamble_rows: list[dict[str, Any]] | None = None,
+    abstract_context: str | None = None,
+) -> list[dict[str, Any]]:
+    models = [
+        model_name
+        for model_name in (
+            _publication_table_grouping_model(),
+            _publication_table_grouping_fallback_model(),
+        )
+        if model_name
+    ]
+    messages = _build_publication_table_grouping_messages(
+        table_title=table_title,
+        table_caption=table_caption,
+        header_rows=header_rows,
+        row_descriptors=row_descriptors,
+        anchored_groups=anchored_groups,
+        preamble_rows=preamble_rows,
+        abstract_context=abstract_context,
+    )
+    last_error: Exception | None = None
+    minimum_confidence = _publication_table_grouping_llm_min_confidence()
+    for model_name in models:
+        try:
+            response = create_response(
+                model=model_name,
+                input=messages,
+                max_output_tokens=500,
+                text=_publication_table_grouping_text_config(),
+                timeout=_publication_table_grouping_llm_timeout_seconds(),
+                max_retries=0,
+            )
+            payload = _extract_json_object(str(getattr(response, "output_text", "") or ""))
+            raw_groups = payload.get("groups")
+            if not isinstance(raw_groups, list):
+                return []
+            groups: list[dict[str, Any]] = []
+            for group in raw_groups:
+                if not isinstance(group, dict):
+                    continue
+                start_row = _safe_int(group.get("start_row"))
+                end_row = _safe_int(group.get("end_row"))
+                confidence = _safe_float(group.get("confidence"))
+                label = _publication_table_group_label_cleanup(group.get("label"))
+                if (
+                    start_row is None
+                    or end_row is None
+                    or confidence is None
+                    or confidence < minimum_confidence
+                    or not label
+                ):
+                    continue
+                start_index = start_row - 1
+                end_index = end_row - 1
+                if (
+                    start_index < 0
+                    or end_index < start_index
+                    or end_index >= len(row_labels)
+                    or end_index - start_index < 1
+                ):
+                    continue
+                groups.append(
+                    {
+                        "label": label,
+                        "start_index": start_index,
+                        "end_index": end_index,
+                        "source": "llm",
+                        "confidence": confidence,
+                    }
+                )
+            return _publication_table_filter_llm_groups(groups)
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        logger.warning("publication_table_row_grouping_llm_failed: %s", last_error)
+    return []
+
+
+def _publication_table_infer_group_plan(
+    *,
+    header_rows: list[list[dict[str, Any]]],
+    body_rows: list[dict[str, Any]],
+    table_title: str | None,
+    table_caption: str | None,
+    abstract_context: str | None = None,
+    allow_inferred_groups: bool = True,
+) -> dict[str, Any]:
+    if not allow_inferred_groups:
+        return {"preamble_count": 0, "groups": []}
+    if any(str(row.get("row_kind") or "").strip() == "section" for row in body_rows):
+        return {"preamble_count": 0, "groups": []}
+    data_rows = [
+        row for row in body_rows if str(row.get("row_kind") or "").strip() == "data"
+    ]
+    if len(data_rows) < 4:
+        return {"preamble_count": 0, "groups": []}
+    preamble_count = _publication_table_leading_preamble_row_count(data_rows)
+    candidate_rows = data_rows[preamble_count:]
+    if len(candidate_rows) < 3:
+        return {"preamble_count": preamble_count, "groups": []}
+    family_groups = _publication_table_infer_family_row_groups(candidate_rows)
+    prefix_groups = _publication_table_infer_prefix_row_groups(
+        candidate_rows,
+        protected_groups=family_groups,
+    )
+    deterministic_groups = _publication_table_merge_inferred_row_groups(
+        family_groups,
+        prefix_groups,
+    )
+    row_labels = [
+        _publication_table_primary_cell_text(list(row.get("cells") or []))
+        for row in candidate_rows
+    ]
+    preamble_rows = [
+        _publication_table_row_descriptor(
+            row_number=index + 1,
+            cells=list(row.get("cells") or []),
+        )
+        for index, row in enumerate(data_rows[:preamble_count])
+    ]
+    anchored_ranges: list[dict[str, Any]] = []
+    anchored_labels_by_index: dict[int, str] = {}
+    for group in deterministic_groups:
+        start_index = _safe_int(group.get("start_index"))
+        end_index = _safe_int(group.get("end_index"))
+        label = _publication_table_group_label_cleanup(group.get("label"))
+        if (
+            start_index is None
+            or end_index is None
+            or end_index < start_index
+            or not label
+        ):
+            continue
+        anchored_ranges.append(
+            {
+                "label": label,
+                "start_row": start_index + 1,
+                "end_row": end_index + 1,
+                "source": str(group.get("source") or "").strip() or None,
+            }
+        )
+        for row_index in range(start_index, end_index + 1):
+            anchored_labels_by_index[row_index] = label
+    row_descriptors = [
+        _publication_table_row_descriptor(
+            row_number=index + 1,
+            cells=list(row.get("cells") or []),
+            anchored_label=anchored_labels_by_index.get(index),
+        )
+        for index, row in enumerate(candidate_rows)
+    ]
+    llm_groups: list[dict[str, Any]] = []
+    if _publication_table_should_try_llm_grouping(
+        row_labels=row_labels,
+        deterministic_groups=deterministic_groups,
+    ):
+        llm_groups = _publication_table_infer_row_groups_with_llm(
+            table_title=table_title,
+            table_caption=table_caption,
+            header_rows=header_rows,
+            row_labels=row_labels,
+            row_descriptors=row_descriptors,
+            anchored_groups=anchored_ranges,
+            preamble_rows=preamble_rows,
+            abstract_context=abstract_context,
+        )
+    generic_groups: list[dict[str, Any]] = []
+    if not llm_groups:
+        generic_groups = _publication_table_infer_generic_row_groups(
+            candidate_rows,
+            protected_groups=deterministic_groups,
+        )
+    inferred_groups = _publication_table_offset_inferred_groups(
+        _publication_table_merge_inferred_row_groups(
+        deterministic_groups,
+        llm_groups,
+        generic_groups,
+        ),
+        offset=preamble_count,
+    )
+    return {"preamble_count": preamble_count, "groups": inferred_groups}
+
+
+def _publication_table_build_blocks_from_explicit_rows(
+    body_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
+    current_block: dict[str, Any] | None = None
+    for row in body_rows:
+        row_kind = str(row.get("row_kind") or "").strip()
+        if row_kind == "section":
+            current_block = {
+                "block_kind": "sectioned",
+                "heading_cells": list(row.get("cells") or []),
+                "rows": [],
+            }
+            blocks.append(current_block)
+            continue
+        if current_block is None or str(current_block.get("block_kind") or "") != "sectioned":
+            if (
+                current_block is None
+                or str(current_block.get("block_kind") or "") != "ungrouped"
+            ):
+                current_block = {
+                    "block_kind": "ungrouped",
+                    "heading_cells": None,
+                    "rows": [],
+                }
+                blocks.append(current_block)
+        current_block.setdefault("rows", []).append(row)
+    return [block for block in blocks if block.get("rows") or block.get("heading_cells")]
+
+
+def _publication_table_build_blocks_from_inferred_groups(
+    body_rows: list[dict[str, Any]],
+    *,
+    total_columns: int,
+    preamble_count: int,
+    groups: list[dict[str, Any]],
+    table_title: str | None = None,
+) -> list[dict[str, Any]]:
+    data_rows = [
+        row for row in body_rows if str(row.get("row_kind") or "").strip() == "data"
+    ]
+    blocks: list[dict[str, Any]] = []
+    if preamble_count > 0:
+        blocks.append(
+            {
+                "block_kind": "preamble",
+                "heading_cells": None,
+                "rows": data_rows[:preamble_count],
+            }
+        )
+    groups_by_start: dict[int, dict[str, Any]] = {}
+    for group in groups:
+        start_index = _safe_int(group.get("start_index"))
+        end_index = _safe_int(group.get("end_index"))
+        label = _publication_table_group_label_cleanup(group.get("label"))
+        if (
+            start_index is None
+            or end_index is None
+            or end_index < start_index
+            or not label
+        ):
+            continue
+        groups_by_start[start_index] = {
+            "label": label,
+            "end_index": end_index,
+            "source": group.get("source"),
+        }
+
+    index = preamble_count
+    while index < len(data_rows):
+        group = groups_by_start.get(index)
+        if group is not None:
+            heading_cells = [
+                {
+                    "tag": "td",
+                    "text": str(group.get("label") or ""),
+                    "colspan": total_columns,
+                    "rowspan": 1,
+                }
+            ]
+            end_index = min(_safe_int(group.get("end_index")) or index, len(data_rows) - 1)
+            blocks.append(
+                {
+                    "block_kind": "sectioned",
+                    "heading_cells": heading_cells,
+                    "rows": data_rows[index : end_index + 1],
+                    "section_source": group.get("source"),
+                }
+            )
+            index = end_index + 1
+            continue
+        residual_start = index
+        while index < len(data_rows) and index not in groups_by_start:
+            index += 1
+        blocks.append(
+            {
+                "block_kind": "ungrouped",
+                "heading_cells": None,
+                "rows": data_rows[residual_start:index],
+            }
+        )
+    cleaned = [block for block in blocks if block.get("rows") or block.get("heading_cells")]
+    # Fallback: if the first non-preamble block is ungrouped and there are later
+    # sectioned blocks, promote it so every visible group has a heading.
+    has_sectioned = any(b.get("block_kind") == "sectioned" for b in cleaned)
+    if has_sectioned:
+        for block in cleaned:
+            if block.get("block_kind") == "preamble":
+                continue
+            if block.get("block_kind") == "ungrouped":
+                fallback_label = "General"
+                if table_title:
+                    stripped = re.sub(
+                        r"^table\s*\d+[.:\-\s]*", "", table_title, flags=re.IGNORECASE
+                    ).strip(" .:-")
+                    if stripped:
+                        fallback_label = stripped
+                block["block_kind"] = "sectioned"
+                block["heading_cells"] = [
+                    {
+                        "tag": "td",
+                        "text": fallback_label,
+                        "colspan": total_columns,
+                        "rowspan": 1,
+                    }
+                ]
+            break
+    return cleaned
+
+
+def _publication_table_render_body_blocks(
+    *,
+    body_rows: list[dict[str, Any]],
+    total_columns: int,
+    inferred_plan: dict[str, Any] | None = None,
+    table_title: str | None = None,
+    pvalue_columns: frozenset[int] = frozenset(),
+) -> str:
+    if any(str(row.get("row_kind") or "").strip() == "section" for row in body_rows):
+        blocks = _publication_table_build_blocks_from_explicit_rows(body_rows)
+    else:
+        plan = inferred_plan if isinstance(inferred_plan, dict) else {}
+        blocks = _publication_table_build_blocks_from_inferred_groups(
+            body_rows,
+            total_columns=total_columns,
+            preamble_count=max(0, _safe_int(plan.get("preamble_count")) or 0),
+            groups=list(plan.get("groups") or []),
+            table_title=table_title,
+        )
+    if not blocks:
+        blocks = [{"block_kind": "ungrouped", "heading_cells": None, "rows": body_rows}]
+
+    parts: list[str] = []
+    for block in blocks:
+        block_kind = str(block.get("block_kind") or "ungrouped").strip() or "ungrouped"
+        parts.append(
+            f'<tbody class="publication-structured-table-block publication-structured-table-block-{html.escape(block_kind)}">'
+        )
+        heading_cells = list(block.get("heading_cells") or [])
+        if heading_cells:
+            parts.append(
+                _publication_table_render_section_row(
+                    heading_cells,
+                    total_columns=total_columns,
+                )
+            )
+        for row in list(block.get("rows") or []):
+            row_cells = list(row.get("cells") or [])
+            parts.append(
+                f"<tr>{_publication_table_render_cells(row_cells, pvalue_columns=pvalue_columns)}</tr>"
+            )
+        parts.append("</tbody>")
+    return "".join(parts)
+
+
+def _publication_structured_table_note_looks_like_abbreviation_glossary(
+    text: str,
+) -> bool:
+    return bool(_publication_table_note_extract_glossary_entries(text))
+
+
+def _publication_table_note_strip_group_prefix(text: str) -> str:
+    clean = _publication_table_text_cleanup(text)
+    if not clean:
+        return ""
+    return PUBLICATION_TABLE_NOTE_LABEL_PREFIX_PATTERN.sub("", clean, count=1).strip()
+
+
+def _publication_table_note_identifier_token(token: str) -> str:
+    return re.sub(r"[^A-Za-z0-9\u0391-\u03a9\u03b1-\u03c9\u00b5\u03bc]", "", token or "")
+
+
+def _publication_table_note_glossary_term_looks_valid(term: str) -> bool:
+    clean = re.sub(r"\s+", " ", str(term or "").strip(" ,:;.=()"))
+    if not clean or len(clean) > 28:
+        return False
+    words = clean.split()
+    if len(words) > 3:
+        return False
+    first_token = _publication_table_note_identifier_token(words[0] if words else "")
+    if not first_token or len(first_token) > 12:
+        return False
+    if re.fullmatch(r"[a-z]", first_token):
+        return False
+    if first_token.casefold() in {"data", "values", "results", "model", "variables"}:
+        return False
+    has_identifier_shape = (
+        first_token.upper() == first_token
+        or any(character.isupper() for character in first_token[1:])
+        or any(character.isdigit() for character in first_token)
+        or any(
+            character in "\u0391\u0392\u0393\u0394\u0398\u039b\u039c\u039e\u03a0\u03a1\u03a3\u03a9"
+            "\u03b1\u03b2\u03b3\u03b4\u03b8\u03bb\u03bc\u03be\u03c0\u03c1\u03c3\u03c9\u00b5\u03bc"
+            for character in first_token
+        )
+    )
+    if (
+        not has_identifier_shape
+        and len(first_token) <= 3
+        and len(words) > 1
+        and words[1].casefold() in {"avg", "peak", "mean", "max", "min"}
+    ):
+        has_identifier_shape = True
+    return has_identifier_shape
+
+
+def _publication_table_note_glossary_definition_looks_valid(definition: str) -> bool:
+    clean = re.sub(r"\s+", " ", str(definition or "").strip(" ,:;.=()"))
+    if not clean or len(clean) < 4 or len(clean) > 160:
+        return False
+    lowered = clean.casefold()
+    if lowered.startswith(
+        (
+            "data ",
+            "values ",
+            "results ",
+            "compared ",
+            "comparison ",
+            "model ",
+            "models ",
+            "variables ",
+            "colour ",
+            "color ",
+        )
+    ):
+        return False
+    if re.search(
+        r"\b(?:compared|comparison|presented|reported|shown|expressed|summarized|yielded|signifies?|indicates?)\b",
+        lowered,
+    ):
+        return False
+    return bool(re.search(r"[A-Za-z\u0391-\u03a9\u03b1-\u03c9]", clean))
+
+
+def _publication_table_note_normalize_glossary_entry(entry: str) -> str | None:
+    clean = _publication_table_note_strip_group_prefix(entry)
+    clean = PUBLICATION_TABLE_NOTE_MARKER_PREFIX_PATTERN.sub("", clean, count=1).strip()
+    clean = PUBLICATION_TABLE_GLOSSARY_PREFIX_PATTERN.sub("", clean, count=1).strip()
+    clean = re.sub(r"\s+,", ",", clean)
+    clean = re.sub(r"\s+:", ":", clean)
+    if not clean:
+        return None
+
+    for separator in [",", ":", "="]:
+        if separator not in clean:
+            continue
+        lead, remainder = clean.split(separator, 1)
+        lead = re.sub(r"\s+", " ", lead).strip()
+        remainder = re.sub(r"\s+", " ", remainder).strip()
+        if (
+            _publication_table_note_glossary_term_looks_valid(lead)
+            and _publication_table_note_glossary_definition_looks_valid(remainder)
+        ):
+            return f"{lead}, {remainder.rstrip('. ')}"
+
+    words = clean.split()
+    for lead_word_count in (1, 2, 3):
+        if len(words) <= lead_word_count:
+            continue
+        lead = " ".join(words[:lead_word_count])
+        remainder = " ".join(words[lead_word_count:])
+        if (
+            _publication_table_note_glossary_term_looks_valid(lead)
+            and _publication_table_note_glossary_definition_looks_valid(remainder)
+        ):
+            return f"{lead}, {remainder.rstrip('. ')}"
+    return None
+
+
+def _publication_table_note_extract_glossary_entries(text: str) -> list[str]:
+    clean = _publication_table_note_strip_group_prefix(text)
+    clean = PUBLICATION_TABLE_NOTE_MARKER_PREFIX_PATTERN.sub("", clean, count=1).strip()
+    explicit_glossary_prefix = bool(PUBLICATION_TABLE_GLOSSARY_PREFIX_PATTERN.match(clean))
+    clean = PUBLICATION_TABLE_GLOSSARY_PREFIX_PATTERN.sub("", clean, count=1).strip()
+    if not clean:
+        return []
+
+    entries: list[str] = []
+    segments = [
+        segment.strip()
+        for segment in PUBLICATION_TABLE_NOTE_CLAUSE_BOUNDARY_PATTERN.split(clean.rstrip("."))
+        if segment.strip()
+    ] or [clean]
+    for segment in segments:
+        subsegments = [
+            item.strip()
+            for item in PUBLICATION_TABLE_GLOSSARY_COMMA_SPLIT_PATTERN.split(segment)
+            if item.strip()
+        ] or [segment]
+        for item in subsegments:
+            normalized_entry = _publication_table_note_normalize_glossary_entry(item)
+            if normalized_entry is None:
+                return entries if explicit_glossary_prefix and entries else []
+            entries.append(normalized_entry)
+    return entries
+
+
+def _split_publication_structured_table_note_fragments(note: str) -> list[str]:
+    clean = _publication_table_text_cleanup(note)
+    if not clean:
+        return []
+    fragments = [clean]
+    split_patterns = [
+        PUBLICATION_TABLE_NOTE_CLAUSE_BOUNDARY_PATTERN,
+        PUBLICATION_TABLE_NOTE_SENTENCE_BOUNDARY_PATTERN,
+        PUBLICATION_TABLE_NOTE_MARKER_BOUNDARY_PATTERN,
+    ]
+    for pattern in split_patterns:
+        next_fragments: list[str] = []
+        for fragment in fragments:
+            parts = [
+                part.strip()
+                for part in pattern.split(fragment)
+                if str(part or "").strip()
+            ]
+            next_fragments.extend(parts or [fragment])
+        fragments = next_fragments or fragments
+    return fragments or [clean]
+
+
+def _publication_table_note_looks_like_convention(text: str) -> bool:
+    clean = _publication_table_text_cleanup(text)
+    if not clean:
+        return False
+    if PUBLICATION_TABLE_PRESENTATION_NOTE_PATTERN.search(clean):
+        return True
+    return bool(PUBLICATION_TABLE_STATISTICAL_NOTE_PATTERN.search(clean))
+
+
+def _publication_table_classify_note_chunk(
+    note: str,
+) -> dict[str, Any]:
+    clean = _publication_table_text_cleanup(note)
+    if not clean:
+        return {
+            "kind": "specific_note",
+            "text": "",
+            "confidence": 0.0,
+            "ambiguous": False,
+        }
+
+    clean_without_label = _publication_table_note_strip_group_prefix(clean)
+    clean_without_marker = PUBLICATION_TABLE_NOTE_MARKER_PREFIX_PATTERN.sub(
+        "", clean_without_label, count=1
+    ).strip()
+    lowered = clean.casefold()
+    lowered_without_label = clean_without_label.casefold()
+    glossary_entries = _publication_table_note_extract_glossary_entries(clean)
+
+    if lowered.startswith(("legend", "symbols")):
+        return {
+            "kind": "legend",
+            "text": clean_without_label or clean,
+            "confidence": 0.97,
+            "ambiguous": False,
+        }
+    if PUBLICATION_TABLE_LEGEND_NOTE_PATTERN.search(clean_without_marker):
+        return {
+            "kind": "legend",
+            "text": clean_without_label or clean,
+            "confidence": 0.88,
+            "ambiguous": False,
+        }
+    if lowered.startswith(("abbreviations", "abbreviation", "acronyms", "acronym")):
+        return {
+            "kind": "glossary",
+            "text": _publication_table_merge_note_texts(glossary_entries or [clean_without_label]),
+            "confidence": 0.97,
+            "ambiguous": False,
+        }
+    if len(glossary_entries) >= 2:
+        return {
+            "kind": "glossary",
+            "text": _publication_table_merge_note_texts(glossary_entries),
+            "confidence": 0.92,
+            "ambiguous": False,
+        }
+    if len(glossary_entries) == 1:
+        return {
+            "kind": "glossary",
+            "text": glossary_entries[0],
+            "confidence": 0.82,
+            "ambiguous": False,
+        }
+    if _publication_table_note_looks_like_convention(clean_without_marker):
+        return {
+            "kind": "convention",
+            "text": clean_without_label or clean,
+            "confidence": 0.9,
+            "ambiguous": False,
+        }
+    if lowered_without_label.startswith(("note", "notes", "footnote", "footnotes")):
+        return {
+            "kind": "specific_note",
+            "text": clean_without_label or clean,
+            "confidence": 0.84,
+            "ambiguous": False,
+        }
+    if clean_without_label != clean_without_marker:
+        return {
+            "kind": "specific_note",
+            "text": clean_without_label or clean,
+            "confidence": 0.8,
+            "ambiguous": False,
+        }
+    return {
+        "kind": "specific_note",
+        "text": clean_without_label or clean,
+        "confidence": 0.58,
+        "ambiguous": True,
+    }
+
+
+def _publication_table_footer_text_config() -> dict[str, Any]:
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": PUBLICATION_TABLE_FOOTER_SCHEMA_NAME,
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "maxItems": 16,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "chunk_index": {"type": "integer", "minimum": 1},
+                                "category": {
+                                    "type": "string",
+                                    "enum": [
+                                        "convention",
+                                        "specific_note",
+                                        "glossary",
+                                        "legend",
+                                    ],
+                                },
+                                "confidence": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1,
+                                },
+                            },
+                            "required": ["chunk_index", "category", "confidence"],
+                        },
+                    }
+                },
+                "required": ["items"],
+            },
+        }
+    }
+
+
+def _build_publication_table_footer_messages(
+    *,
+    note_blob: str,
+    candidate_chunks: list[str],
+    table_title: str | None,
+    table_caption: str | None,
+    abstract_context: str | None,
+    column_headers: list[str] | None = None,
+) -> list[dict[str, str]]:
+    payload = {
+        "table_title": _normalize_abstract_text(table_title),
+        "table_caption": _normalize_abstract_text(table_caption),
+        "paper_abstract": _publication_table_grouping_context_excerpt(abstract_context),
+        "column_headers": list(column_headers or []),
+        "note_blob": _publication_table_text_cleanup(note_blob),
+        "candidate_chunks": [
+            _publication_table_text_cleanup(chunk) for chunk in candidate_chunks
+        ],
+        "categories": {
+            "convention": (
+                "Table-wide statistical or presentation rules such as mean ± SD, "
+                "median (IQR), analysis/test conventions, or marker definitions for summary statistics."
+            ),
+            "specific_note": (
+                "Item-specific or model-specific comments, exclusions, qualifiers, "
+                "or explanatory footnotes that are not glossary expansions."
+            ),
+            "glossary": (
+                "Abbreviations, acronyms, symbols, or short-form term expansions, "
+                "including singleton cases such as IQR Interquartile range."
+            ),
+            "legend": (
+                "Display legends such as colour scales, symbol keys, highlighting, "
+                "or visual encoding rules."
+            ),
+        },
+    }
+    return [
+        {
+            "role": "system",
+            "content": (
+                "Classify each supplied academic table footer chunk into exactly one category.\n"
+                "Use the manuscript context provided here: paper abstract, table title, "
+                "table caption, column headers, the raw footer blob, and the candidate chunks.\n"
+                "Do not rewrite or merge chunks. Only assign categories.\n"
+                "Abbreviation or acronym expansions belong to glossary even when there is only one item.\n"
+                "Statistical or presentation rules belong to convention.\n"
+                "Model-specific or item-specific explanations belong to specific_note.\n"
+                "Colour, symbol, or display keys belong to legend.\n"
+                "If uncertain between convention and specific_note, prefer specific_note."
+            ),
+        },
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=True)},
+    ]
+
+
+def _publication_table_footer_chunks_need_llm(
+    chunk_results: list[dict[str, Any]],
+) -> bool:
+    if not _publication_table_footer_llm_enabled() or not chunk_results:
+        return False
+    if len(chunk_results) < 2 or len(chunk_results) > 12:
+        return False
+    if any(bool(result.get("ambiguous")) for result in chunk_results):
+        return True
+    if any((_safe_float(result.get("confidence")) or 0.0) < 0.78 for result in chunk_results):
+        return True
+    return False
+
+
+def _publication_table_classify_note_chunks_with_llm(
+    *,
+    note_blob: str,
+    candidate_chunks: list[str],
+    deterministic_results: list[dict[str, Any]],
+    table_title: str | None,
+    table_caption: str | None,
+    abstract_context: str | None,
+    column_headers: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    if not candidate_chunks:
+        return deterministic_results
+    models = [
+        model_name
+        for model_name in (
+            _publication_table_footer_model(),
+            _publication_table_footer_fallback_model(),
+        )
+        if model_name
+    ]
+    minimum_confidence = _publication_table_footer_llm_min_confidence()
+    messages = _build_publication_table_footer_messages(
+        note_blob=note_blob,
+        candidate_chunks=candidate_chunks,
+        table_title=table_title,
+        table_caption=table_caption,
+        abstract_context=abstract_context,
+        column_headers=column_headers,
+    )
+    last_error: Exception | None = None
+    for model_name in models:
+        try:
+            response = create_response(
+                model=model_name,
+                input=messages,
+                max_output_tokens=500,
+                text=_publication_table_footer_text_config(),
+                timeout=_publication_table_footer_llm_timeout_seconds(),
+                max_retries=0,
+            )
+            payload = _extract_json_object(str(getattr(response, "output_text", "") or ""))
+            raw_items = payload.get("items")
+            if not isinstance(raw_items, list):
+                return deterministic_results
+            resolved_results = [dict(item) for item in deterministic_results]
+            for raw_item in raw_items:
+                if not isinstance(raw_item, dict):
+                    continue
+                chunk_index = _safe_int(raw_item.get("chunk_index"))
+                category = str(raw_item.get("category") or "").strip()
+                confidence = _safe_float(raw_item.get("confidence"))
+                if (
+                    chunk_index is None
+                    or confidence is None
+                    or confidence < minimum_confidence
+                    or category not in {"convention", "specific_note", "glossary", "legend"}
+                    or chunk_index < 1
+                    or chunk_index > len(resolved_results)
+                ):
+                    continue
+                resolved_results[chunk_index - 1]["kind"] = category
+                resolved_results[chunk_index - 1]["confidence"] = confidence
+                resolved_results[chunk_index - 1]["ambiguous"] = False
+                if category == "glossary":
+                    glossary_entries = _publication_table_note_extract_glossary_entries(
+                        candidate_chunks[chunk_index - 1]
+                    )
+                    if glossary_entries:
+                        resolved_results[chunk_index - 1]["text"] = (
+                            _publication_table_merge_note_texts(glossary_entries)
+                        )
+            return resolved_results
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        logger.warning("publication_table_footer_llm_failed: %s", last_error)
+    return deterministic_results
+
+
+def _publication_table_merge_note_texts(texts: list[str]) -> str:
+    clean_parts = [
+        re.sub(r"[.;]+\s*$", "", _publication_table_text_cleanup(text)).strip()
+        for text in texts
+        if _publication_table_text_cleanup(text)
+    ]
+    if not clean_parts:
+        return ""
+    merged = "; ".join(clean_parts)
+    return merged if re.search(r"[.!?]$", merged) else f"{merged}."
+
+
+def _classify_publication_structured_table_note(
+    note: str,
+    *,
+    table_title: str | None = None,
+    table_caption: str | None = None,
+    abstract_context: str | None = None,
+    column_headers: list[str] | None = None,
+) -> list[tuple[str, str]]:
+    candidate_chunks = _split_publication_structured_table_note_fragments(note)
+    if not candidate_chunks:
+        return []
+    deterministic_results = [
+        _publication_table_classify_note_chunk(chunk) for chunk in candidate_chunks
+    ]
+    resolved_results = deterministic_results
+    if _publication_table_footer_chunks_need_llm(deterministic_results):
+        resolved_results = _publication_table_classify_note_chunks_with_llm(
+            note_blob=note,
+            candidate_chunks=candidate_chunks,
+            deterministic_results=deterministic_results,
+            table_title=table_title,
+            table_caption=table_caption,
+            abstract_context=abstract_context,
+            column_headers=column_headers,
+        )
+
+    grouped_items: list[tuple[str, list[str]]] = []
+    current_kind: str | None = None
+    current_texts: list[str] = []
+    for result in resolved_results:
+        kind = str(result.get("kind") or "specific_note").strip() or "specific_note"
+        text = _publication_table_text_cleanup(str(result.get("text") or ""))
+        if not text:
+            continue
+        if current_kind == kind:
+            current_texts.append(text)
+            continue
+        if current_kind is not None and current_texts:
+            grouped_items.append((current_kind, current_texts))
+        current_kind = kind
+        current_texts = [text]
+    if current_kind is not None and current_texts:
+        grouped_items.append((current_kind, current_texts))
+    return [
+        (kind, _publication_table_merge_note_texts(texts))
+        for kind, texts in grouped_items
+        if _publication_table_merge_note_texts(texts)
+    ]
+
+
+def _render_publication_structured_table_notes_html(
+    notes: list[str],
+    *,
+    table_title: str | None = None,
+    table_caption: str | None = None,
+    abstract_context: str | None = None,
+    column_headers: list[str] | None = None,
+) -> str:
+    classified_notes: list[tuple[str, str]] = []
+    for note in notes:
+        classified_notes.extend(
+            _classify_publication_structured_table_note(
+                note,
+                table_title=table_title,
+                table_caption=table_caption,
+                abstract_context=abstract_context,
+                column_headers=column_headers,
+            )
+        )
+    if not classified_notes:
+        return ""
+
+    note_groups: dict[str, list[str]] = {
+        "convention": [],
+        "specific_note": [],
+        "glossary": [],
+        "legend": [],
+    }
+    seen_notes: set[tuple[str, str]] = set()
+    for kind, normalized_note in classified_notes:
+        if not normalized_note or kind not in note_groups:
+            continue
+        key = (kind, normalized_note.casefold())
+        if key in seen_notes:
+            continue
+        seen_notes.add(key)
+        note_groups.setdefault(kind, []).append(normalized_note)
+
+    ordered_groups = [
+        ("convention", "Conventions"),
+        ("specific_note", "Specific notes"),
+        ("glossary", "Glossary"),
+        ("legend", "Legend"),
+    ]
+    rendered: list[str] = ['<div class="publication-structured-table-notes">']
+    rendered_any = False
+    for kind, label in ordered_groups:
+        group_items = note_groups.get(kind) or []
+        if not group_items:
+            continue
+        rendered_any = True
+        rendered.append(
+            f'<div class="publication-structured-table-note-group" data-note-kind="{kind}">'
+        )
+        rendered.append(
+            f'<p class="publication-structured-table-note-group-label">{html.escape(label)}</p>'
+        )
+        rendered.append('<ul class="publication-structured-table-note-list">')
+        for item in group_items:
+            rendered.append(
+                f'<li class="publication-structured-table-note-item">{html.escape(item)}</li>'
+            )
+        rendered.append("</ul></div>")
+    rendered.append("</div>")
+    return "".join(rendered) if rendered_any else ""
+
+
+def _render_pymupdf_table_html(table: Any) -> str:
+    rows = _publication_table_pymupdf_extract_rows(table)
+    if not rows:
+        return ""
+
+    table_title = None
+    first_row_text = _normalize_abstract_text(" ".join(text for text in rows[0] if text))
+    if first_row_text and PUBLICATION_TABLE_TITLE_ROW_PATTERN.match(first_row_text):
+        table_title = first_row_text
+        rows = rows[1:]
+    if not rows:
+        return ""
+
+    header_like = _publication_table_pymupdf_header_like_row(
+        rows[0],
+        next_row=rows[1] if len(rows) > 1 else None,
+    )
+    note_rows: list[str] = []
+    body_rows: list[list[str]] = []
+    seen_data_rows = False
+    for row in rows[1 if header_like else 0 :]:
+        combined = _normalize_abstract_text(" ".join(text for text in row if text))
+        if _publication_table_pymupdf_note_like_row(row, seen_data_rows=seen_data_rows):
+            if combined:
+                note_rows.append(combined)
+            continue
+        body_rows.append(row)
+        if combined:
+            seen_data_rows = True
+    parts = ["<table>"]
+    if header_like:
+        parts.append("<thead>")
+        header_cells = [
+            {"tag": "th", "text": text, "colspan": 1, "rowspan": 1}
+            for text in rows[0]
+        ]
+        parts.append(f"<tr>{_publication_table_render_cells(header_cells)}</tr>")
+        parts.append("</thead>")
+
+    parts.append("<tbody>")
+    for row in body_rows:
+        row_cells = [{"tag": "td", "text": text, "colspan": 1, "rowspan": 1} for text in row]
+        parts.append(f"<tr>{_publication_table_render_cells(row_cells)}</tr>")
+    parts.append("</tbody></table>")
+    html_text = _canonicalize_docling_table_html(
+        "".join(parts),
+        table_title=table_title,
+    )
+    if note_rows:
+        return _append_publication_structured_table_notes(
+            html_text,
+            note_rows,
+            table_title=table_title,
+        )
+    return html_text
+
+
+def _canonicalize_docling_table_html(
+    html_text: str,
+    *,
+    table_title: str | None = None,
+    table_caption: str | None = None,
+    abstract_context: str | None = None,
+) -> str:
     raw = str(html_text or "").strip()
     if "<table" not in raw.lower():
         return raw
@@ -8974,34 +12167,29 @@ def _canonicalize_docling_table_html(html_text: str) -> str:
         default=0,
     )
     header_rows: list[list[dict[str, Any]]] = []
-    body_rows: list[list[dict[str, Any]]] = []
+    body_rows: list[dict[str, Any]] = []
     notes: list[str] = []
     seen_data_rows = False
     inferred_header = False
     for index, row in enumerate(rows):
         cells = row["cells"]
         section = str(row.get("section") or "tbody").lower()
+        combined_text = _publication_table_combined_cell_text(cells)
         if section == "tfoot" and _publication_table_note_like_row(
             cells=cells,
             total_columns=total_columns,
             seen_data_rows=seen_data_rows or bool(body_rows),
         ):
-            note_text = _normalize_abstract_text(
-                " ".join(str(cell.get("text") or "") for cell in cells)
-            )
-            if note_text:
-                notes.append(note_text)
+            if combined_text:
+                notes.append(combined_text)
             continue
         if _publication_table_note_like_row(
             cells=cells,
             total_columns=total_columns,
             seen_data_rows=seen_data_rows,
         ):
-            note_text = _normalize_abstract_text(
-                " ".join(str(cell.get("text") or "") for cell in cells)
-            )
-            if note_text:
-                notes.append(note_text)
+            if combined_text:
+                notes.append(combined_text)
             continue
         if section == "thead":
             header_rows.append(cells)
@@ -9015,14 +12203,46 @@ def _canonicalize_docling_table_html(html_text: str) -> str:
             header_rows.append(cells)
             inferred_header = True
             continue
-        body_rows.append(cells)
-        seen_data_rows = True
+        is_section_row = _publication_table_section_like_row(
+            cells=cells,
+            total_columns=total_columns,
+        )
+        body_rows.append({"cells": cells, "row_kind": "section" if is_section_row else "data"})
+        if not is_section_row:
+            seen_data_rows = True
 
     if not body_rows and header_rows:
-        body_rows = header_rows
+        body_rows = [{"cells": row, "row_kind": "data"} for row in header_rows]
         header_rows = []
     if not body_rows:
         return raw
+    low_fidelity_for_grouping = _publication_table_structure_is_low_fidelity_for_grouping(
+        header_rows=header_rows,
+        body_rows=body_rows,
+        total_columns=total_columns,
+    )
+    if (
+        not low_fidelity_for_grouping
+        and _publication_table_should_add_synthetic_two_column_header(
+        header_rows=header_rows,
+        body_rows=body_rows,
+        total_columns=total_columns,
+        )
+    ):
+        header_rows = [
+            [
+                {"tag": "th", "text": "Characteristic", "colspan": 1, "rowspan": 1},
+                {"tag": "th", "text": "Value", "colspan": 1, "rowspan": 1},
+            ]
+        ]
+    inferred_plan = _publication_table_infer_group_plan(
+        header_rows=header_rows,
+        body_rows=body_rows,
+        table_title=table_title,
+        table_caption=table_caption,
+        abstract_context=abstract_context,
+        allow_inferred_groups=not low_fidelity_for_grouping,
+    )
 
     parts = ["<table>"]
     if header_rows:
@@ -9030,109 +12250,64 @@ def _canonicalize_docling_table_html(html_text: str) -> str:
         for row in header_rows:
             parts.append(f"<tr>{_publication_table_render_cells(row)}</tr>")
         parts.append("</thead>")
-    parts.append("<tbody>")
-    for row in body_rows:
-        parts.append(f"<tr>{_publication_table_render_cells(row)}</tr>")
-    parts.append("</tbody></table>")
+    pvalue_columns = _publication_table_detect_pvalue_columns(header_rows)
+    parts.append(
+        _publication_table_render_body_blocks(
+            body_rows=body_rows,
+            total_columns=total_columns,
+            inferred_plan=inferred_plan,
+            table_title=table_title,
+            pvalue_columns=pvalue_columns,
+        )
+    )
+    parts.append("</table>")
     if notes:
-        parts.append('<div class="publication-structured-table-notes">')
-        for note in notes:
-            parts.append(f"<p>{html.escape(note)}</p>")
-        parts.append("</div>")
+        notes_html = _render_publication_structured_table_notes_html(
+            notes,
+            table_title=table_title,
+            table_caption=table_caption,
+            abstract_context=abstract_context,
+            column_headers=_publication_table_header_labels(header_rows),
+        )
+        if notes_html:
+            parts.append(notes_html)
     return "".join(parts)
 
 
 def _append_publication_structured_table_notes(
-    html_text: str, notes: list[str]
+    html_text: str,
+    notes: list[str],
+    *,
+    table_title: str | None = None,
+    table_caption: str | None = None,
+    abstract_context: str | None = None,
+    column_headers: list[str] | None = None,
 ) -> str:
     clean_html = str(html_text or "").strip()
-    clean_notes = [
-        _normalize_abstract_text(note)
-        for note in notes
-        if _normalize_abstract_text(note)
-    ]
-    if not clean_html or not clean_notes:
+    notes_html = _render_publication_structured_table_notes_html(
+        notes,
+        table_title=table_title,
+        table_caption=table_caption,
+        abstract_context=abstract_context,
+        column_headers=column_headers,
+    )
+    if not clean_html or not notes_html:
         return clean_html
-    note_block = ['<div class="publication-structured-table-notes">']
-    for note in clean_notes:
-        note_block.append(f"<p>{html.escape(note)}</p>")
-    note_block.append("</div>")
-    return f"{clean_html}{''.join(note_block)}"
+    return f"{clean_html}{notes_html}"
 
 
-def _ai_enhance_publication_table_html(
-    structured_html: str,
-    title: str | None,
-    caption: str | None,
-) -> str:
-    """Call GPT to insert row-group subheadings and improve table readability."""
-    col_count = max(structured_html.count("<th"), structured_html.count("<td") // max(structured_html.count("<tr>"), 1), 2)
-    context_parts: list[str] = []
-    if title:
-        context_parts.append(f"Table title: {title}")
-    if caption:
-        context_parts.append(f"Caption: {caption}")
-    context_block = "\n".join(context_parts)
-    prompt = f"""You are a scientific table formatter. You will receive an HTML table from a research paper.
-
-Your task is to improve its readability by identifying logical groups of rows and inserting a subheading row before each group. Use this exact HTML for each subheading row:
-<tr class="publication-table-group-row"><td colspan="{col_count}"><strong>Group Name</strong></td></tr>
-
-Rules:
-- Only add subheading rows when the table has clear, distinct row groups (e.g. by treatment arm, time point, patient category, measurement domain, or outcome type).
-- If rows are homogeneous with no natural grouping, return the HTML unchanged.
-- Keep all existing rows, content, and HTML structure exactly as-is. Do not reorder, remove, or modify existing rows or cells.
-- Return only the complete HTML (the table element plus any notes div that follows it). No markdown, no explanation, no code fences.
-
-{context_block}
-
-HTML:
-{structured_html}"""
-    return ask_gpt(prompt, model="gpt-4.1-mini")
-
-
-def enhance_publication_paper_table(
-    *,
-    user_id: str,
-    publication_id: str,
-    table_id: str,
-) -> dict[str, Any]:
-    """Run AI enhancement on a specific table asset and persist the result in the cache."""
-    create_all_tables()
-    with session_scope() as session:
-        _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
-        row = _load_structured_paper_cache(
-            session, user_id=user_id, publication_id=publication_id, for_update=True
-        )
-        if row is None or not isinstance(row.payload_json, dict):
-            raise PublicationConsoleNotFoundError("Publication paper model not found.")
-        payload = row.payload_json
-        tables: list[dict[str, Any]] = list(payload.get("tables") or [])
-        target_idx = next(
-            (i for i, t in enumerate(tables) if isinstance(t, dict) and t.get("id") == table_id),
-            None,
-        )
-        if target_idx is None:
-            raise PublicationConsoleNotFoundError(f"Table {table_id!r} not found in paper model.")
-        target_table = tables[target_idx]
-        structured_html = str(target_table.get("structured_html") or "").strip()
-        if not structured_html:
-            raise PublicationConsoleValidationError("Table has no structured HTML to enhance.")
-        enhanced_html = str(
-            _ai_enhance_publication_table_html(
-                structured_html=structured_html,
-                title=str(target_table.get("title") or "").strip() or None,
-                caption=str(target_table.get("caption") or "").strip() or None,
-            )
-            or ""
-        ).strip()
-        if not enhanced_html:
-            raise PublicationConsoleValidationError("AI enhancement produced no output.")
-        updated_table = {**target_table, "enhanced_html": enhanced_html}
-        tables[target_idx] = updated_table
-        row.payload_json = {**payload, "tables": tables}
-        session.flush()
-        return {"enhanced_html": enhanced_html}
+def _pmc_archive_abstract_text(root: ET.Element | None) -> str | None:
+    if root is None:
+        return None
+    parts: list[str] = []
+    for abstract_node in root.findall(".//abstract"):
+        text = _normalize_abstract_text(" ".join(str(value or "") for value in abstract_node.itertext()))
+        if not text:
+            continue
+        parts.append(text)
+    if not parts:
+        return None
+    return _publication_table_grouping_context_excerpt(" ".join(parts), max_chars=3200)
 
 
 def _pmc_archive_request_headers() -> dict[str, str]:
@@ -9408,6 +12583,34 @@ def _pmc_archive_reference_pub_id(
     return None
 
 
+def _pmc_archive_reference_clean_source_title(value: str | None) -> str:
+    clean = _normalize_abstract_text(value)
+    return re.sub(r"[.;:,]+$", "", clean).strip()
+
+
+def _pmc_archive_reference_clean_article_title(
+    value: str | None,
+    *,
+    issue: str | None = None,
+    fpage: str | None = None,
+    elocation: str | None = None,
+) -> str:
+    clean = _normalize_abstract_text(value)
+    if not clean:
+        return ""
+    if re.match(r"^\d{1,3}\s+[a-z]", clean):
+        supplement_issue = bool(re.search(r"\bsuppl(?:ement)?\b", str(issue or ""), re.I))
+        abstract_page = bool(
+            re.match(r"^[A-Z]\d", str(fpage or ""), re.I)
+            or re.match(r"^[A-Z]\d", str(elocation or ""), re.I)
+        )
+        if supplement_issue or abstract_page:
+            clean = re.sub(r"^\d{1,3}\s+", "", clean).strip()
+            if clean and clean[0].islower():
+                clean = clean[0].upper() + clean[1:]
+    return clean
+
+
 def _format_pmc_archive_reference(
     ref_node: ET.Element, index: int
 ) -> dict[str, Any] | None:
@@ -9425,10 +12628,10 @@ def _format_pmc_archive_reference(
     authors_list = _pmc_archive_reference_author_list(citation_node)
     authors_truncated = _pmc_archive_reference_has_etal(citation_node)
     authors = _pmc_archive_reference_names(citation_node)
-    article_title = _normalize_abstract_text(
+    raw_article_title = _normalize_abstract_text(
         _tei_node_text(_tei_first_direct_child(citation_node, "article-title"))
     )
-    source_title = _normalize_abstract_text(
+    raw_source_title = _normalize_abstract_text(
         _tei_node_text(_tei_first_direct_child(citation_node, "source"))
     )
     year = _normalize_abstract_text(
@@ -9449,6 +12652,13 @@ def _format_pmc_archive_reference(
     elocation = _normalize_abstract_text(
         _tei_node_text(_tei_first_direct_child(citation_node, "elocation-id"))
     )
+    article_title = _pmc_archive_reference_clean_article_title(
+        raw_article_title,
+        issue=issue,
+        fpage=fpage,
+        elocation=elocation,
+    )
+    source_title = _pmc_archive_reference_clean_source_title(raw_source_title)
     doi = _normalize_doi(_pmc_archive_reference_pub_id(citation_node, "doi"))
     pmid = _normalize_pmid(_pmc_archive_reference_pub_id(citation_node, "pmid"))
     pmcid = (
@@ -9561,6 +12771,7 @@ def _extract_structured_publication_assets_from_pmc_archive_content(
             if not xml_content:
                 return [], []
             root = ET.fromstring(xml_content)
+            abstract_context = _pmc_archive_abstract_text(root)
 
             figures: list[dict[str, Any]] = []
             tables: list[dict[str, Any]] = []
@@ -9589,6 +12800,13 @@ def _extract_structured_publication_assets_from_pmc_archive_content(
                         classification=FILE_CLASSIFICATION_FIGURE,
                         caption=caption,
                         source_parser=STRUCTURED_PAPER_SECTION_SOURCE_PMC_JATS,
+                        asset_kind=_publication_paper_asset_kind(
+                            classification=FILE_CLASSIFICATION_FIGURE,
+                            title=title,
+                            label_text=label_text,
+                            head_text=head_text,
+                            caption=caption,
+                        ),
                     )
                     parsed_asset["image_data"] = _pmc_archive_image_data(
                         archive,
@@ -9637,12 +12855,20 @@ def _extract_structured_publication_assets_from_pmc_archive_content(
                             break
                     if table_element is not None:
                         raw_table_html = ET.tostring(table_element, encoding="unicode")
-                        structured_html = _canonicalize_docling_table_html(raw_table_html)
+                        structured_html = _canonicalize_docling_table_html(
+                            raw_table_html,
+                            table_title=head_text or title,
+                            table_caption=caption,
+                            abstract_context=abstract_context,
+                        )
                         table_notes = _pmc_archive_table_notes(node)
                         if table_notes:
                             structured_html = _append_publication_structured_table_notes(
                                 structured_html,
                                 table_notes,
+                                table_title=head_text or title,
+                                table_caption=caption,
+                                abstract_context=abstract_context,
                             )
                         parsed_asset["structured_html"] = structured_html
                     tables.append(parsed_asset)
@@ -10166,6 +13392,19 @@ def _parse_pmc_bioc_into_structured_paper(
                     ),
                     caption=passage_text,
                     source_parser=STRUCTURED_PAPER_SECTION_SOURCE_PMC_BIOC,
+                    asset_kind=_publication_paper_asset_kind(
+                        classification=(
+                            FILE_CLASSIFICATION_FIGURE
+                            if passage_type == "fig_caption"
+                            else FILE_CLASSIFICATION_TABLE
+                        ),
+                        title=_pmc_bioc_asset_title(
+                            caption=passage_text,
+                            default_label=default_label,
+                            index=len(asset_list) + 1,
+                        ),
+                        caption=passage_text,
+                    ),
                 )
             )
             continue
@@ -10410,12 +13649,16 @@ def _extract_structured_publication_paper_with_pmc_bioc(
     if progress_callback is not None:
         progress_callback(STRUCTURED_PAPER_PROGRESS_STAGE_LINKING_REFERENCES)
     try:
-        grobid_citation_payload = _extract_structured_publication_paper_with_grobid(
+        grobid_citation_payload = _extract_structured_publication_citation_overlay_with_grobid(
             content=content,
             title=title,
             file_name="publication.pdf",
         )
         parsed_payload = _overlay_grobid_inline_references_onto_structured_paper(
+            parsed_payload=parsed_payload,
+            grobid_payload=grobid_citation_payload,
+        )
+        parsed_payload = _merge_missing_grobid_article_information_sections(
             parsed_payload=parsed_payload,
             grobid_payload=grobid_citation_payload,
         )
@@ -10545,12 +13788,6 @@ def _extract_structured_publication_paper_with_grobid(
         content=content,
         file_name=file_name or "publication.pdf",
     )
-    # DEBUG: save TEI XML for inspection (remove after debugging)
-    try:
-        import pathlib as _pl
-        _pl.Path("tmp_grobid_tei_debug.xml").write_text(tei_xml, encoding="utf-8")
-    except Exception:
-        pass
     parsed_payload = _parse_grobid_tei_into_structured_paper(tei_xml=tei_xml, title=title)
     if progress_callback is not None:
         progress_callback(STRUCTURED_PAPER_PROGRESS_STAGE_ALIGNING_CONTENT)

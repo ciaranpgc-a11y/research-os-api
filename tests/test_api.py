@@ -4085,6 +4085,58 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
     assert audit_response.json()["error"]["type"] == "forbidden"
 
 
+def test_legacy_admin_username_env_restores_admin_access(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setenv("ADMIN_USERNAME", "legacy-admin")
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "legacy-admin@example.com",
+                "password": "StrongPassword123",
+                "name": "Legacy Admin",
+            },
+        )
+        assert register_response.status_code == 200
+        payload = register_response.json()
+        assert payload["user"]["role"] == "admin"
+
+        overview_response = client.get(
+            "/v1/admin/overview",
+            headers=_auth_headers(payload["session_token"]),
+        )
+
+    assert overview_response.status_code == 200
+
+
+def test_axiomos_bootstrap_env_creates_admin_user(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setenv("AXIOMOS_BOOTSTRAP_EMAIL", "ciarang-c@hotmail.com")
+    monkeypatch.setenv("AXIOMOS_BOOTSTRAP_PASSWORD", "StrongPassword123")
+    monkeypatch.setenv("AXIOMOS_BOOTSTRAP_NAME", "Ciaran")
+    monkeypatch.setenv("AXIOMOS_BOOTSTRAP_ROLE", "admin")
+
+    with TestClient(app) as client:
+        login_response = client.post(
+            "/v1/auth/login",
+            json={
+                "email": "ciarang-c@hotmail.com",
+                "password": "StrongPassword123",
+            },
+        )
+        assert login_response.status_code == 200
+        payload = login_response.json()
+        assert payload["user"]["role"] == "admin"
+
+        overview_response = client.get(
+            "/v1/admin/overview",
+            headers=_auth_headers(payload["session_token"]),
+        )
+
+    assert overview_response.status_code == 200
+
+
 def test_v1_admin_collaboration_metrics_recompute_all_endpoint(
     monkeypatch, tmp_path
 ) -> None:

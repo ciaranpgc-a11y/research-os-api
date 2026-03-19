@@ -2517,11 +2517,6 @@ class PublicationPaperModelAssetResponse(BaseModel):
     graphic_coords: str | None = None
     image_data: str | None = None
     structured_html: str | None = None
-    enhanced_html: str | None = None
-
-
-class PublicationTableEnhanceResponse(BaseModel):
-    enhanced_html: str
 
 
 class PublicationPaperModelComponentSummaryResponse(BaseModel):

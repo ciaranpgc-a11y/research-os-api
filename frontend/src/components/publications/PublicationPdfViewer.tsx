@@ -8,7 +8,11 @@ import { API_BASE_URL } from '@/lib/api'
 import { getAuthAccountKeyHint } from '@/lib/auth-session'
 import { cn } from '@/lib/utils'
 
-GlobalWorkerOptions.workerSrc = pdfWorkerSrc
+const pdfWorkerRuntimeSrc = pdfWorkerSrc.includes('?')
+  ? `${pdfWorkerSrc}&v=20260317-worker-fix`
+  : `${pdfWorkerSrc}?v=20260317-worker-fix`
+
+GlobalWorkerOptions.workerSrc = pdfWorkerRuntimeSrc
 
 const MIN_ZOOM_PERCENT = 60
 const MAX_ZOOM_PERCENT = 240

@@ -98,6 +98,16 @@ def _normalize_email(value: str) -> str:
     return email
 
 
+def _normalize_optional_email(value: str | None) -> str | None:
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    try:
+        return _normalize_email(clean)
+    except AuthValidationError:
+        return None
+
+
 def _normalize_name(value: str) -> str:
     clean_name = (value or "").strip()
     if len(clean_name) < 2:
@@ -162,24 +172,98 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def _env_value(*names: str) -> str:
+    for name in names:
+        value = str(os.getenv(name, "")).strip()
+        if value:
+            return value
+    return ""
+
+
+def _env_flag_any(*names: str, default: bool = False) -> bool:
+    for name in names:
+        if str(os.getenv(name, "")).strip():
+            return _env_flag(name, default=default)
+    return default
+
+
+def _normalized_admin_usernames() -> set[str]:
+    values = {
+        str(os.getenv("AXIOMOS_ADMIN_USERNAME", "")).strip().lower(),
+        str(os.getenv("AAWE_ADMIN_USERNAME", "")).strip().lower(),
+        str(os.getenv("ADMIN_USERNAME", "")).strip().lower(),
+        str(os.getenv("AXIOMOS_BOOTSTRAP_USERNAME", "")).strip().lower(),
+        str(os.getenv("AAWE_BOOTSTRAP_USERNAME", "")).strip().lower(),
+    }
+    return {value for value in values if value}
+
+
+def _normalized_admin_emails() -> set[str]:
+    values = {
+        _normalize_optional_email(os.getenv("AXIOMOS_ADMIN_EMAIL")),
+        _normalize_optional_email(os.getenv("AAWE_ADMIN_EMAIL")),
+        _normalize_optional_email(os.getenv("ADMIN_EMAIL")),
+    }
+    return {value for value in values if value}
+
+
+def _email_local_part(value: str) -> str:
+    return str(value or "").strip().lower().split("@", 1)[0]
+
+
+def _env_admin_role_for_email(email: str) -> str | None:
+    normalized_email = _normalize_optional_email(email)
+    if not normalized_email:
+        return None
+    if normalized_email in _normalized_admin_emails():
+        return "admin"
+    if _email_local_part(normalized_email) in _normalized_admin_usernames():
+        return "admin"
+    return None
+
+
+def _apply_env_admin_role(user: User) -> bool:
+    role = _env_admin_role_for_email(user.email)
+    if role == "admin" and str(user.role or "").strip().lower() != "admin":
+        user.role = "admin"
+        return True
+    return False
+
+
 def ensure_bootstrap_user() -> dict[str, object] | None:
-    seed_email = os.getenv("AAWE_BOOTSTRAP_EMAIL", "").strip()
-    seed_password = os.getenv("AAWE_BOOTSTRAP_PASSWORD", "").strip()
+    seed_email = _env_value("AXIOMOS_BOOTSTRAP_EMAIL", "AAWE_BOOTSTRAP_EMAIL")
+    seed_password = _env_value(
+        "AXIOMOS_BOOTSTRAP_PASSWORD",
+        "AAWE_BOOTSTRAP_PASSWORD",
+    )
     if not seed_email or not seed_password:
         return None
 
-    default_name = os.getenv("AAWE_BOOTSTRAP_NAME", "AAWE Test User").strip()
-    seed_name = default_name if len(default_name) >= 2 else "AAWE Test User"
-    force_password_reset = _env_flag("AAWE_BOOTSTRAP_FORCE_PASSWORD", default=False)
-    mark_email_verified = _env_flag("AAWE_BOOTSTRAP_EMAIL_VERIFIED", default=True)
-    sync_bootstrap_name = _env_flag("AAWE_BOOTSTRAP_SYNC_NAME", default=False)
-    role = os.getenv("AAWE_BOOTSTRAP_ROLE", "user").strip().lower()
+    default_name = _env_value("AXIOMOS_BOOTSTRAP_NAME", "AAWE_BOOTSTRAP_NAME") or "Axiomos Admin"
+    seed_name = default_name if len(default_name) >= 2 else "Axiomos Admin"
+    force_password_reset = _env_flag_any(
+        "AXIOMOS_BOOTSTRAP_FORCE_PASSWORD",
+        "AAWE_BOOTSTRAP_FORCE_PASSWORD",
+        default=False,
+    )
+    mark_email_verified = _env_flag_any(
+        "AXIOMOS_BOOTSTRAP_EMAIL_VERIFIED",
+        "AAWE_BOOTSTRAP_EMAIL_VERIFIED",
+        default=True,
+    )
+    sync_bootstrap_name = _env_flag_any(
+        "AXIOMOS_BOOTSTRAP_SYNC_NAME",
+        "AAWE_BOOTSTRAP_SYNC_NAME",
+        default=False,
+    )
+    role = _env_value("AXIOMOS_BOOTSTRAP_ROLE", "AAWE_BOOTSTRAP_ROLE").lower() or "user"
     if role not in {"user", "admin"}:
         role = "user"
 
     normalized_email = _normalize_email(seed_email)
     normalized_name = _normalize_name(seed_name)
     normalized_password = _normalize_password_input(seed_password)
+    role = _env_admin_role_for_email(normalized_email) or role
     password_hash_value = hash_password(normalized_password)
 
     create_all_tables()
@@ -214,12 +298,16 @@ def ensure_bootstrap_user() -> dict[str, object] | None:
             if user.role != role:
                 user.role = role
                 updated = True
+            elif _apply_env_admin_role(user):
+                updated = True
             if mark_email_verified and user.email_verified_at is None:
                 user.email_verified_at = _utcnow()
                 updated = True
             if force_password_reset:
                 user.password_hash = password_hash_value
                 updated = True
+        if _apply_env_admin_role(user):
+            updated = True
         session.flush()
         return {
             "email": normalized_email,
@@ -593,7 +681,7 @@ def register_user(*, email: str, password: str, name: str) -> dict[str, object]:
             password_hash=password_hash_value,
             name=clean_name,
             is_active=True,
-            role="user",
+            role=_env_admin_role_for_email(normalized_email) or "user",
         )
         _auto_verify_email_if_disabled(user=user)
         session.add(user)
@@ -632,6 +720,7 @@ def login_user(*, email: str, password: str) -> dict[str, object]:
     signed_in_account_key = ""
     with session_scope() as session:
         user = _get_user_by_credentials(session=session, email=email, password=password)
+        _apply_env_admin_role(user)
         if user.two_factor_enabled:
             raise AuthValidationError(
                 "Two-factor authentication is required; use login challenge."
@@ -663,6 +752,7 @@ def get_user_by_session_token(token: str) -> dict[str, object]:
     create_all_tables()
     with session_scope() as session:
         user, _ = _resolve_user_from_session_token(session=session, token=token)
+        _apply_env_admin_role(user)
         _auto_verify_email_if_disabled(user=user)
         session.flush()
         return _serialize_user(user)
@@ -706,6 +796,7 @@ def update_current_user(
     response_payload: dict[str, object] = {}
     with session_scope() as session:
         user, _ = _resolve_user_from_session_token(session=session, token=session_token)
+        _apply_env_admin_role(user)
         previous_openalex_author_id = str(user.openalex_author_id or "").strip()
         previous_openalex_integration_approved = bool(user.openalex_integration_approved)
 
