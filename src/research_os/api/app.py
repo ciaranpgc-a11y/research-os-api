@@ -217,6 +217,7 @@ from research_os.api.schemas import (
     PublicationDetailResponse,
     PublicationMetricDetailResponse,
     PublicationPaperModelResponse,
+    PublicationTableEnhanceResponse,
     PublicationStructuredAbstractRefreshResponse,
     PublicationFileDeleteResponse,
     PublicationFileLinkRequest,
@@ -469,6 +470,7 @@ from research_os.services.publication_console_service import (
     PublicationConsoleNotFoundError,
     PublicationConsoleValidationError,
     delete_publication_file,
+    enhance_publication_paper_table,
     trigger_publication_structured_abstract_refresh,
     get_publication_ai_insights,
     get_publication_authors,
@@ -3110,6 +3112,36 @@ def v1_publication_paper_model(
             force_reparse=force,
         )
         return PublicationPaperModelResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PublicationConsoleValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/publications/{publication_id}/tables/{table_id}/enhance",
+    response_model=PublicationTableEnhanceResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_enhance_publication_table(
+    publication_id: str,
+    table_id: str,
+    request: Request,
+) -> PublicationTableEnhanceResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = enhance_publication_paper_table(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+            table_id=table_id,
+        )
+        return PublicationTableEnhanceResponse(**result)
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
     except PublicationConsoleNotFoundError as exc:

@@ -50,7 +50,7 @@ from research_os.db import (
     create_all_tables,
     session_scope,
 )
-from research_os.clients.openai_client import create_response
+from research_os.clients.openai_client import ask_gpt, create_response
 from research_os.services.supplementary_work_service import (
     extract_parent_publication_title,
     is_supplementary_material_work,
@@ -5360,6 +5360,7 @@ def _serialize_publication_paper_asset(value: dict[str, Any]) -> dict[str, Any]:
         "graphic_coords": str(value.get("graphic_coords") or "").strip() or None,
         "image_data": str(value.get("image_data") or "").strip() or None,
         "structured_html": str(value.get("structured_html") or "").strip() or None,
+        "enhanced_html": str(value.get("enhanced_html") or "").strip() or None,
     }
 
 
@@ -5403,6 +5404,7 @@ def _build_parsed_publication_paper_asset(
         "graphic_coords": str(graphic_coords or "").strip() or None,
         "image_data": None,
         "structured_html": None,
+        "enhanced_html": None,
     }
 
 
@@ -9056,6 +9058,81 @@ def _append_publication_structured_table_notes(
         note_block.append(f"<p>{html.escape(note)}</p>")
     note_block.append("</div>")
     return f"{clean_html}{''.join(note_block)}"
+
+
+def _ai_enhance_publication_table_html(
+    structured_html: str,
+    title: str | None,
+    caption: str | None,
+) -> str:
+    """Call GPT to insert row-group subheadings and improve table readability."""
+    col_count = max(structured_html.count("<th"), structured_html.count("<td") // max(structured_html.count("<tr>"), 1), 2)
+    context_parts: list[str] = []
+    if title:
+        context_parts.append(f"Table title: {title}")
+    if caption:
+        context_parts.append(f"Caption: {caption}")
+    context_block = "\n".join(context_parts)
+    prompt = f"""You are a scientific table formatter. You will receive an HTML table from a research paper.
+
+Your task is to improve its readability by identifying logical groups of rows and inserting a subheading row before each group. Use this exact HTML for each subheading row:
+<tr class="publication-table-group-row"><td colspan="{col_count}"><strong>Group Name</strong></td></tr>
+
+Rules:
+- Only add subheading rows when the table has clear, distinct row groups (e.g. by treatment arm, time point, patient category, measurement domain, or outcome type).
+- If rows are homogeneous with no natural grouping, return the HTML unchanged.
+- Keep all existing rows, content, and HTML structure exactly as-is. Do not reorder, remove, or modify existing rows or cells.
+- Return only the complete HTML (the table element plus any notes div that follows it). No markdown, no explanation, no code fences.
+
+{context_block}
+
+HTML:
+{structured_html}"""
+    return ask_gpt(prompt, model="gpt-4.1-mini")
+
+
+def enhance_publication_paper_table(
+    *,
+    user_id: str,
+    publication_id: str,
+    table_id: str,
+) -> dict[str, Any]:
+    """Run AI enhancement on a specific table asset and persist the result in the cache."""
+    create_all_tables()
+    with session_scope() as session:
+        _resolve_work_or_raise(session, user_id=user_id, publication_id=publication_id)
+        row = _load_structured_paper_cache(
+            session, user_id=user_id, publication_id=publication_id, for_update=True
+        )
+        if row is None or not isinstance(row.payload_json, dict):
+            raise PublicationConsoleNotFoundError("Publication paper model not found.")
+        payload = row.payload_json
+        tables: list[dict[str, Any]] = list(payload.get("tables") or [])
+        target_idx = next(
+            (i for i, t in enumerate(tables) if isinstance(t, dict) and t.get("id") == table_id),
+            None,
+        )
+        if target_idx is None:
+            raise PublicationConsoleNotFoundError(f"Table {table_id!r} not found in paper model.")
+        target_table = tables[target_idx]
+        structured_html = str(target_table.get("structured_html") or "").strip()
+        if not structured_html:
+            raise PublicationConsoleValidationError("Table has no structured HTML to enhance.")
+        enhanced_html = str(
+            _ai_enhance_publication_table_html(
+                structured_html=structured_html,
+                title=str(target_table.get("title") or "").strip() or None,
+                caption=str(target_table.get("caption") or "").strip() or None,
+            )
+            or ""
+        ).strip()
+        if not enhanced_html:
+            raise PublicationConsoleValidationError("AI enhancement produced no output.")
+        updated_table = {**target_table, "enhanced_html": enhanced_html}
+        tables[target_idx] = updated_table
+        row.payload_json = {**payload, "tables": tables}
+        session.flush()
+        return {"enhanced_html": enhanced_html}
 
 
 def _pmc_archive_request_headers() -> dict[str, str]:

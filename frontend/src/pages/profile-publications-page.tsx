@@ -22,6 +22,7 @@ import {
   fetchPublicationFiles,
   fetchPublicationImpact,
   fetchPublicationPaperModel,
+  enhancePublicationTable,
   fetchPersonaSyncJob,
   fetchMe,
   fetchPersonaState,
@@ -324,6 +325,7 @@ const PUBLICATION_STRUCTURED_TABLE_CLASS_NAME = [
   '[&_caption]:mb-2 [&_caption]:text-left [&_caption]:text-[0.75rem] [&_caption]:font-medium [&_caption]:text-[hsl(var(--tone-neutral-500))]',
   '[&_.publication-structured-table-notes]:mt-3 [&_.publication-structured-table-notes]:space-y-2 [&_.publication-structured-table-notes]:rounded-[0.9rem] [&_.publication-structured-table-notes]:border [&_.publication-structured-table-notes]:border-[hsl(var(--tone-neutral-200))] [&_.publication-structured-table-notes]:bg-[hsl(var(--tone-neutral-50)/0.7)] [&_.publication-structured-table-notes]:px-3 [&_.publication-structured-table-notes]:py-2.5',
   '[&_.publication-structured-table-notes_p]:m-0 [&_.publication-structured-table-notes_p]:text-[0.75rem] [&_.publication-structured-table-notes_p]:leading-relaxed [&_.publication-structured-table-notes_p]:text-[hsl(var(--tone-neutral-600))]',
+  '[&_.publication-table-group-row_td]:border-none [&_.publication-table-group-row_td]:bg-[hsl(var(--tone-neutral-100)/0.8)] [&_.publication-table-group-row_td]:px-3.5 [&_.publication-table-group-row_td]:py-1.5 [&_.publication-table-group-row_td]:text-[0.68rem] [&_.publication-table-group-row_td]:font-semibold [&_.publication-table-group-row_td]:uppercase [&_.publication-table-group-row_td]:tracking-[0.08em] [&_.publication-table-group-row_td]:text-[hsl(var(--tone-neutral-600))]',
 ].join(' ')
 
 const PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME = [
@@ -339,6 +341,7 @@ const PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME = [
   '[&_caption]:mb-3 [&_caption]:text-left [&_caption]:text-[0.78rem] [&_caption]:font-medium [&_caption]:text-[hsl(var(--tone-neutral-500))]',
   '[&_.publication-structured-table-notes]:mt-4 [&_.publication-structured-table-notes]:space-y-2 [&_.publication-structured-table-notes]:rounded-[0.9rem] [&_.publication-structured-table-notes]:border [&_.publication-structured-table-notes]:border-[hsl(var(--tone-neutral-200))] [&_.publication-structured-table-notes]:bg-[hsl(var(--tone-neutral-50)/0.7)] [&_.publication-structured-table-notes]:px-4 [&_.publication-structured-table-notes]:py-3',
   '[&_.publication-structured-table-notes_p]:m-0 [&_.publication-structured-table-notes_p]:text-[0.82rem] [&_.publication-structured-table-notes_p]:leading-relaxed [&_.publication-structured-table-notes_p]:text-[hsl(var(--tone-neutral-600))]',
+  '[&_.publication-table-group-row_td]:border-none [&_.publication-table-group-row_td]:bg-[hsl(var(--tone-neutral-100)/0.8)] [&_.publication-table-group-row_td]:px-4 [&_.publication-table-group-row_td]:py-2 [&_.publication-table-group-row_td]:text-[0.72rem] [&_.publication-table-group-row_td]:font-semibold [&_.publication-table-group-row_td]:uppercase [&_.publication-table-group-row_td]:tracking-[0.08em] [&_.publication-table-group-row_td]:text-[hsl(var(--tone-neutral-600))]',
 ].join(' ')
 
 function formatPublicationReaderReferenceDisplayLabel(
@@ -3580,6 +3583,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [impactCacheByWorkId, setImpactCacheByWorkId] = useState<Record<string, PublicationImpactResponsePayload>>({})
   const [aiCacheByWorkId, setAiCacheByWorkId] = useState<Record<string, PublicationAiInsightsResponsePayload>>({})
   const [paperModelCacheByWorkId, setPaperModelCacheByWorkId] = useState<Record<string, PublicationPaperModelResponsePayload>>({})
+  const [tableEnhanceLoadingIds, setTableEnhanceLoadingIds] = useState<Set<string>>(new Set())
+  const [tableEnhancedHtmlById, setTableEnhancedHtmlById] = useState<Record<string, string>>({})
   const [filesCacheByWorkId, setFilesCacheByWorkId] = useState<Record<string, PublicationFilesListPayload>>(
     () => fixture?.filesByWorkId ?? {},
   )
@@ -4393,6 +4398,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       }
     }
   }, [token])
+
+  const handleEnhancePublicationTable = useCallback(async (publicationId: string, tableId: string) => {
+    if (!token || tableEnhanceLoadingIds.has(tableId)) return
+    setTableEnhanceLoadingIds((prev) => new Set(prev).add(tableId))
+    try {
+      const result = await enhancePublicationTable(token, publicationId, tableId)
+      setTableEnhancedHtmlById((prev) => ({ ...prev, [tableId]: result.enhanced_html }))
+    } catch {
+      // silently ignore - table stays unenhanced
+    } finally {
+      setTableEnhanceLoadingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(tableId)
+        return next
+      })
+    }
+  }, [token, tableEnhanceLoadingIds])
 
   const loadPublicationFilesData = useCallback(async (workId: string, force = false) => {
     if (!token || !workId) {
@@ -8772,8 +8794,25 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               )}>
                 <div
                   className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
-                  dangerouslySetInnerHTML={{ __html: asset.structured_html }}
+                  dangerouslySetInnerHTML={{ __html: tableEnhancedHtmlById[asset.id] || asset.enhanced_html || asset.structured_html }}
                 />
+                {asset.asset_kind === 'table' && !tableEnhancedHtmlById[asset.id] && !asset.enhanced_html ? (
+                  <button
+                    type="button"
+                    className="mt-2 text-[0.75rem] font-medium text-[hsl(var(--tone-accent-700))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))] hover:underline disabled:opacity-50"
+                    disabled={tableEnhanceLoadingIds.has(asset.id)}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (selectedWorkId) handleEnhancePublicationTable(selectedWorkId, asset.id)
+                    }}
+                  >
+                    {tableEnhanceLoadingIds.has(asset.id) ? 'Enhancing…' : 'Enhance with AI'}
+                  </button>
+                ) : null}
+                {(tableEnhancedHtmlById[asset.id] || asset.enhanced_html) ? (
+                  <p className="mt-2 text-[0.72rem] text-[hsl(var(--tone-accent-600))]">AI-enhanced</p>
+                ) : null}
               </div>
             ) : null}
             {!asset.image_data && !asset.structured_html && asset.page_start != null ? (
@@ -9251,17 +9290,34 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   <div className="border-t border-[hsl(var(--tone-neutral-100))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
                     <div
                       className={PUBLICATION_STRUCTURED_TABLE_CLASS_NAME}
-                      dangerouslySetInnerHTML={{ __html: inlineAsset.structured_html }}
+                      dangerouslySetInnerHTML={{ __html: tableEnhancedHtmlById[inlineAsset.id] || inlineAsset.enhanced_html || inlineAsset.structured_html }}
                     />
-                    {inlineAsset.asset_kind === 'table' ? (
-                      <button
-                        type="button"
-                        className="mt-3 text-[0.75rem] font-medium text-[hsl(var(--tone-accent-700))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))] hover:underline"
-                        onClick={() => openPublicationReaderTableLightbox(inlineAsset)}
-                      >
-                        Open full-size table
-                      </button>
-                    ) : null}
+                    <div className="mt-3 flex items-center gap-3">
+                      {inlineAsset.asset_kind === 'table' ? (
+                        <button
+                          type="button"
+                          className="text-[0.75rem] font-medium text-[hsl(var(--tone-accent-700))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-accent-800))] hover:underline"
+                          onClick={() => openPublicationReaderTableLightbox(inlineAsset)}
+                        >
+                          Open full-size table
+                        </button>
+                      ) : null}
+                      {inlineAsset.asset_kind === 'table' && !tableEnhancedHtmlById[inlineAsset.id] && !inlineAsset.enhanced_html ? (
+                        <button
+                          type="button"
+                          className="text-[0.75rem] font-medium text-[hsl(var(--tone-neutral-500))] underline-offset-2 transition-colors hover:text-[hsl(var(--tone-neutral-700))] hover:underline disabled:opacity-50"
+                          disabled={tableEnhanceLoadingIds.has(inlineAsset.id)}
+                          onClick={() => {
+                            if (selectedWorkId) handleEnhancePublicationTable(selectedWorkId, inlineAsset.id)
+                          }}
+                        >
+                          {tableEnhanceLoadingIds.has(inlineAsset.id) ? 'Enhancing…' : 'Enhance with AI'}
+                        </button>
+                      ) : null}
+                      {(tableEnhancedHtmlById[inlineAsset.id] || inlineAsset.enhanced_html) ? (
+                        <p className="text-[0.72rem] text-[hsl(var(--tone-accent-600))]">AI-enhanced</p>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
                 {!inlineAsset.image_data && !inlineAsset.structured_html && inlineAsset.page_start != null ? (
@@ -12512,6 +12568,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   >
                     <ChevronRight className="h-4 w-4" />
                   </button>
+                  {!tableEnhancedHtmlById[publicationReaderTableLightboxAsset.id] && !publicationReaderTableLightboxAsset.enhanced_html ? (
+                    <button
+                      type="button"
+                      className="inline-flex h-9 shrink-0 items-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white px-3.5 text-sm font-medium text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
+                      disabled={tableEnhanceLoadingIds.has(publicationReaderTableLightboxAsset.id)}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        if (selectedWorkId) handleEnhancePublicationTable(selectedWorkId, publicationReaderTableLightboxAsset.id)
+                      }}
+                    >
+                      {tableEnhanceLoadingIds.has(publicationReaderTableLightboxAsset.id) ? 'Enhancing…' : 'Enhance with AI'}
+                    </button>
+                  ) : null}
+                  {(tableEnhancedHtmlById[publicationReaderTableLightboxAsset.id] || publicationReaderTableLightboxAsset.enhanced_html) ? (
+                    <span className="text-sm text-[hsl(var(--tone-accent-600))]">AI-enhanced</span>
+                  ) : null}
                   <button
                     type="button"
                     className="inline-flex h-9 shrink-0 items-center rounded-xl border border-[hsl(var(--tone-neutral-250))] bg-white px-3.5 text-sm font-medium text-[hsl(var(--tone-neutral-800))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-neutral-50))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
@@ -12532,7 +12605,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             >
               <div
                 className={PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME}
-                dangerouslySetInnerHTML={{ __html: publicationReaderTableLightboxAsset.structured_html || '' }}
+                dangerouslySetInnerHTML={{ __html: tableEnhancedHtmlById[publicationReaderTableLightboxAsset.id] || publicationReaderTableLightboxAsset.enhanced_html || publicationReaderTableLightboxAsset.structured_html || '' }}
               />
             </div>
           </div>
