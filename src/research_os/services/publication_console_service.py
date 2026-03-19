@@ -380,7 +380,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v6"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v59"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v60"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -10105,46 +10105,11 @@ def _publication_table_note_like_row(
     return False
 
 
-_PUBLICATION_TABLE_PVALUE_HEADER_PATTERN = re.compile(
-    r"^p[\s\-]*val", re.IGNORECASE
-)
-
-
-def _publication_table_detect_pvalue_columns(
-    header_rows: list[list[dict[str, Any]]],
-) -> frozenset[int]:
-    indices: set[int] = set()
-    for row in header_rows:
-        col = 0
-        for cell in row:
-            text = str(cell.get("text") or "").strip()
-            colspan = max(1, _safe_int(cell.get("colspan")) or 1)
-            if colspan == 1 and _PUBLICATION_TABLE_PVALUE_HEADER_PATTERN.match(text):
-                indices.add(col)
-            col += colspan
-    return frozenset(indices)
-
-
-_PUBLICATION_TABLE_PVALUE_SIGNIFICANT_PATTERN = re.compile(
-    r"^[<≤]?\s*0\.0\d*$"
-)
-
-
-def _publication_table_is_significant_pvalue(text: str) -> bool:
-    clean = text.strip()
-    if not _PUBLICATION_TABLE_PVALUE_SIGNIFICANT_PATTERN.match(clean):
-        return False
-    try:
-        numeric = float(re.sub(r"^[<≤]\s*", "", clean))
-        return numeric <= 0.05
-    except (ValueError, OverflowError):
-        return False
-
 
 def _publication_table_render_cells(
     cells: list[dict[str, Any]],
     *,
-    pvalue_columns: frozenset[int] = frozenset(),
+    significant_columns: frozenset[int] = frozenset(),
 ) -> str:
     rendered: list[str] = []
     col = 0
@@ -10158,11 +10123,7 @@ def _publication_table_render_cells(
         if rowspan > 1:
             attrs.append(f' rowspan="{rowspan}"')
         text = html.escape(str(cell.get("text") or ""))
-        if (
-            tag == "td"
-            and col in pvalue_columns
-            and _publication_table_is_significant_pvalue(text)
-        ):
+        if tag == "td" and col in significant_columns:
             attrs.append(' class="publication-table-pvalue-significant"')
         rendered.append(f"<{tag}{''.join(attrs)}>{text}</{tag}>")
         col += colspan
@@ -11048,9 +11009,27 @@ def _publication_table_grouping_text_config() -> dict[str, Any]:
                                 "confidence",
                             ],
                         },
-                    }
+                    },
+                    "preamble_rows": {
+                        "type": "array",
+                        "description": "1-based row numbers of summary/sample-size rows (e.g. N=134, Total patients)",
+                        "items": {"type": "integer", "minimum": 1},
+                    },
+                    "significant_cells": {
+                        "type": "array",
+                        "description": "Cells containing statistically significant p-values (p <= 0.05)",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "row": {"type": "integer", "minimum": 1},
+                                "col": {"type": "integer", "minimum": 1},
+                            },
+                            "required": ["row", "col"],
+                        },
+                    },
                 },
-                "required": ["groups"],
+                "required": ["groups", "preamble_rows", "significant_cells"],
             },
         }
     }
@@ -11091,17 +11070,25 @@ def _build_publication_table_grouping_messages(
         {
             "role": "system",
             "content": (
-                "You group flat academic table rows into short in-table subsection labels.\n"
-                "Use the full manuscript context provided here: paper abstract, table title, table caption, column headers, preamble rows, ordered table rows, units, value shapes, and any anchored groups already fixed by the parser.\n"
-                "Return only contiguous row ranges that form meaningful subsections.\n"
+                "You analyse academic table rows and return structured annotations.\n"
+                "Use the full manuscript context: paper abstract, table title, table caption, column headers, preamble rows, ordered table rows, units, value shapes, and any anchored groups already fixed by the parser.\n"
+                "\n"
+                "## Grouping\n"
+                "Return contiguous row ranges that form meaningful subsections.\n"
                 "Do not reorder rows, do not rewrite row labels, do not create one-row groups, and do not overlap or rename anchored groups.\n"
                 "Every contiguous run of rows should be covered by a group when possible, including the initial rows before any obvious subsection. Infer an appropriate label from the rows' content and the table context — do not assume any particular research domain.\n"
                 "Prefer sensible sentence-case labels that reflect the local run, using discipline-appropriate group names when the evidence supports them. Labels must be scientifically precise — classify rows by what they actually measure, not by specimen or method alone.\n"
-                "Never use vague catch-all labels like 'Measurements', 'Other', 'Additional', or 'Miscellaneous'. If rows share a specific theme, name it precisely (e.g. 'Tissue characterisation', 'Haematology', 'Metabolic panel'). If no specific label fits, leave the rows ungrouped.\n"
+                "Never use vague catch-all labels like 'Measurements', 'Other', 'Additional', or 'Miscellaneous'. If rows share a specific theme, name it precisely. If no specific label fits, leave the rows ungrouped.\n"
                 "Avoid repeating generic labels within the same table when a more specific local label is available.\n"
                 "If only a weak generic label is possible for a short or mixed run between named groups, leave those rows ungrouped instead of forcing a heading.\n"
                 "Use broad context from neighboring rows and the abstract before deciding a label.\n"
-                "If a safe grouping is not clear, return an empty groups array."
+                "If a safe grouping is not clear, return an empty groups array.\n"
+                "\n"
+                "## Preamble rows\n"
+                "Identify any rows that are summary or sample-size indicators rather than regular data rows (e.g. 'N', 'N = 134', 'Total', 'Patients', 'Observations'). Return their 1-based row numbers in `preamble_rows`. These are typically in the first 1-2 rows of the table body.\n"
+                "\n"
+                "## Significant p-values\n"
+                "Identify any cells that contain statistically significant p-values (p <= 0.05). Return their 1-based row and column numbers in `significant_cells`. Only include cells you are confident are p-values, not arbitrary small numbers."
             ),
         },
         {"role": "user", "content": json.dumps(payload, ensure_ascii=True)},
@@ -11167,7 +11154,7 @@ def _publication_table_infer_row_groups_with_llm(
             response = create_response(
                 model=model_name,
                 input=messages,
-                max_output_tokens=500,
+                max_output_tokens=800,
                 text=_publication_table_grouping_text_config(),
                 timeout=_publication_table_grouping_llm_timeout_seconds(),
                 max_retries=0,
@@ -11175,7 +11162,7 @@ def _publication_table_infer_row_groups_with_llm(
             payload = _extract_json_object(str(getattr(response, "output_text", "") or ""))
             raw_groups = payload.get("groups")
             if not isinstance(raw_groups, list):
-                return []
+                return {"groups": [], "preamble_rows": [], "significant_cells": []}
             groups: list[dict[str, Any]] = []
             for group in raw_groups:
                 if not isinstance(group, dict):
@@ -11210,13 +11197,35 @@ def _publication_table_infer_row_groups_with_llm(
                         "confidence": confidence,
                     }
                 )
-            return _publication_table_filter_llm_groups(groups)
+            # Extract preamble rows (1-based from LLM, convert to 0-based)
+            raw_preamble = payload.get("preamble_rows")
+            preamble_row_indices: list[int] = []
+            if isinstance(raw_preamble, list):
+                for row_num in raw_preamble:
+                    idx = _safe_int(row_num)
+                    if idx is not None and idx >= 1:
+                        preamble_row_indices.append(idx - 1)
+            # Extract significant cells (1-based from LLM, convert to 0-based)
+            raw_significant = payload.get("significant_cells")
+            significant_cells: list[tuple[int, int]] = []
+            if isinstance(raw_significant, list):
+                for cell in raw_significant:
+                    if isinstance(cell, dict):
+                        r = _safe_int(cell.get("row"))
+                        c = _safe_int(cell.get("col"))
+                        if r is not None and c is not None and r >= 1 and c >= 1:
+                            significant_cells.append((r - 1, c - 1))
+            return {
+                "groups": _publication_table_filter_llm_groups(groups),
+                "preamble_rows": preamble_row_indices,
+                "significant_cells": significant_cells,
+            }
         except Exception as exc:
             last_error = exc
             continue
     if last_error is not None:
         logger.warning("publication_table_row_grouping_llm_failed: %s", last_error)
-    return []
+    return {"groups": [], "preamble_rows": [], "significant_cells": []}
 
 
 def _publication_table_infer_group_plan(
@@ -11292,12 +11301,12 @@ def _publication_table_infer_group_plan(
         )
         for index, row in enumerate(candidate_rows)
     ]
-    llm_groups: list[dict[str, Any]] = []
+    llm_result: dict[str, Any] = {"groups": [], "preamble_rows": [], "significant_cells": []}
     if _publication_table_should_try_llm_grouping(
         row_labels=row_labels,
         deterministic_groups=deterministic_groups,
     ):
-        llm_groups = _publication_table_infer_row_groups_with_llm(
+        llm_result = _publication_table_infer_row_groups_with_llm(
             table_title=table_title,
             table_caption=table_caption,
             header_rows=header_rows,
@@ -11307,6 +11316,7 @@ def _publication_table_infer_group_plan(
             preamble_rows=preamble_rows,
             abstract_context=abstract_context,
         )
+    llm_groups = list(llm_result.get("groups") or [])
     generic_groups: list[dict[str, Any]] = []
     if not llm_groups:
         generic_groups = _publication_table_infer_generic_row_groups(
@@ -11321,7 +11331,16 @@ def _publication_table_infer_group_plan(
         ),
         offset=preamble_count,
     )
-    return {"preamble_count": preamble_count, "groups": inferred_groups}
+    # LLM preamble rows are relative to candidate_rows (0-based after preamble_count).
+    # Offset them to be relative to all data_rows.
+    llm_preamble = list(llm_result.get("preamble_rows") or [])
+    llm_significant = list(llm_result.get("significant_cells") or [])
+    return {
+        "preamble_count": preamble_count,
+        "groups": inferred_groups,
+        "llm_preamble_rows": llm_preamble,
+        "significant_cells": llm_significant,
+    }
 
 
 def _publication_table_build_blocks_from_explicit_rows(
@@ -11365,6 +11384,9 @@ def _publication_table_build_blocks_from_inferred_groups(
     data_rows = [
         row for row in body_rows if str(row.get("row_kind") or "").strip() == "data"
     ]
+    # Tag each row with its index so the renderer can match significant_cells
+    for idx, row in enumerate(data_rows):
+        row["_data_row_index"] = idx
     blocks: list[dict[str, Any]] = []
     if preamble_count > 0:
         blocks.append(
@@ -11434,7 +11456,7 @@ def _publication_table_render_body_blocks(
     total_columns: int,
     inferred_plan: dict[str, Any] | None = None,
     table_title: str | None = None,
-    pvalue_columns: frozenset[int] = frozenset(),
+    significant_cells: frozenset[tuple[int, int]] = frozenset(),
 ) -> str:
     if any(str(row.get("row_kind") or "").strip() == "section" for row in body_rows):
         blocks = _publication_table_build_blocks_from_explicit_rows(body_rows)
@@ -11466,8 +11488,14 @@ def _publication_table_render_body_blocks(
             )
         for row in list(block.get("rows") or []):
             row_cells = list(row.get("cells") or [])
+            row_index = row.get("_data_row_index")
+            row_significant: frozenset[int] = frozenset()
+            if row_index is not None:
+                row_significant = frozenset(
+                    col for (r, col) in significant_cells if r == row_index
+                )
             parts.append(
-                f"<tr>{_publication_table_render_cells(row_cells, pvalue_columns=pvalue_columns)}</tr>"
+                f"<tr>{_publication_table_render_cells(row_cells, significant_columns=row_significant)}</tr>"
             )
         parts.append("</tbody>")
     return "".join(parts)
@@ -12224,14 +12252,18 @@ def _canonicalize_docling_table_html(
         for row in header_rows:
             parts.append(f"<tr>{_publication_table_render_cells(row)}</tr>")
         parts.append("</thead>")
-    pvalue_columns = _publication_table_detect_pvalue_columns(header_rows)
+    plan = inferred_plan if isinstance(inferred_plan, dict) else {}
+    significant_cells = frozenset(
+        (r, c) for r, c in (list(plan.get("significant_cells") or []))
+        if isinstance(r, int) and isinstance(c, int)
+    )
     parts.append(
         _publication_table_render_body_blocks(
             body_rows=body_rows,
             total_columns=total_columns,
             inferred_plan=inferred_plan,
             table_title=table_title,
-            pvalue_columns=pvalue_columns,
+            significant_cells=significant_cells,
         )
     )
     parts.append("</table>")
