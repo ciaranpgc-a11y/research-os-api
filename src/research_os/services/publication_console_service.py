@@ -380,7 +380,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v6"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v61"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v62"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -10106,10 +10106,36 @@ def _publication_table_note_like_row(
 
 
 
+_PVALUE_SIGNIFICANT_PATTERN = re.compile(
+    r"^[<≤]?\s*0?\.(\d+)$|^[<≤]\s*0?\.?0+1$",
+)
+
+
+def _publication_table_is_pvalue_significant(text: str) -> bool:
+    """Check if a p-value text is statistically significant (p <= 0.05)."""
+    clean = text.strip().replace("\u2009", "").replace("\u00a0", "")
+    if not clean:
+        return False
+    # Handle prefix like "p=" or "P ="
+    clean = re.sub(r"^[pP]\s*[=:]\s*", "", clean)
+    # "<0.001", "<.01", "≤0.05" etc — always significant
+    if clean.startswith(("<", "≤")):
+        remainder = clean.lstrip("<≤").strip()
+        try:
+            return float(remainder) <= 0.05
+        except (ValueError, OverflowError):
+            return False
+    # Plain numeric: "0.001", "0.05", ".03"
+    try:
+        return float(clean) <= 0.05
+    except (ValueError, OverflowError):
+        return False
+
+
 def _publication_table_render_cells(
     cells: list[dict[str, Any]],
     *,
-    significant_columns: frozenset[int] = frozenset(),
+    pvalue_column: int | None = None,
 ) -> str:
     rendered: list[str] = []
     col = 0
@@ -10123,7 +10149,12 @@ def _publication_table_render_cells(
         if rowspan > 1:
             attrs.append(f' rowspan="{rowspan}"')
         text = html.escape(str(cell.get("text") or ""))
-        if tag == "td" and col in significant_columns:
+        if (
+            tag == "td"
+            and pvalue_column is not None
+            and col == pvalue_column
+            and _publication_table_is_pvalue_significant(str(cell.get("text") or ""))
+        ):
             attrs.append(' class="publication-table-pvalue-significant"')
         rendered.append(f"<{tag}{''.join(attrs)}>{text}</{tag}>")
         col += colspan
@@ -11015,21 +11046,13 @@ def _publication_table_grouping_text_config() -> dict[str, Any]:
                         "description": "1-based row numbers of summary/sample-size rows (e.g. N=134, Total patients)",
                         "items": {"type": "integer", "minimum": 1},
                     },
-                    "significant_cells": {
-                        "type": "array",
-                        "description": "Cells containing statistically significant p-values (p <= 0.05)",
-                        "items": {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "properties": {
-                                "row": {"type": "integer", "minimum": 1},
-                                "col": {"type": "integer", "minimum": 1},
-                            },
-                            "required": ["row", "col"],
-                        },
+                    "pvalue_column": {
+                        "type": ["integer", "null"],
+                        "description": "1-based column number of the p-value column, or null if no p-value column exists",
+                        "minimum": 1,
                     },
                 },
-                "required": ["groups", "preamble_rows", "significant_cells"],
+                "required": ["groups", "preamble_rows", "pvalue_column"],
             },
         }
     }
@@ -11087,10 +11110,8 @@ def _build_publication_table_grouping_messages(
                 "## Preamble rows\n"
                 "Identify any rows that are summary or sample-size indicators rather than regular data rows (e.g. 'N', 'N = 134', 'Total', 'Patients', 'Observations'). Return their 1-based row numbers in `preamble_rows`. These are typically in the first 1-2 rows of the table body.\n"
                 "\n"
-                "## Significant p-values\n"
-                "Identify cells in the **p-value column only** that are statistically significant (p <= 0.05). Return their 1-based row and column numbers in `significant_cells`.\n"
-                "IMPORTANT: Only flag cells from the p-value column (typically headed 'P', 'P-value', 'p value', 'P *', etc.). Do NOT include cells from other columns such as mean difference, confidence interval, effect size, odds ratio, hazard ratio, or any non-p-value numeric column.\n"
-                "Include all forms: '<0.001', '0.001', '0.03', '< .01', etc. Any p-value that is less than or equal to 0.05 counts."
+                "## P-value column\n"
+                "If the table has a column containing p-values (typically headed 'P', 'P-value', 'p value', 'P *', 'Sig.', etc.), return its 1-based column number in `pvalue_column`. If there is no p-value column, return null."
             ),
         },
         {"role": "user", "content": json.dumps(payload, ensure_ascii=True)},
@@ -11164,7 +11185,7 @@ def _publication_table_infer_row_groups_with_llm(
             payload = _extract_json_object(str(getattr(response, "output_text", "") or ""))
             raw_groups = payload.get("groups")
             if not isinstance(raw_groups, list):
-                return {"groups": [], "preamble_rows": [], "significant_cells": []}
+                return {"groups": [], "preamble_rows": [], "pvalue_column": None}
             groups: list[dict[str, Any]] = []
             for group in raw_groups:
                 if not isinstance(group, dict):
@@ -11207,27 +11228,24 @@ def _publication_table_infer_row_groups_with_llm(
                     idx = _safe_int(row_num)
                     if idx is not None and idx >= 1:
                         preamble_row_indices.append(idx - 1)
-            # Extract significant cells (1-based from LLM, convert to 0-based)
-            raw_significant = payload.get("significant_cells")
-            significant_cells: list[tuple[int, int]] = []
-            if isinstance(raw_significant, list):
-                for cell in raw_significant:
-                    if isinstance(cell, dict):
-                        r = _safe_int(cell.get("row"))
-                        c = _safe_int(cell.get("col"))
-                        if r is not None and c is not None and r >= 1 and c >= 1:
-                            significant_cells.append((r - 1, c - 1))
+            # Extract pvalue_column (1-based from LLM, convert to 0-based)
+            raw_pvalue_col = payload.get("pvalue_column")
+            pvalue_column: int | None = None
+            if raw_pvalue_col is not None:
+                pvc = _safe_int(raw_pvalue_col)
+                if pvc is not None and pvc >= 1:
+                    pvalue_column = pvc - 1
             return {
                 "groups": _publication_table_filter_llm_groups(groups),
                 "preamble_rows": preamble_row_indices,
-                "significant_cells": significant_cells,
+                "pvalue_column": pvalue_column,
             }
         except Exception as exc:
             last_error = exc
             continue
     if last_error is not None:
         logger.warning("publication_table_row_grouping_llm_failed: %s", last_error)
-    return {"groups": [], "preamble_rows": [], "significant_cells": []}
+    return {"groups": [], "preamble_rows": [], "pvalue_column": None}
 
 
 def _publication_table_infer_group_plan(
@@ -11303,7 +11321,7 @@ def _publication_table_infer_group_plan(
         )
         for index, row in enumerate(candidate_rows)
     ]
-    llm_result: dict[str, Any] = {"groups": [], "preamble_rows": [], "significant_cells": []}
+    llm_result: dict[str, Any] = {"groups": [], "preamble_rows": [], "pvalue_column": None}
     if _publication_table_should_try_llm_grouping(
         row_labels=row_labels,
         deterministic_groups=deterministic_groups,
@@ -11336,12 +11354,12 @@ def _publication_table_infer_group_plan(
     # LLM preamble rows are relative to candidate_rows (0-based after preamble_count).
     # Offset them to be relative to all data_rows.
     llm_preamble = list(llm_result.get("preamble_rows") or [])
-    llm_significant = list(llm_result.get("significant_cells") or [])
+    pvalue_column = llm_result.get("pvalue_column")
     return {
         "preamble_count": preamble_count,
         "groups": inferred_groups,
         "llm_preamble_rows": llm_preamble,
-        "significant_cells": llm_significant,
+        "pvalue_column": pvalue_column,
     }
 
 
@@ -11386,7 +11404,7 @@ def _publication_table_build_blocks_from_inferred_groups(
     data_rows = [
         row for row in body_rows if str(row.get("row_kind") or "").strip() == "data"
     ]
-    # Tag each row with its index so the renderer can match significant_cells
+    # Tag each row with its index for renderer reference
     for idx, row in enumerate(data_rows):
         row["_data_row_index"] = idx
     blocks: list[dict[str, Any]] = []
@@ -11458,7 +11476,7 @@ def _publication_table_render_body_blocks(
     total_columns: int,
     inferred_plan: dict[str, Any] | None = None,
     table_title: str | None = None,
-    significant_cells: frozenset[tuple[int, int]] = frozenset(),
+    pvalue_column: int | None = None,
 ) -> str:
     if any(str(row.get("row_kind") or "").strip() == "section" for row in body_rows):
         blocks = _publication_table_build_blocks_from_explicit_rows(body_rows)
@@ -11490,14 +11508,8 @@ def _publication_table_render_body_blocks(
             )
         for row in list(block.get("rows") or []):
             row_cells = list(row.get("cells") or [])
-            row_index = row.get("_data_row_index")
-            row_significant: frozenset[int] = frozenset()
-            if row_index is not None:
-                row_significant = frozenset(
-                    col for (r, col) in significant_cells if r == row_index
-                )
             parts.append(
-                f"<tr>{_publication_table_render_cells(row_cells, significant_columns=row_significant)}</tr>"
+                f"<tr>{_publication_table_render_cells(row_cells, pvalue_column=pvalue_column)}</tr>"
             )
         parts.append("</tbody>")
     return "".join(parts)
@@ -12255,17 +12267,16 @@ def _canonicalize_docling_table_html(
             parts.append(f"<tr>{_publication_table_render_cells(row)}</tr>")
         parts.append("</thead>")
     plan = inferred_plan if isinstance(inferred_plan, dict) else {}
-    significant_cells = frozenset(
-        (r, c) for r, c in (list(plan.get("significant_cells") or []))
-        if isinstance(r, int) and isinstance(c, int)
-    )
+    pvalue_column: int | None = plan.get("pvalue_column")
+    if pvalue_column is not None and not isinstance(pvalue_column, int):
+        pvalue_column = _safe_int(pvalue_column)
     parts.append(
         _publication_table_render_body_blocks(
             body_rows=body_rows,
             total_columns=total_columns,
             inferred_plan=inferred_plan,
             table_title=table_title,
-            significant_cells=significant_cells,
+            pvalue_column=pvalue_column,
         )
     )
     parts.append("</table>")
