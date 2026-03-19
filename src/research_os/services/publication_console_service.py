@@ -380,7 +380,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v6"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v60"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v61"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -11088,7 +11088,9 @@ def _build_publication_table_grouping_messages(
                 "Identify any rows that are summary or sample-size indicators rather than regular data rows (e.g. 'N', 'N = 134', 'Total', 'Patients', 'Observations'). Return their 1-based row numbers in `preamble_rows`. These are typically in the first 1-2 rows of the table body.\n"
                 "\n"
                 "## Significant p-values\n"
-                "Identify any cells that contain statistically significant p-values (p <= 0.05). Return their 1-based row and column numbers in `significant_cells`. Only include cells you are confident are p-values, not arbitrary small numbers."
+                "Identify cells in the **p-value column only** that are statistically significant (p <= 0.05). Return their 1-based row and column numbers in `significant_cells`.\n"
+                "IMPORTANT: Only flag cells from the p-value column (typically headed 'P', 'P-value', 'p value', 'P *', etc.). Do NOT include cells from other columns such as mean difference, confidence interval, effect size, odds ratio, hazard ratio, or any non-p-value numeric column.\n"
+                "Include all forms: '<0.001', '0.001', '0.03', '< .01', etc. Any p-value that is less than or equal to 0.05 counts."
             ),
         },
         {"role": "user", "content": json.dumps(payload, ensure_ascii=True)},
