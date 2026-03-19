@@ -380,7 +380,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v6"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v65"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v66"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -11278,8 +11278,57 @@ def _publication_table_infer_group_plan(
 ) -> dict[str, Any]:
     if not allow_inferred_groups:
         return {"preamble_count": 0, "groups": []}
-    if any(str(row.get("row_kind") or "").strip() == "section" for row in body_rows):
-        return {"preamble_count": 0, "groups": []}
+    has_explicit_sections = any(
+        str(row.get("row_kind") or "").strip() == "section" for row in body_rows
+    )
+    if has_explicit_sections:
+        # Check if there are data rows before the first section row
+        leading_data_rows: list[dict[str, Any]] = []
+        for row in body_rows:
+            if str(row.get("row_kind") or "").strip() == "section":
+                break
+            if str(row.get("row_kind") or "").strip() == "data":
+                leading_data_rows.append(row)
+        if len(leading_data_rows) < 2:
+            return {"preamble_count": 0, "groups": []}
+        # Run LLM grouping only on the leading rows
+        data_rows = leading_data_rows
+        # Skip preamble detection and deterministic grouping — just run the LLM
+        preamble_count = _publication_table_leading_preamble_row_count(data_rows)
+        candidate_rows = data_rows[preamble_count:]
+        if len(candidate_rows) < 2:
+            return {"preamble_count": preamble_count, "groups": []}
+        row_labels = [
+            _publication_table_primary_cell_text(list(row.get("cells") or []))
+            for row in candidate_rows
+        ]
+        row_descriptors = [
+            _publication_table_row_descriptor(
+                row_number=index + 1,
+                cells=list(row.get("cells") or []),
+            )
+            for index, row in enumerate(candidate_rows)
+        ]
+        llm_result = _publication_table_infer_row_groups_with_llm(
+            table_title=table_title,
+            table_caption=table_caption,
+            header_rows=header_rows,
+            row_labels=row_labels,
+            row_descriptors=row_descriptors,
+            anchored_groups=[],
+            preamble_rows=[],
+            abstract_context=abstract_context,
+        )
+        llm_groups = list(llm_result.get("groups") or [])
+        # Offset row_indices by preamble_count
+        for group in llm_groups:
+            if "row_indices" in group:
+                group["row_indices"] = [i + preamble_count for i in group["row_indices"]]
+        return {
+            "preamble_count": preamble_count,
+            "groups": llm_groups,
+            "llm_preamble_rows": list(llm_result.get("preamble_rows") or []),
+        }
     data_rows = [
         row for row in body_rows if str(row.get("row_kind") or "").strip() == "data"
     ]
@@ -11562,8 +11611,39 @@ def _publication_table_render_body_blocks(
     table_title: str | None = None,
     pvalue_column: int | None = None,
 ) -> str:
-    if any(str(row.get("row_kind") or "").strip() == "section" for row in body_rows):
+    has_explicit_sections = any(
+        str(row.get("row_kind") or "").strip() == "section" for row in body_rows
+    )
+    if has_explicit_sections:
         blocks = _publication_table_build_blocks_from_explicit_rows(body_rows)
+        # If the first block is ungrouped and there are sectioned blocks after it,
+        # try to label it using the LLM plan's groups
+        if (
+            len(blocks) >= 2
+            and str(blocks[0].get("block_kind") or "") == "ungrouped"
+            and any(str(b.get("block_kind") or "") == "sectioned" for b in blocks[1:])
+        ):
+            plan = inferred_plan if isinstance(inferred_plan, dict) else {}
+            llm_groups = list(plan.get("groups") or [])
+            # Find the LLM group that covers the leading rows
+            leading_row_count = len(blocks[0].get("rows") or [])
+            for group in llm_groups:
+                row_indices = group.get("row_indices")
+                label = _publication_table_group_label_cleanup(group.get("label"))
+                if not label:
+                    continue
+                # Check if this group covers any of the leading rows
+                if isinstance(row_indices, list) and any(i < leading_row_count for i in row_indices):
+                    blocks[0]["block_kind"] = "sectioned"
+                    blocks[0]["heading_cells"] = [
+                        {
+                            "tag": "td",
+                            "text": label,
+                            "colspan": total_columns,
+                            "rowspan": 1,
+                        }
+                    ]
+                    break
     else:
         plan = inferred_plan if isinstance(inferred_plan, dict) else {}
         blocks = _publication_table_build_blocks_from_inferred_groups(
