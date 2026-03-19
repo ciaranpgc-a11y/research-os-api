@@ -333,7 +333,7 @@ const PUBLICATION_STRUCTURED_TABLE_CLASS_NAME = [
   '[&_.publication-structured-table-note-list]:m-0 [&_.publication-structured-table-note-list]:list-none [&_.publication-structured-table-note-list]:space-y-1 [&_.publication-structured-table-note-list]:p-0',
   '[&_.publication-structured-table-note-item]:text-[0.83rem] [&_.publication-structured-table-note-item]:leading-[1.72] [&_.publication-structured-table-note-item]:text-[hsl(var(--tone-neutral-600))]',
   '[&_.publication-table-group-row_td]:border-none [&_.publication-table-group-row_td]:bg-[hsl(var(--tone-neutral-100)/0.8)] [&_.publication-table-group-row_td]:px-3.5 [&_.publication-table-group-row_td]:py-1.5 [&_.publication-table-group-row_td]:text-[0.68rem] [&_.publication-table-group-row_td]:font-semibold [&_.publication-table-group-row_td]:uppercase [&_.publication-table-group-row_td]:tracking-[0.08em] [&_.publication-table-group-row_td]:text-[hsl(var(--tone-neutral-600))]',
-  '[&_.publication-table-pvalue-significant]:font-bold [&_.publication-table-pvalue-significant]:text-[hsl(var(--tone-neutral-900))]',
+  '[&_.publication-table-pvalue-significant]:font-bold [&_.publication-table-pvalue-significant]:text-[hsl(210_70%_38%)]',
 ].join(' ')
 
 const PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME = [
@@ -358,7 +358,7 @@ const PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME = [
   '[&_.publication-structured-table-note-list]:m-0 [&_.publication-structured-table-note-list]:list-none [&_.publication-structured-table-note-list]:space-y-1.5 [&_.publication-structured-table-note-list]:p-0',
   '[&_.publication-structured-table-note-item]:text-[0.9rem] [&_.publication-structured-table-note-item]:leading-[1.72] [&_.publication-structured-table-note-item]:text-[hsl(var(--tone-neutral-600))]',
   '[&_.publication-table-group-row_td]:border-none [&_.publication-table-group-row_td]:bg-[hsl(var(--tone-neutral-100)/0.8)] [&_.publication-table-group-row_td]:px-4 [&_.publication-table-group-row_td]:py-2 [&_.publication-table-group-row_td]:text-[0.72rem] [&_.publication-table-group-row_td]:font-semibold [&_.publication-table-group-row_td]:uppercase [&_.publication-table-group-row_td]:tracking-[0.08em] [&_.publication-table-group-row_td]:text-[hsl(var(--tone-neutral-600))]',
-  '[&_.publication-table-pvalue-significant]:font-bold [&_.publication-table-pvalue-significant]:text-[hsl(var(--tone-neutral-900))]',
+  '[&_.publication-table-pvalue-significant]:font-bold [&_.publication-table-pvalue-significant]:text-[hsl(210_70%_38%)]',
 ].join(' ')
 
 function formatPublicationReaderReferenceDisplayLabel(

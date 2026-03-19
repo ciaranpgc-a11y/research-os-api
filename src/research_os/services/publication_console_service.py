@@ -380,7 +380,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v6"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v58"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v59"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -10136,7 +10136,7 @@ def _publication_table_is_significant_pvalue(text: str) -> bool:
         return False
     try:
         numeric = float(re.sub(r"^[<≤]\s*", "", clean))
-        return numeric < 0.05
+        return numeric <= 0.05
     except (ValueError, OverflowError):
         return False
 
@@ -11425,33 +11425,7 @@ def _publication_table_build_blocks_from_inferred_groups(
                 "rows": data_rows[residual_start:index],
             }
         )
-    cleaned = [block for block in blocks if block.get("rows") or block.get("heading_cells")]
-    # Fallback: if the first non-preamble block is ungrouped and there are later
-    # sectioned blocks, promote it so every visible group has a heading.
-    has_sectioned = any(b.get("block_kind") == "sectioned" for b in cleaned)
-    if has_sectioned:
-        for block in cleaned:
-            if block.get("block_kind") == "preamble":
-                continue
-            if block.get("block_kind") == "ungrouped":
-                fallback_label = "General"
-                if table_title:
-                    stripped = re.sub(
-                        r"^table\s*\d+[.:\-\s]*", "", table_title, flags=re.IGNORECASE
-                    ).strip(" .:-")
-                    if stripped:
-                        fallback_label = stripped
-                block["block_kind"] = "sectioned"
-                block["heading_cells"] = [
-                    {
-                        "tag": "td",
-                        "text": fallback_label,
-                        "colspan": total_columns,
-                        "rowspan": 1,
-                    }
-                ]
-            break
-    return cleaned
+    return [block for block in blocks if block.get("rows") or block.get("heading_cells")]
 
 
 def _publication_table_render_body_blocks(
