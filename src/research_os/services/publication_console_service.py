@@ -380,7 +380,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v6"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v62"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v63"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -10110,6 +10110,29 @@ _PVALUE_SIGNIFICANT_PATTERN = re.compile(
     r"^[<≤]?\s*0?\.(\d+)$|^[<≤]\s*0?\.?0+1$",
 )
 
+_PVALUE_HEADER_PATTERN = re.compile(
+    r"^p[\s\-]*(?:value)?s?$|^sig\.?$",
+    re.IGNORECASE,
+)
+
+
+def _publication_table_detect_pvalue_column(
+    header_rows: list[list[dict[str, Any]]],
+) -> int | None:
+    """Detect the p-value column from header text using the same col-counting as the renderer."""
+    if not header_rows:
+        return None
+    # Check the last header row (closest to data rows)
+    last_header = header_rows[-1]
+    col = 0
+    for cell in last_header:
+        text = _publication_table_text_cleanup(str(cell.get("text") or ""))
+        colspan = max(1, _safe_int(cell.get("colspan")) or 1)
+        if text and _PVALUE_HEADER_PATTERN.match(text):
+            return col
+        col += colspan
+    return None
+
 
 def _publication_table_is_pvalue_significant(text: str) -> bool:
     """Check if a p-value text is statistically significant (p <= 0.05)."""
@@ -10346,6 +10369,14 @@ def _publication_table_group_label_minimum_rows(label: str | None) -> int:
     return int(PUBLICATION_TABLE_GENERIC_GROUP_MIN_ROWS.get(clean.casefold()) or 0)
 
 
+_VAGUE_GROUP_LABELS = frozenset({
+    "measurements", "other", "additional", "miscellaneous",
+    "other measurements", "other parameters", "additional data",
+    "general", "various", "remaining", "data", "results",
+    "other data", "other results", "additional measurements",
+})
+
+
 def _publication_table_filter_llm_groups(
     groups: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -10362,6 +10393,8 @@ def _publication_table_filter_llm_groups(
         start_index = _safe_int(group.get("start_index"))
         end_index = _safe_int(group.get("end_index"))
         if not label or start_index is None or end_index is None or end_index < start_index:
+            continue
+        if label.casefold() in _VAGUE_GROUP_LABELS:
             continue
         minimum_rows = _publication_table_group_label_minimum_rows(label)
         row_count = end_index - start_index + 1
@@ -11046,13 +11079,8 @@ def _publication_table_grouping_text_config() -> dict[str, Any]:
                         "description": "1-based row numbers of summary/sample-size rows (e.g. N=134, Total patients)",
                         "items": {"type": "integer", "minimum": 1},
                     },
-                    "pvalue_column": {
-                        "type": ["integer", "null"],
-                        "description": "1-based column number of the p-value column, or null if no p-value column exists",
-                        "minimum": 1,
-                    },
                 },
-                "required": ["groups", "preamble_rows", "pvalue_column"],
+                "required": ["groups", "preamble_rows"],
             },
         }
     }
@@ -11108,10 +11136,7 @@ def _build_publication_table_grouping_messages(
                 "If a safe grouping is not clear, return an empty groups array.\n"
                 "\n"
                 "## Preamble rows\n"
-                "Identify any rows that are summary or sample-size indicators rather than regular data rows (e.g. 'N', 'N = 134', 'Total', 'Patients', 'Observations'). Return their 1-based row numbers in `preamble_rows`. These are typically in the first 1-2 rows of the table body.\n"
-                "\n"
-                "## P-value column\n"
-                "If the table has a column containing p-values (typically headed 'P', 'P-value', 'p value', 'P *', 'Sig.', etc.), return its 1-based column number in `pvalue_column`. If there is no p-value column, return null."
+                "Identify any rows that are summary or sample-size indicators rather than regular data rows (e.g. 'N', 'N = 134', 'Total', 'Patients', 'Observations'). Return their 1-based row numbers in `preamble_rows`. These are typically in the first 1-2 rows of the table body."
             ),
         },
         {"role": "user", "content": json.dumps(payload, ensure_ascii=True)},
@@ -11139,7 +11164,7 @@ def _publication_table_should_try_llm_grouping(
             continue
         covered_indexes.update(range(start_index, end_index + 1))
     uncovered_rows = row_count - len(covered_indexes)
-    return uncovered_rows >= 4
+    return uncovered_rows >= 2
 
 
 def _publication_table_infer_row_groups_with_llm(
@@ -11177,7 +11202,7 @@ def _publication_table_infer_row_groups_with_llm(
             response = create_response(
                 model=model_name,
                 input=messages,
-                max_output_tokens=800,
+                max_output_tokens=500,
                 text=_publication_table_grouping_text_config(),
                 timeout=_publication_table_grouping_llm_timeout_seconds(),
                 max_retries=0,
@@ -11185,7 +11210,7 @@ def _publication_table_infer_row_groups_with_llm(
             payload = _extract_json_object(str(getattr(response, "output_text", "") or ""))
             raw_groups = payload.get("groups")
             if not isinstance(raw_groups, list):
-                return {"groups": [], "preamble_rows": [], "pvalue_column": None}
+                return {"groups": [], "preamble_rows": []}
             groups: list[dict[str, Any]] = []
             for group in raw_groups:
                 if not isinstance(group, dict):
@@ -11228,24 +11253,16 @@ def _publication_table_infer_row_groups_with_llm(
                     idx = _safe_int(row_num)
                     if idx is not None and idx >= 1:
                         preamble_row_indices.append(idx - 1)
-            # Extract pvalue_column (1-based from LLM, convert to 0-based)
-            raw_pvalue_col = payload.get("pvalue_column")
-            pvalue_column: int | None = None
-            if raw_pvalue_col is not None:
-                pvc = _safe_int(raw_pvalue_col)
-                if pvc is not None and pvc >= 1:
-                    pvalue_column = pvc - 1
             return {
                 "groups": _publication_table_filter_llm_groups(groups),
                 "preamble_rows": preamble_row_indices,
-                "pvalue_column": pvalue_column,
             }
         except Exception as exc:
             last_error = exc
             continue
     if last_error is not None:
         logger.warning("publication_table_row_grouping_llm_failed: %s", last_error)
-    return {"groups": [], "preamble_rows": [], "pvalue_column": None}
+    return {"groups": [], "preamble_rows": []}
 
 
 def _publication_table_infer_group_plan(
@@ -11321,7 +11338,7 @@ def _publication_table_infer_group_plan(
         )
         for index, row in enumerate(candidate_rows)
     ]
-    llm_result: dict[str, Any] = {"groups": [], "preamble_rows": [], "pvalue_column": None}
+    llm_result: dict[str, Any] = {"groups": [], "preamble_rows": []}
     if _publication_table_should_try_llm_grouping(
         row_labels=row_labels,
         deterministic_groups=deterministic_groups,
@@ -11354,12 +11371,10 @@ def _publication_table_infer_group_plan(
     # LLM preamble rows are relative to candidate_rows (0-based after preamble_count).
     # Offset them to be relative to all data_rows.
     llm_preamble = list(llm_result.get("preamble_rows") or [])
-    pvalue_column = llm_result.get("pvalue_column")
     return {
         "preamble_count": preamble_count,
         "groups": inferred_groups,
         "llm_preamble_rows": llm_preamble,
-        "pvalue_column": pvalue_column,
     }
 
 
@@ -12266,10 +12281,7 @@ def _canonicalize_docling_table_html(
         for row in header_rows:
             parts.append(f"<tr>{_publication_table_render_cells(row)}</tr>")
         parts.append("</thead>")
-    plan = inferred_plan if isinstance(inferred_plan, dict) else {}
-    pvalue_column: int | None = plan.get("pvalue_column")
-    if pvalue_column is not None and not isinstance(pvalue_column, int):
-        pvalue_column = _safe_int(pvalue_column)
+    pvalue_column = _publication_table_detect_pvalue_column(header_rows)
     parts.append(
         _publication_table_render_body_blocks(
             body_rows=body_rows,
