@@ -380,7 +380,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v6"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v63"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v64"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -10111,7 +10111,7 @@ _PVALUE_SIGNIFICANT_PATTERN = re.compile(
 )
 
 _PVALUE_HEADER_PATTERN = re.compile(
-    r"^p[\s\-]*(?:value)?s?$|^sig\.?$",
+    r"^p[\s\-]*(?:value)?s?[\s*#†‡§¶\d]*$|^sig\.?[\s*#†‡§¶\d]*$",
     re.IGNORECASE,
 )
 
@@ -10122,15 +10122,15 @@ def _publication_table_detect_pvalue_column(
     """Detect the p-value column from header text using the same col-counting as the renderer."""
     if not header_rows:
         return None
-    # Check the last header row (closest to data rows)
-    last_header = header_rows[-1]
-    col = 0
-    for cell in last_header:
-        text = _publication_table_text_cleanup(str(cell.get("text") or ""))
-        colspan = max(1, _safe_int(cell.get("colspan")) or 1)
-        if text and _PVALUE_HEADER_PATTERN.match(text):
-            return col
-        col += colspan
+    # Check all header rows, preferring the last (closest to data)
+    for row in reversed(header_rows):
+        col = 0
+        for cell in row:
+            text = _publication_table_text_cleanup(str(cell.get("text") or ""))
+            colspan = max(1, _safe_int(cell.get("colspan")) or 1)
+            if text and _PVALUE_HEADER_PATTERN.match(text):
+                return col
+            col += colspan
     return None
 
 
@@ -11127,13 +11127,12 @@ def _build_publication_table_grouping_messages(
                 "## Grouping\n"
                 "Return contiguous row ranges that form meaningful subsections.\n"
                 "Do not reorder rows, do not rewrite row labels, do not create one-row groups, and do not overlap or rename anchored groups.\n"
-                "Every contiguous run of rows should be covered by a group when possible, including the initial rows before any obvious subsection. Infer an appropriate label from the rows' content and the table context — do not assume any particular research domain.\n"
+                "IMPORTANT: Every contiguous run of rows MUST be covered by a group, including the initial rows before the first named subsection. The leading rows are the most commonly missed — always label them. Infer an appropriate label from the rows' content, the table title/caption, and the abstract — do not assume any particular research domain.\n"
                 "Prefer sensible sentence-case labels that reflect the local run, using discipline-appropriate group names when the evidence supports them. Labels must be scientifically precise — classify rows by what they actually measure, not by specimen or method alone.\n"
                 "Never use vague catch-all labels like 'Measurements', 'Other', 'Additional', or 'Miscellaneous'. If rows share a specific theme, name it precisely. If no specific label fits, leave the rows ungrouped.\n"
                 "Avoid repeating generic labels within the same table when a more specific local label is available.\n"
-                "If only a weak generic label is possible for a short or mixed run between named groups, leave those rows ungrouped instead of forcing a heading.\n"
+                "If only a weak generic label is possible for a short mixed run BETWEEN named groups, leave those rows ungrouped instead of forcing a heading. But the leading rows before the first group should always be labelled — use the table title, caption, or abstract to derive a precise label.\n"
                 "Use broad context from neighboring rows and the abstract before deciding a label.\n"
-                "If a safe grouping is not clear, return an empty groups array.\n"
                 "\n"
                 "## Preamble rows\n"
                 "Identify any rows that are summary or sample-size indicators rather than regular data rows (e.g. 'N', 'N = 134', 'Total', 'Patients', 'Observations'). Return their 1-based row numbers in `preamble_rows`. These are typically in the first 1-2 rows of the table body."
