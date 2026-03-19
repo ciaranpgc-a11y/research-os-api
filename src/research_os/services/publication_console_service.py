@@ -380,7 +380,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v6"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v64"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v65"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -10390,20 +10390,27 @@ def _publication_table_filter_llm_groups(
     filtered: list[dict[str, Any]] = []
     for group in groups:
         label = _publication_table_group_label_cleanup(group.get("label"))
-        start_index = _safe_int(group.get("start_index"))
-        end_index = _safe_int(group.get("end_index"))
-        if not label or start_index is None or end_index is None or end_index < start_index:
+        if not label:
             continue
+        # Support both row_indices (LLM) and start_index/end_index (deterministic)
+        row_indices = group.get("row_indices")
+        if row_indices is not None:
+            row_count = len(row_indices)
+        else:
+            start_index = _safe_int(group.get("start_index"))
+            end_index = _safe_int(group.get("end_index"))
+            if start_index is None or end_index is None or end_index < start_index:
+                continue
+            row_count = end_index - start_index + 1
         if label.casefold() in _VAGUE_GROUP_LABELS:
             continue
         minimum_rows = _publication_table_group_label_minimum_rows(label)
-        row_count = end_index - start_index + 1
         if minimum_rows and row_count < minimum_rows:
             continue
         if minimum_rows and label_counts.get(label.casefold(), 0) > 1:
             continue
         filtered.append(group)
-    return _publication_table_merge_inferred_row_groups(filtered)
+    return filtered
 
 
 def _publication_table_row_family_key(
@@ -11058,8 +11065,11 @@ def _publication_table_grouping_text_config() -> dict[str, Any]:
                             "additionalProperties": False,
                             "properties": {
                                 "label": {"type": "string"},
-                                "start_row": {"type": "integer", "minimum": 1},
-                                "end_row": {"type": "integer", "minimum": 1},
+                                "rows": {
+                                    "type": "array",
+                                    "items": {"type": "integer", "minimum": 1},
+                                    "description": "1-based row numbers belonging to this group (need not be contiguous)",
+                                },
                                 "confidence": {
                                     "type": "number",
                                     "minimum": 0,
@@ -11068,8 +11078,7 @@ def _publication_table_grouping_text_config() -> dict[str, Any]:
                             },
                             "required": [
                                 "label",
-                                "start_row",
-                                "end_row",
+                                "rows",
                                 "confidence",
                             ],
                         },
@@ -11105,16 +11114,14 @@ def _build_publication_table_grouping_messages(
         "groupable_rows": row_descriptors,
         "anchored_groups": anchored_groups,
         "rules": {
-            "contiguous_groups_only": True,
-            "no_reordering": True,
+            "rows_may_be_reordered_into_groups": True,
             "minimum_group_size": 2,
             "short_labels_only": True,
             "skip_if_uncertain": True,
             "do_not_override_anchored_groups": True,
             "prefer_specific_over_generic": True,
             "avoid_repeated_generic_labels": True,
-            "leave_mixed_residual_rows_ungrouped_between_named_groups": True,
-            "label_leading_rows_before_first_named_group": True,
+            "every_row_must_belong_to_a_group": True,
         },
     }
     return [
@@ -11125,13 +11132,13 @@ def _build_publication_table_grouping_messages(
                 "Use the full manuscript context: paper abstract, table title, table caption, column headers, preamble rows, ordered table rows, units, value shapes, and any anchored groups already fixed by the parser.\n"
                 "\n"
                 "## Grouping\n"
-                "Return contiguous row ranges that form meaningful subsections.\n"
-                "Do not reorder rows, do not rewrite row labels, do not create one-row groups, and do not overlap or rename anchored groups.\n"
-                "IMPORTANT: Every contiguous run of rows MUST be covered by a group, including the initial rows before the first named subsection. The leading rows are the most commonly missed — always label them. Infer an appropriate label from the rows' content, the table title/caption, and the abstract — do not assume any particular research domain.\n"
-                "Prefer sensible sentence-case labels that reflect the local run, using discipline-appropriate group names when the evidence supports them. Labels must be scientifically precise — classify rows by what they actually measure, not by specimen or method alone.\n"
-                "Never use vague catch-all labels like 'Measurements', 'Other', 'Additional', or 'Miscellaneous'. If rows share a specific theme, name it precisely. If no specific label fits, leave the rows ungrouped.\n"
+                "Return groups of rows that form meaningful subsections. Each group has a label and a list of 1-based row numbers.\n"
+                "Rows may be reordered across groups — place each row in the group where it fits best thematically, even if it appears elsewhere in the original table.\n"
+                "Do not rewrite row labels, do not create one-row groups, and do not overlap or rename anchored groups.\n"
+                "IMPORTANT: Every row MUST belong to a group. No row should be left ungrouped. If a row doesn't clearly fit an existing group, create a new group or extend the closest thematic group to include it.\n"
+                "Prefer sensible sentence-case labels that reflect the group's theme, using discipline-appropriate group names when the evidence supports them. Labels must be scientifically precise — classify rows by what they actually measure, not by specimen or method alone.\n"
+                "Never use vague catch-all labels like 'Measurements', 'Other', 'Additional', or 'Miscellaneous'. If rows share a specific theme, name it precisely.\n"
                 "Avoid repeating generic labels within the same table when a more specific local label is available.\n"
-                "If only a weak generic label is possible for a short mixed run BETWEEN named groups, leave those rows ungrouped instead of forcing a heading. But the leading rows before the first group should always be labelled — use the table title, caption, or abstract to derive a precise label.\n"
                 "Use broad context from neighboring rows and the abstract before deciding a label.\n"
                 "\n"
                 "## Preamble rows\n"
@@ -11201,7 +11208,7 @@ def _publication_table_infer_row_groups_with_llm(
             response = create_response(
                 model=model_name,
                 input=messages,
-                max_output_tokens=500,
+                max_output_tokens=800,
                 text=_publication_table_grouping_text_config(),
                 timeout=_publication_table_grouping_llm_timeout_seconds(),
                 max_retries=0,
@@ -11214,32 +11221,28 @@ def _publication_table_infer_row_groups_with_llm(
             for group in raw_groups:
                 if not isinstance(group, dict):
                     continue
-                start_row = _safe_int(group.get("start_row"))
-                end_row = _safe_int(group.get("end_row"))
+                raw_rows = group.get("rows")
                 confidence = _safe_float(group.get("confidence"))
                 label = _publication_table_group_label_cleanup(group.get("label"))
                 if (
-                    start_row is None
-                    or end_row is None
+                    not isinstance(raw_rows, list)
                     or confidence is None
                     or confidence < minimum_confidence
                     or not label
                 ):
                     continue
-                start_index = start_row - 1
-                end_index = end_row - 1
-                if (
-                    start_index < 0
-                    or end_index < start_index
-                    or end_index >= len(row_labels)
-                    or end_index - start_index < 1
-                ):
+                # Convert 1-based row numbers to 0-based indices
+                row_indices = []
+                for r in raw_rows:
+                    idx = _safe_int(r)
+                    if idx is not None and 1 <= idx <= len(row_labels):
+                        row_indices.append(idx - 1)
+                if len(row_indices) < 2:
                     continue
                 groups.append(
                     {
                         "label": label,
-                        "start_index": start_index,
-                        "end_index": end_index,
+                        "row_indices": sorted(set(row_indices)),
                         "source": "llm",
                         "confidence": confidence,
                     }
@@ -11353,6 +11356,18 @@ def _publication_table_infer_group_plan(
             abstract_context=abstract_context,
         )
     llm_groups = list(llm_result.get("groups") or [])
+    llm_preamble = list(llm_result.get("preamble_rows") or [])
+    # LLM groups use row_indices (may reorder rows) — offset by preamble_count
+    if llm_groups and any("row_indices" in g for g in llm_groups):
+        for group in llm_groups:
+            if "row_indices" in group:
+                group["row_indices"] = [i + preamble_count for i in group["row_indices"]]
+        return {
+            "preamble_count": preamble_count,
+            "groups": llm_groups,
+            "llm_preamble_rows": llm_preamble,
+        }
+    # Fallback: deterministic + generic groups (start_index/end_index format)
     generic_groups: list[dict[str, Any]] = []
     if not llm_groups:
         generic_groups = _publication_table_infer_generic_row_groups(
@@ -11367,9 +11382,6 @@ def _publication_table_infer_group_plan(
         ),
         offset=preamble_count,
     )
-    # LLM preamble rows are relative to candidate_rows (0-based after preamble_count).
-    # Offset them to be relative to all data_rows.
-    llm_preamble = list(llm_result.get("preamble_rows") or [])
     return {
         "preamble_count": preamble_count,
         "groups": inferred_groups,
@@ -11421,7 +11433,65 @@ def _publication_table_build_blocks_from_inferred_groups(
     # Tag each row with its index for renderer reference
     for idx, row in enumerate(data_rows):
         row["_data_row_index"] = idx
-    blocks: list[dict[str, Any]] = []
+
+    # --- New path: groups with row_indices (LLM reordering) ---
+    has_row_indices = any("row_indices" in g for g in groups)
+    if has_row_indices:
+        blocks: list[dict[str, Any]] = []
+        if preamble_count > 0:
+            blocks.append(
+                {
+                    "block_kind": "preamble",
+                    "heading_cells": None,
+                    "rows": data_rows[:preamble_count],
+                }
+            )
+        assigned: set[int] = set(range(preamble_count))
+        for group in groups:
+            label = _publication_table_group_label_cleanup(group.get("label"))
+            row_indices = group.get("row_indices")
+            if not label or not isinstance(row_indices, list) or len(row_indices) < 2:
+                continue
+            group_rows = [
+                data_rows[i] for i in row_indices
+                if 0 <= i < len(data_rows) and i not in assigned
+            ]
+            if len(group_rows) < 2:
+                continue
+            assigned.update(i for i in row_indices if 0 <= i < len(data_rows))
+            heading_cells = [
+                {
+                    "tag": "td",
+                    "text": label,
+                    "colspan": total_columns,
+                    "rowspan": 1,
+                }
+            ]
+            blocks.append(
+                {
+                    "block_kind": "sectioned",
+                    "heading_cells": heading_cells,
+                    "rows": group_rows,
+                    "section_source": "llm",
+                }
+            )
+        # Any unassigned rows go into an ungrouped block at the end
+        unassigned = [
+            data_rows[i] for i in range(preamble_count, len(data_rows))
+            if i not in assigned
+        ]
+        if unassigned:
+            blocks.append(
+                {
+                    "block_kind": "ungrouped",
+                    "heading_cells": None,
+                    "rows": unassigned,
+                }
+            )
+        return blocks
+
+    # --- Legacy path: groups with start_index/end_index (deterministic) ---
+    blocks = []
     if preamble_count > 0:
         blocks.append(
             {
