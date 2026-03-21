@@ -4,6 +4,7 @@ import { PageHeader, Row, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { cn } from '@/lib/utils'
 import rwmaPaths from '@/data/rwma-paths.json'
+import { buildLgeSummaryData } from '@/lib/lge-summary-data'
 
 // ---------------------------------------------------------------------------
 // AHA 17-segment metadata (standard Cerqueira et al. 2002 territories)
@@ -486,6 +487,9 @@ export function CmrLgePage() {
   const [activeBrush, setActiveBrush] = useState<LgeCode>(0)
   const [activePattern, setActivePattern] = useState<PatternCode>(1)
   const [hoveredSeg, setHoveredSeg] = useState<number | null>(null)
+  const [llmProse, setLlmProse] = useState<string | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [llmError, setLlmError] = useState<string | null>(null)
 
   const paintSegment = useCallback(
     (seg: number) => {
@@ -530,7 +534,32 @@ export function CmrLgePage() {
     }
     setSegStates(initLge)
     setPatternStates(initPat)
+    setLlmProse(null)
+    setLlmError(null)
   }, [])
+
+  const handleGenerate = useCallback(async () => {
+    setIsGenerating(true)
+    setLlmError(null)
+    try {
+      const data = buildLgeSummaryData(segStates, patternStates, summary.text)
+      const res = await fetch('/api/cmr-lge-prose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Request failed' }))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+      const { prose } = await res.json()
+      setLlmProse(prose)
+    } catch (e) {
+      setLlmError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [segStates, patternStates, summary.text])
 
   const segColor = (seg: number) => LGE_STATES[segStates[seg] ?? 0].color
   const segStroke = (seg: number) => {
@@ -786,9 +815,46 @@ export function CmrLgePage() {
             </span>
           ))}
         </div>
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          {summary.text}
-        </p>
+
+        {llmProse !== null ? (
+          <textarea
+            className="w-full min-h-[80px] bg-transparent text-sm leading-relaxed text-muted-foreground resize-y border-0 outline-none p-0"
+            value={llmProse}
+            onChange={(e) => setLlmProse(e.target.value)}
+          />
+        ) : (
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {summary.text}
+          </p>
+        )}
+
+        {llmError && (
+          <p className="mt-2 text-xs text-red-500">{llmError}</p>
+        )}
+
+        <div className="flex items-center gap-3 mt-3">
+          <button
+            type="button"
+            disabled={summary.enhancedCount === 0 || isGenerating}
+            onClick={handleGenerate}
+            className={cn(
+              'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
+              'bg-foreground text-background hover:bg-foreground/90',
+              'disabled:opacity-40 disabled:cursor-not-allowed',
+            )}
+          >
+            {isGenerating ? 'Generating\u2026' : 'Generate Summary'}
+          </button>
+          {llmProse !== null && (
+            <button
+              type="button"
+              onClick={() => { setLlmProse(null); setLlmError(null) }}
+              className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
+            >
+              Revert to original
+            </button>
+          )}
+        </div>
       </div>
     </Stack>
   )
