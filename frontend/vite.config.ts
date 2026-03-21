@@ -223,6 +223,73 @@ Do not include any parameters not in the canonical list. Do not include paramete
         }
       })
 
+      // POST /api/cmr-lge-prose → LLM prose rewrite of LGE summary
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url !== '/api/cmr-lge-prose' || req.method !== 'POST') return next()
+
+        try {
+          const summaryData = JSON.parse(await readBody(req))
+
+          const apiKey = process.env.OPENAI_API_KEY
+          if (!apiKey) {
+            jsonRes(res, { error: 'OPENAI_API_KEY not set' }, 500)
+            return
+          }
+
+          const systemPrompt = `You are an expert cardiac MRI reporting physician. Your task is to rewrite a structured LGE (Late Gadolinium Enhancement) summary into natural, fluent clinical prose suitable for an SCMR-style report.
+
+RULES:
+1. Use ONLY the findings present in the provided data. Never invent or infer findings.
+2. Combine related findings into flowing sentences rather than listing them mechanically.
+3. Use standard SCMR terminology: "late gadolinium enhancement", "transmurality", "subendocardial", "mid-wall", "subepicardial", "transmural".
+4. For coronary territories, use full names: "left anterior descending", "right coronary artery", "left circumflex".
+5. When describing transmurality ranges, use the percentage bands: 1-25%, 26-50%, 51-75%, 76-100%.
+6. Viability language: >50% transmurality = "non-viable myocardium", <50% = "viable myocardium amenable to revascularisation".
+7. For diffuse patterns, do NOT include viability statements.
+8. Keep the LGE score index sentence at the end.
+9. Output ONLY the rewritten summary text. No preamble, no markdown, no explanation.
+
+You will receive a JSON object containing:
+- "deterministicText": the current engine-generated summary (use as a starting point)
+- "segments": array of enhanced segments with their metadata
+- "territories": grouped ischaemic territory data
+- "isDiffuse": boolean flag for diffuse enhancement patterns
+- "nonIschaemicSegments": non-ischaemic pattern groups
+- "viability": viable/non-viable segment classification (null if suppressed)`
+
+          const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              temperature: 0.3,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: JSON.stringify(summaryData) },
+              ],
+            }),
+          })
+
+          if (!openaiRes.ok) {
+            const err = await openaiRes.text()
+            jsonRes(res, { error: `OpenAI API error: ${err}` }, 500)
+            return
+          }
+
+          const completion = await openaiRes.json() as {
+            choices: Array<{ message: { content: string } }>
+          }
+          const prose = completion.choices[0].message.content.trim()
+
+          jsonRes(res, { prose })
+        } catch (e) {
+          jsonRes(res, { error: String(e) }, 500)
+        }
+      })
+
       // PUT /api/cmr-data/edit-mode → bulk save from edit mode (reorder + rename)
       server.middlewares.use(async (req, res, next) => {
         if (req.url !== '/api/cmr-data/edit-mode' || req.method !== 'PUT') return next()
