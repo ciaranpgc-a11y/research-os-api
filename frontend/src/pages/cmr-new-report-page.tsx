@@ -709,7 +709,6 @@ export function CmrNewReportPage() {
                                   onClick={() => setSelectedParam(p)}
                                   className={cn(
                                     'cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] transition-colors duration-100 hover:bg-[hsl(var(--tone-neutral-50)/0.65)]',
-                                    selectedParam?.parameter_key === p.parameter_key && 'bg-[hsl(var(--tone-danger-50)/0.6)]',
                                     severityMode === 'abnormal' && hasMeasuredVal && severity.grade === 'normal' && 'bg-[hsl(158_30%_94%)]',
                                     severityMode === 'abnormal' && hasMeasuredVal && severity.grade === 'mild' && 'bg-[hsl(46_60%_91%)]',
                                     severityMode === 'abnormal' && hasMeasuredVal && severity.grade === 'moderate' && 'bg-[hsl(20_55%_87%)]',
