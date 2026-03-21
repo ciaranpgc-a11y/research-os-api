@@ -78,6 +78,10 @@ export type CmrParameterRangesResponse = {
   pap_differs: boolean
   ranges: CmrReferenceRangeRow[]
   sources: CmrSourceCitation[]
+  // Severity grading
+  severity_label?: string
+  severity_thresholds?: { mild: number | null; moderate: number | null; severe: number | null }
+  severity_label_override?: { mild: string | null; moderate: string | null; severe: string | null }
 }
 
 export async function fetchParameterRanges(parameterKey: string): Promise<CmrParameterRangesResponse> {

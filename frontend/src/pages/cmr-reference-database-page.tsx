@@ -17,6 +17,7 @@ import {
   saveEditMode,
 } from '@/lib/cmr-api'
 import { getAllParameterKeys } from '@/lib/cmr-local-data'
+import { inferSeverityLabel } from '@/lib/cmr-severity'
 import { cn } from '@/lib/utils'
 
 // ---------------------------------------------------------------------------
@@ -226,7 +227,7 @@ function ParameterEditor({
   const [data, setData] = useState<CmrParameterRangesResponse | null>(null)
   const [loading, setLoading] = useState(!isNew)
   const [edits, setEdits] = useState<Record<string, string>>({})
-  const [editHistory, setEditHistory] = useState<Array<{ edits: Record<string, string>; metaDirty: boolean; metaUnit: string; metaSection: string; metaSubSection: string; metaIndexed: string; metaDirection: string; metaPapAffected: boolean }>>([])
+  const [editHistory, setEditHistory] = useState<Array<{ edits: Record<string, string>; metaDirty: boolean; metaUnit: string; metaSection: string; metaSubSection: string; metaIndexed: string; metaDirection: string; metaPapAffected: boolean; metaSeverityLabel: string; metaSeverityThresholds: { mild: string; moderate: string; severe: string }; metaSeverityOverrides: { mild: string; moderate: string; severe: string } }>>([])
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -241,6 +242,11 @@ function ParameterEditor({
 
   // Sources
   const [sources, setSources] = useState<CmrSourceCitation[]>([])
+
+  // Severity grading
+  const [metaSeverityLabel, setMetaSeverityLabel] = useState<string>('')
+  const [metaSeverityThresholds, setMetaSeverityThresholds] = useState<{ mild: string; moderate: string; severe: string }>({ mild: '', moderate: '', severe: '' })
+  const [metaSeverityOverrides, setMetaSeverityOverrides] = useState<{ mild: string; moderate: string; severe: string }>({ mild: '', moderate: '', severe: '' })
 
   // Track whether metadata has been modified
   const [metaDirty, setMetaDirty] = useState(false)
@@ -276,6 +282,17 @@ function ParameterEditor({
         setMetaDirection(d.abnormal_direction)
         setMetaPapAffected(d.ranges.some((r) => r.ll_mass !== null || r.mean_mass !== null || r.ul_mass !== null || r.sd_mass !== null))
         setSources(d.sources || [])
+        setMetaSeverityLabel(d.severity_label ?? '')
+        setMetaSeverityThresholds({
+          mild: d.severity_thresholds?.mild?.toString() ?? '',
+          moderate: d.severity_thresholds?.moderate?.toString() ?? '',
+          severe: d.severity_thresholds?.severe?.toString() ?? '',
+        })
+        setMetaSeverityOverrides({
+          mild: d.severity_label_override?.mild ?? '',
+          moderate: d.severity_label_override?.moderate ?? '',
+          severe: d.severity_label_override?.severe ?? '',
+        })
 
         // Derive sex groups and bands from existing data
         const sexMap: Record<string, string[]> = {}
@@ -392,7 +409,7 @@ function ParameterEditor({
   const cellKey = (sex: string, ageBand: string, field: string) => `${sex}|${ageBand}|${field}`
 
   const pushUndo = () => {
-    setEditHistory((prev) => [...prev.slice(-19), { edits: { ...edits }, metaDirty, metaUnit, metaSection, metaSubSection, metaIndexed, metaDirection, metaPapAffected }])
+    setEditHistory((prev) => [...prev.slice(-19), { edits: { ...edits }, metaDirty, metaUnit, metaSection, metaSubSection, metaIndexed, metaDirection, metaPapAffected, metaSeverityLabel, metaSeverityThresholds: { ...metaSeverityThresholds }, metaSeverityOverrides: { ...metaSeverityOverrides } }])
   }
 
   const handleUndo = () => {
@@ -406,6 +423,9 @@ function ParameterEditor({
       setMetaIndexed(last.metaIndexed)
       setMetaDirection(last.metaDirection)
       setMetaPapAffected(last.metaPapAffected)
+      setMetaSeverityLabel(last.metaSeverityLabel)
+      setMetaSeverityThresholds(last.metaSeverityThresholds)
+      setMetaSeverityOverrides(last.metaSeverityOverrides)
       setMetaDirty(last.metaDirty)
       return prev.slice(0, -1)
     })
@@ -459,6 +479,21 @@ function ParameterEditor({
           sub_section: metaSubSection,
           pap_affected: metaPapAffected,
           sources,
+          severity_label: metaSeverityLabel || null,
+          severity_thresholds: (metaSeverityThresholds.mild || metaSeverityThresholds.moderate || metaSeverityThresholds.severe)
+            ? {
+                mild: metaSeverityThresholds.mild ? Number(metaSeverityThresholds.mild) : null,
+                moderate: metaSeverityThresholds.moderate ? Number(metaSeverityThresholds.moderate) : null,
+                severe: metaSeverityThresholds.severe ? Number(metaSeverityThresholds.severe) : null,
+              }
+            : null,
+          severity_label_override: (metaSeverityOverrides.mild || metaSeverityOverrides.moderate || metaSeverityOverrides.severe)
+            ? {
+                mild: metaSeverityOverrides.mild || null,
+                moderate: metaSeverityOverrides.moderate || null,
+                severe: metaSeverityOverrides.severe || null,
+              }
+            : null,
         })
       }
 
@@ -627,6 +662,62 @@ function ParameterEditor({
                 type="select"
                 options={INDEXED_OPTIONS}
               />
+            </div>
+          </PanelShell>
+
+          {/* ---- Severity Grading ---- */}
+          <PanelShell className="space-y-3">
+            <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Severity Grading</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <MetaField
+                label="Label type"
+                value={metaSeverityLabel}
+                onChange={(v) => { pushUndo(); setMetaSeverityLabel(v); setMetaDirty(true) }}
+                type="select"
+                options={['', 'impaired', 'dilated', 'enlarged', 'hypertrophied', 'thickened', 'stenosis', 'regurgitation', 'elevated', 'reduced', 'abnormal'] as const}
+                optionLabels={{ '': `(auto: ${inferSeverityLabel(metaKey, metaSection, metaSubSection)})` }}
+              />
+              <div className="flex items-end pb-1 text-xs text-[hsl(var(--tone-neutral-400))]">
+                Direction: <strong className="ml-1">{metaDirection || 'none'}</strong>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                Custom thresholds
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <input type="number" placeholder="Mild" value={metaSeverityThresholds.mild}
+                  onChange={(e) => { pushUndo(); setMetaSeverityThresholds(prev => ({ ...prev, mild: e.target.value })); setMetaDirty(true) }}
+                  className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-neutral-400))]" />
+                <input type="number" placeholder="Moderate" value={metaSeverityThresholds.moderate}
+                  onChange={(e) => { pushUndo(); setMetaSeverityThresholds(prev => ({ ...prev, moderate: e.target.value })); setMetaDirty(true) }}
+                  className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-neutral-400))]" />
+                <input type="number" placeholder="Severe" value={metaSeverityThresholds.severe}
+                  onChange={(e) => { pushUndo(); setMetaSeverityThresholds(prev => ({ ...prev, severe: e.target.value })); setMetaDirty(true) }}
+                  className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-neutral-400))]" />
+              </div>
+              <p className="text-[10px] text-[hsl(var(--tone-neutral-400))]">
+                Absolute cutoffs. Leave empty for SD-based grading (1/2/2+ SD beyond limit).
+              </p>
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                Label overrides
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <input type="text" placeholder="Mild label" value={metaSeverityOverrides.mild}
+                  onChange={(e) => { pushUndo(); setMetaSeverityOverrides(prev => ({ ...prev, mild: e.target.value })); setMetaDirty(true) }}
+                  className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-neutral-400))]" />
+                <input type="text" placeholder="Moderate label" value={metaSeverityOverrides.moderate}
+                  onChange={(e) => { pushUndo(); setMetaSeverityOverrides(prev => ({ ...prev, moderate: e.target.value })); setMetaDirty(true) }}
+                  className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-neutral-400))]" />
+                <input type="text" placeholder="Severe label" value={metaSeverityOverrides.severe}
+                  onChange={(e) => { pushUndo(); setMetaSeverityOverrides(prev => ({ ...prev, severe: e.target.value })); setMetaDirty(true) }}
+                  className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-neutral-400))]" />
+              </div>
+              <p className="text-[10px] text-[hsl(var(--tone-neutral-400))]">
+                Override the auto-generated severity label. Leave empty to use default.
+              </p>
             </div>
           </PanelShell>
 

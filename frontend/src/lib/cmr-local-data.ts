@@ -282,6 +282,9 @@ export function resolveParameterRanges(parameterKey: string): CmrParameterRanges
     pap_affected: !!op?.pap_affected,
     ranges,
     sources: op?.sources || [],
+    severity_label: op?.severity_label,
+    severity_thresholds: op?.severity_thresholds,
+    severity_label_override: op?.severity_label_override,
   }
 }
 
