@@ -44,23 +44,16 @@ function displayName(key: string): string {
   return key.replace(/\s*\(i\)\s*$/, '')
 }
 
-function dpNeeded(v: number | null): number {
-  if (v === null) return 0
-  const rounded = Math.round(v * 100) / 100
-  if (rounded % 1 === 0) return 0
-  const s = rounded.toString()
-  const decimals = s.includes('.') ? s.split('.')[1].length : 0
-  return Math.min(decimals, 2)
-}
-
-function fmtRow(...values: (number | null)[]): string[] {
-  const maxDp = Math.max(...values.map(dpNeeded))
+/** Format a row of numeric values to a fixed number of decimal places. */
+function fmtRow(values: (number | null)[], dp: number = 0): string[] {
   return values.map((v) => {
     if (v === null) return '\u2014'
-    const rounded = Math.round(v * 100) / 100
-    return maxDp === 0 ? String(rounded) : rounded.toFixed(maxDp)
+    return v.toFixed(dp)
   })
 }
+
+/** Parameters whose measured value should be shown as absolute (magnitude only). */
+const ABS_VALUE_PARAMS = new Set(['AV backward flow', 'PV backward flow'])
 
 function titleCase(s: string): string {
   return s
@@ -71,32 +64,142 @@ function titleCase(s: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Nested parameter helpers — derived from `nested_under` in reference data
+// ---------------------------------------------------------------------------
+
+/** Build a parent→children[] map from the data's nested_under field. */
+function buildNestedParamMap(params: CmrCanonicalParam[]): Record<string, string[]> {
+  const map: Record<string, string[]> = {}
+  for (const p of params) {
+    if (p.nested_under) {
+      if (!map[p.nested_under]) map[p.nested_under] = []
+      map[p.nested_under].push(p.parameter_key)
+    }
+  }
+  return map
+}
+
+/** Build a set of all child keys from the nested map. */
+function buildNestedChildrenSet(nestedMap: Record<string, string[]>): Set<string> {
+  return new Set(Object.values(nestedMap).flat())
+}
+
+// ---------------------------------------------------------------------------
 // Reusable pill toggle
 // ---------------------------------------------------------------------------
 
-function PillToggle({ options, value, onChange }: {
-  options: { key: string; label: string }[]
+function CmrTooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <span className="group/tip relative inline-flex">
+      {children}
+      <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-50 whitespace-nowrap rounded-md bg-[hsl(var(--foreground))] px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/tip:opacity-100">
+        {text}
+        <span className="absolute left-1/2 -translate-x-1/2 -bottom-1 h-2 w-2 rotate-45 bg-[hsl(var(--foreground))]" />
+      </span>
+    </span>
+  )
+}
+
+function PillToggle({ options, value, onChange, compact }: {
+  options: { key: string; label: React.ReactNode; tooltip?: string }[]
   value: string
   onChange: (key: string) => void
+  compact?: boolean
 }) {
   return (
     <div className="flex rounded-full bg-[hsl(var(--tone-danger-100)/0.5)] p-0.5 ring-1 ring-[hsl(var(--tone-danger-200)/0.5)]">
-      {options.map((o) => (
-        <button
-          key={o.key}
-          type="button"
-          onClick={() => onChange(o.key)}
-          className={cn(
-            'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
-            value === o.key
-              ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
-              : 'text-[hsl(var(--tone-danger-600))] hover:text-[hsl(var(--tone-danger-800))]',
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
+      {options.map((o) => {
+        const btn = (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            className={cn(
+              'rounded-full py-1.5 text-xs font-medium transition-all flex items-center gap-1',
+              compact ? 'px-2.5' : 'px-4',
+              value === o.key
+                ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
+                : 'text-[hsl(var(--tone-danger-600))] hover:text-[hsl(var(--tone-danger-800))]',
+            )}
+          >
+            {o.label}
+          </button>
+        )
+        return o.tooltip ? <CmrTooltip key={o.key} text={o.tooltip}>{btn}</CmrTooltip> : btn
+      })}
     </div>
+  )
+}
+
+/** Bar-chart icon */
+function ChartIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="8" width="3" height="7" rx="0.5" />
+      <rect x="6.5" y="4" width="3" height="11" rx="0.5" />
+      <rect x="12" y="1" width="3" height="14" rx="0.5" />
+    </svg>
+  )
+}
+
+/** "123" label — represents rows with recorded numeric values */
+function RecordedIcon() {
+  return <span className="text-[10px] font-bold tabular-nums tracking-tight">123</span>
+}
+
+/** "BSA" label — represents indexed-only view */
+function BsaIcon() {
+  return <span className="text-[10px] font-semibold tracking-wide">BSA</span>
+}
+
+/** "BSA" with strikethrough — represents all (absolute + indexed) view */
+function BsaOffIcon() {
+  return <span className="relative text-[10px] font-semibold tracking-wide opacity-60">BSA<span className="absolute inset-0 flex items-center"><span className="block w-full h-[1.5px] bg-current rotate-[-20deg]" /></span></span>
+}
+
+/** Three equal-length horizontal lines — represents all rows */
+function AllRowsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <line x1="1" y1="4" x2="15" y2="4" />
+      <line x1="1" y1="8" x2="15" y2="8" />
+      <line x1="1" y1="12" x2="15" y2="12" />
+    </svg>
+  )
+}
+
+/** Traffic-light severity icon — three coloured dots (green/amber/red) */
+function SeverityIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="currentColor">
+      <circle cx="3.5" cy="3.5" r="3" fill="hsl(158 30% 50%)" />
+      <circle cx="12.5" cy="3.5" r="3" fill="hsl(38 60% 55%)" />
+      <circle cx="8" cy="12" r="3" fill="hsl(4 55% 50%)" />
+    </svg>
+  )
+}
+
+/** Traffic-light severity icon with a diagonal strike-through */
+function SeverityOffIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="currentColor" stroke="currentColor">
+      <circle cx="3.5" cy="3.5" r="3" fill="hsl(158 30% 50%)" opacity="0.35" />
+      <circle cx="12.5" cy="3.5" r="3" fill="hsl(38 60% 55%)" opacity="0.35" />
+      <circle cx="8" cy="12" r="3" fill="hsl(4 55% 50%)" opacity="0.35" />
+      <line x1="1" y1="1" x2="15" y2="15" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/** Bar-chart icon with a diagonal strike-through */
+function ChartOffIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="8" width="3" height="7" rx="0.5" opacity="0.4" />
+      <rect x="6.5" y="4" width="3" height="11" rx="0.5" opacity="0.4" />
+      <rect x="12" y="1" width="3" height="14" rx="0.5" opacity="0.4" />
+      <line x1="2" y1="2" x2="14" y2="14" strokeWidth="2" />
+    </svg>
   )
 }
 
@@ -240,7 +343,7 @@ function ParameterDrilldown({
   measuredValue?: number
   onClose: () => void
 }) {
-  const [fLL, fMean, fUL, fSD] = fmtRow(param.ll, param.mean, param.ul, param.sd)
+  const [fLL, fMean, fUL, fSD] = fmtRow([param.ll, param.mean, param.ul, param.sd], param.decimal_places)
 
   let status: 'normal' | 'abnormal' | undefined
   if (measuredValue !== undefined) {
@@ -372,6 +475,7 @@ export function CmrNewReportPage() {
   const [severityMode, setSeverityMode] = useState<'off' | 'abnormal'>('off')
   const [rangeParams, setRangeParams] = useState<Map<string, RangeParam>>(new Map())
   const [scalingMode, setScalingMode] = useState<'factory' | 'global' | 'per-meas'>('global')
+  const [expandedNested, setExpandedNested] = useState<Set<string>>(new Set())
   // Pull demographics and measurements from the shared extraction store
   const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
   const measuredValues = useMemo(() => {
@@ -381,6 +485,35 @@ export function CmrNewReportPage() {
     }
     return map
   }, [extraction])
+
+  // Derived (calculated) values — indirect volumetric method
+  const derivedValues = useMemo(() => {
+    const derived = new Map<string, number>()
+    const lvsv = measuredValues.get('LV SV')
+    const rvsv = measuredValues.get('RV SV')
+    const avEff = measuredValues.get('AV effective forward flow (per heartbeat)')
+    const pvEff = measuredValues.get('PV effective forward flow (per heartbeat)')
+
+    // MR volume = LV SV − AV effective forward flow
+    if (lvsv !== undefined && avEff !== undefined && !measuredValues.has('MR volume (per heartbeat)')) {
+      const mrVol = lvsv - avEff
+      if (mrVol >= 0) {
+        derived.set('MR volume (per heartbeat)', Math.round(mrVol * 10) / 10)
+        if (lvsv > 0) derived.set('MR regurgitant fraction', Math.round((mrVol / lvsv) * 1000) / 10)
+      }
+    }
+
+    // TR volume = RV SV − PV effective forward flow
+    if (rvsv !== undefined && pvEff !== undefined && !measuredValues.has('TR volume (per heartbeat)')) {
+      const trVol = rvsv - pvEff
+      if (trVol >= 0) {
+        derived.set('TR volume (per heartbeat)', Math.round(trVol * 10) / 10)
+        if (rvsv > 0) derived.set('TR regurgitant fraction', Math.round((trVol / rvsv) * 1000) / 10)
+      }
+    }
+
+    return derived
+  }, [measuredValues])
   const sex = extraction?.demographics?.sex ?? 'Male'
   const age = extraction?.demographics?.age ?? undefined
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -410,10 +543,29 @@ export function CmrNewReportPage() {
   }, [load])
 
   const allGroups = data ? groupBySections(data.parameters) : []
+
+  // Derive nesting relationships from the data's nested_under field
+  const nestedParamMap = useMemo(() => data ? buildNestedParamMap(data.parameters) : {}, [data])
+  const nestedChildrenSet = useMemo(() => buildNestedChildrenSet(nestedParamMap), [nestedParamMap])
+
+  // Build a lookup of nested child params from the full dataset
+  const nestedChildParams = useMemo(() => {
+    const map = new Map<string, CmrCanonicalParam[]>()
+    if (!data) return map
+    for (const [parent, childKeys] of Object.entries(nestedParamMap)) {
+      const children = childKeys
+        .map((k) => data.parameters.find((p) => p.parameter_key === k))
+        .filter((p): p is CmrCanonicalParam => p !== undefined)
+      if (children.length > 0) map.set(parent, children)
+    }
+    return map
+  }, [data, nestedParamMap])
+
   const groups = allGroups
     .map((g) => {
-      let params = g.params
-      if (showFilter === 'recorded') params = params.filter((p) => measuredValues.has(p.parameter_key))
+      // Filter out nested children from their original section — they'll be rendered under the parent
+      let params = g.params.filter((p) => !nestedChildrenSet.has(p.parameter_key))
+      if (showFilter === 'recorded') params = params.filter((p) => measuredValues.has(p.parameter_key) || derivedValues.has(p.parameter_key))
       if (indexFilter === 'indexed') {
         // Build set from the full (unfiltered) group so we know which absolutes have an indexed counterpart
         const indexedKeys = new Set(g.params.filter((p) => p.indexing === 'BSA').map((p) => p.parameter_key.replace(/\s*\(i\)\s*$/, '')))
@@ -511,24 +663,25 @@ export function CmrNewReportPage() {
           <div className="flex items-center gap-2">
             <PillToggle
               options={[
-                { key: 'recorded', label: 'Recorded' },
-                { key: 'all', label: 'All' },
+                { key: 'recorded', label: <RecordedIcon />, tooltip: 'Recorded values only' },
+                { key: 'all', label: <AllRowsIcon />, tooltip: 'All parameters' },
               ]}
+              compact
               value={showFilter}
               onChange={(v) => setShowFilter(v as 'all' | 'recorded')}
             />
             <PillToggle
               options={[
-                { key: 'all', label: 'All' },
-                { key: 'indexed', label: 'Indexed' },
+                { key: 'all', label: <BsaOffIcon />, tooltip: 'Absolute + indexed' },
+                { key: 'indexed', label: <BsaIcon />, tooltip: 'BSA-indexed only' },
               ]}
               value={indexFilter}
               onChange={(v) => setIndexFilter(v as 'all' | 'indexed')}
             />
             <PillToggle
               options={[
-                { key: 'all', label: 'All' },
-                { key: 'abnormal', label: 'Abnormal' },
+                { key: 'all', label: <SeverityIcon />, tooltip: 'All severities' },
+                { key: 'abnormal', label: <svg className="h-3.5 w-3.5" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="hsl(4 55% 50%)" /></svg>, tooltip: 'Abnormal only' },
               ]}
               value={abnormalFilter}
               onChange={(v) => setAbnormalFilter(v as 'all' | 'abnormal')}
@@ -544,16 +697,23 @@ export function CmrNewReportPage() {
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5" /><path d="M1 6h14" /></svg>
             Viewing
           </div>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <PillToggle
-                options={[
-                  { key: 'on', label: 'Charts' },
-                  { key: 'off', label: 'Table Only' },
-                ]}
-                value={chartMode}
-                onChange={(v) => setChartMode(v as 'off' | 'on')}
-              />
+          <div className="flex items-center gap-2">
+            <PillToggle
+              options={[
+                { key: 'off', label: <SeverityOffIcon />, tooltip: 'Severity colouring off' },
+                { key: 'abnormal', label: <SeverityIcon />, tooltip: 'Colour rows by severity' },
+              ]}
+              value={severityMode}
+              onChange={(v) => setSeverityMode(v as 'off' | 'abnormal')}
+            />
+            <PillToggle
+              options={[
+                { key: 'on', label: <ChartIcon />, tooltip: 'Show range charts' },
+                { key: 'off', label: <ChartOffIcon />, tooltip: 'Table only' },
+              ]}
+              value={chartMode}
+              onChange={(v) => setChartMode(v as 'off' | 'on')}
+            />
             {chartMode === 'on' && (
               <ChartControlStrip
                 scalingMode={scalingMode}
@@ -591,17 +751,6 @@ export function CmrNewReportPage() {
                 }}
               />
             )}
-            </div>
-            <div className="flex items-center">
-              <PillToggle
-                options={[
-                  { key: 'off', label: 'Off' },
-                  { key: 'abnormal', label: 'Abnormal' },
-                ]}
-                value={severityMode}
-                onChange={(v) => setSeverityMode(v as 'off' | 'abnormal')}
-              />
-            </div>
           </div>
         </div>
       </div>
@@ -643,14 +792,14 @@ export function CmrNewReportPage() {
                   <div className="overflow-x-auto rounded-b-lg border-x border-b border-[hsl(var(--stroke-soft)/0.72)]">
                     <table data-house-no-column-resize="true" className="w-full table-fixed border-collapse text-sm">
                       <colgroup>
-                        <col style={{ width: chartMode === 'on' ? '20%' : '28%' }} />
-                        <col style={{ width: chartMode === 'on' ? '6%' : '8%' }} />
-                        <col style={{ width: chartMode === 'on' ? '7%' : '11%' }} />
-                        <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
-                        <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
-                        <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
-                        <col style={{ width: chartMode === 'on' ? '19%' : '26%' }} />
-                        {chartMode === 'on' && <col style={{ width: '30%' }} />}
+                        <col style={{ width: chartMode === 'on' ? '28%' : '28%' }} />
+                        <col style={{ width: chartMode === 'on' ? '5%' : '8%' }} />
+                        <col style={{ width: chartMode === 'on' ? '6%' : '11%' }} />
+                        <col style={{ width: chartMode === 'on' ? '5%' : '9%' }} />
+                        <col style={{ width: chartMode === 'on' ? '5%' : '9%' }} />
+                        <col style={{ width: chartMode === 'on' ? '5%' : '9%' }} />
+                        <col style={{ width: chartMode === 'on' ? '14%' : '26%' }} />
+                        {chartMode === 'on' && <col style={{ width: '32%' }} />}
                       </colgroup>
                       <thead>
                         <tr className="border-b-2 border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))]">
@@ -686,8 +835,14 @@ export function CmrNewReportPage() {
                             {/* Data rows */}
                             {g.params.map((p) => {
                               const isBsa = p.indexing === 'BSA'
-                              const [fLL, fMean, fUL, fSD] = fmtRow(p.ll, p.mean, p.ul, p.sd)
-                              const measured = measuredValues.get(p.parameter_key)
+                              const [fLL, fMean, fUL, fSD] = fmtRow([p.ll, p.mean, p.ul, p.sd], p.decimal_places)
+                              const rawMeasured = measuredValues.get(p.parameter_key)
+                              const isDerived = rawMeasured === undefined && derivedValues.has(p.parameter_key)
+                              const rawVal = rawMeasured ?? derivedValues.get(p.parameter_key)
+                              // Backward flow: strip sign — the label already implies direction
+                              const measured = rawVal !== undefined && ABS_VALUE_PARAMS.has(p.parameter_key)
+                                ? Math.abs(rawVal)
+                                : rawVal
                               const hasMeasuredVal = measured !== undefined
 
                               let severity: SeverityResult = { grade: 'normal', label: 'Normal' }
@@ -704,8 +859,8 @@ export function CmrNewReportPage() {
                                 )
                               }
                               return (
+                                <Fragment key={p.parameter_key}>
                                 <tr
-                                  key={p.parameter_key}
                                   onClick={() => setSelectedParam(p)}
                                   className={cn(
                                     'cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] transition-colors duration-100',
@@ -716,9 +871,37 @@ export function CmrNewReportPage() {
                                     severityMode === 'abnormal' && hasMeasuredVal && severity.grade === 'severe' && 'bg-[hsl(4_55%_82%)] hover:bg-[hsl(4_55%_79%)]',
                                   )}
                                 >
-                                  <td className="house-table-cell-text px-3 py-2 font-medium text-[hsl(var(--foreground))]">
+                                  <td className="house-table-cell-text whitespace-nowrap px-3 py-2 font-medium text-[hsl(var(--foreground))]">
                                     {displayName(p.parameter_key)}
                                     {isBsa && <BsaPill />}
+                                    {isDerived && (
+                                      <span className="ml-1.5 inline-flex items-center text-[hsl(var(--tone-neutral-400))]" title="Calculated from LV/RV stroke volume and forward flow">
+                                        <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                          <rect x="2" y="1" width="12" height="14" rx="1.5" />
+                                          <line x1="2" y1="5" x2="14" y2="5" />
+                                          <line x1="5" y1="8" x2="11" y2="8" />
+                                          <line x1="8" y1="5" x2="8" y2="11" />
+                                          <line x1="5" y1="13" x2="11" y2="13" />
+                                        </svg>
+                                      </span>
+                                    )}
+                                    {nestedParamMap[p.parameter_key] && nestedChildParams.has(p.parameter_key) && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setExpandedNested((prev) => {
+                                            const next = new Set(prev)
+                                            if (next.has(p.parameter_key)) next.delete(p.parameter_key)
+                                            else next.add(p.parameter_key)
+                                            return next
+                                          })
+                                        }}
+                                        className="ml-1.5 inline-flex items-center text-[hsl(var(--tone-neutral-400))] hover:text-[hsl(var(--foreground))] transition-colors"
+                                      >
+                                        <ChevronIcon open={expandedNested.has(p.parameter_key)} />
+                                      </button>
+                                    )}
                                   </td>
                                   <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center text-[hsl(var(--tone-neutral-500))]">
                                     {p.unit}
@@ -727,7 +910,7 @@ export function CmrNewReportPage() {
                                     'house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums font-semibold',
                                     !hasMeasuredVal && 'text-[hsl(var(--tone-neutral-300))]',
                                   )}>
-                                    {hasMeasuredVal ? measured : '\u2014'}
+                                    {hasMeasuredVal ? fmtRow([measured], p.decimal_places)[0] : '\u2014'}
                                   </td>
                                   <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">
                                     {fLL}
@@ -770,6 +953,105 @@ export function CmrNewReportPage() {
                                     </td>
                                   )}
                                 </tr>
+                                {/* Nested child rows (driven by nested_under in reference data) */}
+                                {expandedNested.has(p.parameter_key) && nestedChildParams.get(p.parameter_key)?.filter((cp) => {
+                                  // Apply same filters as parent rows
+                                  if (showFilter === 'recorded' && !measuredValues.has(cp.parameter_key) && !derivedValues.has(cp.parameter_key)) return false
+                                  if (abnormalFilter === 'abnormal') {
+                                    const mv = measuredValues.get(cp.parameter_key)
+                                    if (mv === undefined || !isAbnormalValue(mv, cp.ll, cp.ul, cp.abnormal_direction)) return false
+                                  }
+                                  return true
+                                }).map((cp) => {
+                                  const cpBsa = cp.indexing === 'BSA'
+                                  const [cpLL, cpMean, cpUL] = fmtRow([cp.ll, cp.mean, cp.ul], cp.decimal_places)
+                                  const cpRawMeasured = measuredValues.get(cp.parameter_key)
+                                  const cpIsDerived = cpRawMeasured === undefined && derivedValues.has(cp.parameter_key)
+                                  const cpRawVal = cpRawMeasured ?? derivedValues.get(cp.parameter_key)
+                                  const cpMeasured = cpRawVal !== undefined && ABS_VALUE_PARAMS.has(cp.parameter_key) ? Math.abs(cpRawVal) : cpRawVal
+                                  const cpHasMeasured = cpMeasured !== undefined
+
+                                  let cpSeverity: SeverityResult = { grade: 'normal', label: 'Normal' }
+                                  if (cpHasMeasured) {
+                                    cpSeverity = computeSeverity(
+                                      cpMeasured!,
+                                      cp.ll, cp.ul, cp.sd,
+                                      cp.abnormal_direction,
+                                      (cp.severity_label as SeverityLabelType) ?? inferSeverityLabel(cp.parameter_key, cp.major_section, cp.sub_section),
+                                      cp.severity_thresholds ?? null,
+                                      cp.severity_label_override ?? null,
+                                    )
+                                  }
+
+                                  return (
+                                    <tr
+                                      key={cp.parameter_key}
+                                      onClick={() => setSelectedParam(cp)}
+                                      className={cn(
+                                        'cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] transition-colors duration-100',
+                                        !(severityMode === 'abnormal' && cpHasMeasured) && 'bg-[hsl(var(--tone-neutral-50)/0.35)] hover:bg-[hsl(var(--tone-neutral-50)/0.65)]',
+                                        severityMode === 'abnormal' && cpHasMeasured && cpSeverity.grade === 'normal' && 'bg-[hsl(158_30%_94%)] hover:bg-[hsl(158_30%_91%)]',
+                                        severityMode === 'abnormal' && cpHasMeasured && cpSeverity.grade === 'mild' && 'bg-[hsl(46_60%_91%)] hover:bg-[hsl(46_60%_88%)]',
+                                        severityMode === 'abnormal' && cpHasMeasured && cpSeverity.grade === 'moderate' && 'bg-[hsl(20_55%_87%)] hover:bg-[hsl(20_55%_84%)]',
+                                        severityMode === 'abnormal' && cpHasMeasured && cpSeverity.grade === 'severe' && 'bg-[hsl(4_55%_82%)] hover:bg-[hsl(4_55%_79%)]',
+                                      )}
+                                    >
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-2 pl-8 font-medium text-[hsl(var(--foreground))]">
+                                        {displayName(cp.parameter_key)}
+                                        {cpBsa && <BsaPill />}
+                                        {cpIsDerived && (
+                                          <span className="ml-1.5 inline-flex items-center text-[hsl(var(--tone-neutral-400))]" title="Calculated from LV/RV stroke volume and forward flow">
+                                            <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                              <rect x="2" y="1" width="12" height="14" rx="1.5" />
+                                              <line x1="2" y1="5" x2="14" y2="5" />
+                                              <line x1="5" y1="8" x2="11" y2="8" />
+                                              <line x1="8" y1="5" x2="8" y2="11" />
+                                              <line x1="5" y1="13" x2="11" y2="13" />
+                                            </svg>
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center text-[hsl(var(--tone-neutral-500))]">{cp.unit}</td>
+                                      <td className={cn(
+                                        'house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums font-semibold',
+                                        !cpHasMeasured && 'text-[hsl(var(--tone-neutral-300))]',
+                                      )}>
+                                        {cpHasMeasured ? fmtRow([cpMeasured], cp.decimal_places)[0] : '\u2014'}
+                                      </td>
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">{cpLL}</td>
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums font-medium">{cpMean}</td>
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">{cpUL}</td>
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-0 text-center align-middle">
+                                        {cpHasMeasured && (
+                                          <span className={cn(
+                                            'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
+                                            cpSeverity.grade === 'normal' && 'bg-[hsl(162_22%_90%)] text-[hsl(164_30%_28%)] ring-[hsl(163_22%_80%)]',
+                                            cpSeverity.grade === 'mild' && 'bg-[hsl(38_40%_90%)] text-[hsl(34_50%_35%)] ring-[hsl(36_36%_80%)]',
+                                            cpSeverity.grade === 'moderate' && 'bg-[hsl(16_45%_86%)] text-[hsl(5_48%_32%)] ring-[hsl(10_32%_76%)]',
+                                            cpSeverity.grade === 'severe' && 'bg-[hsl(2_52%_25%)] text-white ring-[hsl(2_52%_20%)]',
+                                          )}>
+                                            {cpSeverity.label}
+                                          </span>
+                                        )}
+                                      </td>
+                                      {chartMode === 'on' && (
+                                        <td className="bg-white px-2 py-1">
+                                          {cpHasMeasured && hasValidRange(cp.ll, cp.ul) ? (
+                                            <RangeChart
+                                              measured={cpMeasured!}
+                                              ll={cp.ll!}
+                                              ul={cp.ul!}
+                                              direction={cp.abnormal_direction}
+                                              rangeStart={(rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeStart}
+                                              rangeWidth={(rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth}
+                                            />
+                                          ) : null}
+                                        </td>
+                                      )}
+                                    </tr>
+                                  )
+                                })}
+                                </Fragment>
                               )
                             })}
                           </Fragment>

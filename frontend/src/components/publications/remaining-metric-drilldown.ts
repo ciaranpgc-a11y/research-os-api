@@ -66,6 +66,53 @@ export type MomentumDrilldownStats = {
     confidenceLabel: string
   }>
   confidenceBuckets: Array<{ label: string; count: number }>
+  contextModules: MomentumContextModules
+}
+
+export type MomentumContextModuleStatus = 'available' | 'partial' | 'unavailable'
+
+export type MomentumFieldRelativeMomentumWindow = {
+  status: MomentumContextModuleStatus
+  reasonUnavailable: string | null
+  actualPaceChangePct: number | null
+  actualIsNewSignal: boolean
+  fieldBaselineChangePct: number | null
+  fieldBaselineIsNewSignal: boolean
+  fieldRelativeDeltaPts: number | null
+  percentileRank: number | null
+  percentileVisible: boolean
+  coveragePct: number
+  benchmarkedPublications: number
+  uniqueCohorts: number
+  medianCohortSize: number | null
+  actualRecentRate: number | null
+  actualPriorRate: number | null
+  fieldRecentRate: number | null
+  fieldPriorRate: number | null
+}
+
+export type MomentumFieldRelativeMomentumContextModule = {
+  status: MomentumContextModuleStatus
+  reasonUnavailable: string | null
+  benchmarkSource: string
+  normalizationBasis: string
+  windows: Record<'12m' | '5y', MomentumFieldRelativeMomentumWindow>
+}
+
+export type MomentumPlaceholderContextModule = {
+  status: MomentumContextModuleStatus
+  reasonUnavailable: string | null
+}
+
+export type MomentumContextModules = {
+  fieldRelativeMomentum: MomentumFieldRelativeMomentumContextModule
+  signalNoise: MomentumPlaceholderContextModule
+  contributionBalance: MomentumPlaceholderContextModule
+  publicationTypeContext: MomentumPlaceholderContextModule
+  ageAdjustedPerformance: MomentumPlaceholderContextModule
+  topicMomentumAlignment: MomentumPlaceholderContextModule
+  eventDrivers: MomentumPlaceholderContextModule
+  collaborationContext: MomentumPlaceholderContextModule
 }
 
 export type ImpactConcentrationDrilldownStats = {
@@ -262,6 +309,25 @@ function formatInt(value: number): string {
   return Math.round(boundedValue).toLocaleString('en-GB')
 }
 
+function formatSignedPercentCompact(value: number): string {
+  const rounded = Math.round(Number.isFinite(value) ? value : 0)
+  const normalized = Math.abs(rounded) < 1 ? 0 : rounded
+  return `${normalized >= 0 ? '+' : ''}${normalized.toFixed(0)}%`
+}
+
+function formatMomentumRelativePaceLabel(stats: MomentumDrilldownStats): string {
+  const recentPace = stats.monthlyValues12m.length >= 3
+    ? stats.monthlyValues12m.slice(-3).reduce((sum, value) => sum + Math.max(0, value), 0) / 3
+    : 0
+  const priorPace = stats.monthlyValues12m.length >= 12
+    ? stats.monthlyValues12m.slice(-12, -3).reduce((sum, value) => sum + Math.max(0, value), 0) / 9
+    : 0
+  if (priorPace > 0) {
+    return formatSignedPercentCompact(((recentPace / priorPace) - 1) * 100)
+  }
+  return recentPace > 0 ? 'New' : '+0%'
+}
+
 function average(values: number[]): number | null {
   if (!values.length) {
     return null
@@ -442,6 +508,102 @@ function collectCommonMethodsMeta(tile: PublicationMetricTilePayload) {
   }
 }
 
+const EMPTY_MOMENTUM_FIELD_RELATIVE_WINDOW: MomentumFieldRelativeMomentumWindow = {
+  status: 'unavailable',
+  reasonUnavailable: 'Benchmark unavailable.',
+  actualPaceChangePct: null,
+  actualIsNewSignal: false,
+  fieldBaselineChangePct: null,
+  fieldBaselineIsNewSignal: false,
+  fieldRelativeDeltaPts: null,
+  percentileRank: null,
+  percentileVisible: false,
+  coveragePct: 0,
+  benchmarkedPublications: 0,
+  uniqueCohorts: 0,
+  medianCohortSize: null,
+  actualRecentRate: null,
+  actualPriorRate: null,
+  fieldRecentRate: null,
+  fieldPriorRate: null,
+}
+
+const EMPTY_MOMENTUM_CONTEXT_MODULE: MomentumPlaceholderContextModule = {
+  status: 'unavailable',
+  reasonUnavailable: 'Module not available.',
+}
+
+function parseMomentumContextModuleStatus(value: unknown): MomentumContextModuleStatus {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'available' || normalized === 'partial' || normalized === 'unavailable') {
+    return normalized
+  }
+  return 'unavailable'
+}
+
+function parseMomentumFieldRelativeWindow(value: unknown): MomentumFieldRelativeMomentumWindow {
+  if (!value || typeof value !== 'object') {
+    return { ...EMPTY_MOMENTUM_FIELD_RELATIVE_WINDOW }
+  }
+  const row = value as Record<string, unknown>
+  return {
+    status: parseMomentumContextModuleStatus(row.status),
+    reasonUnavailable: toMetricText(row.reason_unavailable, ''),
+    actualPaceChangePct: parseMetricNumber(row.actual_pace_change_pct),
+    actualIsNewSignal: Boolean(row.actual_is_new_signal),
+    fieldBaselineChangePct: parseMetricNumber(row.field_baseline_change_pct),
+    fieldBaselineIsNewSignal: Boolean(row.field_baseline_is_new_signal),
+    fieldRelativeDeltaPts: parseMetricNumber(row.field_relative_delta_pts),
+    percentileRank: parseMetricNumber(row.percentile_rank),
+    percentileVisible: Boolean(row.percentile_visible),
+    coveragePct: Math.max(0, parseMetricNumber(row.coverage_pct) ?? 0),
+    benchmarkedPublications: Math.max(0, Math.round(parseMetricNumber(row.benchmarked_publications) ?? 0)),
+    uniqueCohorts: Math.max(0, Math.round(parseMetricNumber(row.unique_cohorts) ?? 0)),
+    medianCohortSize: parseMetricNumber(row.median_cohort_size),
+    actualRecentRate: parseMetricNumber(row.actual_recent_rate),
+    actualPriorRate: parseMetricNumber(row.actual_prior_rate),
+    fieldRecentRate: parseMetricNumber(row.field_recent_rate),
+    fieldPriorRate: parseMetricNumber(row.field_prior_rate),
+  }
+}
+
+function parseMomentumPlaceholderContextModule(value: unknown): MomentumPlaceholderContextModule {
+  if (!value || typeof value !== 'object') {
+    return { ...EMPTY_MOMENTUM_CONTEXT_MODULE }
+  }
+  const row = value as Record<string, unknown>
+  return {
+    status: parseMomentumContextModuleStatus(row.status),
+    reasonUnavailable: toMetricText(row.reason_unavailable, ''),
+  }
+}
+
+function parseMomentumContextModules(tile: PublicationMetricTilePayload): MomentumContextModules {
+  const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+  const contextModules = (drilldown.context_modules || {}) as Record<string, unknown>
+  const fieldRelativeRaw = (contextModules.field_relative_momentum || {}) as Record<string, unknown>
+  const windowsRaw = (fieldRelativeRaw.windows || {}) as Record<string, unknown>
+  return {
+    fieldRelativeMomentum: {
+      status: parseMomentumContextModuleStatus(fieldRelativeRaw.status),
+      reasonUnavailable: toMetricText(fieldRelativeRaw.reason_unavailable, ''),
+      benchmarkSource: toMetricText(fieldRelativeRaw.benchmark_source, 'OpenAlex'),
+      normalizationBasis: toMetricText(fieldRelativeRaw.normalization_basis, 'Primary field + publication year'),
+      windows: {
+        '12m': parseMomentumFieldRelativeWindow(windowsRaw['12m']),
+        '5y': parseMomentumFieldRelativeWindow(windowsRaw['5y']),
+      },
+    },
+    signalNoise: parseMomentumPlaceholderContextModule(contextModules.signal_noise),
+    contributionBalance: parseMomentumPlaceholderContextModule(contextModules.contribution_balance),
+    publicationTypeContext: parseMomentumPlaceholderContextModule(contextModules.publication_type_context),
+    ageAdjustedPerformance: parseMomentumPlaceholderContextModule(contextModules.age_adjusted_performance),
+    topicMomentumAlignment: parseMomentumPlaceholderContextModule(contextModules.topic_momentum_alignment),
+    eventDrivers: parseMomentumPlaceholderContextModule(contextModules.event_drivers),
+    collaborationContext: parseMomentumPlaceholderContextModule(contextModules.collaboration_context),
+  }
+}
+
 export function isEnhancedGenericMetricKey(key: string): key is EnhancedGenericMetricKey {
   return ENHANCED_GENERIC_METRIC_KEYS.includes(key as EnhancedGenericMetricKey)
 }
@@ -524,6 +686,7 @@ export function buildMomentumDrilldownStats(tile: PublicationMetricTilePayload):
     confidenceBuckets: Array.from(confidenceCounts.entries())
       .sort((left, right) => right[1] - left[1])
       .map(([label, count]) => ({ label, count })),
+    contextModules: parseMomentumContextModules(tile),
   }
 }
 
@@ -797,15 +960,18 @@ export function buildRemainingMetricMethodsSections(tile: PublicationMetricTileP
   switch (tile.key) {
     case 'momentum': {
       const stats = buildMomentumDrilldownStats(tile)
+      const relativePaceLabel = formatMomentumRelativePaceLabel(stats)
+      const fieldRelativeContext = stats.contextModules.fieldRelativeMomentum
+      const defaultContextWindow = fieldRelativeContext.windows['12m']
       return [
         {
           key: 'summary',
           title: 'Summary',
-          description: 'How the momentum index headline and current state are calculated.',
+          description: 'How the recent-vs-prior citation pace headline and current state are calculated.',
           facts: [
             { label: 'Definition', value: toMetricText(common.methods.definition || common.drilldown.definition) },
             { label: 'Formula', value: toMetricText(common.methods.formula || common.drilldown.formula) },
-            { label: 'Current momentum index', value: formatInt(stats.momentumIndex) },
+            { label: 'Current pace change', value: relativePaceLabel },
             { label: 'State', value: stats.state },
             { label: 'Sources', value: common.sourcesLabel },
           ],
@@ -851,17 +1017,17 @@ export function buildRemainingMetricMethodsSections(tile: PublicationMetricTileP
         {
           key: 'context',
           title: 'Context',
-          description: 'How to interpret momentum alongside confidence and stability.',
+          description: 'How the field-relative benchmark context is assembled.',
           facts: [
-            { label: 'Tile stability', value: toTitleCaseLabel(tile.stability, 'Stable') },
-            { label: 'Confidence score', value: Number.isFinite(tile.confidence_score) ? `${Math.round(tile.confidence_score * 100)}%` : 'Not available' },
-            { label: 'Last updated', value: common.lastUpdated },
+            { label: 'Benchmark source', value: fieldRelativeContext.benchmarkSource },
+            { label: 'Normalization', value: fieldRelativeContext.normalizationBasis },
+            { label: '12m coverage', value: `${Math.round(defaultContextWindow.coveragePct)}%` },
             { label: 'Sources', value: common.sourcesLabel },
           ],
           bullets: [
-            'Momentum is intentionally sensitive to recency, so it can move faster than long-window citation totals.',
-            'Use the contributor table to explain why the index changed, especially when the state flips between Stable and Slowing.',
-            'Confidence reflects coverage and data quality of the matched citation histories used for the comparison.',
+            'Field-relative momentum compares your pace change with OpenAlex cohorts matched by primary field and publication year.',
+            'Coverage and cohort count determine how representative the weighted field baseline is for mixed portfolios.',
+            'Percentile only appears when benchmark coverage and cohort size pass the stricter quality gate.',
           ],
         },
       ]

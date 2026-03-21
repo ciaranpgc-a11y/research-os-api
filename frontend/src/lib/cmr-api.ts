@@ -37,6 +37,10 @@ export type CmrCanonicalParam = {
   severity_label?: string
   severity_thresholds?: { mild: number | null; moderate: number | null; severe: number | null }
   severity_label_override?: { mild: string | null; moderate: string | null; severe: string | null }
+  // Nesting: when set, this param is a child of the named parent param
+  nested_under?: string
+  // Display formatting: number of decimal places for table values
+  decimal_places?: number
 }
 
 export type CmrCanonicalTableResponse = {
@@ -82,6 +86,10 @@ export type CmrParameterRangesResponse = {
   severity_label?: string
   severity_thresholds?: { mild: number | null; moderate: number | null; severe: number | null }
   severity_label_override?: { mild: string | null; moderate: string | null; severe: string | null }
+  // Nesting
+  nested_under?: string
+  // Display formatting
+  decimal_places?: number
 }
 
 export async function fetchParameterRanges(parameterKey: string): Promise<CmrParameterRangesResponse> {
@@ -129,6 +137,8 @@ export type CmrParamMetaUpdate = {
   severity_label?: string | null
   severity_thresholds?: { mild: number | null; moderate: number | null; severe: number | null } | null
   severity_label_override?: { mild: string | null; moderate: string | null; severe: string | null } | null
+  nested_under?: string | null
+  decimal_places?: number | null
 }
 
 export async function updateParameterMeta(update: CmrParamMetaUpdate): Promise<void> {

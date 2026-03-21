@@ -41,6 +41,8 @@ import { CmrNewReportPage } from '@/pages/cmr-new-report-page'
 import { CmrRwmaPage } from '@/pages/cmr-rwma-page'
 import { CmrLgePage } from '@/pages/cmr-lge-page'
 import { CmrUploadReportPage } from '@/pages/cmr-upload-report-page'
+import { CmrValvesPage } from '@/pages/cmr-valves-page'
+import { CmrLvThrombusPage } from '@/pages/cmr-lv-thrombus-page'
 import { useWorkspaceStore } from '@/store/use-workspace-store'
 
 const AUTH_ME_TIMEOUT_MS = 8000
@@ -209,6 +211,8 @@ export function AppRouter() {
         <Route path="/cmr-new-report" element={<CmrNewReportPage />} />
         <Route path="/cmr-rwma" element={<CmrRwmaPage />} />
         <Route path="/cmr-lge" element={<CmrLgePage />} />
+        <Route path="/cmr-valves" element={<CmrValvesPage />} />
+        <Route path="/cmr-lv-thrombus" element={<CmrLvThrombusPage />} />
       </Route>
 
       <Route element={<RequireSignIn />}>

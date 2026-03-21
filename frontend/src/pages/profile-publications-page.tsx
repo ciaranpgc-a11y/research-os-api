@@ -315,10 +315,10 @@ const PUBLICATION_STRUCTURED_TABLE_CLASS_NAME = [
   'publication-structured-table overflow-x-hidden overflow-y-visible text-[0.84rem] leading-[1.72]',
   '[&_button]:hidden [&_select]:hidden [&_option]:hidden',
   '[&_table]:w-full [&_table]:max-w-full [&_table]:border-collapse [&_table]:table-auto',
-  '[&_thead]:bg-[linear-gradient(180deg,hsl(var(--tone-neutral-50))_0%,hsl(var(--tone-neutral-100)/0.8)_100%)] [&_thead]:border-b [&_thead]:border-b-[hsl(var(--tone-neutral-800)/0.6)]',
-  '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-220)/0.5)] [&_th]:px-4 [&_th]:py-3.25 [&_th]:text-left [&_th]:align-top [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-[0.68rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.1em] [&_th]:text-[hsl(var(--tone-neutral-500))]',
+  '[&_thead]:bg-[linear-gradient(180deg,hsl(var(--tone-neutral-50))_0%,hsl(var(--tone-neutral-100)/0.8)_100%)] [&_thead]:border-b-2 [&_thead]:border-b-[hsl(var(--tone-neutral-800))]',
+  '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-220)/0.5)] [&_th]:px-4 [&_th]:py-3.25 [&_th]:text-left [&_th]:align-top [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-[0.83rem] [&_th]:font-semibold [&_th]:text-[hsl(var(--tone-neutral-700))]',
   '[&_thead>tr:last-child>th]:border-b-0',
-  '[&_thead>tr+tr>th]:text-[0.64rem] [&_thead>tr+tr>th]:font-normal [&_thead>tr+tr>th]:tracking-[0.04em] [&_thead>tr+tr>th]:text-[hsl(var(--tone-neutral-400))] [&_thead>tr+tr>th]:py-2',
+  '[&_thead>tr+tr>th]:text-[0.7rem] [&_thead>tr+tr>th]:font-normal [&_thead>tr+tr>th]:text-[hsl(var(--tone-neutral-500))] [&_thead>tr+tr>th]:py-2',
   '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-220)/0.9)] [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:text-[0.83rem] [&_td]:leading-[1.72] [&_td]:text-[hsl(var(--tone-neutral-700))] [&_table>tbody:last-of-type>tr:last-child>td]:border-b-0 [&_table:has(+_.publication-structured-table-notes)>tbody:last-of-type>tr:last-child>td]:border-b [&_table:has(+_.publication-structured-table-notes)>tbody:last-of-type>tr:last-child>td]:border-[hsl(var(--tone-neutral-800)/0.58)]',
   '[&_tr>*:first-child]:w-[44%] [&_tr>*:first-child]:pr-7',
   '[&_tr>*:last-child]:w-[12%] [&_tr>*:last-child]:whitespace-nowrap',
@@ -336,16 +336,18 @@ const PUBLICATION_STRUCTURED_TABLE_CLASS_NAME = [
   '[&_.publication-structured-table-note-item]:text-[0.83rem] [&_.publication-structured-table-note-item]:leading-[1.72] [&_.publication-structured-table-note-item]:text-[hsl(var(--tone-neutral-600))]',
   '[&_.publication-table-group-row_td]:border-none [&_.publication-table-group-row_td]:bg-[hsl(var(--tone-neutral-100)/0.8)] [&_.publication-table-group-row_td]:px-3.5 [&_.publication-table-group-row_td]:py-1.5 [&_.publication-table-group-row_td]:text-[0.68rem] [&_.publication-table-group-row_td]:font-semibold [&_.publication-table-group-row_td]:uppercase [&_.publication-table-group-row_td]:tracking-[0.08em] [&_.publication-table-group-row_td]:text-[hsl(var(--tone-neutral-600))]',
   '[&_.publication-table-pvalue-significant]:font-bold [&_.publication-table-pvalue-significant]:text-[hsl(210_70%_38%)]',
+  '[&_.publication-table-sample-size]:block [&_.publication-table-sample-size]:mt-1.5',
+  '[&_.publication-table-sample-size>span]:inline-block [&_.publication-table-sample-size>span]:rounded [&_.publication-table-sample-size>span]:bg-[hsl(var(--tone-neutral-100)/0.9)] [&_.publication-table-sample-size>span]:px-2 [&_.publication-table-sample-size>span]:py-0.5 [&_.publication-table-sample-size>span]:text-[0.72rem] [&_.publication-table-sample-size>span]:font-medium [&_.publication-table-sample-size>span]:text-[hsl(var(--tone-neutral-500))]',
 ].join(' ')
 
 const PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME = [
   'publication-structured-table-lightbox overflow-auto text-[0.92rem] leading-[1.72]',
   '[&_button]:hidden [&_select]:hidden [&_option]:hidden',
   '[&_table]:w-full [&_table]:border-collapse [&_table]:table-auto',
-  '[&_thead]:bg-[linear-gradient(180deg,hsl(var(--tone-neutral-50))_0%,hsl(var(--tone-neutral-100)/0.82)_100%)] [&_thead]:border-b [&_thead]:border-b-[hsl(var(--tone-neutral-800)/0.6)]',
-  '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-220)/0.5)] [&_th]:px-5 [&_th]:py-4 [&_th]:text-left [&_th]:align-top [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-[0.72rem] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.1em] [&_th]:text-[hsl(var(--tone-neutral-500))]',
+  '[&_thead]:bg-[linear-gradient(180deg,hsl(var(--tone-neutral-50))_0%,hsl(var(--tone-neutral-100)/0.82)_100%)] [&_thead]:border-b-2 [&_thead]:border-b-[hsl(var(--tone-neutral-800))]',
+  '[&_th]:border-b [&_th]:border-[hsl(var(--tone-neutral-220)/0.5)] [&_th]:px-5 [&_th]:py-4 [&_th]:text-left [&_th]:align-top [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-[0.9rem] [&_th]:font-semibold [&_th]:text-[hsl(var(--tone-neutral-700))]',
   '[&_thead>tr:last-child>th]:border-b-0',
-  '[&_thead>tr+tr>th]:text-[0.68rem] [&_thead>tr+tr>th]:font-normal [&_thead>tr+tr>th]:tracking-[0.04em] [&_thead>tr+tr>th]:text-[hsl(var(--tone-neutral-400))] [&_thead>tr+tr>th]:py-2.5',
+  '[&_thead>tr+tr>th]:text-[0.76rem] [&_thead>tr+tr>th]:font-normal [&_thead>tr+tr>th]:text-[hsl(var(--tone-neutral-500))] [&_thead>tr+tr>th]:py-2.5',
   '[&_td]:border-b [&_td]:border-[hsl(var(--tone-neutral-220)/0.9)] [&_td]:px-5 [&_td]:py-3.5 [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:text-[0.9rem] [&_td]:leading-[1.72] [&_td]:text-[hsl(var(--tone-neutral-700))] [&_table>tbody:last-of-type>tr:last-child>td]:border-b-0 [&_table:has(+_.publication-structured-table-notes)>tbody:last-of-type>tr:last-child>td]:border-b [&_table:has(+_.publication-structured-table-notes)>tbody:last-of-type>tr:last-child>td]:border-[hsl(var(--tone-neutral-800)/0.6)]',
   '[&_tr>*:first-child]:w-[40%] [&_tr>*:first-child]:pr-9',
   '[&_tr>*:last-child]:w-[10%] [&_tr>*:last-child]:whitespace-nowrap',
@@ -363,6 +365,8 @@ const PUBLICATION_STRUCTURED_TABLE_LIGHTBOX_CLASS_NAME = [
   '[&_.publication-structured-table-note-item]:text-[0.9rem] [&_.publication-structured-table-note-item]:leading-[1.72] [&_.publication-structured-table-note-item]:text-[hsl(var(--tone-neutral-600))]',
   '[&_.publication-table-group-row_td]:border-none [&_.publication-table-group-row_td]:bg-[hsl(var(--tone-neutral-100)/0.8)] [&_.publication-table-group-row_td]:px-4 [&_.publication-table-group-row_td]:py-2 [&_.publication-table-group-row_td]:text-[0.72rem] [&_.publication-table-group-row_td]:font-semibold [&_.publication-table-group-row_td]:uppercase [&_.publication-table-group-row_td]:tracking-[0.08em] [&_.publication-table-group-row_td]:text-[hsl(var(--tone-neutral-600))]',
   '[&_.publication-table-pvalue-significant]:font-bold [&_.publication-table-pvalue-significant]:text-[hsl(210_70%_38%)]',
+  '[&_.publication-table-sample-size]:block [&_.publication-table-sample-size]:mt-1.5',
+  '[&_.publication-table-sample-size>span]:inline-block [&_.publication-table-sample-size>span]:rounded [&_.publication-table-sample-size>span]:bg-[hsl(var(--tone-neutral-100)/0.9)] [&_.publication-table-sample-size>span]:px-2.5 [&_.publication-table-sample-size>span]:py-0.5 [&_.publication-table-sample-size>span]:text-[0.76rem] [&_.publication-table-sample-size>span]:font-medium [&_.publication-table-sample-size>span]:text-[hsl(var(--tone-neutral-500))]',
 ].join(' ')
 
 function formatPublicationReaderReferenceDisplayLabel(
@@ -1311,7 +1315,7 @@ const PUBLICATION_EXPORT_FIELD_OPTIONS: Array<{ key: PublicationExportFieldKey; 
 
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache_v2'
-const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache_v2'
+const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache_v3'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
 const PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX = 'aawe_publications_library_columns:v2:'
 const PUBLICATIONS_LIBRARY_PAGE_SIZE_STORAGE_PREFIX = 'aawe_publications_library_page_size:'
@@ -5073,9 +5077,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [analyticsResponse?.status, isLocalRuntime, token, user?.id])
 
   useEffect(() => {
-    if (isLocalRuntime) {
-      return
-    }
     if (!token || topMetricsResponse?.status !== 'RUNNING') {
       return
     }
@@ -5104,7 +5105,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [isLocalRuntime, topMetricsResponse?.status, topMetricsResponse?.tiles, token, user?.id])
+  }, [topMetricsResponse?.status, topMetricsResponse?.tiles, token, user?.id])
 
   useEffect(() => {
     if (!isLocalRuntime) {

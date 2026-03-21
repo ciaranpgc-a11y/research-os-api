@@ -4,6 +4,7 @@ import { PageHeader, Row, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { cn } from '@/lib/utils'
 import rwmaPaths from '@/data/rwma-paths.json'
+import { buildLgeSummaryData } from '@/lib/lge-summary-data'
 
 // ---------------------------------------------------------------------------
 // AHA 17-segment metadata (standard Cerqueira et al. 2002 territories)
@@ -75,8 +76,9 @@ function reconcileAfterTransmurality(
 ): { trans: LgeCode; pattern: PatternCode } {
   if (newTrans === 0) return { trans: 0, pattern: 0 }
   if (newTrans === 4) return { trans: 4, pattern: 4 } // 76–100% → auto transmural
-  // Sub-total transmurality: if pattern was transmural, clear it
+  // Sub-total transmurality: if pattern was transmural, clear it (user can set manually)
   if (currentPattern === 4) return { trans: newTrans, pattern: 0 }
+  // Otherwise keep whatever pattern was set (or 0 if none)
   return { trans: newTrans, pattern: currentPattern }
 }
 
@@ -102,7 +104,6 @@ function reconcileAfterPattern(
 // Brush modes
 // ---------------------------------------------------------------------------
 
-type BrushMode = 'transmurality' | 'pattern'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -341,7 +342,8 @@ function generateLgeSummary(
       if (patGroups.length === 1) {
         territoryDescriptions.push(`${patGroups[0]}, in the territory of the ${fullName}`)
       } else {
-        territoryDescriptions.push(`${patGroups.join(', with ')}, in the territory of the ${fullName}`)
+        const joined = patGroups.join(', with ')
+        territoryDescriptions.push(`${joined}, in the territory of the ${fullName}`)
       }
     }
 
@@ -482,43 +484,29 @@ export function CmrLgePage() {
     return init
   })
 
-  const [brushMode, setBrushMode] = useState<BrushMode>('transmurality')
-  const [activeBrush, setActiveBrush] = useState<LgeCode>(0)
   const [activePattern, setActivePattern] = useState<PatternCode>(1)
   const [hoveredSeg, setHoveredSeg] = useState<number | null>(null)
+  const [llmProse, setLlmProse] = useState<string | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [llmError, setLlmError] = useState<string | null>(null)
 
   const paintSegment = useCallback(
-    (seg: number) => {
-      if (brushMode === 'pattern') {
-        setPatternStates((prev) => {
-          const toggled = prev[seg] === activePattern ? 0 as PatternCode : activePattern
-          const { trans, pattern } = reconcileAfterPattern(toggled, segStates[seg])
-          // Also update transmurality if pattern rules require it
-          if (trans !== segStates[seg]) {
-            setSegStates((prevSeg) => ({ ...prevSeg, [seg]: trans }))
-          }
-          return { ...prev, [seg]: pattern }
-        })
-        return
+    (seg: number, direction: 1 | -1 = 1) => {
+      // Cycle transmurality: forward (left click) or backward (right click)
+      const newTrans = (((segStates[seg] + direction + 5) % 5)) as LgeCode
+
+      if (newTrans === 0) {
+        setSegStates((prev) => ({ ...prev, [seg]: 0 as LgeCode }))
+        setPatternStates((prev) => ({ ...prev, [seg]: 0 as PatternCode }))
+      } else if (newTrans === 4) {
+        setSegStates((prev) => ({ ...prev, [seg]: 4 as LgeCode }))
+        setPatternStates((prev) => ({ ...prev, [seg]: 4 as PatternCode }))
+      } else {
+        setSegStates((prev) => ({ ...prev, [seg]: newTrans }))
+        setPatternStates((prev) => ({ ...prev, [seg]: activePattern > 0 ? activePattern : prev[seg] }))
       }
-      // Transmurality mode
-      setSegStates((prev) => {
-        let newCode: LgeCode
-        if (prev[seg] === activeBrush) {
-          newCode = ((activeBrush + 1) % 5) as LgeCode
-          setActiveBrush(newCode)
-        } else {
-          newCode = activeBrush
-        }
-        const { trans, pattern } = reconcileAfterTransmurality(newCode, patternStates[seg])
-        // Also update pattern if rules require it
-        if (pattern !== patternStates[seg]) {
-          setPatternStates((prevPat) => ({ ...prevPat, [seg]: pattern }))
-        }
-        return { ...prev, [seg]: trans }
-      })
     },
-    [activeBrush, activePattern, brushMode, segStates, patternStates],
+    [activePattern, segStates, patternStates],
   )
 
   const resetAll = useCallback(() => {
@@ -530,6 +518,9 @@ export function CmrLgePage() {
     }
     setSegStates(initLge)
     setPatternStates(initPat)
+    setActivePattern(1 as PatternCode)
+    setLlmProse(null)
+    setLlmError(null)
   }, [])
 
   const segColor = (seg: number) => LGE_STATES[segStates[seg] ?? 0].color
@@ -540,6 +531,36 @@ export function CmrLgePage() {
 
   // Derived summary
   const summary = useMemo(() => generateLgeSummary(segStates, patternStates), [segStates, patternStates])
+
+  const handleGenerate = useCallback(async () => {
+    setIsGenerating(true)
+    setLlmError(null)
+    try {
+      const data = buildLgeSummaryData(segStates, patternStates, summary.text)
+      const res = await fetch('/api/cmr-lge-prose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Request failed' }))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+      const { prose } = await res.json()
+      setLlmProse(prose)
+    } catch (e) {
+      setLlmError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [segStates, patternStates, summary.text])
+  const hasAnyPattern = useMemo(() => {
+    for (let seg = 1; seg <= 17; seg++) {
+      if (segStates[seg] > 0 && patternStates[seg] > 0) return true
+    }
+    return false
+  }, [segStates, patternStates])
+
   const patternCounts = useMemo(() => {
     const counts: Record<number, number> = {}
     for (const [seg, p] of Object.entries(patternStates)) {
@@ -562,55 +583,35 @@ export function CmrLgePage() {
 
       {/* ── Controls ── */}
       <div className="flex flex-col gap-3">
-        {/* Row 1: Transmurality */}
+        {/* Pattern selector */}
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground w-[88px]">Transmurality:</span>
-            <div className="flex rounded-full bg-muted/50 p-0.5 ring-1 ring-border/50">
-              {LGE_STATES.map((s) => (
-                <button
-                  key={s.code}
-                  type="button"
-                  onClick={() => { setActiveBrush(s.code as LgeCode); setBrushMode('transmurality') }}
-                  className={cn(
-                    'rounded-full px-3 py-1 text-xs font-medium transition-all',
-                    brushMode === 'transmurality' && activeBrush === s.code
-                      ? s.code <= 1 ? 'text-black shadow-sm' : 'text-white shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                  style={brushMode === 'transmurality' && activeBrush === s.code ? { backgroundColor: s.color } : undefined}
-                >
-                  {s.shortLabel}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        {/* Row 2: Pattern */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground w-[88px]">Pattern:</span>
             <div className="flex rounded-full bg-muted/50 p-0.5 ring-1 ring-border/50">
-              {LGE_PATTERNS.slice(1).map((p) => (
-                <button
-                  key={p.code}
-                  type="button"
-                  onClick={() => { setActivePattern(p.code as PatternCode); setBrushMode('pattern') }}
-                  className={cn(
-                    'rounded-full px-3 py-1 text-xs font-medium transition-all',
-                    brushMode === 'pattern' && activePattern === p.code
-                      ? 'shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                  style={brushMode === 'pattern' && activePattern === p.code
-                    ? { backgroundColor: p.strokeColor, color: p.code === 4 ? 'white' : 'black' }
-                    : undefined
-                  }
-                >
-                  {p.label}
-                </button>
-              ))}
+              {LGE_PATTERNS.slice(1).map((p) => {
+                const isActive = activePattern === p.code
+                return (
+                  <button
+                    key={p.code}
+                    type="button"
+                    onClick={() => {
+                      setActivePattern(p.code as PatternCode)
+                    }}
+                    className={cn(
+                      'rounded-full px-3 py-1 text-xs font-medium transition-all',
+                      isActive
+                        ? 'shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                    style={isActive
+                      ? { backgroundColor: p.strokeColor, color: p.code === 1 ? 'black' : 'white' }
+                      : undefined
+                    }
+                  >
+                    {p.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
@@ -618,7 +619,7 @@ export function CmrLgePage() {
           <button
             type="button"
             onClick={resetAll}
-            className="rounded-full px-3 py-1 text-xs font-medium text-muted-foreground ring-1 ring-border/50 hover:text-foreground transition-all"
+            className="rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 hover:bg-red-50 hover:text-red-700 transition-all"
           >
             Reset All
           </button>
@@ -655,6 +656,7 @@ export function CmrLgePage() {
                   strokeWidth={hasPattern ? 2.5 : 1.5}
                   className="cursor-pointer"
                   onClick={() => paintSegment(seg)}
+                  onContextMenu={(e) => { e.preventDefault(); paintSegment(seg, -1) }}
                   onMouseEnter={() => setHoveredSeg(seg)}
                   onMouseLeave={() => setHoveredSeg(null)}
                 />
@@ -673,6 +675,7 @@ export function CmrLgePage() {
                   strokeWidth={hasPattern17 ? 2.5 : 1.5}
                   className="cursor-pointer"
                   onClick={() => paintSegment(17)}
+                  onContextMenu={(e) => { e.preventDefault(); paintSegment(17, -1) }}
                   onMouseEnter={() => setHoveredSeg(17)}
                   onMouseLeave={() => setHoveredSeg(null)}
                 />
@@ -764,31 +767,65 @@ export function CmrLgePage() {
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <span className="text-xs font-semibold tracking-wider text-muted-foreground">SEGMENT SUMMARY</span>
           {summary.enhancedCount > 0 && (
-            <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white" style={{ backgroundColor: 'hsl(350 60% 48%)' }}>
+            <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: 'hsl(350 60% 48%)' }}>
               {summary.enhancedCount}/17 ENHANCED
             </span>
           )}
           {summary.scoreIndex > 0 && (
-            <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-foreground bg-muted">
+            <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white bg-foreground/70">
               INDEX {summary.scoreIndex.toFixed(2)}
             </span>
           )}
           {Object.entries(patternCounts).map(([code, count]) => (
             <span
               key={code}
-              className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+              className="rounded-full px-2.5 py-0.5 text-xs font-semibold"
               style={{
                 backgroundColor: LGE_PATTERNS[Number(code)].strokeColor,
-                color: Number(code) === 4 ? 'white' : 'black',
+                color: Number(code) === 1 ? 'black' : 'white',
               }}
             >
               {count} {LGE_PATTERNS[Number(code)].label}
             </span>
           ))}
         </div>
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          {summary.text}
-        </p>
+
+        {llmProse !== null && (
+          <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">
+            {llmProse}
+          </p>
+        )}
+
+        {llmError && (
+          <p className="mt-2 text-xs text-red-500">{llmError}</p>
+        )}
+
+        <div className="flex items-center gap-3 mt-3">
+          <button
+            type="button"
+            disabled={summary.enhancedCount === 0 || !hasAnyPattern || isGenerating}
+            onClick={handleGenerate}
+            className={cn(
+              'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
+              'bg-foreground text-background hover:bg-foreground/90',
+              'disabled:opacity-40 disabled:cursor-not-allowed',
+            )}
+          >
+            {isGenerating ? 'Generating\u2026' : llmProse !== null ? 'Regenerate' : 'Generate Summary'}
+          </button>
+          {llmProse !== null && (
+            <button
+              type="button"
+              onClick={() => { setLlmProse(null); setLlmError(null) }}
+              className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
+            >
+              Clear
+            </button>
+          )}
+          {summary.enhancedCount > 0 && !hasAnyPattern && (
+            <span className="text-xs text-muted-foreground italic">Assign a pattern to generate summary</span>
+          )}
+        </div>
       </div>
     </Stack>
   )

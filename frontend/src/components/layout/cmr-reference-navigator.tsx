@@ -39,6 +39,11 @@ const REPORT_VISUALISER_NAV = [
   { key: 'quantitative', path: '/cmr-new-report', label: 'Quantitative' },
   { key: 'rwma', path: '/cmr-rwma', label: 'RWMA' },
   { key: 'lge', path: '/cmr-lge', label: 'LGE Analysis' },
+  { key: 'valves', path: '/cmr-valves', label: 'Valves' },
+]
+
+const REPORT_MODULES_NAV = [
+  { key: 'lv-thrombus', path: '/cmr-lv-thrombus', label: 'LV Thrombus' },
 ]
 
 export function CmrReferenceNavigator({
@@ -103,6 +108,25 @@ export function CmrReferenceNavigator({
                 <p className={houseNavigation.sectionLabel}>VISUALISER</p>
                 <div className={houseNavigation.list}>
                   {REPORT_VISUALISER_NAV.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => { navigate(item.path); onNavigate?.() }}
+                      className={cn(
+                        houseNavigation.item,
+                        navItemClass,
+                        pathname === item.path && houseNavigation.itemActive,
+                      )}
+                    >
+                      <span className={houseNavigation.itemLabel}>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+              <section className={houseLayout.sidebarSection}>
+                <p className={houseNavigation.sectionLabel}>MODULES</p>
+                <div className={houseNavigation.list}>
+                  {REPORT_MODULES_NAV.map((item) => (
                     <button
                       key={item.key}
                       type="button"

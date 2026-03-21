@@ -82,7 +82,7 @@ function cmrDevApi(): Plugin {
 
         try {
           const { parameter_key, unit, indexing, abnormal_direction, major_section, sub_section, pap_affected, sources,
-            severity_label, severity_thresholds, severity_label_override } =
+            severity_label, severity_thresholds, severity_label_override, nested_under, decimal_places } =
             JSON.parse(await readBody(req))
 
           const data = readJson()
@@ -98,6 +98,20 @@ function cmrDevApi(): Plugin {
             if (severity_label !== undefined) data.output_params[parameter_key].severity_label = severity_label
             if (severity_thresholds !== undefined) data.output_params[parameter_key].severity_thresholds = severity_thresholds
             if (severity_label_override !== undefined) data.output_params[parameter_key].severity_label_override = severity_label_override
+            if (nested_under !== undefined) {
+              if (nested_under) {
+                data.output_params[parameter_key].nested_under = nested_under
+              } else {
+                delete data.output_params[parameter_key].nested_under
+              }
+            }
+            if (decimal_places !== undefined) {
+              if (decimal_places !== null && decimal_places >= 0) {
+                data.output_params[parameter_key].decimal_places = decimal_places
+              } else {
+                delete data.output_params[parameter_key].decimal_places
+              }
+            }
           }
 
           // Update fields that are duplicated in ref_ranges
@@ -222,6 +236,148 @@ Do not include any parameters not in the canonical list. Do not include paramete
           const extracted = JSON.parse(completion.choices[0].message.content)
 
           jsonRes(res, extracted)
+        } catch (e) {
+          jsonRes(res, { error: String(e) }, 500)
+        }
+      })
+
+      // POST /api/cmr-lge-prose → LLM prose rewrite of LGE summary
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url !== '/api/cmr-lge-prose' || req.method !== 'POST') return next()
+
+        try {
+          const summaryData = JSON.parse(await readBody(req))
+
+          const apiKey = process.env.OPENAI_API_KEY
+          if (!apiKey) {
+            jsonRes(res, { error: 'OPENAI_API_KEY not set' }, 500)
+            return
+          }
+
+          const systemPrompt = `You are writing the LGE (Late Gadolinium Enhancement) section of a structured cardiac MRI report. This is one section within a larger CMR study.
+
+AUDIENCE: Cardiologists and radiologists.
+
+SENTENCE STRUCTURE — critical:
+- Build proper flowing sentences. Do NOT chain comma-separated clauses.
+- BANNED PHRASES: Never use "is observed", "is noted", "are observed", "are noted".
+- Good openers to rotate between:
+  - "There is [extent] [pattern] enhancement of the..."
+  - "The [walls] demonstrate [pattern] enhancement with..."
+  - "[Extent] [pattern] enhancement involves the..."
+  - "[Extent] [pattern] enhancement of the [walls] in the [territory] territory..."
+- Territory, transmurality, and viability should be woven into the sentence — not appended.
+- Vary sentence structure naturally. Never start consecutive sentences the same way.
+
+STYLE:
+- Write as a senior CMR-trained cardiologist would dictate
+- Use LAD, RCA, LCx for coronary territories
+- SCMR terminology: subendocardial, mid-wall, subepicardial, transmural
+
+TERRITORY AND VIABILITY RULES (evidence-based, per SCMR guidelines and Kim et al. 2000):
+
+1. SINGLE ISCHAEMIC SEGMENT (1 segment with subendocardial or transmural pattern):
+   - Describe location, pattern, and transmurality only
+   - Do NOT attribute to a coronary territory
+   - Do NOT comment on viability
+   - Example: "There is focal subendocardial enhancement of the basal anterior wall (1–25% transmurality)."
+
+2. MULTIPLE ISCHAEMIC SEGMENTS (2+ segments with subendocardial/transmural pattern in same territory):
+   - Attribute to coronary territory (LAD, RCA, LCx per Cerqueira et al. 2002)
+   - Comment on viability at the territory level
+   - Integrate viability into the finding — do not re-list walls
+   - Example: "Regional subendocardial enhancement of the anterior and anteroseptal walls in the LAD territory with <50% transmurality, consistent with viable myocardium."
+
+3. MULTI-VESSEL (ONLY when territoryCount >= 2 in the data):
+   - Check the "territoryCount" field. If it is 1, this is NOT multi-vessel — use rule 2 instead.
+   - NEVER say "multi-vessel" when territoryCount is 1, even if there are many segments.
+   - Open with headline: "There is extensive multi-vessel ischaemic enhancement (N segments) involving the [territories]."
+   - Describe each territory separately with integrated viability
+   - Per-territory viability: can have both viable and non-viable within a single territory
+
+4. DIFFUSE (3 territories, 12+ ischaemic segments):
+   - No territory attribution, no viability assessment
+   - Describe as diffuse pattern
+
+5. NON-ISCHAEMIC (mid-wall, subepicardial — any segment count):
+   - Never attribute coronary territories
+   - Never comment on viability
+   - State "consistent with a non-ischaemic pattern" once
+
+6. MIXED ISCHAEMIC + NON-ISCHAEMIC:
+   - Describe each as a separate finding
+   - Use transition: "In addition to the ischaemic pattern, there is..." or "Separately, there is..."
+
+7. UNSPECIFIED PATTERN (segments in "unspecifiedSegments" — transmurality set but no pattern assigned):
+   - Describe location and transmurality only
+   - Do NOT attribute to a coronary territory
+   - Do NOT comment on viability or pattern type
+   - Example: "There is enhancement of the basal inferior and mid inferior walls (1–25% transmurality)."
+   - If ALL segments are unspecified, describe them as the sole finding
+   - If mixed with patterned segments, describe separately after the patterned findings
+
+TRANSMURALITY — simplify where possible:
+- All >50% (51-75% + 76-100%) -> ">50% transmurality"
+- All <50% (1-25% + 26-50%) -> "<50% transmurality"
+- Only spell out specific bands when there is a single band or the range crosses 50%
+- For 6+ segments include count in headline
+
+VIABILITY PHRASING — vary naturally:
+- "consistent with viable myocardium"
+- "suggesting viable myocardium"
+- "indicating non-viable myocardium"
+- "in keeping with viable myocardium"
+- parenthetical "(non-viable)" or "(viable)" when context is clear
+
+CONTRADICTION PREVENTION:
+- >50% = non-viable ALWAYS
+- <50% = viable ALWAYS
+
+QUANTIFICATION:
+- Use the "scoreIndex" and "enhancedCount" fields from the data — do NOT calculate your own.
+- End with: "LGE score index {scoreIndex} ({enhancedCount}/17 segments)."
+
+DATA FIELD REFERENCE:
+- "deterministicText": a structured draft summary — use this as your primary reference for content and structure. Rewrite it into polished clinical prose following all the rules above. Do NOT copy it verbatim.
+- pattern codes: 0 = unspecified, 1 = subendocardial, 2 = mid-wall, 3 = subepicardial, 4 = transmural
+- "unspecifiedSegments": array of segment names where pattern is unspecified (pattern=0) but transmurality is set
+- transmurality codes: 1 = 1–25%, 2 = 26–50%, 3 = 51–75%, 4 = 76–100%
+- Always include transmurality in the description, even for single segments
+
+RULES:
+1. Use ONLY findings from the provided data. Never invent or infer.
+2. Output ONLY the summary text. No preamble, no markdown, no labels.
+3. Descriptive only — no clinical interpretation or outcome prediction.
+4. The "deterministicText" gives you the factual content — your job is to rewrite it as polished prose.`
+
+          const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              temperature: 0.5,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: JSON.stringify(summaryData) },
+              ],
+            }),
+          })
+
+          if (!openaiRes.ok) {
+            const err = await openaiRes.text()
+            jsonRes(res, { error: `OpenAI API error: ${err}` }, 500)
+            return
+          }
+
+          const completion = await openaiRes.json() as {
+            choices: Array<{ message: { content: string } }>
+          }
+          const prose = completion.choices[0].message.content.trim()
+
+          jsonRes(res, { prose })
         } catch (e) {
           jsonRes(res, { error: String(e) }, 500)
         }

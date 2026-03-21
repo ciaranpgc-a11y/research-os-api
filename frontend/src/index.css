@@ -4713,6 +4713,14 @@
     padding: 0.55rem 0.75rem;
     gap: 0.28rem;
     box-sizing: border-box;
+    transition: box-shadow 160ms ease, border-color 160ms ease;
+  }
+
+  .house-drilldown-summary-stat-card:hover,
+  .house-drilldown-summary-stat-card:focus-within {
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--tone-neutral-900) / 0.16),
+      0 0.4rem 1rem hsl(var(--tone-neutral-900) / 0.08);
   }
 
   .house-drilldown-summary-stat-card-small {

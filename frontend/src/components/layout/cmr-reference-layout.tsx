@@ -11,7 +11,7 @@ export function CmrReferenceLayout() {
   const [activeSection, setActiveSection] = useState<string | null>(null)
   const { pathname } = useLocation()
 
-  const variant = pathname.includes('database') ? 'database' : (pathname.includes('new-report') || pathname.includes('upload-report') || pathname.includes('rwma') || pathname.includes('lge')) ? 'report' : 'reference'
+  const variant = pathname.includes('database') ? 'database' : (pathname.includes('new-report') || pathname.includes('upload-report') || pathname.includes('rwma') || pathname.includes('lge') || pathname.includes('valves') || pathname.includes('lv-thrombus')) ? 'report' : 'reference'
 
   const handleSectionJump = useCallback((key: string) => {
     setActiveSection(key)

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { PageHeader, Row, Stack } from '@/components/primitives'
 import { PanelShell, SectionMarker } from '@/components/patterns'
@@ -91,6 +91,25 @@ function ChevronIcon({ open }: { open: boolean }) {
       <path d="M6 4l4 4-4 4" />
     </svg>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Nested parameter helpers — derived from `nested_under` in reference data
+// ---------------------------------------------------------------------------
+
+function buildNestedParamMap(params: CmrCanonicalParam[]): Record<string, string[]> {
+  const map: Record<string, string[]> = {}
+  for (const p of params) {
+    if (p.nested_under) {
+      if (!map[p.nested_under]) map[p.nested_under] = []
+      map[p.nested_under].push(p.parameter_key)
+    }
+  }
+  return map
+}
+
+function buildNestedChildrenSet(nestedMap: Record<string, string[]>): Set<string> {
+  return new Set(Object.values(nestedMap).flat())
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +246,7 @@ function ParameterEditor({
   const [data, setData] = useState<CmrParameterRangesResponse | null>(null)
   const [loading, setLoading] = useState(!isNew)
   const [edits, setEdits] = useState<Record<string, string>>({})
-  const [editHistory, setEditHistory] = useState<Array<{ edits: Record<string, string>; metaDirty: boolean; metaUnit: string; metaSection: string; metaSubSection: string; metaIndexed: string; metaDirection: string; metaPapAffected: boolean; metaSeverityLabel: string; metaSeverityThresholds: { mild: string; moderate: string; severe: string }; metaSeverityOverrides: { mild: string; moderate: string; severe: string } }>>([])
+  const [editHistory, setEditHistory] = useState<Array<{ edits: Record<string, string>; metaDirty: boolean; metaUnit: string; metaSection: string; metaSubSection: string; metaIndexed: string; metaDirection: string; metaPapAffected: boolean; metaNestedUnder: string; metaDecimalPlaces: string; metaSeverityLabel: string; metaSeverityThresholds: { mild: string; moderate: string; severe: string }; metaSeverityOverrides: { mild: string; moderate: string; severe: string } }>>([])
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -247,6 +266,12 @@ function ParameterEditor({
   const [metaSeverityLabel, setMetaSeverityLabel] = useState<string>('')
   const [metaSeverityThresholds, setMetaSeverityThresholds] = useState<{ mild: string; moderate: string; severe: string }>({ mild: '', moderate: '', severe: '' })
   const [metaSeverityOverrides, setMetaSeverityOverrides] = useState<{ mild: string; moderate: string; severe: string }>({ mild: '', moderate: '', severe: '' })
+
+  // Nesting
+  const [metaNestedUnder, setMetaNestedUnder] = useState('')
+
+  // Decimal places
+  const [metaDecimalPlaces, setMetaDecimalPlaces] = useState('')
 
   // Track whether metadata has been modified
   const [metaDirty, setMetaDirty] = useState(false)
@@ -282,6 +307,8 @@ function ParameterEditor({
         setMetaDirection(d.abnormal_direction)
         setMetaPapAffected(d.ranges.some((r) => r.ll_mass !== null || r.mean_mass !== null || r.ul_mass !== null || r.sd_mass !== null))
         setSources(d.sources || [])
+        setMetaNestedUnder(d.nested_under ?? '')
+        setMetaDecimalPlaces(d.decimal_places !== undefined && d.decimal_places !== null ? String(d.decimal_places) : '')
         setMetaSeverityLabel(d.severity_label ?? '')
         setMetaSeverityThresholds({
           mild: d.severity_thresholds?.mild?.toString() ?? '',
@@ -409,7 +436,7 @@ function ParameterEditor({
   const cellKey = (sex: string, ageBand: string, field: string) => `${sex}|${ageBand}|${field}`
 
   const pushUndo = () => {
-    setEditHistory((prev) => [...prev.slice(-19), { edits: { ...edits }, metaDirty, metaUnit, metaSection, metaSubSection, metaIndexed, metaDirection, metaPapAffected, metaSeverityLabel, metaSeverityThresholds: { ...metaSeverityThresholds }, metaSeverityOverrides: { ...metaSeverityOverrides } }])
+    setEditHistory((prev) => [...prev.slice(-19), { edits: { ...edits }, metaDirty, metaUnit, metaSection, metaSubSection, metaIndexed, metaDirection, metaPapAffected, metaNestedUnder, metaDecimalPlaces, metaSeverityLabel, metaSeverityThresholds: { ...metaSeverityThresholds }, metaSeverityOverrides: { ...metaSeverityOverrides } }])
   }
 
   const handleUndo = () => {
@@ -423,6 +450,8 @@ function ParameterEditor({
       setMetaIndexed(last.metaIndexed)
       setMetaDirection(last.metaDirection)
       setMetaPapAffected(last.metaPapAffected)
+      setMetaNestedUnder(last.metaNestedUnder)
+      setMetaDecimalPlaces(last.metaDecimalPlaces)
       setMetaSeverityLabel(last.metaSeverityLabel)
       setMetaSeverityThresholds(last.metaSeverityThresholds)
       setMetaSeverityOverrides(last.metaSeverityOverrides)
@@ -494,6 +523,8 @@ function ParameterEditor({
                 severe: metaSeverityOverrides.severe || null,
               }
             : null,
+          nested_under: metaNestedUnder || null,
+          decimal_places: metaDecimalPlaces !== '' ? Number(metaDecimalPlaces) : null,
         })
       }
 
@@ -661,6 +692,21 @@ function ParameterEditor({
                 onChange={(v) => { pushUndo(); setMetaPapAffected(v === 'Yes'); setMetaDirty(true) }}
                 type="select"
                 options={INDEXED_OPTIONS}
+              />
+            </div>
+            <div className="grid grid-cols-[1fr_auto] gap-x-4">
+              <MetaField
+                label="Nested under"
+                value={metaNestedUnder}
+                onChange={(v) => { pushUndo(); setMetaNestedUnder(v); setMetaDirty(true) }}
+                placeholder="Parent parameter key (e.g. MAPSE)"
+              />
+              <MetaField
+                label="Decimal places"
+                value={metaDecimalPlaces}
+                onChange={(v) => { pushUndo(); setMetaDecimalPlaces(v); setMetaDirty(true) }}
+                type="select"
+                options={['0', '1', '2', '3']}
               />
             </div>
           </PanelShell>
@@ -1052,6 +1098,7 @@ export function CmrReferenceDatabasePage() {
   const [editingParam, setEditingParam] = useState<string | null>(null)
   const [isNewParam, setIsNewParam] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [expandedNested, setExpandedNested] = useState<Set<string>>(new Set())
   const [sectionsConfig, setSectionsConfig] = useState<Record<string, string[]>>({})
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -1148,11 +1195,28 @@ export function CmrReferenceDatabasePage() {
 
   const filtered = allParams
 
-  // Group by major_section, preserving sub_section
+  // Derive nesting relationships from the data's nested_under field
+  const nestedParamMap = useMemo(() => buildNestedParamMap(allParams), [allParams])
+  const nestedChildrenSet = useMemo(() => buildNestedChildrenSet(nestedParamMap), [nestedParamMap])
+
+  // Build a lookup of nested child params from the full dataset
+  const nestedChildParams = useMemo(() => {
+    const map = new Map<string, CmrCanonicalParam[]>()
+    for (const [parent, childKeys] of Object.entries(nestedParamMap)) {
+      const children = childKeys
+        .map((k) => allParams.find((p) => p.parameter_key === k))
+        .filter((p): p is CmrCanonicalParam => p !== undefined)
+      if (children.length > 0) map.set(parent, children)
+    }
+    return map
+  }, [allParams, nestedParamMap])
+
+  // Group by major_section, preserving sub_section — filter out nested children
   type Group = { major: string; sub: string; params: CmrCanonicalParam[] }
   const groups: Group[] = []
   let cur: Group | null = null
   for (const p of filtered) {
+    if (nestedChildrenSet.has(p.parameter_key)) continue
     const key = `${p.major_section}||${p.sub_section}`
     if (!cur || `${cur.major}||${cur.sub}` !== key) {
       cur = { major: p.major_section, sub: p.sub_section, params: [] }
@@ -1577,14 +1641,31 @@ export function CmrReferenceDatabasePage() {
                               </tr>
                             )}
                             {g.params.map((p) => (
+                              <Fragment key={p.parameter_key}>
                               <tr
-                                key={p.parameter_key}
                                 className="cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] transition-colors duration-100 hover:bg-[hsl(var(--tone-neutral-50)/0.65)]"
                                 onClick={() => setEditingParam(p.parameter_key)}
                               >
                                 <td className="house-table-cell-text px-3 py-2 font-medium text-[hsl(var(--foreground))]">
                                   {displayName(p.parameter_key)}
                                   {p.indexing === 'BSA' && <BsaPill />}
+                                  {nestedParamMap[p.parameter_key] && nestedChildParams.has(p.parameter_key) && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setExpandedNested((prev) => {
+                                          const next = new Set(prev)
+                                          if (next.has(p.parameter_key)) next.delete(p.parameter_key)
+                                          else next.add(p.parameter_key)
+                                          return next
+                                        })
+                                      }}
+                                      className="ml-1.5 inline-flex items-center text-[hsl(var(--tone-neutral-400))] hover:text-[hsl(var(--foreground))] transition-colors"
+                                    >
+                                      <ChevronIcon open={expandedNested.has(p.parameter_key)} />
+                                    </button>
+                                  )}
                                 </td>
                                 <td className="house-table-cell-text px-3 py-2 text-center text-[hsl(var(--tone-neutral-500))]">
                                   {p.unit}
@@ -1596,6 +1677,27 @@ export function CmrReferenceDatabasePage() {
                                   <DirectionIndicator dir={p.abnormal_direction} />
                                 </td>
                               </tr>
+                              {/* Nested child rows */}
+                              {expandedNested.has(p.parameter_key) && nestedChildParams.get(p.parameter_key)?.map((cp) => (
+                                <tr
+                                  key={cp.parameter_key}
+                                  className="cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] bg-[hsl(var(--tone-neutral-50)/0.35)] transition-colors duration-100 hover:bg-[hsl(var(--tone-neutral-50)/0.65)]"
+                                  onClick={() => setEditingParam(cp.parameter_key)}
+                                >
+                                  <td className="house-table-cell-text px-3 py-2 pl-8 font-medium text-[hsl(var(--foreground))]">
+                                    {displayName(cp.parameter_key)}
+                                    {cp.indexing === 'BSA' && <BsaPill />}
+                                  </td>
+                                  <td className="house-table-cell-text px-3 py-2 text-center text-[hsl(var(--tone-neutral-500))]">{cp.unit}</td>
+                                  <td className="house-table-cell-text px-3 py-2 text-center">
+                                    {cp.pap_differs && <PapPill />}
+                                  </td>
+                                  <td className="house-table-cell-text px-3 py-2 text-center">
+                                    <DirectionIndicator dir={cp.abnormal_direction} />
+                                  </td>
+                                </tr>
+                              ))}
+                              </Fragment>
                             ))}
                           </Fragment>
                         ))}

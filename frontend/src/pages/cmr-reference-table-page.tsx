@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 
 import { PageHeader, Row, Stack, DrilldownSheet } from '@/components/primitives'
@@ -31,23 +31,11 @@ function displayName(key: string): string {
   return key.replace(/\s*\(i\)\s*$/, '')
 }
 
-/** Determine the number of decimal places needed for a value (max 2). */
-function dpNeeded(v: number | null): number {
-  if (v === null) return 0
-  const rounded = Math.round(v * 100) / 100
-  if (rounded % 1 === 0) return 0
-  const s = rounded.toString()
-  const decimals = s.includes('.') ? s.split('.')[1].length : 0
-  return Math.min(decimals, 2)
-}
-
-/** Format a row of numeric values with consistent decimal places. */
-function fmtRow(...values: (number | null)[]): string[] {
-  const maxDp = Math.max(...values.map(dpNeeded))
+/** Format a row of numeric values to a fixed number of decimal places. */
+function fmtRow(values: (number | null)[], dp: number = 0): string[] {
   return values.map((v) => {
     if (v === null) return '\u2014'
-    const rounded = Math.round(v * 100) / 100
-    return maxDp === 0 ? String(rounded) : rounded.toFixed(maxDp)
+    return v.toFixed(dp)
   })
 }
 
@@ -57,6 +45,25 @@ function titleCase(s: string): string {
     .split(' ')
     .map((w) => (w.length <= 2 && w !== 'of' ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
     .join(' ')
+}
+
+// ---------------------------------------------------------------------------
+// Nested parameter helpers — derived from `nested_under` in reference data
+// ---------------------------------------------------------------------------
+
+function buildNestedParamMap(params: CmrCanonicalParam[]): Record<string, string[]> {
+  const map: Record<string, string[]> = {}
+  for (const p of params) {
+    if (p.nested_under) {
+      if (!map[p.nested_under]) map[p.nested_under] = []
+      map[p.nested_under].push(p.parameter_key)
+    }
+  }
+  return map
+}
+
+function buildNestedChildrenSet(nestedMap: Record<string, string[]>): Set<string> {
+  return new Set(Object.values(nestedMap).flat())
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +127,7 @@ function ParameterDrilldown({
   sex: string
   onClose: () => void
 }) {
-  const [fLL, fMean, fUL, fSD] = fmtRow(param.ll, param.mean, param.ul, param.sd)
+  const [fLL, fMean, fUL, fSD] = fmtRow([param.ll, param.mean, param.ul, param.sd], param.decimal_places)
   const isBsa = param.indexing === 'BSA'
 
   return (
@@ -224,6 +231,7 @@ export function CmrReferenceTablePage() {
   const [papMode, setPapMode] = useState<PapillaryMode>('blood_pool')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [selectedParam, setSelectedParam] = useState<CmrCanonicalParam | null>(null)
+  const [expandedNested, setExpandedNested] = useState<Set<string>>(new Set())
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   // Load config on mount
@@ -253,7 +261,29 @@ export function CmrReferenceTablePage() {
     void load()
   }, [load])
 
-  const groups = data ? groupBySections(data.parameters) : []
+  // Derive nesting relationships from the data's nested_under field
+  const nestedParamMap = useMemo(() => data ? buildNestedParamMap(data.parameters) : {}, [data])
+  const nestedChildrenSet = useMemo(() => buildNestedChildrenSet(nestedParamMap), [nestedParamMap])
+
+  // Build a lookup of nested child params from the full dataset
+  const nestedChildParams = useMemo(() => {
+    const map = new Map<string, CmrCanonicalParam[]>()
+    if (!data) return map
+    for (const [parent, childKeys] of Object.entries(nestedParamMap)) {
+      const children = childKeys
+        .map((k) => data.parameters.find((p) => p.parameter_key === k))
+        .filter((p): p is CmrCanonicalParam => p !== undefined)
+      if (children.length > 0) map.set(parent, children)
+    }
+    return map
+  }, [data, nestedParamMap])
+
+  const allGroups = data ? groupBySections(data.parameters) : []
+  const groups = allGroups.map((g) => ({
+    ...g,
+    params: g.params.filter((p) => !nestedChildrenSet.has(p.parameter_key)),
+  })).filter((g) => g.params.length > 0)
+
   const majorSections = groups.reduce<string[]>((acc, g) => {
     if (!acc.includes(g.major)) acc.push(g.major)
     return acc
@@ -404,10 +434,10 @@ export function CmrReferenceTablePage() {
                             {/* Data rows */}
                             {g.params.map((p) => {
                               const isBsa = p.indexing === 'BSA'
-                              const [fLL, fMean, fUL, fSD] = fmtRow(p.ll, p.mean, p.ul, p.sd)
+                              const [fLL, fMean, fUL, fSD] = fmtRow([p.ll, p.mean, p.ul, p.sd], p.decimal_places)
                               return (
+                                <Fragment key={p.parameter_key}>
                                 <tr
-                                  key={p.parameter_key}
                                   onClick={() => setSelectedParam(p)}
                                   className={cn(
                                     'cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] transition-colors duration-100 hover:bg-[hsl(var(--tone-neutral-50)/0.65)]',
@@ -417,6 +447,23 @@ export function CmrReferenceTablePage() {
                                   <td className="house-table-cell-text px-3 py-2 font-medium text-[hsl(var(--foreground))]">
                                     {displayName(p.parameter_key)}
                                     {isBsa && <BsaPill />}
+                                    {nestedParamMap[p.parameter_key] && nestedChildParams.has(p.parameter_key) && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setExpandedNested((prev) => {
+                                            const next = new Set(prev)
+                                            if (next.has(p.parameter_key)) next.delete(p.parameter_key)
+                                            else next.add(p.parameter_key)
+                                            return next
+                                          })
+                                        }}
+                                        className="ml-1.5 inline-flex items-center text-[hsl(var(--tone-neutral-400))] hover:text-[hsl(var(--foreground))] transition-colors"
+                                      >
+                                        <ChevronIcon open={expandedNested.has(p.parameter_key)} />
+                                      </button>
+                                    )}
                                   </td>
                                   <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center text-[hsl(var(--tone-neutral-500))]">
                                     {p.unit}
@@ -440,6 +487,35 @@ export function CmrReferenceTablePage() {
                                     <DirectionIndicator dir={p.abnormal_direction} />
                                   </td>
                                 </tr>
+                                {/* Nested child rows */}
+                                {expandedNested.has(p.parameter_key) && nestedChildParams.get(p.parameter_key)?.map((cp) => {
+                                  const cpBsa = cp.indexing === 'BSA'
+                                  const [cpLL, cpMean, cpUL, cpSD] = fmtRow([cp.ll, cp.mean, cp.ul, cp.sd], cp.decimal_places)
+                                  return (
+                                    <tr
+                                      key={cp.parameter_key}
+                                      onClick={() => setSelectedParam(cp)}
+                                      className="cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] bg-[hsl(var(--tone-neutral-50)/0.35)] transition-colors duration-100 hover:bg-[hsl(var(--tone-neutral-50)/0.65)]"
+                                    >
+                                      <td className="house-table-cell-text px-3 py-2 pl-8 font-medium text-[hsl(var(--foreground))]">
+                                        {displayName(cp.parameter_key)}
+                                        {cpBsa && <BsaPill />}
+                                      </td>
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center text-[hsl(var(--tone-neutral-500))]">{cp.unit}</td>
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">{cpLL}</td>
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums font-medium">{cpMean}</td>
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">{cpUL}</td>
+                                      <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums text-[hsl(var(--tone-neutral-500))]">{cpSD}</td>
+                                      <td className="house-table-cell-text px-1 py-2 text-center">
+                                        {cp.pap_differs && <PapPill />}
+                                      </td>
+                                      <td className="house-table-cell-text px-1 py-2 text-center">
+                                        <DirectionIndicator dir={cp.abnormal_direction} />
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                                </Fragment>
                               )
                             })}
                           </Fragment>

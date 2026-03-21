@@ -372,7 +372,7 @@ export function CmrRwmaPage() {
       <div className="flex items-center gap-4 flex-wrap">
         {/* Brush selector */}
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Brush:</span>
+
           <div className="flex rounded-full bg-muted/50 p-0.5 ring-1 ring-border/50">
             {RWMA_STATES.map((s) => (
               <button
@@ -397,7 +397,7 @@ export function CmrRwmaPage() {
         <button
           type="button"
           onClick={resetAll}
-          className="rounded-full px-3 py-1 text-xs font-medium text-muted-foreground ring-1 ring-border/50 hover:text-foreground transition-all"
+          className="rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 hover:bg-red-50 hover:text-red-700 transition-all"
         >
           Reset All
         </button>
@@ -521,7 +521,7 @@ export function CmrRwmaPage() {
           <span className="text-xs font-semibold tracking-wider text-muted-foreground">REPORT SUMMARY</span>
           {hasAbnormality && (
             <span
-              className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', severity === 'mild' ? 'text-black' : 'text-white')}
+              className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold', severity === 'mild' ? 'text-black' : 'text-white')}
               style={{ backgroundColor: WMSI_SEVERITY_COLORS[severity] }}
             >
               {severity.toUpperCase()}
@@ -530,7 +530,7 @@ export function CmrRwmaPage() {
           {territories.map((t) => (
             <span
               key={t}
-              className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white bg-foreground/70"
+              className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white bg-foreground/70"
             >
               {t}
             </span>

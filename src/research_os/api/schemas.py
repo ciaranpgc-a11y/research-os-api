@@ -2159,6 +2159,7 @@ class PublicationMetricDrilldownResponse(BaseModel):
     qc_flags: list[dict[str, Any]] = Field(default_factory=list)
     publications: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    context_modules: dict[str, Any] = Field(default_factory=dict)
 
 
 class PublicationMetricTileResponse(BaseModel):

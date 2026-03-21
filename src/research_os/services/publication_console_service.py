@@ -380,7 +380,7 @@ PUBLICATION_PAPER_DISPLAY_GROUP_TITLE_ALIASES = {
 }
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v6"
-STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v66"
+STRUCTURED_PAPER_CACHE_VERSION = "publication_structured_paper_v70"
 STRUCTURED_PAPER_STATUS_STRUCTURE_ONLY = "STRUCTURE_ONLY"
 STRUCTURED_PAPER_STATUS_PDF_ATTACHED = "PDF_ATTACHED"
 STRUCTURED_PAPER_STATUS_PARSING = "PARSING"
@@ -10155,6 +10155,14 @@ def _publication_table_is_pvalue_significant(text: str) -> bool:
         return False
 
 
+_SAMPLE_SIZE_TAIL_PATTERN = re.compile(
+    r"(?P<before>.+?)\s*(?P<size>(?:\(?\s*[nN]\s*[=:]\s*\d[\d,. ]*\)?\s*)+)$",
+)
+_SAMPLE_SIZE_ONLY_PATTERN = re.compile(
+    r"^\(?\s*[nN]\s*[=:]\s*\d[\d,. ]*\)?\s*$",
+)
+
+
 def _publication_table_render_cells(
     cells: list[dict[str, Any]],
     *,
@@ -10171,12 +10179,25 @@ def _publication_table_render_cells(
             attrs.append(f' colspan="{colspan}"')
         if rowspan > 1:
             attrs.append(f' rowspan="{rowspan}"')
-        text = html.escape(str(cell.get("text") or ""))
+        raw_text = str(cell.get("text") or "")
+        # Use pre-built HTML if the header merger set one
+        html_override = cell.get("_html_override")
+        if html_override:
+            text = html_override
+        else:
+            text = html.escape(raw_text)
+            # Wrap trailing sample-size indicators (e.g. "N=134", "(n = 88)") in a styled span
+            if tag == "th":
+                m = _SAMPLE_SIZE_TAIL_PATTERN.match(raw_text)
+                if m and m.group("before").strip():
+                    before = html.escape(m.group("before").strip())
+                    size = html.escape(m.group("size").strip())
+                    text = f'{before}<span class="publication-table-sample-size"><span>{size}</span></span>'
         if (
             tag == "td"
             and pvalue_column is not None
             and col == pvalue_column
-            and _publication_table_is_pvalue_significant(str(cell.get("text") or ""))
+            and _publication_table_is_pvalue_significant(raw_text)
         ):
             attrs.append(' class="publication-table-pvalue-significant"')
         rendered.append(f"<{tag}{''.join(attrs)}>{text}</{tag}>")
@@ -12426,9 +12447,37 @@ def _canonicalize_docling_table_html(
 
     parts = ["<table>"]
     if header_rows:
-        parts.append("<thead>")
+        # Merge sample-size-only rows (e.g. "N=134 | N=88") into the previous header row as pills
+        merged_header_rows: list[list[dict[str, Any]]] = []
         for row in header_rows:
-            parts.append(f"<tr>{_publication_table_render_cells(row)}</tr>")
+            non_empty_cells = [c for c in row if str(c.get("text") or "").strip()]
+            is_sample_size_row = (
+                len(non_empty_cells) >= 1
+                and all(
+                    _SAMPLE_SIZE_ONLY_PATTERN.match(str(c.get("text") or "").strip())
+                    for c in non_empty_cells
+                )
+            )
+            if is_sample_size_row and merged_header_rows:
+                # Append sample-size pill markup to matching cells in the previous row
+                prev_row = merged_header_rows[-1]
+                for i, cell in enumerate(row):
+                    size_text = str(cell.get("text") or "").strip()
+                    if size_text and i < len(prev_row):
+                        prev_text = str(prev_row[i].get("text") or "")
+                        prev_row[i] = {
+                            **prev_row[i],
+                            "_html_override": (
+                                f"{html.escape(prev_text)}"
+                                f'<span class="publication-table-sample-size"><span>{html.escape(size_text)}</span></span>'
+                            ),
+                        }
+            else:
+                merged_header_rows.append([{**c} for c in row])
+        parts.append("<thead>")
+        for row in merged_header_rows:
+            forced_th_row = [{**cell, "tag": "th"} for cell in row]
+            parts.append(f"<tr>{_publication_table_render_cells(forced_th_row)}</tr>")
         parts.append("</thead>")
     pvalue_column = _publication_table_detect_pvalue_column(header_rows)
     parts.append(

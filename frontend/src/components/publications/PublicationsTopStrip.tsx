@@ -52,6 +52,7 @@ import {
   type FieldPercentileShareDrilldownStats,
   type ImpactConcentrationDrilldownStats,
   type InfluentialCitationsDrilldownStats,
+  type MomentumFieldRelativeMomentumWindow,
   type MomentumDrilldownStats,
 } from './remaining-metric-drilldown'
 import { buildTotalPublicationsMethodsSections } from './total-publications-methods'
@@ -6563,23 +6564,6 @@ function formatCompactTrajectoryRangeLabel(years: number[]): string {
   return formatTrajectoryRangeLabel(years).replace(/\s*-\s*/g, '-')
 }
 
-function renderMomentumStateBanner(state: string): ReactNode {
-  const normalized = String(state || '').trim()
-  let toneClass: string = HOUSE_SURFACE_BANNER_INFO_CLASS
-  if (normalized === 'Accelerating') {
-    toneClass = HOUSE_SURFACE_BANNER_SUCCESS_CLASS
-  } else if (normalized === 'Slowing') {
-    toneClass = HOUSE_SURFACE_BANNER_WARNING_CLASS
-  } else if (normalized && normalized !== 'Stable') {
-    toneClass = HOUSE_SURFACE_BANNER_DANGER_CLASS
-  }
-  return (
-    <span className={cn(HOUSE_SURFACE_BANNER_CLASS, toneClass, 'inline-flex items-center justify-center px-3 py-1.5 text-sm leading-none')}>
-      {normalized || 'Stable'}
-    </span>
-  )
-}
-
 function formatHIndexContextTooltip(stats: HIndexDrilldownStats): string {
   const careerSpanText = stats.yearsSinceFirstCitedPaper === null
     ? 'the citation-active span'
@@ -6594,28 +6578,143 @@ function formatHIndexCorePerformanceTooltip(stats: HIndexDrilldownStats): string
     return `This panel combines the main context values behind the current h-core. h-core citation density is ${stats.hCoreCitationDensityValue}, h-core share of citations is ${stats.hCoreShareValue}, and the citation-active span is ${careerSpanText}. Read them together: higher density and share suggest a compact strong core, while longer span with lower density usually points to broader but more gradual accumulation.`
 }
 
-function formatMomentumOverviewTooltip(stats: MomentumDrilldownStats): string {
-  return `Momentum is currently ${stats.state.toLowerCase()} at index ${formatInt(stats.momentumIndex)}. This chart compares recent citation pace against the immediately preceding baseline window, so it is a recency signal rather than a lifetime scale measure.`
+function formatMomentumOverviewTooltip({
+  paceDeltaLabel,
+  useYearMode,
+}: {
+  paceDeltaLabel: string
+  useYearMode: boolean
+}): ReactNode {
+  const activeWindowLabel = useYearMode ? 'last year' : 'last 3 months'
+  const baselineWindowLabel = useYearMode ? 'prior 4 years' : 'prior 9 months'
+  if (paceDeltaLabel === 'New') {
+    return (
+      <>
+        Compares citation pace in the <span className="font-semibold">{activeWindowLabel}</span> with the <span className="font-semibold">{baselineWindowLabel}</span>. No prior baseline activity.
+      </>
+    )
+  }
+  return (
+    <>
+      Compares citation pace in the <span className="font-semibold">{activeWindowLabel}</span> with the <span className="font-semibold">{baselineWindowLabel}</span>.
+    </>
+  )
 }
 
-function formatMomentumContributorsTooltip(stats: MomentumDrilldownStats): string {
-  return stats.topContributors.length
-    ? `This table highlights the papers that best explain the momentum shift, using each paper's change from the prior baseline window to the recent window.`
-    : 'No paper-level momentum contributors are currently available.'
+function formatMomentumPaceWindowTooltip({
+  windowType,
+  useYearMode,
+}: {
+  windowType: 'recent' | 'prior'
+  useYearMode: boolean
+}): ReactNode {
+  const windowLabel = useYearMode
+    ? windowType === 'recent' ? 'last year' : 'prior 4 years'
+    : windowType === 'recent' ? 'last 3 months' : 'prior 9 months'
+  return (
+    <>
+      Average citation pace in the <span className="font-semibold">{windowLabel}</span>.
+    </>
+  )
 }
 
-function formatMomentumTrajectoryTooltip(stats: MomentumDrilldownStats): string {
-  return `This table shows the operational inputs feeding the current momentum state, including ${formatInt(stats.monthlyValues12m.length)} monthly points and ${formatInt(stats.weightedMonthlyValues12m.length)} weighted points. It explains how the current score is being produced rather than showing a lifetime citation curve.`
+function formatMomentumFieldAdjustedTileTooltip(): ReactNode {
+  return (
+    <>
+      Difference between <span className="font-semibold">portfolio pace change</span> and <span className="font-semibold">matched field trend</span>.
+    </>
+  )
 }
 
-function formatMomentumContextTooltip(stats: MomentumDrilldownStats): string {
-  return `Momentum currently tracks ${formatInt(stats.trackedPapers)} papers with usable citation history. Confidence buckets show the mix of match or enrichment quality behind that signal, so this section is mainly about how much weight to place on the headline.`
+function formatMomentumPeerPercentileTooltip(): ReactNode {
+  return (
+    <>
+      Percentile rank among <span className="font-semibold">field- and year-matched</span> peer portfolios.
+    </>
+  )
+}
+
+function formatMomentumMatchedFieldTrendTooltip(useYearMode: boolean): ReactNode {
+  const activeWindowLabel = useYearMode ? 'last year' : 'last 3 months'
+  const baselineWindowLabel = useYearMode ? 'prior 4 years' : 'prior 9 months'
+  return (
+    <>
+      Field benchmark pace change in the <span className="font-semibold">{activeWindowLabel}</span> versus the <span className="font-semibold">{baselineWindowLabel}</span>.
+    </>
+  )
 }
 
 function formatSignedPercentCompact(value: number): string {
   const rounded = Math.round(Number.isFinite(value) ? value : 0)
   const normalized = Math.abs(rounded) < 1 ? 0 : rounded
   return `${normalized >= 0 ? '+' : ''}${normalized.toFixed(0)}%`
+}
+
+function formatSignedPointsCompact(value: number): string {
+  const rounded = Math.round(Number.isFinite(value) ? value : 0)
+  const normalized = Math.abs(rounded) < 1 ? 0 : rounded
+  return `${normalized >= 0 ? '+' : ''}${normalized.toFixed(0)} pp`
+}
+
+function formatMomentumChangeDisplay(value: number | null, isNewSignal: boolean): string {
+  if (isNewSignal) {
+    return 'New'
+  }
+  if (value === null || !Number.isFinite(value)) {
+    return 'Not available'
+  }
+  return formatSignedPercentCompact(value)
+}
+
+function formatMomentumTopPercentileLabel(percentileRank: number): string {
+  const percentile = Math.max(0, Math.min(100, Math.round(Number.isFinite(percentileRank) ? percentileRank : 0)))
+  const topShare = Math.max(1, 100 - percentile)
+  return `Top ${topShare}%`
+}
+
+type MomentumContextBadgeSpec = {
+  label: string
+  tone: 'positive' | 'accent' | 'warning' | 'danger' | 'neutral'
+}
+
+function buildMomentumContextBadges(window: MomentumFieldRelativeMomentumWindow): MomentumContextBadgeSpec[] {
+  const badges: MomentumContextBadgeSpec[] = []
+  if (
+    (window.fieldRelativeDeltaPts !== null && window.fieldRelativeDeltaPts >= 10)
+    || (window.percentileRank !== null && window.percentileRank >= 80)
+  ) {
+    badges.push({ label: 'Relative outperformance', tone: 'positive' })
+  } else if (window.fieldRelativeDeltaPts !== null && Math.abs(window.fieldRelativeDeltaPts) <= 5) {
+    badges.push({ label: 'In line with field', tone: 'neutral' })
+  }
+  if (window.fieldBaselineChangePct !== null && window.fieldBaselineChangePct <= -10) {
+    badges.push({ label: 'Field contraction', tone: 'warning' })
+  } else if (window.fieldBaselineChangePct !== null && window.fieldBaselineChangePct >= 10) {
+    badges.push({ label: 'Field expansion', tone: 'accent' })
+  }
+  return badges.slice(0, 3)
+}
+
+function buildMomentumPercentileBadge(percentileRank: number | null): MomentumContextBadgeSpec | null {
+  if (percentileRank === null || !Number.isFinite(percentileRank)) {
+    return null
+  }
+  if (percentileRank >= 99) {
+    return { label: 'Exceptional', tone: 'positive' }
+  }
+  if (percentileRank >= 95) {
+    return { label: 'Leading', tone: 'positive' }
+  }
+  if (percentileRank >= 80) {
+    return { label: 'Upper tier', tone: 'positive' }
+  }
+  if (percentileRank >= 60) {
+    return { label: 'Above median', tone: 'accent' }
+  }
+  if (percentileRank >= 40) {
+    return { label: 'Median range', tone: 'neutral' }
+  }
+  return { label: 'Below median', tone: 'warning' }
 }
 
 function formatDrilldownValue(value: unknown): string {
@@ -6842,6 +6941,23 @@ type MomentumYearBreakdown = {
 }
 
 type MomentumWindowMode = '12m' | '5y'
+type MomentumTrajectoryViewMode = 'pace' | 'number'
+type MomentumBreakdownBucketKey = 'new' | 'faster' | 'slower' | 'flat'
+type MomentumTrajectoryHistoryPoint = {
+  key: string
+  label: string
+  subLabel?: string
+  timeMs: number
+  periodLabel: string
+  recentWindowLabel: string
+  priorWindowLabel: string
+  recentTotal: number
+  priorTotal: number
+  recentRate: number
+  priorRate: number
+  deltaPct: number
+  tone: MomentumRecentCellTone
+}
 type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
 type RecentConcentrationWindowMode = PublicationsWindowMode
 type PublicationTrendsVisualMode = 'bars' | 'line' | 'table'
@@ -6881,6 +6997,22 @@ const DRILLDOWN_TABS: Array<{ value: DrilldownTab; label: string }> = [
   { value: 'breakdown', label: 'Breakdown' },
   { value: 'trajectory', label: 'Trajectory' },
   { value: 'context', label: 'Context' },
+  { value: 'methods', label: 'Methods' },
+]
+
+const TOTAL_CITATIONS_DRILLDOWN_TABS: Array<{ value: DrilldownTab; label: string }> = [
+  { value: 'summary', label: 'Overview' },
+  { value: 'breakdown', label: 'Distribution' },
+  { value: 'trajectory', label: 'Activity' },
+  { value: 'context', label: 'Profile' },
+  { value: 'methods', label: 'Methods' },
+]
+
+const MOMENTUM_DRILLDOWN_TABS: Array<{ value: DrilldownTab; label: string }> = [
+  { value: 'summary', label: 'Overview' },
+  { value: 'breakdown', label: 'Drivers' },
+  { value: 'trajectory', label: 'History' },
+  { value: 'context', label: 'Benchmark' },
   { value: 'methods', label: 'Methods' },
 ]
 
@@ -6947,9 +7079,7 @@ const HOUSE_SURFACE_TABLE_HEAD_CLASS = publicationsHouseSurfaces.tableHead
 const HOUSE_SURFACE_TABLE_ROW_CLASS = publicationsHouseSurfaces.tableRow
 const HOUSE_SURFACE_BANNER_CLASS = publicationsHouseSurfaces.banner
 const HOUSE_SURFACE_BANNER_INFO_CLASS = publicationsHouseSurfaces.bannerInfo
-const HOUSE_SURFACE_BANNER_SUCCESS_CLASS = publicationsHouseSurfaces.bannerSuccess
 const HOUSE_SURFACE_BANNER_WARNING_CLASS = publicationsHouseSurfaces.bannerWarning
-const HOUSE_SURFACE_BANNER_DANGER_CLASS = publicationsHouseSurfaces.bannerDanger
 const HOUSE_SURFACE_METRIC_PILL_CLASS = publicationsHouseSurfaces.metricPill
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS = publicationsHouseSurfaces.metricPillPublications
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS = publicationsHouseSurfaces.metricPillPublicationsRegular
@@ -8125,6 +8255,98 @@ function buildNiceAxis(maxObservedValue: number): { axisMax: number; ticks: numb
   return { axisMax, ticks }
 }
 
+function buildNiceRangeAxis(
+  minObservedValue: number,
+  maxObservedValue: number,
+  {
+    snapToZero = true,
+    minimumSpan = 1,
+    targetIntervals = 4,
+  }: {
+    snapToZero?: boolean
+    minimumSpan?: number
+    targetIntervals?: number
+  } = {},
+): {
+  axisMin: number
+  axisMax: number
+  ticks: number[]
+} {
+  let safeMin = Number.isFinite(minObservedValue) ? minObservedValue : 0
+  let safeMax = Number.isFinite(maxObservedValue) ? maxObservedValue : safeMin
+  if (safeMin > safeMax) {
+    ;[safeMin, safeMax] = [safeMax, safeMin]
+  }
+
+  const observedSpan = Math.max(0, safeMax - safeMin)
+  const baseSpan = Math.max(
+    minimumSpan,
+    observedSpan,
+    Math.abs(safeMin) * 0.2,
+    Math.abs(safeMax) * 0.2,
+    1,
+  )
+  const pad = Math.max(minimumSpan * 0.1, baseSpan * 0.12)
+  const nearZeroThreshold = Math.max(minimumSpan, baseSpan * 0.18)
+
+  let paddedMin = safeMin - pad
+  let paddedMax = safeMax + pad
+
+  if (snapToZero && safeMin >= 0 && safeMin <= nearZeroThreshold) {
+    paddedMin = 0
+  }
+  if (snapToZero && safeMax <= 0 && Math.abs(safeMax) <= nearZeroThreshold) {
+    paddedMax = 0
+  }
+
+  const paddedSpan = Math.max(minimumSpan, paddedMax - paddedMin)
+  const roughStep = Math.max(1, paddedSpan / Math.max(1, targetIntervals))
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep))
+  const normalized = roughStep / magnitude
+  const niceFactor = normalized <= 1
+    ? 1
+    : normalized <= 2
+      ? 2
+      : normalized <= 3
+        ? 3
+        : normalized <= 5
+          ? 5
+          : 10
+  const step = Math.max(1, niceFactor * magnitude)
+
+  let axisMin = Math.floor(paddedMin / step) * step
+  let axisMax = Math.ceil(paddedMax / step) * step
+
+  if (snapToZero && safeMin >= 0 && safeMin <= nearZeroThreshold) {
+    axisMin = 0
+  }
+  if (snapToZero && safeMax <= 0 && Math.abs(safeMax) <= nearZeroThreshold) {
+    axisMax = 0
+  }
+  if (axisMax <= axisMin) {
+    axisMax = axisMin + step
+  }
+
+  const ticks: number[] = []
+  const maxTickCount = 8
+  for (
+    let index = 0, value = axisMin;
+    index < maxTickCount && value <= axisMax + (step * 0.5);
+    index += 1, value += step
+  ) {
+    ticks.push(Math.abs(value) < 1e-9 ? 0 : value)
+  }
+  if (!ticks.length || ticks[ticks.length - 1] !== axisMax) {
+    ticks.push(axisMax)
+  }
+
+  return {
+    axisMin,
+    axisMax,
+    ticks,
+  }
+}
+
 export type CitationHistogramBucket = {
   key: string
   label: string
@@ -8398,6 +8620,251 @@ function buildMomentumYearBreakdown(totalCitationsTile: PublicationMetricTilePay
     liftPct,
     insufficientBaseline,
   }
+}
+
+function buildMomentumTimelineMonthStarts(startMonthStart: Date, endMonthStart: Date): Date[] {
+  const spanMonths = getSpanMonths(startMonthStart.getTime(), endMonthStart.getTime())
+  return Array.from({ length: spanMonths + 1 }, (_value, index) => shiftUtcMonth(startMonthStart, index))
+}
+
+function estimateMomentumWindowCitationsFromYearlyCounts(
+  yearlyCounts: Record<number, number>,
+  startMonthStart: Date,
+  endMonthStartExclusive: Date,
+  now: Date,
+): number {
+  const startMs = startMonthStart.getTime()
+  const endMs = endMonthStartExclusive.getTime()
+  const nowMs = now.getTime()
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    return 0
+  }
+  let estimated = 0
+  Object.entries(yearlyCounts).forEach(([rawYear, rawCount]) => {
+    const year = Math.round(Number(rawYear))
+    const count = Math.max(0, Number(rawCount) || 0)
+    if (!Number.isFinite(year) || count <= 0) {
+      return
+    }
+    const segmentStartMs = Date.UTC(year, 0, 1)
+    const segmentEndMs = year === now.getUTCFullYear()
+      ? Math.min(Date.UTC(year + 1, 0, 1), nowMs)
+      : Date.UTC(year + 1, 0, 1)
+    if (segmentEndMs <= segmentStartMs) {
+      return
+    }
+    const overlapStartMs = Math.max(startMs, segmentStartMs)
+    const overlapEndMs = Math.min(endMs, segmentEndMs)
+    if (overlapEndMs <= overlapStartMs) {
+      return
+    }
+    const overlapMs = overlapEndMs - overlapStartMs
+    const segmentMs = segmentEndMs - segmentStartMs
+    estimated += count * Math.max(0, Math.min(1, overlapMs / Math.max(1, segmentMs)))
+  })
+  return Math.max(0, Math.round(estimated))
+}
+
+function buildMomentumMonthlyTrajectoryPoints(tile: PublicationMetricTilePayload): MomentumTrajectoryHistoryPoint[] {
+  const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+  const publications = Array.isArray(drilldown.publications) ? drilldown.publications : []
+  const asOfRaw = String(drilldown.as_of_date || '').trim()
+  const asOfDate = parseIsoPublicationDate(asOfRaw) ?? new Date()
+  const currentMonthStart = new Date(Date.UTC(asOfDate.getUTCFullYear(), asOfDate.getUTCMonth(), 1))
+  const lastCompleteMonthStart = shiftUtcMonth(currentMonthStart, -1)
+  const trailingTailStart = shiftUtcMonth(currentMonthStart, -24)
+  const trailingTailStartMs = trailingTailStart.getTime()
+  const trailingTailMonthStarts = buildMomentumTimelineMonthStarts(trailingTailStart, lastCompleteMonthStart)
+  const trailingTailMonthIndexByTime = new Map(
+    trailingTailMonthStarts.map((monthStart, index) => [monthStart.getTime(), index]),
+  )
+  let earliestMonthStartMs: number | null = null
+  const publicationSeries = publications.map((item) => {
+    if (!item || typeof item !== 'object') {
+      return null
+    }
+    const row = item as Record<string, unknown>
+    const yearlyCounts = parseNumericKeyedMap(row.yearly_counts)
+    const yearlyKeys = Object.keys(yearlyCounts)
+      .map((year) => Math.round(Number(year)))
+      .filter((year) => Number.isFinite(year))
+      .sort((left, right) => left - right)
+    const rawMonthlyTail = toNumberArray(row.monthly_added_24).map((value) => Math.max(0, value))
+    const normalizedMonthlyTail = rawMonthlyTail.length >= 24
+      ? rawMonthlyTail.slice(-24)
+      : [...Array.from({ length: 24 - rawMonthlyTail.length }, () => 0), ...rawMonthlyTail]
+    const hasTailSignal = normalizedMonthlyTail.some((value) => value > 0)
+    if (yearlyKeys.length > 0) {
+      const candidateMs = Date.UTC(yearlyKeys[0] ?? lastCompleteMonthStart.getUTCFullYear(), 0, 1)
+      earliestMonthStartMs = earliestMonthStartMs === null || candidateMs < earliestMonthStartMs
+        ? candidateMs
+        : earliestMonthStartMs
+    } else if (hasTailSignal) {
+      earliestMonthStartMs = earliestMonthStartMs === null || trailingTailStartMs < earliestMonthStartMs
+        ? trailingTailStartMs
+        : earliestMonthStartMs
+    }
+    return {
+      yearlyCounts,
+      normalizedMonthlyTail,
+      hasTailSignal,
+    }
+  }).filter(isNonNullish)
+  if (earliestMonthStartMs === null || lastCompleteMonthStart.getTime() < earliestMonthStartMs) {
+    return []
+  }
+  const resolvedEarliestMonthStart = new Date(earliestMonthStartMs)
+  const monthStarts = buildMomentumTimelineMonthStarts(resolvedEarliestMonthStart, lastCompleteMonthStart)
+  const monthlyTotals = Array.from({ length: monthStarts.length }, () => 0)
+  publicationSeries.forEach((series) => {
+    monthStarts.forEach((monthStart, index) => {
+      const tailIndex = trailingTailMonthIndexByTime.get(monthStart.getTime())
+      const monthValue = series.hasTailSignal && typeof tailIndex === 'number'
+        ? series.normalizedMonthlyTail[tailIndex] ?? 0
+        : estimateMomentumWindowCitationsFromYearlyCounts(
+          series.yearlyCounts,
+          monthStart,
+          shiftUtcMonth(monthStart, 1),
+          asOfDate,
+        )
+      monthlyTotals[index] += Math.max(0, monthValue)
+    })
+  })
+  if (!monthlyTotals.some((value) => value > 0)) {
+    return []
+  }
+  const points: MomentumTrajectoryHistoryPoint[] = []
+  for (let index = 11; index < monthlyTotals.length; index += 1) {
+    const recentSlice = monthlyTotals.slice(index - 2, index + 1)
+    const priorSlice = monthlyTotals.slice(index - 11, index - 2)
+    if (recentSlice.length < 3 || priorSlice.length < 9) {
+      continue
+    }
+    const recentTotal = recentSlice.reduce((sum, value) => sum + value, 0)
+    const priorTotal = priorSlice.reduce((sum, value) => sum + value, 0)
+    const recentRate = recentTotal / 3
+    const priorRate = priorTotal / 9
+    if (priorRate <= 1e-6) {
+      continue
+    }
+    const periodMonthStart = monthStarts[index]
+    const recentWindowStart = monthStarts[index - 2]
+    const priorWindowStart = monthStarts[index - 11]
+    const priorWindowEnd = monthStarts[index - 3]
+    const deltaPct = ((recentRate / priorRate) - 1) * 100
+    points.push({
+      key: `momentum-trajectory-month-${periodMonthStart.getTime()}`,
+      label: MONTH_SHORT[periodMonthStart.getUTCMonth()],
+      subLabel: periodMonthStart.getUTCMonth() === 0 || index === 11 ? shortYearLabel(periodMonthStart.getUTCFullYear()) : undefined,
+      timeMs: periodMonthStart.getTime(),
+      periodLabel: formatMonthYearLabel(periodMonthStart.getTime()),
+      recentWindowLabel: formatMomentumWindowRange(recentWindowStart, periodMonthStart),
+      priorWindowLabel: formatMomentumWindowRange(priorWindowStart, priorWindowEnd),
+      recentTotal,
+      priorTotal,
+      recentRate,
+      priorRate,
+      deltaPct,
+      tone: getMomentumRecentCellTone({
+        recentTotalCitations: recentRate,
+        recentMonths: 1,
+        priorTotalCitations: priorRate,
+        priorMonths: 1,
+        isNotComparable: false,
+      }),
+    })
+  }
+  return points
+}
+
+function buildMomentumYearlyTrajectoryPoints(tile: PublicationMetricTilePayload): MomentumTrajectoryHistoryPoint[] {
+  const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+  const publications = Array.isArray(drilldown.publications) ? drilldown.publications : []
+  const yearTotals = new Map<number, number>()
+  publications.forEach((item) => {
+    if (!item || typeof item !== 'object') {
+      return
+    }
+    const yearlyCounts = parseNumericKeyedMap((item as Record<string, unknown>).yearly_counts)
+    Object.entries(yearlyCounts).forEach(([rawYear, rawValue]) => {
+      const year = Math.round(Number(rawYear))
+      if (!Number.isFinite(year)) {
+        return
+      }
+      yearTotals.set(year, (yearTotals.get(year) || 0) + Math.max(0, rawValue))
+    })
+  })
+  const sortedYears = Array.from(yearTotals.keys()).sort((left, right) => left - right)
+  if (!sortedYears.length) {
+    return []
+  }
+  const firstYear = sortedYears[0]
+  const lastYear = sortedYears[sortedYears.length - 1]
+  const filledSeries = Array.from({ length: Math.max(0, lastYear - firstYear + 1) }, (_, index) => {
+    const year = firstYear + index
+    return {
+      year,
+      value: Math.max(0, yearTotals.get(year) || 0),
+    }
+  })
+  const points: MomentumTrajectoryHistoryPoint[] = []
+  for (let index = 4; index < filledSeries.length; index += 1) {
+    const recent = filledSeries[index]
+    const priorSlice = filledSeries.slice(index - 4, index)
+    if (priorSlice.length < 4) {
+      continue
+    }
+    const recentTotal = recent.value
+    const priorTotal = priorSlice.reduce((sum, entry) => sum + entry.value, 0)
+    const recentRate = recentTotal
+    const priorRate = priorTotal / 4
+    if (priorRate <= 1e-6) {
+      continue
+    }
+    const deltaPct = ((recentRate / priorRate) - 1) * 100
+    points.push({
+      key: `momentum-trajectory-year-${recent.year}`,
+      label: String(recent.year),
+      timeMs: Date.UTC(recent.year, 0, 1),
+      periodLabel: String(recent.year),
+      recentWindowLabel: String(recent.year),
+      priorWindowLabel: `${priorSlice[0]?.year}-${priorSlice[priorSlice.length - 1]?.year}`,
+      recentTotal,
+      priorTotal,
+      recentRate,
+      priorRate,
+      deltaPct,
+      tone: getMomentumRecentCellTone({
+        recentTotalCitations: recentRate,
+        recentMonths: 1,
+        priorTotalCitations: priorRate,
+        priorMonths: 1,
+        isNotComparable: false,
+      }),
+    })
+  }
+  return points
+}
+
+function buildMomentumTrajectoryPoints(tile: PublicationMetricTilePayload, mode: MomentumWindowMode): MomentumTrajectoryHistoryPoint[] {
+  return mode === '5y'
+    ? buildMomentumYearlyTrajectoryPoints(tile)
+    : buildMomentumMonthlyTrajectoryPoints(tile)
+}
+
+function buildMomentumTrajectoryPercentAxis(
+  minObservedValue: number,
+  maxObservedValue: number,
+): {
+  axisMin: number
+  axisMax: number
+  ticks: number[]
+} {
+  return buildNiceRangeAxis(minObservedValue, maxObservedValue, {
+    snapToZero: true,
+    minimumSpan: 5,
+    targetIntervals: 4,
+  })
 }
 
 function buildHIndexProgressMeta(tile: PublicationMetricTilePayload): HIndexProgressMeta {
@@ -11510,20 +11977,26 @@ function parsePublicationMonthStart(value: string | null | undefined, year: numb
   return null
 }
 
+function formatMomentumWindowRange(startMonthStart: Date | null, endMonthStart: Date | null): string {
+  if (!startMonthStart || !endMonthStart) {
+    return 'Period not available'
+  }
+  const startLabel = formatPublicationMonthYear(startMonthStart)
+  const endLabel = formatPublicationMonthYear(endMonthStart)
+  return startLabel === endLabel ? startLabel : `${startLabel}-${endLabel}`
+}
+
 function formatMomentumTableAverageValue({
   totalCitations,
   months,
-  publicationMonthStart,
-  windowStart,
+  publicationMonthStart: _publicationMonthStart,
+  windowStart: _windowStart,
 }: {
   totalCitations: number
   months: number
   publicationMonthStart: Date | null
   windowStart: Date
 }): string {
-  if (publicationMonthStart && publicationMonthStart.getTime() >= windowStart.getTime()) {
-    return 'N/A'
-  }
   if (totalCitations > 0) {
     return formatMomentumOverviewTick(totalCitations / months)
   }
@@ -11531,6 +12004,15 @@ function formatMomentumTableAverageValue({
 }
 
 type MomentumRecentCellTone = 'positive' | 'accent' | 'danger' | 'neutral'
+
+type MomentumWaterfallContribution = {
+  key: string
+  label: string
+  deltaValue: number
+  tone: 'positive' | 'accent' | 'danger'
+  publicationCount?: number
+  detail?: string
+}
 
 function getMomentumRecentCellTone({
   recentTotalCitations,
@@ -11576,8 +12058,493 @@ function getMomentumRecentCellTintClass(tone: MomentumRecentCellTone): string {
   }
 }
 
-function isMomentumWindowComparable(publicationMonthStart: Date | null, windowStart: Date): boolean {
-  return !publicationMonthStart || publicationMonthStart.getTime() < windowStart.getTime()
+function getMomentumSummaryCardTintClass(tone: MomentumRecentCellTone): string {
+  switch (tone) {
+    case 'positive':
+      return 'border-[hsl(var(--tone-positive-300)/0.95)] bg-[hsl(var(--tone-positive-50)/0.82)]'
+    case 'danger':
+      return 'border-[hsl(var(--tone-danger-300)/0.95)] bg-[hsl(var(--tone-danger-50)/0.84)]'
+    case 'accent':
+      return 'border-[hsl(var(--tone-accent-300)/0.95)] bg-[hsl(var(--tone-accent-50)/0.84)]'
+    default:
+      return 'border-[hsl(var(--tone-neutral-300)/0.92)] bg-[hsl(var(--tone-neutral-100)/0.82)]'
+  }
+}
+
+function getMomentumSummaryValueToneClass(tone: MomentumRecentCellTone): string {
+  switch (tone) {
+    case 'positive':
+      return 'text-[hsl(var(--tone-positive-700))]'
+    case 'danger':
+      return 'text-[hsl(var(--tone-danger-700))]'
+    case 'accent':
+      return 'text-[hsl(var(--tone-accent-800))]'
+    default:
+      return 'text-[hsl(var(--tone-neutral-800))]'
+  }
+}
+
+function getMomentumPctTone(value: number | null, isNewSignal = false): MomentumRecentCellTone {
+  if (isNewSignal) {
+    return 'accent'
+  }
+  if (value === null || !Number.isFinite(value)) {
+    return 'neutral'
+  }
+  if (value >= 10) {
+    return 'positive'
+  }
+  if (value <= -10) {
+    return 'danger'
+  }
+  return 'accent'
+}
+
+function getMomentumFieldDeltaTone(value: number | null): MomentumRecentCellTone {
+  if (value === null || !Number.isFinite(value)) {
+    return 'neutral'
+  }
+  if (value >= 5) {
+    return 'positive'
+  }
+  if (value <= -5) {
+    return 'danger'
+  }
+  return 'accent'
+}
+
+function getMomentumBreakdownSegmentActiveClass(tone: MomentumRecentCellTone): string {
+  switch (tone) {
+    case 'positive':
+      return 'bg-[hsl(var(--tone-positive-600))] text-white'
+    case 'danger':
+      return 'bg-[hsl(var(--tone-danger-600))] text-white'
+    case 'accent':
+      return 'bg-[hsl(var(--tone-accent-600))] text-white'
+    default:
+      return 'bg-[hsl(var(--tone-neutral-800))] text-white'
+  }
+}
+
+function MomentumPaceWaterfallChart({
+  baselineValue,
+  recentValue,
+  contributions,
+  unitLabel,
+  axisLabel,
+  baselineWindowLabel,
+  recentWindowLabel,
+  baselineScopeLabel,
+  recentScopeLabel,
+  baselinePublicationCount,
+  recentPublicationCount,
+}: {
+  baselineValue: number
+  recentValue: number
+  contributions: MomentumWaterfallContribution[]
+  unitLabel: string
+  axisLabel: string
+  baselineWindowLabel: string
+  recentWindowLabel: string
+  baselineScopeLabel: string
+  recentScopeLabel: string
+  baselinePublicationCount: number
+  recentPublicationCount: number
+}) {
+  const steps = useMemo(() => {
+    const items: Array<{
+      key: string
+      label: string
+      kind: 'total' | 'delta'
+      tone: 'positive' | 'accent' | 'danger' | 'neutral'
+      value: number
+      deltaValue: number
+      startValue: number
+      endValue: number
+      topValue: number
+      bottomValue: number
+      publicationCount: number | null
+      detail: string | null
+    }> = []
+    let runningValue = baselineValue
+    items.push({
+      key: 'baseline',
+      label: 'Prior pace',
+      kind: 'total',
+      tone: 'neutral',
+      value: baselineValue,
+      deltaValue: 0,
+      startValue: 0,
+      endValue: baselineValue,
+      topValue: Math.max(0, baselineValue),
+      bottomValue: 0,
+      publicationCount: baselinePublicationCount,
+      detail: null,
+    })
+    contributions.forEach((contribution) => {
+      const nextValue = runningValue + contribution.deltaValue
+      items.push({
+        key: contribution.key,
+        label: contribution.label,
+        kind: 'delta',
+        tone: contribution.tone,
+        value: nextValue,
+        deltaValue: contribution.deltaValue,
+        startValue: runningValue,
+        endValue: nextValue,
+        topValue: Math.max(runningValue, nextValue),
+        bottomValue: Math.min(runningValue, nextValue),
+        publicationCount: contribution.publicationCount ?? null,
+        detail: contribution.detail ?? null,
+      })
+      runningValue = nextValue
+    })
+    items.push({
+      key: 'recent',
+      label: 'Recent pace',
+      kind: 'total',
+      tone: 'accent',
+      value: recentValue,
+      deltaValue: 0,
+      startValue: 0,
+      endValue: recentValue,
+      topValue: Math.max(0, recentValue),
+      bottomValue: 0,
+      publicationCount: recentPublicationCount,
+      detail: null,
+    })
+    return items
+  }, [baselinePublicationCount, baselineValue, contributions, recentPublicationCount, recentValue])
+  const animationKey = useMemo(
+    () => `momentum-waterfall:${baselineValue.toFixed(3)}:${recentValue.toFixed(3)}:${contributions.map((item) => `${item.key}-${item.deltaValue.toFixed(3)}`).join('|')}`,
+    [baselineValue, contributions, recentValue],
+  )
+  const hasSteps = steps.length > 0
+  const isEntryCycle = useIsFirstChartEntry(animationKey, hasSteps)
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
+
+  const maxObservedValue = useMemo(
+    () => Math.max(
+      baselineValue,
+      recentValue,
+      ...steps.flatMap((step) => [step.topValue, step.endValue]),
+      0,
+    ),
+    [baselineValue, recentValue, steps],
+  )
+  const axisScale = useMemo(() => buildNiceAxis(maxObservedValue), [maxObservedValue])
+  const axisMax = Math.max(1, axisScale.axisMax)
+  const displayedAxisMax = useEasedValue(
+    axisMax,
+    `${animationKey}|y-axis-max`,
+    hasSteps,
+    axisDurationMs,
+  )
+  const yAxisTickRatios = useMemo(
+    () => axisScale.ticks.map((tickValue) => (axisMax <= 0 ? 0 : tickValue / axisMax)),
+    [axisMax, axisScale.ticks],
+  )
+  const yAxisTicks = useMemo(
+    () => yAxisTickRatios.map((ratio) => ratio * Math.max(1, displayedAxisMax)),
+    [displayedAxisMax, yAxisTickRatios],
+  )
+  const chartLeftInsetRem = 3.35
+  const chartBottomInsetRem = 3
+  const chartTopInsetRem = 0.55
+  const yAxisTickOffsetRem = 0.42
+  const plotAreaStyle: CSSProperties = {
+    left: `${chartLeftInsetRem}rem`,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    top: `${chartTopInsetRem}rem`,
+    bottom: `${chartBottomInsetRem}rem`,
+  }
+  const yAxisPanelStyle: CSSProperties = {
+    top: `${chartTopInsetRem}rem`,
+    bottom: `${chartBottomInsetRem}rem`,
+    left: '0',
+    width: `${chartLeftInsetRem - 0.55}rem`,
+  }
+  const slotWidthPct = 100 / Math.max(1, steps.length)
+  const barWidthPct = Math.min(18, slotWidthPct * 0.62)
+  const positiveLiftTotal = contributions
+    .filter((step) => step.deltaValue > 0)
+    .reduce((sum, step) => sum + step.deltaValue, 0)
+  const dragTotal = Math.abs(
+    contributions
+      .filter((step) => step.deltaValue < 0)
+      .reduce((sum, step) => sum + step.deltaValue, 0),
+  )
+  const netChange = recentValue - baselineValue
+  const netChangePct = baselineValue > 0 ? ((recentValue / baselineValue) - 1) * 100 : null
+  const formatWhole = (value: number): string => formatInt(Math.round(value))
+  const formatSignedWhole = (value: number): string => {
+    const rounded = Math.round(value)
+    return rounded >= 0 ? `+${formatInt(rounded)}` : formatInt(rounded)
+  }
+  const tooltipValueToneClass = (tone: (typeof steps)[number]['tone']): string => {
+    switch (tone) {
+      case 'positive':
+        return 'text-[hsl(var(--tone-positive-700))]'
+      case 'danger':
+        return 'text-[hsl(var(--tone-danger-700))]'
+      case 'accent':
+        return 'text-[hsl(var(--tone-accent-800))]'
+      default:
+        return 'text-[hsl(var(--tone-neutral-900))]'
+    }
+  }
+  const tooltipBadgeClass = (tone: (typeof steps)[number]['tone']): string => {
+    switch (tone) {
+      case 'positive':
+        return 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
+      case 'danger':
+        return 'border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-700))]'
+      case 'accent':
+        return 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]'
+      default:
+        return 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-800))]'
+    }
+  }
+  const renderStepTooltipContent = (step: (typeof steps)[number]): ReactNode => {
+    if (step.key === 'baseline') {
+      const publicationCount = Math.max(0, step.publicationCount ?? 0)
+      return (
+        <div className="min-w-[14rem] space-y-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{step.label}</p>
+              <p className="text-[0.72rem] leading-snug text-[hsl(var(--tone-neutral-600))]">{baselineWindowLabel}</p>
+            </div>
+            <p className={cn('text-[1.05rem] font-semibold tabular-nums leading-none', tooltipValueToneClass(step.tone))}>
+              {formatWhole(step.value)}
+              {unitLabel}
+            </p>
+          </div>
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-[hsl(var(--tone-neutral-200))] pt-2 text-[0.72rem] leading-snug">
+            <span className="text-[hsl(var(--tone-neutral-500))]">Published by</span>
+            <span className="font-medium text-[hsl(var(--tone-neutral-800))]">{baselineScopeLabel}</span>
+            <span className="text-[hsl(var(--tone-neutral-500))]">In scope</span>
+            <span className="font-medium text-[hsl(var(--tone-neutral-800))]">{`${formatInt(publicationCount)} ${pluralize(publicationCount, 'publication')}`}</span>
+          </div>
+        </div>
+      )
+    }
+    if (step.key === 'recent') {
+      const publicationCount = Math.max(0, step.publicationCount ?? 0)
+      return (
+        <div className="min-w-[14rem] space-y-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{step.label}</p>
+              <p className="text-[0.72rem] leading-snug text-[hsl(var(--tone-neutral-600))]">{recentWindowLabel}</p>
+            </div>
+            <p className={cn('text-[1.05rem] font-semibold tabular-nums leading-none', tooltipValueToneClass(step.tone))}>
+              {formatWhole(step.value)}
+              {unitLabel}
+            </p>
+          </div>
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-[hsl(var(--tone-neutral-200))] pt-2 text-[0.72rem] leading-snug">
+            <span className="text-[hsl(var(--tone-neutral-500))]">Published by</span>
+            <span className="font-medium text-[hsl(var(--tone-neutral-800))]">{recentScopeLabel}</span>
+            <span className="text-[hsl(var(--tone-neutral-500))]">In scope</span>
+            <span className="font-medium text-[hsl(var(--tone-neutral-800))]">{`${formatInt(publicationCount)} ${pluralize(publicationCount, 'publication')}`}</span>
+            <span className="text-[hsl(var(--tone-neutral-500))]">Vs prior</span>
+            <span className="font-medium text-[hsl(var(--tone-neutral-800))]">{`${formatSignedWhole(netChange)}${unitLabel}${netChangePct === null ? '' : ` (${formatSignedPercentCompact(netChangePct)})`}`}</span>
+          </div>
+        </div>
+      )
+    }
+    const publicationCount = Math.max(0, step.publicationCount ?? 0)
+    const shareLabel = step.deltaValue > 0
+      ? positiveLiftTotal > 1e-6
+        ? `${formatInt(Math.round((step.deltaValue / positiveLiftTotal) * 100))}% uplift`
+        : null
+      : dragTotal > 1e-6
+        ? `${formatInt(Math.round((Math.abs(step.deltaValue) / dragTotal) * 100))}% drag`
+        : null
+    return (
+      <div className="min-w-[14rem] space-y-2.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{step.label}</p>
+            {step.detail ? (
+              <p className="text-[0.72rem] leading-snug text-[hsl(var(--tone-neutral-600))]">{step.detail}</p>
+            ) : null}
+          </div>
+          <span className={cn('inline-flex rounded-full border px-2 py-1 text-[0.76rem] font-semibold tabular-nums leading-none', tooltipBadgeClass(step.tone))}>
+            {formatSignedWhole(step.deltaValue)}
+            {unitLabel}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 border-t border-[hsl(var(--tone-neutral-200))] pt-2">
+          <div className="rounded-md bg-[hsl(var(--tone-neutral-50))] px-2 py-1.5">
+            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--tone-neutral-500))]">Publications</p>
+            <p className="mt-1 text-[0.95rem] font-semibold tabular-nums leading-none text-[hsl(var(--tone-neutral-900))]">{formatInt(publicationCount)}</p>
+          </div>
+          <div className="rounded-md bg-[hsl(var(--tone-neutral-50))] px-2 py-1.5">
+            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--tone-neutral-500))]">Share</p>
+            <p className="mt-1 text-[0.95rem] font-semibold tabular-nums leading-none text-[hsl(var(--tone-neutral-900))]">{shareLabel || 'n/a'}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.72rem] leading-snug">
+          <span className="text-[hsl(var(--tone-neutral-500))]">Running pace</span>
+          <span className="font-medium text-[hsl(var(--tone-neutral-800))]">{`${formatWhole(step.endValue)}${unitLabel}`}</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={cn('relative h-[15rem] w-full', 'house-publications-trend-chart-frame-borderless')}>
+      <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
+        {yAxisTicks.map((tickValue, index) => {
+          const pct = Math.max(0, Math.min(100, (yAxisTickRatios[index] || 0) * 100))
+          return (
+            <p
+              key={`momentum-waterfall-y-${index}`}
+              className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
+              style={{
+                bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)`,
+                transitionDuration: `${axisDurationMs}ms`,
+                transitionProperty: 'bottom,opacity',
+              }}
+            >
+              {formatInt(Math.round(tickValue))}
+            </p>
+          )
+        })}
+        <p
+          className={cn(
+            HOUSE_CHART_AXIS_TITLE_CLASS,
+            HOUSE_CHART_SCALE_AXIS_TITLE_CLASS,
+            'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap',
+          )}
+          style={{ left: '0.65rem' }}
+        >
+          {axisLabel}
+        </p>
+      </div>
+      <div className="absolute" style={plotAreaStyle}>
+        <div className="absolute inset-0">
+          {yAxisTicks.map((tickValue, index) => {
+            const pct = Math.max(0, Math.min(100, (tickValue / axisMax) * 100))
+            return (
+              <div
+                key={`momentum-waterfall-grid-${index}`}
+                className={cn('pointer-events-none absolute inset-x-0 border-t', HOUSE_CHART_GRID_LINE_CLASS)}
+                style={{ bottom: `${pct}%` }}
+              />
+            )
+          })}
+          <TooltipProvider delayDuration={120}>
+            {steps.map((step, index) => {
+              const slotLeftPct = slotWidthPct * index
+              const heightPct = Math.max(0, ((step.topValue - step.bottomValue) / axisMax) * 100)
+              const bottomPct = Math.max(0, (step.bottomValue / axisMax) * 100)
+              const valueLabel = step.kind === 'total'
+                ? `${formatInt(Math.round(step.value))}${unitLabel}`
+                : `${formatSignedNumber(step.deltaValue, 0)}${unitLabel}`
+              const barClassName = step.kind === 'total'
+                ? step.key === 'recent'
+                  ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-100)/0.94)]'
+                  : 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100)/0.9)]'
+                : step.tone === 'positive'
+                  ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-100)/0.92)]'
+                  : step.tone === 'danger'
+                    ? 'border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-100)/0.9)]'
+                    : 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-100)/0.92)]'
+              const valueToneClassName = step.kind === 'total'
+                ? step.key === 'recent'
+                  ? 'text-[hsl(var(--tone-accent-800))]'
+                  : 'text-[hsl(var(--tone-neutral-800))]'
+                : step.tone === 'positive'
+                  ? 'text-[hsl(var(--tone-positive-700))]'
+                  : step.tone === 'danger'
+                    ? 'text-[hsl(var(--tone-danger-700))]'
+                    : 'text-[hsl(var(--tone-accent-800))]'
+              return (
+                <Tooltip key={step.key}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="absolute bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-300))] focus-visible:ring-offset-1"
+                      style={{
+                        left: `${slotLeftPct}%`,
+                        width: `${slotWidthPct}%`,
+                        top: '0',
+                        height: '100%',
+                      }}
+                      aria-label={`Explain ${step.label.toLowerCase()}`}
+                    >
+                      <span
+                        className={cn('absolute rounded-t-md border shadow-[0_2px_6px_hsl(var(--tone-neutral-950)/0.06)]', barClassName)}
+                        style={{
+                          left: `${((slotWidthPct - barWidthPct) / 2 / slotWidthPct) * 100}%`,
+                          width: `${(barWidthPct / slotWidthPct) * 100}%`,
+                          bottom: `${bottomPct}%`,
+                          height: `${Math.max(heightPct, 1.5)}%`,
+                        }}
+                      />
+                      <span
+                        className="absolute text-center"
+                        style={{
+                          left: `${((slotWidthPct - barWidthPct) / 2 / slotWidthPct) * 100}%`,
+                          width: `${(barWidthPct / slotWidthPct) * 100}%`,
+                          bottom: `calc(${Math.min(100, bottomPct + heightPct)}% + 0.4rem)`,
+                        }}
+                      >
+                        <span className={cn('text-[0.78rem] font-semibold tabular-nums leading-none', valueToneClassName)}>
+                          {valueLabel}
+                        </span>
+                      </span>
+                      <span
+                        className={cn('absolute leading-none text-center', HOUSE_TOGGLE_CHART_LABEL_CLASS)}
+                        style={{
+                          left: '0',
+                          width: '100%',
+                          top: 'calc(100% + 0.45rem)',
+                        }}
+                      >
+                        <span className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+                          {step.label}
+                        </span>
+                      </span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    align="center"
+                    sideOffset={8}
+                    className="house-approved-tooltip z-[80] max-w-[17rem] whitespace-normal px-3 py-2.5 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                  >
+                    {renderStepTooltipContent(step)}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            })}
+          </TooltipProvider>
+          {steps.slice(0, -1).map((step, index) => {
+            const nextStep = steps[index + 1]
+            const currentEndValue = step.kind === 'delta' ? step.endValue : step.value
+            const connectorPct = Math.max(0, (currentEndValue / axisMax) * 100)
+            const startLeftPct = (slotWidthPct * index) + ((slotWidthPct + barWidthPct) / 2)
+            const endLeftPct = (slotWidthPct * (index + 1)) + ((slotWidthPct - barWidthPct) / 2)
+            return (
+              <div
+                key={`momentum-waterfall-connector-${step.key}-${nextStep.key}`}
+                className="pointer-events-none absolute border-t border-dashed border-[hsl(var(--tone-neutral-350))]"
+                style={{
+                  left: `${startLeftPct}%`,
+                  width: `${Math.max(0, endLeftPct - startLeftPct)}%`,
+                  bottom: `${connectorPct}%`,
+                }}
+              />
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function buildMomentumOverviewTicks(values: number[]): [number, number, number] {
@@ -11638,9 +12605,24 @@ function MomentumOverviewChart({
     [bars],
   )
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
 
   const scaledMax = Math.max(1, yTickValues[yTickValues.length - 1] || 1)
+  const displayedAxisMax = useEasedValue(
+    scaledMax,
+    `${animationKey}|y-axis-max`,
+    hasBars,
+    axisDurationMs,
+  )
+  const yTickRatios = useMemo(
+    () => yTickValues.map((tickValue) => (scaledMax <= 0 ? 0 : tickValue / scaledMax)),
+    [scaledMax, yTickValues],
+  )
+  const displayedYTickValues = useMemo(
+    () => yTickRatios.map((ratio) => ratio * Math.max(1, displayedAxisMax)),
+    [displayedAxisMax, yTickRatios],
+  )
   const chartLeftInsetRem = 3.35
   const chartBottomInsetRem = 3
   const chartTopInsetRem = 0.55
@@ -11701,7 +12683,7 @@ function MomentumOverviewChart({
                   style={{ bottom: `calc(${heightPct}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
                   aria-hidden="true"
                 >
-                  {formatMomentumOverviewTick(bar.value)}
+                  {formatInt(Math.round(bar.value))}
                 </span>
                 <div
                   className={cn('w-full rounded-sm', HOUSE_TOGGLE_CHART_BAR_CLASS, bar.toneClass)}
@@ -11712,7 +12694,7 @@ function MomentumOverviewChart({
                     transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded),
                     transitionDuration: tileMotionEntryDuration(index, isEntryCycle && barsExpanded),
                   }}
-                  aria-label={`${bar.label}: ${formatMomentumOverviewTick(bar.value)} average citations per month`}
+                  aria-label={`${bar.label}: ${formatInt(Math.round(bar.value))} average citations per ${useYearMode ? 'year' : 'month'}`}
                 />
               </div>
             )
@@ -11730,15 +12712,19 @@ function MomentumOverviewChart({
         }}
         aria-hidden="true"
       >
-        {yTickValues.map((tickValue, index) => {
-          const ratio = scaledMax <= 0 ? 0 : tickValue / scaledMax
+        {displayedYTickValues.map((tickValue, index) => {
+          const ratio = yTickRatios[index] || 0
           return (
             <p
               key={`momentum-overview-y-${index}`}
               className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
-              style={{ bottom: `calc(${ratio * 100}% - ${yAxisTickOffsetRem}rem)` }}
+              style={{
+                bottom: `calc(${ratio * 100}% - ${yAxisTickOffsetRem}rem)`,
+                transitionDuration: `${axisDurationMs}ms`,
+                transitionProperty: 'bottom,opacity',
+              }}
             >
-              {formatMomentumOverviewTick(tickValue)}
+              {formatInt(Math.round(tickValue))}
             </p>
           )
         })}
@@ -11777,6 +12763,620 @@ function MomentumOverviewChart({
         <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
           Comparison window
         </p>
+      </div>
+    </div>
+  )
+}
+
+function MomentumTrajectoryHistoryChart({
+  tile,
+  mode,
+  viewMode,
+}: {
+  tile: PublicationMetricTilePayload
+  mode: MomentumWindowMode
+  viewMode: MomentumTrajectoryViewMode
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const [rangeStart, setRangeStart] = useState(0)
+  const [rangeEnd, setRangeEnd] = useState(0)
+  const [isRangeAdjusting, setIsRangeAdjusting] = useState(false)
+  const useYearMode = mode === '5y'
+  const orderedPoints = useMemo(
+    () => buildMomentumTrajectoryPoints(tile, mode).slice().sort((left, right) => left.timeMs - right.timeMs),
+    [tile, mode],
+  )
+  const pointSpacingMonths = useMemo(() => {
+    if (orderedPoints.length < 2) {
+      return useYearMode ? 12 : 1
+    }
+    return Math.max(1, getSpanMonths(orderedPoints[0]!.timeMs, orderedPoints[1]!.timeMs))
+  }, [orderedPoints, useYearMode])
+  const minSpan = useMemo(
+    () => Math.min(useYearMode ? 4 : pointSpacingMonths <= 2 ? 6 : 4, Math.max(1, orderedPoints.length)),
+    [orderedPoints.length, pointSpacingMonths, useYearMode],
+  )
+
+  useEffect(() => {
+    if (!orderedPoints.length) {
+      setRangeStart(0)
+      setRangeEnd(0)
+      return
+    }
+    setRangeStart(0)
+    setRangeEnd(orderedPoints.length - 1)
+  }, [orderedPoints.length, mode])
+
+  const visibleRange = useMemo(() => {
+    if (!orderedPoints.length) {
+      return { start: 0, end: 0 }
+    }
+    const maxIndex = orderedPoints.length - 1
+    const safeStart = Math.max(0, Math.min(maxIndex, rangeStart))
+    const safeEnd = Math.max(
+      safeStart,
+      Math.min(maxIndex, Math.max(rangeEnd, Math.min(maxIndex, safeStart + minSpan - 1))),
+    )
+    const adjustedStart = Math.max(0, Math.min(safeStart, safeEnd - minSpan + 1))
+    return {
+      start: adjustedStart,
+      end: safeEnd,
+    }
+  }, [minSpan, orderedPoints.length, rangeEnd, rangeStart])
+
+  const points = useMemo(
+    () => orderedPoints.slice(visibleRange.start, visibleRange.end + 1),
+    [orderedPoints, visibleRange.end, visibleRange.start],
+  )
+
+  useEffect(() => {
+    if (hoveredIndex === null) {
+      return
+    }
+    if (hoveredIndex >= points.length) {
+      setHoveredIndex(null)
+    }
+  }, [hoveredIndex, points.length])
+
+  if (!orderedPoints.length) {
+    return (
+      <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>
+        Not enough baseline history to compare recent and prior pace yet.
+      </div>
+    )
+  }
+
+  const focusRangeLabel = (() => {
+    const first = points[0]
+    const last = points[points.length - 1]
+    if (!first || !last) {
+      return 'Completed periods'
+    }
+    return first.periodLabel === last.periodLabel
+      ? first.periodLabel
+      : `${first.periodLabel} - ${last.periodLabel}`
+  })()
+  const startMs = points[0]?.timeMs ?? Date.now()
+  const endMs = points[points.length - 1]?.timeMs ?? startMs
+  const visibleSpanMonths = Math.max(0, getSpanMonths(startMs, endMs))
+  const fullSpanMonths = orderedPoints.length > 1
+    ? Math.max(0, getSpanMonths(orderedPoints[0]!.timeMs, orderedPoints[orderedPoints.length - 1]!.timeMs))
+    : visibleSpanMonths
+  const xAxisTickMode: PublicationsWindowMode = useYearMode
+    ? 'all'
+    : pointSpacingMonths <= 2 && fullSpanMonths <= 18
+      ? '1y'
+      : 'all'
+  const xAxisTicks = buildLineTicksFromRange(startMs, endMs, xAxisTickMode)
+  const xAxisLabelLayout = buildChartAxisLayout({
+    axisLabels: xAxisTicks.map((tick) => tick.label),
+    axisSubLabels: xAxisTicks.map((tick) => tick.subLabel || null),
+    showXAxisName: true,
+    xAxisName: useYearMode ? 'Year end' : 'Rolling endpoint',
+    dense: false,
+    maxLabelLines: 2,
+    maxSubLabelLines: 2,
+    maxAxisNameLines: 2,
+  })
+  const allChartValues = points.map((point) => (
+    viewMode === 'number'
+      ? point.recentTotal
+      : point.deltaPct
+  ))
+  const axisScale = viewMode === 'number'
+    ? buildNiceRangeAxis(
+      Math.min(...allChartValues),
+      Math.max(...allChartValues),
+      {
+        snapToZero: true,
+        minimumSpan: 3,
+        targetIntervals: 4,
+      },
+    )
+    : buildMomentumTrajectoryPercentAxis(
+      Math.min(...allChartValues),
+      Math.max(...allChartValues),
+    )
+  const axisMin = axisScale.axisMin
+  const axisRange = Math.max(1e-6, axisScale.axisMax - axisMin)
+  const yAxisTickRatios = axisScale.ticks.map((tickValue) => (tickValue - axisMin) / axisRange)
+  const yAxisPanelWidthRem = buildYAxisPanelWidthRem(axisScale.ticks.map((tick) => Math.round(tick)), true, 1.2)
+  const chartTopInsetRem = PUBLICATIONS_CHART_TOP_INSET_REM
+  const chartLeftInset = `${yAxisPanelWidthRem + PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM}rem`
+  const plotAreaStyle = {
+    left: chartLeftInset,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    top: `${chartTopInsetRem}rem`,
+    bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
+  }
+  const xAxisTicksStyle = {
+    left: chartLeftInset,
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    bottom: `${xAxisLabelLayout.axisBottomRem}rem`,
+    minHeight: `${xAxisLabelLayout.axisMinHeightRem}rem`,
+  }
+  const yAxisPanelStyle = {
+    left: `${PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM}rem`,
+    top: `${chartTopInsetRem}rem`,
+    bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
+    width: `${yAxisPanelWidthRem}rem`,
+  }
+  const chartFrameStyle = {
+    paddingBottom: `${xAxisLabelLayout.framePaddingBottomRem}rem`,
+    minHeight: '20rem',
+  }
+  const lineModeVerticalGridPercents = xAxisTicks
+    .map((tick) => Math.max(0, Math.min(100, tick.leftPct)))
+    .sort((left, right) => left - right)
+    .filter((value, index, values) => index === 0 || Math.abs(value - values[index - 1]) > 0.5)
+  const linePoints = points.map((point, index) => {
+    const xPct = endMs <= startMs
+      ? (points.length <= 1 ? 50 : (index / Math.max(1, points.length - 1)) * 100)
+      : Math.max(0, Math.min(100, ((point.timeMs - startMs) / Math.max(1, endMs - startMs)) * 100))
+    const plottedValue = viewMode === 'number' ? point.recentTotal : point.deltaPct
+    const yPct = Math.max(0, Math.min(100, ((plottedValue - axisMin) / axisRange) * 100))
+    return {
+      ...point,
+      xPct,
+      yPct,
+      plottedValue,
+    }
+  })
+  const linePath = linePoints.length
+    ? monotonePathFromPoints(linePoints.map((point) => ({ x: point.xPct, y: 100 - point.yPct })))
+    : ''
+  const tooltipGroupingStep = useMemo(() => {
+    if (linePoints.length <= 1) {
+      return 1
+    }
+    if (useYearMode) {
+      if (linePoints.length > 14) {
+        return 3
+      }
+      if (linePoints.length > 8) {
+        return 2
+      }
+      return 1
+    }
+    if (visibleSpanMonths > 96) {
+      return 12
+    }
+    if (visibleSpanMonths > 48) {
+      return 6
+    }
+    if (visibleSpanMonths > 24) {
+      return 3
+    }
+    if (visibleSpanMonths > 12) {
+      return 2
+    }
+    return 1
+  }, [linePoints.length, useYearMode, visibleSpanMonths])
+  const tooltipPoints = useMemo(() => {
+    if (tooltipGroupingStep <= 1 || linePoints.length <= 2) {
+      return linePoints
+    }
+    return linePoints.filter((_, index) => (
+      index === 0
+      || index === linePoints.length - 1
+      || index % tooltipGroupingStep === 0
+    ))
+  }, [linePoints, tooltipGroupingStep])
+  const tooltipSlices = tooltipPoints.map((point, index) => {
+    if (tooltipPoints.length === 1) {
+      return {
+        ...point,
+        leftPct: 0,
+        widthPct: 100,
+      }
+    }
+    const previousX = index > 0 ? tooltipPoints[index - 1]?.xPct ?? point.xPct : point.xPct
+    const nextX = index < tooltipPoints.length - 1 ? tooltipPoints[index + 1]?.xPct ?? point.xPct : point.xPct
+    const leftPct = index === 0 ? 0 : (previousX + point.xPct) / 2
+    const rightPct = index === tooltipPoints.length - 1 ? 100 : (point.xPct + nextX) / 2
+    return {
+      ...point,
+      leftPct: Math.max(0, Math.min(100, leftPct)),
+      widthPct: Math.max(0.75, Math.min(100, rightPct - leftPct)),
+    }
+  })
+  const lineAnimationKey = `momentum-trajectory-line:${mode}:${viewMode}:${orderedPoints.map((point) => (
+    `${point.key}-${Math.round(viewMode === 'number' ? point.recentTotal : point.deltaPct)}`
+  )).join('|') || 'empty'}`
+  const lineEntryKey = `${lineAnimationKey}|delta-line`
+  const lineEntryCycle = useIsFirstChartEntry(lineEntryKey, orderedPoints.length > 0)
+  const lineExpanded = useUnifiedToggleBarAnimation(lineEntryKey, orderedPoints.length > 0)
+  const lineTransitionDuration = tileChartDurationVar(lineEntryCycle)
+  const axisDurationMs = tileAxisDurationMs(lineEntryCycle)
+  const displayedAxisMin = useEasedValue(
+    axisMin,
+    `${lineAnimationKey}|y-axis-min`,
+    linePoints.length > 0 && !isRangeAdjusting,
+    axisDurationMs,
+  )
+  const displayedAxisMax = useEasedValue(
+    axisScale.axisMax,
+    `${lineAnimationKey}|y-axis-max`,
+    linePoints.length > 0 && !isRangeAdjusting,
+    axisDurationMs,
+  )
+  const displayedAxisRange = Math.max(1e-6, displayedAxisMax - displayedAxisMin)
+  const displayedAxisTickValues = useMemo(
+    () => yAxisTickRatios.map((ratio) => displayedAxisMin + (ratio * displayedAxisRange)),
+    [displayedAxisMin, displayedAxisRange, yAxisTickRatios],
+  )
+  useEffect(() => {
+    if (hoveredIndex === null) {
+      return
+    }
+    if (hoveredIndex >= tooltipSlices.length) {
+      setHoveredIndex(null)
+    }
+  }, [hoveredIndex, tooltipSlices.length])
+  const activeTooltipSlice = hoveredIndex === null ? null : (tooltipSlices[hoveredIndex] ?? null)
+  const momentumTrajectoryEntryRevealIdBase = useId().replace(/:/g, '')
+  const momentumTrajectoryEntryRevealClipId = `${momentumTrajectoryEntryRevealIdBase}-clip`
+  const [momentumTrajectoryEntryRevealActive, setMomentumTrajectoryEntryRevealActive] = useState(false)
+  const [momentumTrajectoryEntryRevealProgress, setMomentumTrajectoryEntryRevealProgress] = useState(0)
+  const momentumTrajectoryEntryRevealWidth = Math.max(0, Math.min(100, 100 * momentumTrajectoryEntryRevealProgress))
+  const momentumTrajectoryWasVisibleRef = useRef(false)
+  const toneTextClass = (tone: MomentumRecentCellTone): string => {
+    switch (tone) {
+      case 'positive':
+        return 'text-[hsl(var(--tone-positive-700))]'
+      case 'danger':
+        return 'text-[hsl(var(--tone-danger-700))]'
+      default:
+        return 'text-[hsl(var(--tone-accent-800))]'
+    }
+  }
+  const toneFillColor = (tone: MomentumRecentCellTone): string => {
+    switch (tone) {
+      case 'positive':
+        return 'hsl(var(--tone-positive-500))'
+      case 'danger':
+        return 'hsl(var(--tone-danger-500))'
+      default:
+        return 'hsl(var(--tone-accent-500))'
+    }
+  }
+
+  useEffect(() => {
+    const chartVisible = linePoints.length > 0
+    const becameVisible = chartVisible && !momentumTrajectoryWasVisibleRef.current
+    momentumTrajectoryWasVisibleRef.current = chartVisible
+
+    if (!chartVisible) {
+      setMomentumTrajectoryEntryRevealActive(false)
+      setMomentumTrajectoryEntryRevealProgress(0)
+      return
+    }
+
+    if (becameVisible) {
+      if (prefersReducedMotion()) {
+        setMomentumTrajectoryEntryRevealActive(false)
+        setMomentumTrajectoryEntryRevealProgress(1)
+        return
+      }
+      setMomentumTrajectoryEntryRevealActive(true)
+      setMomentumTrajectoryEntryRevealProgress(0)
+    }
+  }, [linePoints.length])
+
+  useEffect(() => {
+    if (!linePath || !momentumTrajectoryEntryRevealActive) {
+      return
+    }
+
+    const entryDelayMs = 120
+    const entryDurationMs = 940
+    let raf = 0
+    const startedAt = performance.now()
+    const easeEntryReveal = (progress: number) => {
+      const clamped = Math.max(0, Math.min(1, progress))
+      return clamped * clamped * (3 - (2 * clamped))
+    }
+
+    setMomentumTrajectoryEntryRevealProgress(0)
+    const step = (now: number) => {
+      const elapsed = now - startedAt
+      if (elapsed < entryDelayMs) {
+        setMomentumTrajectoryEntryRevealProgress(0)
+        raf = window.requestAnimationFrame(step)
+        return
+      }
+      const progress = Math.min(1, (elapsed - entryDelayMs) / entryDurationMs)
+      const easedProgress = easeEntryReveal(progress)
+      setMomentumTrajectoryEntryRevealProgress(easedProgress)
+      if (progress >= 1) {
+        setMomentumTrajectoryEntryRevealActive(false)
+      } else {
+        raf = window.requestAnimationFrame(step)
+      }
+    }
+
+    raf = window.requestAnimationFrame(step)
+    return () => {
+      window.cancelAnimationFrame(raf)
+    }
+  }, [linePath, momentumTrajectoryEntryRevealActive])
+
+  return (
+    <div className="space-y-2">
+      <CompletedPeriodRangeSlider
+        minIndex={0}
+        maxIndex={Math.max(0, orderedPoints.length - 1)}
+        startIndex={visibleRange.start}
+        endIndex={visibleRange.end}
+        minSpan={minSpan}
+        selectionLabel={focusRangeLabel}
+        commitOnDragEnd
+        onChange={(nextStart, nextEnd) => {
+          setRangeStart(nextStart)
+          setRangeEnd(nextEnd)
+        }}
+        onInteractionChange={setIsRangeAdjusting}
+      />
+      <div className="flex h-full min-h-0 w-full flex-col px-2 py-2">
+        <div
+          className={cn(
+            HOUSE_CHART_TRANSITION_CLASS,
+            HOUSE_CHART_ENTERED_CLASS,
+            'house-publications-trend-chart-frame-borderless',
+          )}
+          style={chartFrameStyle}
+        >
+          <div className="absolute overflow-visible" style={plotAreaStyle}>
+            <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+              <div
+                className={cn('absolute inset-y-0 left-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{ borderLeft: '1px solid hsl(var(--stroke-soft) / 0.7)' }}
+              />
+              <div
+                className={cn('absolute inset-y-0 right-0', HOUSE_CHART_SCALE_LAYER_CLASS)}
+                style={{ borderRight: '1px solid hsl(var(--stroke-soft) / 0.76)' }}
+              />
+              {yAxisTickRatios.map((ratio, index) => {
+                const pct = Math.max(0, Math.min(100, ratio * 100))
+                const isZeroLine = Math.abs(axisScale.ticks[index] || 0) < 0.001
+                return (
+                  <div
+                    key={`momentum-trajectory-grid-y-${index}`}
+                    className={cn('absolute inset-x-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+                    style={{
+                      bottom: `${pct}%`,
+                      borderTop: `1px solid hsl(var(--stroke-soft) / ${isZeroLine ? 0.92 : 0.72})`,
+                    }}
+                  />
+                )
+              })}
+              {lineModeVerticalGridPercents.length ? (
+                <svg className="absolute inset-0 z-[1]" viewBox="0 0 100 100" preserveAspectRatio="none" shapeRendering="crispEdges">
+                  {lineModeVerticalGridPercents.map((leftPct, index) => (
+                    <line
+                      key={`momentum-trajectory-grid-x-${index}`}
+                      x1={String(leftPct)}
+                      y1="0"
+                      x2={String(leftPct)}
+                      y2="100"
+                      stroke="hsl(var(--stroke-soft) / 0.76)"
+                      strokeWidth="1"
+                      shapeRendering="crispEdges"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
+                </svg>
+              ) : null}
+            </div>
+
+            {activeTooltipSlice ? (
+              <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+                <div
+                  className="absolute inset-y-0 rounded-[0.2rem] bg-[hsl(var(--tone-accent-200)/0.16)]"
+                  style={{
+                    left: `${activeTooltipSlice.leftPct}%`,
+                    width: `${activeTooltipSlice.widthPct}%`,
+                  }}
+                />
+              </div>
+            ) : null}
+
+            <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 z-[3] h-full w-full overflow-hidden" preserveAspectRatio="none">
+              {linePath ? (
+                momentumTrajectoryEntryRevealActive ? (
+                  <>
+                    <defs>
+                      <clipPath id={momentumTrajectoryEntryRevealClipId} clipPathUnits="userSpaceOnUse">
+                        <rect x="0" y="0" width={momentumTrajectoryEntryRevealWidth} height="100" />
+                      </clipPath>
+                    </defs>
+                    <path
+                      d={linePath}
+                      fill="none"
+                      stroke="hsl(var(--tone-accent-600))"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      shapeRendering="geometricPrecision"
+                      clipPath={`url(#${momentumTrajectoryEntryRevealClipId})`}
+                    />
+                  </>
+                ) : (
+                  <path
+                    d={linePath}
+                    fill="none"
+                    stroke="hsl(var(--tone-accent-600))"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                    shapeRendering="geometricPrecision"
+                    data-expanded={lineExpanded ? 'true' : 'false'}
+                    style={{
+                      opacity: lineExpanded ? 1 : 0,
+                      transitionDuration: lineTransitionDuration,
+                    }}
+                  />
+                )
+              ) : null}
+            </svg>
+            {activeTooltipSlice ? (
+              <div className="pointer-events-none absolute inset-0 z-[3] overflow-hidden" aria-hidden="true">
+                <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <line
+                    x1={String(activeTooltipSlice.xPct)}
+                    y1="0"
+                    x2={String(activeTooltipSlice.xPct)}
+                    y2="100"
+                    stroke="hsl(var(--tone-accent-500) / 0.9)"
+                    strokeWidth="1"
+                    strokeDasharray="4 3"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <circle
+                    cx={String(activeTooltipSlice.xPct)}
+                    cy={String(100 - activeTooltipSlice.yPct)}
+                    r="1.75"
+                    fill={toneFillColor(activeTooltipSlice.tone)}
+                    stroke="white"
+                    strokeWidth="0.8"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </svg>
+              </div>
+            ) : null}
+
+            <TooltipProvider delayDuration={120}>
+              {tooltipSlices.map((point, index) => (
+                <Tooltip key={point.key}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 z-[4] block rounded-[0.2rem] bg-transparent p-0 transition-[background-color,box-shadow] duration-[var(--motion-duration-ui)] ease-out hover:bg-[hsl(var(--tone-accent-200)/0.14)] focus-visible:bg-[hsl(var(--tone-accent-200)/0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-200))]"
+                      style={{
+                        left: `${point.leftPct}%`,
+                        width: `${point.widthPct}%`,
+                      }}
+                      onMouseEnter={() => setHoveredIndex(index)}
+                      onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                      onFocus={() => setHoveredIndex(index)}
+                      onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                      aria-label={viewMode === 'number'
+                        ? `${point.periodLabel}: ${formatInt(Math.round(point.recentTotal))} citations in the recent window.`
+                        : `${point.periodLabel}: ${formatSignedPercentCompact(point.deltaPct)} versus prior baseline.`}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    align="center"
+                    sideOffset={8}
+                    className="house-approved-tooltip max-w-[16rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                  >
+                    <div className="space-y-1">
+                      <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{point.periodLabel}</p>
+                      {viewMode === 'number' ? (
+                        <>
+                          <p className={cn('font-medium', toneTextClass(point.tone))}>{`${formatInt(Math.round(point.recentTotal))} citations in the recent window`}</p>
+                          <p>{`Window: ${point.recentWindowLabel}`}</p>
+                          <p>{`Pace: ${formatInt(Math.round(point.recentRate))}${useYearMode ? '/yr' : '/mo'}`}</p>
+                          <p>{`Vs prior baseline: ${formatSignedPercentCompact(point.deltaPct)}`}</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className={cn('font-medium', toneTextClass(point.tone))}>{`${formatSignedPercentCompact(point.deltaPct)} vs prior baseline`}</p>
+                          <p>{`Recent: ${formatInt(Math.round(point.recentRate))}${useYearMode ? '/yr' : '/mo'} (${point.recentWindowLabel})`}</p>
+                          <p>{`Prior: ${formatInt(Math.round(point.priorRate))}${useYearMode ? '/yr' : '/mo'} (${point.priorWindowLabel})`}</p>
+                        </>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </TooltipProvider>
+          </div>
+
+          <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
+            {displayedAxisTickValues.map((tickValue, index) => {
+              const ratio = yAxisTickRatios[index] || 0
+              const pct = Math.max(0, Math.min(100, ratio * 100))
+              const isTopTick = ratio >= 0.999
+              return (
+                <p
+                  key={`momentum-trajectory-y-axis-${index}`}
+                  className={cn('absolute right-0 whitespace-nowrap tabular-nums text-[0.68rem] leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
+                  style={{
+                    bottom: isTopTick
+                      ? `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM + 0.62}rem)`
+                      : `calc(${pct}% - ${PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM}rem)`,
+                    transitionDuration: isRangeAdjusting ? '0ms' : `${axisDurationMs}ms`,
+                    transitionProperty: 'bottom,opacity',
+                  }}
+                >
+                  {formatInt(Math.round(tickValue))}
+                </p>
+              )
+            })}
+            <p
+              className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
+              style={{ left: '36%' }}
+            >
+              {viewMode === 'number' ? 'Citations' : 'Pace change (%)'}
+            </p>
+          </div>
+
+          <div
+            className={cn('pointer-events-none absolute', HOUSE_TOGGLE_CHART_LABEL_CLASS)}
+            style={xAxisTicksStyle}
+          >
+            {xAxisTicks.map((tick) => (
+              <div
+                key={tick.key}
+                className="absolute -translate-x-1/2 text-center leading-none"
+                style={{ left: `${tick.leftPct}%` }}
+              >
+                <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'whitespace-nowrap px-0.5 leading-[1.05]')}>{tick.label}</p>
+                {tick.subLabel ? (
+                  <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'whitespace-nowrap px-0.5 leading-[1.05]')}>{tick.subLabel}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: chartLeftInset,
+              right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+              bottom: `${xAxisLabelLayout.xAxisNameBottomRem}rem`,
+              minHeight: `${xAxisLabelLayout.xAxisNameMinHeightRem}rem`,
+            }}
+          >
+            <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
+              {useYearMode ? 'Year end' : 'Rolling endpoint'}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -19323,6 +20923,8 @@ function GenericMetricDrilldownWorkspace({
   const [citationMomentumExpanded, setCitationMomentumExpanded] = useState(true)
   const [citationMomentumViewMode, setCitationMomentumViewMode] = useState<CitationMomentumViewMode>('sleeping')
   const [momentumWindowMode, setMomentumWindowMode] = useState<MomentumWindowMode>('12m')
+  const [momentumTrajectoryViewMode, setMomentumTrajectoryViewMode] = useState<MomentumTrajectoryViewMode>('pace')
+  const [momentumBreakdownBucket, setMomentumBreakdownBucket] = useState<MomentumBreakdownBucketKey>('new')
   const [momentumOverviewViewMode, setMomentumOverviewViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [fieldPercentileDrilldownThreshold, setFieldPercentileDrilldownThreshold] = useState<FieldPercentileThreshold>(75)
   const [uncitedBreakdownViewMode, setUncitedBreakdownViewMode] = useState<SplitBreakdownViewMode>('bar')
@@ -19376,6 +20978,7 @@ function GenericMetricDrilldownWorkspace({
     setCitationActivationHistoryExpanded(true)
     setCitationMomentumExpanded(true)
     setCitationMomentumViewMode('sleeping')
+    setMomentumBreakdownBucket('new')
     setUncitedBreakdownViewMode('bar')
     setRecentConcentrationViewMode('bar')
     setCitationActivationViewMode('bar')
@@ -23124,6 +24727,10 @@ function GenericMetricDrilldownWorkspace({
             onOpenPublication,
             momentumWindowMode,
             onMomentumWindowModeChange: setMomentumWindowMode,
+            momentumTrajectoryViewMode,
+            onMomentumTrajectoryViewModeChange: setMomentumTrajectoryViewMode,
+            momentumBreakdownBucket,
+            onMomentumBreakdownBucketChange: setMomentumBreakdownBucket,
             momentumYearBreakdown,
             momentumOverviewViewMode,
             onMomentumOverviewViewModeChange: setMomentumOverviewViewMode,
@@ -24719,6 +26326,7 @@ function CitationActivationStateBarCard({
     ratioPct: number
     toneClass: string
     align?: 'left' | 'center' | 'right'
+    valueClassName?: string
   }>
 }) {
   const animationKey = useMemo(
@@ -24741,6 +26349,11 @@ function CitationActivationStateBarCard({
     }
     return undefined
   }
+  const summaryGridClassName = segments.length >= 4
+    ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-4'
+    : segments.length === 3
+      ? 'grid gap-3 md:grid-cols-3'
+      : 'grid gap-3 md:grid-cols-2'
 
   return (
     <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
@@ -24763,7 +26376,7 @@ function CitationActivationStateBarCard({
           />
         ))}
       </div>
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className={summaryGridClassName}>
         {segments.map((segment) => {
           const textToneStyle = getTextToneStyle(segment.key)
           return (
@@ -24775,7 +26388,12 @@ function CitationActivationStateBarCard({
               )}
             >
               <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'leading-tight')}>{segment.label}</p>
-              <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')} style={textToneStyle}>{segment.value}</p>
+              <p
+                className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums', segment.valueClassName)}
+                style={textToneStyle}
+              >
+                {segment.value}
+              </p>
             </div>
           )
         })}
@@ -24783,6 +26401,102 @@ function CitationActivationStateBarCard({
     </div>
   )
 }
+
+type MomentumContributionConcentrationStep = {
+  key: string
+  label: string
+  publicationCount: number
+  publicationSharePct: number
+  contributionValue: number
+  contributionSharePct: number
+}
+
+function MomentumContributionConcentrationCard({
+  title,
+  subtitle,
+  emptyMessage,
+  steps,
+  tone,
+  unitLabel,
+}: {
+  title: string
+  subtitle: string
+  emptyMessage: string
+  steps: MomentumContributionConcentrationStep[]
+  tone: 'positive' | 'danger'
+  unitLabel: string
+}) {
+  const hasSteps = steps.length > 0
+  const animationKey = useMemo(
+    () => steps.map((step) => `${step.key}:${Math.round(step.contributionSharePct)}`).join('|') || 'empty',
+    [steps],
+  )
+  const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|momentum-concentration`, hasSteps)
+  const toneClassForStep = (index: number): string => {
+    if (tone === 'danger') {
+      const dangerToneClasses = [
+        'bg-[hsl(var(--tone-danger-700))]',
+        'bg-[hsl(var(--tone-danger-600))]',
+        'bg-[hsl(var(--tone-danger-500))]',
+      ] as const
+      return dangerToneClasses[Math.min(index, dangerToneClasses.length - 1)]
+    }
+    const positiveToneClasses = [
+      'bg-[hsl(var(--tone-positive-700))]',
+      'bg-[hsl(var(--tone-positive-600))]',
+      'bg-[hsl(var(--tone-positive-500))]',
+    ] as const
+    return positiveToneClasses[Math.min(index, positiveToneClasses.length - 1)]
+  }
+  const signedValueLabel = (value: number): string => `${tone === 'danger' ? '-' : '+'}${formatRoundedOneDecimalTrimmed(Math.abs(value))}${unitLabel}`
+
+  return (
+    <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+      <div className="space-y-1">
+        <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>{title}</p>
+        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{subtitle}</p>
+      </div>
+      {hasSteps ? (
+        <div className="space-y-2.5">
+          {steps.map((step, index) => (
+            <div key={step.key} className="space-y-1.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-sm font-semibold leading-tight text-[hsl(var(--tone-neutral-800))]">{step.label}</p>
+                  <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'leading-tight')}>
+                    {`${formatInt(step.publicationCount)} ${pluralize(step.publicationCount, 'publication')} • ${formatPercentWhole(step.publicationSharePct)} of that group`}
+                  </p>
+                </div>
+                <div className="space-y-0.5 text-right">
+                  <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')}>
+                    {formatPercentWhole(step.contributionSharePct)}
+                  </p>
+                  <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'leading-tight')}>
+                    {signedValueLabel(step.contributionValue)}
+                  </p>
+                </div>
+              </div>
+              <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.72rem]')}>
+                <div
+                  className={cn('h-full rounded-full house-progress-fill-motion', toneClassForStep(index))}
+                  style={{
+                    width: `${barsExpanded ? Math.max(0, Math.min(100, step.contributionSharePct)) : 0}%`,
+                    transitionDuration: 'var(--motion-duration-chart-toggle)',
+                  }}
+                  aria-hidden="true"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{emptyMessage}</p>
+      )}
+    </div>
+  )
+}
+
+void MomentumContributionConcentrationCard
 
 function CitationHistogramChart({
   buckets,
@@ -25075,6 +26789,8 @@ function CompletedPeriodRangeSlider({
   selectionLabel,
   trailingContent,
   onChange,
+  onInteractionChange,
+  commitOnDragEnd = false,
 }: {
   minIndex: number
   maxIndex: number
@@ -25084,6 +26800,8 @@ function CompletedPeriodRangeSlider({
   selectionLabel: string
   trailingContent?: React.ReactNode
   onChange: (nextStart: number, nextEnd: number) => void
+  onInteractionChange?: (active: boolean) => void
+  commitOnDragEnd?: boolean
 }) {
   const totalPoints = Math.max(0, maxIndex - minIndex + 1)
   if (totalPoints <= 1) {
@@ -25096,12 +26814,15 @@ function CompletedPeriodRangeSlider({
     Math.min(maxIndex, Math.max(endIndex, Math.min(maxIndex, safeStart + minSpan - 1))),
   )
   const axisSpan = Math.max(1, maxIndex - minIndex)
-  const startPct = ((safeStart - minIndex) / axisSpan) * 100
-  const endPct = ((safeEnd - minIndex) / axisSpan) * 100
   const isAdjustable = totalPoints > minSpan
   const trackRef = useRef<HTMLDivElement | null>(null)
+  const dragRangeRef = useRef<{ start: number; end: number } | null>(null)
+  const [dragRange, setDragRange] = useState<{ start: number; end: number } | null>(null)
   const selectionLabelParts = selectionLabel.split(/\s+-\s+/)
   const hasSelectionRange = selectionLabelParts.length === 2
+  const displayedRange = commitOnDragEnd && dragRange ? dragRange : { start: safeStart, end: safeEnd }
+  const startPct = ((displayedRange.start - minIndex) / axisSpan) * 100
+  const endPct = ((displayedRange.end - minIndex) / axisSpan) * 100
 
   const getIndexFromClientX = useCallback((clientX: number) => {
     const track = trackRef.current
@@ -25122,16 +26843,35 @@ function CompletedPeriodRangeSlider({
       return
     }
     const proposedIndex = getIndexFromClientX(clientX)
+    const currentRange = dragRangeRef.current ?? { start: safeStart, end: safeEnd }
     if (handle === 'start') {
-      const nextStart = Math.max(minIndex, Math.min(proposedIndex, safeEnd - minSpan + 1))
-      onChange(nextStart, safeEnd)
+      const nextStart = Math.max(minIndex, Math.min(proposedIndex, currentRange.end - minSpan + 1))
+      const nextRange = { start: nextStart, end: currentRange.end }
+      if (commitOnDragEnd) {
+        dragRangeRef.current = nextRange
+        setDragRange(nextRange)
+      } else {
+        onChange(nextRange.start, nextRange.end)
+      }
       return
     }
-    const nextEnd = Math.min(maxIndex, Math.max(proposedIndex, safeStart + minSpan - 1))
-    onChange(safeStart, nextEnd)
-  }, [getIndexFromClientX, isAdjustable, maxIndex, minIndex, minSpan, onChange, safeEnd, safeStart])
+    const nextEnd = Math.min(maxIndex, Math.max(proposedIndex, currentRange.start + minSpan - 1))
+    const nextRange = { start: currentRange.start, end: nextEnd }
+    if (commitOnDragEnd) {
+      dragRangeRef.current = nextRange
+      setDragRange(nextRange)
+    } else {
+      onChange(nextRange.start, nextRange.end)
+    }
+  }, [commitOnDragEnd, getIndexFromClientX, isAdjustable, maxIndex, minIndex, minSpan, onChange, safeEnd, safeStart])
 
   const beginDrag = useCallback((handle: 'start' | 'end', clientX: number) => {
+    onInteractionChange?.(true)
+    if (commitOnDragEnd) {
+      const initialRange = { start: safeStart, end: safeEnd }
+      dragRangeRef.current = initialRange
+      setDragRange(initialRange)
+    }
     updateRangeFromClientX(handle, clientX)
     const handlePointerMove = (event: PointerEvent) => {
       updateRangeFromClientX(handle, event.clientX)
@@ -25139,17 +26879,30 @@ function CompletedPeriodRangeSlider({
     const handlePointerUp = () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
+      if (commitOnDragEnd && dragRangeRef.current) {
+        const finalRange = dragRangeRef.current
+        dragRangeRef.current = null
+        setDragRange(null)
+        onInteractionChange?.(false)
+        if (finalRange.start !== safeStart || finalRange.end !== safeEnd) {
+          onChange(finalRange.start, finalRange.end)
+        }
+        return
+      }
+      onInteractionChange?.(false)
     }
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
-  }, [updateRangeFromClientX])
+  }, [commitOnDragEnd, onChange, onInteractionChange, safeEnd, safeStart, updateRangeFromClientX])
 
   const handleTrackPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!isAdjustable) {
       return
     }
     const proposedIndex = getIndexFromClientX(event.clientX)
-    const nearestHandle = Math.abs(proposedIndex - safeStart) <= Math.abs(proposedIndex - safeEnd) ? 'start' : 'end'
+    const nearestHandle = Math.abs(proposedIndex - displayedRange.start) <= Math.abs(proposedIndex - displayedRange.end)
+      ? 'start'
+      : 'end'
     beginDrag(nearestHandle, event.clientX)
   }
 
@@ -27593,6 +29346,10 @@ function renderMomentumDrilldownSection({
   onOpenPublication,
   momentumWindowMode,
   onMomentumWindowModeChange,
+  momentumTrajectoryViewMode,
+  onMomentumTrajectoryViewModeChange,
+  momentumBreakdownBucket,
+  onMomentumBreakdownBucketChange,
   momentumYearBreakdown,
   momentumOverviewViewMode,
   onMomentumOverviewViewModeChange,
@@ -27606,17 +29363,140 @@ function renderMomentumDrilldownSection({
   onOpenPublication?: (workId: string) => void
   momentumWindowMode: MomentumWindowMode
   onMomentumWindowModeChange: (next: MomentumWindowMode) => void
+  momentumTrajectoryViewMode: MomentumTrajectoryViewMode
+  onMomentumTrajectoryViewModeChange: (next: MomentumTrajectoryViewMode) => void
+  momentumBreakdownBucket: MomentumBreakdownBucketKey
+  onMomentumBreakdownBucketChange: (next: MomentumBreakdownBucketKey) => void
   momentumYearBreakdown: MomentumYearBreakdown | null
   momentumOverviewViewMode: SplitBreakdownViewMode
   onMomentumOverviewViewModeChange: (next: SplitBreakdownViewMode) => void
   tileToggleMotionReady: boolean
 }): ReactNode {
-  const renderMomentumOverviewTableHeader = (periodLabel: string) => (
+  const renderMomentumOverviewTableHeader = (periodLabel: string, averageUnitLabel: string) => (
     <span className="inline-flex flex-col whitespace-normal leading-tight">
       <span>{periodLabel}</span>
-      <span className="font-medium normal-case tracking-normal text-[hsl(var(--tone-neutral-600))]">(Avg/month)</span>
+      <span className="font-medium normal-case tracking-normal text-[hsl(var(--tone-neutral-600))]">({averageUnitLabel})</span>
     </span>
   )
+  const useYearMode = momentumWindowMode === '5y' && Boolean(momentumYearBreakdown?.bars.length)
+  const paceUnitLabel = useYearMode ? '/yr' : '/mo'
+  const bucketOrder: MomentumBreakdownBucketKey[] = ['new', 'faster', 'slower', 'flat']
+  const bucketMeta: Record<MomentumBreakdownBucketKey, { label: string; toggleLabel: string; tone: MomentumRecentCellTone }> = {
+    new: {
+      label: 'Newly active publications',
+      tone: 'accent',
+      toggleLabel: 'Newly active',
+    },
+    faster: {
+      label: 'Accelerating publications',
+      tone: 'positive',
+      toggleLabel: 'Accelerating',
+    },
+    slower: {
+      label: 'Decelerating publications',
+      tone: 'danger',
+      toggleLabel: 'Decelerating',
+    },
+    flat: {
+      label: 'Unchanged publications',
+      tone: 'neutral',
+      toggleLabel: 'Unchanged',
+    },
+  }
+  const groupedRows = stats.publications
+    .map((publication) => {
+      const priorMonths = useYearMode ? 4 : 9
+      const recentMonths = useYearMode ? 1 : 3
+      const priorTotalCitations = useYearMode ? (publication.prior4yCitations ?? 0) : publication.prior9mCitations
+      const recentTotalCitations = useYearMode ? publication.recent1yCitations : publication.recent3mCitations
+      const priorRate = priorMonths > 0 ? priorTotalCitations / priorMonths : 0
+      const recentRate = recentMonths > 0 ? recentTotalCitations / recentMonths : 0
+      const contribution = recentRate - priorRate
+      const bucketKey: MomentumBreakdownBucketKey = Math.abs(contribution) < 1e-6
+        ? 'flat'
+        : contribution > 0
+          ? (priorRate <= 1e-6 ? 'new' : 'faster')
+          : 'slower'
+      return {
+        publication,
+        key: publication.workId,
+        bucketKey,
+        priorRate,
+        recentRate,
+        contribution,
+        absContribution: Math.abs(contribution),
+        metaLabel: '',
+      }
+    })
+    .sort((left, right) => {
+      const bucketDifference = bucketOrder.indexOf(left.bucketKey) - bucketOrder.indexOf(right.bucketKey)
+      if (bucketDifference !== 0) {
+        return bucketDifference
+      }
+      if (left.bucketKey === 'flat' && right.bucketKey === 'flat') {
+        if (Math.abs(right.recentRate - left.recentRate) > 1e-6) {
+          return right.recentRate - left.recentRate
+        }
+        return left.publication.title.localeCompare(right.publication.title, 'en-GB')
+      }
+      if (Math.abs(right.absContribution - left.absContribution) > 1e-6) {
+        return right.absContribution - left.absContribution
+      }
+      if (Math.abs(right.recentRate - left.recentRate) > 1e-6) {
+        return right.recentRate - left.recentRate
+      }
+      return left.publication.title.localeCompare(right.publication.title, 'en-GB')
+    })
+    .reduce<Record<MomentumBreakdownBucketKey, Array<{
+      publication: MomentumDrilldownStats['publications'][number]
+      key: string
+      bucketKey: MomentumBreakdownBucketKey
+      priorRate: number
+      recentRate: number
+      contribution: number
+      absContribution: number
+      metaLabel: string
+    }>>>((groups, row) => {
+      groups[row.bucketKey].push(row)
+      return groups
+    }, {
+      new: [],
+      faster: [],
+      slower: [],
+      flat: [],
+    })
+  const buildMomentumConcentrationSteps = (
+    rows: Array<{
+      key: string
+      contribution: number
+    }>,
+    totalMagnitude: number,
+  ): MomentumContributionConcentrationStep[] => {
+    if (!rows.length || totalMagnitude <= 1e-6) {
+      return []
+    }
+    const stepDefinitions = [
+      { count: Math.min(1, rows.length), label: 'Top publication' },
+      { count: Math.min(3, rows.length), label: 'Top 3' },
+      { count: Math.max(1, Math.ceil(rows.length * 0.1)), label: 'Top 10%' },
+    ].filter((definition, index, definitions) => (
+      definition.count > 0
+      && definitions.findIndex((candidate) => candidate.count === definition.count) === index
+    ))
+    return stepDefinitions.map((definition) => {
+      const selectedRows = rows.slice(0, definition.count)
+      const contributionValue = selectedRows.reduce((sum, row) => sum + Math.abs(row.contribution), 0)
+      return {
+        key: `momentum-concentration-${definition.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        label: definition.label,
+        publicationCount: definition.count,
+        publicationSharePct: rows.length > 0 ? (definition.count / rows.length) * 100 : 0,
+        contributionValue,
+        contributionSharePct: totalMagnitude > 0 ? (contributionValue / totalMagnitude) * 100 : 0,
+      }
+    })
+  }
+  void buildMomentumConcentrationSteps
 
   if (activeTab === 'summary') {
     const currentUtcMonthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1))
@@ -27625,7 +29505,6 @@ function renderMomentumDrilldownSection({
     const prior9WindowStart = shiftUtcMonth(lastCompleteMonthStart, -11)
     const recent1yWindowStart = shiftUtcMonth(lastCompleteMonthStart, -11)
     const prior4yWindowStart = new Date(Date.UTC(currentUtcMonthStart.getUTCFullYear() - 5, 0, 1))
-    const useYearMode = momentumWindowMode === '5y' && Boolean(momentumYearBreakdown?.bars.length)
     const recentPace = useYearMode
       ? momentumYearBreakdown?.rate1y ?? 0
       : stats.monthlyValues12m.length >= 3
@@ -27636,57 +29515,41 @@ function renderMomentumDrilldownSection({
       : stats.monthlyValues12m.length >= 12
         ? stats.monthlyValues12m.slice(-12, -3).reduce((sum, value) => sum + Math.max(0, value), 0) / 9
         : 0
-    const paceUnitLabel = useYearMode ? '/yr' : '/mo'
+    const averageUnitLabel = useYearMode ? 'Avg/year' : 'Avg/month'
+    const relativePaceDeltaLabel = priorPace > 0
+      ? formatSignedPercentCompact(((recentPace / priorPace) - 1) * 100)
+      : recentPace > 0
+        ? 'New'
+        : '+0%'
+    const relativePaceTone = getMomentumRecentCellTone({
+      recentTotalCitations: recentPace,
+      recentMonths: 1,
+      priorTotalCitations: priorPace,
+      priorMonths: 1,
+      isNotComparable: false,
+    })
     const recentPeriodCountLabel = useYearMode ? 'Recent 1y' : 'Recent 3m'
     const priorPeriodCountLabel = useYearMode ? 'Prior 4y' : 'Prior 9m'
     const momentumOverviewRows = stats.publications
       .slice()
       .filter((publication) => {
-        const publicationMonthStart = parsePublicationMonthStart(publication.publicationMonthStart, publication.year)
         const recentTotal = useYearMode ? publication.recent1yCitations : publication.recent3mCitations
         const priorTotal = useYearMode ? (publication.prior4yCitations ?? 0) : publication.prior9mCitations
-        const recentComparable = isMomentumWindowComparable(
-          publicationMonthStart,
-          useYearMode ? recent1yWindowStart : recent3WindowStart,
-        )
-        const priorComparable = isMomentumWindowComparable(
-          publicationMonthStart,
-          useYearMode ? prior4yWindowStart : prior9WindowStart,
-        )
-        const recentMonths = useYearMode ? 12 : 3
-        const priorMonths = useYearMode ? 48 : 9
+        const recentMonths = useYearMode ? 1 : 3
+        const priorMonths = useYearMode ? 4 : 9
         const recentDisplayedValue = roundMomentumOverviewValue(recentTotal / recentMonths)
         const priorDisplayedValue = roundMomentumOverviewValue(priorTotal / priorMonths)
-        if (!recentComparable && !priorComparable) {
-          return false
-        }
-        if (recentComparable && !priorComparable && recentDisplayedValue <= 0) {
-          return false
-        }
-        if (!recentComparable && priorComparable && priorDisplayedValue <= 0) {
-          return false
-        }
         return recentDisplayedValue > 0 || priorDisplayedValue > 0
       })
       .sort((left, right) => {
-        const leftPublicationMonthStart = parsePublicationMonthStart(left.publicationMonthStart, left.year)
-        const rightPublicationMonthStart = parsePublicationMonthStart(right.publicationMonthStart, right.year)
         const leftRecentTotal = useYearMode ? left.recent1yCitations : left.recent3mCitations
         const rightRecentTotal = useYearMode ? right.recent1yCitations : right.recent3mCitations
-        const leftRecentMonths = useYearMode ? 12 : 3
-        const rightRecentMonths = useYearMode ? 12 : 3
+        const leftRecentMonths = useYearMode ? 1 : 3
+        const rightRecentMonths = useYearMode ? 1 : 3
         const leftPriorTotal = useYearMode ? (left.prior4yCitations ?? 0) : left.prior9mCitations
         const rightPriorTotal = useYearMode ? (right.prior4yCitations ?? 0) : right.prior9mCitations
-        const leftPriorMonths = useYearMode ? 48 : 9
-        const rightPriorMonths = useYearMode ? 48 : 9
-        const leftRecentWindowStart = useYearMode ? recent1yWindowStart : recent3WindowStart
-        const rightRecentWindowStart = useYearMode ? recent1yWindowStart : recent3WindowStart
-        const leftPriorWindowStart = useYearMode ? prior4yWindowStart : prior9WindowStart
-        const rightPriorWindowStart = useYearMode ? prior4yWindowStart : prior9WindowStart
-        const leftIsNotComparable = !isMomentumWindowComparable(leftPublicationMonthStart, leftRecentWindowStart)
-          || !isMomentumWindowComparable(leftPublicationMonthStart, leftPriorWindowStart)
-        const rightIsNotComparable = !isMomentumWindowComparable(rightPublicationMonthStart, rightRecentWindowStart)
-          || !isMomentumWindowComparable(rightPublicationMonthStart, rightPriorWindowStart)
+        const leftPriorMonths = useYearMode ? 4 : 9
+        const rightPriorMonths = useYearMode ? 4 : 9
         const toneRank = (tone: MomentumRecentCellTone): number => {
           switch (tone) {
             case 'positive':
@@ -27704,14 +29567,14 @@ function renderMomentumDrilldownSection({
           recentMonths: leftRecentMonths,
           priorTotalCitations: leftPriorTotal,
           priorMonths: leftPriorMonths,
-          isNotComparable: leftIsNotComparable,
+          isNotComparable: false,
         })
         const rightTone = getMomentumRecentCellTone({
           recentTotalCitations: rightRecentTotal,
           recentMonths: rightRecentMonths,
           priorTotalCitations: rightPriorTotal,
           priorMonths: rightPriorMonths,
-          isNotComparable: rightIsNotComparable,
+          isNotComparable: false,
         })
         const rankDifference = toneRank(leftTone) - toneRank(rightTone)
         if (rankDifference !== 0) {
@@ -27724,6 +29587,88 @@ function renderMomentumDrilldownSection({
         }
         return rightRecentTotal - leftRecentTotal
       })
+    const driverAxisLabel = useYearMode ? 'AVG CITES / YEAR' : 'AVG CITES / MONTH'
+    const baselinePeriodStart = useYearMode
+      ? prior4yWindowStart
+      : prior9WindowStart
+    const baselineCutoffMonthStart = useYearMode
+      ? new Date(Date.UTC(currentUtcMonthStart.getUTCFullYear() - 2, 11, 1))
+      : shiftUtcMonth(lastCompleteMonthStart, -3)
+    const recentPeriodStart = useYearMode
+      ? recent1yWindowStart
+      : recent3WindowStart
+    const recentCutoffMonthStart = lastCompleteMonthStart
+    const baselineWindowLabel = formatMomentumWindowRange(baselinePeriodStart, baselineCutoffMonthStart)
+    const recentWindowLabel = formatMomentumWindowRange(recentPeriodStart, recentCutoffMonthStart)
+    const baselineScopeLabel = formatPublicationMonthYear(baselineCutoffMonthStart)
+    const recentScopeLabel = formatPublicationMonthYear(recentCutoffMonthStart)
+    const countPublicationsInScope = (cutoffMonthStart: Date): number => stats.publications.reduce((count, publication) => {
+      const publicationMonthStart = parsePublicationMonthStart(publication.publicationMonthStart, publication.year)
+      if (publicationMonthStart === null) {
+        return count + 1
+      }
+      return count + (publicationMonthStart.getTime() <= cutoffMonthStart.getTime() ? 1 : 0)
+    }, 0)
+    const baselinePublicationCount = countPublicationsInScope(baselineCutoffMonthStart)
+    const recentPublicationCount = countPublicationsInScope(recentCutoffMonthStart)
+    let newPublicationLift = 0
+    let newPublicationCount = 0
+    let fasterExistingLift = 0
+    let fasterExistingCount = 0
+    let slowingLift = 0
+    let slowingPublicationCount = 0
+    stats.publications.forEach((publication) => {
+      const recentTotalCitations = useYearMode ? publication.recent1yCitations : publication.recent3mCitations
+      const recentMonths = useYearMode ? 1 : 3
+      const priorTotalCitations = useYearMode ? (publication.prior4yCitations ?? 0) : publication.prior9mCitations
+      const priorMonths = useYearMode ? 4 : 9
+      const recentRate = recentTotalCitations / recentMonths
+      const priorRate = priorTotalCitations / priorMonths
+      const deltaValue = recentRate - priorRate
+      if (Math.abs(deltaValue) < 1e-6) {
+        return
+      }
+      if (deltaValue > 0) {
+        if (priorRate <= 1e-6) {
+          newPublicationLift += deltaValue
+          newPublicationCount += 1
+        } else {
+          fasterExistingLift += deltaValue
+          fasterExistingCount += 1
+        }
+        return
+      }
+      slowingLift += deltaValue
+      slowingPublicationCount += 1
+    })
+    const momentumWaterfallContributions: MomentumWaterfallContribution[] = [
+      {
+        key: 'new-publications',
+        label: 'Newly active',
+        deltaValue: newPublicationLift,
+        tone: 'accent' as const,
+        publicationCount: newPublicationCount,
+        detail: useYearMode
+          ? 'No prior 4y pace.'
+          : 'No prior 9m pace.',
+      },
+      {
+        key: 'faster-existing',
+        label: 'Faster existing',
+        deltaValue: fasterExistingLift,
+        tone: 'positive' as const,
+        publicationCount: fasterExistingCount,
+        detail: 'Higher recent pace.',
+      },
+      {
+        key: 'slower-publications',
+        label: 'Slower publications',
+        deltaValue: slowingLift,
+        tone: 'danger' as const,
+        publicationCount: slowingPublicationCount,
+        detail: 'Lower recent pace.',
+      },
+    ].filter((contribution) => Math.abs(contribution.deltaValue) > 1e-6)
     return (
       <>
         <div
@@ -27741,46 +29686,79 @@ function renderMomentumDrilldownSection({
               {[
                 {
                   label: 'Recent vs prior citation pace',
-                  value: formatInt(stats.momentumIndex),
-                  secondary: renderMomentumStateBanner(stats.state),
+                  value: relativePaceDeltaLabel,
+                  cardClassName: getMomentumSummaryCardTintClass(relativePaceTone),
+                  valueClassName: getMomentumSummaryValueToneClass(relativePaceTone),
+                  tooltipContent: formatMomentumOverviewTooltip({
+                    paceDeltaLabel: relativePaceDeltaLabel,
+                    useYearMode,
+                  }),
+                  tooltipAlign: 'start' as const,
                 },
                 {
                   label: useYearMode ? 'Recent pace (1y)' : 'Recent pace (3m)',
-                  value: `${formatMomentumOverviewTick(recentPace)}${paceUnitLabel}`,
+                  value: `${formatInt(Math.round(recentPace))}${paceUnitLabel}`,
+                  tooltipContent: formatMomentumPaceWindowTooltip({
+                    windowType: 'recent',
+                    useYearMode,
+                  }),
+                  tooltipAlign: 'center' as const,
                 },
                 {
                   label: useYearMode ? 'Prior pace (4y)' : 'Prior pace (9m)',
-                  value: `${formatMomentumOverviewTick(priorPace)}${paceUnitLabel}`,
+                  value: `${formatInt(Math.round(priorPace))}${paceUnitLabel}`,
+                  tooltipContent: formatMomentumPaceWindowTooltip({
+                    windowType: 'prior',
+                    useYearMode,
+                  }),
+                  tooltipAlign: 'end' as const,
                 },
-              ].map((metricTile) => (
-                <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
-                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
-                  {metricTile.secondary ? (
-                    <div className="space-y-2">
-                      <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                        <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
-                      </div>
-                      <div className="flex justify-center">
-                        {metricTile.secondary}
-                      </div>
-                    </div>
-                  ) : (
+              ].map((metricTile) => {
+                const metricTileCard = (
+                  <div
+                    className={cn(
+                      HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS,
+                      metricTile.cardClassName,
+                    )}
+                  >
+                    <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS, 'min-h-0 justify-start text-left')}>
+                      {metricTile.label}
+                    </p>
                     <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                      <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
+                      <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums', metricTile.valueClassName)}>{metricTile.value}</p>
                     </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                )
+                if (!metricTile.tooltipContent) {
+                  return (
+                    <div key={metricTile.label}>
+                      {metricTileCard}
+                    </div>
+                  )
+                }
+                return (
+                  <TooltipProvider key={metricTile.label} delayDuration={120}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        {metricTileCard}
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="top"
+                        align={metricTile.tooltipAlign ?? 'center'}
+                        className="house-approved-tooltip z-[80] w-[11.5rem] max-w-[11.5rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                      >
+                        {metricTile.tooltipContent}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )
+              })}
             </div>
           </div>
         </div>
 
         <div className={cn('house-publications-drilldown-bounded-section relative', 'border-0 bg-transparent px-0 py-0')}>
           <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
-            <HelpTooltipIconButton
-              ariaLabel="Explain momentum overview"
-              content={formatMomentumOverviewTooltip(stats)}
-            />
             <PublicationInsightsTriggerButton
               ariaLabel="Open momentum overview insight"
               active={momentumInsightOpen}
@@ -27788,7 +29766,7 @@ function renderMomentumDrilldownSection({
             />
           </div>
           <div className="house-drilldown-heading-block">
-            <div className="space-y-3 pr-16">
+            <div className="space-y-3">
               <p className="house-drilldown-heading-block-title">How has citation pace changed recently?</p>
               <div className="flex items-center justify-between gap-3">
                 <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
@@ -27859,8 +29837,8 @@ function renderMomentumDrilldownSection({
                   suppressTopRowHighlight
                   columns={[
                     { key: 'paper', label: 'Paper' },
-                    { key: 'recent', label: renderMomentumOverviewTableHeader(recentPeriodCountLabel), align: 'center', width: '1%' },
-                    { key: 'prior', label: renderMomentumOverviewTableHeader(priorPeriodCountLabel), align: 'center', width: '1%' },
+                    { key: 'recent', label: renderMomentumOverviewTableHeader(recentPeriodCountLabel, averageUnitLabel), align: 'center', width: '1%' },
+                    { key: 'prior', label: renderMomentumOverviewTableHeader(priorPeriodCountLabel, averageUnitLabel), align: 'center', width: '1%' },
                   ]}
                   rows={momentumOverviewRows.map((publication) => {
                     const publicationMonthStart = parsePublicationMonthStart(
@@ -27868,19 +29846,17 @@ function renderMomentumDrilldownSection({
                       publication.year,
                     )
                     const recentTotalCitations = useYearMode ? publication.recent1yCitations : publication.recent3mCitations
-                    const recentMonths = useYearMode ? 12 : 3
+                    const recentMonths = useYearMode ? 1 : 3
                     const priorTotalCitations = useYearMode ? (publication.prior4yCitations ?? 0) : publication.prior9mCitations
-                    const priorMonths = useYearMode ? 48 : 9
+                    const priorMonths = useYearMode ? 4 : 9
                     const recentWindowStart = useYearMode ? recent1yWindowStart : recent3WindowStart
                     const priorWindowStart = useYearMode ? prior4yWindowStart : prior9WindowStart
-                    const isNotComparable = !isMomentumWindowComparable(publicationMonthStart, recentWindowStart)
-                      || !isMomentumWindowComparable(publicationMonthStart, priorWindowStart)
                     const recentTone = getMomentumRecentCellTone({
                       recentTotalCitations,
                       recentMonths,
                       priorTotalCitations,
                       priorMonths,
-                      isNotComparable,
+                      isNotComparable: false,
                     })
                     return {
                       key: `momentum-overview-${publication.workId}`,
@@ -27932,67 +29908,22 @@ function renderMomentumDrilldownSection({
         </div>
 
         <div className="house-publications-drilldown-bounded-section relative">
-          <div className="absolute right-2 top-2 z-10">
-            <HelpTooltipIconButton
-              ariaLabel="Explain what is driving this"
-              content={formatMomentumContributorsTooltip({
-                ...stats,
-                topContributors: stats.topContributors.slice(0, 3),
-              })}
-            />
-          </div>
           <div className="house-drilldown-heading-block">
-            <p className="house-drilldown-heading-block-title">Which papers explain the change?</p>
+            <p className="house-drilldown-heading-block-title">What explains the change in citation pace?</p>
           </div>
           <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-            <CanonicalTablePanel
-              bare
-              variant="drilldown"
-              suppressTopRowHighlight
-              columns={[
-                { key: 'paper', label: 'Paper' },
-                { key: 'shift', label: 'Shift', align: 'center', width: '1%' },
-                { key: 'delta', label: 'Delta', align: 'center', width: '1%' },
-              ]}
-              rows={stats.topContributors.slice(0, 3).map((publication) => ({
-                key: publication.workId,
-                cells: {
-                  paper: onOpenPublication ? (
-                    <button
-                      type="button"
-                      data-stop-tile-open="true"
-                      className="block w-full text-left text-[hsl(var(--tone-accent-700))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:text-[hsl(var(--tone-accent-800))] hover:underline focus-visible:outline-none focus-visible:underline"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        onOpenPublication(publication.workId)
-                      }}
-                      onMouseDown={(event) => event.stopPropagation()}
-                    >
-                      <span className="block max-w-full break-words leading-snug">{publication.title}</span>
-                    </button>
-                  ) : (
-                    <span className="block max-w-full break-words leading-snug">{publication.title}</span>
-                  ),
-                  shift: publication.prior9mAvg !== null && publication.recent3mAvg !== null
-                    ? `${formatMomentumOverviewTick(publication.prior9mAvg)} -> ${formatMomentumOverviewTick(publication.recent3mAvg)}`
-                    : '\u2014',
-                  delta: (
-                    <span
-                      className={cn(
-                        'font-semibold tabular-nums',
-                        publication.shiftDelta === null
-                          ? 'text-[hsl(var(--tone-neutral-600))]'
-                          : publication.shiftDelta >= 0
-                          ? 'text-[hsl(var(--tone-positive-700))]'
-                          : 'text-[hsl(var(--tone-danger-700))]',
-                      )}
-                    >
-                      {publication.shiftDelta === null ? '\u2014' : formatSignedNumber(publication.shiftDelta, 1)}
-                    </span>
-                  ),
-                },
-              }))}
-              emptyMessage="No momentum-shift drivers available."
+            <MomentumPaceWaterfallChart
+              baselineValue={priorPace}
+              recentValue={recentPace}
+              contributions={momentumWaterfallContributions}
+              unitLabel={paceUnitLabel}
+              axisLabel={driverAxisLabel}
+              baselineWindowLabel={baselineWindowLabel}
+              recentWindowLabel={recentWindowLabel}
+              baselineScopeLabel={baselineScopeLabel}
+              recentScopeLabel={recentScopeLabel}
+              baselinePublicationCount={baselinePublicationCount}
+              recentPublicationCount={recentPublicationCount}
             />
           </div>
         </div>
@@ -28001,40 +29932,184 @@ function renderMomentumDrilldownSection({
   }
 
   if (activeTab === 'breakdown') {
+    const priorHeaderLabel = useYearMode ? 'Prior (4y)' : 'Prior (9m)'
+    const recentHeaderLabel = useYearMode ? 'Recent (1y)' : 'Recent (3m)'
+    const formatBreakdownPace = (value: number): string => `${formatRoundedOneDecimalTrimmed(value)}${paceUnitLabel}`
+    const formatBreakdownSignedPace = (value: number): string => `${value > 0 ? '+' : ''}${formatRoundedOneDecimalTrimmed(value)}${paceUnitLabel}`
+    const availableBucketKeys = bucketOrder.filter((bucketKey) => groupedRows[bucketKey].length > 0)
+    const activeBucketKey = groupedRows[momentumBreakdownBucket].length > 0
+      ? momentumBreakdownBucket
+      : (availableBucketKeys[0] ?? 'new')
+    const activeRows = groupedRows[activeBucketKey]
     return (
       <div className="house-publications-drilldown-bounded-section relative">
-        <div className="absolute right-2 top-2 z-10">
-          <HelpTooltipIconButton
-            ariaLabel="Explain momentum contributors"
-            content={formatMomentumContributorsTooltip(stats)}
-          />
-        </div>
         <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Momentum contributors</p>
+          <div className="space-y-3">
+            <p className="house-drilldown-heading-block-title">Publication-level decomposition</p>
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3">
+              <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                <div
+                  className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+                  data-stop-tile-open="true"
+                >
+                  <span
+                    className={HOUSE_TOGGLE_THUMB_CLASS}
+                    style={buildTileToggleThumbStyle(momentumWindowMode === '5y' ? 1 : 0, 2, !tileToggleMotionReady)}
+                    aria-hidden="true"
+                  />
+                  <button
+                    type="button"
+                    data-stop-tile-open="true"
+                    className={cn(
+                      HOUSE_TOGGLE_BUTTON_CLASS,
+                      momentumWindowMode === '12m' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                    )}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (momentumWindowMode === '12m') {
+                        return
+                      }
+                      onMomentumWindowModeChange('12m')
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    aria-pressed={momentumWindowMode === '12m'}
+                  >
+                    1y
+                  </button>
+                  <button
+                    type="button"
+                    data-stop-tile-open="true"
+                    className={cn(
+                      HOUSE_TOGGLE_BUTTON_CLASS,
+                      momentumWindowMode === '5y' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                    )}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (momentumWindowMode === '5y') {
+                        return
+                      }
+                      onMomentumWindowModeChange('5y')
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    aria-pressed={momentumWindowMode === '5y'}
+                  >
+                    5y
+                  </button>
+                </div>
+              </div>
+              <div className="ml-auto w-fit justify-self-end" data-stop-tile-open="true">
+                <div className="house-approved-toggle-context ml-auto inline-flex items-center" data-stop-tile-open="true">
+                  <div
+                    className="house-segmented-auto-toggle h-[1.8rem]"
+                    data-stop-tile-open="true"
+                    data-house-role="horizontal-toggle"
+                    data-ui="momentum-breakdown-bucket-toggle"
+                  >
+                    {bucketOrder.map((bucketKey) => {
+                      const rows = groupedRows[bucketKey]
+                      const bucket = bucketMeta[bucketKey]
+                      const isActive = activeBucketKey === bucketKey
+                      const isDisabled = rows.length === 0
+                      return (
+                        <button
+                          key={`momentum-breakdown-toggle-${bucketKey}`}
+                          type="button"
+                          data-stop-tile-open="true"
+                          className={cn(
+                            HOUSE_TOGGLE_BUTTON_CLASS,
+                            'house-segmented-fill-toggle-button relative z-[1] min-w-0 px-3 text-[0.72rem] text-center',
+                            '!rounded-none',
+                            !isActive && !isDisabled && HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                            isActive && getMomentumBreakdownSegmentActiveClass(bucket.tone),
+                            isDisabled && 'cursor-not-allowed text-[hsl(var(--tone-neutral-350))]',
+                          )}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            if (isDisabled || bucketKey === activeBucketKey) {
+                              return
+                            }
+                            onMomentumBreakdownBucketChange(bucketKey)
+                          }}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          aria-pressed={isActive}
+                          disabled={isDisabled}
+                        >
+                          {bucket.toggleLabel}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
           <CanonicalTablePanel
+            key={`momentum-breakdown-${activeBucketKey}-${momentumWindowMode}`}
             bare
             variant="drilldown"
             suppressTopRowHighlight
             columns={[
-              { key: 'paper', label: 'Paper' },
-              { key: 'recent', label: '12m cites', align: 'center', width: '1%' },
-              { key: 'contribution', label: 'Contribution', align: 'center', width: '1%' },
-              { key: 'confidence', label: 'Confidence', align: 'center', width: '1%' },
-              { key: 'venue', label: 'Venue' },
+              { key: 'publication', label: 'Publication' },
+              { key: 'recent', label: <span className="inline-flex w-full justify-center text-center">{recentHeaderLabel}</span>, align: 'center', width: '1%' },
+              { key: 'prior', label: <span className="inline-flex w-full justify-center text-center">{priorHeaderLabel}</span>, align: 'center', width: '1%' },
+              { key: 'contribution', label: <span className="inline-flex w-full justify-center text-center">Change</span>, align: 'center', width: '1%' },
             ]}
-            rows={stats.topContributors.map((publication) => ({
-              key: publication.workId,
+            rows={activeRows.map((row) => ({
+              key: row.key,
               cells: {
-                paper: publication.title,
-                recent: formatInt(publication.citationsLast12m),
-                contribution: publication.momentumContribution.toFixed(1),
-                confidence: publication.confidenceLabel,
-                venue: publication.venue || '\u2014',
+                publication: onOpenPublication ? (
+                  <button
+                    type="button"
+                    data-stop-tile-open="true"
+                    className="block w-full text-left text-[hsl(var(--tone-accent-700))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:text-[hsl(var(--tone-accent-800))] hover:underline focus-visible:outline-none focus-visible:underline"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onOpenPublication(row.publication.workId)
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <span className="block max-w-full break-words leading-snug">{row.publication.title}</span>
+                    {row.metaLabel ? (
+                      <span className="mt-1 block text-[0.72rem] leading-snug text-[hsl(var(--tone-neutral-500))]">
+                        {row.metaLabel}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : (
+                  <span className="block max-w-full break-words leading-snug">
+                    <span className="block">{row.publication.title}</span>
+                    {row.metaLabel ? (
+                      <span className="mt-1 block text-[0.72rem] leading-snug text-[hsl(var(--tone-neutral-500))]">
+                        {row.metaLabel}
+                      </span>
+                    ) : null}
+                  </span>
+                ),
+                prior: (
+                  <span className="inline-flex w-full items-center justify-center text-center tabular-nums text-[hsl(var(--tone-neutral-700))]">
+                    {formatBreakdownPace(row.priorRate)}
+                  </span>
+                ),
+                recent: (
+                  <span className="inline-flex w-full items-center justify-center text-center tabular-nums font-medium text-[hsl(var(--tone-neutral-900))]">
+                    {formatBreakdownPace(row.recentRate)}
+                  </span>
+                ),
+                contribution: (
+                  <span
+                    className={cn(
+                      'inline-flex min-w-[4.8rem] w-full items-center justify-center rounded-md border px-2 py-1 text-center font-medium tabular-nums',
+                      getMomentumRecentCellTintClass(bucketMeta[row.bucketKey].tone),
+                    )}
+                  >
+                    {formatBreakdownSignedPace(row.contribution)}
+                  </span>
+                ),
               },
             }))}
-            emptyMessage="No paper-level momentum contributors available."
+            emptyMessage="No publications available in this bucket."
           />
         </div>
       </div>
@@ -28044,107 +30119,264 @@ function renderMomentumDrilldownSection({
   if (activeTab === 'trajectory') {
     return (
       <div className="house-publications-drilldown-bounded-section relative">
-        <div className="absolute right-2 top-2 z-10">
-          <HelpTooltipIconButton
-            ariaLabel="Explain momentum trajectory"
-            content={formatMomentumTrajectoryTooltip(stats)}
-          />
-        </div>
         <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Trajectory inputs</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="house-drilldown-heading-block-title">
+              {momentumTrajectoryViewMode === 'number' ? 'Recent citation volume over time' : 'Citation pace change over time'}
+            </p>
+            <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+              <div
+                className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+                data-stop-tile-open="true"
+              >
+                <span
+                  className={HOUSE_TOGGLE_THUMB_CLASS}
+                  style={buildTileToggleThumbStyle(momentumTrajectoryViewMode === 'number' ? 1 : 0, 2, !tileToggleMotionReady)}
+                  aria-hidden="true"
+                />
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  className={cn(
+                    HOUSE_TOGGLE_BUTTON_CLASS,
+                    momentumTrajectoryViewMode === 'pace' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                  )}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (momentumTrajectoryViewMode === 'pace') {
+                      return
+                    }
+                    onMomentumTrajectoryViewModeChange('pace')
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  aria-pressed={momentumTrajectoryViewMode === 'pace'}
+                >
+                  Pace
+                </button>
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  className={cn(
+                    HOUSE_TOGGLE_BUTTON_CLASS,
+                    momentumTrajectoryViewMode === 'number' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                  )}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (momentumTrajectoryViewMode === 'number') {
+                      return
+                    }
+                    onMomentumTrajectoryViewModeChange('number')
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  aria-pressed={momentumTrajectoryViewMode === 'number'}
+                >
+                  Number
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-          <CanonicalTablePanel
-            bare
-            variant="drilldown"
-            suppressTopRowHighlight
-            columns={[
-              { key: 'measure', label: 'Measure' },
-              { key: 'value', label: 'Value', align: 'center', width: '1%' },
-              { key: 'note', label: 'Interpretation' },
-            ]}
-            rows={[
-              {
-                key: 'months',
-                cells: {
-                  measure: 'Monthly points',
-                  value: formatInt(stats.monthlyValues12m.length),
-                  note: 'Monthly citation additions in the active 12-month view.',
-                },
-              },
-              {
-                key: 'weighted',
-                cells: {
-                  measure: 'Weighted monthly points',
-                  value: formatInt(stats.weightedMonthlyValues12m.length),
-                  note: 'Recency-weighted monthly series used where available.',
-                },
-              },
-              {
-                key: 'current',
-                cells: {
-                  measure: 'Current score',
-                  value: stats.recentScore12m === null ? '\u2014' : stats.recentScore12m.toFixed(1),
-                  note: 'Most recent active-window score.',
-                },
-              },
-              {
-                key: 'previous',
-                cells: {
-                  measure: 'Previous score',
-                  value: stats.previousScore12m === null ? '\u2014' : stats.previousScore12m.toFixed(1),
-                  note: 'Prior baseline score for comparison.',
-                },
-              },
-            ]}
-          />
+          <MomentumTrajectoryHistoryChart tile={tile} mode={momentumWindowMode} viewMode={momentumTrajectoryViewMode} />
         </div>
       </div>
     )
   }
 
   if (activeTab === 'context') {
+    const fieldRelativeModule = stats.contextModules.fieldRelativeMomentum
+    const contextWindowKey = momentumWindowMode === '5y' ? '5y' : '12m'
+    const activeFieldWindow = fieldRelativeModule.windows[contextWindowKey]
+    const fieldDeltaTone = getMomentumFieldDeltaTone(activeFieldWindow.fieldRelativeDeltaPts)
+    const actualTone = getMomentumPctTone(activeFieldWindow.actualPaceChangePct, activeFieldWindow.actualIsNewSignal)
+    const baselineTone = getMomentumPctTone(
+      activeFieldWindow.fieldBaselineChangePct,
+      activeFieldWindow.fieldBaselineIsNewSignal,
+    )
+    const percentileTone: MomentumRecentCellTone = activeFieldWindow.percentileRank === null
+      ? 'neutral'
+      : activeFieldWindow.percentileRank >= 80
+        ? 'positive'
+        : activeFieldWindow.percentileRank >= 60
+          ? 'accent'
+          : 'neutral'
+    const contextBadges = activeFieldWindow.status === 'available'
+      ? buildMomentumContextBadges(activeFieldWindow)
+      : []
+    const percentileBadge = activeFieldWindow.status === 'available' && activeFieldWindow.percentileVisible
+      ? buildMomentumPercentileBadge(activeFieldWindow.percentileRank)
+      : null
+    const fieldAdjustedBadge = contextBadges.find((badge) => (
+      badge.label === 'Relative outperformance'
+      || badge.label === 'In line with field'
+    )) || null
+    const matchedFieldBadge = contextBadges.find((badge) => (
+      badge.label === 'Field contraction'
+      || badge.label === 'Field expansion'
+    )) || null
+    const contextCards = [
+      {
+        label: 'Field-adjusted pace change',
+        value: activeFieldWindow.fieldRelativeDeltaPts === null
+          ? 'Not available'
+          : formatSignedPointsCompact(activeFieldWindow.fieldRelativeDeltaPts),
+        subtext: '',
+        badge: fieldAdjustedBadge,
+        cardClassName: getMomentumSummaryCardTintClass(fieldDeltaTone),
+        valueClassName: getMomentumSummaryValueToneClass(fieldDeltaTone),
+        tooltipContent: formatMomentumFieldAdjustedTileTooltip(),
+        tooltipAlign: 'start' as const,
+      },
+      ...(activeFieldWindow.percentileVisible && activeFieldWindow.percentileRank !== null
+        ? [{
+            label: 'Peer percentile',
+            value: formatMomentumTopPercentileLabel(activeFieldWindow.percentileRank),
+            subtext: '',
+            badge: percentileBadge,
+            cardClassName: getMomentumSummaryCardTintClass(percentileTone),
+            valueClassName: getMomentumSummaryValueToneClass(percentileTone),
+            tooltipContent: formatMomentumPeerPercentileTooltip(),
+            tooltipAlign: 'end' as const,
+          }]
+        : []),
+      {
+        label: 'Portfolio pace change',
+        value: formatMomentumChangeDisplay(
+          activeFieldWindow.actualPaceChangePct,
+          activeFieldWindow.actualIsNewSignal,
+        ),
+        subtext: activeFieldWindow.actualIsNewSignal
+          ? 'New citation activity in the recent window'
+          : 'Recent pace vs prior baseline',
+        badge: null,
+        cardClassName: getMomentumSummaryCardTintClass(actualTone),
+        valueClassName: getMomentumSummaryValueToneClass(actualTone),
+        tooltipContent: formatMomentumPaceWindowTooltip({
+          windowType: 'recent',
+          useYearMode: momentumWindowMode === '5y',
+        }),
+        tooltipAlign: 'start' as const,
+      },
+      {
+        label: 'Matched field trend',
+        value: formatMomentumChangeDisplay(
+          activeFieldWindow.fieldBaselineChangePct,
+          activeFieldWindow.fieldBaselineIsNewSignal,
+        ),
+        subtext: '',
+        badge: matchedFieldBadge,
+        cardClassName: getMomentumSummaryCardTintClass(baselineTone),
+        valueClassName: getMomentumSummaryValueToneClass(baselineTone),
+        tooltipContent: formatMomentumMatchedFieldTrendTooltip(momentumWindowMode === '5y'),
+        tooltipAlign: 'end' as const,
+      },
+    ]
+    const benchmarkNote = activeFieldWindow.status !== 'available'
+      ? (activeFieldWindow.reasonUnavailable || fieldRelativeModule.reasonUnavailable || '')
+      : ''
     return (
       <div className="house-publications-drilldown-bounded-section relative">
-        <div className="absolute right-2 top-2 z-10">
-          <HelpTooltipIconButton
-            ariaLabel="Explain momentum context"
-            content={formatMomentumContextTooltip(stats)}
-          />
-        </div>
         <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Momentum context</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="house-drilldown-heading-block-title">Field-adjusted citation momentum</p>
+            <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+              <div
+                className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+                data-stop-tile-open="true"
+              >
+                <span
+                  className={HOUSE_TOGGLE_THUMB_CLASS}
+                  style={buildTileToggleThumbStyle(momentumWindowMode === '5y' ? 1 : 0, 2, !tileToggleMotionReady)}
+                  aria-hidden="true"
+                />
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  className={cn(
+                    HOUSE_TOGGLE_BUTTON_CLASS,
+                    momentumWindowMode === '12m' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                  )}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (momentumWindowMode === '12m') {
+                      return
+                    }
+                    onMomentumWindowModeChange('12m')
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  aria-pressed={momentumWindowMode === '12m'}
+                >
+                  1y
+                </button>
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  className={cn(
+                    HOUSE_TOGGLE_BUTTON_CLASS,
+                    momentumWindowMode === '5y' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                  )}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (momentumWindowMode === '5y') {
+                      return
+                    }
+                    onMomentumWindowModeChange('5y')
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  aria-pressed={momentumWindowMode === '5y'}
+                >
+                  5y
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-          <CanonicalTablePanel
-            bare
-            variant="drilldown"
-            suppressTopRowHighlight
-            columns={[
-              { key: 'measure', label: 'Measure' },
-              { key: 'value', label: 'Value', align: 'center', width: '1%' },
-              { key: 'note', label: 'Interpretation' },
-            ]}
-            rows={[
-              {
-                key: 'tracked',
-                cells: {
-                  measure: 'Tracked papers',
-                  value: formatInt(stats.trackedPapers),
-                  note: 'Papers with usable citation history for the momentum calculation.',
-                },
-              },
-              ...stats.confidenceBuckets.map((bucket) => ({
-                key: `confidence-${bucket.label}`,
-                cells: {
-                  measure: `${bucket.label} confidence`,
-                  value: formatInt(bucket.count),
-                  note: 'Match quality or enrichment confidence bucket.',
-                },
-              })),
-            ]}
-            emptyMessage="No confidence context available."
-          />
+          <div
+            className={cn(
+              HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS,
+              'house-publications-headline-metric-grid mt-0 w-full max-w-[54rem] grid-cols-1 sm:grid-cols-2 xl:mx-auto xl:grid-cols-2',
+            )}
+          >
+            {contextCards.map((contextCard) => {
+              const contextCardContent = (
+                <div key={contextCard.label} className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS, contextCard.cardClassName, 'gap-2')}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{contextCard.label}</p>
+                  <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                    <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums', contextCard.valueClassName)}>{contextCard.value}</p>
+                  </div>
+                  <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{contextCard.subtext}</p>
+                  {contextCard.badge ? (
+                    <div className="mt-auto pt-1">
+                      {renderMethodsToneBadge(contextCard.badge.label, contextCard.badge.tone)}
+                    </div>
+                  ) : null}
+                </div>
+              )
+              if (!contextCard.tooltipContent) {
+                return contextCardContent
+              }
+              return (
+                <TooltipProvider key={contextCard.label} delayDuration={120}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      {contextCardContent}
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      align={contextCard.tooltipAlign ?? 'center'}
+                      className="house-approved-tooltip z-[80] w-[11.5rem] max-w-[11.5rem] whitespace-normal px-2.5 py-2 text-xs leading-relaxed text-[hsl(var(--tone-neutral-700))] shadow-none"
+                    >
+                      {contextCard.tooltipContent}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )
+            })}
+          </div>
+          {benchmarkNote ? (
+            <p className={cn(HOUSE_DRILLDOWN_NOTE_SOFT_CLASS, 'mt-3 text-left')}>{benchmarkNote}</p>
+          ) : null}
         </div>
       </div>
     )
@@ -28877,6 +31109,10 @@ function renderEnhancedGenericMetricDrilldownSection({
   onOpenPublication,
   momentumWindowMode,
   onMomentumWindowModeChange,
+  momentumTrajectoryViewMode,
+  onMomentumTrajectoryViewModeChange,
+  momentumBreakdownBucket,
+  onMomentumBreakdownBucketChange,
   momentumYearBreakdown,
   momentumOverviewViewMode,
   onMomentumOverviewViewModeChange,
@@ -28897,6 +31133,10 @@ function renderEnhancedGenericMetricDrilldownSection({
   onOpenPublication?: (workId: string) => void
   momentumWindowMode: MomentumWindowMode
   onMomentumWindowModeChange: (next: MomentumWindowMode) => void
+  momentumTrajectoryViewMode: MomentumTrajectoryViewMode
+  onMomentumTrajectoryViewModeChange: (next: MomentumTrajectoryViewMode) => void
+  momentumBreakdownBucket: MomentumBreakdownBucketKey
+  onMomentumBreakdownBucketChange: (next: MomentumBreakdownBucketKey) => void
   momentumYearBreakdown: MomentumYearBreakdown | null
   momentumOverviewViewMode: SplitBreakdownViewMode
   onMomentumOverviewViewModeChange: (next: SplitBreakdownViewMode) => void
@@ -28921,6 +31161,10 @@ function renderEnhancedGenericMetricDrilldownSection({
           onOpenPublication,
           momentumWindowMode,
           onMomentumWindowModeChange,
+          momentumTrajectoryViewMode,
+          onMomentumTrajectoryViewModeChange,
+          momentumBreakdownBucket,
+          onMomentumBreakdownBucketChange,
           momentumYearBreakdown,
           momentumOverviewViewMode,
           onMomentumOverviewViewModeChange,
@@ -29664,16 +31908,34 @@ export function PublicationsTopStrip({
     }
     if (activeTile?.key === 'total_citations') {
       const totalCitationTabSubtitleByTab: Partial<Record<DrilldownTab, string>> = {
-        summary: 'A summary of your portfolio citations',
-        breakdown: 'The make-up of your citation footprint',
-        trajectory: 'How your citation trajectory is changing over time',
-        context: 'How your recent citation activity compares with your record',
+        summary: 'Your citation profile and recent performance',
+        breakdown: 'How citations are distributed across publications',
+        trajectory: 'Which publications are currently active',
+        context: 'How your citation base is structured',
         methods: 'How these citation views are defined',
       }
       return totalCitationTabSubtitleByTab[activeDrilldownTab] || sanitizedActiveTileDefinition
     }
+    if (activeTile?.key === 'momentum') {
+      const momentumTabSubtitleByTab: Partial<Record<DrilldownTab, string>> = {
+        summary: 'Is your impact accelerating or slowing overall?',
+        breakdown: 'Which publications are driving changes in your citation pace?',
+        trajectory: 'How has your citation momentum evolved over time?',
+        context: 'How does your momentum compare to your field and peers?',
+        methods: 'How these momentum views are defined',
+      }
+      return momentumTabSubtitleByTab[activeDrilldownTab] || sanitizedActiveTileDefinition
+    }
     return sanitizedActiveTileDefinition
   }, [activeDrilldownTab, activeTile?.key, sanitizedActiveTileDefinition])
+
+  const activeDrilldownTabs = useMemo(() => (
+    activeTile?.key === 'total_citations'
+      ? TOTAL_CITATIONS_DRILLDOWN_TABS
+      : activeTile?.key === 'momentum'
+        ? MOMENTUM_DRILLDOWN_TABS
+      : DRILLDOWN_TABS
+  ), [activeTile?.key])
 
   return (
     <>
@@ -30258,7 +32520,7 @@ export function PublicationsTopStrip({
                 tabIdPrefix="drilldown-tab-"
                 panelIdPrefix="drilldown-panel-"
               >
-                {DRILLDOWN_TABS.map((tab) => (
+                {activeDrilldownTabs.map((tab) => (
                   <DrilldownSheet.Tab key={tab.value} id={tab.value}>
                     {tab.label}
                   </DrilldownSheet.Tab>

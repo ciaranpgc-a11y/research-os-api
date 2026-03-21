@@ -39,6 +39,8 @@ type RawOutputParam = {
   severity_label?: string
   severity_thresholds?: { mild: number | null; moderate: number | null; severe: number | null }
   severity_label_override?: { mild: string | null; moderate: string | null; severe: string | null }
+  nested_under?: string
+  decimal_places?: number
 }
 
 type RawRefRange = {
@@ -218,6 +220,8 @@ export function resolveReferenceParameters(sex: string = 'Male', age?: number): 
       severity_label: op.severity_label,
       severity_thresholds: op.severity_thresholds,
       severity_label_override: op.severity_label_override,
+      nested_under: op.nested_under,
+      decimal_places: op.decimal_places,
     })
   }
 
@@ -285,6 +289,8 @@ export function resolveParameterRanges(parameterKey: string): CmrParameterRanges
     severity_label: op?.severity_label,
     severity_thresholds: op?.severity_thresholds,
     severity_label_override: op?.severity_label_override,
+    nested_under: op?.nested_under,
+    decimal_places: op?.decimal_places,
   }
 }
 

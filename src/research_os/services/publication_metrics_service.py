@@ -4,6 +4,7 @@ from bisect import bisect_left, bisect_right
 import logging
 import math
 import os
+import random
 import threading
 import time
 from collections import defaultdict
@@ -37,7 +38,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 24
+TOP_METRICS_SCHEMA_VERSION = 25
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 DRILLDOWN_TILE_ID_BY_KEY = {
@@ -741,6 +742,79 @@ def _openalex_field_year_total_count(
     return int(total)
 
 
+def _openalex_field_year_history_cohort(
+    *,
+    field_id: str,
+    year: int,
+    mailto: str | None,
+    max_pages: int,
+    now: datetime,
+) -> dict[str, Any]:
+    clean_field_id = _normalize_openalex_field_id(field_id)
+    field_filter_id = _openalex_field_filter_token(field_id)
+    if not clean_field_id or not field_filter_id:
+        return {"samples": [], "total_results": 0}
+    if year < 1900 or year > 2100:
+        return {"samples": [], "total_results": 0}
+
+    samples: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for page_index in range(max_pages):
+        seed_value = (
+            abs(hash(f"history:{field_filter_id}:{int(year)}:{page_index}"))
+            % 10_000_000
+        )
+        params: dict[str, Any] = {
+            "filter": f"primary_topic.field.id:{field_filter_id},publication_year:{int(year)}",
+            "select": "id,counts_by_year,cited_by_count",
+            "per-page": 200,
+            "sample": 200,
+            "seed": seed_value,
+        }
+        if mailto:
+            params["mailto"] = mailto
+        try:
+            payload = _openalex_request_with_retry(
+                url="https://api.openalex.org/works",
+                params=params,
+            )
+        except Exception:
+            return {"samples": [], "total_results": 0}
+        if not payload:
+            continue
+        results = payload.get("results")
+        if not isinstance(results, list):
+            continue
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            work_id = str(item.get("id") or "").strip()
+            if work_id:
+                if work_id in seen_ids:
+                    continue
+                seen_ids.add(work_id)
+            yearly_counts = _counts_by_year_from_payload(
+                item.get("counts_by_year"),
+                now_year=now.year,
+            )
+            if not yearly_counts:
+                continue
+            samples.append(
+                {
+                    "work_id": work_id or None,
+                    "cited_by_count": max(
+                        0,
+                        int(_safe_int(item.get("cited_by_count")) or 0),
+                    ),
+                    "yearly_counts": yearly_counts,
+                }
+            )
+    return {
+        "samples": samples,
+        "total_results": len(samples),
+    }
+
+
 def _openalex_field_year_count_below_or_equal(
     *,
     field_id: str,
@@ -869,6 +943,76 @@ def _percentile_cutoff(sorted_values: list[int], percentile: float) -> int | Non
     return int(round(interpolated))
 
 
+def _median_value(values: list[int | float]) -> float | None:
+    clean = [float(value) for value in values if isinstance(value, (int, float))]
+    if not clean:
+        return None
+    ordered = sorted(clean)
+    middle = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return float(ordered[middle])
+    return float((ordered[middle - 1] + ordered[middle]) / 2.0)
+
+
+def _momentum_window_rate_summary(
+    *, yearly_counts: dict[int, int], now: datetime, window_mode: str
+) -> dict[str, float]:
+    if window_mode == "5y":
+        recent_total = float(
+            _estimate_window_citations(
+                yearly_counts,
+                start=_shift_month(_month_start(now), -11),
+                end=now,
+                now=now,
+            )
+        )
+        prior_total = float(
+            sum(
+                max(0, int(yearly_counts.get(year, 0) or 0))
+                for year in range(now.year - 5, now.year - 1)
+            )
+        )
+        return {
+            "recent_total": recent_total,
+            "prior_total": prior_total,
+            "recent_rate": recent_total,
+            "prior_rate": prior_total / 4.0,
+        }
+
+    recent_start = _shift_month(_month_start(now), -2)
+    prior_start = _shift_month(_month_start(now), -11)
+    recent_total = float(
+        _estimate_window_citations(
+            yearly_counts,
+            start=recent_start,
+            end=now,
+            now=now,
+        )
+    )
+    prior_total = float(
+        _estimate_window_citations(
+            yearly_counts,
+            start=prior_start,
+            end=recent_start,
+            now=now,
+        )
+    )
+    return {
+        "recent_total": recent_total,
+        "prior_total": prior_total,
+        "recent_rate": recent_total / 3.0,
+        "prior_rate": prior_total / 9.0,
+    }
+
+
+def _pace_change_pct(*, recent_rate: float | None, prior_rate: float | None) -> float | None:
+    if recent_rate is None or prior_rate is None:
+        return None
+    if float(prior_rate) <= 1e-9:
+        return None
+    return ((float(recent_rate) / float(prior_rate)) - 1.0) * 100.0
+
+
 def _month_start(value: datetime) -> datetime:
     utc_value = _coerce_utc(value)
     return datetime(utc_value.year, utc_value.month, 1, tzinfo=timezone.utc)
@@ -934,6 +1078,25 @@ def _extract_counts_by_year(
         if counts:
             return counts
     return {}
+
+
+def _counts_by_year_from_payload(raw: Any, *, now_year: int) -> dict[int, int]:
+    if not isinstance(raw, list):
+        return {}
+    counts: dict[int, int] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        year = _safe_int(item.get("year"))
+        value = _safe_int(item.get("cited_by_count"))
+        if value is None:
+            value = _safe_int(item.get("citation_count"))
+        if value is None:
+            value = _safe_int(item.get("citations"))
+        if year is None or value is None or year < 1900 or year > now_year:
+            continue
+        counts[int(year)] = max(0, int(value))
+    return counts
 
 
 def _estimate_window_citations(
@@ -2408,6 +2571,25 @@ def _build_payload_read_only(*, user_id: str, computed_at: datetime) -> dict[str
         session.close()
 
 
+def _source_cache_payload(
+    session,
+    *,
+    user_id: str,
+    source: str,
+    refresh_date: date,
+) -> dict[str, Any]:
+    row = session.scalars(
+        select(PublicationMetricsSourceCache).where(
+            PublicationMetricsSourceCache.user_id == user_id,
+            PublicationMetricsSourceCache.source == source,
+            PublicationMetricsSourceCache.refresh_date == refresh_date,
+        )
+    ).first()
+    if row is None or not isinstance(row.payload_json, dict):
+        return {}
+    return dict(row.payload_json)
+
+
 def _upsert_source_cache(
     session,
     *,
@@ -2437,6 +2619,490 @@ def _upsert_source_cache(
         return
     row.payload_json = payload
     row.updated_at = now
+
+
+def _build_momentum_context_modules(
+    session,
+    *,
+    user_id: str,
+    user_email: str | None,
+    now: datetime,
+    per_work_rows: list[dict[str, Any]],
+    data_sources: list[str],
+) -> dict[str, Any]:
+    planned_reason = "Planned follow-on module; not yet implemented."
+    base_modules = {
+        "signal_noise": {
+            "status": "unavailable",
+            "reason_unavailable": planned_reason,
+        },
+        "contribution_balance": {
+            "status": "unavailable",
+            "reason_unavailable": planned_reason,
+        },
+        "publication_type_context": {
+            "status": "unavailable",
+            "reason_unavailable": planned_reason,
+        },
+        "age_adjusted_performance": {
+            "status": "unavailable",
+            "reason_unavailable": planned_reason,
+        },
+        "topic_momentum_alignment": {
+            "status": "unavailable",
+            "reason_unavailable": planned_reason,
+        },
+        "event_drivers": {
+            "status": "unavailable",
+            "reason_unavailable": planned_reason,
+        },
+        "collaboration_context": {
+            "status": "unavailable",
+            "reason_unavailable": planned_reason,
+        },
+    }
+
+    empty_window = {
+        "status": "unavailable",
+        "reason_unavailable": "OpenAlex field benchmark unavailable.",
+        "actual_pace_change_pct": None,
+        "actual_is_new_signal": False,
+        "field_baseline_change_pct": None,
+        "field_baseline_is_new_signal": False,
+        "field_relative_delta_pts": None,
+        "percentile_rank": None,
+        "percentile_visible": False,
+        "coverage_pct": 0.0,
+        "benchmarked_publications": 0,
+        "unique_cohorts": 0,
+        "median_cohort_size": None,
+        "actual_recent_rate": None,
+        "actual_prior_rate": None,
+        "field_recent_rate": None,
+        "field_prior_rate": None,
+    }
+    field_relative_module: dict[str, Any] = {
+        "status": "unavailable",
+        "reason_unavailable": "OpenAlex field benchmark unavailable.",
+        "benchmark_source": "OpenAlex",
+        "normalization_basis": "Primary field + publication year",
+        "windows": {
+            "12m": dict(empty_window),
+            "5y": dict(empty_window),
+        },
+    }
+
+    if "OpenAlex" not in data_sources or not per_work_rows:
+        return {
+            "field_relative_momentum": field_relative_module,
+            **base_modules,
+        }
+
+    refresh_date = now.date()
+    cache_source = "openalex_momentum_benchmark"
+    cache_payload = _source_cache_payload(
+        session,
+        user_id=user_id,
+        source=cache_source,
+        refresh_date=refresh_date,
+    )
+    cache_entries = (
+        dict(cache_payload.get("entries"))
+        if isinstance(cache_payload.get("entries"), dict)
+        else {}
+    )
+    cache_updated = False
+    as_of_month = _month_start(now).date().isoformat()
+    openalex_mailto = _openalex_mailto(
+        fallback_email=str(user_email or "").strip() or None
+    )
+    field_cohort_max_pages = _openalex_field_cohort_max_pages()
+    field_cohort_min_size = _openalex_field_cohort_min_size()
+    history_payload_cache: dict[tuple[str, int], dict[str, Any]] = {}
+    total_count_cache: dict[tuple[str, int], int | None] = {}
+    work_field_cache: dict[str, dict[str, Any]] = {}
+
+    def _resolve_field_and_year(row: dict[str, Any]) -> tuple[str | None, int | None]:
+        field_id = _normalize_openalex_field_id(row.get("primary_field_id"))
+        paper_year = _safe_int(row.get("year"))
+        if field_id and paper_year is not None and 1900 <= paper_year <= now.year:
+            return field_id, int(paper_year)
+
+        openalex_work_id = _extract_openalex_work_id(
+            str(row.get("openalex_work_id") or "").strip() or None
+        )
+        if not openalex_work_id:
+            return field_id, paper_year
+        work_field = work_field_cache.get(openalex_work_id)
+        if work_field is None:
+            work_field = _openalex_primary_field_and_year_for_work(
+                openalex_work_id=openalex_work_id,
+                mailto=openalex_mailto,
+            )
+            work_field_cache[openalex_work_id] = work_field
+        resolved_field_id = _normalize_openalex_field_id(work_field.get("field_id"))
+        resolved_year = (
+            int(paper_year)
+            if paper_year is not None and 1900 <= paper_year <= now.year
+            else _safe_int(work_field.get("publication_year"))
+        )
+        if resolved_year is None or resolved_year < 1900 or resolved_year > now.year:
+            return resolved_field_id, None
+        return resolved_field_id, int(resolved_year)
+
+    def _cohort_entry(field_id: str, year: int, window_mode: str) -> dict[str, Any]:
+        nonlocal cache_updated
+        cache_key = (
+            f"field_relative_momentum:{field_id}:{int(year)}:{window_mode}:{as_of_month}"
+        )
+        cached_entry = (
+            cache_entries.get(cache_key)
+            if isinstance(cache_entries.get(cache_key), dict)
+            else None
+        )
+        if cached_entry is not None:
+            return cached_entry
+
+        history_key = (field_id, int(year))
+        history_payload = history_payload_cache.get(history_key)
+        if history_payload is None:
+            history_payload = _openalex_field_year_history_cohort(
+                field_id=field_id,
+                year=int(year),
+                mailto=openalex_mailto,
+                max_pages=field_cohort_max_pages,
+                now=now,
+            )
+            history_payload_cache[history_key] = history_payload
+        total_results = total_count_cache.get(history_key)
+        if history_key not in total_count_cache:
+            total_results = _openalex_field_year_total_count(
+                field_id=field_id,
+                year=int(year),
+                mailto=openalex_mailto,
+            )
+            total_count_cache[history_key] = total_results
+
+        recent_rates: list[float] = []
+        prior_rates: list[float] = []
+        sample_items = (
+            history_payload.get("samples")
+            if isinstance(history_payload.get("samples"), list)
+            else []
+        )
+        for sample in sample_items:
+            if not isinstance(sample, dict):
+                continue
+            yearly_counts = sample.get("yearly_counts")
+            if not isinstance(yearly_counts, dict):
+                continue
+            summary = _momentum_window_rate_summary(
+                yearly_counts={
+                    int(key): max(0, int(value or 0))
+                    for key, value in yearly_counts.items()
+                    if _safe_int(key) is not None
+                },
+                now=now,
+                window_mode=window_mode,
+            )
+            recent_rates.append(round(float(summary["recent_rate"]), 4))
+            prior_rates.append(round(float(summary["prior_rate"]), 4))
+
+        sample_size = min(len(recent_rates), len(prior_rates))
+        recent_rates = recent_rates[:sample_size]
+        prior_rates = prior_rates[:sample_size]
+        resolved_total_results = max(
+            sample_size,
+            int(total_results)
+            if total_results is not None and int(total_results) >= 0
+            else int(_safe_int(history_payload.get("total_results")) or 0),
+        )
+        entry = {
+            "benchmark_kind": "field_relative_momentum",
+            "field_id": field_id,
+            "year": int(year),
+            "window_mode": window_mode,
+            "as_of_month": as_of_month,
+            "sample_size": sample_size,
+            "total_results": resolved_total_results,
+            "recent_rates": recent_rates,
+            "prior_rates": prior_rates,
+            "mean_recent_rate": round(
+                sum(recent_rates) / float(sample_size),
+                4,
+            )
+            if sample_size > 0
+            else None,
+            "mean_prior_rate": round(
+                sum(prior_rates) / float(sample_size),
+                4,
+            )
+            if sample_size > 0
+            else None,
+        }
+        cache_entries[cache_key] = entry
+        cache_updated = True
+        return entry
+
+    overall_status_rank = {"unavailable": 0, "partial": 1, "available": 2}
+    overall_status = "unavailable"
+    overall_reason = "OpenAlex field benchmark unavailable."
+
+    actual_window_inputs = {
+        "12m": {
+            "recent_rate": sum(
+                max(0, int(row.get("momentum_recent_3m_citations") or 0))
+                for row in per_work_rows
+            )
+            / 3.0,
+            "prior_rate": sum(
+                max(0, int(row.get("momentum_prior_9m_citations") or 0))
+                for row in per_work_rows
+            )
+            / 9.0,
+        },
+        "5y": {
+            "recent_rate": sum(
+                max(0, int(row.get("momentum_recent_1y_citations") or 0))
+                for row in per_work_rows
+            ),
+            "prior_rate": sum(
+                max(0, int(row.get("momentum_prior_4y_citations") or 0))
+                for row in per_work_rows
+            )
+            / 4.0,
+        },
+    }
+
+    for window_mode in ("12m", "5y"):
+        benchmarked_publications = 0
+        expected_recent_rate = 0.0
+        expected_prior_rate = 0.0
+        used_cohort_keys: set[tuple[str, int]] = set()
+        used_cohort_sizes: list[int] = []
+        benchmarked_rows: list[dict[str, Any]] = []
+
+        for row in per_work_rows:
+            field_id, resolved_year = _resolve_field_and_year(row)
+            if not field_id or resolved_year is None:
+                continue
+
+            entry = _cohort_entry(field_id, int(resolved_year), window_mode)
+            sample_size = max(0, int(_safe_int(entry.get("sample_size")) or 0))
+            total_results = max(
+                sample_size,
+                int(_safe_int(entry.get("total_results")) or 0),
+            )
+            cohort_size = max(sample_size, total_results)
+            if cohort_size < field_cohort_min_size or sample_size <= 0:
+                continue
+
+            mean_recent_rate = _safe_float(entry.get("mean_recent_rate"))
+            mean_prior_rate = _safe_float(entry.get("mean_prior_rate"))
+            if mean_recent_rate is None or mean_prior_rate is None:
+                continue
+
+            expected_recent_rate += float(mean_recent_rate)
+            expected_prior_rate += float(mean_prior_rate)
+            benchmarked_publications += 1
+            cohort_key = (field_id, int(resolved_year))
+            if cohort_key not in used_cohort_keys:
+                used_cohort_keys.add(cohort_key)
+                used_cohort_sizes.append(float(cohort_size))
+
+            if window_mode == "5y":
+                row_recent_rate = float(
+                    max(0, int(row.get("momentum_recent_1y_citations") or 0))
+                )
+                row_prior_rate = float(
+                    max(0, int(row.get("momentum_prior_4y_citations") or 0))
+                ) / 4.0
+            else:
+                row_recent_rate = float(
+                    max(0, int(row.get("momentum_recent_3m_citations") or 0))
+                ) / 3.0
+                row_prior_rate = float(
+                    max(0, int(row.get("momentum_prior_9m_citations") or 0))
+                ) / 9.0
+
+            benchmarked_rows.append(
+                {
+                    "recent_rate": row_recent_rate,
+                    "prior_rate": row_prior_rate,
+                    "cohort_entry": entry,
+                }
+            )
+
+        actual_recent_rate = float(actual_window_inputs[window_mode]["recent_rate"])
+        actual_prior_rate = float(actual_window_inputs[window_mode]["prior_rate"])
+        actual_pace_change_pct = _pace_change_pct(
+            recent_rate=actual_recent_rate,
+            prior_rate=actual_prior_rate,
+        )
+        field_baseline_change_pct = _pace_change_pct(
+            recent_rate=expected_recent_rate,
+            prior_rate=expected_prior_rate,
+        )
+        field_relative_delta_pts = (
+            round(actual_pace_change_pct - field_baseline_change_pct, 2)
+            if actual_pace_change_pct is not None
+            and field_baseline_change_pct is not None
+            else None
+        )
+        coverage_pct = round(
+            (benchmarked_publications / float(max(1, len(per_work_rows)))) * 100.0,
+            1,
+        )
+        median_cohort_size = _median_value(used_cohort_sizes)
+        unique_cohorts = len(used_cohort_keys)
+        benchmarked_actual_recent_rate = sum(
+            float(item["recent_rate"]) for item in benchmarked_rows
+        )
+        benchmarked_actual_prior_rate = sum(
+            float(item["prior_rate"]) for item in benchmarked_rows
+        )
+        benchmarked_actual_change_pct = _pace_change_pct(
+            recent_rate=benchmarked_actual_recent_rate,
+            prior_rate=benchmarked_actual_prior_rate,
+        )
+        percentile_rank = None
+        synthetic_distribution: list[float] = []
+        if benchmarked_rows and benchmarked_actual_change_pct is not None:
+            rng = random.Random(
+                f"{user_id}:{window_mode}:{as_of_month}:{benchmarked_publications}"
+            )
+            for _ in range(500):
+                synthetic_recent_rate = 0.0
+                synthetic_prior_rate = 0.0
+                sampled_any = False
+                for benchmarked_row in benchmarked_rows:
+                    cohort_entry = (
+                        benchmarked_row.get("cohort_entry")
+                        if isinstance(benchmarked_row.get("cohort_entry"), dict)
+                        else {}
+                    )
+                    recent_rates = (
+                        cohort_entry.get("recent_rates")
+                        if isinstance(cohort_entry.get("recent_rates"), list)
+                        else []
+                    )
+                    prior_rates = (
+                        cohort_entry.get("prior_rates")
+                        if isinstance(cohort_entry.get("prior_rates"), list)
+                        else []
+                    )
+                    pair_count = min(len(recent_rates), len(prior_rates))
+                    if pair_count <= 0:
+                        continue
+                    sample_index = rng.randrange(pair_count)
+                    synthetic_recent_rate += float(recent_rates[sample_index] or 0.0)
+                    synthetic_prior_rate += float(prior_rates[sample_index] or 0.0)
+                    sampled_any = True
+                if not sampled_any:
+                    continue
+                synthetic_pct = _pace_change_pct(
+                    recent_rate=synthetic_recent_rate,
+                    prior_rate=synthetic_prior_rate,
+                )
+                if synthetic_pct is None:
+                    continue
+                synthetic_distribution.append(float(synthetic_pct))
+        if synthetic_distribution and benchmarked_actual_change_pct is not None:
+            synthetic_distribution.sort()
+            percentile_rank = round(
+                _empirical_percentile_rank(
+                    synthetic_distribution, benchmarked_actual_change_pct
+                )
+                or 0.0,
+                1,
+            )
+
+        percentile_visible = bool(
+            percentile_rank is not None
+            and coverage_pct >= 60.0
+            and benchmarked_publications >= 10
+            and unique_cohorts >= 3
+            and (median_cohort_size or 0.0) >= 100.0
+        )
+
+        if benchmarked_publications <= 0:
+            window_status = "unavailable"
+            reason_unavailable = "No OpenAlex field/year cohort matches were available."
+        elif field_relative_delta_pts is None:
+            window_status = "partial"
+            reason_unavailable = (
+                "Matched cohorts were found, but the comparison window does not yet have a stable prior baseline."
+            )
+        elif coverage_pct < 60.0:
+            window_status = "partial"
+            reason_unavailable = (
+                f"Benchmark coverage is limited ({benchmarked_publications} of {len(per_work_rows)} publications)."
+            )
+        else:
+            window_status = "available"
+            reason_unavailable = None
+
+        field_relative_module["windows"][window_mode] = {
+            "status": window_status,
+            "reason_unavailable": reason_unavailable,
+            "actual_pace_change_pct": round(actual_pace_change_pct, 2)
+            if actual_pace_change_pct is not None
+            else None,
+            "actual_is_new_signal": bool(
+                actual_prior_rate <= 1e-9 and actual_recent_rate > 1e-9
+            ),
+            "field_baseline_change_pct": round(field_baseline_change_pct, 2)
+            if field_baseline_change_pct is not None
+            else None,
+            "field_baseline_is_new_signal": bool(
+                expected_prior_rate <= 1e-9 and expected_recent_rate > 1e-9
+            ),
+            "field_relative_delta_pts": field_relative_delta_pts,
+            "percentile_rank": percentile_rank,
+            "percentile_visible": percentile_visible,
+            "coverage_pct": coverage_pct,
+            "benchmarked_publications": benchmarked_publications,
+            "unique_cohorts": unique_cohorts,
+            "median_cohort_size": round(float(median_cohort_size), 1)
+            if median_cohort_size is not None
+            else None,
+            "actual_recent_rate": round(actual_recent_rate, 3),
+            "actual_prior_rate": round(actual_prior_rate, 3),
+            "field_recent_rate": round(expected_recent_rate, 3)
+            if benchmarked_publications > 0
+            else None,
+            "field_prior_rate": round(expected_prior_rate, 3)
+            if benchmarked_publications > 0
+            else None,
+        }
+
+        if overall_status_rank[window_status] > overall_status_rank[overall_status]:
+            overall_status = window_status
+            overall_reason = reason_unavailable or overall_reason
+
+    field_relative_module["status"] = overall_status
+    field_relative_module["reason_unavailable"] = (
+        overall_reason if overall_status != "available" else None
+    )
+
+    if cache_updated:
+        _upsert_source_cache(
+            session,
+            user_id=user_id,
+            source=cache_source,
+            refresh_date=refresh_date,
+            payload={
+                "benchmark_kind": "field_relative_momentum",
+                "computed_at": now.isoformat(),
+                "as_of_month": as_of_month,
+                "entries": cache_entries,
+            },
+        )
+
+    return {
+        "field_relative_momentum": field_relative_module,
+        **base_modules,
+    }
 
 
 def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str, Any]:
@@ -2750,11 +3416,17 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
 
         # Extract topics from OpenAlex payload
         primary_topic_name = None
+        primary_field_id = None
+        primary_field_name = None
         topics_list = []
         if latest_openalex_payload:
             primary_topic = latest_openalex_payload.get("primary_topic") or {}
             if isinstance(primary_topic, dict):
                 primary_topic_name = str(primary_topic.get("display_name") or "").strip() or None
+                primary_field = primary_topic.get("field") or {}
+                if isinstance(primary_field, dict):
+                    primary_field_id = _normalize_openalex_field_id(primary_field.get("id"))
+                    primary_field_name = str(primary_field.get("display_name") or "").strip() or None
             topics = latest_openalex_payload.get("topics") or []
             if isinstance(topics, list):
                 for topic in topics[:5]:  # Top 5 topics
@@ -2793,6 +3465,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "pmid": str(work.pmid or "").strip() or None,
                 "openalex_work_id": openalex_work_id,
                 "primary_topic": primary_topic_name,
+                "primary_field_id": primary_field_id,
+                "primary_field_name": primary_field_name,
                 "topics": topics_list,
                 "oa_status": oa_status,
                 "is_oa": is_oa,
@@ -4740,6 +5414,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             "Institutions and Countries = distinct affiliation entities across collaborative works."
         ),
     )
+    momentum_context_modules = _build_momentum_context_modules(
+        session,
+        user_id=user_id,
+        user_email=str(user.email or "").strip() or None,
+        now=now,
+        per_work_rows=per_work_rows,
+        data_sources=data_sources,
+    )
 
     tiles = [
         _metric_tile(
@@ -4955,6 +5637,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "formula": "MomentumIndex = (avg/month last 3m)/(avg/month prior 9m)*100",
                 "confidence_note": _confidence_note(),
                 "publications": momentum_publications,
+                "context_modules": momentum_context_modules,
                 "metadata": {
                     "intermediate_values": {
                         "momentum_index": momentum_index,

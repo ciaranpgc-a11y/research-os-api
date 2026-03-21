@@ -852,6 +852,7 @@ export type PublicationMetricDrilldownPayload = {
   qc_flags?: Array<Record<string, unknown>>
   publications: Array<Record<string, unknown>>
   metadata: Record<string, unknown>
+  context_modules?: Record<string, unknown>
 }
 
 export type PublicationMetricTilePayload = {
