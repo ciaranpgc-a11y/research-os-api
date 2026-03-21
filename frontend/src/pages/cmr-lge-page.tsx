@@ -538,6 +538,15 @@ export function CmrLgePage() {
     setLlmError(null)
   }, [])
 
+  const segColor = (seg: number) => LGE_STATES[segStates[seg] ?? 0].color
+  const segStroke = (seg: number) => {
+    const p = patternStates[seg] ?? 0
+    return p > 0 && segStates[seg] > 0 ? LGE_PATTERNS[p].strokeColor : 'white'
+  }
+
+  // Derived summary
+  const summary = useMemo(() => generateLgeSummary(segStates, patternStates), [segStates, patternStates])
+
   const handleGenerate = useCallback(async () => {
     setIsGenerating(true)
     setLlmError(null)
@@ -560,15 +569,6 @@ export function CmrLgePage() {
       setIsGenerating(false)
     }
   }, [segStates, patternStates, summary.text])
-
-  const segColor = (seg: number) => LGE_STATES[segStates[seg] ?? 0].color
-  const segStroke = (seg: number) => {
-    const p = patternStates[seg] ?? 0
-    return p > 0 && segStates[seg] > 0 ? LGE_PATTERNS[p].strokeColor : 'white'
-  }
-
-  // Derived summary
-  const summary = useMemo(() => generateLgeSummary(segStates, patternStates), [segStates, patternStates])
   const patternCounts = useMemo(() => {
     const counts: Record<number, number> = {}
     for (const [seg, p] of Object.entries(patternStates)) {
