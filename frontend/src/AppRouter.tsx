@@ -34,6 +34,13 @@ import { VersionHistoryPage } from '@/pages/version-history-page'
 import { WorkspacesPage } from '@/pages/workspaces-page'
 import { WorkspaceInboxPage } from '@/pages/workspace-inbox-page'
 import { WorkspaceExportsPage } from '@/pages/workspace-exports-page'
+import { CmrReferenceLayout } from '@/components/layout/cmr-reference-layout'
+import { CmrReferenceTablePage } from '@/pages/cmr-reference-table-page'
+import { CmrReferenceDatabasePage } from '@/pages/cmr-reference-database-page'
+import { CmrNewReportPage } from '@/pages/cmr-new-report-page'
+import { CmrRwmaPage } from '@/pages/cmr-rwma-page'
+import { CmrLgePage } from '@/pages/cmr-lge-page'
+import { CmrUploadReportPage } from '@/pages/cmr-upload-report-page'
 import { useWorkspaceStore } from '@/store/use-workspace-store'
 
 const AUTH_ME_TIMEOUT_MS = 8000
@@ -195,6 +202,14 @@ export function AppRouter() {
       <Route path="/" element={<LandingOrWorkspace />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      <Route element={<CmrReferenceLayout />}>
+        <Route path="/cmr-reference-table" element={<CmrReferenceTablePage />} />
+        <Route path="/cmr-reference-database" element={<CmrReferenceDatabasePage />} />
+        <Route path="/cmr-upload-report" element={<CmrUploadReportPage />} />
+        <Route path="/cmr-new-report" element={<CmrNewReportPage />} />
+        <Route path="/cmr-rwma" element={<CmrRwmaPage />} />
+        <Route path="/cmr-lge" element={<CmrLgePage />} />
+      </Route>
 
       <Route element={<RequireSignIn />}>
         <Route path="/workspaces" element={<WorkspacesPage />} />

@@ -13,6 +13,7 @@ const sectionMarkerVariants = cva(
         positive: 'bg-[hsl(var(--section-style-workspace-accent))]',
         warning: 'bg-[hsl(var(--section-style-learning-centre-accent))]',
         danger: 'bg-[hsl(var(--section-style-opportunities-accent))]',
+        report: 'bg-[hsl(var(--section-style-report-accent))]',
       },
       size: {
         header: 'h-[var(--marker-height-header)] w-[var(--marker-width-header)]',

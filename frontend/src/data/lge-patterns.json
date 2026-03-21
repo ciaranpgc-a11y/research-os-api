@@ -1,0 +1,679 @@
+[
+  {
+    "id": 1,
+    "name": "Normal - no LGE",
+    "clinical": "Normal study, no late gadolinium enhancement",
+    "segments": {},
+    "findings": []
+  },
+  {
+    "id": 2,
+    "name": "Small subendocardial anterior MI",
+    "clinical": "Small non-ST-elevation MI in LAD territory with viable myocardium",
+    "segments": {
+      "1": [1, 1],
+      "7": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 3,
+    "name": "Moderate subendocardial anterior MI",
+    "clinical": "Moderate anterior NSTEMI, LAD territory, likely viable",
+    "segments": {
+      "1": [2, 1],
+      "2": [1, 1],
+      "7": [2, 1],
+      "8": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 4,
+    "name": "Large subendocardial anterior MI",
+    "clinical": "Extensive subendocardial MI in LAD territory, borderline viability",
+    "segments": {
+      "1": [2, 1],
+      "2": [2, 1],
+      "7": [2, 1],
+      "8": [2, 1],
+      "13": [1, 1],
+      "14": [1, 1],
+      "17": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 5,
+    "name": "Transmural anterior MI - moderate extent",
+    "clinical": "STEMI in mid-LAD territory with transmural necrosis, non-viable anteroseptum",
+    "segments": {
+      "1": [4, 4],
+      "2": [3, 4],
+      "7": [4, 4],
+      "8": [2, 1],
+      "13": [2, 1],
+      "17": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 6,
+    "name": "Large transmural anterior MI",
+    "clinical": "Extensive transmural anterior STEMI, proximal LAD occlusion",
+    "segments": {
+      "1": [4, 4],
+      "2": [4, 4],
+      "7": [4, 4],
+      "8": [4, 4],
+      "13": [4, 4],
+      "14": [3, 4],
+      "17": [4, 4]
+    },
+    "findings": []
+  },
+  {
+    "id": 7,
+    "name": "Large transmural anterior MI with apical thrombus",
+    "clinical": "Extensive transmural LAD-territory MI complicated by LV apical thrombus",
+    "segments": {
+      "1": [4, 4],
+      "2": [4, 4],
+      "7": [4, 4],
+      "8": [3, 4],
+      "13": [4, 4],
+      "14": [4, 4],
+      "17": [4, 4]
+    },
+    "findings": ["thrombus_apical"]
+  },
+  {
+    "id": 8,
+    "name": "Anteroseptal MI - mid-wall extension",
+    "clinical": "Anteroseptal MI with partial thickness involvement, some viable rim",
+    "segments": {
+      "2": [3, 1],
+      "8": [3, 1],
+      "14": [2, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 9,
+    "name": "Small subendocardial inferior MI",
+    "clinical": "Small inferior NSTEMI, RCA territory, viable myocardium",
+    "segments": {
+      "4": [1, 1],
+      "10": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 10,
+    "name": "Moderate subendocardial inferior MI",
+    "clinical": "Moderate inferior MI in RCA territory with preserved viability",
+    "segments": {
+      "3": [1, 1],
+      "4": [2, 1],
+      "9": [1, 1],
+      "10": [2, 1],
+      "15": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 11,
+    "name": "Transmural inferior MI",
+    "clinical": "Transmural inferior STEMI, RCA occlusion",
+    "segments": {
+      "4": [4, 4],
+      "10": [4, 4],
+      "15": [3, 4],
+      "3": [2, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 12,
+    "name": "Large transmural inferoseptal MI",
+    "clinical": "Extensive RCA-territory STEMI involving inferior and inferoseptal walls",
+    "segments": {
+      "3": [4, 4],
+      "4": [4, 4],
+      "9": [4, 4],
+      "10": [4, 4],
+      "15": [4, 4]
+    },
+    "findings": []
+  },
+  {
+    "id": 13,
+    "name": "Inferior MI with RV involvement",
+    "clinical": "Inferior STEMI with right ventricular extension, proximal RCA",
+    "segments": {
+      "3": [3, 4],
+      "4": [4, 4],
+      "9": [2, 1],
+      "10": [4, 4],
+      "15": [3, 4]
+    },
+    "findings": ["rv_involvement"]
+  },
+  {
+    "id": 14,
+    "name": "Small subendocardial lateral MI",
+    "clinical": "Small lateral NSTEMI in LCx territory",
+    "segments": {
+      "5": [1, 1],
+      "11": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 15,
+    "name": "Moderate subendocardial lateral MI",
+    "clinical": "Moderate lateral MI, LCx territory, viable myocardium",
+    "segments": {
+      "5": [2, 1],
+      "6": [1, 1],
+      "11": [2, 1],
+      "12": [1, 1],
+      "16": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 16,
+    "name": "Transmural lateral MI",
+    "clinical": "Transmural lateral STEMI, LCx occlusion",
+    "segments": {
+      "5": [4, 4],
+      "6": [3, 4],
+      "11": [4, 4],
+      "12": [3, 4],
+      "16": [2, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 17,
+    "name": "Large transmural inferolateral MI",
+    "clinical": "Extensive LCx-territory MI with inferolateral transmural involvement",
+    "segments": {
+      "5": [4, 4],
+      "6": [4, 4],
+      "11": [4, 4],
+      "12": [4, 4],
+      "16": [4, 4]
+    },
+    "findings": []
+  },
+  {
+    "id": 18,
+    "name": "LAD + RCA two-vessel MI",
+    "clinical": "Multivessel ischaemic heart disease with anterior and inferior MI",
+    "segments": {
+      "1": [3, 4],
+      "2": [2, 1],
+      "7": [3, 4],
+      "8": [1, 1],
+      "4": [2, 1],
+      "10": [3, 4],
+      "15": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 19,
+    "name": "LAD + LCx two-vessel MI",
+    "clinical": "Multivessel disease with anterior and lateral infarction",
+    "segments": {
+      "1": [2, 1],
+      "7": [2, 1],
+      "13": [1, 1],
+      "5": [3, 4],
+      "11": [3, 4],
+      "16": [2, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 20,
+    "name": "RCA + LCx two-vessel MI",
+    "clinical": "Multivessel disease with inferior and lateral territory involvement",
+    "segments": {
+      "4": [3, 4],
+      "10": [2, 1],
+      "15": [2, 1],
+      "5": [2, 1],
+      "11": [3, 4],
+      "16": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 21,
+    "name": "Three-vessel MI",
+    "clinical": "Severe three-vessel disease with multiterritory infarction",
+    "segments": {
+      "1": [2, 1],
+      "7": [3, 4],
+      "13": [1, 1],
+      "4": [3, 4],
+      "10": [2, 1],
+      "15": [2, 1],
+      "5": [2, 1],
+      "11": [2, 1],
+      "16": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 22,
+    "name": "Circumferential subendocardial MI",
+    "clinical": "Global subendocardial ischaemia, likely cardiac arrest or severe multivessel disease",
+    "segments": {
+      "1": [2, 1],
+      "2": [2, 1],
+      "3": [2, 1],
+      "4": [2, 1],
+      "5": [2, 1],
+      "6": [2, 1],
+      "7": [1, 1],
+      "8": [1, 1],
+      "9": [1, 1],
+      "10": [1, 1],
+      "11": [1, 1],
+      "12": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 23,
+    "name": "Circumferential transmural basal MI",
+    "clinical": "Circumferential infarction at basal level, severe multivessel disease",
+    "segments": {
+      "1": [4, 4],
+      "2": [4, 4],
+      "3": [4, 4],
+      "4": [4, 4],
+      "5": [4, 4],
+      "6": [4, 4],
+      "7": [2, 1],
+      "8": [2, 1],
+      "9": [2, 1],
+      "10": [2, 1],
+      "11": [2, 1],
+      "12": [2, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 24,
+    "name": "DCM - mid-wall septal stripe",
+    "clinical": "Dilated cardiomyopathy with typical mid-wall septal fibrosis",
+    "segments": {
+      "2": [1, 2],
+      "3": [1, 2],
+      "8": [1, 2],
+      "9": [1, 2]
+    },
+    "findings": []
+  },
+  {
+    "id": 25,
+    "name": "DCM - extensive mid-wall fibrosis",
+    "clinical": "Advanced DCM with extensive mid-wall fibrosis, poor prognosis marker",
+    "segments": {
+      "2": [2, 2],
+      "3": [2, 2],
+      "8": [2, 2],
+      "9": [2, 2],
+      "14": [1, 2]
+    },
+    "findings": []
+  },
+  {
+    "id": 26,
+    "name": "DCM - mid-wall with free wall involvement",
+    "clinical": "DCM with mid-wall LGE extending beyond septum into free wall",
+    "segments": {
+      "2": [1, 2],
+      "3": [1, 2],
+      "5": [1, 2],
+      "8": [1, 2],
+      "9": [1, 2],
+      "11": [1, 2]
+    },
+    "findings": []
+  },
+  {
+    "id": 27,
+    "name": "HCM - RV insertion point",
+    "clinical": "Hypertrophic cardiomyopathy with LGE at RV insertion points",
+    "segments": {
+      "3": [1, 2],
+      "4": [1, 2],
+      "9": [1, 2],
+      "10": [1, 2]
+    },
+    "findings": ["rv_insertion"]
+  },
+  {
+    "id": 28,
+    "name": "HCM - extensive hypertrophied septum",
+    "clinical": "HCM with extensive LGE in hypertrophied septum and RV insertion points",
+    "segments": {
+      "2": [2, 2],
+      "3": [2, 2],
+      "8": [2, 2],
+      "9": [2, 2],
+      "14": [1, 2]
+    },
+    "findings": ["rv_insertion"]
+  },
+  {
+    "id": 29,
+    "name": "HCM - apical variant",
+    "clinical": "Apical HCM with LGE at the apex and distal segments",
+    "segments": {
+      "13": [1, 2],
+      "14": [1, 2],
+      "15": [1, 2],
+      "16": [1, 2],
+      "17": [2, 2]
+    },
+    "findings": []
+  },
+  {
+    "id": 30,
+    "name": "Acute myocarditis - inferolateral subepicardial",
+    "clinical": "Acute viral myocarditis with typical inferolateral subepicardial pattern",
+    "segments": {
+      "5": [1, 3],
+      "11": [1, 3]
+    },
+    "findings": []
+  },
+  {
+    "id": 31,
+    "name": "Myocarditis - extensive inferolateral",
+    "clinical": "Myocarditis with more extensive inferolateral involvement",
+    "segments": {
+      "4": [1, 3],
+      "5": [2, 3],
+      "6": [1, 3],
+      "10": [1, 3],
+      "11": [2, 3],
+      "12": [1, 3]
+    },
+    "findings": []
+  },
+  {
+    "id": 32,
+    "name": "Myocarditis - anteroseptal mid-wall",
+    "clinical": "Myocarditis with mid-wall pattern in anteroseptum, less common distribution",
+    "segments": {
+      "1": [1, 2],
+      "2": [1, 2],
+      "7": [1, 2],
+      "8": [1, 2]
+    },
+    "findings": []
+  },
+  {
+    "id": 33,
+    "name": "Myocarditis - diffuse patchy",
+    "clinical": "Severe acute myocarditis with diffuse patchy subepicardial and mid-wall LGE",
+    "segments": {
+      "2": [1, 2],
+      "4": [1, 3],
+      "5": [2, 3],
+      "8": [1, 2],
+      "10": [1, 3],
+      "11": [2, 3],
+      "16": [1, 3]
+    },
+    "findings": []
+  },
+  {
+    "id": 34,
+    "name": "Cardiac amyloidosis - diffuse subendocardial",
+    "clinical": "Cardiac amyloidosis with characteristic diffuse subendocardial LGE and abnormal gadolinium kinetics",
+    "segments": {
+      "1": [1, 1],
+      "2": [1, 1],
+      "3": [1, 1],
+      "4": [1, 1],
+      "5": [1, 1],
+      "6": [1, 1],
+      "7": [1, 1],
+      "8": [1, 1],
+      "9": [1, 1],
+      "10": [1, 1],
+      "11": [1, 1],
+      "12": [1, 1],
+      "13": [1, 1],
+      "14": [1, 1],
+      "15": [1, 1],
+      "16": [1, 1],
+      "17": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 35,
+    "name": "Cardiac amyloidosis - advanced transmural",
+    "clinical": "Advanced cardiac amyloidosis with extensive transmural LGE",
+    "segments": {
+      "1": [2, 4],
+      "2": [2, 4],
+      "3": [2, 4],
+      "4": [2, 4],
+      "5": [2, 4],
+      "6": [2, 4],
+      "7": [2, 4],
+      "8": [2, 4],
+      "9": [2, 4],
+      "10": [2, 4],
+      "11": [2, 4],
+      "12": [2, 4],
+      "13": [1, 1],
+      "14": [1, 1],
+      "15": [1, 1],
+      "16": [1, 1],
+      "17": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 36,
+    "name": "Cardiac sarcoidosis - patchy multifocal",
+    "clinical": "Cardiac sarcoidosis with patchy multifocal LGE in non-coronary distribution",
+    "segments": {
+      "2": [1, 2],
+      "4": [2, 3],
+      "8": [1, 2],
+      "11": [1, 3],
+      "14": [1, 2]
+    },
+    "findings": []
+  },
+  {
+    "id": 37,
+    "name": "Cardiac sarcoidosis - extensive",
+    "clinical": "Extensive cardiac sarcoidosis with multifocal involvement and mixed patterns",
+    "segments": {
+      "2": [2, 2],
+      "3": [2, 2],
+      "4": [1, 3],
+      "5": [1, 3],
+      "8": [2, 2],
+      "9": [2, 2],
+      "10": [1, 3],
+      "11": [1, 3],
+      "14": [1, 2],
+      "15": [1, 2]
+    },
+    "findings": []
+  },
+  {
+    "id": 38,
+    "name": "Sarcoidosis - basal septal predominant",
+    "clinical": "Cardiac sarcoidosis with predominant basal septal involvement",
+    "segments": {
+      "2": [2, 2],
+      "3": [2, 2],
+      "8": [1, 2],
+      "9": [1, 2]
+    },
+    "findings": []
+  },
+  {
+    "id": 39,
+    "name": "Anderson-Fabry disease",
+    "clinical": "Anderson-Fabry disease with characteristic inferolateral mid-wall LGE",
+    "segments": {
+      "5": [1, 2],
+      "11": [1, 2],
+      "16": [1, 2]
+    },
+    "findings": []
+  },
+  {
+    "id": 40,
+    "name": "Post-surgical - CABG related",
+    "clinical": "Post-CABG with residual subendocardial infarct and surgical changes",
+    "segments": {
+      "1": [2, 1],
+      "7": [2, 1],
+      "13": [1, 1],
+      "4": [1, 1],
+      "10": [1, 1]
+    },
+    "findings": ["pericardial"]
+  },
+  {
+    "id": 41,
+    "name": "Mixed ischaemic and non-ischaemic - anterior MI with DCM",
+    "clinical": "Ischaemic cardiomyopathy with anterior MI and additional mid-wall fibrosis suggesting secondary DCM",
+    "segments": {
+      "1": [3, 4],
+      "7": [3, 4],
+      "13": [2, 1],
+      "2": [1, 2],
+      "3": [1, 2],
+      "8": [1, 2],
+      "9": [1, 2]
+    },
+    "findings": []
+  },
+  {
+    "id": 42,
+    "name": "Mixed ischaemic + myocarditis pattern",
+    "clinical": "Prior inferior MI with superimposed myocarditis-pattern LGE in lateral wall",
+    "segments": {
+      "4": [2, 1],
+      "10": [3, 4],
+      "15": [1, 1],
+      "5": [1, 3],
+      "11": [1, 3]
+    },
+    "findings": []
+  },
+  {
+    "id": 43,
+    "name": "Single segment - basal anterior subendocardial",
+    "clinical": "Focal subendocardial MI in basal anterior segment only",
+    "segments": {
+      "1": [1, 1]
+    },
+    "findings": []
+  },
+  {
+    "id": 44,
+    "name": "Single segment - basal inferior transmural",
+    "clinical": "Focal transmural infarct in basal inferior segment",
+    "segments": {
+      "4": [4, 4]
+    },
+    "findings": []
+  },
+  {
+    "id": 45,
+    "name": "Single segment - mid inferolateral subepicardial",
+    "clinical": "Focal subepicardial LGE in mid inferolateral wall, consistent with prior myocarditis",
+    "segments": {
+      "11": [1, 3]
+    },
+    "findings": []
+  },
+  {
+    "id": 46,
+    "name": "Anterior MI with papillary muscle involvement",
+    "clinical": "Anterior MI with anterolateral papillary muscle LGE, risk of MR",
+    "segments": {
+      "1": [3, 4],
+      "7": [4, 4],
+      "13": [3, 4],
+      "2": [2, 1],
+      "8": [2, 1],
+      "14": [1, 1]
+    },
+    "findings": ["papillary_anterolateral"]
+  },
+  {
+    "id": 47,
+    "name": "Inferior MI with papillary muscle involvement",
+    "clinical": "Inferior MI with posteromedial papillary muscle LGE, significant MR",
+    "segments": {
+      "4": [4, 4],
+      "10": [4, 4],
+      "3": [3, 4],
+      "9": [2, 1],
+      "15": [3, 4]
+    },
+    "findings": ["papillary_posteromedial"]
+  },
+  {
+    "id": 48,
+    "name": "Anterior MI with mural thrombus",
+    "clinical": "Subacute anterior MI with mural thrombus in akinetic apex",
+    "segments": {
+      "1": [3, 4],
+      "7": [3, 4],
+      "13": [4, 4],
+      "14": [2, 1],
+      "17": [4, 4]
+    },
+    "findings": ["thrombus_apical"]
+  },
+  {
+    "id": 49,
+    "name": "Inferolateral MI with pericardial enhancement",
+    "clinical": "Recent inferolateral MI with associated pericardial inflammation",
+    "segments": {
+      "5": [3, 4],
+      "6": [2, 1],
+      "11": [3, 4],
+      "12": [2, 1],
+      "16": [1, 1]
+    },
+    "findings": ["pericardial"]
+  },
+  {
+    "id": 50,
+    "name": "Chronic total occlusion LAD - complete transmural",
+    "clinical": "Chronic LAD occlusion with complete transmural infarct, no viability for revascularisation",
+    "segments": {
+      "1": [4, 4],
+      "2": [4, 4],
+      "7": [4, 4],
+      "8": [4, 4],
+      "13": [4, 4],
+      "14": [4, 4],
+      "17": [4, 4]
+    },
+    "findings": ["wall_thinning"]
+  }
+]
