@@ -187,7 +187,9 @@
       "major_section": "LEFT VENTRICLE",
       "sub_section": "LV function",
       "sources": [],
-      "pap_affected": false
+      "pap_affected": false,
+      "severity_label": "impaired",
+      "severity_thresholds": { "mild": 41, "moderate": 30, "severe": null }
     },
     "RV EDV": {
       "parameter": "RV EDV",
@@ -295,7 +297,9 @@
       "major_section": "RIGHT VENTRICLE",
       "sub_section": "RV size and geometry",
       "sources": [],
-      "pap_affected": false
+      "pap_affected": false,
+      "severity_label": "impaired",
+      "severity_thresholds": { "mild": 40, "moderate": 30, "severe": null }
     },
     "LA max volume": {
       "parameter": "LA max volume",
@@ -19013,6 +19017,6 @@
     "ADDITIONAL GRANULAR DETAILS": []
   },
   "config": {
-    "papillary_mode": "blood_pool"
+    "papillary_mode": "mass"
   }
 }
