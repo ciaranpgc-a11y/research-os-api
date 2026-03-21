@@ -592,14 +592,16 @@ export function CmrNewReportPage() {
               />
             )}
             </div>
-            <PillToggle
-              options={[
-                { key: 'off', label: 'Off' },
-                { key: 'abnormal', label: 'Abnormal' },
-              ]}
-              value={severityMode}
-              onChange={(v) => setSeverityMode(v as 'off' | 'abnormal')}
-            />
+            <div className="flex items-center">
+              <PillToggle
+                options={[
+                  { key: 'off', label: 'Off' },
+                  { key: 'abnormal', label: 'Abnormal' },
+                ]}
+                value={severityMode}
+                onChange={(v) => setSeverityMode(v as 'off' | 'abnormal')}
+              />
+            </div>
           </div>
         </div>
       </div>
