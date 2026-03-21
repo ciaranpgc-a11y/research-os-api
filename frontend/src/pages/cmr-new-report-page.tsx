@@ -511,8 +511,8 @@ export function CmrNewReportPage() {
           <div className="flex items-center gap-2">
             <PillToggle
               options={[
-                { key: 'recorded', label: 'Recorded Only' },
-                { key: 'all', label: 'All Metrics' },
+                { key: 'recorded', label: 'Recorded' },
+                { key: 'all', label: 'All' },
               ]}
               value={showFilter}
               onChange={(v) => setShowFilter(v as 'all' | 'recorded')}
@@ -520,7 +520,7 @@ export function CmrNewReportPage() {
             <PillToggle
               options={[
                 { key: 'all', label: 'All' },
-                { key: 'indexed', label: 'Indexed Only' },
+                { key: 'indexed', label: 'Indexed' },
               ]}
               value={indexFilter}
               onChange={(v) => setIndexFilter(v as 'all' | 'indexed')}
@@ -528,7 +528,7 @@ export function CmrNewReportPage() {
             <PillToggle
               options={[
                 { key: 'all', label: 'All' },
-                { key: 'abnormal', label: 'Abnormal Only' },
+                { key: 'abnormal', label: 'Abnormal' },
               ]}
               value={abnormalFilter}
               onChange={(v) => setAbnormalFilter(v as 'all' | 'abnormal')}
