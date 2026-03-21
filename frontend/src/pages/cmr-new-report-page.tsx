@@ -639,13 +639,14 @@ export function CmrNewReportPage() {
                   <div className="overflow-x-auto rounded-b-lg border-x border-b border-[hsl(var(--stroke-soft)/0.72)]">
                     <table data-house-no-column-resize="true" className="w-full table-fixed border-collapse text-sm">
                       <colgroup>
-                        <col style={{ width: chartMode === 'on' ? '28%' : '34%' }} />
+                        <col style={{ width: chartMode === 'on' ? '24%' : '28%' }} />
+                        <col style={{ width: chartMode === 'on' ? '6%' : '8%' }} />
                         <col style={{ width: chartMode === 'on' ? '8%' : '11%' }} />
-                        <col style={{ width: chartMode === 'on' ? '10%' : '15%' }} />
-                        <col style={{ width: chartMode === 'on' ? '8%' : '13%' }} />
-                        <col style={{ width: chartMode === 'on' ? '8%' : '14%' }} />
-                        <col style={{ width: chartMode === 'on' ? '8%' : '13%' }} />
-                        {chartMode === 'on' && <col style={{ width: '30%' }} />}
+                        <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
+                        <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
+                        <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
+                        {severityMode === 'abnormal' && <col style={{ width: chartMode === 'on' ? '14%' : '26%' }} />}
+                        {chartMode === 'on' && <col style={{ width: severityMode === 'abnormal' ? '30%' : '40%' }} />}
                       </colgroup>
                       <thead>
                         <tr className="border-b-2 border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))]">
@@ -655,6 +656,9 @@ export function CmrNewReportPage() {
                           <th className="house-table-head-text px-3 py-2 text-center">LL</th>
                           <th className="house-table-head-text px-3 py-2 text-center">Mean</th>
                           <th className="house-table-head-text px-3 py-2 text-center">UL</th>
+                          {severityMode === 'abnormal' && (
+                            <th className="house-table-head-text px-3 py-2 text-center">Interpretation</th>
+                          )}
                           {chartMode === 'on' && (
                             <th className="house-table-head-text px-3 py-2 text-center">Range</th>
                           )}
@@ -667,7 +671,7 @@ export function CmrNewReportPage() {
                             {g.sub && (
                               <tr className="border-b border-[hsl(var(--stroke-soft)/0.5)]">
                                 <td
-                                  colSpan={chartMode === 'on' ? 7 : 6}
+                                  colSpan={6 + (severityMode === 'abnormal' ? 1 : 0) + (chartMode === 'on' ? 1 : 0)}
                                   className={cn(
                                     'bg-[hsl(var(--tone-danger-100))] px-3 py-1.5 text-[0.8rem] font-semibold tracking-wide text-[hsl(var(--tone-danger-900)/0.82)]',
                                     gi > 0 && 'border-t border-[hsl(var(--tone-danger-200))]',
@@ -726,16 +730,6 @@ export function CmrNewReportPage() {
                                     severityMode === 'off' && !hasMeasuredVal && 'text-[hsl(var(--tone-neutral-300))]',
                                   )}>
                                     {hasMeasuredVal ? measured : '\u2014'}
-                                    {severityMode === 'abnormal' && isAbnormalRow && (
-                                      <span className={cn(
-                                        'ml-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-semibold',
-                                        severity.grade === 'mild' && 'bg-[hsl(var(--tone-danger-100)/0.5)] text-[hsl(var(--tone-danger-500))]',
-                                        severity.grade === 'moderate' && 'bg-[hsl(var(--tone-danger-200)/0.6)] text-[hsl(var(--tone-danger-600))]',
-                                        severity.grade === 'severe' && 'bg-[hsl(var(--tone-danger-500))] text-white',
-                                      )}>
-                                        {severity.label}
-                                      </span>
-                                    )}
                                   </td>
                                   <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">
                                     {fLL}
@@ -746,6 +740,21 @@ export function CmrNewReportPage() {
                                   <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">
                                     {fUL}
                                   </td>
+                                  {severityMode === 'abnormal' && (
+                                    <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center">
+                                      {hasMeasuredVal && (
+                                        <span className={cn(
+                                          'inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-semibold',
+                                          severity.grade === 'normal' && 'bg-[hsl(var(--tone-positive-100)/0.5)] text-[hsl(var(--tone-positive-600))]',
+                                          severity.grade === 'mild' && 'bg-[hsl(var(--tone-danger-100)/0.5)] text-[hsl(var(--tone-danger-500))]',
+                                          severity.grade === 'moderate' && 'bg-[hsl(var(--tone-danger-200)/0.6)] text-[hsl(var(--tone-danger-600))]',
+                                          severity.grade === 'severe' && 'bg-[hsl(var(--tone-danger-500))] text-white',
+                                        )}>
+                                          {severity.label}
+                                        </span>
+                                      )}
+                                    </td>
+                                  )}
                                   {chartMode === 'on' && (
                                     <td className="px-2 py-1">
                                       {hasMeasuredVal && hasValidRange(p.ll, p.ul) ? (
