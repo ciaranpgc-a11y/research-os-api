@@ -375,7 +375,7 @@ export function CmrNewReportPage() {
   // Pull demographics and measurements from the shared extraction store
   const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
   const measuredValues = useMemo(() => {
-    const map = new Map<string, number>()
+    const map: Map<string, number> = new Map()
     if (extraction?.measurements) {
       for (const m of extraction.measurements) map.set(m.parameter, m.value)
     }
@@ -576,7 +576,7 @@ export function CmrNewReportPage() {
                     setRangeParams(new Map())
                     return
                   }
-                  const newMap = new Map<string, RangeParam>()
+                  const newMap: Map<string, RangeParam> = new Map()
                   for (const g of groups) {
                     for (const p of g.params) {
                       const m = measuredValues.get(p.parameter_key)
@@ -641,13 +641,13 @@ export function CmrNewReportPage() {
                   <div className="overflow-x-auto rounded-b-lg border-x border-b border-[hsl(var(--stroke-soft)/0.72)]">
                     <table data-house-no-column-resize="true" className="w-full table-fixed border-collapse text-sm">
                       <colgroup>
-                        <col style={{ width: chartMode === 'on' ? '24%' : '28%' }} />
+                        <col style={{ width: chartMode === 'on' ? '20%' : '28%' }} />
                         <col style={{ width: chartMode === 'on' ? '6%' : '8%' }} />
-                        <col style={{ width: chartMode === 'on' ? '8%' : '11%' }} />
+                        <col style={{ width: chartMode === 'on' ? '7%' : '11%' }} />
                         <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
                         <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
                         <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
-                        {severityMode === 'abnormal' && <col style={{ width: chartMode === 'on' ? '14%' : '26%' }} />}
+                        {severityMode === 'abnormal' && <col style={{ width: chartMode === 'on' ? '19%' : '26%' }} />}
                         {chartMode === 'on' && <col style={{ width: severityMode === 'abnormal' ? '30%' : '40%' }} />}
                       </colgroup>
                       <thead>
@@ -746,7 +746,7 @@ export function CmrNewReportPage() {
                                     <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center">
                                       {hasMeasuredVal && (
                                         <span className={cn(
-                                          'inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-semibold',
+                                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
                                           severity.grade === 'normal' && 'bg-[hsl(var(--tone-positive-100)/0.5)] text-[hsl(var(--tone-positive-600))]',
                                           severity.grade === 'mild' && 'bg-[hsl(var(--tone-danger-100)/0.5)] text-[hsl(var(--tone-danger-500))]',
                                           severity.grade === 'moderate' && 'bg-[hsl(var(--tone-danger-200)/0.6)] text-[hsl(var(--tone-danger-600))]',
