@@ -703,8 +703,6 @@ export function CmrNewReportPage() {
                                   p.severity_label_override ?? null,
                                 )
                               }
-                              const isAbnormalRow = severity.grade !== 'normal'
-
                               return (
                                 <tr
                                   key={p.parameter_key}
@@ -712,9 +710,10 @@ export function CmrNewReportPage() {
                                   className={cn(
                                     'cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] transition-colors duration-100 hover:bg-[hsl(var(--tone-neutral-50)/0.65)]',
                                     selectedParam?.parameter_key === p.parameter_key && 'bg-[hsl(var(--tone-danger-50)/0.6)]',
-                                    severityMode === 'abnormal' && severity.grade === 'mild' && 'bg-[hsl(var(--tone-danger-50)/0.25)]',
-                                    severityMode === 'abnormal' && severity.grade === 'moderate' && 'bg-[hsl(var(--tone-danger-50)/0.5)]',
-                                    severityMode === 'abnormal' && severity.grade === 'severe' && 'bg-[hsl(var(--tone-danger-50)/0.75)]',
+                                    severityMode === 'abnormal' && severity.grade === 'normal' && 'bg-[hsl(158_30%_94%)]',
+                                    severityMode === 'abnormal' && severity.grade === 'mild' && 'bg-[hsl(46_60%_91%)]',
+                                    severityMode === 'abnormal' && severity.grade === 'moderate' && 'bg-[hsl(20_55%_87%)]',
+                                    severityMode === 'abnormal' && severity.grade === 'severe' && 'bg-[hsl(4_55%_82%)]',
                                   )}
                                 >
                                   <td className="house-table-cell-text px-3 py-2 font-medium text-[hsl(var(--foreground))]">
@@ -726,10 +725,7 @@ export function CmrNewReportPage() {
                                   </td>
                                   <td className={cn(
                                     'house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums font-semibold',
-                                    severityMode === 'abnormal' && isAbnormalRow && severity.grade === 'severe' && 'text-[hsl(var(--tone-danger-600))] font-bold',
-                                    severityMode === 'abnormal' && isAbnormalRow && severity.grade !== 'severe' && 'text-[hsl(var(--tone-danger-500))]',
-                                    severityMode === 'abnormal' && !isAbnormalRow && hasMeasuredVal && 'text-[hsl(var(--tone-positive-600))]',
-                                    severityMode === 'off' && !hasMeasuredVal && 'text-[hsl(var(--tone-neutral-300))]',
+                                    !hasMeasuredVal && 'text-[hsl(var(--tone-neutral-300))]',
                                   )}>
                                     {hasMeasuredVal ? measured : '\u2014'}
                                   </td>
@@ -746,11 +742,11 @@ export function CmrNewReportPage() {
                                     <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center">
                                       {hasMeasuredVal && (
                                         <span className={cn(
-                                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-                                          severity.grade === 'normal' && 'bg-[hsl(var(--tone-positive-100)/0.5)] text-[hsl(var(--tone-positive-600))]',
-                                          severity.grade === 'mild' && 'bg-[hsl(var(--tone-danger-100)/0.5)] text-[hsl(var(--tone-danger-500))]',
-                                          severity.grade === 'moderate' && 'bg-[hsl(var(--tone-danger-200)/0.6)] text-[hsl(var(--tone-danger-600))]',
-                                          severity.grade === 'severe' && 'bg-[hsl(var(--tone-danger-500))] text-white',
+                                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
+                                          severity.grade === 'normal' && 'bg-[hsl(162_22%_90%)] text-[hsl(164_30%_28%)] ring-[hsl(163_22%_80%)]',
+                                          severity.grade === 'mild' && 'bg-[hsl(38_40%_90%)] text-[hsl(34_50%_35%)] ring-[hsl(36_36%_80%)]',
+                                          severity.grade === 'moderate' && 'bg-[hsl(16_45%_86%)] text-[hsl(5_48%_32%)] ring-[hsl(10_32%_76%)]',
+                                          severity.grade === 'severe' && 'bg-[hsl(2_52%_25%)] text-white ring-[hsl(2_52%_20%)]',
                                         )}>
                                           {severity.label}
                                         </span>
