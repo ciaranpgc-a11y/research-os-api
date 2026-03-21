@@ -342,7 +342,8 @@ function generateLgeSummary(
       if (patGroups.length === 1) {
         territoryDescriptions.push(`${patGroups[0]}, in the territory of the ${fullName}`)
       } else {
-        territoryDescriptions.push(`${patGroups.join(', with '}, in the territory of the ${fullName}`)
+        const joined = patGroups.join(', with ')
+        territoryDescriptions.push(`${joined}, in the territory of the ${fullName}`)
       }
     }
 
