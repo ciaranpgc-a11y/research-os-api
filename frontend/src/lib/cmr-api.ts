@@ -33,6 +33,10 @@ export type CmrCanonicalParam = {
   age_band: string | null
   pap_differs: boolean
   sources: CmrSourceCitation[]
+  // Severity grading (optional — undefined triggers auto-inference/SD fallback)
+  severity_label?: string
+  severity_thresholds?: { mild: number | null; moderate: number | null; severe: number | null }
+  severity_label_override?: { mild: string | null; moderate: string | null; severe: string | null }
 }
 
 export type CmrCanonicalTableResponse = {
@@ -118,6 +122,9 @@ export type CmrParamMetaUpdate = {
   sub_section?: string
   pap_affected?: boolean
   sources?: CmrSourceCitation[]
+  severity_label?: string | null
+  severity_thresholds?: { mild: number | null; moderate: number | null; severe: number | null } | null
+  severity_label_override?: { mild: string | null; moderate: string | null; severe: string | null } | null
 }
 
 export async function updateParameterMeta(update: CmrParamMetaUpdate): Promise<void> {

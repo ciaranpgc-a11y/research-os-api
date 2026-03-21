@@ -81,7 +81,8 @@ function cmrDevApi(): Plugin {
         if (req.url !== '/api/cmr-data/param-meta' || req.method !== 'PUT') return next()
 
         try {
-          const { parameter_key, unit, indexing, abnormal_direction, major_section, sub_section, pap_affected, sources } =
+          const { parameter_key, unit, indexing, abnormal_direction, major_section, sub_section, pap_affected, sources,
+            severity_label, severity_thresholds, severity_label_override } =
             JSON.parse(await readBody(req))
 
           const data = readJson()
@@ -94,6 +95,9 @@ function cmrDevApi(): Plugin {
             if (sub_section !== undefined) data.output_params[parameter_key].sub_section = sub_section
             if (pap_affected !== undefined) data.output_params[parameter_key].pap_affected = pap_affected
             if (sources !== undefined) data.output_params[parameter_key].sources = sources
+            if (severity_label !== undefined) data.output_params[parameter_key].severity_label = severity_label
+            if (severity_thresholds !== undefined) data.output_params[parameter_key].severity_thresholds = severity_thresholds
+            if (severity_label_override !== undefined) data.output_params[parameter_key].severity_label_override = severity_label_override
           }
 
           // Update fields that are duplicated in ref_ranges

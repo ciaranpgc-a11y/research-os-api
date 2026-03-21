@@ -36,6 +36,9 @@ type RawOutputParam = {
   sub_section: string
   pap_affected?: boolean
   sources?: RawSourceCitation[]
+  severity_label?: string
+  severity_thresholds?: { mild: number | null; moderate: number | null; severe: number | null }
+  severity_label_override?: { mild: string | null; moderate: string | null; severe: string | null }
 }
 
 type RawRefRange = {
@@ -212,6 +215,9 @@ export function resolveReferenceParameters(sex: string = 'Male', age?: number): 
       pap_differs: resolved.pap_differs,
       sources: op.sources || [],
       age_band: resolved.age_band,
+      severity_label: op.severity_label,
+      severity_thresholds: op.severity_thresholds,
+      severity_label_override: op.severity_label_override,
     })
   }
 
