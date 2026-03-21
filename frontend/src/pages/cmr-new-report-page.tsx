@@ -7,6 +7,18 @@ import type { CmrCanonicalParam, CmrCanonicalTableResponse, PapillaryMode } from
 import { fetchConfig, fetchReferenceParameters, updateConfig } from '@/lib/cmr-api'
 import { getExtractionResult, subscribeExtractionResult } from '@/lib/cmr-report-store'
 import { cn } from '@/lib/utils'
+import { computeSeverity, inferSeverityLabel, type SeverityLabelType, type SeverityResult } from '@/lib/cmr-severity'
+import {
+  type RangeParam,
+  factoryBaseline,
+  hasValidRange,
+  computeMeasuredRel,
+  computeMeasuredPos,
+  isAbnormal as isAbnormalValue,
+  globalAutoAdjust,
+  perMeasurementAutoAdjust,
+  constrainRange,
+} from '@/lib/cmr-chart-scaling'
 
 // ---------------------------------------------------------------------------
 // Helpers (shared with reference table)
@@ -59,6 +71,36 @@ function titleCase(s: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Reusable pill toggle
+// ---------------------------------------------------------------------------
+
+function PillToggle({ options, value, onChange }: {
+  options: { key: string; label: string }[]
+  value: string
+  onChange: (key: string) => void
+}) {
+  return (
+    <div className="flex rounded-full bg-[hsl(var(--tone-danger-100)/0.5)] p-0.5 ring-1 ring-[hsl(var(--tone-danger-200)/0.5)]">
+      {options.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          onClick={() => onChange(o.key)}
+          className={cn(
+            'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
+            value === o.key
+              ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
+              : 'text-[hsl(var(--tone-danger-600))] hover:text-[hsl(var(--tone-danger-800))]',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Small components
 // ---------------------------------------------------------------------------
 
@@ -93,6 +135,93 @@ function ChevronIcon({ open }: { open: boolean }) {
     >
       <path d="M6 4l4 4-4 4" />
     </svg>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Chart components
+// ---------------------------------------------------------------------------
+
+function ChartChipIcon({ variant }: { variant: 'global' | 'per-meas' }) {
+  return (
+    <svg width="16" height="12" viewBox="0 0 16 12" fill="none" className="shrink-0">
+      <line x1="0" y1="6" x2="16" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.4" />
+      <circle cx={variant === 'global' ? 10 : 5} cy="6" r="3" fill="currentColor" />
+    </svg>
+  )
+}
+
+function ChartControlStrip({
+  onGlobalAuto,
+  onPerMeasAuto,
+  scalingMode,
+}: {
+  onGlobalAuto: () => void
+  onPerMeasAuto: () => void
+  scalingMode: 'factory' | 'global' | 'per-meas'
+}) {
+  const chipClass = (active: boolean) =>
+    cn(
+      'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-colors cursor-pointer',
+      active
+        ? 'border-[hsl(var(--section-style-report-accent))] bg-[hsl(var(--section-style-report-accent))] text-white'
+        : 'border-[hsl(var(--stroke-soft)/0.5)] bg-white text-[hsl(var(--tone-neutral-600))] hover:bg-[hsl(var(--tone-neutral-100))]',
+    )
+  return (
+    <div className="flex items-center gap-1">
+      <button type="button" onClick={onGlobalAuto} className={chipClass(scalingMode === 'global')}>
+        <ChartChipIcon variant="global" /> Global
+      </button>
+      <button type="button" onClick={onPerMeasAuto} className={chipClass(scalingMode === 'per-meas')}>
+        <ChartChipIcon variant="per-meas" /> Per measurement
+      </button>
+    </div>
+  )
+}
+
+function RangeChart({
+  measured,
+  ll,
+  ul,
+  direction,
+  rangeStart,
+  rangeWidth,
+}: {
+  measured: number
+  ll: number
+  ul: number
+  direction: string
+  rangeStart: number
+  rangeWidth: number
+}) {
+  const measuredRel = computeMeasuredRel(measured, ll, ul)
+  const measuredPos = computeMeasuredPos(measuredRel, rangeStart, rangeWidth)
+  const abnormal = isAbnormalValue(measured, ll, ul, direction)
+
+  const bandLeftPct = `${rangeStart * 100}%`
+  const bandWidthPct = `${rangeWidth * 100}%`
+  const dotPct = `${measuredPos * 100}%`
+
+  return (
+    <div className="group/chart relative mx-[5px] h-[22px] w-[calc(100%-10px)]">
+      {/* Background track */}
+      <div className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 rounded-sm bg-[hsl(var(--tone-neutral-300))]" />
+      {/* Frosted band */}
+      <div
+        className="absolute top-1/2 h-4 -translate-y-1/2 rounded border border-[hsl(var(--tone-positive-300)/0.18)] bg-[hsl(var(--tone-positive-300)/0.14)] transition-all duration-200 group-hover/chart:border-[hsl(var(--tone-positive-500)/0.25)] group-hover/chart:bg-[hsl(var(--tone-positive-300)/0.28)] group-hover/chart:shadow-[0_0_12px_hsl(var(--tone-positive-300)/0.15)]"
+        style={{ left: bandLeftPct, width: bandWidthPct }}
+      />
+      {/* Ring dot marker */}
+      <div
+        className={cn(
+          'absolute top-1/2 h-[10px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition-all duration-200',
+          abnormal
+            ? 'border-[hsl(var(--tone-danger-500))] bg-white shadow-[0_1px_3px_hsl(var(--tone-danger-600)/0.15)] group-hover/chart:bg-[hsl(var(--tone-danger-500))] group-hover/chart:shadow-[0_0_0_3px_hsl(var(--tone-danger-500)/0.2),0_0_8px_hsl(var(--tone-danger-500)/0.3)]'
+            : 'border-[hsl(var(--tone-positive-500))] bg-white shadow-[0_1px_3px_hsl(var(--tone-positive-600)/0.15)] group-hover/chart:bg-[hsl(var(--tone-positive-500))] group-hover/chart:shadow-[0_0_0_3px_hsl(var(--tone-positive-500)/0.2),0_0_8px_hsl(var(--tone-positive-500)/0.3)]',
+        )}
+        style={{ left: dotPct }}
+      />
+    </div>
   )
 }
 
@@ -235,8 +364,14 @@ export function CmrNewReportPage() {
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [selectedParam, setSelectedParam] = useState<CmrCanonicalParam | null>(null)
-  const [papMode, setPapMode] = useState<PapillaryMode>('blood_pool')
-  const [showFilter, setShowFilter] = useState<'all' | 'recorded'>('all')
+  const [papMode, setPapMode] = useState<PapillaryMode>('mass')
+  const [showFilter, setShowFilter] = useState<'all' | 'recorded'>('recorded')
+  const [indexFilter, setIndexFilter] = useState<'all' | 'indexed'>('all')
+  const [chartMode, setChartMode] = useState<'off' | 'on'>('on')
+  const [abnormalFilter, setAbnormalFilter] = useState<'all' | 'abnormal'>('all')
+  const [severityMode, setSeverityMode] = useState<'off' | 'abnormal'>('off')
+  const [rangeParams, setRangeParams] = useState<Map<string, RangeParam>>(new Map())
+  const [scalingMode, setScalingMode] = useState<'factory' | 'global' | 'per-meas'>('global')
   // Pull demographics and measurements from the shared extraction store
   const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
   const measuredValues = useMemo(() => {
@@ -275,14 +410,57 @@ export function CmrNewReportPage() {
   }, [load])
 
   const allGroups = data ? groupBySections(data.parameters) : []
-  const groups = showFilter === 'recorded'
-    ? allGroups.map((g) => ({ ...g, params: g.params.filter((p) => measuredValues.has(p.parameter_key)) })).filter((g) => g.params.length > 0)
-    : allGroups
+  const groups = allGroups
+    .map((g) => {
+      let params = g.params
+      if (showFilter === 'recorded') params = params.filter((p) => measuredValues.has(p.parameter_key))
+      if (indexFilter === 'indexed') {
+        // Build set from the full (unfiltered) group so we know which absolutes have an indexed counterpart
+        const indexedKeys = new Set(g.params.filter((p) => p.indexing === 'BSA').map((p) => p.parameter_key.replace(/\s*\(i\)\s*$/, '')))
+        // Hide absolute params whose indexed variant exists; keep everything else
+        params = params.filter((p) => p.indexing === 'BSA' || !indexedKeys.has(p.parameter_key))
+      }
+      if (abnormalFilter === 'abnormal') {
+        params = params.filter((p) => {
+          const m = measuredValues.get(p.parameter_key)
+          if (m === undefined) return false
+          return isAbnormalValue(m, p.ll, p.ul, p.abnormal_direction)
+        })
+      }
+      return { ...g, params }
+    })
+    .filter((g) => g.params.length > 0)
   const majorSections = groups.reduce<string[]>((acc, g) => {
     if (!acc.includes(g.major)) acc.push(g.major)
     return acc
   }, [])
 
+  /** Collect all measuredRel values for visible rows with valid ranges. */
+  const collectMeasuredRels = useCallback(() => {
+    const rels: number[] = []
+    for (const g of groups) {
+      for (const p of g.params) {
+        const m = measuredValues.get(p.parameter_key)
+        if (m !== undefined && hasValidRange(p.ll, p.ul)) {
+          rels.push(computeMeasuredRel(m, p.ll!, p.ul!))
+        }
+      }
+    }
+    return rels
+  }, [groups, measuredValues])
+
+  // Apply global auto-adjust on initial load when data becomes available
+  const hasAppliedInitialGlobal = useRef(false)
+  useEffect(() => {
+    if (hasAppliedInitialGlobal.current || scalingMode !== 'global') return
+    const rels = collectMeasuredRels()
+    if (rels.length === 0) return
+    const result = globalAutoAdjust(rels)
+    if (result) {
+      setRangeParams(new Map([['__global__', constrainRange(result, rels)]]))
+      hasAppliedInitialGlobal.current = true
+    }
+  }, [collectMeasuredRels, scalingMode])
 
   return (
     <Stack data-house-role="page" space="lg">
@@ -294,7 +472,7 @@ export function CmrNewReportPage() {
         />
       </Row>
 
-      {/* Patient demographics and controls */}
+      {/* Patient demographics */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="rounded-md border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-50))] px-4 py-2">
           <span className="text-sm font-semibold text-[hsl(var(--foreground))]">{sex}</span>
@@ -302,66 +480,124 @@ export function CmrNewReportPage() {
         <div className="rounded-md border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-50))] px-4 py-2">
           <span className="text-sm font-semibold text-[hsl(var(--foreground))]">{age != null ? `${age} years` : '—'}</span>
         </div>
+      </div>
 
-        <div className="h-7 w-px bg-[hsl(var(--stroke-soft)/0.5)]" />
+      {/* Controls bar */}
+      <div className="flex flex-wrap items-start gap-5">
+        {/* Preference */}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12.5 2.5a2 2 0 0 1 0 3l-9.5 9L1 15l.5-2 9.5-9a2 2 0 0 1 3 0z" /></svg>
+            Preference
+          </div>
+          <PillToggle
+            options={[
+              { key: 'mass', label: 'Pap in LV Mass' },
+              { key: 'blood_pool', label: 'Pap in Blood Pool' },
+            ]}
+            value={papMode}
+            onChange={(v) => { setPapMode(v as PapillaryMode); void updateConfig({ papillary_mode: v as PapillaryMode }) }}
+          />
+        </div>
 
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-full bg-[hsl(var(--tone-danger-100)/0.5)] p-0.5 ring-1 ring-[hsl(var(--tone-danger-200)/0.5)]">
-            <button
-              type="button"
-              onClick={() => { setPapMode('blood_pool'); void updateConfig({ papillary_mode: 'blood_pool' }) }}
-              className={cn(
-                'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
-                papMode === 'blood_pool'
-                  ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
-                  : 'text-[hsl(var(--tone-danger-600))] hover:text-[hsl(var(--tone-danger-800))]',
-              )}
-            >
-              Pap in Blood Pool
-            </button>
-            <button
-              type="button"
-              onClick={() => { setPapMode('mass'); void updateConfig({ papillary_mode: 'mass' }) }}
-              className={cn(
-                'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
-                papMode === 'mass'
-                  ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
-                  : 'text-[hsl(var(--tone-danger-600))] hover:text-[hsl(var(--tone-danger-800))]',
-              )}
-            >
-              Pap in LV Mass
-            </button>
+        <div className="h-10 w-px self-end bg-[hsl(var(--stroke-soft)/0.3)]" />
+
+        {/* Filters */}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 2h14M3 6h10M5 10h6M7 14h2" /></svg>
+            Filters
+          </div>
+          <div className="flex items-center gap-2">
+            <PillToggle
+              options={[
+                { key: 'recorded', label: 'Recorded Only' },
+                { key: 'all', label: 'All Metrics' },
+              ]}
+              value={showFilter}
+              onChange={(v) => setShowFilter(v as 'all' | 'recorded')}
+            />
+            <PillToggle
+              options={[
+                { key: 'all', label: 'All' },
+                { key: 'indexed', label: 'Indexed Only' },
+              ]}
+              value={indexFilter}
+              onChange={(v) => setIndexFilter(v as 'all' | 'indexed')}
+            />
+            <PillToggle
+              options={[
+                { key: 'all', label: 'All' },
+                { key: 'abnormal', label: 'Abnormal Only' },
+              ]}
+              value={abnormalFilter}
+              onChange={(v) => setAbnormalFilter(v as 'all' | 'abnormal')}
+            />
           </div>
         </div>
 
-        <div className="h-7 w-px bg-[hsl(var(--stroke-soft)/0.5)]" />
+        <div className="h-10 w-px self-end bg-[hsl(var(--stroke-soft)/0.3)]" />
 
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-full bg-[hsl(var(--tone-danger-100)/0.5)] p-0.5 ring-1 ring-[hsl(var(--tone-danger-200)/0.5)]">
-            <button
-              type="button"
-              onClick={() => setShowFilter('all')}
-              className={cn(
-                'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
-                showFilter === 'all'
-                  ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
-                  : 'text-[hsl(var(--tone-danger-600))] hover:text-[hsl(var(--tone-danger-800))]',
-              )}
-            >
-              All Metrics
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowFilter('recorded')}
-              className={cn(
-                'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
-                showFilter === 'recorded'
-                  ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
-                  : 'text-[hsl(var(--tone-danger-600))] hover:text-[hsl(var(--tone-danger-800))]',
-              )}
-            >
-              Recorded Only
-            </button>
+        {/* Viewing */}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5" /><path d="M1 6h14" /></svg>
+            Viewing
+          </div>
+          <div className="flex items-center gap-2">
+            <PillToggle
+              options={[
+                { key: 'on', label: 'Charts' },
+                { key: 'off', label: 'Table Only' },
+              ]}
+              value={chartMode}
+              onChange={(v) => setChartMode(v as 'off' | 'on')}
+            />
+            <PillToggle
+              options={[
+                { key: 'off', label: 'Off' },
+                { key: 'abnormal', label: 'Abnormal' },
+              ]}
+              value={severityMode}
+              onChange={(v) => setSeverityMode(v as 'off' | 'abnormal')}
+            />
+            {chartMode === 'on' && (
+              <ChartControlStrip
+                scalingMode={scalingMode}
+                onGlobalAuto={() => {
+                  if (scalingMode === 'global') {
+                    setScalingMode('factory')
+                    setRangeParams(new Map())
+                    return
+                  }
+                  const rels = collectMeasuredRels()
+                  const result = globalAutoAdjust(rels)
+                  if (result) {
+                    setScalingMode('global')
+                    setRangeParams(new Map([['__global__', constrainRange(result, rels)]]))
+                  }
+                }}
+                onPerMeasAuto={() => {
+                  if (scalingMode === 'per-meas') {
+                    setScalingMode('factory')
+                    setRangeParams(new Map())
+                    return
+                  }
+                  const newMap = new Map<string, RangeParam>()
+                  for (const g of groups) {
+                    for (const p of g.params) {
+                      const m = measuredValues.get(p.parameter_key)
+                      if (m !== undefined && hasValidRange(p.ll, p.ul)) {
+                        const rel = computeMeasuredRel(m, p.ll!, p.ul!)
+                        newMap.set(p.parameter_key, perMeasurementAutoAdjust(rel))
+                      }
+                    }
+                  }
+                  setScalingMode('per-meas')
+                  setRangeParams(newMap)
+                }}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -403,14 +639,13 @@ export function CmrNewReportPage() {
                   <div className="overflow-x-auto rounded-b-lg border-x border-b border-[hsl(var(--stroke-soft)/0.72)]">
                     <table data-house-no-column-resize="true" className="w-full table-fixed border-collapse text-sm">
                       <colgroup>
-                        <col style={{ width: '30%' }} />
-                        <col style={{ width: '10%' }} />
-                        <col style={{ width: '12%' }} />
-                        <col style={{ width: '10%' }} />
-                        <col style={{ width: '10%' }} />
-                        <col style={{ width: '10%' }} />
-                        <col style={{ width: '9%' }} />
-                        <col style={{ width: '9%' }} />
+                        <col style={{ width: chartMode === 'on' ? '28%' : '34%' }} />
+                        <col style={{ width: chartMode === 'on' ? '8%' : '11%' }} />
+                        <col style={{ width: chartMode === 'on' ? '10%' : '15%' }} />
+                        <col style={{ width: chartMode === 'on' ? '8%' : '13%' }} />
+                        <col style={{ width: chartMode === 'on' ? '8%' : '14%' }} />
+                        <col style={{ width: chartMode === 'on' ? '8%' : '13%' }} />
+                        {chartMode === 'on' && <col style={{ width: '30%' }} />}
                       </colgroup>
                       <thead>
                         <tr className="border-b-2 border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))]">
@@ -420,8 +655,9 @@ export function CmrNewReportPage() {
                           <th className="house-table-head-text px-3 py-2 text-center">LL</th>
                           <th className="house-table-head-text px-3 py-2 text-center">Mean</th>
                           <th className="house-table-head-text px-3 py-2 text-center">UL</th>
-                          <th className="house-table-head-text px-3 py-2 text-center">SD</th>
-                          <th className="house-table-head-text px-1 py-2 text-center">Direction</th>
+                          {chartMode === 'on' && (
+                            <th className="house-table-head-text px-3 py-2 text-center">Range</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -431,7 +667,7 @@ export function CmrNewReportPage() {
                             {g.sub && (
                               <tr className="border-b border-[hsl(var(--stroke-soft)/0.5)]">
                                 <td
-                                  colSpan={8}
+                                  colSpan={chartMode === 'on' ? 7 : 6}
                                   className={cn(
                                     'bg-[hsl(var(--tone-danger-100))] px-3 py-1.5 text-[0.8rem] font-semibold tracking-wide text-[hsl(var(--tone-danger-900)/0.82)]',
                                     gi > 0 && 'border-t border-[hsl(var(--tone-danger-200))]',
@@ -448,15 +684,20 @@ export function CmrNewReportPage() {
                               const measured = measuredValues.get(p.parameter_key)
                               const hasMeasuredVal = measured !== undefined
 
-                              let measuredStatus: 'normal' | 'abnormal' | 'none' = 'none'
+                              let severity: SeverityResult = { grade: 'normal', label: 'Normal' }
                               if (hasMeasuredVal) {
-                                const dir = p.abnormal_direction
-                                if (dir === 'high' && p.ul !== null && measured > p.ul) measuredStatus = 'abnormal'
-                                else if (dir === 'low' && p.ll !== null && measured < p.ll) measuredStatus = 'abnormal'
-                                else if (dir === 'both') {
-                                  if ((p.ul !== null && measured > p.ul) || (p.ll !== null && measured < p.ll)) measuredStatus = 'abnormal'
-                                } else measuredStatus = 'normal'
+                                severity = computeSeverity(
+                                  measured!,
+                                  p.ll,
+                                  p.ul,
+                                  p.sd,
+                                  p.abnormal_direction,
+                                  (p.severity_label as SeverityLabelType) ?? inferSeverityLabel(p.parameter_key, p.major_section, p.sub_section),
+                                  p.severity_thresholds ?? null,
+                                  p.severity_label_override ?? null,
+                                )
                               }
+                              const isAbnormalRow = severity.grade !== 'normal'
 
                               return (
                                 <tr
@@ -465,7 +706,9 @@ export function CmrNewReportPage() {
                                   className={cn(
                                     'cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] transition-colors duration-100 hover:bg-[hsl(var(--tone-neutral-50)/0.65)]',
                                     selectedParam?.parameter_key === p.parameter_key && 'bg-[hsl(var(--tone-danger-50)/0.6)]',
-                                    measuredStatus === 'abnormal' && 'bg-[hsl(var(--tone-danger-50)/0.4)]',
+                                    severityMode === 'abnormal' && severity.grade === 'mild' && 'bg-[hsl(var(--tone-danger-50)/0.25)]',
+                                    severityMode === 'abnormal' && severity.grade === 'moderate' && 'bg-[hsl(var(--tone-danger-50)/0.5)]',
+                                    severityMode === 'abnormal' && severity.grade === 'severe' && 'bg-[hsl(var(--tone-danger-50)/0.75)]',
                                   )}
                                 >
                                   <td className="house-table-cell-text px-3 py-2 font-medium text-[hsl(var(--foreground))]">
@@ -477,11 +720,22 @@ export function CmrNewReportPage() {
                                   </td>
                                   <td className={cn(
                                     'house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums font-semibold',
-                                    measuredStatus === 'abnormal' && 'text-[hsl(var(--tone-danger-600))]',
-                                    measuredStatus === 'normal' && 'text-[hsl(var(--tone-positive-600))]',
-                                    !hasMeasuredVal && 'text-[hsl(var(--tone-neutral-300))]',
+                                    severityMode === 'abnormal' && isAbnormalRow && severity.grade === 'severe' && 'text-[hsl(var(--tone-danger-600))] font-bold',
+                                    severityMode === 'abnormal' && isAbnormalRow && severity.grade !== 'severe' && 'text-[hsl(var(--tone-danger-500))]',
+                                    severityMode === 'abnormal' && !isAbnormalRow && hasMeasuredVal && 'text-[hsl(var(--tone-positive-600))]',
+                                    severityMode === 'off' && !hasMeasuredVal && 'text-[hsl(var(--tone-neutral-300))]',
                                   )}>
                                     {hasMeasuredVal ? measured : '\u2014'}
+                                    {severityMode === 'abnormal' && isAbnormalRow && (
+                                      <span className={cn(
+                                        'ml-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-semibold',
+                                        severity.grade === 'mild' && 'bg-[hsl(var(--tone-danger-100)/0.5)] text-[hsl(var(--tone-danger-500))]',
+                                        severity.grade === 'moderate' && 'bg-[hsl(var(--tone-danger-200)/0.6)] text-[hsl(var(--tone-danger-600))]',
+                                        severity.grade === 'severe' && 'bg-[hsl(var(--tone-danger-500))] text-white',
+                                      )}>
+                                        {severity.label}
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">
                                     {fLL}
@@ -492,12 +746,24 @@ export function CmrNewReportPage() {
                                   <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">
                                     {fUL}
                                   </td>
-                                  <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums text-[hsl(var(--tone-neutral-500))]">
-                                    {fSD}
-                                  </td>
-                                  <td className="house-table-cell-text px-1 py-2 text-center">
-                                    <DirectionIndicator dir={p.abnormal_direction} />
-                                  </td>
+                                  {chartMode === 'on' && (
+                                    <td className="px-2 py-1">
+                                      {hasMeasuredVal && hasValidRange(p.ll, p.ul) ? (
+                                        <RangeChart
+                                          measured={measured!}
+                                          ll={p.ll!}
+                                          ul={p.ul!}
+                                          direction={p.abnormal_direction}
+                                          rangeStart={
+                                            (rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeStart
+                                          }
+                                          rangeWidth={
+                                            (rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth
+                                          }
+                                        />
+                                      ) : null}
+                                    </td>
+                                  )}
                                 </tr>
                               )
                             })}
