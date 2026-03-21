@@ -710,10 +710,10 @@ export function CmrNewReportPage() {
                                   className={cn(
                                     'cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] transition-colors duration-100 hover:bg-[hsl(var(--tone-neutral-50)/0.65)]',
                                     selectedParam?.parameter_key === p.parameter_key && 'bg-[hsl(var(--tone-danger-50)/0.6)]',
-                                    severityMode === 'abnormal' && severity.grade === 'normal' && 'bg-[hsl(158_30%_94%)]',
-                                    severityMode === 'abnormal' && severity.grade === 'mild' && 'bg-[hsl(46_60%_91%)]',
-                                    severityMode === 'abnormal' && severity.grade === 'moderate' && 'bg-[hsl(20_55%_87%)]',
-                                    severityMode === 'abnormal' && severity.grade === 'severe' && 'bg-[hsl(4_55%_82%)]',
+                                    severityMode === 'abnormal' && hasMeasuredVal && severity.grade === 'normal' && 'bg-[hsl(158_30%_94%)]',
+                                    severityMode === 'abnormal' && hasMeasuredVal && severity.grade === 'mild' && 'bg-[hsl(46_60%_91%)]',
+                                    severityMode === 'abnormal' && hasMeasuredVal && severity.grade === 'moderate' && 'bg-[hsl(20_55%_87%)]',
+                                    severityMode === 'abnormal' && hasMeasuredVal && severity.grade === 'severe' && 'bg-[hsl(4_55%_82%)]',
                                   )}
                                 >
                                   <td className="house-table-cell-text px-3 py-2 font-medium text-[hsl(var(--foreground))]">
@@ -739,10 +739,10 @@ export function CmrNewReportPage() {
                                     {fUL}
                                   </td>
                                   {severityMode === 'abnormal' && (
-                                    <td className="house-table-cell-text whitespace-nowrap px-3 py-1 text-center">
+                                    <td className="house-table-cell-text whitespace-nowrap px-3 py-0 text-center align-middle">
                                       {hasMeasuredVal && (
                                         <span className={cn(
-                                          'inline-flex items-center rounded-full px-2 py-px text-[10px] font-semibold leading-tight ring-1 ring-inset',
+                                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
                                           severity.grade === 'normal' && 'bg-[hsl(162_22%_90%)] text-[hsl(164_30%_28%)] ring-[hsl(163_22%_80%)]',
                                           severity.grade === 'mild' && 'bg-[hsl(38_40%_90%)] text-[hsl(34_50%_35%)] ring-[hsl(36_36%_80%)]',
                                           severity.grade === 'moderate' && 'bg-[hsl(16_45%_86%)] text-[hsl(5_48%_32%)] ring-[hsl(10_32%_76%)]',
