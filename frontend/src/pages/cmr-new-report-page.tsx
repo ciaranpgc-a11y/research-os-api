@@ -739,10 +739,10 @@ export function CmrNewReportPage() {
                                     {fUL}
                                   </td>
                                   {severityMode === 'abnormal' && (
-                                    <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center">
+                                    <td className="house-table-cell-text whitespace-nowrap px-3 py-1 text-center">
                                       {hasMeasuredVal && (
                                         <span className={cn(
-                                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
+                                          'inline-flex items-center rounded-full px-2 py-px text-[10px] font-semibold leading-tight ring-1 ring-inset',
                                           severity.grade === 'normal' && 'bg-[hsl(162_22%_90%)] text-[hsl(164_30%_28%)] ring-[hsl(163_22%_80%)]',
                                           severity.grade === 'mild' && 'bg-[hsl(38_40%_90%)] text-[hsl(34_50%_35%)] ring-[hsl(36_36%_80%)]',
                                           severity.grade === 'moderate' && 'bg-[hsl(16_45%_86%)] text-[hsl(5_48%_32%)] ring-[hsl(10_32%_76%)]',
