@@ -754,7 +754,7 @@ export function CmrNewReportPage() {
                                     </td>
                                   )}
                                   {chartMode === 'on' && (
-                                    <td className="px-2 py-1">
+                                    <td className="bg-white px-2 py-1">
                                       {hasMeasuredVal && hasValidRange(p.ll, p.ul) ? (
                                         <RangeChart
                                           measured={measured!}
