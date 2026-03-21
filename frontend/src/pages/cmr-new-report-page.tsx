@@ -647,8 +647,8 @@ export function CmrNewReportPage() {
                         <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
                         <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
                         <col style={{ width: chartMode === 'on' ? '6%' : '9%' }} />
-                        {severityMode === 'abnormal' && <col style={{ width: chartMode === 'on' ? '19%' : '26%' }} />}
-                        {chartMode === 'on' && <col style={{ width: severityMode === 'abnormal' ? '30%' : '40%' }} />}
+                        <col style={{ width: chartMode === 'on' ? '19%' : '26%' }} />
+                        {chartMode === 'on' && <col style={{ width: '30%' }} />}
                       </colgroup>
                       <thead>
                         <tr className="border-b-2 border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))]">
@@ -658,9 +658,7 @@ export function CmrNewReportPage() {
                           <th className="house-table-head-text px-3 py-2 text-center">LL</th>
                           <th className="house-table-head-text px-3 py-2 text-center">Mean</th>
                           <th className="house-table-head-text px-3 py-2 text-center">UL</th>
-                          {severityMode === 'abnormal' && (
-                            <th className="house-table-head-text px-3 py-2 text-center">Interpretation</th>
-                          )}
+                          <th className="house-table-head-text px-3 py-2 text-center">Interpretation</th>
                           {chartMode === 'on' && (
                             <th className="house-table-head-text px-3 py-2 text-center">Range</th>
                           )}
@@ -673,7 +671,7 @@ export function CmrNewReportPage() {
                             {g.sub && (
                               <tr className="border-b border-[hsl(var(--stroke-soft)/0.5)]">
                                 <td
-                                  colSpan={6 + (severityMode === 'abnormal' ? 1 : 0) + (chartMode === 'on' ? 1 : 0)}
+                                  colSpan={7 + (chartMode === 'on' ? 1 : 0)}
                                   className={cn(
                                     'bg-[hsl(var(--tone-danger-100))] px-3 py-1.5 text-[0.8rem] font-semibold tracking-wide text-[hsl(var(--tone-danger-900)/0.82)]',
                                     gi > 0 && 'border-t border-[hsl(var(--tone-danger-200))]',
@@ -738,21 +736,19 @@ export function CmrNewReportPage() {
                                   <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">
                                     {fUL}
                                   </td>
-                                  {severityMode === 'abnormal' && (
-                                    <td className="house-table-cell-text whitespace-nowrap px-3 py-0 text-center align-middle">
-                                      {hasMeasuredVal && (
-                                        <span className={cn(
-                                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
-                                          severity.grade === 'normal' && 'bg-[hsl(162_22%_90%)] text-[hsl(164_30%_28%)] ring-[hsl(163_22%_80%)]',
-                                          severity.grade === 'mild' && 'bg-[hsl(38_40%_90%)] text-[hsl(34_50%_35%)] ring-[hsl(36_36%_80%)]',
-                                          severity.grade === 'moderate' && 'bg-[hsl(16_45%_86%)] text-[hsl(5_48%_32%)] ring-[hsl(10_32%_76%)]',
-                                          severity.grade === 'severe' && 'bg-[hsl(2_52%_25%)] text-white ring-[hsl(2_52%_20%)]',
-                                        )}>
-                                          {severity.label}
-                                        </span>
-                                      )}
-                                    </td>
-                                  )}
+                                  <td className="house-table-cell-text whitespace-nowrap px-3 py-0 text-center align-middle">
+                                    {hasMeasuredVal && (
+                                      <span className={cn(
+                                        'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
+                                        severity.grade === 'normal' && 'bg-[hsl(162_22%_90%)] text-[hsl(164_30%_28%)] ring-[hsl(163_22%_80%)]',
+                                        severity.grade === 'mild' && 'bg-[hsl(38_40%_90%)] text-[hsl(34_50%_35%)] ring-[hsl(36_36%_80%)]',
+                                        severity.grade === 'moderate' && 'bg-[hsl(16_45%_86%)] text-[hsl(5_48%_32%)] ring-[hsl(10_32%_76%)]',
+                                        severity.grade === 'severe' && 'bg-[hsl(2_52%_25%)] text-white ring-[hsl(2_52%_20%)]',
+                                      )}>
+                                        {severity.label}
+                                      </span>
+                                    )}
+                                  </td>
                                   {chartMode === 'on' && (
                                     <td className="bg-white px-2 py-1">
                                       {hasMeasuredVal && hasValidRange(p.ll, p.ul) ? (
