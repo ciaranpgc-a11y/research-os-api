@@ -544,23 +544,16 @@ export function CmrNewReportPage() {
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5" /><path d="M1 6h14" /></svg>
             Viewing
           </div>
-          <div className="flex items-center gap-2">
-            <PillToggle
-              options={[
-                { key: 'on', label: 'Charts' },
-                { key: 'off', label: 'Table Only' },
-              ]}
-              value={chartMode}
-              onChange={(v) => setChartMode(v as 'off' | 'on')}
-            />
-            <PillToggle
-              options={[
-                { key: 'off', label: 'Off' },
-                { key: 'abnormal', label: 'Abnormal' },
-              ]}
-              value={severityMode}
-              onChange={(v) => setSeverityMode(v as 'off' | 'abnormal')}
-            />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <PillToggle
+                options={[
+                  { key: 'on', label: 'Charts' },
+                  { key: 'off', label: 'Table Only' },
+                ]}
+                value={chartMode}
+                onChange={(v) => setChartMode(v as 'off' | 'on')}
+              />
             {chartMode === 'on' && (
               <ChartControlStrip
                 scalingMode={scalingMode}
@@ -598,6 +591,15 @@ export function CmrNewReportPage() {
                 }}
               />
             )}
+            </div>
+            <PillToggle
+              options={[
+                { key: 'off', label: 'Off' },
+                { key: 'abnormal', label: 'Abnormal' },
+              ]}
+              value={severityMode}
+              onChange={(v) => setSeverityMode(v as 'off' | 'abnormal')}
+            />
           </div>
         </div>
       </div>
