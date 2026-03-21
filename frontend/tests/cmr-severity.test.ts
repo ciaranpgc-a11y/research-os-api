@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeSeverity } from '../src/lib/cmr-severity'
+import { computeSeverity, inferSeverityLabel } from '../src/lib/cmr-severity'
 
 describe('computeSeverity', () => {
   // Gate check: normal values never get severity grading
@@ -109,5 +109,95 @@ describe('computeSeverity', () => {
   it('value exactly at mild threshold gets mild grade (low direction)', () => {
     const result = computeSeverity(41, 53, 79, 5, 'low', 'impaired', { mild: 41, moderate: 30, severe: null }, null)
     expect(result.grade).toBe('mild')
+  })
+})
+
+describe('inferSeverityLabel', () => {
+  it('infers "impaired" for LV EF', () => {
+    expect(inferSeverityLabel('LV EF', 'LEFT VENTRICLE', 'LV function')).toBe('impaired')
+  })
+
+  it('infers "impaired" for RV EF', () => {
+    expect(inferSeverityLabel('RV EF', 'RIGHT VENTRICLE', 'RV function')).toBe('impaired')
+  })
+
+  it('infers "dilated" for LV EDV', () => {
+    expect(inferSeverityLabel('LV EDV', 'LEFT VENTRICLE', 'LV size and geometry')).toBe('dilated')
+  })
+
+  it('infers "dilated" for LV EDV (i)', () => {
+    expect(inferSeverityLabel('LV EDV (i)', 'LEFT VENTRICLE', 'LV size and geometry')).toBe('dilated')
+  })
+
+  it('infers "enlarged" for LA max volume', () => {
+    expect(inferSeverityLabel('LA max volume', 'LEFT ATRIUM', 'LA volume')).toBe('enlarged')
+  })
+
+  it('infers "enlarged" for RA max area (4ch)', () => {
+    expect(inferSeverityLabel('RA max area (4ch)', 'RIGHT ATRIUM', 'RA area')).toBe('enlarged')
+  })
+
+  it('infers "hypertrophied" for LV mass', () => {
+    expect(inferSeverityLabel('LV mass', 'LEFT VENTRICLE', 'LV size and geometry')).toBe('hypertrophied')
+  })
+
+  it('infers "hypertrophied" for LV mass (i)', () => {
+    expect(inferSeverityLabel('LV mass (i)', 'LEFT VENTRICLE', 'LV size and geometry')).toBe('hypertrophied')
+  })
+
+  it('infers "thickened" for LV peak wall thickness', () => {
+    expect(inferSeverityLabel('LV peak wall thickness', 'LEFT VENTRICLE', 'LV size and geometry')).toBe('thickened')
+  })
+
+  it('infers "regurgitation" for AV regurgitant fraction', () => {
+    expect(inferSeverityLabel('AV regurgitant fraction', 'AORTIC VALVE', '')).toBe('regurgitation')
+  })
+
+  it('infers "regurgitation" for MR regurgitant fraction', () => {
+    expect(inferSeverityLabel('MR regurgitant fraction', 'MITRAL VALVE', '')).toBe('regurgitation')
+  })
+
+  it('infers "dilated" for aortic sinus diameter', () => {
+    expect(inferSeverityLabel('Aortic sinus diameter', 'AORTA', '')).toBe('dilated')
+  })
+
+  it('infers "dilated" for MPA diameter', () => {
+    expect(inferSeverityLabel('MPA systolic diameter', 'PULMONARY ARTERY', '')).toBe('dilated')
+  })
+
+  it('infers "impaired" for MAPSE', () => {
+    expect(inferSeverityLabel('MAPSE', 'LEFT VENTRICLE', 'LV function')).toBe('impaired')
+  })
+
+  it('infers "impaired" for TAPSE', () => {
+    expect(inferSeverityLabel('TAPSE', 'RIGHT VENTRICLE', 'RV function')).toBe('impaired')
+  })
+
+  it('infers "elevated" for PCWP', () => {
+    expect(inferSeverityLabel('PCWP', 'FLOW', '')).toBe('elevated')
+  })
+
+  it('infers "elevated" for LV CO (direction-dependent)', () => {
+    expect(inferSeverityLabel('LV CO', 'LEFT VENTRICLE', 'LV function')).toBe('elevated')
+  })
+
+  it('infers "elevated" for LV CI (direction-dependent)', () => {
+    expect(inferSeverityLabel('LV CI', 'LEFT VENTRICLE', 'LV function')).toBe('elevated')
+  })
+
+  it('infers "elevated" for LV SV (direction-dependent)', () => {
+    expect(inferSeverityLabel('LV SV', 'LEFT VENTRICLE', 'LV function')).toBe('elevated')
+  })
+
+  it('infers "elevated" for RV SV (i) (direction-dependent)', () => {
+    expect(inferSeverityLabel('RV SV (i)', 'RIGHT VENTRICLE', 'RV function')).toBe('elevated')
+  })
+
+  it('infers "dilated" for ascending aorta (without "diameter" in name)', () => {
+    expect(inferSeverityLabel('Ascending aorta', 'AORTA', '')).toBe('dilated')
+  })
+
+  it('infers "abnormal" for unknown parameters', () => {
+    expect(inferSeverityLabel('Something unknown', 'OTHER', '')).toBe('abnormal')
   })
 })

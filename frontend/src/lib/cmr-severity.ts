@@ -124,6 +124,61 @@ function gradeFromSD(
   return 'severe'
 }
 
+export function inferSeverityLabel(
+  parameterKey: string,
+  majorSection: string,
+  subSection: string,
+): SeverityLabelType {
+  const key = parameterKey.toLowerCase()
+  const section = majorSection.toLowerCase()
+
+  // EF parameters → impaired
+  if (key.endsWith(' ef') || key === 'lv ef' || key === 'rv ef' || key === 'la ef' || key === 'ra ef') return 'impaired'
+
+  // MAPSE / TAPSE → impaired
+  if (key === 'mapse' || key === 'tapse' || key.startsWith('mapse ') || key.startsWith('tapse ')) return 'impaired'
+
+  // Regurgitant fraction → regurgitation
+  if (key.includes('regurgitant fraction')) return 'regurgitation'
+
+  // Mass → hypertrophied
+  if (key.includes('mass') && !key.includes('mass/')) return 'hypertrophied'
+
+  // Wall thickness → thickened
+  if (key.includes('wall thickness') || key.includes('peak thickness')) return 'thickened'
+
+  // PCWP → elevated
+  if (key === 'pcwp') return 'elevated'
+
+  // Native T1, T2, ECV, T2* → elevated (direction-dependent resolution happens at runtime)
+  if (key.startsWith('native t1') || key.startsWith('native t2') || key === 'ecv' || key.includes('t2*')) return 'elevated'
+
+  // Stroke volume → elevated (direction-dependent)
+  if (key.match(/\bsv\b/)) return 'elevated'
+
+  // Atrial parameters → enlarged
+  if (section.includes('atrium') || section.startsWith('la') || section.startsWith('ra')) {
+    if (!key.endsWith(' ef')) return 'enlarged'
+  }
+
+  // Ventricular volumes (EDV, ESV) → dilated
+  if (key.includes('edv') || key.includes('esv')) return 'dilated'
+
+  // Ventricular diameters → dilated
+  if (key.includes('diameter') && (section.includes('ventricle'))) return 'dilated'
+
+  // Aorta / pulmonary artery → dilated (all parameters in these sections)
+  if (section.includes('aorta') || section.includes('pulmonary artery')) return 'dilated'
+
+  // Valve annulus diameters → dilated
+  if (key.includes('annulus diameter')) return 'dilated'
+
+  // CO / CI → elevated (direction-dependent) — word-boundary match to avoid false positives
+  if (key.match(/\bco\b/) || key.match(/\bci\b/)) return 'elevated'
+
+  return 'abnormal'
+}
+
 function resolveDirectionalLabel(
   label: SeverityLabelType,
   breachHigh: boolean,
