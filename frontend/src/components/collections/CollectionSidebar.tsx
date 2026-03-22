@@ -15,10 +15,14 @@ import { fetchSubcollections } from '@/lib/collections-api'
 // ---------------------------------------------------------------------------
 
 function ColourPicker({
+  x,
+  y,
   value,
   onChange,
   onClose,
 }: {
+  x: number
+  y: number
   value: CollectionColour
   onChange: (c: CollectionColour) => void
   onClose: () => void
@@ -32,11 +36,15 @@ function ColourPicker({
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
 
+  const width = 148
+  const left = Math.min(x, window.innerWidth - width - 8)
+  const top = Math.min(y, window.innerHeight - 80)
+
   return (
     <div
       ref={ref}
-      className="absolute left-full top-0 ml-1 z-50 rounded-md border border-border bg-card p-2 shadow-lg grid grid-cols-5 gap-1.5"
-      style={{ width: 140 }}
+      className="fixed z-[200] rounded-md border border-border bg-card p-2 shadow-xl grid grid-cols-5 gap-1.5"
+      style={{ width, left, top }}
     >
       {ALL_COLOURS.map((c) => (
         <button
@@ -207,7 +215,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
   const [contextMenu, setContextMenu] = useState<{ collectionId: string; x: number; y: number } | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
-  const [colourPickerId, setColourPickerId] = useState<string | null>(null)
+  const [colourPickerState, setColourPickerState] = useState<{ id: string; x: number; y: number } | null>(null)
 
   const [renamingSubId, setRenamingSubId] = useState<string | null>(null)
   const [subRenameValue, setSubRenameValue] = useState('')
@@ -418,17 +426,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {coll.publication_count}
                   </span>
-
-                  {/* Colour picker (triggered from context menu) */}
-                  {colourPickerId === coll.id && (
-                    <div className="relative">
-                      <ColourPicker
-                        value={coll.colour}
-                        onChange={(c) => onColourChange(coll.id, c)}
-                        onClose={() => setColourPickerId(null)}
-                      />
-                    </div>
-                  )}
 
                   {/* Expand chevron */}
                   <button
@@ -667,6 +664,21 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
         )}
       </div>
 
+      {/* Fixed-position colour picker */}
+      {colourPickerState && (() => {
+        const coll = collections.find((c) => c.id === colourPickerState.id)
+        if (!coll) return null
+        return (
+          <ColourPicker
+            x={colourPickerState.x}
+            y={colourPickerState.y}
+            value={coll.colour}
+            onChange={(c) => onColourChange(coll.id, c)}
+            onClose={() => setColourPickerState(null)}
+          />
+        )
+      })()}
+
       {/* Right-click context menu */}
       {contextMenu && (() => {
         const coll = collections.find((c) => c.id === contextMenu.collectionId)
@@ -677,7 +689,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
             y={contextMenu.y}
             onRename={() => startRename(coll)}
             onDelete={() => onDeleteCollection(coll.id)}
-            onChangeColour={() => setColourPickerId(coll.id)}
+            onChangeColour={() => setColourPickerState({ id: coll.id, x: contextMenu.x, y: contextMenu.y })}
             onAddSubcollection={() => startCreateSub(coll.id)}
             onClose={() => setContextMenu(null)}
           />
