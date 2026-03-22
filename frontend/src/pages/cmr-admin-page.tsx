@@ -387,13 +387,20 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
       </section>
 
       <section data-section-key="Access Codes" className="scroll-mt-20">
-        <div className="grid gap-6 xl:grid-cols-[minmax(22rem,24rem)_minmax(0,1fr)]">
+        <div className="space-y-6">
           <CardPrimitive className={adminSurfaceClassName}>
-            <CardHeader>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--section-style-admin-accent))]">
-                Issue Code
-              </p>
-              <CardTitle>Issue a new access code</CardTitle>
+            <CardHeader className="border-b border-[hsl(var(--border))]">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--section-style-admin-accent))]">
+                    Issue Code
+                  </p>
+                  <CardTitle>Issue a new access code</CardTitle>
+                </div>
+                <div className="rounded-full border border-[hsl(var(--section-style-admin-accent)/0.14)] bg-[hsl(var(--tone-accent-50))] px-3 py-1 text-xs font-semibold text-[hsl(var(--tone-accent-800))]">
+                  Generate or enter a code
+                </div>
+              </div>
             </CardHeader>
 
             <div className="space-y-5 px-[var(--space-3)] pb-[var(--space-3)]">
@@ -429,7 +436,7 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                 </p>
               )}
 
-              <form onSubmit={handleCreate} className="space-y-4">
+              <form onSubmit={handleCreate} className="grid gap-4 xl:grid-cols-[minmax(0,18rem)_minmax(0,22rem)_auto] xl:items-end">
                 <div className="space-y-2">
                   <label
                     htmlFor="cmr-code-name"
@@ -453,7 +460,7 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                   >
                     Access code
                   </label>
-                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                     <input
                       id="cmr-issued-code"
                       value={newCode}
@@ -472,13 +479,15 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={creating || !newName.trim()}
-                  className="house-button-action-primary inline-flex h-10 w-full items-center justify-center rounded-md px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {creating ? 'Issuing code...' : 'Issue access code'}
-                </button>
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    disabled={creating || !newName.trim()}
+                    className="house-button-action-primary inline-flex h-10 w-full items-center justify-center rounded-md px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 xl:min-w-[14rem]"
+                  >
+                    {creating ? 'Issuing code...' : 'Issue access code'}
+                  </button>
+                </div>
               </form>
             </div>
           </CardPrimitive>
@@ -499,8 +508,16 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
             </CardHeader>
 
             <div className="p-[var(--space-3)] pt-0">
-              <div className="house-table-shell house-table-context-admin overflow-hidden border-[hsl(var(--border))]">
-                <table className="w-full text-sm">
+              <div className="house-table-context-admin overflow-hidden rounded-[var(--radius-md)] border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
+                <table data-house-no-column-resize="true" className="w-full table-fixed border-collapse text-sm">
+                  <colgroup>
+                    <col style={{ width: '34%' }} />
+                    <col style={{ width: '16%' }} />
+                    <col style={{ width: '16%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '10%' }} />
+                  </colgroup>
                   <thead className="house-table-head">
                     <tr>
                       <th className="house-table-head-text px-4 py-3 text-left">Name</th>
@@ -517,7 +534,7 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                         key={entry.id}
                         className="house-table-row border-b border-[hsl(var(--stroke-soft)/0.42)] last:border-b-0 hover:bg-[hsl(var(--tone-neutral-50)/0.72)]"
                       >
-                        <td className="house-table-cell-text px-4 py-3 font-medium text-[hsl(var(--foreground))]">
+                        <td className="house-table-cell-text break-words px-4 py-3 font-medium text-[hsl(var(--foreground))]">
                           {entry.name}
                         </td>
                         <td className="house-table-cell-text px-4 py-3 text-[hsl(var(--tone-neutral-600))]">
@@ -546,7 +563,7 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                             <button
                               type="button"
                               onClick={() => handleRevoke(entry.id, entry.name)}
-                              className="house-button-action-danger inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-semibold"
+                              className="house-button-action-danger inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-semibold whitespace-nowrap"
                             >
                               Revoke
                             </button>
@@ -563,7 +580,7 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                           colSpan={6}
                           className="px-4 py-8 text-center text-sm text-[hsl(var(--tone-neutral-600))]"
                         >
-                          No access codes issued yet. Generate the first one from the panel on the left.
+                          No access codes issued yet. Generate the first one from the form above.
                         </td>
                       </tr>
                     )}
