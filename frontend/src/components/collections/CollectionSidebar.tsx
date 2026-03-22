@@ -508,8 +508,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                       <div
                         key={sub.id}
                         className="flex items-center gap-2 px-3 py-1.5"
-                        style={{
-                        }}
                       >
                         <input
                           ref={subRenameInputRef}
@@ -550,7 +548,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                             'outline-2 outline-dashed outline-[hsl(var(--tone-accent-500))] bg-[hsl(var(--tone-accent-50))]',
                           isSubPulsing && 'animate-drop-pulse',
                         )}
-                        style={{
                         onClick={() => {
                           if (mode === 'browse') {
                             onSelectCollection(coll.id)
@@ -605,40 +602,36 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
 
                   {/* New subcollection inline input (triggered via right-click only) */}
                   {creatingSubForId === coll.id && (
-                      <div
-                        className="flex items-center gap-2 px-3 py-1.5"
-                        style={{
+                    <div className="flex items-center gap-2 px-3 py-1.5">
+                      <input
+                        ref={newSubInputRef}
+                        type="text"
+                        className="house-input h-8 flex-1 rounded-md px-2 text-sm"
+                        placeholder="Subcollection name"
+                        value={newSubName}
+                        onChange={(e) => setNewSubName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitCreateSub()
+                          if (e.key === 'Escape') cancelCreateSub()
                         }}
+                      />
+                      <button
+                        type="button"
+                        className="house-collaborator-action-icon-save h-6 w-6 flex items-center justify-center rounded"
+                        onClick={commitCreateSub}
+                        title="Save"
                       >
-                        <input
-                          ref={newSubInputRef}
-                          type="text"
-                          className="house-input h-8 flex-1 rounded-md px-2 text-sm"
-                          placeholder="Subcollection name"
-                          value={newSubName}
-                          onChange={(e) => setNewSubName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') commitCreateSub()
-                            if (e.key === 'Escape') cancelCreateSub()
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="house-collaborator-action-icon-save h-6 w-6 flex items-center justify-center rounded"
-                          onClick={commitCreateSub}
-                          title="Save"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          className="house-collaborator-action-icon-discard h-6 w-6 flex items-center justify-center rounded"
-                          onClick={cancelCreateSub}
-                          title="Cancel"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className="house-collaborator-action-icon-discard h-6 w-6 flex items-center justify-center rounded"
+                        onClick={cancelCreateSub}
+                        title="Cancel"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
