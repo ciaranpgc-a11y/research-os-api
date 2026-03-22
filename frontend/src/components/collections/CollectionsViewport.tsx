@@ -99,6 +99,7 @@ export function CollectionsViewport({
     count: number
     parentId?: string
   } | null>(null)
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false)
 
   // toast
   const [toast, setToast] = useState<string | null>(null)
@@ -364,6 +365,26 @@ export function CollectionsViewport({
     setDeleteConfirm(null)
   }, [deleteConfirm, selectedCollectionId, refreshCollections, handleSubcollectionsFetched])
 
+  // ---- delete all collections ----
+  const handleDeleteAll = useCallback(async () => {
+    setDeleteAllConfirm(false)
+    try {
+      await Promise.all(collections.map((c) => deleteCollection(c.id)))
+      setCollections([])
+      setSelectedCollectionId(null)
+      setExpandedIds(new Set())
+      setSubcollectionsMap(new Map())
+      setPubCollectionsMap((prev) => {
+        const next = new Map(prev)
+        for (const workId of next.keys()) next.set(workId, [])
+        return next
+      })
+    } catch {
+      setToast('Failed to delete all collections')
+      await refreshCollections()
+    }
+  }, [collections, refreshCollections])
+
   // ---- add to collection (from "+" button on card) ----
   const handleAddToCollection = useCallback(async (workId: string, collectionId: string, _subcollectionId: string | null) => {
     try {
@@ -525,6 +546,7 @@ export function CollectionsViewport({
             onRenameCollection={handleRenameCollection}
             onDeleteCollection={handleRequestDeleteCollection}
             onColourChange={handleColourChange}
+            onDeleteAll={() => setDeleteAllConfirm(true)}
             onCreateSubcollection={handleCreateSubcollection}
             onRenameSubcollection={handleRenameSubcollection}
             onDeleteSubcollection={handleRequestDeleteSubcollection}
@@ -677,6 +699,17 @@ export function CollectionsViewport({
           }
           onConfirm={handleConfirmDelete}
           onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
+
+      {/* Delete all confirmation */}
+      {deleteAllConfirm && (
+        <ConfirmDeleteDialog
+          open
+          title="Delete all collections"
+          description={`Delete all ${collections.length} collection${collections.length !== 1 ? 's' : ''}? Publications will not be deleted. This cannot be undone.`}
+          onConfirm={handleDeleteAll}
+          onCancel={() => setDeleteAllConfirm(false)}
         />
       )}
 

@@ -227,6 +227,7 @@ interface CollectionSidebarProps {
   onRenameCollection: (id: string, name: string) => void
   onDeleteCollection: (id: string) => void
   onColourChange: (id: string, colour: CollectionColour) => void
+  onDeleteAll: () => void
   // subcollection CRUD
   onCreateSubcollection: (collectionId: string, name: string) => void
   onRenameSubcollection: (collectionId: string, subId: string, name: string) => void
@@ -261,6 +262,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
     onRenameCollection,
     onDeleteCollection,
     onColourChange,
+    onDeleteAll,
     onCreateSubcollection,
     onRenameSubcollection,
     onDeleteSubcollection,
@@ -716,6 +718,19 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
           </div>
         )}
       </div>
+
+      {/* Footer — delete all (organise mode only, only when collections exist) */}
+      {mode === 'organise' && collections.length > 0 && (
+        <div className="border-t border-border px-4 py-2.5">
+          <button
+            type="button"
+            className="w-full text-xs text-muted-foreground hover:text-destructive transition-colors text-left"
+            onClick={onDeleteAll}
+          >
+            Delete all collections
+          </button>
+        </div>
+      )}
 
       {/* Fixed-position colour picker */}
       {colourPickerState && (() => {
