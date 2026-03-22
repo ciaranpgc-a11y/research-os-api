@@ -156,7 +156,7 @@ interface CollectionSidebarProps {
   dropTargetId: string | null
   onDragOver: (e: React.DragEvent, targetId: string) => void
   onDragLeave: () => void
-  onDrop: (targetId: string) => void
+  onDrop: (collectionId: string, subcollectionId?: string) => void
   // pulse animation
   pulsingId: string | null
   // collection CRUD
@@ -532,7 +532,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         onDragLeave={mode === 'organise' ? onDragLeave : undefined}
                         onDrop={
                           mode === 'organise'
-                            ? () => onDrop(sub.id)
+                            ? () => onDrop(coll.id, sub.id)
                             : undefined
                         }
                       >

@@ -232,12 +232,19 @@ export function CollectionsViewport({
     setDropTargetId(null)
   }, [])
 
-  const handleDrop = useCallback(async (collectionId: string) => {
+  const handleDrop = useCallback(async (collectionId: string, subcollectionId?: string) => {
     setDropTargetId(null)
     if (!dragWorkId) return
     try {
-      await addPublicationsToCollection(collectionId, [dragWorkId])
-      setPulsingId(collectionId)
+      const memberships = await addPublicationsToCollection(collectionId, [dragWorkId])
+      if (subcollectionId) {
+        const membership = memberships.find((m) => m.work_id === dragWorkId)
+        if (membership) {
+          await movePublicationSubcollection(collectionId, membership.id, subcollectionId)
+        }
+      }
+      const pulseTarget = subcollectionId ?? collectionId
+      setPulsingId(pulseTarget)
       setTimeout(() => setPulsingId(null), 700)
       const coll = collections.find((c) => c.id === collectionId)
       setToast(`Added to ${coll?.name || 'collection'}`)

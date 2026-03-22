@@ -156,12 +156,13 @@ export async function fetchCollectionPublications(
 export async function addPublicationsToCollection(
   collectionId: string,
   workIds: string[],
-): Promise<void> {
-  return requestVoid(
+): Promise<Array<{ id: string; collection_id: string; subcollection_id: string | null; work_id: string; sort_order: number }>> {
+  const res = await requestJson<{ items: Array<{ id: string; collection_id: string; subcollection_id: string | null; work_id: string; sort_order: number }> }>(
     `${API_BASE_URL}/v1/collections/${collectionId}/publications`,
     { method: 'POST', headers: authHeaders(), body: JSON.stringify({ work_ids: workIds }) },
     'Failed to add publications to collection',
   )
+  return res.items
 }
 
 export async function removePublicationFromCollection(
