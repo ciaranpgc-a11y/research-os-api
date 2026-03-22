@@ -588,7 +588,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           isSubPulsing && 'animate-drop-pulse',
                         )}
                         style={{
-                          backgroundColor: isSubDropTarget || isSubSelected
+                          backgroundColor: isSubDropTarget
                             ? `${COLLECTION_COLOUR_HEX[coll.colour]}28`
                             : undefined,
                           outlineColor: isSubDropTarget ? COLLECTION_COLOUR_HEX[coll.colour] : undefined,

@@ -109,6 +109,7 @@ export function CollectionsViewport({
 
   // browse drag reorder
   const [browseDragIdx, setBrowseDragIdx] = useState<number | null>(null)
+  const [browseDropIdx, setBrowseDropIdx] = useState<number | null>(null)
 
   // ---- bootstrap ----
   useEffect(() => {
@@ -446,24 +447,40 @@ export function CollectionsViewport({
   // ---- browse mode: reorder pubs via drag ----
   const handleBrowseDragStart = useCallback((idx: number) => {
     setBrowseDragIdx(idx)
+    setBrowseDropIdx(null)
   }, [])
 
-  const handleBrowseDrop = useCallback(async (targetIdx: number) => {
-    if (browseDragIdx === null || browseDragIdx === targetIdx || !selectedCollectionId) {
+  const handleBrowseDragOver = useCallback((e: React.DragEvent, idx: number) => {
+    e.preventDefault()
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    setBrowseDropIdx(e.clientY < rect.top + rect.height / 2 ? idx : idx + 1)
+  }, [])
+
+  const handleBrowseDrop = useCallback(async () => {
+    if (browseDragIdx === null || browseDropIdx === null || !selectedCollectionId) {
       setBrowseDragIdx(null)
+      setBrowseDropIdx(null)
+      return
+    }
+    // Adjust for removal of dragged item
+    let insertAt = browseDropIdx > browseDragIdx ? browseDropIdx - 1 : browseDropIdx
+    if (insertAt === browseDragIdx) {
+      setBrowseDragIdx(null)
+      setBrowseDropIdx(null)
       return
     }
     const reordered = [...collectionPubs]
     const [moved] = reordered.splice(browseDragIdx, 1)
-    reordered.splice(targetIdx, 0, moved)
+    reordered.splice(insertAt, 0, moved)
     setCollectionPubs(reordered)
     setBrowseDragIdx(null)
+    setBrowseDropIdx(null)
     try {
       await reorderCollectionPublications(selectedCollectionId, reordered.map((p) => p.work_id))
     } catch {
       setToast('Failed to reorder')
     }
-  }, [browseDragIdx, collectionPubs, selectedCollectionId])
+  }, [browseDragIdx, browseDropIdx, collectionPubs, selectedCollectionId])
 
   // ---- focus effects ----
   useEffect(() => {
@@ -654,31 +671,56 @@ export function CollectionsViewport({
                     </button>
                   </div>
                 ) : (
-                  <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                  <div
+                    className="flex-1 overflow-y-auto p-4"
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setBrowseDropIdx(null)
+                      }
+                    }}
+                    onDrop={handleBrowseDrop}
+                  >
                     {browsePubs.map((pub, idx) => (
-                      <PublicationCard
-                        key={pub.membership_id}
-                        mode="browse"
-                        workId={pub.work_id}
-                        membershipId={pub.membership_id}
-                        title={pub.title}
-                        venue={pub.journal}
-                        year={pub.year}
-                        citations={pub.citations}
-                        subcollectionId={pub.subcollection_id}
-                        isDragging={browseDragIdx === idx}
-                        collections={collections}
-                        subcollectionsMap={subcollectionsMap}
-                        onSubcollectionsFetched={handleSubcollectionsFetched}
-                        currentCollectionId={selectedCollectionId}
-                        onDragStart={() => handleBrowseDragStart(idx)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => handleBrowseDrop(idx)}
-                        onRemove={() => handleRemovePub(pub.work_id)}
-                        onMoveToSubcollection={(subId) => handleMoveToSubcollection(pub.membership_id, subId)}
-                        onClick={() => onOpenPublication(pub.work_id)}
-                      />
+                      <div key={pub.membership_id}>
+                        {/* Insertion line above */}
+                        <div className={cn(
+                          'h-0.5 rounded-full mx-1 transition-all duration-100',
+                          browseDragIdx !== null && browseDropIdx === idx && browseDragIdx !== idx && browseDragIdx !== idx - 1
+                            ? 'bg-[hsl(var(--tone-accent-500))] mb-1.5 mt-0.5'
+                            : 'mb-2',
+                        )} />
+                        <div className={cn(browseDragIdx === idx && 'opacity-25 scale-[0.98] transition-transform')}>
+                          <PublicationCard
+                            mode="browse"
+                            workId={pub.work_id}
+                            membershipId={pub.membership_id}
+                            title={pub.title}
+                            venue={pub.journal}
+                            year={pub.year}
+                            citations={pub.citations}
+                            subcollectionId={pub.subcollection_id}
+                            isDragging={browseDragIdx === idx}
+                            collections={collections}
+                            subcollectionsMap={subcollectionsMap}
+                            onSubcollectionsFetched={handleSubcollectionsFetched}
+                            currentCollectionId={selectedCollectionId}
+                            onDragStart={() => handleBrowseDragStart(idx)}
+                            onDragOver={(e) => handleBrowseDragOver(e, idx)}
+                            onDrop={handleBrowseDrop}
+                            onRemove={() => handleRemovePub(pub.work_id)}
+                            onMoveToSubcollection={(subId) => handleMoveToSubcollection(pub.membership_id, subId)}
+                            onClick={() => onOpenPublication(pub.work_id)}
+                          />
+                        </div>
+                      </div>
                     ))}
+                    {/* Insertion line at the end */}
+                    <div className={cn(
+                      'h-0.5 rounded-full mx-1 mt-1 transition-all duration-100',
+                      browseDragIdx !== null && browseDropIdx === browsePubs.length && browseDragIdx !== browsePubs.length - 1
+                        ? 'bg-[hsl(var(--tone-accent-500))]'
+                        : 'bg-transparent',
+                    )} />
                   </div>
                 )}
               </>
