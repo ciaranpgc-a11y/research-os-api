@@ -2560,6 +2560,24 @@
     color: hsl(var(--tone-neutral-500));
   }
 
+  .house-dropdown-thrombus {
+    --form-control-bg: hsl(var(--tone-danger-50));
+    --form-control-border: hsl(var(--tone-danger-200));
+    --form-control-border-hover: hsl(var(--tone-danger-300));
+    --form-control-border-focus: hsl(var(--tone-danger-300));
+    --form-control-focus-ring: hsl(var(--tone-danger-200) / 0.35);
+  }
+
+  .house-dropdown-thrombus option {
+    background-color: hsl(var(--tone-danger-50));
+    color: hsl(var(--tone-neutral-900));
+  }
+
+  .house-dropdown-thrombus option:checked {
+    background: linear-gradient(hsl(var(--tone-danger-100)), hsl(var(--tone-danger-100)));
+    color: hsl(var(--tone-danger-800));
+  }
+
   .house-select-tone-workspace {
     --house-select-accent: var(--section-style-workspace-accent);
   }

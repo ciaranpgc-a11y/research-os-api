@@ -466,7 +466,7 @@ export function CmrLvThrombusPage() {
                 <select
                   value={activeEntry.sublocation ?? ''}
                   onChange={(event) => updateEntry(activeEntry.id, { sublocation: event.target.value || null })}
-                  className="house-dropdown h-8 w-full rounded-md px-2.5 text-xs md:w-[15rem]"
+                  className="house-dropdown house-dropdown-thrombus h-8 w-full rounded-md px-2.5 text-xs md:w-[15rem]"
                 >
                   <option value="">Select...</option>
                   {sublocationOptions.map((option) => (
