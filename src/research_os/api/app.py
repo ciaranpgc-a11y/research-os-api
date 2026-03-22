@@ -813,6 +813,7 @@ default_allow_origins = [
     "http://localhost:6006",
     "http://localhost:6007",
     "https://app.axiomos.studio",
+    "https://cmr.axiomos.studio",
 ]
 configured_allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
 allow_origins = list(default_allow_origins)
@@ -874,6 +875,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Mount CMR auth router (separate from Axiomos auth)
+from research_os.cmr_auth.router import router as cmr_router
+app.include_router(cmr_router)
 
 
 @app.middleware("http")
