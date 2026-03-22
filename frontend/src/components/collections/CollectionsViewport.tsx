@@ -342,6 +342,15 @@ export function CollectionsViewport({
         await deleteCollection(deleteConfirm.id)
         if (selectedCollectionId === deleteConfirm.id) setSelectedCollectionId(null)
         await refreshCollections()
+        // Remove this collection from all publication pills immediately
+        setPubCollectionsMap((prev) => {
+          const next = new Map(prev)
+          for (const [workId, summaries] of next) {
+            const filtered = summaries.filter((s) => s.id !== deleteConfirm.id)
+            if (filtered.length !== summaries.length) next.set(workId, filtered)
+          }
+          return next
+        })
       } else {
         if (deleteConfirm.parentId) {
           await deleteSubcollection(deleteConfirm.parentId, deleteConfirm.id)
