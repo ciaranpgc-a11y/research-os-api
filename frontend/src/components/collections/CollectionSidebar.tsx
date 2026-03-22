@@ -469,7 +469,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                 >
                   {/* Name + count */}
                   <span className="flex-1 truncate text-foreground">{coll.name}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">
+                  <span className="text-xs font-bold text-muted-foreground tabular-nums">
                     {coll.publication_count}
                   </span>
 
