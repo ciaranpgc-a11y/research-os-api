@@ -26,7 +26,6 @@ import { ProfilePersonalDetailsPage } from '@/pages/profile-personal-details-pag
 import { ProfileGrantsPage } from '@/pages/profile-grants-page'
 import { ProfileCollaborationPage } from '@/pages/profile-collaboration-page'
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
-import { ProfileCollectionsPage } from '@/pages/profile-collections-page'
 import { QCDashboardPage } from '@/pages/qc-dashboard-page'
 import { ResultsPage } from '@/pages/results-page'
 import { SettingsPage } from '@/pages/settings-page'
@@ -293,7 +292,6 @@ export function AppRouter() {
         <Route element={<AccountLayout />}>
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/profile/publications" element={<ProfilePublicationsPage />} />
-          <Route path="/profile/publications/collections" element={<ProfileCollectionsPage />} />
           <Route path="/profile/grants" element={<ProfileGrantsPage />} />
           <Route path="/profile/personal-details" element={<ProfilePersonalDetailsPage />} />
           <Route path="/profile/integrations" element={<ProfileIntegrationsPage />} />
