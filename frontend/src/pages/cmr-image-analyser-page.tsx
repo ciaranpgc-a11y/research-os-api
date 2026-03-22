@@ -18,14 +18,12 @@ type UploadSlotState = {
 type ViewUploadState = Record<ContrastKey, UploadSlotState>
 type UploadState = Record<ViewKey, ViewUploadState>
 
-type SaxControlKey =
-  | 'centerXPct'
-  | 'centerYPct'
-  | 'innerRadiusPct'
-  | 'outerRadiusPct'
-  | 'enhancementThreshold'
-
-type SaxControlsState = Record<SaxControlKey, string>
+type SaxRoiState = {
+  centerXPct: number
+  centerYPct: number
+  innerRadiusPct: number
+  outerRadiusPct: number
+}
 
 const VIEW_DEFS: Array<{ key: ViewKey; label: string; description: string }> = [
   { key: 'sax', label: 'SAX', description: 'Matched short-axis pre-contrast and post-contrast pair.' },
@@ -39,14 +37,6 @@ const CONTRAST_DEFS: Array<{ key: ContrastKey; label: string }> = [
   { key: 'post', label: 'Post-contrast' },
 ]
 
-const SAX_CONTROL_DEFS: Array<{ key: SaxControlKey; label: string; helper: string }> = [
-  { key: 'centerXPct', label: 'Centre X', helper: '% width' },
-  { key: 'centerYPct', label: 'Centre Y', helper: '% height' },
-  { key: 'innerRadiusPct', label: 'Inner radius', helper: '% of frame' },
-  { key: 'outerRadiusPct', label: 'Outer radius', helper: '% of frame' },
-  { key: 'enhancementThreshold', label: 'Threshold', helper: 'delta z-score' },
-]
-
 function createEmptyState(): UploadState {
   return {
     sax: { pre: { file: null, previewUrl: null }, post: { file: null, previewUrl: null } },
@@ -56,13 +46,12 @@ function createEmptyState(): UploadState {
   }
 }
 
-function createDefaultSaxControls(): SaxControlsState {
+function createDefaultSaxRoi(): SaxRoiState {
   return {
-    centerXPct: '50',
-    centerYPct: '50',
-    innerRadiusPct: '18',
-    outerRadiusPct: '34',
-    enhancementThreshold: '1.6',
+    centerXPct: 50,
+    centerYPct: 50,
+    innerRadiusPct: 18,
+    outerRadiusPct: 34,
   }
 }
 
@@ -75,6 +64,10 @@ function formatFileSize(bytes: number): string {
 function parseOrFallback(value: string, fallback: number): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value))
 }
 
 function StatusPill({ label }: { label: string }) {
@@ -251,9 +244,220 @@ function AnalysisImagePanel({ title, src }: { title: string; src: string }) {
   )
 }
 
+function SaxRoiSelector({
+  src,
+  roi,
+  onChange,
+  onReset,
+}: {
+  src: string
+  roi: SaxRoiState
+  onChange: (next: SaxRoiState) => void
+  onReset: () => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [dragMode, setDragMode] = useState<'move' | 'inner' | 'outer' | null>(null)
+
+  const updateFromPointer = useMemo(
+    () => (clientX: number, clientY: number, mode: 'move' | 'inner' | 'outer') => {
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect || rect.width === 0 || rect.height === 0) return
+
+      const pointerXPct = clamp(((clientX - rect.left) / rect.width) * 100, 0, 100)
+      const pointerYPct = clamp(((clientY - rect.top) / rect.height) * 100, 0, 100)
+
+      if (mode === 'move') {
+        onChange({
+          ...roi,
+          centerXPct: clamp(pointerXPct, 25, 75),
+          centerYPct: clamp(pointerYPct, 25, 75),
+        })
+        return
+      }
+
+      const dxPx = clientX - (rect.left + (roi.centerXPct / 100) * rect.width)
+      const dyPx = clientY - (rect.top + (roi.centerYPct / 100) * rect.height)
+      const radiusPct = (Math.sqrt(dxPx * dxPx + dyPx * dyPx) / Math.min(rect.width, rect.height)) * 100
+
+      if (mode === 'inner') {
+        onChange({
+          ...roi,
+          innerRadiusPct: clamp(radiusPct, 6, roi.outerRadiusPct - 4),
+        })
+        return
+      }
+
+      onChange({
+        ...roi,
+        outerRadiusPct: clamp(radiusPct, roi.innerRadiusPct + 4, 48),
+      })
+    },
+    [onChange, roi],
+  )
+
+  useEffect(() => {
+    if (!dragMode) return
+
+    const handlePointerMove = (event: PointerEvent) => {
+      updateFromPointer(event.clientX, event.clientY, dragMode)
+    }
+    const handlePointerUp = () => {
+      setDragMode(null)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [dragMode, updateFromPointer])
+
+  const outerHandleX = roi.centerXPct + roi.outerRadiusPct
+  const innerHandleX = roi.centerXPct + roi.innerRadiusPct
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="house-field-label">ROI selector</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Drag the centre point or the ring handles to define the myocardial annulus visually.
+          </p>
+        </div>
+        <Button type="button" variant="outline" onClick={onReset} className="rounded-full">
+          Reset ROI
+        </Button>
+      </div>
+
+      <div className="rounded-xl border border-border/40 bg-background/65 p-4">
+        <div className="mx-auto w-fit">
+          <div ref={containerRef} className="relative inline-block overflow-hidden rounded-xl border border-border/50 bg-card">
+            <img src={src} alt="SAX ROI selector" className="block max-h-[28rem] w-auto max-w-full object-contain" />
+
+            <svg
+              className={cn('absolute inset-0 h-full w-full touch-none', dragMode && 'cursor-grabbing')}
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              onPointerDown={(event) => {
+                if (event.target !== event.currentTarget) return
+                setDragMode('move')
+                updateFromPointer(event.clientX, event.clientY, 'move')
+              }}
+            >
+              <defs>
+                <mask id="cmr-sax-roi-mask">
+                  <rect x="0" y="0" width="100" height="100" fill="white" />
+                  <circle cx={roi.centerXPct} cy={roi.centerYPct} r={roi.outerRadiusPct} fill="black" />
+                  <circle cx={roi.centerXPct} cy={roi.centerYPct} r={roi.innerRadiusPct} fill="white" />
+                </mask>
+              </defs>
+
+              <rect x="0" y="0" width="100" height="100" fill="rgba(15, 23, 42, 0.18)" mask="url(#cmr-sax-roi-mask)" />
+              <circle
+                cx={roi.centerXPct}
+                cy={roi.centerYPct}
+                r={roi.outerRadiusPct}
+                fill="transparent"
+                stroke="rgba(199, 77, 77, 0.9)"
+                strokeWidth="0.7"
+              />
+              <circle
+                cx={roi.centerXPct}
+                cy={roi.centerYPct}
+                r={roi.innerRadiusPct}
+                fill="transparent"
+                stroke="rgba(214, 160, 84, 0.95)"
+                strokeWidth="0.7"
+              />
+              <line
+                x1={roi.centerXPct}
+                y1={roi.centerYPct}
+                x2={roi.centerXPct + roi.outerRadiusPct}
+                y2={roi.centerYPct}
+                stroke="rgba(199, 77, 77, 0.55)"
+                strokeDasharray="1.5 1.5"
+                strokeWidth="0.45"
+              />
+              <line
+                x1={roi.centerXPct}
+                y1={roi.centerYPct}
+                x2={roi.centerXPct + roi.innerRadiusPct}
+                y2={roi.centerYPct}
+                stroke="rgba(214, 160, 84, 0.65)"
+                strokeDasharray="1.5 1.5"
+                strokeWidth="0.45"
+              />
+
+              <circle
+                cx={roi.centerXPct}
+                cy={roi.centerYPct}
+                r="1.25"
+                fill="white"
+                stroke="rgba(15, 23, 42, 0.85)"
+                strokeWidth="0.5"
+                className="cursor-grab"
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                  setDragMode('move')
+                }}
+              />
+              <circle
+                cx={innerHandleX}
+                cy={roi.centerYPct}
+                r="1.2"
+                fill="rgba(214, 160, 84, 1)"
+                stroke="white"
+                strokeWidth="0.55"
+                className="cursor-ew-resize"
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                  setDragMode('inner')
+                }}
+              />
+              <circle
+                cx={outerHandleX}
+                cy={roi.centerYPct}
+                r="1.25"
+                fill="rgba(199, 77, 77, 1)"
+                stroke="white"
+                strokeWidth="0.55"
+                className="cursor-ew-resize"
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                  setDragMode('outer')
+                }}
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-border/40 bg-background/65 px-4 py-3">
+          <p className="house-field-label">Centre</p>
+          <p className="mt-2 text-sm font-medium text-foreground">
+            {roi.centerXPct.toFixed(1)}% x · {roi.centerYPct.toFixed(1)}% y
+          </p>
+        </div>
+        <div className="rounded-xl border border-border/40 bg-background/65 px-4 py-3">
+          <p className="house-field-label">Inner radius</p>
+          <p className="mt-2 text-sm font-medium text-foreground">{roi.innerRadiusPct.toFixed(1)}% of frame</p>
+        </div>
+        <div className="rounded-xl border border-border/40 bg-background/65 px-4 py-3">
+          <p className="house-field-label">Outer radius</p>
+          <p className="mt-2 text-sm font-medium text-foreground">{roi.outerRadiusPct.toFixed(1)}% of frame</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function CmrImageAnalyserPage() {
   const [uploads, setUploads] = useState<UploadState>(() => createEmptyState())
-  const [saxControls, setSaxControls] = useState<SaxControlsState>(() => createDefaultSaxControls())
+  const [saxRoi, setSaxRoi] = useState<SaxRoiState>(() => createDefaultSaxRoi())
+  const [saxThreshold, setSaxThreshold] = useState('1.6')
+  const [showAdvancedSaxControls, setShowAdvancedSaxControls] = useState(false)
   const [saxResult, setSaxResult] = useState<CmrSaxAssistResult | null>(null)
   const [saxError, setSaxError] = useState<string | null>(null)
   const [saxAnalysing, setSaxAnalysing] = useState(false)
@@ -331,10 +535,18 @@ export function CmrImageAnalyserPage() {
       return createEmptyState()
     })
     clearSaxAnalysis()
+    setSaxRoi(createDefaultSaxRoi())
+    setSaxThreshold('1.6')
   }
 
-  const handleSaxControlChange = (key: SaxControlKey, value: string) => {
-    setSaxControls((current) => ({ ...current, [key]: value }))
+  const handleSaxRoiChange = (next: SaxRoiState) => {
+    setSaxRoi(next)
+    clearSaxAnalysis()
+  }
+
+  const handleResetSaxRoi = () => {
+    setSaxRoi(createDefaultSaxRoi())
+    clearSaxAnalysis()
   }
 
   const handleRunSaxAssist = async () => {
@@ -351,20 +563,20 @@ export function CmrImageAnalyserPage() {
       const result = await cmrAnalyseSaxPair(token, {
         preImage: uploads.sax.pre.file,
         postImage: uploads.sax.post.file,
-        centerXPct: parseOrFallback(saxControls.centerXPct, 50),
-        centerYPct: parseOrFallback(saxControls.centerYPct, 50),
-        innerRadiusPct: parseOrFallback(saxControls.innerRadiusPct, 18),
-        outerRadiusPct: parseOrFallback(saxControls.outerRadiusPct, 34),
-        enhancementThreshold: parseOrFallback(saxControls.enhancementThreshold, 1.6),
+        centerXPct: saxRoi.centerXPct,
+        centerYPct: saxRoi.centerYPct,
+        innerRadiusPct: saxRoi.innerRadiusPct,
+        outerRadiusPct: saxRoi.outerRadiusPct,
+        enhancementThreshold: parseOrFallback(saxThreshold, 1.6),
       })
       setSaxResult(result)
-      setSaxControls({
-        centerXPct: String(result.roi.center_x_pct),
-        centerYPct: String(result.roi.center_y_pct),
-        innerRadiusPct: String(result.roi.inner_radius_pct),
-        outerRadiusPct: String(result.roi.outer_radius_pct),
-        enhancementThreshold: String(result.roi.enhancement_threshold),
+      setSaxRoi({
+        centerXPct: result.roi.center_x_pct,
+        centerYPct: result.roi.center_y_pct,
+        innerRadiusPct: result.roi.inner_radius_pct,
+        outerRadiusPct: result.roi.outer_radius_pct,
       })
+      setSaxThreshold(String(result.roi.enhancement_threshold))
     } catch (error) {
       setSaxError(error instanceof Error ? error.message : 'SAX analysis failed')
     } finally {
@@ -451,20 +663,56 @@ export function CmrImageAnalyserPage() {
 
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
                   <div className="space-y-5">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {SAX_CONTROL_DEFS.map((field) => (
-                        <label key={field.key} className="flex flex-col gap-1.5">
-                          <span className="house-field-label">{field.label}</span>
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            value={saxControls[field.key]}
-                            onChange={(event) => handleSaxControlChange(field.key, event.target.value)}
-                            className="h-10"
-                          />
-                          <span className="text-xs text-muted-foreground">{field.helper}</span>
-                        </label>
-                      ))}
+                    {uploads.sax.pre.previewUrl || uploads.sax.post.previewUrl ? (
+                      <SaxRoiSelector
+                        src={uploads.sax.pre.previewUrl ?? uploads.sax.post.previewUrl ?? ''}
+                        roi={saxRoi}
+                        onChange={handleSaxRoiChange}
+                        onReset={handleResetSaxRoi}
+                      />
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-border/60 bg-[hsl(var(--tone-neutral-50)/0.4)] px-4 py-5 text-sm text-muted-foreground">
+                        Add a SAX image to place the myocardial ROI visually.
+                      </div>
+                    )}
+
+                    <div className="rounded-xl border border-border/40 bg-background/60">
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedSaxControls((current) => !current)}
+                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                      >
+                        <div>
+                          <p className="house-field-label">Advanced</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Threshold sensitivity is the only manual tuning field kept visible.
+                          </p>
+                        </div>
+                        <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                          {showAdvancedSaxControls ? 'Hide' : 'Show'}
+                        </span>
+                      </button>
+
+                      {showAdvancedSaxControls && (
+                        <div className="border-t border-border/30 px-4 py-4">
+                          <label className="flex max-w-[14rem] flex-col gap-1.5">
+                            <span className="house-field-label">Threshold</span>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={saxThreshold}
+                              onChange={(event) => {
+                                setSaxThreshold(event.target.value)
+                                clearSaxAnalysis()
+                              }}
+                              className="h-10"
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              Higher values are stricter; lower values highlight more candidate enhancement.
+                            </span>
+                          </label>
+                        </div>
+                      )}
                     </div>
 
                     {saxError && (
