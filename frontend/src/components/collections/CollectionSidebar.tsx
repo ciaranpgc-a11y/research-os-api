@@ -227,6 +227,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
   const subRenameInputRef = useRef<HTMLInputElement>(null)
   const newSubInputRef = useRef<HTMLInputElement>(null)
   const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dragExpandTargetRef = useRef<string | null>(null)
 
   // ---- focus inputs when editing starts ----
   useEffect(() => {
@@ -254,28 +255,42 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
   )
 
   // ---- drag-over auto-expand ----
-  // Cleanup timer on unmount
   useEffect(() => () => { if (dragExpandTimerRef.current) clearTimeout(dragExpandTimerRef.current) }, [])
 
-  const handleDragOver = useCallback((e: React.DragEvent, targetId: string) => {
-    onDragOver(e, targetId)
-    // Only auto-expand collection rows (not subcollection rows)
-    const isCollection = collections.some((c) => c.id === targetId)
-    if (!isCollection || expandedIds.has(targetId)) return
-    if (dragExpandTimerRef.current) return // timer already running for this target
-    dragExpandTimerRef.current = setTimeout(() => {
-      dragExpandTimerRef.current = null
-      handleToggleExpand(targetId)
-    }, 600)
-  }, [onDragOver, collections, expandedIds, handleToggleExpand])
-
-  const handleDragLeave = useCallback(() => {
-    onDragLeave()
+  const clearExpandTimer = useCallback(() => {
     if (dragExpandTimerRef.current) {
       clearTimeout(dragExpandTimerRef.current)
       dragExpandTimerRef.current = null
     }
-  }, [onDragLeave])
+    dragExpandTargetRef.current = null
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent, targetId: string) => {
+    onDragOver(e, targetId)
+    const isCollection = collections.some((c) => c.id === targetId)
+    if (!isCollection || expandedIds.has(targetId)) {
+      // Moved onto a sub or already-expanded collection — cancel any pending expand
+      if (dragExpandTargetRef.current !== targetId) clearExpandTimer()
+      return
+    }
+    // Already timing for this exact target — don't reset
+    if (dragExpandTargetRef.current === targetId) return
+    // New collection target — (re)start timer
+    clearExpandTimer()
+    dragExpandTargetRef.current = targetId
+    dragExpandTimerRef.current = setTimeout(() => {
+      dragExpandTimerRef.current = null
+      dragExpandTargetRef.current = null
+      handleToggleExpand(targetId)
+    }, 700)
+  }, [onDragOver, collections, expandedIds, handleToggleExpand, clearExpandTimer])
+
+  // Only cancel when drag truly leaves the row (not just moving to a child element)
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    onDragLeave()
+    clearExpandTimer()
+  }, [onDragLeave, clearExpandTimer])
 
   // ---- rename helpers ----
   const startRename = useCallback(
