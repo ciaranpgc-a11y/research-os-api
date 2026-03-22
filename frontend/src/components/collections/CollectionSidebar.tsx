@@ -278,7 +278,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
       dragExpandTimerRef.current = null
       dragExpandTargetRef.current = null
       void handleToggleExpand(collectionId)
-    }, 700)
+    }, 300)
   }, [onDragOver, expandedIds, handleToggleExpand, clearExpandTimer])
 
   // Cancel timer + drop highlight only when drag leaves the entire sidebar
