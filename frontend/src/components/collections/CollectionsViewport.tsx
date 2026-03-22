@@ -572,6 +572,7 @@ export function CollectionsViewport({
                         subcollectionsMap={subcollectionsMap}
                         onSubcollectionsFetched={handleSubcollectionsFetched}
                         onDragStart={() => handleDragStart(work.id)}
+                        onDragEnd={() => { setDragWorkId(null); setDropTargetId(null) }}
                         onAddToCollection={(collId, subId) => handleAddToCollection(work.id, collId, subId)}
                       />
                     )

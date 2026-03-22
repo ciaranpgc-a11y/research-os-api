@@ -16,6 +16,7 @@ interface PublicationCardOrganiseProps {
   subcollectionsMap: Map<string, SubcollectionPayload[]>
   onSubcollectionsFetched: (collectionId: string, subs: SubcollectionPayload[]) => void
   onDragStart: () => void
+  onDragEnd: () => void
   onAddToCollection: (collectionId: string, subcollectionId: string | null) => void
 }
 
@@ -48,12 +49,13 @@ export function PublicationCard(props: PublicationCardProps) {
   const metaLine = [props.venue, props.year].filter(Boolean).join(' · ')
 
   if (props.mode === 'organise') {
-    const { title, isDragging, collectionMemberships, collections, subcollectionsMap, onSubcollectionsFetched, onDragStart, onAddToCollection } = props
+    const { title, isDragging, collectionMemberships, collections, subcollectionsMap, onSubcollectionsFetched, onDragStart, onDragEnd, onAddToCollection } = props
     const existingIds = new Set(collectionMemberships.map((m) => m.id))
     return (
       <div
         draggable
         onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
         className={cn(
           'group relative flex items-center p-3 bg-muted/40 border border-border rounded-lg gap-2.5 cursor-grab active:cursor-grabbing',
           isDragging && 'opacity-50',
