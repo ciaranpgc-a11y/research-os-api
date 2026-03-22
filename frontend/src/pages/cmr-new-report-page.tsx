@@ -835,7 +835,7 @@ export function CmrNewReportPage() {
                             {/* Data rows */}
                             {g.params.map((p) => {
                               const isBsa = p.indexing === 'BSA'
-                              const [fLL, fMean, fUL, fSD] = fmtRow([p.ll, p.mean, p.ul, p.sd], p.decimal_places)
+                              const [fLL, fMean, fUL, _fSD] = fmtRow([p.ll, p.mean, p.ul, p.sd], p.decimal_places)
                               const rawMeasured = measuredValues.get(p.parameter_key)
                               const isDerived = rawMeasured === undefined && derivedValues.has(p.parameter_key)
                               const rawVal = rawMeasured ?? derivedValues.get(p.parameter_key)

@@ -103,7 +103,7 @@ type RwmaSummary = {
 
 function generateRwmaSummary(segStates: Record<number, RwmaCode>): RwmaSummary {
   // WMSI: clinical scoring is 1=normal, 2=hypo, 3=akinesis, 4=dyskinesis
-  const totalScore = Object.values(segStates).reduce((sum, c) => sum + (c + 1), 0)
+  const totalScore = Object.values(segStates).reduce<number>((sum, c) => sum + (c + 1), 0)
   const wmsi = totalScore / 17
   const severity: WmsiSeverity = wmsi <= 1.0 ? 'normal' : wmsi < 1.6 ? 'mild' : wmsi < 2.0 ? 'moderate' : 'severe'
 

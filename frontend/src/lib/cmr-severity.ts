@@ -127,7 +127,7 @@ function gradeFromSD(
 export function inferSeverityLabel(
   parameterKey: string,
   majorSection: string,
-  subSection: string,
+  _subSection: string,
 ): SeverityLabelType {
   const key = parameterKey.toLowerCase()
   const section = majorSection.toLowerCase()

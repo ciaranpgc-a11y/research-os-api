@@ -119,8 +119,8 @@ function buildNestedChildrenSet(nestedMap: Record<string, string[]>): Set<string
 const SEX_PRESETS = ['Male', 'Female', 'All'] as const
 const FIELDS = ['ll', 'mean', 'ul', 'sd'] as const
 const MASS_FIELDS = ['ll_mass', 'mean_mass', 'ul_mass', 'sd_mass'] as const
-const DIRECTION_OPTIONS = ['high', 'low', 'both', ''] as const
-const DIRECTION_LABELS: Record<string, string> = {
+const _DIRECTION_OPTIONS = ['high', 'low', 'both', ''] as const
+const _DIRECTION_LABELS: Record<string, string> = {
   'high': '\u25B2 High',
   'low': '\u25BC Low',
   'both': '\u25C6 Both',
@@ -1581,7 +1581,7 @@ export function CmrReferenceDatabasePage() {
           {majorSections.map((major) => {
             const subGroups = groups.filter((g) => g.major === major)
             const isCollapsed = !!collapsed[major]
-            const count = subGroups.reduce((n, g) => n + g.params.length, 0)
+            const _count = subGroups.reduce((n, g) => n + g.params.length, 0)
 
             return (
               <div

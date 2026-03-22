@@ -70,7 +70,7 @@ type PatternCode = 0 | 1 | 2 | 3 | 4
 // Setting transmurality below 76% on a transmural-patterned segment clears the pattern.
 // Setting a non-transmural pattern on a 76–100% segment drops transmurality to 51–75%.
 
-function reconcileAfterTransmurality(
+function _reconcileAfterTransmurality(
   newTrans: LgeCode,
   currentPattern: PatternCode,
 ): { trans: LgeCode; pattern: PatternCode } {
@@ -82,7 +82,7 @@ function reconcileAfterTransmurality(
   return { trans: newTrans, pattern: currentPattern }
 }
 
-function reconcileAfterPattern(
+function _reconcileAfterPattern(
   newPattern: PatternCode,
   currentTrans: LgeCode,
 ): { trans: LgeCode; pattern: PatternCode } {
@@ -263,7 +263,7 @@ function generateLgeSummary(
   patternStates: Record<number, PatternCode>,
 ): LgeSummary {
   // Compute LGE Score Index
-  const scoreIndex = Object.values(segStates).reduce((sum, c) => sum + c, 0) / 17
+  const scoreIndex = Object.values(segStates).reduce<number>((sum, c) => sum + c, 0) / 17
 
   // Gather enhanced segments
   const enhanced: EnhancedSeg[] = []

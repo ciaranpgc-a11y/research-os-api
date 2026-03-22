@@ -1160,7 +1160,7 @@ export function CmrValvesPage() {
 
   return (
     <Stack className="gap-6">
-      <PageHeader title="Valve Assessment" />
+      <PageHeader heading="Valve Assessment" />
 
       {/* Valve tiles */}
       <div className="grid grid-cols-4 gap-4">
