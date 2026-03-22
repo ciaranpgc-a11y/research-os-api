@@ -405,7 +405,10 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                       'outline-2 outline-dashed outline-[hsl(var(--tone-accent-500))] bg-[hsl(var(--tone-accent-50))]',
                     isPulsing && 'animate-drop-pulse',
                   )}
-                  style={{ borderLeft: `3px solid ${COLLECTION_COLOUR_HEX[coll.colour]}` }}
+                  style={{
+                    borderLeft: `3px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
+                    backgroundColor: isExpanded ? `${COLLECTION_COLOUR_HEX[coll.colour]}18` : undefined,
+                  }}
                   onClick={() => {
                     handleToggleExpand(coll.id)
                     if (mode === 'browse') {
