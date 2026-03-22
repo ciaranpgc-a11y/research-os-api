@@ -223,6 +223,16 @@ export function CollectionsViewport({
     setDragWorkId(workId)
   }, [])
 
+  // Reset drag state when drag is cancelled (dropped outside a target or Escape pressed)
+  useEffect(() => {
+    function onDragEnd() {
+      setDragWorkId(null)
+      setDropTargetId(null)
+    }
+    document.addEventListener('dragend', onDragEnd)
+    return () => document.removeEventListener('dragend', onDragEnd)
+  }, [])
+
   const handleDragOver = useCallback((e: React.DragEvent, collectionId: string) => {
     e.preventDefault()
     setDropTargetId(collectionId)
