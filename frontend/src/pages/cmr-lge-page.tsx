@@ -67,34 +67,6 @@ type PatternCode = 0 | 1 | 2 | 3 | 4
 // Transmural pattern requires 76–100% transmurality.
 // Sub-total patterns (subendo, mid-wall, subepi) require <76% transmurality.
 // Setting transmurality to 76–100% auto-sets pattern to transmural.
-// Setting transmurality below 76% on a transmural-patterned segment clears the pattern.
-// Setting a non-transmural pattern on a 76–100% segment drops transmurality to 51–75%.
-
-function _reconcileAfterTransmurality(
-  newTrans: LgeCode,
-  currentPattern: PatternCode,
-): { trans: LgeCode; pattern: PatternCode } {
-  if (newTrans === 0) return { trans: 0, pattern: 0 }
-  if (newTrans === 4) return { trans: 4, pattern: 4 } // 76–100% → auto transmural
-  // Sub-total transmurality: if pattern was transmural, clear it (user can set manually)
-  if (currentPattern === 4) return { trans: newTrans, pattern: 0 }
-  // Otherwise keep whatever pattern was set (or 0 if none)
-  return { trans: newTrans, pattern: currentPattern }
-}
-
-function _reconcileAfterPattern(
-  newPattern: PatternCode,
-  currentTrans: LgeCode,
-): { trans: LgeCode; pattern: PatternCode } {
-  if (newPattern === 0) return { trans: currentTrans, pattern: 0 }
-  if (newPattern === 4) return { trans: 4, pattern: 4 } // transmural pattern → force 76–100%
-  // Non-transmural pattern on 76–100% segment → drop to 51–75%
-  if (currentTrans === 4) return { trans: 3, pattern: newPattern }
-  // Non-transmural on no-enhancement → set to 1–25% minimum
-  if (currentTrans === 0) return { trans: 1, pattern: newPattern }
-  return { trans: currentTrans, pattern: newPattern }
-}
-
 // ---------------------------------------------------------------------------
 // Additional findings (not segment-based)
 // ---------------------------------------------------------------------------

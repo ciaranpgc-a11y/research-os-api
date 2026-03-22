@@ -17,6 +17,7 @@ export type SeverityLabelOverride = {
 }
 
 export type SeverityGrade = 'normal' | 'mild' | 'moderate' | 'severe'
+type AbnormalSeverityGrade = Exclude<SeverityGrade, 'normal'>
 
 export type SeverityResult = {
   grade: SeverityGrade
@@ -65,7 +66,7 @@ export function computeSeverity(
   const overrides = severityLabelOverride ?? { mild: null, moderate: null, severe: null }
 
   // Compute grade
-  let grade: SeverityGrade = 'mild' // default
+  let grade: AbnormalSeverityGrade = 'mild' // default
 
   if (thresholds.mild !== null) {
     // Absolute thresholds path
@@ -90,7 +91,7 @@ function gradeFromThresholds(
   sd: number | null,
   ll: number | null,
   ul: number | null,
-): SeverityGrade {
+): AbnormalSeverityGrade {
   const { mild, moderate, severe } = thresholds
 
   if (breachHigh) {
@@ -116,7 +117,7 @@ function gradeFromSD(
   measured: number,
   breachedLimit: number | null,
   sd: number | null,
-): SeverityGrade {
+): AbnormalSeverityGrade {
   if (breachedLimit === null || sd === null || sd <= 0) return 'mild'
   const deviation = Math.abs(measured - breachedLimit) / sd
   if (deviation <= 1) return 'mild'

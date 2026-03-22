@@ -128,7 +128,6 @@ function ParameterDrilldown({
   onClose: () => void
 }) {
   const [fLL, fMean, fUL, fSD] = fmtRow([param.ll, param.mean, param.ul, param.sd], param.decimal_places)
-  const _isBsa = param.indexing === 'BSA'
 
   return (
     <DrilldownSheet open onOpenChange={(open) => { if (!open) onClose() }}>

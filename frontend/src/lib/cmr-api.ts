@@ -79,6 +79,7 @@ export type CmrParameterRangesResponse = {
   abnormal_direction: string
   major_section: string
   sub_section: string
+  pap_affected: boolean
   pap_differs: boolean
   ranges: CmrReferenceRangeRow[]
   sources: CmrSourceCitation[]

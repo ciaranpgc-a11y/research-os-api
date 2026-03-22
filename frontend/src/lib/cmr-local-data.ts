@@ -284,6 +284,7 @@ export function resolveParameterRanges(parameterKey: string): CmrParameterRanges
     major_section: op?.major_section || 'ADDITIONAL GRANULAR DETAILS',
     sub_section: op?.sub_section || '',
     pap_affected: !!op?.pap_affected,
+    pap_differs: !!op?.pap_affected,
     ranges,
     sources: op?.sources || [],
     severity_label: op?.severity_label,

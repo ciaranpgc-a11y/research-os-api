@@ -14,7 +14,6 @@ type CmrTopBarProps = {
 const topNavItemBase =
   'house-top-nav-item text-body-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
 const topNavItemActive = 'house-top-nav-item-active'
-const topNavItemWorkspace = 'house-top-nav-item-workspace'
 const topNavItemProfile = 'house-top-nav-item-profile'
 const utilityButtonClass =
   'house-top-utility-button focus-visible:ring-[hsl(var(--tone-accent-500))]'
