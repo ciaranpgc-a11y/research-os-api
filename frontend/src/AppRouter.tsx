@@ -251,11 +251,12 @@ export function AppRouter() {
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       {/* CMR auth routes */}
       <Route path="/cmr-login" element={<CmrLoginPage />} />
-      <Route path="/cmr-admin" element={<CmrAdminPage />} />
+      <Route path="/cmr-admin-login" element={<CmrAdminPage standalone />} />
 
       {isCmrSubdomain() ? (
         <Route element={<RequireCmrSession />}>
           <Route element={<CmrReferenceLayout />}>
+            <Route path="/cmr-admin" element={<CmrAdminPage />} />
             <Route path="/cmr-reference-table" element={<CmrReferenceTablePage />} />
             <Route path="/cmr-reference-database" element={<CmrReferenceDatabasePage />} />
             <Route path="/cmr-upload-report" element={<CmrUploadReportPage />} />
@@ -268,6 +269,7 @@ export function AppRouter() {
         </Route>
       ) : (
         <Route element={<CmrReferenceLayout />}>
+          <Route path="/cmr-admin" element={<CmrAdminPage />} />
           <Route path="/cmr-reference-table" element={<CmrReferenceTablePage />} />
           <Route path="/cmr-reference-database" element={<CmrReferenceDatabasePage />} />
           <Route path="/cmr-upload-report" element={<CmrUploadReportPage />} />

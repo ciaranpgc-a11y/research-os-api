@@ -24,6 +24,7 @@ export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
 
   const isReference = pathname === '/cmr-reference-table'
   const isRefDb = pathname === '/cmr-reference-database'
+  const isAdminPage = pathname === '/cmr-admin'
   const isNewReport = pathname === '/cmr-new-report' || pathname === '/cmr-upload-report'
 
   return (
@@ -69,6 +70,15 @@ export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
                 className={cn(topNavItemBase, 'house-top-nav-item-learning-centre', isRefDb && topNavItemActive)}
               >
                 Reference Database
+              </button>
+            )}
+            {isCmrSubdomain() && getCmrSessionToken() && (
+              <button
+                type="button"
+                onClick={() => navigate('/cmr-admin')}
+                className={cn(topNavItemBase, 'house-top-nav-item-account', isAdminPage && topNavItemActive)}
+              >
+                Admin
               </button>
             )}
           </nav>

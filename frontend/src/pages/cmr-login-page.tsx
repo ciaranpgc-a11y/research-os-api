@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 import { CmrMark } from '@/components/layout/cmr-mark'
 import { cmrLogin, setCmrSession } from '@/lib/cmr-auth'
@@ -157,16 +157,10 @@ export function CmrLoginPage() {
                 </button>
               </form>
 
-              <div className="mt-8 flex flex-col gap-3 border-t border-[rgba(19,35,46,0.1)] pt-6 sm:flex-row sm:items-center sm:justify-between">
-                <p className="max-w-[16rem] text-xs leading-6 text-[hsl(var(--tone-neutral-600))]">
+              <div className="mt-8 border-t border-[rgba(19,35,46,0.1)] pt-6">
+                <p className="text-sm leading-7 text-[hsl(var(--tone-neutral-600))]">
                   Need access? Contact your administrator.
                 </p>
-                <Link
-                  to="/cmr-admin"
-                  className="inline-flex min-h-[3.25rem] items-center justify-center rounded-full border border-[rgba(50,95,111,0.24)] bg-white px-5 text-sm font-medium text-[hsl(var(--tone-accent-800))] transition hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))]"
-                >
-                  Administrator sign in
-                </Link>
               </div>
             </div>
           </section>
