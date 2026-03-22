@@ -556,7 +556,7 @@ export function CmrLvThrombusPage() {
               />
             </div>
 
-            <div className="space-y-2 md:col-span-2">
+            <div className="space-y-2">
               <FieldLabel>Surface</FieldLabel>
               <PillSelect
                 options={SURFACE_OPTIONS}
