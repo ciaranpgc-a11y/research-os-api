@@ -1866,6 +1866,95 @@ class GenerationJob(Base):
     manuscript: Mapped[Manuscript] = relationship(back_populates="generation_jobs")
 
 
+class Collection(Base):
+    __tablename__ = "collections"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    colour: Mapped[str] = mapped_column(String(20), default="indigo")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    subcollections: Mapped[list["Subcollection"]] = relationship(
+        back_populates="collection", cascade="all, delete-orphan"
+    )
+    memberships: Mapped[list["CollectionMembership"]] = relationship(
+        back_populates="collection", cascade="all, delete-orphan"
+    )
+
+
+class Subcollection(Base):
+    __tablename__ = "subcollections"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    collection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    collection: Mapped["Collection"] = relationship(back_populates="subcollections")
+    memberships: Mapped[list["CollectionMembership"]] = relationship(
+        back_populates="subcollection", cascade="all, delete-orphan"
+    )
+
+
+class CollectionMembership(Base):
+    __tablename__ = "collection_memberships"
+    __table_args__ = (
+        UniqueConstraint("collection_id", "subcollection_id", "work_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    collection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        index=True,
+    )
+    subcollection_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("subcollections.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    work_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("works.id", ondelete="CASCADE"),
+        index=True,
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    collection: Mapped["Collection"] = relationship(back_populates="memberships")
+    subcollection: Mapped["Subcollection | None"] = relationship(back_populates="memberships")
+
+
 _engine = None
 _SessionLocal = None
 _create_all_tables_lock = Lock()
