@@ -23,7 +23,8 @@ export function CmrReferenceLayout() {
         || pathname.includes('rwma')
         || pathname.includes('lge')
         || pathname.includes('valves')
-        || pathname.includes('lv-thrombus'))
+        || pathname.includes('lv-thrombus')
+        || pathname.includes('cmr-ph'))
         ? 'report'
         : 'reference'
 

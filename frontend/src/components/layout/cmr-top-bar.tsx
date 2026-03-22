@@ -25,7 +25,15 @@ export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
   const isReference = pathname === '/cmr-reference-table'
   const isRefDb = pathname === '/cmr-reference-database'
   const isAdminPage = pathname === '/cmr-admin'
-  const isNewReport = pathname === '/cmr-new-report' || pathname === '/cmr-upload-report'
+  const isNewReport = [
+    '/cmr-upload-report',
+    '/cmr-new-report',
+    '/cmr-rwma',
+    '/cmr-lge',
+    '/cmr-valves',
+    '/cmr-lv-thrombus',
+    '/cmr-ph',
+  ].includes(pathname)
 
   return (
     <header className="border-b border-[hsl(var(--stroke-soft)/0.82)] bg-card/95 backdrop-blur">

@@ -44,6 +44,7 @@ const REPORT_VISUALISER_NAV = [
 
 const REPORT_MODULES_NAV = [
   { key: 'lv-thrombus', path: '/cmr-lv-thrombus', label: 'Thrombus' },
+  { key: 'ph', path: '/cmr-ph', label: 'PH' },
 ]
 
 const ADMIN_NAV = [

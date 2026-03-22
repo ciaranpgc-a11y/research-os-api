@@ -43,6 +43,7 @@ import { CmrLgePage } from '@/pages/cmr-lge-page'
 import { CmrUploadReportPage } from '@/pages/cmr-upload-report-page'
 import { CmrValvesPage } from '@/pages/cmr-valves-page'
 import { CmrLvThrombusPage } from '@/pages/cmr-lv-thrombus-page'
+import { CmrPhPage } from '@/pages/cmr-ph-page'
 import { CmrLoginPage } from '@/pages/cmr-login-page'
 import { CmrAdminPage } from '@/pages/cmr-admin-page'
 import {
@@ -265,6 +266,7 @@ export function AppRouter() {
             <Route path="/cmr-lge" element={<CmrLgePage />} />
             <Route path="/cmr-valves" element={<CmrValvesPage />} />
             <Route path="/cmr-lv-thrombus" element={<CmrLvThrombusPage />} />
+            <Route path="/cmr-ph" element={<CmrPhPage />} />
           </Route>
         </Route>
       ) : (
@@ -278,6 +280,7 @@ export function AppRouter() {
           <Route path="/cmr-lge" element={<CmrLgePage />} />
           <Route path="/cmr-valves" element={<CmrValvesPage />} />
           <Route path="/cmr-lv-thrombus" element={<CmrLvThrombusPage />} />
+          <Route path="/cmr-ph" element={<CmrPhPage />} />
         </Route>
       )}
 
