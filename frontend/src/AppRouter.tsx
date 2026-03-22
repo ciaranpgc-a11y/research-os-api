@@ -43,6 +43,14 @@ import { CmrLgePage } from '@/pages/cmr-lge-page'
 import { CmrUploadReportPage } from '@/pages/cmr-upload-report-page'
 import { CmrValvesPage } from '@/pages/cmr-valves-page'
 import { CmrLvThrombusPage } from '@/pages/cmr-lv-thrombus-page'
+import { CmrLoginPage } from '@/pages/cmr-login-page'
+import { CmrAdminPage } from '@/pages/cmr-admin-page'
+import {
+  getCmrSessionToken,
+  cmrCheckSession,
+  clearCmrSession,
+  isCmrSubdomain,
+} from '@/lib/cmr-auth'
 import { useWorkspaceStore } from '@/store/use-workspace-store'
 
 const AUTH_ME_TIMEOUT_MS = 8000
@@ -84,6 +92,11 @@ function LegacyManuscriptSectionRedirect() {
 }
 
 function LandingOrWorkspace() {
+  // CMR subdomain goes to login gate
+  if (isCmrSubdomain()) {
+    return <Navigate to="/cmr-login" replace />
+  }
+
   if (isAuthBypassEnabled()) {
     return <Navigate to="/profile/publications" replace />
   }
@@ -93,6 +106,38 @@ function LandingOrWorkspace() {
     return <Navigate to="/workspaces" replace />
   }
   return <LandingPage />
+}
+
+function RequireCmrSession() {
+  const [status, setStatus] = useState<'checking' | 'allowed' | 'denied'>('checking')
+  const location = useLocation()
+
+  useEffect(() => {
+    const token = getCmrSessionToken()
+    if (!token) {
+      setStatus('denied')
+      return
+    }
+    let cancelled = false
+    cmrCheckSession(token).then((user) => {
+      if (cancelled) return
+      if (user) {
+        setStatus('allowed')
+      } else {
+        clearCmrSession()
+        setStatus('denied')
+      }
+    })
+    return () => { cancelled = true }
+  }, [location.pathname])
+
+  if (status === 'checking') {
+    return <div className="p-6 text-sm text-muted-foreground">Checking session...</div>
+  }
+  if (status === 'denied') {
+    return <Navigate to="/cmr-login" replace />
+  }
+  return <Outlet />
 }
 
 function RequireSignIn() {
@@ -204,16 +249,35 @@ export function AppRouter() {
       <Route path="/" element={<LandingOrWorkspace />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
-      <Route element={<CmrReferenceLayout />}>
-        <Route path="/cmr-reference-table" element={<CmrReferenceTablePage />} />
-        <Route path="/cmr-reference-database" element={<CmrReferenceDatabasePage />} />
-        <Route path="/cmr-upload-report" element={<CmrUploadReportPage />} />
-        <Route path="/cmr-new-report" element={<CmrNewReportPage />} />
-        <Route path="/cmr-rwma" element={<CmrRwmaPage />} />
-        <Route path="/cmr-lge" element={<CmrLgePage />} />
-        <Route path="/cmr-valves" element={<CmrValvesPage />} />
-        <Route path="/cmr-lv-thrombus" element={<CmrLvThrombusPage />} />
-      </Route>
+      {/* CMR auth routes */}
+      <Route path="/cmr-login" element={<CmrLoginPage />} />
+      <Route path="/cmr-admin" element={<CmrAdminPage />} />
+
+      {isCmrSubdomain() ? (
+        <Route element={<RequireCmrSession />}>
+          <Route element={<CmrReferenceLayout />}>
+            <Route path="/cmr-reference-table" element={<CmrReferenceTablePage />} />
+            <Route path="/cmr-reference-database" element={<CmrReferenceDatabasePage />} />
+            <Route path="/cmr-upload-report" element={<CmrUploadReportPage />} />
+            <Route path="/cmr-new-report" element={<CmrNewReportPage />} />
+            <Route path="/cmr-rwma" element={<CmrRwmaPage />} />
+            <Route path="/cmr-lge" element={<CmrLgePage />} />
+            <Route path="/cmr-valves" element={<CmrValvesPage />} />
+            <Route path="/cmr-lv-thrombus" element={<CmrLvThrombusPage />} />
+          </Route>
+        </Route>
+      ) : (
+        <Route element={<CmrReferenceLayout />}>
+          <Route path="/cmr-reference-table" element={<CmrReferenceTablePage />} />
+          <Route path="/cmr-reference-database" element={<CmrReferenceDatabasePage />} />
+          <Route path="/cmr-upload-report" element={<CmrUploadReportPage />} />
+          <Route path="/cmr-new-report" element={<CmrNewReportPage />} />
+          <Route path="/cmr-rwma" element={<CmrRwmaPage />} />
+          <Route path="/cmr-lge" element={<CmrLgePage />} />
+          <Route path="/cmr-valves" element={<CmrValvesPage />} />
+          <Route path="/cmr-lv-thrombus" element={<CmrLvThrombusPage />} />
+        </Route>
+      )}
 
       <Route element={<RequireSignIn />}>
         <Route path="/workspaces" element={<WorkspacesPage />} />
@@ -274,7 +338,7 @@ export function AppRouter() {
         <Route path="/agent-logs" element={<WorkspaceRedirect suffix="agent-logs" />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to={isCmrSubdomain() ? '/cmr-login' : '/'} replace />} />
     </Routes>
   )
 }

@@ -17,5 +17,15 @@ grobid.axiomos.studio {
 	reverse_proxy grobid:8070
 }
 
+# CMR tool (separate subdomain)
+cmr.axiomos.studio {
+	handle /v1/* {
+		reverse_proxy api:8000
+	}
+	handle {
+		reverse_proxy frontend:80
+	}
+}
+
 # Optional preview routes live in deploy/Caddyfile.preview.
 import /etc/caddy/Caddyfile.preview

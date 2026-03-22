@@ -5,6 +5,7 @@ import { CmrMark } from '@/components/layout/cmr-mark'
 import { Button } from '@/components/ui'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { isCmrSubdomain, getCmrUserName, getCmrSessionToken, cmrLogout, isCmrAdmin } from '@/lib/cmr-auth'
 
 type CmrTopBarProps = {
   onOpenLeftNav: () => void
@@ -62,13 +63,15 @@ export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
             >
               Reference
             </button>
-            <button
-              type="button"
-              onClick={() => navigate('/cmr-reference-database')}
-              className={cn(topNavItemBase, 'house-top-nav-item-learning-centre', isRefDb && topNavItemActive)}
-            >
-              Reference Database
-            </button>
+            {(!isCmrSubdomain() || isCmrAdmin()) && (
+              <button
+                type="button"
+                onClick={() => navigate('/cmr-reference-database')}
+                className={cn(topNavItemBase, 'house-top-nav-item-learning-centre', isRefDb && topNavItemActive)}
+              >
+                Reference Database
+              </button>
+            )}
           </nav>
         </div>
 
@@ -85,6 +88,22 @@ export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
           >
             New Report
           </button>
+
+          {isCmrSubdomain() && getCmrSessionToken() && (
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">{getCmrUserName()}</span>
+              <button
+                onClick={async () => {
+                  const token = getCmrSessionToken()
+                  if (token) await cmrLogout(token)
+                  window.location.href = '/cmr-login'
+                }}
+                className="text-xs text-muted-foreground underline hover:text-foreground"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

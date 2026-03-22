@@ -1,220 +1,214 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, Trash2, X } from 'lucide-react'
 
-import { PageHeader, Row, Stack } from '@/components/primitives'
-import { SectionMarker } from '@/components/patterns'
-import { fetchSections, type CmrSectionsConfig } from '@/lib/cmr-api'
+import {
+  cmrAdminCreateCode,
+  cmrAdminListCodes,
+  cmrAdminLogin,
+  cmrAdminRevokeCode,
+  cmrCheckSession,
+  getCmrSessionToken,
+  isCmrAdmin,
+  setCmrSession,
+  type CmrAccessCodeEntry,
+} from '@/lib/cmr-auth'
 import { cn } from '@/lib/utils'
 
-// ---------------------------------------------------------------------------
-// Main admin page
-// ---------------------------------------------------------------------------
+function timeAgo(iso: string | null): string {
+  if (!iso) return '—'
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
 
 export function CmrAdminPage() {
-  const [sections, setSections] = useState<CmrSectionsConfig>({})
-  const [loading, setLoading] = useState(true)
-  const [dirty, setDirty] = useState(false)
-  const [newSectionName, setNewSectionName] = useState('')
-  const [addingSubFor, setAddingSubFor] = useState<string | null>(null)
-  const [newSubName, setNewSubName] = useState('')
+  const [phase, setPhase] = useState<'login' | 'checking' | 'panel'>('checking')
+  const [password, setPassword] = useState('')
+  const [loginError, setLoginError] = useState<string | null>(null)
+  const [loginLoading, setLoginLoading] = useState(false)
 
-  const load = useCallback(() => {
-    setLoading(true)
-    fetchSections()
-      .then((s) => { setSections(s); setDirty(false) })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+  const [codes, setCodes] = useState<CmrAccessCodeEntry[]>([])
+  const [newName, setNewName] = useState('')
+  const [newCode, setNewCode] = useState('')
+  const [creating, setCreating] = useState(false)
+
+  // Check if already has admin session
+  useEffect(() => {
+    const token = getCmrSessionToken()
+    if (!token || !isCmrAdmin()) {
+      setPhase('login')
+      return
+    }
+    cmrCheckSession(token).then((user) => {
+      if (user?.is_admin) {
+        setPhase('panel')
+      } else {
+        setPhase('login')
+      }
+    })
   }, [])
 
-  useEffect(() => { load() }, [load])
-
-  const addMajorSection = () => {
-    const name = newSectionName.trim().toUpperCase()
-    if (!name || sections[name]) return
-    setSections((prev) => ({ ...prev, [name]: [] }))
-    setNewSectionName('')
-    setDirty(true)
-  }
-
-  const removeMajorSection = (key: string) => {
-    setSections((prev) => {
-      const next = { ...prev }
-      delete next[key]
-      return next
-    })
-    setDirty(true)
-  }
-
-  const addSubSection = (majorKey: string) => {
-    const name = newSubName.trim()
-    if (!name || sections[majorKey]?.includes(name)) return
-    setSections((prev) => ({
-      ...prev,
-      [majorKey]: [...(prev[majorKey] || []), name],
-    }))
-    setNewSubName('')
-    setAddingSubFor(null)
-    setDirty(true)
-  }
-
-  const removeSubSection = (majorKey: string, sub: string) => {
-    setSections((prev) => ({
-      ...prev,
-      [majorKey]: (prev[majorKey] || []).filter((s) => s !== sub),
-    }))
-    setDirty(true)
-  }
-
-  const handleSave = async () => {
+  const loadCodes = useCallback(async () => {
+    const token = getCmrSessionToken()
+    if (!token) return
     try {
-      const { updateSections } = await import('@/lib/cmr-api')
-      await updateSections(sections)
-      setDirty(false)
+      const list = await cmrAdminListCodes(token)
+      setCodes(list)
     } catch {
-      // API not available — data saved locally only
-      setDirty(false)
+      // ignore
+    }
+  }, [])
+
+  useEffect(() => {
+    if (phase === 'panel') loadCodes()
+  }, [phase, loadCodes])
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoginLoading(true)
+    setLoginError(null)
+    try {
+      const result = await cmrAdminLogin(password.trim())
+      setCmrSession(result.session_token, result.name, result.is_admin)
+      setPhase('panel')
+    } catch {
+      setLoginError('Invalid admin password')
+    } finally {
+      setLoginLoading(false)
     }
   }
 
-  return (
-    <Stack data-house-role="page" space="lg">
-      <Row align="center" gap="md" wrap={false} className="house-page-title-row">
-        <SectionMarker tone="warning" size="title" className="self-stretch h-auto" />
-        <PageHeader
-          heading="Admin"
-          className="!ml-0 !mt-0"
-        />
-      </Row>
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newName.trim() || !newCode.trim()) return
+    setCreating(true)
+    try {
+      const token = getCmrSessionToken()!
+      await cmrAdminCreateCode(token, newName.trim(), newCode.trim())
+      setNewName('')
+      setNewCode('')
+      await loadCodes()
+    } catch {
+      // ignore
+    } finally {
+      setCreating(false)
+    }
+  }
 
-      {/* Separator */}
-      <div className="border-b border-[hsl(var(--stroke-soft)/0.5)]" />
+  const handleRevoke = async (id: string, name: string) => {
+    if (!confirm(`Revoke access for ${name}?`)) return
+    const token = getCmrSessionToken()!
+    try {
+      await cmrAdminRevokeCode(token, id)
+      await loadCodes()
+    } catch {
+      // ignore
+    }
+  }
 
-      {loading ? (
-        <p className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">Loading...</p>
-      ) : (
-        <>
-          {/* Add new major section */}
-          <div className="flex items-end gap-3">
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                New Major Section
-              </label>
-              <input
-                type="text"
-                value={newSectionName}
-                onChange={(e) => setNewSectionName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') addMajorSection() }}
-                placeholder="e.g. PERICARDIUM"
-                className="w-64 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1.5 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-neutral-400))]"
-              />
-            </div>
-            <button
-              onClick={addMajorSection}
-              disabled={!newSectionName.trim()}
-              className="flex items-center gap-1.5 rounded-md bg-[hsl(var(--foreground))] px-3 py-1.5 text-sm font-medium text-[hsl(var(--background))] shadow-sm transition-colors hover:bg-[hsl(var(--foreground)/0.85)] disabled:opacity-40"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Section
+  if (phase === 'checking') {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Checking session...</div>
+  }
+
+  if (phase === 'login') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="w-full max-w-sm">
+          <h1 className="mb-6 text-center text-xl font-semibold">CMR Admin</h1>
+          <form onSubmit={handleAdminLogin} className="space-y-4">
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Admin password"
+              autoFocus
+              className={cn('house-input w-full', loginError && 'ring-2 ring-[hsl(var(--tone-danger-400))]')}
+            />
+            {loginError && <p className="text-xs text-[hsl(var(--tone-danger-500))]">{loginError}</p>}
+            <button type="submit" disabled={loginLoading} className="house-button-primary w-full">
+              {loginLoading ? 'Verifying...' : 'Sign in'}
             </button>
-            {dirty && (
-              <button
-                onClick={handleSave}
-                className="ml-auto rounded-md bg-[hsl(var(--tone-positive-600))] px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[hsl(var(--tone-positive-700))]"
-              >
-                Save Changes
-              </button>
-            )}
-          </div>
+          </form>
+        </div>
+      </div>
+    )
+  }
 
-          {/* Sections list */}
-          <div className="space-y-4">
-            {Object.entries(sections).map(([major, subs]) => (
-              <div
-                key={major}
-                className="overflow-hidden rounded-lg border border-[hsl(var(--stroke-soft)/0.72)]"
-              >
-                {/* Major section header */}
-                <div className="flex items-center gap-3 bg-[hsl(var(--tone-neutral-50))] px-4 py-3">
-                  <div className="w-1 self-stretch rounded-full bg-[hsl(var(--tone-warning-500))]" />
-                  <h3 className="flex-1 text-sm font-semibold tracking-tight text-[hsl(var(--foreground))]">
-                    {major}
-                  </h3>
-                  <button
-                    onClick={() => {
-                      if (addingSubFor === major) {
-                        setAddingSubFor(null)
-                        setNewSubName('')
-                      } else {
-                        setAddingSubFor(major)
-                        setNewSubName('')
-                      }
-                    }}
-                    className="rounded-md px-2 py-1 text-xs font-medium text-[hsl(var(--tone-positive-600))] transition-colors hover:bg-[hsl(var(--tone-positive-50))]"
-                  >
-                    <Plus className="inline h-3 w-3" /> Sub-section
-                  </button>
-                  <button
-                    onClick={() => removeMajorSection(major)}
-                    className="rounded-md p-1 text-[hsl(var(--tone-danger-500))] transition-colors hover:bg-[hsl(var(--tone-danger-50))]"
-                    title="Remove section"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+  // --- Admin panel ---
+  const activeCodes = codes.filter((c) => c.id !== 'admin')
 
-                {/* Sub-sections */}
-                {(subs.length > 0 || addingSubFor === major) && (
-                  <div className="border-t border-[hsl(var(--stroke-soft)/0.5)]">
-                    {subs.map((sub) => (
-                      <div
-                        key={sub}
-                        className="flex items-center gap-3 border-b border-[hsl(var(--stroke-soft)/0.3)] px-4 py-2 last:border-b-0"
-                      >
-                        <span className="ml-5 flex-1 text-sm text-[hsl(var(--foreground))]">{sub}</span>
-                        <button
-                          onClick={() => removeSubSection(major, sub)}
-                          className="rounded-md p-1 text-[hsl(var(--tone-danger-400))] transition-colors hover:bg-[hsl(var(--tone-danger-50))] hover:text-[hsl(var(--tone-danger-500))]"
-                          title="Remove sub-section"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
+  return (
+    <div className="mx-auto max-w-2xl p-8">
+      <h1 className="text-xl font-semibold">CMR Access Management</h1>
+      <p className="mt-1 text-sm text-muted-foreground">{activeCodes.filter((c) => c.is_active).length} active access codes</p>
 
-                    {/* Inline add sub-section */}
-                    {addingSubFor === major && (
-                      <div className="flex items-center gap-2 border-b border-[hsl(var(--stroke-soft)/0.3)] px-4 py-2 last:border-b-0">
-                        <input
-                          type="text"
-                          value={newSubName}
-                          onChange={(e) => setNewSubName(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') addSubSection(major); if (e.key === 'Escape') { setAddingSubFor(null); setNewSubName('') } }}
-                          placeholder="Sub-section name..."
-                          autoFocus
-                          className="ml-5 flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--tone-neutral-400))]"
-                        />
-                        <button
-                          onClick={() => addSubSection(major)}
-                          disabled={!newSubName.trim()}
-                          className="rounded-md bg-[hsl(var(--foreground))] px-2.5 py-1 text-xs font-medium text-[hsl(var(--background))] disabled:opacity-40"
-                        >
-                          Add
-                        </button>
-                        <button
-                          onClick={() => { setAddingSubFor(null); setNewSubName('') }}
-                          className="rounded-md p-1 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--tone-neutral-100))]"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+      {/* Add new code */}
+      <form onSubmit={handleCreate} className="mt-6 flex items-end gap-3">
+        <div className="flex-1">
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Name</label>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Dr. Smith" className="house-input w-full" />
+        </div>
+        <div className="flex-1">
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Access code</label>
+          <input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="their-access-code" className="house-input w-full" />
+        </div>
+        <button type="submit" disabled={creating || !newName.trim() || !newCode.trim()} className="house-button-primary whitespace-nowrap">
+          {creating ? 'Creating...' : 'Create'}
+        </button>
+      </form>
+
+      {/* Codes table */}
+      <div className="mt-8 overflow-hidden rounded-lg border border-border">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-muted/50 text-xs font-medium text-muted-foreground">
+              <th className="px-4 py-2 text-left">Name</th>
+              <th className="px-4 py-2 text-left">Last access</th>
+              <th className="px-4 py-2 text-right">Sessions</th>
+              <th className="px-4 py-2 text-center">Status</th>
+              <th className="px-4 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {activeCodes.map((c) => (
+              <tr key={c.id} className="border-b border-border last:border-b-0">
+                <td className="px-4 py-2.5 font-medium">{c.name}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{timeAgo(c.last_accessed_at)}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{c.session_count}</td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className={cn(
+                    'inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                    c.is_active
+                      ? 'bg-[hsl(var(--tone-positive-100))] text-[hsl(var(--tone-positive-600))]'
+                      : 'bg-[hsl(var(--tone-danger-100))] text-[hsl(var(--tone-danger-600))]',
+                  )}>
+                    {c.is_active ? 'Active' : 'Revoked'}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  {c.is_active && (
+                    <button
+                      onClick={() => handleRevoke(c.id, c.name)}
+                      className="text-xs text-muted-foreground underline hover:text-[hsl(var(--tone-danger-500))]"
+                    >
+                      Revoke
+                    </button>
+                  )}
+                </td>
+              </tr>
             ))}
-          </div>
-        </>
-      )}
-    </Stack>
+            {activeCodes.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">No access codes yet</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
