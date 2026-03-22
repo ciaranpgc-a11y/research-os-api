@@ -584,9 +584,8 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     )
                   })}
 
-                  {/* New subcollection inline input (organise mode only) */}
-                  {mode === 'organise' && (
-                    creatingSubForId === coll.id ? (
+                  {/* New subcollection inline input (triggered via right-click only) */}
+                  {creatingSubForId === coll.id && (
                       <div
                         className="flex items-center gap-2 px-3 py-1.5"
                         style={{
@@ -622,20 +621,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                    ) : (
-                      /* "+ Add subcollection" link */
-                      <button
-                        type="button"
-                        className="flex items-center gap-1.5 px-3 py-2 text-sm text-[hsl(var(--tone-accent-700))] hover:text-[hsl(var(--tone-accent-900))] transition-colors"
-                        style={{
-                          borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}40`,
-                        }}
-                        onClick={() => startCreateSub(coll.id)}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        Add subcollection
-                      </button>
-                    )
                   )}
                 </div>
               )}
