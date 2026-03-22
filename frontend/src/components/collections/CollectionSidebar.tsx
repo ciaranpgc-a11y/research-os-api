@@ -445,13 +445,14 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                       )}
                       style={{
                         borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
+                        color: COLLECTION_COLOUR_HEX[coll.colour],
                       }}
                       onClick={() => {
                         onSelectCollection(coll.id)
                         onSelectSubcollection(null)
                       }}
                     >
-                      <span className="flex-1 truncate text-muted-foreground text-sm">
+                      <span className="flex-1 truncate text-sm">
                         All papers
                       </span>
                     </div>
@@ -513,6 +514,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         )}
                         style={{
                           borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
+                          color: COLLECTION_COLOUR_HEX[coll.colour],
                         }}
                         onClick={() => {
                           if (mode === 'browse') {
