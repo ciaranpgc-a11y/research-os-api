@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 
 import { SectionMarker } from '@/components/patterns'
 import { PageHeader, Row, Stack } from '@/components/primitives'
+import { SelectContent, SelectItem, SelectPrimitive, SelectTrigger, SelectValue } from '@/components/ui'
 import { THROMBUS_LOCATION_ICONS } from '@/components/icons/thrombus-location-icons'
 import { cn } from '@/lib/utils'
 
@@ -50,6 +51,8 @@ const SUBLOCATION_OPTIONS: Record<ThrombusPrimary, string[]> = {
   Device: ['Lead-associated', 'Prosthetic valve'],
   Other: [],
 }
+
+const THROMBUS_SELECT_EMPTY_VALUE = '__none__'
 
 const SHAPE_OPTIONS = [
   { value: 'mural' as const, label: 'Mural (laminar)' },
@@ -463,16 +466,41 @@ export function CmrLvThrombusPage() {
             ) : sublocationOptions.length > 0 ? (
               <div className="space-y-2 md:flex md:max-w-[24rem] md:items-center md:gap-2 md:space-y-0">
                 <span className="shrink-0 text-sm text-[hsl(var(--foreground))]">Sub-location</span>
-                <select
-                  value={activeEntry.sublocation ?? ''}
-                  onChange={(event) => updateEntry(activeEntry.id, { sublocation: event.target.value || null })}
-                  className="house-dropdown house-dropdown-thrombus h-8 w-full rounded-md px-2.5 text-xs md:w-[15rem]"
+                <SelectPrimitive
+                  value={activeEntry.sublocation ?? undefined}
+                  onValueChange={(value) =>
+                    updateEntry(activeEntry.id, {
+                      sublocation: value === THROMBUS_SELECT_EMPTY_VALUE ? null : value,
+                    })
+                  }
                 >
-                  <option value="">Select...</option>
-                  {sublocationOptions.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
+                  <SelectTrigger
+                    aria-label="Sub-location"
+                    className="!h-8 !min-h-8 w-full rounded-md px-2.5 text-xs md:w-[15rem]"
+                    style={{ paddingInline: '0.625rem', paddingBlock: '0' }}
+                  >
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent
+                    className="house-select-tone-thrombus min-w-[var(--radix-select-trigger-width)] border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--background))]"
+                  >
+                    <SelectItem
+                      value={THROMBUS_SELECT_EMPTY_VALUE}
+                      className="py-1.5 text-xs text-[hsl(var(--tone-neutral-500))] focus:text-[hsl(var(--tone-danger-800))]"
+                    >
+                      Select...
+                    </SelectItem>
+                    {sublocationOptions.map((option) => (
+                      <SelectItem
+                        key={option}
+                        value={option}
+                        className="py-1.5 text-xs focus:text-[hsl(var(--tone-danger-800))] data-[state=checked]:text-[hsl(var(--tone-danger-800))]"
+                      >
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </SelectPrimitive>
               </div>
             ) : null}
           </div>
