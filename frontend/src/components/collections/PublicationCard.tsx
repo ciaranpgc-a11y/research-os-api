@@ -62,17 +62,21 @@ export function PublicationCard(props: PublicationCardProps) {
         <GripVertical className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-foreground truncate">{title}</div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-xs text-muted-foreground truncate">{metaLine}</span>
+          <div className="flex items-center gap-2 mt-0.5 min-w-0">
+            <span className="text-xs text-muted-foreground truncate shrink-0">{metaLine}</span>
             {collectionMemberships.length > 0 && (
-              <span className="flex items-center gap-1 flex-shrink-0">
+              <span className="flex items-center gap-1 flex-wrap min-w-0">
                 {collectionMemberships.map((c) => (
                   <span
                     key={c.id}
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: COLLECTION_COLOUR_HEX[c.colour] }}
-                    title={c.name}
-                  />
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium max-w-[120px] truncate"
+                    style={{
+                      backgroundColor: `${COLLECTION_COLOUR_HEX[c.colour]}20`,
+                      color: COLLECTION_COLOUR_HEX[c.colour],
+                    }}
+                  >
+                    {c.name}
+                  </span>
                 ))}
               </span>
             )}
