@@ -3347,4 +3347,123 @@ class PersonaContextResponse(BaseModel):
     top_venues: list[str] = Field(default_factory=list)
     frequent_collaborators: list[str] = Field(default_factory=list)
     methodological_patterns: list[str] = Field(default_factory=list)
+
+
+# ── Collections ─────────────────────────────────────────────────
+
+
+class CollectionCreateRequest(BaseModel):
+    name: str
+    colour: str = "indigo"
+
+
+class CollectionUpdateRequest(BaseModel):
+    name: str | None = None
+    colour: str | None = None
+
+
+class CollectionReorderRequest(BaseModel):
+    ordered_ids: list[str]
+
+
+class CollectionResponse(BaseModel):
+    id: str
+    user_id: str
+    name: str
+    colour: str
+    sort_order: int
+    publication_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CollectionListResponse(BaseModel):
+    items: list[CollectionResponse]
+
+
+class CollectionDeleteResponse(BaseModel):
+    deleted: bool
+    id: str
+
+
+class SubcollectionCreateRequest(BaseModel):
+    name: str
+
+
+class SubcollectionUpdateRequest(BaseModel):
+    name: str | None = None
+
+
+class SubcollectionResponse(BaseModel):
+    id: str
+    collection_id: str
+    name: str
+    sort_order: int
+    publication_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SubcollectionListResponse(BaseModel):
+    items: list[SubcollectionResponse]
+
+
+class SubcollectionDeleteResponse(BaseModel):
+    deleted: bool
+    id: str
+
+
+class CollectionPublicationAddRequest(BaseModel):
+    work_ids: list[str]
+
+
+class CollectionPublicationReorderRequest(BaseModel):
+    ordered_work_ids: list[str]
+
+
+class CollectionPublicationResponse(BaseModel):
+    membership_id: str
+    work_id: str
+    subcollection_id: str | None = None
+    sort_order: int
+    title: str
+    year: int | None = None
+    journal: str | None = None
+    citations: int = 0
+    doi: str | None = None
+
+
+class CollectionPublicationsListResponse(BaseModel):
+    items: list[CollectionPublicationResponse]
+
+
+class CollectionMembershipCreatedResponse(BaseModel):
+    id: str
+    collection_id: str
+    subcollection_id: str | None = None
+    work_id: str
+    sort_order: int
+
+
+class CollectionPublicationAddResponse(BaseModel):
+    items: list[CollectionMembershipCreatedResponse]
+
+
+class CollectionPublicationRemoveResponse(BaseModel):
+    removed: bool
+    work_id: str
+
+
+class CollectionPublicationReorderResponse(BaseModel):
+    reordered: bool
+
+
+class PublicationCollectionSummary(BaseModel):
+    id: str
+    name: str
+    colour: str
+
+
+class PublicationCollectionsListResponse(BaseModel):
+    items: list[PublicationCollectionSummary]
     works_used: list[dict[str, Any]] = Field(default_factory=list)
