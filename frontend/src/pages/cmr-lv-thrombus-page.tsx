@@ -410,7 +410,7 @@ export function CmrLvThrombusPage() {
           statusTone={activeEntry.primary ? 'active' : 'none'}
         >
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
+            <div className="grid w-full gap-2 [grid-template-columns:repeat(auto-fit,minmax(7.5rem,1fr))]">
               {PRIMARY_OPTIONS.map((option) => {
                 const Icon = THROMBUS_LOCATION_ICONS[option.value]
                 const selected = activeEntry.primary === option.value
@@ -426,19 +426,22 @@ export function CmrLvThrombusPage() {
                       })
                     }
                     className={cn(
-                      'flex min-w-[6.25rem] flex-col items-center gap-1.5 rounded-lg px-3 py-3 text-[10px] font-medium transition-all',
+                      'flex w-full flex-col items-center gap-2 rounded-lg px-3 py-3 text-[10px] font-medium transition-all',
                       selected
-                        ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
+                        ? 'bg-[hsl(var(--tone-accent-50))] ring-2 ring-[hsl(var(--tone-accent-300))] shadow-[0_10px_24px_rgba(20,35,46,0.08)]'
                         : 'bg-[hsl(var(--tone-neutral-50))] ring-1 ring-inset ring-[hsl(var(--stroke-soft)/0.4)] hover:bg-[hsl(var(--tone-neutral-100))]',
                     )}
                     title={option.label}
                   >
                     {Icon && (
-                      <span className={cn(selected ? 'text-white' : PRIMARY_ICON_COLORS[option.value])}>
-                        <Icon size={30} />
+                      <span className={PRIMARY_ICON_COLORS[option.value]}>
+                        <Icon size={38} />
                       </span>
                     )}
-                    <span className={cn(selected ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))]')}>
+                    <span className={cn(
+                      'tracking-[0.08em]',
+                      selected ? 'text-[hsl(var(--tone-accent-900))]' : 'text-[hsl(var(--tone-neutral-600))]',
+                    )}>
                       {option.value}
                     </span>
                   </button>
