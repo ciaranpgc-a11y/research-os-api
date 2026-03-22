@@ -11,16 +11,10 @@ This launches:
 
 ## CMR local app
 Run the backend locally on `http://127.0.0.1:8000`, then start Vite as usual and open:
-- `http://cmr.localhost:5173/cmr-login`
+- `http://localhost:5173/cmr-login`
 - `http://cmr.localhost:5176/cmr-login`
 
-The frontend now proxies `/v1/*`, `/health/*`, and `/draft/*` to the local API automatically on the dev server, so no `VITE_API_BASE_URL` override is required for the CMR app.
-
-If `cmr.localhost` does not resolve on your machine, add:
-
-```text
-127.0.0.1 cmr.localhost
-```
+The frontend now proxies `/v1/*`, `/health/*`, and `/draft/*` to the local API automatically on the dev server, so no `VITE_API_BASE_URL` override is required for the CMR app. `cmr.localhost` remains optional if you already use that hostname.
 
 ## Run checks on demand
 1. Open Command Palette (`Ctrl+Shift+P`).

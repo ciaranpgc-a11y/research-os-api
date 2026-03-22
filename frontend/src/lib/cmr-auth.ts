@@ -9,10 +9,17 @@ const IS_ADMIN_KEY = 'cmr_is_admin'
 
 // --- Subdomain detection ---
 
+function isLocalCmrDevRoute(): boolean {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname
+  if (host !== 'localhost' && host !== '127.0.0.1') return false
+  return window.location.pathname.startsWith('/cmr')
+}
+
 export function isCmrSubdomain(): boolean {
   if (typeof window === 'undefined') return false
   const host = window.location.hostname
-  return host === 'cmr.axiomos.studio' || host === 'cmr.localhost'
+  return host === 'cmr.axiomos.studio' || host === 'cmr.localhost' || isLocalCmrDevRoute()
 }
 
 // --- Session storage ---
@@ -48,7 +55,7 @@ function apiBase(): string {
   if (env) return env.replace(/\/+$/, '')
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    if (host === 'cmr.axiomos.studio' || host === 'cmr.localhost') {
+    if (host === 'cmr.axiomos.studio' || host === 'cmr.localhost' || isLocalCmrDevRoute()) {
       return window.location.origin
     }
   }

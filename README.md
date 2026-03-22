@@ -40,14 +40,11 @@ npm run dev
 CMR frontend dev:
 - Start the API locally on `http://127.0.0.1:8000`
 - Start Vite with `npm run dev`
-- Open `http://cmr.localhost:5173/cmr-login`
+- Open `http://localhost:5173/cmr-login`
 
-The Vite dev server proxies `/v1/*`, `/health/*`, and `/draft/*` to the local API by default, so no `VITE_API_BASE_URL` override is needed for the CMR app on `cmr.localhost`.
+You can also use `http://cmr.localhost:5173/cmr-login` if you already have that hostname mapped, but it is no longer required for local CMR work.
 
-If `cmr.localhost` does not resolve on your machine, add this hosts entry:
-```text
-127.0.0.1 cmr.localhost
-```
+The Vite dev server proxies `/v1/*`, `/health/*`, and `/draft/*` to the local API by default, so no `VITE_API_BASE_URL` override is needed for the CMR app.
 
 Seed local publication tiles (all users):
 ```bash
