@@ -67,7 +67,7 @@ function ContextMenu({
   onRename,
   onDelete,
   onChangeColour,
-  onNewCollection,
+  onAddSubcollection,
   onClose,
 }: {
   x: number
@@ -75,7 +75,7 @@ function ContextMenu({
   onRename: () => void
   onDelete: () => void
   onChangeColour: () => void
-  onNewCollection: () => void
+  onAddSubcollection: () => void
   onClose: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -116,8 +116,8 @@ function ContextMenu({
         <Palette className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> Change colour
       </button>
       <div className="my-1 border-t border-border" />
-      <button type="button" className={item} onClick={() => { onNewCollection(); onClose() }}>
-        <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> New collection
+      <button type="button" className={item} onClick={() => { onAddSubcollection(); onClose() }}>
+        <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> Add subcollection
       </button>
       <div className="my-1 border-t border-border" />
       <button type="button" className={cn(item, 'text-destructive hover:bg-destructive/10 hover:text-destructive')} onClick={() => { onDelete(); onClose() }}>
@@ -293,7 +293,9 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
   const startCreateSub = useCallback((collectionId: string) => {
     setCreatingSubForId(collectionId)
     setNewSubName('')
-  }, [])
+    // Ensure the collection is expanded so the inline form is visible
+    if (!expandedIds.has(collectionId)) onToggleExpand(collectionId)
+  }, [expandedIds, onToggleExpand])
 
   const commitCreateSub = useCallback(() => {
     if (creatingSubForId && newSubName.trim()) {
@@ -691,7 +693,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
             onRename={() => startRename(coll)}
             onDelete={() => onDeleteCollection(coll.id)}
             onChangeColour={() => setColourPickerId(coll.id)}
-            onNewCollection={onStartCreateCollection}
+            onAddSubcollection={() => startCreateSub(coll.id)}
             onClose={() => setContextMenu(null)}
           />
         )
