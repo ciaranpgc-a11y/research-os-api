@@ -45,11 +45,12 @@ async function requestVoid(url: string, init: RequestInit, errorLabel: string): 
 // ---------------------------------------------------------------------------
 
 export async function fetchCollections(): Promise<CollectionPayload[]> {
-  return requestJson<CollectionPayload[]>(
+  const res = await requestJson<{ items: CollectionPayload[] }>(
     `${API_BASE_URL}/v1/collections`,
     { method: 'GET', headers: authHeaders() },
     'Failed to fetch collections',
   )
+  return res.items
 }
 
 export async function createCollection(input: {
@@ -95,11 +96,12 @@ export async function reorderCollections(orderedIds: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function fetchSubcollections(collectionId: string): Promise<SubcollectionPayload[]> {
-  return requestJson<SubcollectionPayload[]>(
+  const res = await requestJson<{ items: SubcollectionPayload[] }>(
     `${API_BASE_URL}/v1/collections/${collectionId}/subcollections`,
     { method: 'GET', headers: authHeaders() },
     'Failed to fetch subcollections',
   )
+  return res.items
 }
 
 export async function createSubcollection(
@@ -143,11 +145,12 @@ export async function deleteSubcollection(
 export async function fetchCollectionPublications(
   collectionId: string,
 ): Promise<CollectionPublicationPayload[]> {
-  return requestJson<CollectionPublicationPayload[]>(
+  const res = await requestJson<{ items: CollectionPublicationPayload[] }>(
     `${API_BASE_URL}/v1/collections/${collectionId}/publications`,
     { method: 'GET', headers: authHeaders() },
     'Failed to fetch collection publications',
   )
+  return res.items
 }
 
 export async function addPublicationsToCollection(
@@ -229,11 +232,12 @@ export async function removePublicationFromSubcollection(
 export async function fetchPublicationCollections(
   workId: string,
 ): Promise<PublicationCollectionSummary[]> {
-  return requestJson<PublicationCollectionSummary[]>(
+  const res = await requestJson<{ items: PublicationCollectionSummary[] }>(
     `${API_BASE_URL}/v1/publications/${workId}/collections`,
     { method: 'GET', headers: authHeaders() },
     'Failed to fetch publication collections',
   )
+  return res.items
 }
 
 // ---------------------------------------------------------------------------
