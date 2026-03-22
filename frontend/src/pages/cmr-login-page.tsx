@@ -8,19 +8,17 @@ import { cn } from '@/lib/utils'
 const ACCESS_FEATURES = [
   {
     label: 'Reference tables',
-    detail: 'Immediate access to indexed CMR measurements and reference ranges.',
+    detail: 'Browse indexed CMR measurements and normal ranges.',
   },
   {
-    label: 'Reporting workflow',
-    detail: 'Structured tools for LGE, RWMA, valves, and downstream report creation.',
+    label: 'Reporting tools',
+    detail: 'Create and review structured CMR reports.',
   },
   {
     label: 'Admin-managed access',
-    detail: 'Codes and permissions are issued centrally and can be rotated when needed.',
+    detail: 'Codes can be issued, revoked, and rotated by your administrator.',
   },
 ] as const
-
-const ACCESS_CHIPS = ['Protected workspace', 'Clinical review tools', 'Session-based access'] as const
 
 export function CmrLoginPage() {
   const [code, setCode] = useState('')
@@ -59,19 +57,22 @@ export function CmrLoginPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div className="inline-flex items-center gap-3 rounded-full border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] px-3 py-2 text-sm font-medium text-[hsl(var(--tone-accent-800))]">
                     <CmrMark className="h-6 text-[hsl(var(--tone-accent-700))]" />
-                    <span>CMR Analysis</span>
+                    <span>CMR Reporting Workspace</span>
                   </div>
                   <span className="rounded-full bg-[hsl(var(--tone-positive-50))] px-3 py-1 text-xs font-medium text-[hsl(var(--tone-positive-800))]">
-                    Secure session
+                    Code required
                   </span>
                 </div>
 
                 <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[hsl(var(--tone-accent-700))]">
+                    Sign in
+                  </p>
                   <h2 className="text-3xl font-semibold tracking-[-0.03em] text-foreground">
-                    Enter access code
+                    Enter your access code
                   </h2>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    Use the code provided by your administrator to open the CMR workspace.
+                    Use the code provided by your administrator.
                   </p>
                 </div>
               </div>
@@ -95,7 +96,7 @@ export function CmrLoginPage() {
                     )}
                   />
                   <p className="text-xs leading-5 text-muted-foreground">
-                    Access is limited to issued codes and active sessions.
+                    If you do not have a code, contact your administrator.
                   </p>
                   {error && (
                     <p className="rounded-2xl border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm text-[hsl(var(--tone-danger-700))]">
@@ -109,19 +110,19 @@ export function CmrLoginPage() {
                   disabled={loading || !code.trim()}
                   className="house-button-primary w-full shadow-[0_14px_32px_hsl(var(--tone-accent-600)/0.18)] transition hover:shadow-[0_18px_38px_hsl(var(--tone-accent-700)/0.24)]"
                 >
-                  {loading ? 'Verifying...' : 'Open workspace'}
+                  {loading ? 'Verifying...' : 'Enter workspace'}
                 </button>
               </form>
 
               <div className="mt-6 flex flex-col gap-3 border-t border-[hsl(var(--tone-neutral-200))] pt-6 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs leading-5 text-muted-foreground">
-                  Need a new code or elevated permissions?
+                  Need access? Contact your administrator.
                 </p>
                 <Link
                   to="/cmr-admin"
                   className="inline-flex items-center justify-center rounded-full border border-[hsl(var(--tone-accent-200))] px-4 py-2 text-sm font-medium text-[hsl(var(--tone-accent-800))] transition hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))]"
                 >
-                  Admin access
+                  Administrator sign in
                 </Link>
               </div>
             </div>
@@ -132,45 +133,39 @@ export function CmrLoginPage() {
               <div className="space-y-6">
                 <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium tracking-[0.18em] text-white/88 uppercase backdrop-blur">
                   <CmrMark className="h-7 text-white" />
-                  <span>CMR Workspace</span>
+                  <span>CMR Reporting Workspace</span>
                 </div>
 
                 <div className="max-w-2xl space-y-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/64">
-                    Controlled Access
+                    Secure Access
                   </p>
                   <h1 className="max-w-2xl text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
-                    Secure entry for CMR analysis, reporting, and reference review.
+                    Access the CMR reporting workspace
                   </h1>
                   <p className="max-w-xl text-sm leading-7 text-white/78 sm:text-base">
-                    Enter the access code issued by your team to open the reporting workspace.
-                    The session is created only after successful verification and can be managed
-                    centrally from the admin panel.
+                    Enter the access code provided by your administrator to open reference
+                    tables, analysis tools, and structured reporting.
                   </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {ACCESS_CHIPS.map((chip) => (
-                    <span
-                      key={chip}
-                      className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/84 backdrop-blur"
-                    >
-                      {chip}
-                    </span>
-                  ))}
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                {ACCESS_FEATURES.map((feature) => (
-                  <div
-                    key={feature.label}
-                    className="rounded-[1.4rem] border border-white/12 bg-white/10 p-4 backdrop-blur-sm"
-                  >
-                    <p className="text-sm font-semibold text-white">{feature.label}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/70">{feature.detail}</p>
-                  </div>
-                ))}
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {ACCESS_FEATURES.map((feature) => (
+                    <div
+                      key={feature.label}
+                      className="rounded-[1.4rem] border border-white/12 bg-white/10 p-4 backdrop-blur-sm"
+                    >
+                      <p className="text-sm font-semibold text-white">{feature.label}</p>
+                      <p className="mt-2 text-sm leading-6 text-white/70">{feature.detail}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-[1.4rem] border border-white/12 bg-white/8 px-4 py-3 text-sm text-white/76 backdrop-blur-sm">
+                  Need access? Contact your administrator.
+                </div>
               </div>
             </div>
           </section>
