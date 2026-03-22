@@ -450,23 +450,23 @@ export function CmrLvThrombusPage() {
             </div>
 
             {activeEntry.primary === 'Other' ? (
-              <div className="space-y-2 md:flex md:max-w-[28rem] md:items-center md:gap-3 md:space-y-0">
-                <span className="w-[8.75rem] shrink-0 text-sm text-[hsl(var(--foreground))]">Specify location</span>
+              <div className="space-y-2 md:flex md:max-w-[24rem] md:items-center md:gap-2 md:space-y-0">
+                <span className="shrink-0 text-sm text-[hsl(var(--foreground))]">Specify location</span>
                 <input
                   type="text"
                   value={activeEntry.otherLocation}
                   onChange={(event) => updateEntry(activeEntry.id, { otherLocation: event.target.value })}
                   placeholder="Enter anatomical location..."
-                  className="house-input h-8 w-full rounded-md px-2.5 text-xs md:w-[15.5rem]"
+                  className="house-input h-8 w-full rounded-md px-2.5 text-xs md:w-[15rem]"
                 />
               </div>
             ) : sublocationOptions.length > 0 ? (
-              <div className="space-y-2 md:flex md:max-w-[28rem] md:items-center md:gap-3 md:space-y-0">
-                <span className="w-[8.75rem] shrink-0 text-sm text-[hsl(var(--foreground))]">Sub-location</span>
+              <div className="space-y-2 md:flex md:max-w-[24rem] md:items-center md:gap-2 md:space-y-0">
+                <span className="shrink-0 text-sm text-[hsl(var(--foreground))]">Sub-location</span>
                 <select
                   value={activeEntry.sublocation ?? ''}
                   onChange={(event) => updateEntry(activeEntry.id, { sublocation: event.target.value || null })}
-                  className="house-dropdown h-8 w-full rounded-md px-2.5 text-xs md:w-[15.5rem]"
+                  className="house-dropdown h-8 w-full rounded-md px-2.5 text-xs md:w-[15rem]"
                 >
                   <option value="">Select...</option>
                   {sublocationOptions.map((option) => (
@@ -485,7 +485,7 @@ export function CmrLvThrombusPage() {
         >
           <div className="grid gap-x-8 gap-y-5 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2 md:flex md:items-center md:gap-2 md:space-y-0">
-              <span className="w-[8.75rem] shrink-0 text-sm text-[hsl(var(--foreground))]">Maximum diameter</span>
+              <span className="shrink-0 text-sm text-[hsl(var(--foreground))]">Maximum diameter</span>
               <input
                 type="number"
                 min={0}
