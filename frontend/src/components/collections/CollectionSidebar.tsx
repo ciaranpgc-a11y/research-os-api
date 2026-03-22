@@ -226,6 +226,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
   const renameInputRef = useRef<HTMLInputElement>(null)
   const subRenameInputRef = useRef<HTMLInputElement>(null)
   const newSubInputRef = useRef<HTMLInputElement>(null)
+  const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ---- focus inputs when editing starts ----
   useEffect(() => {
@@ -251,6 +252,30 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
     },
     [onToggleExpand, subcollectionsMap, onSubcollectionsFetched],
   )
+
+  // ---- drag-over auto-expand ----
+  // Cleanup timer on unmount
+  useEffect(() => () => { if (dragExpandTimerRef.current) clearTimeout(dragExpandTimerRef.current) }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent, targetId: string) => {
+    onDragOver(e, targetId)
+    // Only auto-expand collection rows (not subcollection rows)
+    const isCollection = collections.some((c) => c.id === targetId)
+    if (!isCollection || expandedIds.has(targetId)) return
+    if (dragExpandTimerRef.current) return // timer already running for this target
+    dragExpandTimerRef.current = setTimeout(() => {
+      dragExpandTimerRef.current = null
+      handleToggleExpand(targetId)
+    }, 600)
+  }, [onDragOver, collections, expandedIds, handleToggleExpand])
+
+  const handleDragLeave = useCallback(() => {
+    onDragLeave()
+    if (dragExpandTimerRef.current) {
+      clearTimeout(dragExpandTimerRef.current)
+      dragExpandTimerRef.current = null
+    }
+  }, [onDragLeave])
 
   // ---- rename helpers ----
   const startRename = useCallback(
@@ -425,8 +450,8 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     e.stopPropagation()
                     setContextMenu({ collectionId: coll.id, x: e.clientX, y: e.clientY })
                   }}
-                  onDragOver={mode === 'organise' ? (e) => onDragOver(e, coll.id) : undefined}
-                  onDragLeave={mode === 'organise' ? onDragLeave : undefined}
+                  onDragOver={mode === 'organise' ? (e) => handleDragOver(e, coll.id) : undefined}
+                  onDragLeave={mode === 'organise' ? handleDragLeave : undefined}
                   onDrop={mode === 'organise' ? () => onDrop(coll.id) : undefined}
                 >
                   {/* Name + count */}
@@ -523,10 +548,10 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         }}
                         onDragOver={
                           mode === 'organise'
-                            ? (e) => onDragOver(e, sub.id)
+                            ? (e) => handleDragOver(e, sub.id)
                             : undefined
                         }
-                        onDragLeave={mode === 'organise' ? onDragLeave : undefined}
+                        onDragLeave={mode === 'organise' ? handleDragLeave : undefined}
                         onDrop={
                           mode === 'organise'
                             ? () => onDrop(coll.id, sub.id)
