@@ -426,10 +426,10 @@ export function CmrLvThrombusPage() {
                       })
                     }
                     className={cn(
-                      'flex w-full flex-col items-center gap-2 rounded-lg px-3 py-3 text-[10px] font-medium transition-all',
+                      'flex w-full flex-col items-center gap-2 rounded-lg px-3 py-3 text-[10px] font-medium transition-all duration-150',
                       selected
-                        ? 'bg-[hsl(var(--tone-accent-50))] ring-2 ring-[hsl(var(--tone-accent-300))] shadow-[0_10px_24px_rgba(20,35,46,0.08)]'
-                        : 'bg-[hsl(var(--tone-neutral-50))] ring-1 ring-inset ring-[hsl(var(--stroke-soft)/0.4)] hover:bg-[hsl(var(--tone-neutral-100))]',
+                        ? 'bg-white ring-2 ring-[hsl(var(--tone-danger-300))] shadow-[0_12px_28px_rgba(127,29,29,0.08)] -translate-y-[1px]'
+                        : 'bg-[hsl(var(--tone-neutral-50))] ring-1 ring-inset ring-[hsl(var(--stroke-soft)/0.4)] hover:bg-[hsl(var(--tone-neutral-100))] hover:-translate-y-[1px]',
                     )}
                     title={option.label}
                   >
@@ -450,23 +450,23 @@ export function CmrLvThrombusPage() {
             </div>
 
             {activeEntry.primary === 'Other' ? (
-              <div className="max-w-sm space-y-2">
-                <FieldLabel>Specify location</FieldLabel>
+              <div className="grid gap-2 md:max-w-xl md:grid-cols-[minmax(10rem,12rem)_minmax(12rem,18rem)] md:items-center">
+                <span className="text-sm text-[hsl(var(--foreground))]">Specify location</span>
                 <input
                   type="text"
                   value={activeEntry.otherLocation}
                   onChange={(event) => updateEntry(activeEntry.id, { otherLocation: event.target.value })}
                   placeholder="Enter anatomical location..."
-                  className="house-input w-full"
+                  className="house-input h-8 w-full rounded-md px-2.5 text-xs"
                 />
               </div>
             ) : sublocationOptions.length > 0 ? (
-              <div className="max-w-sm space-y-2">
-                <FieldLabel>Sub-location</FieldLabel>
+              <div className="grid gap-2 md:max-w-xl md:grid-cols-[minmax(10rem,12rem)_minmax(12rem,18rem)] md:items-center">
+                <span className="text-sm text-[hsl(var(--foreground))]">Sub-location</span>
                 <select
                   value={activeEntry.sublocation ?? ''}
                   onChange={(event) => updateEntry(activeEntry.id, { sublocation: event.target.value || null })}
-                  className="house-dropdown w-full"
+                  className="house-dropdown h-8 w-full rounded-md px-2.5 text-xs"
                 >
                   <option value="">Select...</option>
                   {sublocationOptions.map((option) => (
