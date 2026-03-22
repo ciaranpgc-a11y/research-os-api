@@ -537,7 +537,14 @@ export function CollectionsViewport({
                 {/* Organise toolbar */}
                 <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border">
                   {/* Filter toggle */}
-                  <div className="inline-flex items-center rounded-full border border-border bg-muted p-0.5 text-xs">
+                  <div className="relative inline-flex rounded-full border border-border bg-muted p-0.5 text-xs">
+                    {/* Sliding indicator */}
+                    <div
+                      className={cn(
+                        'absolute inset-y-0.5 w-[50%] rounded-full bg-card shadow-sm transition-transform duration-200 ease-in-out',
+                        pubFilter === 'uncollected' ? 'translate-x-full' : 'translate-x-0',
+                      )}
+                    />
                     {([
                       { value: 'all' as PubFilter, label: 'All publications' },
                       { value: 'uncollected' as PubFilter, label: 'Uncollected' },
@@ -546,10 +553,8 @@ export function CollectionsViewport({
                         key={opt.value}
                         type="button"
                         className={cn(
-                          'px-2.5 py-1 rounded-full transition-colors',
-                          pubFilter === opt.value
-                            ? 'bg-card shadow-sm text-foreground font-medium'
-                            : 'text-muted-foreground hover:text-foreground',
+                          'relative z-10 w-[50%] px-3 py-1 rounded-full whitespace-nowrap transition-colors duration-200',
+                          pubFilter === opt.value ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground',
                         )}
                         onClick={() => setPubFilter(opt.value)}
                       >
