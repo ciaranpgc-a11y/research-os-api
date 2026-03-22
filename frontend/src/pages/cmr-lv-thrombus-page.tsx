@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { SectionMarker } from '@/components/patterns'
 import { PageHeader, Row, Stack } from '@/components/primitives'
@@ -16,8 +16,6 @@ type ThrombusMorphology = {
   surface: 'smooth' | 'irregular' | null
 }
 
-type EmbolicRisk = 'low' | 'intermediate' | 'high'
-
 type ThrombusEntry = {
   id: string
   primary: ThrombusPrimary | null
@@ -25,7 +23,6 @@ type ThrombusEntry = {
   otherLocation: string
   morphology: ThrombusMorphology
   confidence: 'definite' | 'probable' | 'indeterminate' | null
-  riskOverride: EmbolicRisk | null
 }
 
 const PRIMARY_OPTIONS: { value: ThrombusPrimary; label: string }[] = [
@@ -77,9 +74,21 @@ const SURFACE_OPTIONS = [
 ]
 
 const CONFIDENCE_OPTIONS = [
-  { value: 'definite' as const, label: 'Definite' },
-  { value: 'probable' as const, label: 'Probable' },
-  { value: 'indeterminate' as const, label: 'Indeterminate' },
+  {
+    value: 'definite' as const,
+    label: 'Definite',
+    selectedClassName: 'bg-[hsl(var(--tone-positive-500))] text-white shadow-sm',
+  },
+  {
+    value: 'probable' as const,
+    label: 'Probable',
+    selectedClassName: 'bg-[hsl(var(--tone-warning-300))] text-[hsl(var(--tone-warning-900))] shadow-sm',
+  },
+  {
+    value: 'indeterminate' as const,
+    label: 'Indeterminate',
+    selectedClassName: 'bg-[hsl(var(--tone-neutral-700))] text-white shadow-sm',
+  },
 ]
 
 const PRIMARY_ICON_COLORS: Record<ThrombusPrimary, string> = {
@@ -92,21 +101,6 @@ const PRIMARY_ICON_COLORS: Record<ThrombusPrimary, string> = {
   PA: 'text-[hsl(var(--tone-positive-700))]',
   Device: 'text-[hsl(var(--tone-neutral-700))]',
   Other: 'text-[hsl(var(--tone-warning-700))]',
-}
-
-function computeEmbolicRisk(entry: ThrombusEntry): EmbolicRisk | null {
-  const m = entry.morphology
-  if (m.shape === null && m.mobility === null && m.maxDiameter === null) return null
-
-  if (m.mobility === 'highly-mobile') return 'high'
-  if (m.shape === 'pedunculated') return 'high'
-  if (m.maxDiameter !== null && m.maxDiameter >= 15 && m.mobility !== 'fixed') return 'high'
-
-  if (m.mobility === 'mildly-mobile') return 'intermediate'
-  if (m.shape === 'protruding') return 'intermediate'
-  if (m.maxDiameter !== null && m.maxDiameter >= 10) return 'intermediate'
-
-  return 'low'
 }
 
 function createEmptyEntry(): ThrombusEntry {
@@ -123,61 +117,13 @@ function createEmptyEntry(): ThrombusEntry {
       surface: null,
     },
     confidence: null,
-    riskOverride: null,
   }
-}
-
-function entryLocationLabel(entry: ThrombusEntry): string {
-  if (!entry.primary) return 'unspecified location'
-  const primary = PRIMARY_OPTIONS.find((option) => option.value === entry.primary)?.label ?? entry.primary
-  if (entry.primary === 'Other' && entry.otherLocation) return entry.otherLocation
-  if (entry.sublocation) return `${primary.toLowerCase()} (${entry.sublocation.toLowerCase()})`
-  return primary.toLowerCase()
 }
 
 function entryShortLabel(entry: ThrombusEntry, index: number): string {
   if (entry.primary && entry.sublocation) return `${entry.primary} ${entry.sublocation}`
   if (entry.primary) return PRIMARY_OPTIONS.find((option) => option.value === entry.primary)?.label ?? entry.primary
   return `Thrombus ${index + 1}`
-}
-
-function generateThrombusReport(entries: ThrombusEntry[]): string {
-  const filled = entries.filter((entry) => entry.primary !== null)
-  if (filled.length === 0) return 'No thrombus identified.'
-
-  const parts = filled.map((entry, index) => {
-    const location = entryLocationLabel(entry)
-    const morphology = entry.morphology
-    const descriptors: string[] = []
-
-    if (morphology.shape) {
-      descriptors.push(SHAPE_OPTIONS.find((option) => option.value === morphology.shape)?.label.toLowerCase() ?? morphology.shape)
-    }
-    if (morphology.maxDiameter !== null) descriptors.push(`${morphology.maxDiameter} mm maximal diameter`)
-    if (morphology.mobility) {
-      descriptors.push(MOBILITY_OPTIONS.find((option) => option.value === morphology.mobility)?.label.toLowerCase() ?? morphology.mobility)
-    }
-    if (morphology.attachment) {
-      descriptors.push(ATTACHMENT_OPTIONS.find((option) => option.value === morphology.attachment)?.label.toLowerCase() ?? morphology.attachment)
-    }
-    if (morphology.surface) {
-      descriptors.push(`${SURFACE_OPTIONS.find((option) => option.value === morphology.surface)?.label.toLowerCase() ?? morphology.surface} surface`)
-    }
-
-    const risk = entry.riskOverride ?? computeEmbolicRisk(entry)
-    const confidence = entry.confidence
-      ? CONFIDENCE_OPTIONS.find((option) => option.value === entry.confidence)?.label.toLowerCase() ?? entry.confidence
-      : null
-
-    let text = filled.length > 1 ? `(${index + 1}) ` : ''
-    text += `Thrombus identified in the ${location}.`
-    if (descriptors.length > 0) text += ` Morphology: ${descriptors.join(', ')}.`
-    if (risk) text += ` Embolic risk: ${risk}.`
-    if (confidence) text += ` Confidence: ${confidence}.`
-    return text
-  })
-
-  return filled.length === 1 ? parts[0] : `${filled.length} thrombi identified. ${parts.join(' ')}`
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -193,7 +139,7 @@ function PillSelect<T extends string>({
   value,
   onChange,
 }: {
-  options: { value: T; label: string }[]
+  options: { value: T; label: string; selectedClassName?: string }[]
   value: T | null
   onChange: (value: T | null) => void
 }) {
@@ -207,7 +153,7 @@ function PillSelect<T extends string>({
           className={cn(
             'rounded-full px-3 py-1 text-xs font-medium transition-all',
             value === option.value
-              ? 'bg-[hsl(var(--tone-neutral-900))] text-white shadow-sm'
+              ? option.selectedClassName ?? 'bg-[hsl(var(--tone-neutral-900))] text-white shadow-sm'
               : 'bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-600))] ring-1 ring-inset ring-[hsl(var(--stroke-soft)/0.5)] hover:bg-[hsl(var(--tone-neutral-100))]',
           )}
         >
@@ -221,16 +167,6 @@ function PillSelect<T extends string>({
 function getConfidenceLabel(confidence: ThrombusEntry['confidence']): string {
   if (!confidence) return 'None'
   return CONFIDENCE_OPTIONS.find((option) => option.value === confidence)?.label ?? 'None'
-}
-
-function getRiskLabel(risk: EmbolicRisk | null): string {
-  if (!risk) return 'None'
-  return risk.charAt(0).toUpperCase() + risk.slice(1)
-}
-
-function getRiskTone(risk: EmbolicRisk | null): 'none' | 'low' | 'intermediate' | 'high' {
-  if (!risk) return 'none'
-  return risk
 }
 
 function SectionBadge({
@@ -284,7 +220,6 @@ export function CmrLvThrombusPage() {
   const [activeEntryId, setActiveEntryId] = useState<string>(() => entries[0].id)
 
   const activeEntry = entries.find((entry) => entry.id === activeEntryId) ?? entries[0]
-  const activeIndex = entries.findIndex((entry) => entry.id === activeEntryId)
 
   const updateEntry = useCallback((id: string, patch: Partial<ThrombusEntry>) => {
     setEntries((prev) => prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)))
@@ -313,9 +248,6 @@ export function CmrLvThrombusPage() {
     })
   }, [activeEntryId])
 
-  const computedRisk = useMemo(() => computeEmbolicRisk(activeEntry), [activeEntry])
-  const effectiveRisk = activeEntry.riskOverride ?? computedRisk
-  const reportText = useMemo(() => generateThrombusReport(entries), [entries])
   const filledCount = entries.filter((entry) =>
     entry.primary !== null ||
     entry.morphology.maxDiameter !== null ||
@@ -340,7 +272,6 @@ export function CmrLvThrombusPage() {
     : 'None'
   const morphologyStatus = morphologyFieldsSet === 0 ? 'None' : `${morphologyFieldsSet} set`
   const confidenceStatus = getConfidenceLabel(activeEntry.confidence)
-  const riskStatus = getRiskLabel(effectiveRisk)
 
   return (
     <Stack data-house-role="page" className="gap-6">
@@ -515,8 +446,8 @@ export function CmrLvThrombusPage() {
             <div className="space-y-2 md:col-span-2">
               <FieldLabel>Dimensions</FieldLabel>
               <div className="space-y-2 md:flex md:items-center md:gap-2 md:space-y-0">
-              <span className="shrink-0 text-sm text-[hsl(var(--foreground))]">Maximum diameter</span>
-              <input
+                <span className="shrink-0 text-sm text-[hsl(var(--foreground))]">Maximum diameter</span>
+                <input
                 type="number"
                 min={0}
                 step={1}
@@ -527,8 +458,8 @@ export function CmrLvThrombusPage() {
                 }}
                 placeholder="—"
                 className="house-input h-8 w-full rounded-md px-2.5 text-xs tabular-nums md:w-[5.5rem]"
-              />
-              <span className="text-xs text-muted-foreground">mm</span>
+                />
+                <span className="text-xs text-muted-foreground">mm</span>
               </div>
             </div>
 
@@ -581,73 +512,6 @@ export function CmrLvThrombusPage() {
             onChange={(value) => updateEntry(activeEntry.id, { confidence: value })}
           />
         </ThrombusSection>
-
-        <ThrombusSection
-          title="Embolic Risk"
-          statusLabel={riskStatus}
-          statusTone={getRiskTone(effectiveRisk)}
-        >
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <FieldLabel>Risk level</FieldLabel>
-              {activeEntry.riskOverride && (
-                <button
-                  type="button"
-                  onClick={() => updateEntry(activeEntry.id, { riskOverride: null })}
-                  className="text-[10px] font-medium text-[hsl(var(--tone-neutral-400))] underline hover:text-[hsl(var(--tone-neutral-600))]"
-                >
-                  Reset to auto
-                </button>
-              )}
-            </div>
-            <div className="flex overflow-hidden rounded-lg ring-1 ring-[hsl(var(--stroke-soft)/0.5)]">
-              {([
-                { value: 'low' as const, label: 'Low', bgActive: 'bg-[hsl(164_40%_45%)]', bgInactive: 'bg-[hsl(var(--tone-neutral-50))]', textActive: 'text-white', textInactive: 'text-[hsl(var(--tone-positive-600))]' },
-                { value: 'intermediate' as const, label: 'Intermediate', bgActive: 'bg-[hsl(38_55%_50%)]', bgInactive: 'bg-[hsl(var(--tone-neutral-50))]', textActive: 'text-white', textInactive: 'text-[hsl(var(--tone-warning-600))]' },
-                { value: 'high' as const, label: 'High', bgActive: 'bg-[hsl(3_55%_48%)]', bgInactive: 'bg-[hsl(var(--tone-neutral-50))]', textActive: 'text-white', textInactive: 'text-[hsl(var(--tone-danger-600))]' },
-              ]).map((segment) => (
-                <button
-                  key={segment.value}
-                  type="button"
-                  onClick={() => updateEntry(activeEntry.id, { riskOverride: segment.value })}
-                  className={cn(
-                    'flex-1 border-r border-[hsl(var(--stroke-soft)/0.3)] px-4 py-2.5 text-xs font-semibold transition-all last:border-r-0',
-                    effectiveRisk === segment.value
-                      ? `${segment.bgActive} ${segment.textActive}`
-                      : `${segment.bgInactive} ${segment.textInactive} hover:bg-[hsl(var(--tone-neutral-100))]`,
-                  )}
-                >
-                  {segment.label}
-                  {effectiveRisk === segment.value && !activeEntry.riskOverride && computedRisk && (
-                    <span className="ml-1 text-[9px] font-normal opacity-75">(auto)</span>
-                  )}
-                  {effectiveRisk === segment.value && activeEntry.riskOverride && (
-                    <span className="ml-1 text-[9px] font-normal opacity-75">(override)</span>
-                  )}
-                </button>
-              ))}
-            </div>
-            {!effectiveRisk && (
-              <p className="text-[11px] text-[hsl(var(--tone-neutral-400))]">
-                Enter morphology data to auto-compute risk, or click to override.
-              </p>
-            )}
-          </div>
-        </ThrombusSection>
-      </div>
-
-      <div className="rounded-lg border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-50)/0.5)] p-5">
-        <div className="flex items-center gap-2">
-          <FieldLabel>Report Summary</FieldLabel>
-          {activeIndex >= 0 && (
-            <span className="text-[10px] text-[hsl(var(--tone-neutral-400))]">
-              {entries.length === 1 ? '1 entry' : `${entries.length} entries`}
-            </span>
-          )}
-        </div>
-        <p className="mt-2 text-sm leading-relaxed text-[hsl(var(--foreground))]">
-          {reportText}
-        </p>
       </div>
     </Stack>
   )
