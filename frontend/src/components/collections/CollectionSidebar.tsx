@@ -265,25 +265,18 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
     dragExpandTargetRef.current = null
   }, [])
 
-  const handleDragOver = useCallback((e: React.DragEvent, targetId: string) => {
-    onDragOver(e, targetId)
-    const isCollection = collections.some((c) => c.id === targetId)
-    if (!isCollection || expandedIds.has(targetId)) {
-      // Moved onto a sub or already-expanded collection — cancel any pending expand
-      if (dragExpandTargetRef.current !== targetId) clearExpandTimer()
-      return
-    }
-    // Already timing for this exact target — don't reset
-    if (dragExpandTargetRef.current === targetId) return
-    // New collection target — (re)start timer
+  // Called on dragenter of a collection row — fires once on genuine entry (relatedTarget check avoids child bubbles)
+  const startExpandTimer = useCallback((collectionId: string) => {
+    if (expandedIds.has(collectionId)) return
+    if (dragExpandTargetRef.current === collectionId) return
     clearExpandTimer()
-    dragExpandTargetRef.current = targetId
+    dragExpandTargetRef.current = collectionId
     dragExpandTimerRef.current = setTimeout(() => {
       dragExpandTimerRef.current = null
       dragExpandTargetRef.current = null
-      handleToggleExpand(targetId)
+      void handleToggleExpand(collectionId)
     }, 700)
-  }, [onDragOver, collections, expandedIds, handleToggleExpand, clearExpandTimer])
+  }, [expandedIds, handleToggleExpand, clearExpandTimer])
 
   // Only cancel when drag truly leaves the row (not just moving to a child element)
   const handleDragLeave = useCallback((e: React.DragEvent) => {
@@ -465,9 +458,12 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     e.stopPropagation()
                     setContextMenu({ collectionId: coll.id, x: e.clientX, y: e.clientY })
                   }}
-                  onDragOver={mode === 'organise' ? (e) => handleDragOver(e, coll.id) : undefined}
+                  onDragEnter={mode === 'organise' ? (e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) startExpandTimer(coll.id)
+                  } : undefined}
+                  onDragOver={mode === 'organise' ? (e) => onDragOver(e, coll.id) : undefined}
                   onDragLeave={mode === 'organise' ? handleDragLeave : undefined}
-                  onDrop={mode === 'organise' ? () => onDrop(coll.id) : undefined}
+                  onDrop={mode === 'organise' ? () => { clearExpandTimer(); onDrop(coll.id) } : undefined}
                 >
                   {/* Name + count */}
                   <span className="flex-1 truncate text-foreground">{coll.name}</span>
@@ -563,13 +559,13 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         }}
                         onDragOver={
                           mode === 'organise'
-                            ? (e) => handleDragOver(e, sub.id)
+                            ? (e) => onDragOver(e, sub.id)
                             : undefined
                         }
                         onDragLeave={mode === 'organise' ? handleDragLeave : undefined}
                         onDrop={
                           mode === 'organise'
-                            ? () => onDrop(coll.id, sub.id)
+                            ? () => { clearExpandTimer(); onDrop(coll.id, sub.id) }
                             : undefined
                         }
                       >
