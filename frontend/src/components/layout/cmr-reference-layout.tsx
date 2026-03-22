@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
 import { CmrTopBar } from '@/components/layout/cmr-top-bar'
@@ -8,11 +8,28 @@ import { Sheet, SheetContent } from '@/components/ui'
 
 export function CmrReferenceLayout() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(false)
-  const [activeSection, setActiveSection] = useState<string | null>(null)
   const { pathname } = useLocation()
   const isAdminPage = pathname === '/cmr-admin'
+  const [activeSection, setActiveSection] = useState<string | null>(() =>
+    isAdminPage ? 'Overview' : null,
+  )
 
-  const variant = pathname.includes('database') ? 'database' : (pathname.includes('new-report') || pathname.includes('upload-report') || pathname.includes('rwma') || pathname.includes('lge') || pathname.includes('valves') || pathname.includes('lv-thrombus')) ? 'report' : 'reference'
+  const variant = isAdminPage
+    ? 'admin'
+    : pathname.includes('database')
+      ? 'database'
+      : (pathname.includes('new-report')
+        || pathname.includes('upload-report')
+        || pathname.includes('rwma')
+        || pathname.includes('lge')
+        || pathname.includes('valves')
+        || pathname.includes('lv-thrombus'))
+        ? 'report'
+        : 'reference'
+
+  useEffect(() => {
+    setActiveSection(isAdminPage ? 'Overview' : null)
+  }, [isAdminPage])
 
   const handleSectionJump = useCallback((key: string) => {
     setActiveSection(key)
@@ -34,11 +51,9 @@ export function CmrReferenceLayout() {
 
       <div
         data-house-role="cmr-grid"
-        className={isAdminPage
-          ? 'grid min-h-0 flex-1 grid-cols-1'
-          : 'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)]'}
+        className="grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)]"
       >
-        <aside data-house-role="left-nav-panel" className={isAdminPage ? 'hidden' : 'hidden border-r border-border nav:block'}>
+        <aside data-house-role="left-nav-panel" className="hidden border-r border-border nav:block">
           <CmrReferenceNavigator
             activeSection={activeSection}
             onSectionJump={handleSectionJump}
@@ -58,7 +73,7 @@ export function CmrReferenceLayout() {
         </main>
       </div>
 
-      <Sheet open={leftPanelOpen && !isAdminPage} onOpenChange={setLeftPanelOpen}>
+      <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
         <SheetContent side="left" className="w-[var(--layout-left-nav-width-mobile)] p-0 nav:hidden">
           <CmrReferenceNavigator
             activeSection={activeSection}

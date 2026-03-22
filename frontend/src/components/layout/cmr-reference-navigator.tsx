@@ -10,7 +10,7 @@ type RefNavProps = {
   activeSection: string | null
   onSectionJump: (sectionKey: string) => void
   onNavigate?: () => void
-  variant: 'reference' | 'database' | 'report'
+  variant: 'reference' | 'database' | 'report' | 'admin'
   /** Optional override for section names (keys should be UPPERCASE). When provided, replaces locally-resolved sections. */
   sectionKeys?: string[]
 }
@@ -46,6 +46,11 @@ const REPORT_MODULES_NAV = [
   { key: 'lv-thrombus', path: '/cmr-lv-thrombus', label: 'LV Thrombus' },
 ]
 
+const ADMIN_NAV = [
+  { key: 'overview', sectionKey: 'Overview', label: 'Overview' },
+  { key: 'access-codes', sectionKey: 'Access Codes', label: 'Access Codes' },
+]
+
 export function CmrReferenceNavigator({
   activeSection,
   onSectionJump,
@@ -53,8 +58,16 @@ export function CmrReferenceNavigator({
   variant,
   sectionKeys,
 }: RefNavProps) {
-  const borderClass = variant === 'report' ? 'house-left-border-report' : variant === 'reference' ? 'house-left-border-profile' : 'house-left-border-learning-centre'
-  const navItemClass = variant === 'report' ? houseNavigation.itemReport : variant === 'reference' ? houseNavigation.itemOverview : houseNavigation.itemLearningCentre
+  const borderClass = variant === 'report'
+    ? 'house-left-border-report'
+    : variant === 'reference'
+      ? 'house-left-border-profile'
+      : 'house-left-border-learning-centre'
+  const navItemClass = variant === 'report'
+    ? houseNavigation.itemReport
+    : variant === 'reference'
+      ? houseNavigation.itemOverview
+      : houseNavigation.itemLearningCentre
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
@@ -72,11 +85,21 @@ export function CmrReferenceNavigator({
       <div className={houseLayout.sidebarHeader}>
         <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, borderClass)}>
           <h1 className={houseTypography.sectionTitle}>
-            {variant === 'report' ? 'New Report' : variant === 'reference' ? 'Reference' : 'Reference Database'}
+            {variant === 'report'
+              ? 'New Report'
+              : variant === 'reference'
+                ? 'Reference'
+                : variant === 'database'
+                  ? 'Reference Database'
+                  : 'Admin'}
           </h1>
           {variant !== 'report' && (
             <p className={houseTypography.fieldHelper}>
-              {variant === 'reference' ? 'CMR Reference Data' : 'View & Edit Reference Data'}
+              {variant === 'reference'
+                ? 'CMR Reference Data'
+                : variant === 'database'
+                  ? 'View & Edit Reference Data'
+                  : 'CMR Access Management'}
             </p>
           )}
         </div>
@@ -143,6 +166,26 @@ export function CmrReferenceNavigator({
                 </div>
               </section>
             </>
+          ) : variant === 'admin' ? (
+            <section className={houseLayout.sidebarSection}>
+              <p className={houseNavigation.sectionLabel}>MANAGEMENT</p>
+              <div className={houseNavigation.list}>
+                {ADMIN_NAV.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => { onSectionJump(item.sectionKey); onNavigate?.() }}
+                    className={cn(
+                      houseNavigation.item,
+                      navItemClass,
+                      activeSection === item.sectionKey && houseNavigation.itemActive,
+                    )}
+                  >
+                    <span className={houseNavigation.itemLabel}>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
           ) : (
             <section className={houseLayout.sidebarSection}>
               <p className={houseNavigation.sectionLabel}>SECTIONS</p>
