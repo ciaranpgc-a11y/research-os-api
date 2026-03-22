@@ -1,9 +1,10 @@
 import { ImagePlus, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import { SectionMarker } from '@/components/patterns'
 import { PageHeader, Row, Stack } from '@/components/primitives'
-import { Button } from '@/components/ui'
+import { Button, Input } from '@/components/ui'
+import { cmrAnalyseSaxPair, getCmrSessionToken, type CmrSaxAssistResult } from '@/lib/cmr-auth'
 import { cn } from '@/lib/utils'
 
 type ViewKey = 'sax' | '2ch' | '3ch' | '4ch'
@@ -17,6 +18,15 @@ type UploadSlotState = {
 type ViewUploadState = Record<ContrastKey, UploadSlotState>
 type UploadState = Record<ViewKey, ViewUploadState>
 
+type SaxControlKey =
+  | 'centerXPct'
+  | 'centerYPct'
+  | 'innerRadiusPct'
+  | 'outerRadiusPct'
+  | 'enhancementThreshold'
+
+type SaxControlsState = Record<SaxControlKey, string>
+
 const VIEW_DEFS: Array<{ key: ViewKey; label: string; description: string }> = [
   { key: 'sax', label: 'SAX', description: 'Matched short-axis pre-contrast and post-contrast pair.' },
   { key: '2ch', label: '2CH', description: 'Matched two-chamber pre-contrast and post-contrast pair.' },
@@ -29,6 +39,14 @@ const CONTRAST_DEFS: Array<{ key: ContrastKey; label: string }> = [
   { key: 'post', label: 'Post-contrast' },
 ]
 
+const SAX_CONTROL_DEFS: Array<{ key: SaxControlKey; label: string; helper: string }> = [
+  { key: 'centerXPct', label: 'Centre X', helper: '% width' },
+  { key: 'centerYPct', label: 'Centre Y', helper: '% height' },
+  { key: 'innerRadiusPct', label: 'Inner radius', helper: '% of frame' },
+  { key: 'outerRadiusPct', label: 'Outer radius', helper: '% of frame' },
+  { key: 'enhancementThreshold', label: 'Threshold', helper: 'delta z-score' },
+]
+
 function createEmptyState(): UploadState {
   return {
     sax: { pre: { file: null, previewUrl: null }, post: { file: null, previewUrl: null } },
@@ -38,10 +56,25 @@ function createEmptyState(): UploadState {
   }
 }
 
+function createDefaultSaxControls(): SaxControlsState {
+  return {
+    centerXPct: '50',
+    centerYPct: '50',
+    innerRadiusPct: '18',
+    outerRadiusPct: '34',
+    enhancementThreshold: '1.6',
+  }
+}
+
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function parseOrFallback(value: string, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 function StatusPill({ label }: { label: string }) {
@@ -155,11 +188,13 @@ function ViewCard({
   slots,
   onFileSelect,
   onClear,
+  children,
 }: {
   view: { key: ViewKey; label: string; description: string }
   slots: ViewUploadState
   onFileSelect: (viewKey: ViewKey, contrastKey: ContrastKey, file: File | null) => void
   onClear: (viewKey: ViewKey, contrastKey: ContrastKey) => void
+  children?: ReactNode
 }) {
   const loadedCount = Number(Boolean(slots.pre.file)) + Number(Boolean(slots.post.file))
 
@@ -187,12 +222,41 @@ function ViewCard({
           />
         ))}
       </div>
+
+      {children && <div className="border-t border-border/30 px-5 py-5">{children}</div>}
     </section>
+  )
+}
+
+function MetricCard({ label, value, helper }: { label: string; value: string; helper: string }) {
+  return (
+    <div className="rounded-xl border border-border/40 bg-background/70 px-4 py-3">
+      <p className="house-field-label">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-foreground">{value}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
+    </div>
+  )
+}
+
+function AnalysisImagePanel({ title, src }: { title: string; src: string }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/40 bg-background/65">
+      <div className="border-b border-border/30 px-4 py-3">
+        <p className="house-field-label">{title}</p>
+      </div>
+      <div className="bg-card p-3">
+        <img src={src} alt={title} className="h-72 w-full rounded-lg object-contain bg-[hsl(var(--tone-neutral-50))]" />
+      </div>
+    </div>
   )
 }
 
 export function CmrImageAnalyserPage() {
   const [uploads, setUploads] = useState<UploadState>(() => createEmptyState())
+  const [saxControls, setSaxControls] = useState<SaxControlsState>(() => createDefaultSaxControls())
+  const [saxResult, setSaxResult] = useState<CmrSaxAssistResult | null>(null)
+  const [saxError, setSaxError] = useState<string | null>(null)
+  const [saxAnalysing, setSaxAnalysing] = useState(false)
   const uploadsRef = useRef(uploads)
 
   useEffect(() => {
@@ -227,6 +291,13 @@ export function CmrImageAnalyserPage() {
     [uploads],
   )
 
+  const saxReady = Boolean(uploads.sax.pre.file && uploads.sax.post.file)
+
+  const clearSaxAnalysis = () => {
+    setSaxResult(null)
+    setSaxError(null)
+  }
+
   const handleFileSelect = (viewKey: ViewKey, contrastKey: ContrastKey, file: File | null) => {
     setUploads((current) => {
       const existing = current[viewKey][contrastKey]
@@ -242,6 +313,8 @@ export function CmrImageAnalyserPage() {
         },
       }
     })
+
+    if (viewKey === 'sax') clearSaxAnalysis()
   }
 
   const handleClearSlot = (viewKey: ViewKey, contrastKey: ContrastKey) => {
@@ -257,6 +330,46 @@ export function CmrImageAnalyserPage() {
       }
       return createEmptyState()
     })
+    clearSaxAnalysis()
+  }
+
+  const handleSaxControlChange = (key: SaxControlKey, value: string) => {
+    setSaxControls((current) => ({ ...current, [key]: value }))
+  }
+
+  const handleRunSaxAssist = async () => {
+    if (!uploads.sax.pre.file || !uploads.sax.post.file) return
+    const token = getCmrSessionToken()
+    if (!token) {
+      setSaxError('CMR session not found. Sign in again to run analysis.')
+      return
+    }
+
+    setSaxAnalysing(true)
+    setSaxError(null)
+    try {
+      const result = await cmrAnalyseSaxPair(token, {
+        preImage: uploads.sax.pre.file,
+        postImage: uploads.sax.post.file,
+        centerXPct: parseOrFallback(saxControls.centerXPct, 50),
+        centerYPct: parseOrFallback(saxControls.centerYPct, 50),
+        innerRadiusPct: parseOrFallback(saxControls.innerRadiusPct, 18),
+        outerRadiusPct: parseOrFallback(saxControls.outerRadiusPct, 34),
+        enhancementThreshold: parseOrFallback(saxControls.enhancementThreshold, 1.6),
+      })
+      setSaxResult(result)
+      setSaxControls({
+        centerXPct: String(result.roi.center_x_pct),
+        centerYPct: String(result.roi.center_y_pct),
+        innerRadiusPct: String(result.roi.inner_radius_pct),
+        outerRadiusPct: String(result.roi.outer_radius_pct),
+        enhancementThreshold: String(result.roi.enhancement_threshold),
+      })
+    } catch (error) {
+      setSaxError(error instanceof Error ? error.message : 'SAX analysis failed')
+    } finally {
+      setSaxAnalysing(false)
+    }
   }
 
   return (
@@ -280,16 +393,8 @@ export function CmrImageAnalyserPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[20rem]">
-            <div className="rounded-xl border border-border/40 bg-background/70 px-4 py-3">
-              <p className="house-field-label">Images loaded</p>
-              <p className="mt-2 text-3xl font-semibold text-foreground">{totalLoaded}</p>
-              <p className="mt-1 text-sm text-muted-foreground">of 8 slots populated</p>
-            </div>
-            <div className="rounded-xl border border-border/40 bg-background/70 px-4 py-3">
-              <p className="house-field-label">Matched pairs</p>
-              <p className="mt-2 text-3xl font-semibold text-foreground">{completePairs}</p>
-              <p className="mt-1 text-sm text-muted-foreground">views ready for later analysis</p>
-            </div>
+            <MetricCard label="Images loaded" value={String(totalLoaded)} helper="of 8 slots populated" />
+            <MetricCard label="Matched pairs" value={String(completePairs)} helper="views ready for later analysis" />
           </div>
         </div>
 
@@ -317,7 +422,144 @@ export function CmrImageAnalyserPage() {
             slots={uploads[view.key]}
             onFileSelect={handleFileSelect}
             onClear={handleClearSlot}
-          />
+          >
+            {view.key === 'sax' ? (
+              <div className="space-y-5">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="max-w-3xl">
+                    <p className="house-field-label">Experimental SAX Assist</p>
+                    <h3 className="mt-2 text-lg font-semibold text-foreground">
+                      Align the pre/post pair, define a myocardial annulus, and preview candidate enhancement.
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      This first pass is threshold-assisted only. It does not change the manual LGE page and should be
+                      reviewed as a supplementary overlay.
+                    </p>
+                  </div>
+
+                  <Button
+                    type="button"
+                    onClick={handleRunSaxAssist}
+                    disabled={!saxReady}
+                    isLoading={saxAnalysing}
+                    loadingText="Analysing..."
+                    className="rounded-full"
+                  >
+                    Run SAX assist
+                  </Button>
+                </div>
+
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+                  <div className="space-y-5">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {SAX_CONTROL_DEFS.map((field) => (
+                        <label key={field.key} className="flex flex-col gap-1.5">
+                          <span className="house-field-label">{field.label}</span>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            value={saxControls[field.key]}
+                            onChange={(event) => handleSaxControlChange(field.key, event.target.value)}
+                            className="h-10"
+                          />
+                          <span className="text-xs text-muted-foreground">{field.helper}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    {saxError && (
+                      <div className="rounded-xl border border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] px-4 py-3 text-sm text-[hsl(var(--tone-danger-600))]">
+                        {saxError}
+                      </div>
+                    )}
+
+                    {saxResult ? (
+                      <>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <MetricCard
+                            label="Confidence"
+                            value={saxResult.metrics.confidence}
+                            helper="threshold-assisted classification"
+                          />
+                          <MetricCard
+                            label="Candidate burden"
+                            value={`${saxResult.metrics.candidate_fraction_pct}%`}
+                            helper="of the annular ROI"
+                          />
+                          <MetricCard
+                            label="Registration shift"
+                            value={`${saxResult.registration.shift_x_px}, ${saxResult.registration.shift_y_px}`}
+                            helper="x,y pixels"
+                          />
+                          <MetricCard
+                            label="Mean delta"
+                            value={String(saxResult.metrics.mean_delta)}
+                            helper="post-pre normalized signal change"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          <div>
+                            <p className="house-field-label">Suggested sectors</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {saxResult.suggested_sectors.length > 0 ? (
+                                saxResult.suggested_sectors.map((sector) => (
+                                  <span
+                                    key={sector.label}
+                                    className="rounded-full border border-border/50 bg-background px-3 py-1 text-xs font-medium text-foreground"
+                                  >
+                                    {sector.label} {sector.coverage_pct}%
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-sm text-muted-foreground">No sector crossed the current threshold.</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="house-field-label">Notes</p>
+                            <div className="mt-2 space-y-1">
+                              {saxResult.notes.map((note) => (
+                                <p key={note} className="text-sm text-muted-foreground">
+                                  {note}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-xl border border-border/40 bg-background/60 px-4 py-4 text-sm text-muted-foreground">
+                        {saxReady
+                          ? 'Load the paired SAX images, adjust the annulus if needed, and run the assist to generate aligned previews and an enhancement overlay.'
+                          : 'Add both SAX images to enable the first-pass assist.'}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    {saxResult ? (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <AnalysisImagePanel title="Aligned pre-contrast" src={saxResult.images.aligned_pre} />
+                        <AnalysisImagePanel title="Aligned post-contrast" src={saxResult.images.aligned_post} />
+                        <AnalysisImagePanel title="Difference map" src={saxResult.images.difference_map} />
+                        <AnalysisImagePanel title="Candidate overlay" src={saxResult.images.candidate_overlay} />
+                      </div>
+                    ) : (
+                      <div className="flex h-full min-h-[22rem] items-center justify-center rounded-xl border border-dashed border-border/60 bg-[hsl(var(--tone-neutral-50)/0.4)] px-6 text-center text-sm text-muted-foreground">
+                        SAX analysis output will appear here once the paired images are processed.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Analysis logic will extend to this view after the SAX workflow is validated.
+              </p>
+            )}
+          </ViewCard>
         ))}
       </div>
     </Stack>
