@@ -303,7 +303,7 @@ export function CmrLvThrombusPage() {
       {/* Header */}
       <Row align="center" gap="md" wrap={false} className="house-page-title-row">
         <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
-        <PageHeader heading="LV Thrombus" className="!ml-0 !mt-0" />
+        <PageHeader heading="Thrombus" className="!ml-0 !mt-0" />
       </Row>
 
       {/* Status banner */}
