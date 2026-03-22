@@ -30,7 +30,6 @@ export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
     '/cmr-new-report',
     '/cmr-rwma',
     '/cmr-lge',
-    '/cmr-image-analyser',
     '/cmr-valves',
     '/cmr-lv-thrombus',
     '/cmr-ph',

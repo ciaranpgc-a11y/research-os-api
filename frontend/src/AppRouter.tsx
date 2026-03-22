@@ -40,7 +40,6 @@ import { CmrReferenceDatabasePage } from '@/pages/cmr-reference-database-page'
 import { CmrNewReportPage } from '@/pages/cmr-new-report-page'
 import { CmrRwmaPage } from '@/pages/cmr-rwma-page'
 import { CmrLgePage } from '@/pages/cmr-lge-page'
-import { CmrImageAnalyserPage } from '@/pages/cmr-image-analyser-page'
 import { CmrUploadReportPage } from '@/pages/cmr-upload-report-page'
 import { CmrValvesPage } from '@/pages/cmr-valves-page'
 import { CmrLvThrombusPage } from '@/pages/cmr-lv-thrombus-page'
@@ -265,7 +264,6 @@ export function AppRouter() {
             <Route path="/cmr-new-report" element={<CmrNewReportPage />} />
             <Route path="/cmr-rwma" element={<CmrRwmaPage />} />
             <Route path="/cmr-lge" element={<CmrLgePage />} />
-            <Route path="/cmr-image-analyser" element={<CmrImageAnalyserPage />} />
             <Route path="/cmr-valves" element={<CmrValvesPage />} />
             <Route path="/cmr-lv-thrombus" element={<CmrLvThrombusPage />} />
             <Route path="/cmr-ph" element={<CmrPhPage />} />
@@ -280,7 +278,6 @@ export function AppRouter() {
           <Route path="/cmr-new-report" element={<CmrNewReportPage />} />
           <Route path="/cmr-rwma" element={<CmrRwmaPage />} />
           <Route path="/cmr-lge" element={<CmrLgePage />} />
-          <Route path="/cmr-image-analyser" element={<CmrImageAnalyserPage />} />
           <Route path="/cmr-valves" element={<CmrValvesPage />} />
           <Route path="/cmr-lv-thrombus" element={<CmrLvThrombusPage />} />
           <Route path="/cmr-ph" element={<CmrPhPage />} />

@@ -68,12 +68,6 @@ function cmrHeaders(token?: string | null): Record<string, string> {
   return h
 }
 
-function cmrMultipartHeaders(token?: string | null): Record<string, string> {
-  const h: Record<string, string> = {}
-  if (token) h.Authorization = `Bearer ${token}`
-  return h
-}
-
 // --- API calls ---
 
 export type CmrLoginResult = {
@@ -165,71 +159,4 @@ export async function cmrAdminRevokeCode(token: string, codeId: string): Promise
     headers: cmrHeaders(token),
   })
   if (!resp.ok) throw new Error('Failed to revoke code')
-}
-
-export type CmrSaxAssistResult = {
-  roi: {
-    center_x_pct: number
-    center_y_pct: number
-    inner_radius_pct: number
-    outer_radius_pct: number
-    enhancement_threshold: number
-  }
-  registration: {
-    shift_x_px: number
-    shift_y_px: number
-    note: string
-  }
-  metrics: {
-    confidence: string
-    candidate_fraction_pct: number
-    mean_delta: number
-    roi_mean_pre: number
-    roi_mean_post: number
-  }
-  suggested_sectors: Array<{
-    label: string
-    coverage_pct: number
-  }>
-  notes: string[]
-  images: {
-    aligned_pre: string
-    aligned_post: string
-    difference_map: string
-    candidate_overlay: string
-  }
-}
-
-export type CmrSaxAssistInput = {
-  preImage: File
-  postImage: File
-  centerXPct: number
-  centerYPct: number
-  innerRadiusPct: number
-  outerRadiusPct: number
-  enhancementThreshold: number
-}
-
-export async function cmrAnalyseSaxPair(token: string, input: CmrSaxAssistInput): Promise<CmrSaxAssistResult> {
-  const formData = new FormData()
-  formData.append('pre_image', input.preImage)
-  formData.append('post_image', input.postImage)
-  formData.append('center_x_pct', String(input.centerXPct))
-  formData.append('center_y_pct', String(input.centerYPct))
-  formData.append('inner_radius_pct', String(input.innerRadiusPct))
-  formData.append('outer_radius_pct', String(input.outerRadiusPct))
-  formData.append('enhancement_threshold', String(input.enhancementThreshold))
-
-  const resp = await fetch(`${apiBase()}/v1/cmr/image-analyser/sax-assist`, {
-    method: 'POST',
-    headers: cmrMultipartHeaders(token),
-    body: formData,
-  })
-
-  if (!resp.ok) {
-    const detail = await resp.json().catch(() => ({ detail: 'SAX analysis failed' }))
-    throw new Error(detail.detail || 'SAX analysis failed')
-  }
-
-  return resp.json()
 }

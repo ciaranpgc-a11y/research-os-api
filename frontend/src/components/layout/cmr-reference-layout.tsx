@@ -22,7 +22,6 @@ export function CmrReferenceLayout() {
         || pathname.includes('upload-report')
         || pathname.includes('rwma')
         || pathname.includes('lge')
-        || pathname.includes('image-analyser')
         || pathname.includes('valves')
         || pathname.includes('lv-thrombus')
         || pathname.includes('cmr-ph'))
