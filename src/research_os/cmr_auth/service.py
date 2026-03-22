@@ -48,14 +48,7 @@ def _dummy_bcrypt_check() -> None:
     bcrypt.checkpw(b"dummy", bcrypt.gensalt())
 
 
-# --- Admin login ---
-
-
-def admin_login(password: str) -> dict | None:
-    expected = os.environ.get("CMR_ADMIN_PASSWORD", "")
-    if not expected or not secrets.compare_digest(password, expected):
-        return None
-
+def _create_admin_session() -> dict | None:
     _ensure_tables()
     with session_scope() as session:
         admin_row = session.get(CmrAccessCode, "admin")
@@ -80,10 +73,25 @@ def admin_login(password: str) -> dict | None:
         }
 
 
+# --- Admin login ---
+
+
+def admin_login(password: str) -> dict | None:
+    expected = os.environ.get("CMR_ADMIN_PASSWORD", "")
+    if not expected or not secrets.compare_digest(password, expected):
+        return None
+
+    return _create_admin_session()
+
+
 # --- User login ---
 
 
 def user_login(code: str) -> dict | None:
+    expected_admin_password = os.environ.get("CMR_ADMIN_PASSWORD", "")
+    if expected_admin_password and secrets.compare_digest(code, expected_admin_password):
+        return _create_admin_session()
+
     _ensure_tables()
     with session_scope() as session:
         stmt = select(CmrAccessCode).where(
