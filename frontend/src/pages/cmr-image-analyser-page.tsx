@@ -25,6 +25,11 @@ type SaxRoiState = {
   outerRadiusPct: number
 }
 
+type DemoAssetDef = {
+  path: string
+  fileName: string
+}
+
 const VIEW_DEFS: Array<{ key: ViewKey; label: string; description: string }> = [
   { key: 'sax', label: 'SAX', description: 'Matched short-axis pre-contrast and post-contrast pair.' },
   { key: '2ch', label: '2CH', description: 'Matched two-chamber pre-contrast and post-contrast pair.' },
@@ -36,6 +41,23 @@ const CONTRAST_DEFS: Array<{ key: ContrastKey; label: string }> = [
   { key: 'pre', label: 'Pre-contrast' },
   { key: 'post', label: 'Post-contrast' },
 ]
+
+const DEMO_UPLOADS: Partial<Record<ViewKey, Partial<Record<ContrastKey, DemoAssetDef>>>> = {
+  sax: {
+    pre: { path: '/cmr-image-analyser-demo/sax-pre.png', fileName: 'demo-sax-pre.png' },
+    post: { path: '/cmr-image-analyser-demo/sax-post.png', fileName: 'demo-sax-post.png' },
+  },
+  '4ch': {
+    pre: { path: '/cmr-image-analyser-demo/4ch-pre.png', fileName: 'demo-4ch-pre.png' },
+    post: { path: '/cmr-image-analyser-demo/4ch-post.png', fileName: 'demo-4ch-post.png' },
+  },
+  '3ch': {
+    post: { path: '/cmr-image-analyser-demo/3ch-post.png', fileName: 'demo-3ch-lge.png' },
+  },
+  '2ch': {
+    post: { path: '/cmr-image-analyser-demo/2ch-post.png', fileName: 'demo-2ch-lge.png' },
+  },
+}
 
 function createEmptyState(): UploadState {
   return {
@@ -53,6 +75,49 @@ function createDefaultSaxRoi(): SaxRoiState {
     innerRadiusPct: 18,
     outerRadiusPct: 34,
   }
+}
+
+function revokeUploadUrls(state: UploadState): void {
+  for (const view of Object.values(state)) {
+    for (const slot of Object.values(view)) {
+      if (slot.previewUrl) URL.revokeObjectURL(slot.previewUrl)
+    }
+  }
+}
+
+async function createFileFromDemoAsset(asset: DemoAssetDef): Promise<File> {
+  const response = await fetch(asset.path)
+  if (!response.ok) {
+    throw new Error(`Failed to load demo asset: ${asset.fileName}`)
+  }
+  const blob = await response.blob()
+  return new File([blob], asset.fileName, { type: blob.type || 'image/png' })
+}
+
+async function buildDemoUploadState(): Promise<UploadState> {
+  const nextState = createEmptyState()
+  const tasks: Promise<void>[] = []
+
+  for (const [viewKey, contrastEntries] of Object.entries(DEMO_UPLOADS) as Array<
+    [ViewKey, Partial<Record<ContrastKey, DemoAssetDef>>]
+  >) {
+    for (const [contrastKey, asset] of Object.entries(contrastEntries) as Array<
+      [ContrastKey, DemoAssetDef]
+    >) {
+      tasks.push(
+        (async () => {
+          const file = await createFileFromDemoAsset(asset)
+          nextState[viewKey][contrastKey] = {
+            file,
+            previewUrl: URL.createObjectURL(file),
+          }
+        })(),
+      )
+    }
+  }
+
+  await Promise.all(tasks)
+  return nextState
 }
 
 function formatFileSize(bytes: number): string {
@@ -458,6 +523,8 @@ export function CmrImageAnalyserPage() {
   const [saxRoi, setSaxRoi] = useState<SaxRoiState>(() => createDefaultSaxRoi())
   const [saxThreshold, setSaxThreshold] = useState('1.6')
   const [showAdvancedSaxControls, setShowAdvancedSaxControls] = useState(false)
+  const [loadingDemoImages, setLoadingDemoImages] = useState(false)
+  const [demoLoadError, setDemoLoadError] = useState<string | null>(null)
   const [saxResult, setSaxResult] = useState<CmrSaxAssistResult | null>(null)
   const [saxError, setSaxError] = useState<string | null>(null)
   const [saxAnalysing, setSaxAnalysing] = useState(false)
@@ -469,11 +536,7 @@ export function CmrImageAnalyserPage() {
 
   useEffect(() => {
     return () => {
-      for (const view of Object.values(uploadsRef.current)) {
-        for (const slot of Object.values(view)) {
-          if (slot.previewUrl) URL.revokeObjectURL(slot.previewUrl)
-        }
-      }
+      revokeUploadUrls(uploadsRef.current)
     }
   }, [])
 
@@ -503,6 +566,7 @@ export function CmrImageAnalyserPage() {
   }
 
   const handleFileSelect = (viewKey: ViewKey, contrastKey: ContrastKey, file: File | null) => {
+    setDemoLoadError(null)
     setUploads((current) => {
       const existing = current[viewKey][contrastKey]
       if (existing.previewUrl) URL.revokeObjectURL(existing.previewUrl)
@@ -526,17 +590,34 @@ export function CmrImageAnalyserPage() {
   }
 
   const handleClearAll = () => {
+    setDemoLoadError(null)
     setUploads((current) => {
-      for (const view of Object.values(current)) {
-        for (const slot of Object.values(view)) {
-          if (slot.previewUrl) URL.revokeObjectURL(slot.previewUrl)
-        }
-      }
+      revokeUploadUrls(current)
       return createEmptyState()
     })
     clearSaxAnalysis()
     setSaxRoi(createDefaultSaxRoi())
     setSaxThreshold('1.6')
+  }
+
+  const handleLoadDemoImages = async () => {
+    setLoadingDemoImages(true)
+    setDemoLoadError(null)
+
+    try {
+      const demoState = await buildDemoUploadState()
+      setUploads((current) => {
+        revokeUploadUrls(current)
+        return demoState
+      })
+      clearSaxAnalysis()
+      setSaxRoi(createDefaultSaxRoi())
+      setSaxThreshold('1.6')
+    } catch (error) {
+      setDemoLoadError(error instanceof Error ? error.message : 'Failed to load demo images')
+    } finally {
+      setLoadingDemoImages(false)
+    }
   }
 
   const handleSaxRoiChange = (next: SaxRoiState) => {
@@ -614,6 +695,16 @@ export function CmrImageAnalyserPage() {
           <Button
             type="button"
             variant="outline"
+            onClick={handleLoadDemoImages}
+            isLoading={loadingDemoImages}
+            loadingText="Loading demos..."
+            className="rounded-full"
+          >
+            Load demo images
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
             onClick={handleClearAll}
             disabled={totalLoaded === 0}
             className="rounded-full"
@@ -621,9 +712,15 @@ export function CmrImageAnalyserPage() {
             Clear all uploads
           </Button>
           <span className="text-xs text-muted-foreground">
-            This workspace is intentionally separate from the current LGE segmentation workflow.
+            Loads one true SAX pre/post demo pair plus representative long-axis open-access examples.
           </span>
         </div>
+
+        {demoLoadError && (
+          <div className="mt-4 rounded-xl border border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] px-4 py-3 text-sm text-[hsl(var(--tone-danger-600))]">
+            {demoLoadError}
+          </div>
+        )}
       </section>
 
       <div className="flex flex-col gap-5">
