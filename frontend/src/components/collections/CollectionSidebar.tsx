@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Plus, X, Check, Pencil, Palette, Trash2, ChevronRight } from 'lucide-react'
+import { Plus, X, Check, Pencil, Palette, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   COLLECTION_COLOUR_HEX,
@@ -407,6 +407,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                   )}
                   style={{ borderLeft: `3px solid ${COLLECTION_COLOUR_HEX[coll.colour]}` }}
                   onClick={() => {
+                    handleToggleExpand(coll.id)
                     if (mode === 'browse') {
                       onSelectCollection(coll.id)
                       onSelectSubcollection(null)
@@ -427,22 +428,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     {coll.publication_count}
                   </span>
 
-                  {/* Expand chevron */}
-                  <button
-                    type="button"
-                    className="h-6 w-6 flex items-center justify-center rounded hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground transition-transform"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleToggleExpand(coll.id)
-                    }}
-                  >
-                    <ChevronRight
-                      className={cn(
-                        'h-4 w-4 transition-transform',
-                        isExpanded && 'rotate-90',
-                      )}
-                    />
-                  </button>
                 </div>
               )}
 
