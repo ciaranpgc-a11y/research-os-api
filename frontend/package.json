@@ -7,10 +7,10 @@
     "node": ">=20 <21"
   },
   "scripts": {
-    "dev": "node --max_old_space_size=12288 node_modules/vite/bin/vite.js --port 5173 --strictPort --force",
+    "dev": "npm run dev:clean && node --max_old_space_size=12288 node_modules/vite/bin/vite.js --port 5173 --strictPort --force",
     "dev:5176": "vite --port 5176 --strictPort",
     "dev:clean": "node scripts/dev-clean.mjs",
-    "dev:clean-start": "npm run dev:clean && npm run dev",
+    "dev:clean-start": "npm run dev",
     "build": "tsc -b && vite build && node scripts/postbuild-spa-fallback.mjs",
     "preview": "vite preview",
     "lint": "eslint src tests",

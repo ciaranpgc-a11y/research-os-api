@@ -44,6 +44,8 @@ CMR frontend dev:
 
 You can also use `http://cmr.localhost:5173/cmr-login` if you already have that hostname mapped, but it is no longer required for local CMR work.
 
+`npm run dev` now clears any existing listener on port `5173` before starting Vite, so the current repo takes over the standard local frontend URL by default.
+
 The Vite dev server proxies `/v1/*`, `/health/*`, and `/draft/*` to the local API by default, so no `VITE_API_BASE_URL` override is needed for the CMR app.
 
 Seed local publication tiles (all users):
