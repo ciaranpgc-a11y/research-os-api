@@ -401,13 +401,17 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                   className={cn(
                     'group flex items-center gap-2 pl-4 pr-2 py-2.5 cursor-pointer text-sm transition-colors rounded-r-md select-none',
                     isSelected && 'bg-[hsl(var(--tone-accent-100))]',
-                    isDropTarget &&
-                      'outline-2 outline-dashed outline-[hsl(var(--tone-accent-500))] bg-[hsl(var(--tone-accent-50))]',
+                    isDropTarget && 'outline-2 outline-dashed',
                     isPulsing && 'animate-drop-pulse',
                   )}
                   style={{
                     borderLeft: `3px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
-                    backgroundColor: isExpanded ? `${COLLECTION_COLOUR_HEX[coll.colour]}18` : undefined,
+                    backgroundColor: isDropTarget
+                      ? `${COLLECTION_COLOUR_HEX[coll.colour]}18`
+                      : isExpanded
+                        ? `${COLLECTION_COLOUR_HEX[coll.colour]}18`
+                        : undefined,
+                    outlineColor: isDropTarget ? COLLECTION_COLOUR_HEX[coll.colour] : undefined,
                   }}
                   onClick={() => {
                     handleToggleExpand(coll.id)
