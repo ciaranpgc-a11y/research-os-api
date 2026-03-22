@@ -306,13 +306,13 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
 
   // ---- render ----
   return (
-    <div className="w-[250px] min-w-[250px] bg-card border-r border-border flex flex-col">
+    <div className="w-[280px] min-w-[280px] bg-card border-r border-border flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-sm font-medium text-foreground">Collections</span>
         <button
           type="button"
-          className="h-6 w-6 flex items-center justify-center rounded hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground hover:text-foreground transition-colors"
+          className="h-7 w-7 flex items-center justify-center rounded hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground hover:text-foreground transition-colors"
           onClick={onStartCreateCollection}
           title="New collection"
         >
@@ -321,14 +321,14 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
       </div>
 
       {/* Collection list */}
-      <div className="flex-1 overflow-y-auto py-1">
+      <div className="flex-1 overflow-y-auto py-2 px-1.5">
         {/* Empty state */}
         {collections.length === 0 && !creatingCollection && (
-          <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
-            <p className="text-xs text-muted-foreground">No collections yet</p>
+          <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+            <p className="text-sm text-muted-foreground">No collections yet</p>
             <button
               type="button"
-              className="text-xs text-[hsl(var(--tone-accent-700))] hover:text-[hsl(var(--tone-accent-900))] font-medium"
+              className="text-sm text-[hsl(var(--tone-accent-700))] hover:text-[hsl(var(--tone-accent-900))] font-medium"
               onClick={onStartCreateCollection}
             >
               Create your first collection
@@ -350,7 +350,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
               {renamingId === coll.id ? (
                 /* Inline rename */
                 <div
-                  className="flex items-center gap-1 px-2 py-1"
+                  className="flex items-center gap-2 px-3 py-2"
                   style={{ borderLeft: `3px solid ${COLLECTION_COLOUR_HEX[coll.colour]}` }}
                 >
                   <input
@@ -385,7 +385,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                 /* Normal row */
                 <div
                   className={cn(
-                    'group flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-sm transition-colors',
+                    'group flex items-center gap-2 px-3 py-2.5 cursor-pointer text-sm transition-colors rounded-r-md',
                     isSelected && 'bg-[hsl(var(--tone-accent-100))]',
                     isDropTarget &&
                       'outline-2 outline-dashed outline-[hsl(var(--tone-accent-500))] bg-[hsl(var(--tone-accent-50))]',
@@ -420,13 +420,13 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                   <div className="relative">
                     <button
                       type="button"
-                      className="h-5 w-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground transition-opacity"
+                      className="h-6 w-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground transition-opacity"
                       onClick={(e) => {
                         e.stopPropagation()
                         setMenuOpenId(menuOpenId === coll.id ? null : coll.id)
                       }}
                     >
-                      <MoreHorizontal className="h-3.5 w-3.5" />
+                      <MoreHorizontal className="h-4 w-4" />
                     </button>
                     {menuOpenId === coll.id && (
                       <CollectionMenu
@@ -451,7 +451,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                   {/* Expand chevron */}
                   <button
                     type="button"
-                    className="h-5 w-5 flex items-center justify-center rounded hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground transition-transform"
+                    className="h-6 w-6 flex items-center justify-center rounded hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground transition-transform"
                     onClick={(e) => {
                       e.stopPropagation()
                       handleToggleExpand(coll.id)
@@ -459,7 +459,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                   >
                     <ChevronRight
                       className={cn(
-                        'h-3.5 w-3.5 transition-transform',
+                        'h-4 w-4 transition-transform',
                         isExpanded && 'rotate-90',
                       )}
                     />
@@ -469,12 +469,12 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
 
               {/* Expanded subcollections */}
               {isExpanded && (
-                <div className="ml-3">
+                <div className="ml-4">
                   {/* "All papers" entry (browse mode only) */}
                   {mode === 'browse' && (
                     <div
                       className={cn(
-                        'flex items-center gap-1.5 px-2 py-1 cursor-pointer text-sm transition-colors',
+                        'flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors rounded-r-md',
                         isSelected && selectedSubcollectionId === null
                           ? 'bg-[hsl(var(--tone-accent-100))]'
                           : 'hover:bg-muted/50',
@@ -487,7 +487,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         onSelectSubcollection(null)
                       }}
                     >
-                      <span className="flex-1 truncate text-muted-foreground text-xs">
+                      <span className="flex-1 truncate text-muted-foreground text-sm">
                         All papers
                       </span>
                     </div>
@@ -503,7 +503,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                       /* Inline subcollection rename */
                       <div
                         key={sub.id}
-                        className="flex items-center gap-1 px-2 py-1"
+                        className="flex items-center gap-2 px-3 py-1.5"
                         style={{
                           borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}40`,
                         }}
@@ -511,7 +511,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         <input
                           ref={subRenameInputRef}
                           type="text"
-                          className="house-input h-7 flex-1 rounded-md px-2 text-xs"
+                          className="house-input h-8 flex-1 rounded-md px-2 text-sm"
                           value={subRenameValue}
                           onChange={(e) => setSubRenameValue(e.target.value)}
                           onKeyDown={(e) => {
@@ -541,7 +541,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                       <div
                         key={sub.id}
                         className={cn(
-                          'group/sub flex items-center gap-1.5 px-2 py-1 cursor-pointer text-xs transition-colors',
+                          'group/sub flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors rounded-r-md',
                           isSubSelected && 'bg-[hsl(var(--tone-accent-100))]',
                           isSubDropTarget &&
                             'outline-2 outline-dashed outline-[hsl(var(--tone-accent-500))] bg-[hsl(var(--tone-accent-50))]',
@@ -576,82 +576,84 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         {/* Rename button (on hover) */}
                         <button
                           type="button"
-                          className="h-4 w-4 flex items-center justify-center rounded opacity-0 group-hover/sub:opacity-100 hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground transition-opacity"
+                          className="h-5 w-5 flex items-center justify-center rounded opacity-0 group-hover/sub:opacity-100 hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground transition-opacity"
                           onClick={(e) => {
                             e.stopPropagation()
                             startSubRename(sub)
                           }}
                           title="Rename"
                         >
-                          <Pencil className="h-2.5 w-2.5" />
+                          <Pencil className="h-3 w-3" />
                         </button>
 
                         {/* Delete button (on hover) */}
                         <button
                           type="button"
-                          className="h-4 w-4 flex items-center justify-center rounded opacity-0 group-hover/sub:opacity-100 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-opacity"
+                          className="h-5 w-5 flex items-center justify-center rounded opacity-0 group-hover/sub:opacity-100 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-opacity"
                           onClick={(e) => {
                             e.stopPropagation()
                             onDeleteSubcollection(coll.id, sub.id)
                           }}
                           title="Delete"
                         >
-                          <Trash2 className="h-2.5 w-2.5" />
+                          <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                     )
                   })}
 
-                  {/* New subcollection inline input */}
-                  {creatingSubForId === coll.id ? (
-                    <div
-                      className="flex items-center gap-1 px-2 py-1"
-                      style={{
-                        borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}40`,
-                      }}
-                    >
-                      <input
-                        ref={newSubInputRef}
-                        type="text"
-                        className="house-input h-7 flex-1 rounded-md px-2 text-xs"
-                        placeholder="Subcollection name"
-                        value={newSubName}
-                        onChange={(e) => setNewSubName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') commitCreateSub()
-                          if (e.key === 'Escape') cancelCreateSub()
+                  {/* New subcollection inline input (organise mode only) */}
+                  {mode === 'organise' && (
+                    creatingSubForId === coll.id ? (
+                      <div
+                        className="flex items-center gap-2 px-3 py-1.5"
+                        style={{
+                          borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}40`,
                         }}
-                      />
+                      >
+                        <input
+                          ref={newSubInputRef}
+                          type="text"
+                          className="house-input h-8 flex-1 rounded-md px-2 text-sm"
+                          placeholder="Subcollection name"
+                          value={newSubName}
+                          onChange={(e) => setNewSubName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitCreateSub()
+                            if (e.key === 'Escape') cancelCreateSub()
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="house-collaborator-action-icon-save h-6 w-6 flex items-center justify-center rounded"
+                          onClick={commitCreateSub}
+                          title="Save"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          className="house-collaborator-action-icon-discard h-6 w-6 flex items-center justify-center rounded"
+                          onClick={cancelCreateSub}
+                          title="Cancel"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      /* "+ Add subcollection" link */
                       <button
                         type="button"
-                        className="house-collaborator-action-icon-save h-5 w-5 flex items-center justify-center rounded"
-                        onClick={commitCreateSub}
-                        title="Save"
+                        className="flex items-center gap-1.5 px-3 py-2 text-sm text-[hsl(var(--tone-accent-700))] hover:text-[hsl(var(--tone-accent-900))] transition-colors"
+                        style={{
+                          borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}40`,
+                        }}
+                        onClick={() => startCreateSub(coll.id)}
                       >
-                        <Check className="h-3 w-3" />
+                        <Plus className="h-3.5 w-3.5" />
+                        Add subcollection
                       </button>
-                      <button
-                        type="button"
-                        className="house-collaborator-action-icon-discard h-5 w-5 flex items-center justify-center rounded"
-                        onClick={cancelCreateSub}
-                        title="Cancel"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    /* "+ Add subcollection" link */
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 px-2 py-1 text-xs text-[hsl(var(--tone-accent-700))] hover:text-[hsl(var(--tone-accent-900))] transition-colors"
-                      style={{
-                        borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}40`,
-                      }}
-                      onClick={() => startCreateSub(coll.id)}
-                    >
-                      <Plus className="h-3 w-3" />
-                      Add subcollection
-                    </button>
+                    )
                   )}
                 </div>
               )}
@@ -661,7 +663,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
 
         {/* New collection inline row */}
         {creatingCollection && (
-          <div className="flex items-center gap-1 px-2 py-1.5">
+          <div className="flex items-center gap-2 px-3 py-2">
             <div
               className="w-[3px] self-stretch rounded-full shrink-0"
               style={{ backgroundColor: COLLECTION_COLOUR_HEX[newCollectionColour] }}
