@@ -70,8 +70,8 @@ function UploadSlot({
   const inputId = `cmr-image-analyser-${viewKey}-${contrastKey}`
 
   return (
-    <div className="rounded-xl border border-border/50 bg-background/80 p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3 px-1">
         <span className="house-field-label">{contrastLabel}</span>
         {slot.file && (
           <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
@@ -86,7 +86,7 @@ function UploadSlot({
           'group flex min-h-[15rem] cursor-pointer flex-col justify-between rounded-xl border border-dashed px-4 py-4 transition-colors',
           slot.previewUrl
             ? 'border-[hsl(var(--section-style-report-accent)/0.4)] bg-[hsl(var(--tone-accent-50)/0.18)]'
-            : 'border-border/60 bg-[hsl(var(--tone-neutral-50)/0.55)] hover:border-[hsl(var(--section-style-report-accent)/0.35)] hover:bg-[hsl(var(--tone-neutral-50)/0.8)]',
+            : 'border-border/60 bg-[hsl(var(--tone-neutral-50)/0.4)] hover:border-[hsl(var(--section-style-report-accent)/0.35)] hover:bg-[hsl(var(--tone-neutral-50)/0.65)]',
         )}
       >
         <input
@@ -174,7 +174,7 @@ function ViewCard({
         <StatusPill label={`${loadedCount}/2 loaded`} />
       </div>
 
-      <div className="grid gap-4 p-5 xl:grid-cols-2">
+      <div className="grid gap-x-8 gap-y-5 p-5 xl:grid-cols-2">
         {CONTRAST_DEFS.map((contrast) => (
           <UploadSlot
             key={contrast.key}
