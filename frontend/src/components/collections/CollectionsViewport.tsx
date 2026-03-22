@@ -248,7 +248,15 @@ export function CollectionsViewport({
       setTimeout(() => setPulsingId(null), 700)
       const coll = collections.find((c) => c.id === collectionId)
       setToast(`Added to ${coll?.name || 'collection'}`)
-      await Promise.all([refreshCollections(), refreshPubCollections(dragWorkId)])
+      const refreshTasks: Promise<unknown>[] = [refreshCollections(), refreshPubCollections(dragWorkId)]
+      if (subcollectionId) {
+        refreshTasks.push(
+          fetchSubcollections(collectionId)
+            .then((subs) => handleSubcollectionsFetched(collectionId, subs))
+            .catch(() => {}),
+        )
+      }
+      await Promise.all(refreshTasks)
     } catch {
       setToast('Failed to add publication')
     }
