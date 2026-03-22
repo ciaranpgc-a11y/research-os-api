@@ -450,23 +450,23 @@ export function CmrLvThrombusPage() {
             </div>
 
             {activeEntry.primary === 'Other' ? (
-              <div className="grid gap-2 md:max-w-[28rem] md:grid-cols-[minmax(10rem,12rem)_minmax(12rem,16rem)] md:items-center md:gap-x-3">
-                <span className="text-sm text-[hsl(var(--foreground))]">Specify location</span>
+              <div className="space-y-2 md:flex md:max-w-[28rem] md:items-center md:gap-3 md:space-y-0">
+                <span className="w-[8.75rem] shrink-0 text-sm text-[hsl(var(--foreground))]">Specify location</span>
                 <input
                   type="text"
                   value={activeEntry.otherLocation}
                   onChange={(event) => updateEntry(activeEntry.id, { otherLocation: event.target.value })}
                   placeholder="Enter anatomical location..."
-                  className="house-input h-8 w-full max-w-[16rem] rounded-md px-2.5 text-xs"
+                  className="house-input h-8 w-full rounded-md px-2.5 text-xs md:w-[15.5rem]"
                 />
               </div>
             ) : sublocationOptions.length > 0 ? (
-              <div className="grid gap-2 md:max-w-[28rem] md:grid-cols-[minmax(10rem,12rem)_minmax(12rem,16rem)] md:items-center md:gap-x-3">
-                <span className="text-sm text-[hsl(var(--foreground))]">Sub-location</span>
+              <div className="space-y-2 md:flex md:max-w-[28rem] md:items-center md:gap-3 md:space-y-0">
+                <span className="w-[8.75rem] shrink-0 text-sm text-[hsl(var(--foreground))]">Sub-location</span>
                 <select
                   value={activeEntry.sublocation ?? ''}
                   onChange={(event) => updateEntry(activeEntry.id, { sublocation: event.target.value || null })}
-                  className="house-dropdown h-8 w-full max-w-[16rem] rounded-md px-2.5 text-xs"
+                  className="house-dropdown h-8 w-full rounded-md px-2.5 text-xs md:w-[15.5rem]"
                 >
                   <option value="">Select...</option>
                   {sublocationOptions.map((option) => (
@@ -484,8 +484,8 @@ export function CmrLvThrombusPage() {
           statusTone={morphologyFieldsSet > 0 ? 'active' : 'none'}
         >
           <div className="grid gap-x-8 gap-y-5 md:grid-cols-2">
-            <div className="grid gap-2 md:col-span-2 md:grid-cols-[minmax(10rem,12rem)_auto_1fr] md:items-center">
-              <span className="text-sm text-[hsl(var(--foreground))]">Maximum diameter</span>
+            <div className="space-y-2 md:col-span-2 md:flex md:items-center md:gap-2 md:space-y-0">
+              <span className="w-[8.75rem] shrink-0 text-sm text-[hsl(var(--foreground))]">Maximum diameter</span>
               <input
                 type="number"
                 min={0}
@@ -496,7 +496,7 @@ export function CmrLvThrombusPage() {
                   updateMorphology(activeEntry.id, { maxDiameter: nextValue })
                 }}
                 placeholder="—"
-                className="house-input h-8 w-24 text-center tabular-nums text-xs"
+                className="house-input h-8 w-full rounded-md px-2.5 text-xs tabular-nums md:w-[5.5rem]"
               />
               <span className="text-xs text-muted-foreground">mm</span>
             </div>
