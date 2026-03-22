@@ -512,7 +512,9 @@ export function CmrLvThrombusPage() {
           statusTone={morphologyFieldsSet > 0 ? 'active' : 'none'}
         >
           <div className="grid gap-x-8 gap-y-5 md:grid-cols-2">
-            <div className="space-y-2 md:col-span-2 md:flex md:items-center md:gap-2 md:space-y-0">
+            <div className="space-y-2 md:col-span-2">
+              <FieldLabel>Dimensions</FieldLabel>
+              <div className="space-y-2 md:flex md:items-center md:gap-2 md:space-y-0">
               <span className="shrink-0 text-sm text-[hsl(var(--foreground))]">Maximum diameter</span>
               <input
                 type="number"
@@ -527,6 +529,7 @@ export function CmrLvThrombusPage() {
                 className="house-input h-8 w-full rounded-md px-2.5 text-xs tabular-nums md:w-[5.5rem]"
               />
               <span className="text-xs text-muted-foreground">mm</span>
+              </div>
             </div>
 
             <div className="space-y-2">
