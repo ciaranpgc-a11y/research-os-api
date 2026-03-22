@@ -446,10 +446,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           ? 'bg-[hsl(var(--tone-accent-100))]'
                           : 'hover:bg-muted/50',
                       )}
-                      style={{
-                        borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
-                        color: COLLECTION_COLOUR_HEX[coll.colour],
-                      }}
+                      style={{ color: COLLECTION_COLOUR_HEX[coll.colour] }}
                       onClick={() => {
                         onSelectCollection(coll.id)
                         onSelectSubcollection(null)
@@ -473,7 +470,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         key={sub.id}
                         className="flex items-center gap-2 px-3 py-1.5"
                         style={{
-                          borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
                         }}
                       >
                         <input
@@ -516,7 +512,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           isSubPulsing && 'animate-drop-pulse',
                         )}
                         style={{
-                          borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
                           color: COLLECTION_COLOUR_HEX[coll.colour],
                         }}
                         onClick={() => {
@@ -576,7 +571,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                       <div
                         className="flex items-center gap-2 px-3 py-1.5"
                         style={{
-                          borderLeft: `2px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
                         }}
                       >
                         <input
