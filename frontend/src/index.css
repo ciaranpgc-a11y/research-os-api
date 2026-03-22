@@ -612,6 +612,16 @@
   }
 }
 
+@layer components {
+  @keyframes drop-pulse {
+    0% { background-color: hsl(var(--tone-positive-100)); }
+    100% { background-color: transparent; }
+  }
+  .animate-drop-pulse {
+    animation: drop-pulse 600ms ease-out;
+  }
+}
+
 @layer utilities {
   .house-title {
     font-size: 2.05rem;
