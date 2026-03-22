@@ -450,7 +450,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           ? 'bg-[hsl(var(--tone-accent-100))]'
                           : 'hover:bg-muted/50',
                       )}
-                      style={{ color: COLLECTION_COLOUR_HEX[coll.colour] }}
                       onClick={() => {
                         onSelectCollection(coll.id)
                         onSelectSubcollection(null)
@@ -516,8 +515,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           isSubPulsing && 'animate-drop-pulse',
                         )}
                         style={{
-                          color: COLLECTION_COLOUR_HEX[coll.colour],
-                        }}
                         onClick={() => {
                           if (mode === 'browse') {
                             onSelectCollection(coll.id)
