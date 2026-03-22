@@ -27,7 +27,7 @@ python -m alembic upgrade head
 
 Run API locally:
 ```bash
-python -m uvicorn research_os.api.app:app --reload
+python -m uvicorn --app-dir src research_os.api.app:app --reload
 ```
 
 Frontend dev:
@@ -47,6 +47,8 @@ You can also use `http://cmr.localhost:5173/cmr-login` if you already have that 
 `npm run dev` now clears any existing listener on port `5173` before starting Vite, so the current repo takes over the standard local frontend URL by default.
 
 The Vite dev server proxies `/v1/*`, `/health/*`, and `/draft/*` to the local API by default, so no `VITE_API_BASE_URL` override is needed for the CMR app.
+
+For local admin access through the CMR code-entry screen, set `CMR_ADMIN_PASSWORD` in the repository `.env` file before starting the API.
 
 Seed local publication tiles (all users):
 ```bash

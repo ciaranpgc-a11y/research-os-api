@@ -2,7 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { CmrMark } from '@/components/layout/cmr-mark'
-import { cmrLogin, setCmrSession } from '@/lib/cmr-auth'
+import { cmrLogin, isCmrSubdomain, setCmrSession } from '@/lib/cmr-auth'
 import { cn } from '@/lib/utils'
 
 const ACCESS_FEATURES = [
@@ -26,6 +26,15 @@ export function CmrLoginPage() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
+  const resolveLoginError = (error: unknown): string => {
+    if (error instanceof TypeError) {
+      return isCmrSubdomain()
+        ? 'Unable to reach the local CMR API. Start the backend and try again.'
+        : 'Unable to reach the CMR service. Try again.'
+    }
+    return 'Invalid access code'
+  }
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!code.trim()) return
@@ -36,8 +45,8 @@ export function CmrLoginPage() {
       const result = await cmrLogin(code.trim())
       setCmrSession(result.session_token, result.name, result.is_admin)
       navigate('/cmr-reference-table', { replace: true })
-    } catch {
-      setError('Invalid access code')
+    } catch (error) {
+      setError(resolveLoginError(error))
     } finally {
       setLoading(false)
     }
