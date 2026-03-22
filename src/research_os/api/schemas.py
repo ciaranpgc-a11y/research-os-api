@@ -3458,6 +3458,18 @@ class CollectionPublicationReorderResponse(BaseModel):
     reordered: bool
 
 
+class MovePublicationSubcollectionRequest(BaseModel):
+    subcollection_id: str | None = None
+
+
+class MovePublicationSubcollectionResponse(BaseModel):
+    membership_id: str
+    work_id: str
+    collection_id: str
+    subcollection_id: str | None = None
+    sort_order: int
+
+
 class PublicationCollectionSummary(BaseModel):
     id: str
     name: str

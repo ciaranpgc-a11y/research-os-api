@@ -278,6 +278,8 @@ from research_os.api.schemas import (
     CollectionPublicationRemoveResponse,
     CollectionPublicationReorderResponse,
     PublicationCollectionsListResponse,
+    MovePublicationSubcollectionRequest,
+    MovePublicationSubcollectionResponse,
 )
 from research_os.services.admin_service import (
     AdminNotFoundError,
@@ -600,6 +602,7 @@ from research_os.services.collection_service import (
     reorder_collection_publications,
     list_subcollection_publications,
     list_publication_collections,
+    move_publication_subcollection,
 )
 
 configure_logging()
@@ -6905,6 +6908,35 @@ def v1_reorder_subcollection_publications(
             subcollection_id=subcollection_id,
         )
         return CollectionPublicationReorderResponse(**payload)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.patch(
+    "/v1/collections/{collection_id}/memberships/{membership_id}/move",
+    response_model=MovePublicationSubcollectionResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_move_publication_subcollection(
+    collection_id: str,
+    membership_id: str,
+    body: MovePublicationSubcollectionRequest,
+    request: Request,
+) -> MovePublicationSubcollectionResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        result = move_publication_subcollection(
+            user_id=user_id,
+            collection_id=collection_id,
+            membership_id=membership_id,
+            target_subcollection_id=body.subcollection_id,
+        )
+        return MovePublicationSubcollectionResponse(**result)
     except ValueError as exc:
         return _build_not_found_response(str(exc))
     except Exception as exc:

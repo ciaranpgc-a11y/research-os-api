@@ -481,3 +481,50 @@ def list_publication_collections(user_id: str, work_id: str) -> list[dict[str, A
                 "colour": col.colour,
             })
         return result
+
+
+def move_publication_subcollection(
+    user_id: str,
+    collection_id: str,
+    membership_id: str,
+    target_subcollection_id: str | None,
+) -> dict[str, Any]:
+    """Move a publication membership to a different subcollection (or to top level if None)."""
+    with session_scope() as session:
+        collection = session.execute(
+            select(Collection).where(
+                Collection.id == collection_id,
+                Collection.user_id == user_id,
+            )
+        ).scalar_one_or_none()
+        if not collection:
+            raise ValueError("Collection not found")
+
+        membership = session.execute(
+            select(CollectionMembership).where(
+                CollectionMembership.id == membership_id,
+                CollectionMembership.collection_id == collection_id,
+            )
+        ).scalar_one_or_none()
+        if not membership:
+            raise ValueError("Membership not found")
+
+        if target_subcollection_id is not None:
+            subcollection = session.execute(
+                select(Subcollection).where(
+                    Subcollection.id == target_subcollection_id,
+                    Subcollection.collection_id == collection_id,
+                )
+            ).scalar_one_or_none()
+            if not subcollection:
+                raise ValueError("Subcollection not found in this collection")
+
+        membership.subcollection_id = target_subcollection_id
+        session.flush()
+        return {
+            "membership_id": membership.id,
+            "work_id": membership.work_id,
+            "collection_id": membership.collection_id,
+            "subcollection_id": membership.subcollection_id,
+            "sort_order": membership.sort_order,
+        }

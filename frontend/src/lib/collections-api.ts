@@ -235,3 +235,19 @@ export async function fetchPublicationCollections(
     'Failed to fetch publication collections',
   )
 }
+
+// ---------------------------------------------------------------------------
+// Move publication between subcollections
+// ---------------------------------------------------------------------------
+
+export async function movePublicationSubcollection(
+  collectionId: string,
+  membershipId: string,
+  subcollectionId: string | null,
+): Promise<{ membership_id: string; work_id: string; collection_id: string; subcollection_id: string | null; sort_order: number }> {
+  return requestJson(
+    `${API_BASE_URL}/v1/collections/${collectionId}/memberships/${membershipId}/move`,
+    { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ subcollection_id: subcollectionId }) },
+    'Failed to move publication',
+  )
+}
