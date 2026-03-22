@@ -265,10 +265,13 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
     dragExpandTargetRef.current = null
   }, [])
 
-  // Called on dragenter of a collection row — fires once on genuine entry (relatedTarget check avoids child bubbles)
-  const startExpandTimer = useCallback((collectionId: string) => {
+  // Called from dragover on a collection row — starts a timer only when the target changes
+  const handleCollectionDragOver = useCallback((e: React.DragEvent, collectionId: string) => {
+    onDragOver(e, collectionId)
     if (expandedIds.has(collectionId)) return
+    // Same target as before — timer already running, do nothing
     if (dragExpandTargetRef.current === collectionId) return
+    // New collection target — restart timer
     clearExpandTimer()
     dragExpandTargetRef.current = collectionId
     dragExpandTimerRef.current = setTimeout(() => {
@@ -276,10 +279,10 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
       dragExpandTargetRef.current = null
       void handleToggleExpand(collectionId)
     }, 700)
-  }, [expandedIds, handleToggleExpand, clearExpandTimer])
+  }, [onDragOver, expandedIds, handleToggleExpand, clearExpandTimer])
 
-  // Only cancel when drag truly leaves the row (not just moving to a child element)
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
+  // Cancel timer + drop highlight only when drag leaves the entire sidebar
+  const handleSidebarDragLeave = useCallback((e: React.DragEvent) => {
     if (e.currentTarget.contains(e.relatedTarget as Node)) return
     onDragLeave()
     clearExpandTimer()
@@ -353,7 +356,10 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
 
   // ---- render ----
   return (
-    <div className="w-[380px] min-w-[380px] bg-card border-r border-border flex flex-col">
+    <div
+      className="w-[380px] min-w-[380px] bg-card border-r border-border flex flex-col"
+      onDragLeave={mode === 'organise' ? handleSidebarDragLeave : undefined}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-sm font-medium text-foreground">Collections</span>
@@ -458,11 +464,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     e.stopPropagation()
                     setContextMenu({ collectionId: coll.id, x: e.clientX, y: e.clientY })
                   }}
-                  onDragEnter={mode === 'organise' ? (e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) startExpandTimer(coll.id)
-                  } : undefined}
-                  onDragOver={mode === 'organise' ? (e) => onDragOver(e, coll.id) : undefined}
-                  onDragLeave={mode === 'organise' ? handleDragLeave : undefined}
+                  onDragOver={mode === 'organise' ? (e) => handleCollectionDragOver(e, coll.id) : undefined}
                   onDrop={mode === 'organise' ? () => { clearExpandTimer(); onDrop(coll.id) } : undefined}
                 >
                   {/* Name + count */}
@@ -559,7 +561,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                             ? (e) => onDragOver(e, sub.id)
                             : undefined
                         }
-                        onDragLeave={mode === 'organise' ? handleDragLeave : undefined}
                         onDrop={
                           mode === 'organise'
                             ? () => { clearExpandTimer(); onDrop(coll.id, sub.id) }
