@@ -107,7 +107,7 @@ function UploadSlot({
               <img
                 src={slot.previewUrl}
                 alt={`${contrastLabel} preview`}
-                className="h-44 w-full object-contain bg-[hsl(var(--tone-neutral-50))]"
+                className="h-72 w-full object-contain bg-[hsl(var(--tone-neutral-50))]"
               />
             </div>
             <div className="mt-3 flex items-end justify-between gap-3">
@@ -309,7 +309,7 @@ export function CmrImageAnalyserPage() {
         </div>
       </section>
 
-      <div className="grid gap-5 2xl:grid-cols-2">
+      <div className="flex flex-col gap-5">
         {VIEW_DEFS.map((view) => (
           <ViewCard
             key={view.key}
