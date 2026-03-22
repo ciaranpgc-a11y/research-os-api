@@ -79,6 +79,18 @@ const CONFIDENCE_OPTIONS = [
   { value: 'indeterminate' as const, label: 'Indeterminate' },
 ]
 
+const PRIMARY_ICON_COLORS: Record<ThrombusPrimary, string> = {
+  LV: 'text-[hsl(var(--section-style-report-accent))]',
+  LA: 'text-[hsl(var(--tone-warning-700))]',
+  LAA: 'text-[hsl(var(--tone-danger-600))]',
+  RV: 'text-[hsl(var(--tone-accent-700))]',
+  RA: 'text-[hsl(var(--tone-neutral-600))]',
+  Aorta: 'text-[hsl(var(--tone-danger-700))]',
+  PA: 'text-[hsl(var(--tone-positive-700))]',
+  Device: 'text-[hsl(var(--tone-neutral-700))]',
+  Other: 'text-[hsl(var(--tone-warning-700))]',
+}
+
 function computeEmbolicRisk(entry: ThrombusEntry): EmbolicRisk | null {
   const m = entry.morphology
   if (m.shape === null && m.mobility === null && m.maxDiameter === null) return null
@@ -398,37 +410,40 @@ export function CmrLvThrombusPage() {
           statusTone={activeEntry.primary ? 'active' : 'none'}
         >
           <div className="space-y-4">
-            <div className="space-y-2">
-              <FieldLabel>Primary</FieldLabel>
-              <div className="flex flex-wrap gap-2">
-                {PRIMARY_OPTIONS.map((option) => {
-                  const Icon = THROMBUS_LOCATION_ICONS[option.value]
-                  const selected = activeEntry.primary === option.value
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() =>
-                        updateEntry(activeEntry.id, {
-                          primary: selected ? null : option.value,
-                          sublocation: null,
-                          otherLocation: '',
-                        })
-                      }
-                      className={cn(
-                        'flex min-w-[5rem] flex-col items-center gap-1 rounded-lg px-3 py-2 text-[10px] font-medium transition-all',
-                        selected
-                          ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
-                          : 'bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-500))] ring-1 ring-inset ring-[hsl(var(--stroke-soft)/0.4)] hover:bg-[hsl(var(--tone-neutral-100))]',
-                      )}
-                      title={option.label}
-                    >
-                      {Icon && <Icon size={22} />}
-                      <span>{option.value}</span>
-                    </button>
-                  )
-                })}
-              </div>
+            <div className="flex flex-wrap gap-2">
+              {PRIMARY_OPTIONS.map((option) => {
+                const Icon = THROMBUS_LOCATION_ICONS[option.value]
+                const selected = activeEntry.primary === option.value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() =>
+                      updateEntry(activeEntry.id, {
+                        primary: selected ? null : option.value,
+                        sublocation: null,
+                        otherLocation: '',
+                      })
+                    }
+                    className={cn(
+                      'flex min-w-[6.25rem] flex-col items-center gap-1.5 rounded-lg px-3 py-3 text-[10px] font-medium transition-all',
+                      selected
+                        ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
+                        : 'bg-[hsl(var(--tone-neutral-50))] ring-1 ring-inset ring-[hsl(var(--stroke-soft)/0.4)] hover:bg-[hsl(var(--tone-neutral-100))]',
+                    )}
+                    title={option.label}
+                  >
+                    {Icon && (
+                      <span className={cn(selected ? 'text-white' : PRIMARY_ICON_COLORS[option.value])}>
+                        <Icon size={30} />
+                      </span>
+                    )}
+                    <span className={cn(selected ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))]')}>
+                      {option.value}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
 
             {activeEntry.primary === 'Other' ? (
@@ -466,23 +481,21 @@ export function CmrLvThrombusPage() {
           statusTone={morphologyFieldsSet > 0 ? 'active' : 'none'}
         >
           <div className="grid gap-x-8 gap-y-5 md:grid-cols-2">
-            <div className="space-y-2">
-              <FieldLabel>Maximum diameter</FieldLabel>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={activeEntry.morphology.maxDiameter ?? ''}
-                  onChange={(event) => {
-                    const nextValue = event.target.value === '' ? null : Number(event.target.value)
-                    updateMorphology(activeEntry.id, { maxDiameter: nextValue })
-                  }}
-                  placeholder="—"
-                  className="house-input w-24 text-center tabular-nums"
-                />
-                <span className="text-xs text-[hsl(var(--tone-neutral-400))]">mm</span>
-              </div>
+            <div className="grid gap-2 md:col-span-2 md:grid-cols-[minmax(10rem,12rem)_auto_1fr] md:items-center">
+              <span className="text-sm text-[hsl(var(--foreground))]">Maximum diameter</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={activeEntry.morphology.maxDiameter ?? ''}
+                onChange={(event) => {
+                  const nextValue = event.target.value === '' ? null : Number(event.target.value)
+                  updateMorphology(activeEntry.id, { maxDiameter: nextValue })
+                }}
+                placeholder="—"
+                className="house-input h-8 w-24 text-center tabular-nums text-xs"
+              />
+              <span className="text-xs text-muted-foreground">mm</span>
             </div>
 
             <div className="space-y-2">
