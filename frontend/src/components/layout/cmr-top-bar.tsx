@@ -5,7 +5,7 @@ import { CmrMark } from '@/components/layout/cmr-mark'
 import { Button } from '@/components/ui'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import { isCmrSubdomain, getCmrUserName, getCmrSessionToken, cmrLogout, isCmrAdmin } from '@/lib/cmr-auth'
+import { isCmrSubdomain, getCmrSessionToken, cmrLogout, isCmrAdmin } from '@/lib/cmr-auth'
 
 type CmrTopBarProps = {
   onOpenLeftNav: () => void
@@ -72,11 +72,11 @@ export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
                 Reference Database
               </button>
             )}
-            {isCmrSubdomain() && getCmrSessionToken() && (
+            {isCmrSubdomain() && getCmrSessionToken() && isCmrAdmin() && (
               <button
                 type="button"
                 onClick={() => navigate('/cmr-admin')}
-                className={cn(topNavItemBase, 'house-top-nav-item-account', isAdminPage && topNavItemActive)}
+                className={cn(topNavItemBase, 'house-top-nav-item-admin', isAdminPage && topNavItemActive)}
               >
                 Admin
               </button>
@@ -99,8 +99,7 @@ export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
           </button>
 
           {isCmrSubdomain() && getCmrSessionToken() && (
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground">{getCmrUserName()}</span>
+            <div className="flex items-center gap-2">
               <button
                 onClick={async () => {
                   const token = getCmrSessionToken()

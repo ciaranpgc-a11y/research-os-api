@@ -12,6 +12,7 @@ const sectionMarkerVariants = cva(
         neutral: 'bg-[hsl(var(--tone-neutral-500))]',
         positive: 'bg-[hsl(var(--section-style-workspace-accent))]',
         warning: 'bg-[hsl(var(--section-style-learning-centre-accent))]',
+        admin: 'bg-[hsl(var(--section-style-admin-accent))]',
         danger: 'bg-[hsl(var(--section-style-opportunities-accent))]',
         report: 'bg-[hsl(var(--section-style-report-accent))]',
       },

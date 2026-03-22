@@ -62,11 +62,15 @@ export function CmrReferenceNavigator({
     ? 'house-left-border-report'
     : variant === 'reference'
       ? 'house-left-border-profile'
+      : variant === 'admin'
+        ? 'house-left-border-admin'
       : 'house-left-border-learning-centre'
   const navItemClass = variant === 'report'
     ? houseNavigation.itemReport
     : variant === 'reference'
       ? houseNavigation.itemOverview
+      : variant === 'admin'
+        ? 'house-nav-item-admin'
       : houseNavigation.itemLearningCentre
   const navigate = useNavigate()
   const { pathname } = useLocation()
