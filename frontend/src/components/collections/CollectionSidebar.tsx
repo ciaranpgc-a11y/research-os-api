@@ -502,9 +502,13 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                   )}
                   style={{
                     borderLeft: `3px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
-                    backgroundColor: isDropTarget || isExpanded || isSelected
-                      ? `${COLLECTION_COLOUR_HEX[coll.colour]}18`
-                      : undefined,
+                    backgroundColor: isDropTarget
+                      ? `${COLLECTION_COLOUR_HEX[coll.colour]}30`
+                      : isSelected
+                        ? `${COLLECTION_COLOUR_HEX[coll.colour]}28`
+                        : isExpanded
+                          ? `${COLLECTION_COLOUR_HEX[coll.colour]}18`
+                          : undefined,
                     outlineColor: isDropTarget ? COLLECTION_COLOUR_HEX[coll.colour] : undefined,
                   }}
                   onClick={() => {
@@ -534,26 +538,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
               {/* Expanded subcollections */}
               {isExpanded && (
                 <div className="ml-4">
-                  {/* "All papers" entry (browse mode only) */}
-                  {mode === 'browse' && (
-                    <div
-                      className="flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors rounded-r-md"
-                      style={{
-                        backgroundColor: isSelected && selectedSubcollectionId === null
-                          ? `${COLLECTION_COLOUR_HEX[coll.colour]}28`
-                          : undefined,
-                      }}
-                      onClick={() => {
-                        onSelectCollection(coll.id)
-                        onSelectSubcollection(null)
-                      }}
-                    >
-                      <span className="flex-1 truncate text-sm font-medium">
-                        All papers
-                      </span>
-                    </div>
-                  )}
-
                   {/* Subcollection rows */}
                   {subs.map((sub) => {
                     const isSubSelected = selectedSubcollectionId === sub.id
@@ -610,10 +594,8 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           outlineColor: isSubDropTarget ? COLLECTION_COLOUR_HEX[coll.colour] : undefined,
                         }}
                         onClick={() => {
-                          if (mode === 'browse') {
-                            onSelectCollection(coll.id)
-                            onSelectSubcollection(sub.id)
-                          }
+                          onSelectCollection(coll.id)
+                          onSelectSubcollection(sub.id)
                         }}
                         onContextMenu={(e) => {
                           e.preventDefault()
