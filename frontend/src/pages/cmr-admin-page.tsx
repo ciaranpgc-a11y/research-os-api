@@ -99,17 +99,19 @@ function AdminMetricCard({
 }) {
   return (
     <CardPrimitive className="overflow-hidden border-[hsl(var(--section-style-admin-accent)/0.14)] bg-[hsl(var(--card))] shadow-[0_20px_48px_rgba(20,35,46,0.06)]">
-      <div className="flex h-full flex-col gap-4 p-[var(--space-4)]">
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--section-style-admin-accent))]">
-            {label}
-          </p>
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[hsl(var(--section-style-admin-accent)/0.16)] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--section-style-admin-accent))]">
+      <div className="flex items-center justify-between gap-6 p-[var(--space-4)]">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--section-style-admin-accent)/0.16)] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--section-style-admin-accent))]">
             <Icon className="h-4 w-4" />
           </span>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--section-style-admin-accent))]">
+              {label}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          </div>
         </div>
-        <p className="text-[2.2rem] font-semibold tracking-[-0.05em] text-[hsl(var(--foreground))]">{value}</p>
-        <p className="text-sm leading-7 text-muted-foreground">{description}</p>
+        <p className="shrink-0 text-[2.3rem] font-semibold tracking-[-0.05em] text-[hsl(var(--foreground))]">{value}</p>
       </div>
     </CardPrimitive>
   )
@@ -390,20 +392,69 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
         <div className="space-y-6">
           <CardPrimitive className={adminSurfaceClassName}>
             <CardHeader className="border-b border-[hsl(var(--border))]">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--section-style-admin-accent))]">
-                    Issue Code
-                  </p>
-                  <CardTitle>Issue a new access code</CardTitle>
-                </div>
-                <div className="rounded-full border border-[hsl(var(--section-style-admin-accent)/0.14)] bg-[hsl(var(--tone-accent-50))] px-3 py-1 text-xs font-semibold text-[hsl(var(--tone-accent-800))]">
-                  Generate or enter a code
-                </div>
-              </div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--section-style-admin-accent))]">
+                Issue Code
+              </p>
+              <CardTitle>Issue a new access code</CardTitle>
             </CardHeader>
 
-            <div className="space-y-5 px-[var(--space-3)] pb-[var(--space-3)]">
+            <div className="space-y-4 px-[var(--space-3)] py-[var(--space-3)]">
+              <div className="rounded-[var(--radius-md)] border border-[hsl(var(--stroke-soft)/0.6)] bg-white p-4">
+                <form onSubmit={handleCreate} className="grid gap-4 xl:grid-cols-[minmax(0,17rem)_minmax(0,24rem)_auto] xl:items-end">
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="cmr-code-name"
+                      className="block text-xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--tone-neutral-600))]"
+                    >
+                      Name
+                    </label>
+                    <input
+                      id="cmr-code-name"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder="Dr. Smith"
+                      className="house-input w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="cmr-issued-code"
+                      className="block text-xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--tone-neutral-600))]"
+                    >
+                      Access code
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                      <input
+                        id="cmr-issued-code"
+                        value={newCode}
+                        onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+                        placeholder="CMR-XXXX-XXXX"
+                        className="house-input w-full font-mono tracking-[0.16em]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleGenerateCode}
+                        className="house-button-action inline-flex h-10 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold whitespace-nowrap"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        Generate
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-end justify-start xl:justify-end">
+                    <button
+                      type="submit"
+                      disabled={creating || !newName.trim()}
+                      className="house-button-action-primary inline-flex h-11 w-full items-center justify-center rounded-md px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[14rem]"
+                    >
+                      {creating ? 'Issuing code...' : 'Issue access code'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
               {createdCode && (
                 <div className="rounded-[var(--radius-md)] border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] p-[var(--space-3)]">
                   <div className="flex items-start justify-between gap-4">
@@ -424,7 +475,7 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                       className="house-button-action inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold"
                     >
                       <Copy className="h-4 w-4" />
-                      {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Retry copy' : 'Copy'}
+                  {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Retry copy' : 'Copy'}
                     </button>
                   </div>
                 </div>
@@ -435,60 +486,6 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                   {createError}
                 </p>
               )}
-
-              <form onSubmit={handleCreate} className="grid gap-4 xl:grid-cols-[minmax(0,18rem)_minmax(0,22rem)_auto] xl:items-end">
-                <div className="space-y-2">
-                  <label
-                    htmlFor="cmr-code-name"
-                    className="block text-xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--tone-neutral-600))]"
-                  >
-                    Name
-                  </label>
-                  <input
-                    id="cmr-code-name"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Dr. Smith"
-                    className="house-input w-full"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label
-                    htmlFor="cmr-issued-code"
-                    className="block text-xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--tone-neutral-600))]"
-                  >
-                    Access code
-                  </label>
-                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-                    <input
-                      id="cmr-issued-code"
-                      value={newCode}
-                      onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-                      placeholder="CMR-XXXX-XXXX"
-                      className="house-input w-full font-mono tracking-[0.16em]"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleGenerateCode}
-                      className="house-button-action inline-flex h-10 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      Generate
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-end">
-                  <button
-                    type="submit"
-                    disabled={creating || !newName.trim()}
-                    className="house-button-action-primary inline-flex h-10 w-full items-center justify-center rounded-md px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 xl:min-w-[14rem]"
-                  >
-                    {creating ? 'Issuing code...' : 'Issue access code'}
-                  </button>
-                </div>
-              </form>
             </div>
           </CardPrimitive>
 
@@ -507,24 +504,24 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
               </div>
             </CardHeader>
 
-            <div className="p-[var(--space-3)] pt-0">
+            <div className="p-[var(--space-3)] pt-[var(--space-3)]">
               <div className="house-table-context-admin overflow-hidden rounded-[var(--radius-md)] border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
                 <table data-house-no-column-resize="true" className="w-full table-fixed border-collapse text-sm">
                   <colgroup>
-                    <col style={{ width: '34%' }} />
+                    <col style={{ width: '32%' }} />
                     <col style={{ width: '16%' }} />
-                    <col style={{ width: '16%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '18%' }} />
                     <col style={{ width: '10%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '12%' }} />
                   </colgroup>
                   <thead className="house-table-head">
                     <tr>
                       <th className="house-table-head-text px-4 py-3 text-left">Name</th>
-                      <th className="house-table-head-text px-4 py-3 text-left">Created</th>
-                      <th className="house-table-head-text px-4 py-3 text-left">Last access</th>
-                      <th className="house-table-head-text px-4 py-3 text-right">Sessions</th>
-                      <th className="house-table-head-text px-4 py-3 text-center">Status</th>
+                      <th className="house-table-head-text px-3 py-3 text-left">Created</th>
+                      <th className="house-table-head-text px-3 py-3 text-left">Last access</th>
+                      <th className="house-table-head-text px-3 py-3 text-right">Sessions</th>
+                      <th className="house-table-head-text px-3 py-3 text-center">Status</th>
                       <th className="house-table-head-text px-4 py-3 text-right">Action</th>
                     </tr>
                   </thead>
@@ -534,22 +531,22 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                         key={entry.id}
                         className="house-table-row border-b border-[hsl(var(--stroke-soft)/0.42)] last:border-b-0 hover:bg-[hsl(var(--tone-neutral-50)/0.72)]"
                       >
-                        <td className="house-table-cell-text break-words px-4 py-3 font-medium text-[hsl(var(--foreground))]">
+                        <td className="house-table-cell-text break-words px-4 py-3 font-medium leading-6 text-[hsl(var(--foreground))]">
                           {entry.name}
                         </td>
-                        <td className="house-table-cell-text px-4 py-3 text-[hsl(var(--tone-neutral-600))]">
+                        <td className="house-table-cell-text whitespace-nowrap px-3 py-3 text-[hsl(var(--tone-neutral-600))]">
                           {formatDate(entry.created_at)}
                         </td>
-                        <td className="house-table-cell-text px-4 py-3 text-[hsl(var(--tone-neutral-600))]">
+                        <td className="house-table-cell-text whitespace-nowrap px-3 py-3 text-[hsl(var(--tone-neutral-600))]">
                           {timeAgo(entry.last_accessed_at)}
                         </td>
-                        <td className="house-table-cell-text px-4 py-3 text-right tabular-nums text-[hsl(var(--foreground))]">
+                        <td className="house-table-cell-text px-3 py-3 text-right tabular-nums text-[hsl(var(--foreground))]">
                           {entry.session_count}
                         </td>
-                        <td className="house-table-cell-text px-4 py-3 text-center">
+                        <td className="house-table-cell-text px-3 py-3 text-center">
                           <span
                             className={cn(
-                              'inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]',
+                              'inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] whitespace-nowrap',
                               entry.is_active
                                 ? 'border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-800))]'
                                 : 'border border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]',
