@@ -98,18 +98,35 @@ function AdminMetricCard({
   description: string
 }) {
   return (
-    <CardPrimitive className="overflow-hidden border border-white/12 bg-white/7 shadow-none backdrop-blur-sm">
+    <CardPrimitive className="overflow-hidden border-[hsl(var(--section-style-admin-accent)/0.14)] bg-[hsl(var(--card))] shadow-[0_20px_48px_rgba(20,35,46,0.06)]">
       <div className="flex h-full flex-col gap-4 p-[var(--space-4)]">
         <div className="flex items-center justify-between gap-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/66">{label}</p>
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/8 text-white/82">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--section-style-admin-accent))]">
+            {label}
+          </p>
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[hsl(var(--section-style-admin-accent)/0.16)] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--section-style-admin-accent))]">
             <Icon className="h-4 w-4" />
           </span>
         </div>
-        <p className="text-[2.2rem] font-semibold tracking-[-0.05em] text-white">{value}</p>
-        <p className="text-sm leading-7 text-white/74">{description}</p>
+        <p className="text-[2.2rem] font-semibold tracking-[-0.05em] text-[hsl(var(--foreground))]">{value}</p>
+        <p className="text-sm leading-7 text-muted-foreground">{description}</p>
       </div>
     </CardPrimitive>
+  )
+}
+
+function AdminFeatureCard({
+  title,
+  description,
+}: {
+  title: string
+  description: string
+}) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[hsl(var(--section-style-admin-accent)/0.12)] bg-[hsl(var(--card))] p-4 shadow-[0_12px_28px_rgba(20,35,46,0.04)]">
+      <p className="text-sm font-semibold text-[hsl(var(--foreground))]">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+    </div>
   )
 }
 
@@ -238,6 +255,8 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
   const activeCount = issuedCodes.filter((entry) => entry.is_active).length
   const revokedCount = issuedCodes.filter((entry) => !entry.is_active).length
   const recentCount = issuedCodes.filter((entry) => usedRecently(entry.last_accessed_at)).length
+  const adminSurfaceClassName =
+    'border-[hsl(var(--section-style-admin-accent)/0.16)] bg-[linear-gradient(180deg,hsl(var(--card))_0%,hsl(var(--tone-accent-50)/0.44)_100%)] shadow-[0_20px_48px_rgba(20,35,46,0.08)]'
 
   const titleRow = (
     <Row align="center" gap="md" wrap={false} className="house-page-title-row">
@@ -293,7 +312,7 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
     if (standalone) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-background p-4">
-          <CardPrimitive className="w-full max-w-md border-[hsl(var(--section-style-admin-accent)/0.2)] shadow-[0_24px_64px_rgba(15,23,42,0.1)]">
+          <CardPrimitive className={`w-full max-w-md ${adminSurfaceClassName}`}>
             <div className="p-6 text-center text-sm text-muted-foreground">
               Checking administrator access...
             </div>
@@ -306,7 +325,7 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
       <Stack data-house-role="page" space="lg">
         <section data-section-key="Overview" className="scroll-mt-20 space-y-6">
           {titleRow}
-          <CardPrimitive className="border-[hsl(var(--section-style-admin-accent)/0.16)] bg-[linear-gradient(180deg,hsl(var(--card))_0%,hsl(var(--tone-accent-50)/0.58)_100%)] shadow-[0_20px_48px_rgba(20,35,46,0.08)]">
+          <CardPrimitive className={adminSurfaceClassName}>
             <div className="p-[var(--space-4)] text-sm text-muted-foreground">
               Checking administrator access...
             </div>
@@ -320,16 +339,16 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
     if (standalone) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-background p-4">
-          <CardPrimitive className="w-full max-w-md overflow-hidden border-[hsl(var(--section-style-admin-accent)/0.26)] shadow-[0_24px_70px_rgba(15,23,42,0.12)]">
-            <div className="border-b border-[hsl(var(--section-style-admin-accent)/0.22)] bg-[linear-gradient(135deg,hsl(var(--tone-accent-900))_0%,hsl(var(--tone-accent-800))_100%)] px-6 py-6 text-white">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/68">
+          <CardPrimitive className={`w-full max-w-md overflow-hidden ${adminSurfaceClassName}`}>
+            <div className="border-b border-[hsl(var(--section-style-admin-accent)/0.14)] px-6 py-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--section-style-admin-accent))]">
                 Administrator
               </p>
-              <h1 className="mt-3 text-[2rem] font-semibold tracking-[-0.04em] text-white">
+              <h1 className="mt-3 text-[2rem] font-semibold tracking-[-0.04em] text-[hsl(var(--foreground))]">
                 Unlock access management
               </h1>
-              <p className="mt-3 text-sm leading-7 text-white/76">
-                Enter your administrator password to manage access codes for the CMR workspace.
+              <p className="mt-3 text-sm leading-7 text-muted-foreground">
+                Enter your administrator password to issue codes, review usage, and revoke access inside the CMR workspace.
               </p>
             </div>
             <div className="p-6">{loginForm}</div>
@@ -344,44 +363,38 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
           {titleRow}
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(22rem,0.92fr)]">
-            <CardPrimitive className="overflow-hidden border-[hsl(var(--section-style-admin-accent)/0.24)] bg-[linear-gradient(135deg,hsl(var(--tone-accent-900))_0%,hsl(var(--tone-accent-800))_52%,hsl(var(--tone-neutral-900))_100%)] shadow-[0_24px_64px_rgba(15,23,42,0.16)]">
+            <CardPrimitive className={adminSurfaceClassName}>
               <div className="space-y-6 p-[var(--space-4)] md:p-[var(--space-5)]">
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/68">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--section-style-admin-accent))]">
                     Admin controls
                   </p>
-                  <h2 className="max-w-[13ch] text-[2.2rem] font-semibold tracking-[-0.05em] text-white">
-                    Access management built into the same CMR shell.
+                  <h2 className="max-w-[15ch] text-[2.2rem] font-semibold tracking-[-0.05em] text-[hsl(var(--foreground))]">
+                    Access management inside the same CMR shell.
                   </h2>
-                  <p className="max-w-2xl text-sm leading-7 text-white/76">
+                  <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
                     Unlock the administrator workspace to issue codes, review recent sessions, and revoke access without leaving the platform.
                   </p>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/6 p-4">
-                    <p className="text-sm font-semibold text-white">Generate codes</p>
-                    <p className="mt-2 text-sm leading-6 text-white/70">
-                      Create fresh access credentials without typing every code by hand.
-                    </p>
-                  </div>
-                  <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/6 p-4">
-                    <p className="text-sm font-semibold text-white">Review usage</p>
-                    <p className="mt-2 text-sm leading-6 text-white/70">
-                      See which codes are still active and which have been used recently.
-                    </p>
-                  </div>
-                  <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/6 p-4">
-                    <p className="text-sm font-semibold text-white">Revoke fast</p>
-                    <p className="mt-2 text-sm leading-6 text-white/70">
-                      Remove access immediately when a code should no longer work.
-                    </p>
-                  </div>
+                  <AdminFeatureCard
+                    title="Generate codes"
+                    description="Create fresh access credentials without typing every code by hand."
+                  />
+                  <AdminFeatureCard
+                    title="Review usage"
+                    description="See which codes are still active and which have been used recently."
+                  />
+                  <AdminFeatureCard
+                    title="Revoke fast"
+                    description="Remove access immediately when a code should no longer work."
+                  />
                 </div>
               </div>
             </CardPrimitive>
 
-            <CardPrimitive className="border-[hsl(var(--section-style-admin-accent)/0.16)] bg-[linear-gradient(180deg,hsl(var(--card))_0%,hsl(var(--tone-accent-50)/0.58)_100%)] shadow-[0_20px_48px_rgba(20,35,46,0.08)]">
+            <CardPrimitive className={adminSurfaceClassName}>
               <CardHeader>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--section-style-admin-accent))]">
                   Verification
@@ -404,70 +417,68 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
       <section data-section-key="Overview" className="scroll-mt-20 space-y-6">
         {titleRow}
 
-        <CardPrimitive className="overflow-hidden border-[hsl(var(--section-style-admin-accent)/0.24)] bg-[linear-gradient(135deg,hsl(var(--tone-accent-900))_0%,hsl(var(--tone-accent-800))_52%,hsl(var(--tone-neutral-900))_100%)] shadow-[0_24px_64px_rgba(15,23,42,0.16)]">
-          <div className="grid gap-6 p-[var(--space-4)] md:p-[var(--space-5)] xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
-            <div className="space-y-6">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)]">
+          <CardPrimitive className={adminSurfaceClassName}>
+            <div className="space-y-6 p-[var(--space-4)] md:p-[var(--space-5)]">
               <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/68">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--section-style-admin-accent))]">
                   Access control
                 </p>
-                <h2 className="max-w-[15ch] text-[2.2rem] font-semibold tracking-[-0.05em] text-white">
+                <h2 className="max-w-[15ch] text-[2.2rem] font-semibold tracking-[-0.05em] text-[hsl(var(--foreground))]">
                   Manage CMR entry without leaving the reporting workspace.
                 </h2>
-                <p className="max-w-2xl text-sm leading-7 text-white/76">
+                <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
                   Generate named access codes, monitor recent use, and revoke sessions from the same shell used for reference and reporting.
                 </p>
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/6 p-4">
-                  <p className="text-sm font-semibold text-white">Generate secure codes</p>
-                  <p className="mt-2 text-sm leading-6 text-white/70">
-                    Start each new issue with a generated code and replace it only if you need a custom value.
-                  </p>
-                </div>
-                <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/6 p-4">
-                  <p className="text-sm font-semibold text-white">Track active access</p>
-                  <p className="mt-2 text-sm leading-6 text-white/70">
-                    Review which issued codes are active and which have been used in the last week.
-                  </p>
-                </div>
-                <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/6 p-4">
-                  <p className="text-sm font-semibold text-white">Revoke instantly</p>
-                  <p className="mt-2 text-sm leading-6 text-white/70">
-                    Shut down a code immediately when a reader or cohort should no longer sign in.
-                  </p>
-                </div>
+                <AdminFeatureCard
+                  title="Generate secure codes"
+                  description="Start each new issue with a generated code and replace it only if you need a custom value."
+                />
+                <AdminFeatureCard
+                  title="Track active access"
+                  description="Review which issued codes are active and which have been used in the last week."
+                />
+                <AdminFeatureCard
+                  title="Revoke instantly"
+                  description="Shut down a code immediately when a reader or cohort should no longer sign in."
+                />
+              </div>
+
+              <div className="rounded-[var(--radius-md)] border border-[hsl(var(--section-style-admin-accent)/0.12)] bg-white px-4 py-3 text-sm text-muted-foreground">
+                Administrator-issued codes are managed here, but the workflow stays inside the same CMR shell as the rest of the platform.
               </div>
             </div>
+          </CardPrimitive>
 
-            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-              <AdminMetricCard
-                icon={KeyRound}
-                label="Issued Codes"
-                value={String(issuedCount)}
-                description="Named access codes currently tracked for the CMR workspace."
-              />
-              <AdminMetricCard
-                icon={ShieldCheck}
-                label="Active"
-                value={String(activeCount)}
-                description="Codes that can still be used to sign in right now."
-              />
-              <AdminMetricCard
-                icon={Clock3}
-                label="Recent Use"
-                value={String(recentCount)}
-                description="Issued codes accessed within the last seven days."
-              />
-            </div>
+          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <AdminMetricCard
+              icon={KeyRound}
+              label="Issued Codes"
+              value={String(issuedCount)}
+              description="Named access codes currently tracked for the CMR workspace."
+            />
+            <AdminMetricCard
+              icon={ShieldCheck}
+              label="Active"
+              value={String(activeCount)}
+              description="Codes that can still be used to sign in right now."
+            />
+            <AdminMetricCard
+              icon={Clock3}
+              label="Recent Use"
+              value={String(recentCount)}
+              description="Issued codes accessed within the last seven days."
+            />
           </div>
-        </CardPrimitive>
+        </div>
       </section>
 
       <section data-section-key="Access Codes" className="scroll-mt-20">
         <div className="grid gap-6 xl:grid-cols-[minmax(22rem,24rem)_minmax(0,1fr)]">
-          <CardPrimitive className="border-[hsl(var(--section-style-admin-accent)/0.16)] bg-[linear-gradient(180deg,hsl(var(--card))_0%,hsl(var(--tone-accent-50)/0.68)_100%)] shadow-[0_20px_48px_rgba(20,35,46,0.08)]">
+          <CardPrimitive className={adminSurfaceClassName}>
             <CardHeader>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--section-style-admin-accent))]">
                 Issue Code
