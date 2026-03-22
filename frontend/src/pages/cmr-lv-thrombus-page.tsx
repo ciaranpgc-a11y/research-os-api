@@ -207,7 +207,7 @@ function PillSelect<T extends string>({
           className={cn(
             'rounded-full px-3 py-1 text-xs font-medium transition-all',
             value === option.value
-              ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
+              ? 'bg-[hsl(var(--tone-neutral-900))] text-white shadow-sm'
               : 'bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-600))] ring-1 ring-inset ring-[hsl(var(--stroke-soft)/0.5)] hover:bg-[hsl(var(--tone-neutral-100))]',
           )}
         >
