@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Plus, MoreHorizontal, X, Check, Pencil, Palette, Trash2, ChevronRight } from 'lucide-react'
+import { Plus, X, Check, Pencil, Palette, Trash2, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   COLLECTION_COLOUR_HEX,
@@ -58,66 +58,70 @@ function ColourPicker({
 }
 
 // ---------------------------------------------------------------------------
-// CollectionMenu
+// ContextMenu — fixed-position right-click menu
 // ---------------------------------------------------------------------------
 
-function CollectionMenu({
+function ContextMenu({
+  x,
+  y,
   onRename,
   onDelete,
   onChangeColour,
+  onNewCollection,
   onClose,
 }: {
+  x: number
+  y: number
   onRename: () => void
   onDelete: () => void
   onChangeColour: () => void
+  onNewCollection: () => void
   onClose: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose()
     }
+    // Also close on any context menu elsewhere
+    function ctxHandler() { onClose() }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('contextmenu', ctxHandler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('contextmenu', ctxHandler)
+    }
   }, [onClose])
 
-  const item =
-    'flex w-full items-center gap-2 whitespace-nowrap rounded px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]'
+  // Clamp to viewport so menu doesn't go offscreen
+  const menuWidth = 176
+  const menuHeight = 148
+  const left = Math.min(x, window.innerWidth - menuWidth - 8)
+  const top = Math.min(y, window.innerHeight - menuHeight - 8)
+
+  const item = 'flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-sm text-foreground hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]'
 
   return (
     <div
       ref={ref}
-      className="absolute right-0 top-full mt-1 z-50 w-[11rem] rounded-md border border-border bg-card p-1 shadow-lg"
+      className="fixed z-[200] w-44 rounded-lg border border-border bg-card p-1 shadow-xl"
+      style={{ left, top }}
+      onContextMenu={(e) => e.preventDefault()}
     >
-      <button
-        type="button"
-        className={item}
-        onClick={() => {
-          onRename()
-          onClose()
-        }}
-      >
-        <Pencil className="h-4 w-4 shrink-0" /> Rename
+      <button type="button" className={item} onClick={() => { onRename(); onClose() }}>
+        <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> Rename
       </button>
-      <button
-        type="button"
-        className={item}
-        onClick={() => {
-          onChangeColour()
-          onClose()
-        }}
-      >
-        <Palette className="h-4 w-4 shrink-0" /> Change colour
+      <button type="button" className={item} onClick={() => { onChangeColour(); onClose() }}>
+        <Palette className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> Change colour
       </button>
-      <button
-        type="button"
-        className={cn(item, 'text-destructive hover:bg-destructive/10 hover:text-destructive')}
-        onClick={() => {
-          onDelete()
-          onClose()
-        }}
-      >
-        <Trash2 className="h-4 w-4 shrink-0" /> Delete
+      <div className="my-1 border-t border-border" />
+      <button type="button" className={item} onClick={() => { onNewCollection(); onClose() }}>
+        <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> New collection
+      </button>
+      <div className="my-1 border-t border-border" />
+      <button type="button" className={cn(item, 'text-destructive hover:bg-destructive/10 hover:text-destructive')} onClick={() => { onDelete(); onClose() }}>
+        <Trash2 className="h-3.5 w-3.5 shrink-0" /> Delete
       </button>
     </div>
   )
@@ -200,7 +204,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
   } = props
 
   // ---- internal state ----
-  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ collectionId: string; x: number; y: number } | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [colourPickerId, setColourPickerId] = useState<string | null>(null)
@@ -306,7 +310,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
 
   // ---- render ----
   return (
-    <div className="w-[280px] min-w-[280px] bg-card border-r border-border flex flex-col">
+    <div className="w-[380px] min-w-[380px] bg-card border-r border-border flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-sm font-medium text-foreground">Collections</span>
@@ -321,7 +325,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
       </div>
 
       {/* Collection list */}
-      <div className="flex-1 overflow-y-auto py-2 px-1.5">
+      <div className="flex-1 overflow-y-auto py-1">
         {/* Empty state */}
         {collections.length === 0 && !creatingCollection && (
           <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
@@ -345,12 +349,12 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
           const subs = subcollectionsMap.get(coll.id) ?? []
 
           return (
-            <div key={coll.id}>
+            <div key={coll.id} className="px-3 py-0.5 border-b border-border/40 last:border-0">
               {/* Collection row */}
               {renamingId === coll.id ? (
                 /* Inline rename */
                 <div
-                  className="flex items-center gap-2 px-3 py-2"
+                  className="flex items-center gap-2 pl-4 pr-3 py-2"
                   style={{ borderLeft: `3px solid ${COLLECTION_COLOUR_HEX[coll.colour]}` }}
                 >
                   <input
@@ -385,7 +389,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                 /* Normal row */
                 <div
                   className={cn(
-                    'group flex items-center gap-2 px-3 py-2.5 cursor-pointer text-sm transition-colors rounded-r-md',
+                    'group flex items-center gap-2 pl-4 pr-2 py-2.5 cursor-pointer text-sm transition-colors rounded-r-md select-none',
                     isSelected && 'bg-[hsl(var(--tone-accent-100))]',
                     isDropTarget &&
                       'outline-2 outline-dashed outline-[hsl(var(--tone-accent-500))] bg-[hsl(var(--tone-accent-50))]',
@@ -398,17 +402,14 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                       onSelectSubcollection(null)
                     }
                   }}
-                  onDragOver={
-                    mode === 'organise'
-                      ? (e) => onDragOver(e, coll.id)
-                      : undefined
-                  }
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setContextMenu({ collectionId: coll.id, x: e.clientX, y: e.clientY })
+                  }}
+                  onDragOver={mode === 'organise' ? (e) => onDragOver(e, coll.id) : undefined}
                   onDragLeave={mode === 'organise' ? onDragLeave : undefined}
-                  onDrop={
-                    mode === 'organise'
-                      ? () => onDrop(coll.id)
-                      : undefined
-                  }
+                  onDrop={mode === 'organise' ? () => onDrop(coll.id) : undefined}
                 >
                   {/* Name + count */}
                   <span className="flex-1 truncate text-foreground">{coll.name}</span>
@@ -416,37 +417,16 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     {coll.publication_count}
                   </span>
 
-                  {/* Three-dot menu */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      className="h-6 w-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setMenuOpenId(menuOpenId === coll.id ? null : coll.id)
-                      }}
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
-                    {menuOpenId === coll.id && (
-                      <CollectionMenu
-                        onRename={() => startRename(coll)}
-                        onDelete={() => onDeleteCollection(coll.id)}
-                        onChangeColour={() => {
-                          setColourPickerId(coll.id)
-                          setMenuOpenId(null)
-                        }}
-                        onClose={() => setMenuOpenId(null)}
-                      />
-                    )}
-                    {colourPickerId === coll.id && (
+                  {/* Colour picker (triggered from context menu) */}
+                  {colourPickerId === coll.id && (
+                    <div className="relative">
                       <ColourPicker
                         value={coll.colour}
                         onChange={(c) => onColourChange(coll.id, c)}
                         onClose={() => setColourPickerId(null)}
                       />
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   {/* Expand chevron */}
                   <button
@@ -699,6 +679,23 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
           </div>
         )}
       </div>
+
+      {/* Right-click context menu */}
+      {contextMenu && (() => {
+        const coll = collections.find((c) => c.id === contextMenu.collectionId)
+        if (!coll) return null
+        return (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onRename={() => startRename(coll)}
+            onDelete={() => onDeleteCollection(coll.id)}
+            onChangeColour={() => setColourPickerId(coll.id)}
+            onNewCollection={onStartCreateCollection}
+            onClose={() => setContextMenu(null)}
+          />
+        )
+      })()}
     </div>
   )
 }
