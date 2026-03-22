@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, MoreHorizontal, Search, GripVertical, X, Check, Trash2, Pencil, Palette, FolderPlus } from 'lucide-react'
+import { Plus, Search, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import {
@@ -15,9 +15,10 @@ import {
   removePublicationFromCollection,
   reorderCollectionPublications,
   fetchPublicationCollections,
+  movePublicationSubcollection,
+  updateSubcollection,
 } from '@/lib/collections-api'
 import {
-  COLLECTION_COLOUR_HEX,
   type CollectionColour,
   type CollectionPayload,
   type SubcollectionPayload,
@@ -25,18 +26,10 @@ import {
   type PublicationCollectionSummary,
 } from '@/types/collections'
 import type { PersonaWork } from '@/types/impact'
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const ALL_COLOURS: CollectionColour[] = [
-  'indigo', 'amber', 'emerald', 'red', 'violet',
-  'sky', 'pink', 'teal', 'orange', 'slate',
-]
-
-type ViewportMode = 'organise' | 'browse'
-type PubFilter = 'all' | 'uncollected'
+import { CollectionSidebar } from './CollectionSidebar'
+import { PublicationCard } from './PublicationCard'
+import { ConfirmDeleteDialog } from './ConfirmDeleteDialog'
+import { autoAssignColour, type ViewportMode, type PubFilter } from './collections-utils'
 
 // ---------------------------------------------------------------------------
 // Toast
@@ -48,85 +41,8 @@ function Toast({ message, onDone }: { message: string; onDone: () => void }) {
     return () => clearTimeout(t)
   }, [onDone])
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg animate-slide-up">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-foreground text-background text-sm px-4 py-2.5 rounded-lg shadow-lg animate-slide-up">
       {message}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Colour picker popover
-// ---------------------------------------------------------------------------
-
-function ColourPicker({
-  value,
-  onChange,
-  onClose,
-}: {
-  value: CollectionColour
-  onChange: (c: CollectionColour) => void
-  onClose: () => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [onClose])
-
-  return (
-    <div ref={ref} className="absolute left-full top-0 ml-1 z-50 bg-white border border-slate-200 rounded-lg shadow-lg p-2 grid grid-cols-5 gap-1.5" style={{ width: 140 }}>
-      {ALL_COLOURS.map((c) => (
-        <button
-          key={c}
-          type="button"
-          className={cn('w-5 h-5 rounded-full border-2 transition-transform hover:scale-110', c === value ? 'border-slate-800' : 'border-transparent')}
-          style={{ backgroundColor: COLLECTION_COLOUR_HEX[c] }}
-          onClick={() => { onChange(c); onClose() }}
-        />
-      ))}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Three-dot menu
-// ---------------------------------------------------------------------------
-
-function CollectionMenu({
-  onRename,
-  onDelete,
-  onChangeColour,
-  onClose,
-}: {
-  onRename: () => void
-  onDelete: () => void
-  onChangeColour: () => void
-  onClose: () => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [onClose])
-
-  const item = 'flex items-center gap-2 w-full px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 rounded'
-  return (
-    <div ref={ref} className="absolute right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-40">
-      <button type="button" className={item} onClick={() => { onRename(); onClose() }}>
-        <Pencil className="w-3.5 h-3.5" /> Rename
-      </button>
-      <button type="button" className={item} onClick={() => { onChangeColour(); onClose() }}>
-        <Palette className="w-3.5 h-3.5" /> Change colour
-      </button>
-      <button type="button" className={cn(item, 'text-red-600 hover:bg-red-50')} onClick={() => { onDelete(); onClose() }}>
-        <Trash2 className="w-3.5 h-3.5" /> Delete
-      </button>
     </div>
   )
 }
@@ -158,7 +74,6 @@ export function CollectionsViewport({
 
   // browse mode
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
-  const [subcollections, setSubcollections] = useState<SubcollectionPayload[]>([])
   const [selectedSubcollectionId, setSelectedSubcollectionId] = useState<string | null>(null)
   const [collectionPubs, setCollectionPubs] = useState<CollectionPublicationPayload[]>([])
 
@@ -166,23 +81,33 @@ export function CollectionsViewport({
   const [creatingCollection, setCreatingCollection] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
   const [newCollectionColour, setNewCollectionColour] = useState<CollectionColour>('indigo')
-  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
-  const [renamingId, setRenamingId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [colourPickerId, setColourPickerId] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  // subcollection management
-  const [creatingSub, setCreatingSub] = useState(false)
-  const [newSubName, setNewSubName] = useState('')
+  // expand/collapse tree
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  // subcollections cache (lazy loaded)
+  const [subcollectionsMap, setSubcollectionsMap] = useState<Map<string, SubcollectionPayload[]>>(new Map())
+
+  // drop pulse animation
+  const [pulsingId, setPulsingId] = useState<string | null>(null)
+
+  // delete confirmation
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: 'collection' | 'subcollection'
+    id: string
+    name: string
+    count: number
+    parentId?: string
+  } | null>(null)
 
   // toast
   const [toast, setToast] = useState<string | null>(null)
 
   // refs
-  const renameInputRef = useRef<HTMLInputElement>(null)
   const newCollectionInputRef = useRef<HTMLInputElement>(null)
-  const newSubInputRef = useRef<HTMLInputElement>(null)
+
+  // browse drag reorder
+  const [browseDragIdx, setBrowseDragIdx] = useState<number | null>(null)
 
   // ---- bootstrap ----
   useEffect(() => {
@@ -213,28 +138,6 @@ export function CollectionsViewport({
     return () => { cancelled = true }
   }, [works])
 
-  // ---- load subcollections + pubs when collection selected (browse) ----
-  useEffect(() => {
-    if (mode !== 'browse' || !selectedCollectionId) {
-      setSubcollections([])
-      setCollectionPubs([])
-      return
-    }
-    let cancelled = false
-    async function load() {
-      const [subs, pubs] = await Promise.all([
-        fetchSubcollections(selectedCollectionId!).catch(() => [] as SubcollectionPayload[]),
-        fetchCollectionPublications(selectedCollectionId!).catch(() => [] as CollectionPublicationPayload[]),
-      ])
-      if (cancelled) return
-      setSubcollections(subs)
-      setCollectionPubs(pubs)
-      setSelectedSubcollectionId(null)
-    }
-    void load()
-    return () => { cancelled = true }
-  }, [mode, selectedCollectionId])
-
   // ---- helpers ----
   const refreshCollections = useCallback(async () => {
     const colls = await fetchCollections().catch(() => [] as CollectionPayload[])
@@ -255,6 +158,45 @@ export function CollectionsViewport({
     const pubs = await fetchCollectionPublications(selectedCollectionId).catch(() => [] as CollectionPublicationPayload[])
     setCollectionPubs(pubs)
   }, [selectedCollectionId])
+
+  // ---- subcollections cache ----
+  const handleSubcollectionsFetched = useCallback((collectionId: string, subs: SubcollectionPayload[]) => {
+    setSubcollectionsMap((prev) => {
+      const next = new Map(prev)
+      next.set(collectionId, subs)
+      return next
+    })
+  }, [])
+
+  const handleToggleExpand = useCallback((collectionId: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(collectionId)) next.delete(collectionId)
+      else next.add(collectionId)
+      return next
+    })
+  }, [])
+
+  // ---- load subcollections + pubs when collection selected (browse) ----
+  useEffect(() => {
+    if (mode !== 'browse' || !selectedCollectionId) {
+      setCollectionPubs([])
+      return
+    }
+    let cancelled = false
+    async function load() {
+      const [subs, pubs] = await Promise.all([
+        fetchSubcollections(selectedCollectionId!).catch(() => [] as SubcollectionPayload[]),
+        fetchCollectionPublications(selectedCollectionId!).catch(() => [] as CollectionPublicationPayload[]),
+      ])
+      if (cancelled) return
+      handleSubcollectionsFetched(selectedCollectionId!, subs)
+      setCollectionPubs(pubs)
+      setSelectedSubcollectionId(null)
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [mode, selectedCollectionId, handleSubcollectionsFetched])
 
   // ---- filtered publications (organise mode) ----
   const filteredWorks = useMemo(() => {
@@ -295,6 +237,8 @@ export function CollectionsViewport({
     if (!dragWorkId) return
     try {
       await addPublicationsToCollection(collectionId, [dragWorkId])
+      setPulsingId(collectionId)
+      setTimeout(() => setPulsingId(null), 700)
       const coll = collections.find((c) => c.id === collectionId)
       setToast(`Added to ${coll?.name || 'collection'}`)
       await Promise.all([refreshCollections(), refreshPubCollections(dragWorkId)])
@@ -305,6 +249,11 @@ export function CollectionsViewport({
   }, [dragWorkId, collections, refreshCollections, refreshPubCollections])
 
   // ---- collection CRUD ----
+  const handleStartCreateCollection = useCallback(() => {
+    setNewCollectionColour(autoAssignColour(collections))
+    setCreatingCollection(true)
+  }, [collections])
+
   const handleCreateCollection = useCallback(async () => {
     const name = newCollectionName.trim()
     if (!name) return
@@ -319,17 +268,14 @@ export function CollectionsViewport({
     }
   }, [newCollectionName, newCollectionColour, refreshCollections])
 
-  const handleRename = useCallback(async (id: string) => {
-    const name = renameValue.trim()
-    if (!name) { setRenamingId(null); return }
+  const handleRenameCollection = useCallback(async (id: string, newName: string) => {
     try {
-      await updateCollection(id, { name })
-      setRenamingId(null)
+      await updateCollection(id, { name: newName })
       await refreshCollections()
     } catch {
       setToast('Failed to rename collection')
     }
-  }, [renameValue, refreshCollections])
+  }, [refreshCollections])
 
   const handleColourChange = useCallback(async (id: string, colour: CollectionColour) => {
     try {
@@ -340,43 +286,73 @@ export function CollectionsViewport({
     }
   }, [refreshCollections])
 
-  const handleDeleteCollection = useCallback(async (id: string) => {
+  // ---- delete confirmation flow ----
+  const handleRequestDeleteCollection = useCallback((id: string) => {
+    const coll = collections.find((c) => c.id === id)
+    if (!coll) return
+    setDeleteConfirm({ type: 'collection', id, name: coll.name, count: coll.publication_count })
+  }, [collections])
+
+  const handleRequestDeleteSubcollection = useCallback((collectionId: string, subId: string) => {
+    const subs = subcollectionsMap.get(collectionId) ?? []
+    const sub = subs.find((s) => s.id === subId)
+    if (!sub) return
+    setDeleteConfirm({ type: 'subcollection', id: subId, name: sub.name, count: 0, parentId: collectionId })
+  }, [subcollectionsMap])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteConfirm) return
     try {
-      await deleteCollection(id)
-      setDeletingId(null)
-      if (selectedCollectionId === id) setSelectedCollectionId(null)
-      await refreshCollections()
+      if (deleteConfirm.type === 'collection') {
+        await deleteCollection(deleteConfirm.id)
+        if (selectedCollectionId === deleteConfirm.id) setSelectedCollectionId(null)
+        await refreshCollections()
+      } else {
+        if (deleteConfirm.parentId) {
+          await deleteSubcollection(deleteConfirm.parentId, deleteConfirm.id)
+          const subs = await fetchSubcollections(deleteConfirm.parentId).catch(() => [] as SubcollectionPayload[])
+          handleSubcollectionsFetched(deleteConfirm.parentId, subs)
+        }
+      }
     } catch {
-      setToast('Failed to delete collection')
+      setToast(`Failed to delete ${deleteConfirm.type}`)
     }
-  }, [selectedCollectionId, refreshCollections])
+    setDeleteConfirm(null)
+  }, [deleteConfirm, selectedCollectionId, refreshCollections, handleSubcollectionsFetched])
+
+  // ---- add to collection (from "+" button on card) ----
+  const handleAddToCollection = useCallback(async (workId: string, collectionId: string, _subcollectionId: string | null) => {
+    try {
+      await addPublicationsToCollection(collectionId, [workId])
+      const coll = collections.find((c) => c.id === collectionId)
+      setToast(`Added to ${coll?.name || 'collection'}`)
+      await Promise.all([refreshCollections(), refreshPubCollections(workId)])
+    } catch {
+      setToast('Failed to add publication')
+    }
+  }, [collections, refreshCollections, refreshPubCollections])
 
   // ---- subcollection CRUD ----
-  const handleCreateSub = useCallback(async () => {
-    const name = newSubName.trim()
-    if (!name || !selectedCollectionId) return
+  const handleCreateSubcollection = useCallback(async (collectionId: string, name: string) => {
     try {
-      await createSubcollection(selectedCollectionId, { name })
-      setNewSubName('')
-      setCreatingSub(false)
-      const subs = await fetchSubcollections(selectedCollectionId).catch(() => [] as SubcollectionPayload[])
-      setSubcollections(subs)
+      await createSubcollection(collectionId, { name })
+      const subs = await fetchSubcollections(collectionId).catch(() => [] as SubcollectionPayload[])
+      handleSubcollectionsFetched(collectionId, subs)
+      await refreshCollections()
     } catch {
       setToast('Failed to create subcollection')
     }
-  }, [newSubName, selectedCollectionId])
+  }, [handleSubcollectionsFetched, refreshCollections])
 
-  const handleDeleteSub = useCallback(async (subId: string) => {
-    if (!selectedCollectionId) return
+  const handleRenameSubcollection = useCallback(async (collectionId: string, subId: string, name: string) => {
     try {
-      await deleteSubcollection(selectedCollectionId, subId)
-      const subs = await fetchSubcollections(selectedCollectionId).catch(() => [] as SubcollectionPayload[])
-      setSubcollections(subs)
-      if (selectedSubcollectionId === subId) setSelectedSubcollectionId(null)
+      await updateSubcollection(collectionId, subId, { name })
+      const subs = await fetchSubcollections(collectionId).catch(() => [] as SubcollectionPayload[])
+      handleSubcollectionsFetched(collectionId, subs)
     } catch {
-      setToast('Failed to delete subcollection')
+      setToast('Failed to rename subcollection')
     }
-  }, [selectedCollectionId, selectedSubcollectionId])
+  }, [handleSubcollectionsFetched])
 
   // ---- browse mode: remove pub from collection ----
   const handleRemovePub = useCallback(async (workId: string) => {
@@ -389,9 +365,20 @@ export function CollectionsViewport({
     }
   }, [selectedCollectionId, refreshCollectionPubs, refreshCollections])
 
-  // ---- browse mode: reorder pubs via drag ----
-  const [browseDragIdx, setBrowseDragIdx] = useState<number | null>(null)
+  // ---- browse mode: move publication to subcollection ----
+  const handleMoveToSubcollection = useCallback(async (membershipId: string, targetSubcollectionId: string | null) => {
+    if (!selectedCollectionId) return
+    try {
+      await movePublicationSubcollection(selectedCollectionId, membershipId, targetSubcollectionId)
+      setPulsingId(targetSubcollectionId || selectedCollectionId)
+      setTimeout(() => setPulsingId(null), 700)
+      await refreshCollectionPubs()
+    } catch {
+      setToast('Failed to move publication')
+    }
+  }, [selectedCollectionId, refreshCollectionPubs])
 
+  // ---- browse mode: reorder pubs via drag ----
   const handleBrowseDragStart = useCallback((idx: number) => {
     setBrowseDragIdx(idx)
   }, [])
@@ -417,12 +404,6 @@ export function CollectionsViewport({
   useEffect(() => {
     if (creatingCollection) newCollectionInputRef.current?.focus()
   }, [creatingCollection])
-  useEffect(() => {
-    if (renamingId) renameInputRef.current?.focus()
-  }, [renamingId])
-  useEffect(() => {
-    if (creatingSub) newSubInputRef.current?.focus()
-  }, [creatingSub])
 
   // ---- browse filtered pubs ----
   const browsePubs = useMemo(() => {
@@ -434,9 +415,9 @@ export function CollectionsViewport({
   return (
     <div className="flex h-full min-h-0 flex-col bg-[hsl(var(--surface-drilldown-elevated))]">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
+      <div className="flex items-center justify-between border-b border-border px-6 py-3">
         <div className="flex items-center gap-4">
-          <h2 className="text-base font-semibold text-slate-900">Collections</h2>
+          <h2 className="text-base font-semibold text-foreground">Collections</h2>
           <div className="flex gap-1">
             {(['organise', 'browse'] as const).map((m) => (
               <button
@@ -445,8 +426,8 @@ export function CollectionsViewport({
                 className={cn(
                   'px-3 py-1.5 text-sm capitalize rounded-md transition-colors',
                   mode === m
-                    ? 'bg-slate-900 text-white font-medium'
-                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100',
+                    ? 'bg-foreground text-background font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted',
                 )}
                 onClick={() => setMode(m)}
               >
@@ -457,7 +438,7 @@ export function CollectionsViewport({
         </div>
         <button
           type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
           aria-label="Close collections"
           onClick={onClose}
         >
@@ -467,87 +448,186 @@ export function CollectionsViewport({
 
       {/* Body */}
       {loading ? (
-        <div className="flex items-center justify-center h-64 text-sm text-slate-500">
+        <div className="flex items-center justify-center h-64 text-sm text-muted-foreground">
           Loading collections...
         </div>
       ) : (
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {mode === 'organise' ? (
-            <OrganiseView
-              collections={collections}
-              works={filteredWorks}
-              pubCollectionsMap={pubCollectionsMap}
-              pubFilter={pubFilter}
-              setPubFilter={setPubFilter}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              dragWorkId={dragWorkId}
-              dropTargetId={dropTargetId}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              creatingCollection={creatingCollection}
-              setCreatingCollection={setCreatingCollection}
-              newCollectionName={newCollectionName}
-              setNewCollectionName={setNewCollectionName}
-              newCollectionColour={newCollectionColour}
-              setNewCollectionColour={setNewCollectionColour}
-              onCreateCollection={handleCreateCollection}
-              newCollectionInputRef={newCollectionInputRef}
-              menuOpenId={menuOpenId}
-              setMenuOpenId={setMenuOpenId}
-              renamingId={renamingId}
-              setRenamingId={setRenamingId}
-              renameValue={renameValue}
-              setRenameValue={setRenameValue}
-              onRename={handleRename}
-              renameInputRef={renameInputRef}
-              colourPickerId={colourPickerId}
-              setColourPickerId={setColourPickerId}
-              onColourChange={handleColourChange}
-              deletingId={deletingId}
-              setDeletingId={setDeletingId}
-              onDeleteCollection={handleDeleteCollection}
-            />
-          ) : (
-            <BrowseView
-              collections={collections}
-              selectedCollectionId={selectedCollectionId}
-              setSelectedCollectionId={setSelectedCollectionId}
-              subcollections={subcollections}
-              selectedSubcollectionId={selectedSubcollectionId}
-              setSelectedSubcollectionId={setSelectedSubcollectionId}
-              browsePubs={browsePubs}
-              creatingSub={creatingSub}
-              setCreatingSub={setCreatingSub}
-              newSubName={newSubName}
-              setNewSubName={setNewSubName}
-              onCreateSub={handleCreateSub}
-              newSubInputRef={newSubInputRef}
-              onDeleteSub={handleDeleteSub}
-              onRemovePub={handleRemovePub}
-              browseDragIdx={browseDragIdx}
-              onBrowseDragStart={handleBrowseDragStart}
-              onBrowseDrop={handleBrowseDrop}
-              onOpenPublication={onOpenPublication}
-              menuOpenId={menuOpenId}
-              setMenuOpenId={setMenuOpenId}
-              renamingId={renamingId}
-              setRenamingId={setRenamingId}
-              renameValue={renameValue}
-              setRenameValue={setRenameValue}
-              onRename={handleRename}
-              renameInputRef={renameInputRef}
-              colourPickerId={colourPickerId}
-              setColourPickerId={setColourPickerId}
-              onColourChange={handleColourChange}
-              deletingId={deletingId}
-              setDeletingId={setDeletingId}
-              onDeleteCollection={handleDeleteCollection}
-            />
-          )}
+          {/* Shared sidebar for both modes */}
+          <CollectionSidebar
+            collections={collections}
+            mode={mode}
+            expandedIds={expandedIds}
+            onToggleExpand={handleToggleExpand}
+            subcollectionsMap={subcollectionsMap}
+            onSubcollectionsFetched={handleSubcollectionsFetched}
+            selectedCollectionId={selectedCollectionId}
+            selectedSubcollectionId={selectedSubcollectionId}
+            onSelectCollection={setSelectedCollectionId}
+            onSelectSubcollection={setSelectedSubcollectionId}
+            dropTargetId={dropTargetId}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            pulsingId={pulsingId}
+            creatingCollection={creatingCollection}
+            onStartCreateCollection={handleStartCreateCollection}
+            newCollectionName={newCollectionName}
+            setNewCollectionName={setNewCollectionName}
+            newCollectionColour={newCollectionColour}
+            onCreateCollection={handleCreateCollection}
+            onCancelCreateCollection={() => setCreatingCollection(false)}
+            newCollectionInputRef={newCollectionInputRef}
+            onRenameCollection={handleRenameCollection}
+            onDeleteCollection={handleRequestDeleteCollection}
+            onColourChange={handleColourChange}
+            onCreateSubcollection={handleCreateSubcollection}
+            onRenameSubcollection={handleRenameSubcollection}
+            onDeleteSubcollection={handleRequestDeleteSubcollection}
+          />
+
+          {/* Main content panel */}
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            {mode === 'organise' ? (
+              <>
+                {/* Organise toolbar */}
+                <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border">
+                  {/* Filter toggle */}
+                  <div className="inline-flex items-center rounded-full border border-border bg-muted p-0.5 text-xs">
+                    {([
+                      { value: 'all' as PubFilter, label: 'All publications' },
+                      { value: 'uncollected' as PubFilter, label: 'Uncollected' },
+                    ]).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={cn(
+                          'px-2.5 py-1 rounded-full transition-colors',
+                          pubFilter === opt.value
+                            ? 'bg-card shadow-sm text-foreground font-medium'
+                            : 'text-muted-foreground hover:text-foreground',
+                        )}
+                        onClick={() => setPubFilter(opt.value)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <input
+                      className="house-input w-full pl-8 pr-3 py-1.5 text-sm rounded-md"
+                      placeholder="Search publications..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {searchQuery && (
+                      <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearchQuery('')}>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">{filteredWorks.length} publications</span>
+                </div>
+                {/* Organise publication cards */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                  {filteredWorks.map((work) => {
+                    const colls = pubCollectionsMap.get(work.id) ?? []
+                    return (
+                      <PublicationCard
+                        key={work.id}
+                        mode="organise"
+                        workId={work.id}
+                        title={work.title}
+                        venue={work.venue_name}
+                        year={work.year}
+                        isDragging={dragWorkId === work.id}
+                        collectionMemberships={colls}
+                        collections={collections}
+                        subcollectionsMap={subcollectionsMap}
+                        onSubcollectionsFetched={handleSubcollectionsFetched}
+                        onDragStart={() => handleDragStart(work.id)}
+                        onAddToCollection={(collId, subId) => handleAddToCollection(work.id, collId, subId)}
+                      />
+                    )
+                  })}
+                  {/* Organise empty states */}
+                  {filteredWorks.length === 0 && (
+                    <div className="text-center text-sm text-muted-foreground py-12">
+                      {searchQuery
+                        ? 'No publications match your search.'
+                        : pubFilter === 'uncollected'
+                          ? 'All publications are in at least one collection.'
+                          : 'No publications found.'}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Browse mode content */}
+                {!selectedCollectionId ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-sm text-muted-foreground">
+                    <p>Select a collection from the sidebar to browse its publications.</p>
+                  </div>
+                ) : browsePubs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-sm text-muted-foreground">
+                    <p>No publications in this collection yet.</p>
+                    <button
+                      type="button"
+                      className="text-[hsl(var(--tone-accent-700))] hover:text-[hsl(var(--tone-accent-900))] font-medium"
+                      onClick={() => setMode('organise')}
+                    >
+                      Switch to Organise to add papers
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                    {browsePubs.map((pub, idx) => (
+                      <PublicationCard
+                        key={pub.membership_id}
+                        mode="browse"
+                        workId={pub.work_id}
+                        membershipId={pub.membership_id}
+                        title={pub.title}
+                        venue={pub.journal}
+                        year={pub.year}
+                        citations={pub.citations}
+                        subcollectionId={pub.subcollection_id}
+                        isDragging={browseDragIdx === idx}
+                        collections={collections}
+                        subcollectionsMap={subcollectionsMap}
+                        onSubcollectionsFetched={handleSubcollectionsFetched}
+                        currentCollectionId={selectedCollectionId}
+                        onDragStart={() => handleBrowseDragStart(idx)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => handleBrowseDrop(idx)}
+                        onRemove={() => handleRemovePub(pub.work_id)}
+                        onMoveToSubcollection={(subId) => handleMoveToSubcollection(pub.membership_id, subId)}
+                        onClick={() => onOpenPublication(pub.work_id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
+      )}
+
+      {/* Confirmation dialog */}
+      {deleteConfirm && (
+        <ConfirmDeleteDialog
+          open={!!deleteConfirm}
+          title={`Delete ${deleteConfirm.type === 'collection' ? 'collection' : 'subcollection'}`}
+          description={
+            deleteConfirm.type === 'collection'
+              ? `Delete '${deleteConfirm.name}'? This will remove ${deleteConfirm.count} publication${deleteConfirm.count !== 1 ? 's' : ''} from this collection. This cannot be undone.`
+              : `Delete '${deleteConfirm.name}'? Publications will remain in the parent collection.`
+          }
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteConfirm(null)}
+        />
       )}
 
       {/* Toast */}
@@ -562,637 +642,5 @@ export function CollectionsViewport({
         .animate-slide-up { animation: slide-up 0.2s ease-out; }
       `}</style>
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Sidebar collection list (shared between organise + browse)
-// ---------------------------------------------------------------------------
-
-function CollectionSidebar({
-  collections,
-  selectedId,
-  onSelect,
-  dropTargetId,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  creatingCollection,
-  setCreatingCollection,
-  newCollectionName,
-  setNewCollectionName,
-  newCollectionColour,
-  setNewCollectionColour,
-  onCreateCollection,
-  newCollectionInputRef,
-  menuOpenId,
-  setMenuOpenId,
-  renamingId,
-  setRenamingId,
-  renameValue,
-  setRenameValue,
-  onRename,
-  renameInputRef,
-  colourPickerId,
-  setColourPickerId,
-  onColourChange,
-  deletingId,
-  setDeletingId,
-  onDeleteCollection,
-}: {
-  collections: CollectionPayload[]
-  selectedId?: string | null
-  onSelect?: (id: string) => void
-  dropTargetId?: string | null
-  onDragOver?: (e: React.DragEvent, id: string) => void
-  onDragLeave?: () => void
-  onDrop?: (id: string) => void
-  creatingCollection: boolean
-  setCreatingCollection: (v: boolean) => void
-  newCollectionName: string
-  setNewCollectionName: (v: string) => void
-  newCollectionColour: CollectionColour
-  setNewCollectionColour: (v: CollectionColour) => void
-  onCreateCollection: () => void
-  newCollectionInputRef: React.RefObject<HTMLInputElement | null>
-  menuOpenId: string | null
-  setMenuOpenId: (v: string | null) => void
-  renamingId: string | null
-  setRenamingId: (v: string | null) => void
-  renameValue: string
-  setRenameValue: (v: string) => void
-  onRename: (id: string) => void
-  renameInputRef: React.RefObject<HTMLInputElement | null>
-  colourPickerId: string | null
-  setColourPickerId: (v: string | null) => void
-  onColourChange: (id: string, c: CollectionColour) => void
-  deletingId: string | null
-  setDeletingId: (v: string | null) => void
-  onDeleteCollection: (id: string) => void
-}) {
-  return (
-    <div className="w-[230px] min-w-[230px] bg-slate-50 border-r border-slate-200 flex flex-col">
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Collections</span>
-        <button
-          type="button"
-          className="p-0.5 rounded hover:bg-slate-200 text-slate-500 hover:text-slate-700"
-          title="New collection"
-          onClick={() => setCreatingCollection(true)}
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto py-1 px-1.5">
-        {collections.map((coll) => {
-          const isActive = selectedId === coll.id
-          const isDrop = dropTargetId === coll.id
-          const isRenaming = renamingId === coll.id
-          const isDeleting = deletingId === coll.id
-
-          if (isDeleting) {
-            return (
-              <div key={coll.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm bg-red-50 border border-red-200">
-                <span className="text-red-700 flex-1 truncate">Delete &quot;{coll.name}&quot;?</span>
-                <button type="button" className="text-red-600 hover:text-red-800 p-0.5" onClick={() => onDeleteCollection(coll.id)}>
-                  <Check className="w-3.5 h-3.5" />
-                </button>
-                <button type="button" className="text-slate-500 hover:text-slate-700 p-0.5" onClick={() => setDeletingId(null)}>
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )
-          }
-
-          return (
-            <div
-              key={coll.id}
-              className={cn(
-                'group flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm cursor-pointer relative',
-                isActive ? 'bg-indigo-100 text-indigo-800 font-medium' : 'text-slate-700 hover:bg-slate-100',
-                isDrop && 'outline-2 outline-dashed outline-indigo-500 bg-blue-50',
-              )}
-              onClick={() => onSelect?.(coll.id)}
-              onDragOver={(e) => onDragOver?.(e, coll.id)}
-              onDragLeave={() => onDragLeave?.()}
-              onDrop={(e) => { e.preventDefault(); onDrop?.(coll.id) }}
-            >
-              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLLECTION_COLOUR_HEX[coll.colour] }} />
-              {isRenaming ? (
-                <input
-                  ref={renameInputRef}
-                  className="flex-1 min-w-0 bg-white border border-slate-300 rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') onRename(coll.id)
-                    if (e.key === 'Escape') setRenamingId(null)
-                  }}
-                  onBlur={() => onRename(coll.id)}
-                />
-              ) : (
-                <span className="flex-1 truncate">{coll.name}</span>
-              )}
-              <span className="text-xs text-slate-400 flex-shrink-0">{coll.publication_count}</span>
-              <button
-                type="button"
-                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 flex-shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setMenuOpenId(menuOpenId === coll.id ? null : coll.id)
-                }}
-              >
-                <MoreHorizontal className="w-3.5 h-3.5" />
-              </button>
-              {menuOpenId === coll.id && (
-                <CollectionMenu
-                  onRename={() => { setRenamingId(coll.id); setRenameValue(coll.name) }}
-                  onDelete={() => setDeletingId(coll.id)}
-                  onChangeColour={() => setColourPickerId(coll.id)}
-                  onClose={() => setMenuOpenId(null)}
-                />
-              )}
-              {colourPickerId === coll.id && (
-                <ColourPicker
-                  value={coll.colour}
-                  onChange={(c) => onColourChange(coll.id, c)}
-                  onClose={() => setColourPickerId(null)}
-                />
-              )}
-            </div>
-          )
-        })}
-
-        {/* New collection inline form */}
-        {creatingCollection && (
-          <div className="flex items-center gap-1.5 px-2 py-1.5">
-            <button
-              type="button"
-              className="w-4 h-4 rounded-full flex-shrink-0 border border-slate-300"
-              style={{ backgroundColor: COLLECTION_COLOUR_HEX[newCollectionColour] }}
-              onClick={() => {
-                const idx = ALL_COLOURS.indexOf(newCollectionColour)
-                setNewCollectionColour(ALL_COLOURS[(idx + 1) % ALL_COLOURS.length])
-              }}
-            />
-            <input
-              ref={newCollectionInputRef}
-              className="flex-1 min-w-0 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              placeholder="Collection name"
-              value={newCollectionName}
-              onChange={(e) => setNewCollectionName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onCreateCollection()
-                if (e.key === 'Escape') setCreatingCollection(false)
-              }}
-            />
-            <button type="button" className="text-indigo-600 hover:text-indigo-800 p-0.5" onClick={onCreateCollection}>
-              <Check className="w-3.5 h-3.5" />
-            </button>
-            <button type="button" className="text-slate-400 hover:text-slate-600 p-0.5" onClick={() => setCreatingCollection(false)}>
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {collections.length === 0 && !creatingCollection && (
-          <div className="px-3 py-6 text-center text-xs text-slate-400">
-            No collections yet. Click + to create one.
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Organise view
-// ---------------------------------------------------------------------------
-
-function OrganiseView({
-  collections,
-  works,
-  pubCollectionsMap,
-  pubFilter,
-  setPubFilter,
-  searchQuery,
-  setSearchQuery,
-  dragWorkId,
-  dropTargetId,
-  onDragStart,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  creatingCollection,
-  setCreatingCollection,
-  newCollectionName,
-  setNewCollectionName,
-  newCollectionColour,
-  setNewCollectionColour,
-  onCreateCollection,
-  newCollectionInputRef,
-  menuOpenId,
-  setMenuOpenId,
-  renamingId,
-  setRenamingId,
-  renameValue,
-  setRenameValue,
-  onRename,
-  renameInputRef,
-  colourPickerId,
-  setColourPickerId,
-  onColourChange,
-  deletingId,
-  setDeletingId,
-  onDeleteCollection,
-}: {
-  collections: CollectionPayload[]
-  works: PersonaWork[]
-  pubCollectionsMap: Map<string, PublicationCollectionSummary[]>
-  pubFilter: PubFilter
-  setPubFilter: (v: PubFilter) => void
-  searchQuery: string
-  setSearchQuery: (v: string) => void
-  dragWorkId: string | null
-  dropTargetId: string | null
-  onDragStart: (workId: string) => void
-  onDragOver: (e: React.DragEvent, id: string) => void
-  onDragLeave: () => void
-  onDrop: (id: string) => void
-  creatingCollection: boolean
-  setCreatingCollection: (v: boolean) => void
-  newCollectionName: string
-  setNewCollectionName: (v: string) => void
-  newCollectionColour: CollectionColour
-  setNewCollectionColour: (v: CollectionColour) => void
-  onCreateCollection: () => void
-  newCollectionInputRef: React.RefObject<HTMLInputElement | null>
-  menuOpenId: string | null
-  setMenuOpenId: (v: string | null) => void
-  renamingId: string | null
-  setRenamingId: (v: string | null) => void
-  renameValue: string
-  setRenameValue: (v: string) => void
-  onRename: (id: string) => void
-  renameInputRef: React.RefObject<HTMLInputElement | null>
-  colourPickerId: string | null
-  setColourPickerId: (v: string | null) => void
-  onColourChange: (id: string, c: CollectionColour) => void
-  deletingId: string | null
-  setDeletingId: (v: string | null) => void
-  onDeleteCollection: (id: string) => void
-}) {
-  return (
-    <>
-      {/* Sidebar */}
-      <CollectionSidebar
-        collections={collections}
-        dropTargetId={dropTargetId}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-        creatingCollection={creatingCollection}
-        setCreatingCollection={setCreatingCollection}
-        newCollectionName={newCollectionName}
-        setNewCollectionName={setNewCollectionName}
-        newCollectionColour={newCollectionColour}
-        setNewCollectionColour={setNewCollectionColour}
-        onCreateCollection={onCreateCollection}
-        newCollectionInputRef={newCollectionInputRef}
-        menuOpenId={menuOpenId}
-        setMenuOpenId={setMenuOpenId}
-        renamingId={renamingId}
-        setRenamingId={setRenamingId}
-        renameValue={renameValue}
-        setRenameValue={setRenameValue}
-        onRename={onRename}
-        renameInputRef={renameInputRef}
-        colourPickerId={colourPickerId}
-        setColourPickerId={setColourPickerId}
-        onColourChange={onColourChange}
-        deletingId={deletingId}
-        setDeletingId={setDeletingId}
-        onDeleteCollection={onDeleteCollection}
-      />
-
-      {/* Publications panel */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Toolbar */}
-        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-200">
-          <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 p-0.5 text-xs">
-            {([
-              { value: 'all' as PubFilter, label: 'All publications' },
-              { value: 'uncollected' as PubFilter, label: 'Uncollected' },
-            ]).map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={cn(
-                  'px-2.5 py-1 rounded-full transition-colors',
-                  pubFilter === opt.value
-                    ? 'bg-white shadow-sm text-slate-800 font-medium'
-                    : 'text-slate-500 hover:text-slate-700',
-                )}
-                onClick={() => setPubFilter(opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-            <input
-              className="w-full pl-8 pr-3 py-1.5 text-sm bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              placeholder="Search publications..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" onClick={() => setSearchQuery('')}>
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-          <span className="text-xs text-slate-400">{works.length} publications</span>
-        </div>
-
-        {/* Publication cards */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {works.map((work) => {
-            const colls = pubCollectionsMap.get(work.id) ?? []
-            return (
-              <div
-                key={work.id}
-                draggable
-                onDragStart={() => onDragStart(work.id)}
-                className={cn(
-                  'flex items-center p-3 bg-slate-50 border border-slate-200 rounded-lg gap-2.5 cursor-grab active:cursor-grabbing',
-                  dragWorkId === work.id && 'opacity-50',
-                )}
-              >
-                <GripVertical className="w-4 h-4 text-slate-300 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-slate-800 truncate">{work.title}</div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-slate-500 truncate">
-                      {[work.venue_name, work.year].filter(Boolean).join(' \u00b7 ')}
-                    </span>
-                    {colls.length > 0 && (
-                      <span className="flex items-center gap-1 flex-shrink-0">
-                        {colls.map((c) => (
-                          <span
-                            key={c.id}
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: COLLECTION_COLOUR_HEX[c.colour] }}
-                            title={c.name}
-                          />
-                        ))}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-          {works.length === 0 && (
-            <div className="text-center text-sm text-slate-400 py-12">
-              {searchQuery ? 'No publications match your search.' : 'No publications found.'}
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Browse view
-// ---------------------------------------------------------------------------
-
-function BrowseView({
-  collections,
-  selectedCollectionId,
-  setSelectedCollectionId,
-  subcollections,
-  selectedSubcollectionId,
-  setSelectedSubcollectionId,
-  browsePubs,
-  creatingSub,
-  setCreatingSub,
-  newSubName,
-  setNewSubName,
-  onCreateSub,
-  newSubInputRef,
-  onDeleteSub,
-  onRemovePub,
-  browseDragIdx,
-  onBrowseDragStart,
-  onBrowseDrop,
-  onOpenPublication,
-  menuOpenId,
-  setMenuOpenId,
-  renamingId,
-  setRenamingId,
-  renameValue,
-  setRenameValue,
-  onRename,
-  renameInputRef,
-  colourPickerId,
-  setColourPickerId,
-  onColourChange,
-  deletingId,
-  setDeletingId,
-  onDeleteCollection,
-}: {
-  collections: CollectionPayload[]
-  selectedCollectionId: string | null
-  setSelectedCollectionId: (id: string) => void
-  subcollections: SubcollectionPayload[]
-  selectedSubcollectionId: string | null
-  setSelectedSubcollectionId: (id: string | null) => void
-  browsePubs: CollectionPublicationPayload[]
-  creatingSub: boolean
-  setCreatingSub: (v: boolean) => void
-  newSubName: string
-  setNewSubName: (v: string) => void
-  onCreateSub: () => void
-  newSubInputRef: React.RefObject<HTMLInputElement | null>
-  onDeleteSub: (id: string) => void
-  onRemovePub: (workId: string) => void
-  browseDragIdx: number | null
-  onBrowseDragStart: (idx: number) => void
-  onBrowseDrop: (idx: number) => void
-  onOpenPublication: (workId: string) => void
-  menuOpenId: string | null
-  setMenuOpenId: (v: string | null) => void
-  renamingId: string | null
-  setRenamingId: (v: string | null) => void
-  renameValue: string
-  setRenameValue: (v: string) => void
-  onRename: (id: string) => void
-  renameInputRef: React.RefObject<HTMLInputElement | null>
-  colourPickerId: string | null
-  setColourPickerId: (v: string | null) => void
-  onColourChange: (id: string, c: CollectionColour) => void
-  deletingId: string | null
-  setDeletingId: (v: string | null) => void
-  onDeleteCollection: (id: string) => void
-}) {
-  return (
-    <>
-      {/* Collection sidebar */}
-      <CollectionSidebar
-        collections={collections}
-        selectedId={selectedCollectionId}
-        onSelect={setSelectedCollectionId}
-        creatingCollection={false}
-        setCreatingCollection={() => {}}
-        newCollectionName=""
-        setNewCollectionName={() => {}}
-        newCollectionColour="indigo"
-        setNewCollectionColour={() => {}}
-        onCreateCollection={() => {}}
-        newCollectionInputRef={newSubInputRef}
-        menuOpenId={menuOpenId}
-        setMenuOpenId={setMenuOpenId}
-        renamingId={renamingId}
-        setRenamingId={setRenamingId}
-        renameValue={renameValue}
-        setRenameValue={setRenameValue}
-        onRename={onRename}
-        renameInputRef={renameInputRef}
-        colourPickerId={colourPickerId}
-        setColourPickerId={setColourPickerId}
-        onColourChange={onColourChange}
-        deletingId={deletingId}
-        setDeletingId={setDeletingId}
-        onDeleteCollection={onDeleteCollection}
-      />
-
-      {/* Subcollection panel */}
-      {selectedCollectionId && (
-        <div className="w-[185px] min-w-[185px] bg-white border-r border-slate-200 flex flex-col">
-          <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Subcollections</span>
-            <button
-              type="button"
-              className="p-0.5 rounded hover:bg-slate-200 text-slate-500 hover:text-slate-700"
-              title="Add subcollection"
-              onClick={() => setCreatingSub(true)}
-            >
-              <FolderPlus className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto py-1 px-1.5">
-            {/* All papers entry */}
-            <button
-              type="button"
-              className={cn(
-                'flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-sm text-left',
-                selectedSubcollectionId === null
-                  ? 'bg-indigo-100 text-indigo-800 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100',
-              )}
-              onClick={() => setSelectedSubcollectionId(null)}
-            >
-              All papers
-            </button>
-            {subcollections.map((sub) => (
-              <div
-                key={sub.id}
-                className={cn(
-                  'group flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm cursor-pointer',
-                  selectedSubcollectionId === sub.id
-                    ? 'bg-indigo-100 text-indigo-800 font-medium'
-                    : 'text-slate-700 hover:bg-slate-100',
-                )}
-                onClick={() => setSelectedSubcollectionId(sub.id)}
-              >
-                <span className="flex-1 truncate">{sub.name}</span>
-                <span className="text-xs text-slate-400">{sub.publication_count}</span>
-                <button
-                  type="button"
-                  className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 p-0.5"
-                  onClick={(e) => { e.stopPropagation(); onDeleteSub(sub.id) }}
-                  title="Delete subcollection"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
-            {creatingSub && (
-              <div className="flex items-center gap-1.5 px-2 py-1.5">
-                <input
-                  ref={newSubInputRef}
-                  className="flex-1 min-w-0 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  placeholder="Name"
-                  value={newSubName}
-                  onChange={(e) => setNewSubName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') onCreateSub()
-                    if (e.key === 'Escape') setCreatingSub(false)
-                  }}
-                />
-                <button type="button" className="text-indigo-600 p-0.5" onClick={onCreateSub}>
-                  <Check className="w-3.5 h-3.5" />
-                </button>
-                <button type="button" className="text-slate-400 p-0.5" onClick={() => setCreatingSub(false)}>
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Publications panel */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {!selectedCollectionId ? (
-          <div className="flex items-center justify-center h-full text-sm text-slate-400">
-            Select a collection to browse its publications.
-          </div>
-        ) : browsePubs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-sm text-slate-400">
-            No publications in this collection yet.
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
-            {browsePubs.map((pub, idx) => (
-              <div
-                key={pub.membership_id}
-                draggable
-                onDragStart={() => onBrowseDragStart(idx)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => onBrowseDrop(idx)}
-                className={cn(
-                  'flex items-center p-3 bg-slate-50 border border-slate-200 rounded-lg gap-2.5 cursor-grab active:cursor-grabbing',
-                  browseDragIdx === idx && 'opacity-50',
-                )}
-              >
-                <GripVertical className="w-4 h-4 text-slate-300 flex-shrink-0" />
-                <div
-                  className="flex-1 min-w-0 cursor-pointer"
-                  onClick={() => onOpenPublication(pub.work_id)}
-                >
-                  <div className="text-sm font-medium text-slate-800 truncate">{pub.title}</div>
-                  <div className="text-xs text-slate-500 mt-0.5 truncate">
-                    {[pub.journal, pub.year].filter(Boolean).join(' \u00b7 ')}
-                  </div>
-                </div>
-                <span className="text-xs text-slate-500 flex-shrink-0 tabular-nums">{pub.citations} cited</span>
-                <button
-                  type="button"
-                  className="text-slate-400 hover:text-red-500 p-0.5 flex-shrink-0"
-                  onClick={() => onRemovePub(pub.work_id)}
-                  title="Remove from collection"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </>
   )
 }
