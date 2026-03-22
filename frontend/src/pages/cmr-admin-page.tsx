@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 
 import { SectionMarker } from '@/components/patterns'
-import { CardDescription, CardHeader, CardPrimitive, CardTitle, PageHeader, Row, Stack } from '@/components/primitives'
+import { CardHeader, CardPrimitive, CardTitle, PageHeader, Row, Stack } from '@/components/primitives'
 import {
   cmrAdminCreateCode,
   cmrAdminListCodes,
@@ -112,21 +112,6 @@ function AdminMetricCard({
         <p className="text-sm leading-7 text-muted-foreground">{description}</p>
       </div>
     </CardPrimitive>
-  )
-}
-
-function AdminFeatureCard({
-  title,
-  description,
-}: {
-  title: string
-  description: string
-}) {
-  return (
-    <div className="rounded-[var(--radius-md)] border border-[hsl(var(--section-style-admin-accent)/0.12)] bg-[hsl(var(--card))] p-4 shadow-[0_12px_28px_rgba(20,35,46,0.04)]">
-      <p className="text-sm font-semibold text-[hsl(var(--foreground))]">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
-    </div>
   )
 }
 
@@ -262,9 +247,8 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
     <Row align="center" gap="md" wrap={false} className="house-page-title-row">
       <SectionMarker tone="admin" size="title" className="self-stretch h-auto" />
       <PageHeader
-        eyebrow="Administrator"
         heading="CMR Access Management"
-        description="Issue, monitor, and revoke access codes inside the CMR reporting workspace."
+        description="Manage access codes inside the CMR reporting workspace."
         className="!ml-0 !mt-0"
       />
     </Row>
@@ -341,14 +325,11 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
         <div className="flex min-h-screen items-center justify-center bg-background p-4">
           <CardPrimitive className={`w-full max-w-md overflow-hidden ${adminSurfaceClassName}`}>
             <div className="border-b border-[hsl(var(--section-style-admin-accent)/0.14)] px-6 py-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--section-style-admin-accent))]">
-                Administrator
-              </p>
-              <h1 className="mt-3 text-[2rem] font-semibold tracking-[-0.04em] text-[hsl(var(--foreground))]">
-                Unlock access management
+              <h1 className="text-[2rem] font-semibold tracking-[-0.04em] text-[hsl(var(--foreground))]">
+                CMR Access Management
               </h1>
               <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                Enter your administrator password to issue codes, review usage, and revoke access inside the CMR workspace.
+                Enter your administrator password to continue.
               </p>
             </div>
             <div className="p-6">{loginForm}</div>
@@ -362,47 +343,13 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
         <section data-section-key="Overview" className="scroll-mt-20 space-y-6">
           {titleRow}
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(22rem,0.92fr)]">
-            <CardPrimitive className={adminSurfaceClassName}>
-              <div className="space-y-6 p-[var(--space-4)] md:p-[var(--space-5)]">
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--section-style-admin-accent))]">
-                    Admin controls
-                  </p>
-                  <h2 className="max-w-[15ch] text-[2.2rem] font-semibold tracking-[-0.05em] text-[hsl(var(--foreground))]">
-                    Access management inside the same CMR shell.
-                  </h2>
-                  <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                    Unlock the administrator workspace to issue codes, review recent sessions, and revoke access without leaving the platform.
-                  </p>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-3">
-                  <AdminFeatureCard
-                    title="Generate codes"
-                    description="Create fresh access credentials without typing every code by hand."
-                  />
-                  <AdminFeatureCard
-                    title="Review usage"
-                    description="See which codes are still active and which have been used recently."
-                  />
-                  <AdminFeatureCard
-                    title="Revoke fast"
-                    description="Remove access immediately when a code should no longer work."
-                  />
-                </div>
-              </div>
-            </CardPrimitive>
-
+          <div className="max-w-xl">
             <CardPrimitive className={adminSurfaceClassName}>
               <CardHeader>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--section-style-admin-accent))]">
                   Verification
                 </p>
                 <CardTitle>Unlock admin controls</CardTitle>
-                <CardDescription className="text-sm leading-7">
-                  Use your administrator password to continue.
-                </CardDescription>
               </CardHeader>
               <div className="px-[var(--space-3)] pb-[var(--space-3)]">{loginForm}</div>
             </CardPrimitive>
@@ -417,62 +364,25 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
       <section data-section-key="Overview" className="scroll-mt-20 space-y-6">
         {titleRow}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)]">
-          <CardPrimitive className={adminSurfaceClassName}>
-            <div className="space-y-6 p-[var(--space-4)] md:p-[var(--space-5)]">
-              <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--section-style-admin-accent))]">
-                  Access control
-                </p>
-                <h2 className="max-w-[15ch] text-[2.2rem] font-semibold tracking-[-0.05em] text-[hsl(var(--foreground))]">
-                  Manage CMR entry without leaving the reporting workspace.
-                </h2>
-                <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                  Generate named access codes, monitor recent use, and revoke sessions from the same shell used for reference and reporting.
-                </p>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-3">
-                <AdminFeatureCard
-                  title="Generate secure codes"
-                  description="Start each new issue with a generated code and replace it only if you need a custom value."
-                />
-                <AdminFeatureCard
-                  title="Track active access"
-                  description="Review which issued codes are active and which have been used in the last week."
-                />
-                <AdminFeatureCard
-                  title="Revoke instantly"
-                  description="Shut down a code immediately when a reader or cohort should no longer sign in."
-                />
-              </div>
-
-              <div className="rounded-[var(--radius-md)] border border-[hsl(var(--section-style-admin-accent)/0.12)] bg-white px-4 py-3 text-sm text-muted-foreground">
-                Administrator-issued codes are managed here, but the workflow stays inside the same CMR shell as the rest of the platform.
-              </div>
-            </div>
-          </CardPrimitive>
-
-          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <AdminMetricCard
-              icon={KeyRound}
-              label="Issued Codes"
-              value={String(issuedCount)}
-              description="Named access codes currently tracked for the CMR workspace."
-            />
-            <AdminMetricCard
-              icon={ShieldCheck}
-              label="Active"
-              value={String(activeCount)}
-              description="Codes that can still be used to sign in right now."
-            />
-            <AdminMetricCard
-              icon={Clock3}
-              label="Recent Use"
-              value={String(recentCount)}
-              description="Issued codes accessed within the last seven days."
-            />
-          </div>
+        <div className="grid gap-3 xl:grid-cols-3">
+          <AdminMetricCard
+            icon={KeyRound}
+            label="Issued Codes"
+            value={String(issuedCount)}
+            description="Tracked access codes."
+          />
+          <AdminMetricCard
+            icon={ShieldCheck}
+            label="Active"
+            value={String(activeCount)}
+            description="Codes that can still sign in."
+          />
+          <AdminMetricCard
+            icon={Clock3}
+            label="Recent Use"
+            value={String(recentCount)}
+            description="Codes used in the last 7 days."
+          />
         </div>
       </section>
 
@@ -484,9 +394,6 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                 Issue Code
               </p>
               <CardTitle>Issue a new access code</CardTitle>
-              <CardDescription className="text-sm leading-7">
-                Generate a code automatically or replace it with your own value before saving.
-              </CardDescription>
             </CardHeader>
 
             <div className="space-y-5 px-[var(--space-3)] pb-[var(--space-3)]">
@@ -563,9 +470,6 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                       Generate
                     </button>
                   </div>
-                  <p className="text-xs leading-6 text-muted-foreground">
-                    Generated codes use a CMR prefix and an uppercase format for easier sharing.
-                  </p>
                 </div>
 
                 <button
@@ -587,9 +491,6 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
                     Access Codes
                   </p>
                   <CardTitle>Issued access codes</CardTitle>
-                  <CardDescription className="text-sm leading-7">
-                    Review recent access, session counts, and revoke codes when they should no longer work.
-                  </CardDescription>
                 </div>
                 <div className="rounded-full border border-[hsl(var(--section-style-admin-accent)/0.14)] bg-[hsl(var(--tone-accent-50))] px-3 py-1 text-xs font-semibold text-[hsl(var(--tone-accent-800))]">
                   {activeCount} active / {revokedCount} revoked
