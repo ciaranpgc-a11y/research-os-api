@@ -497,17 +497,14 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                 <div
                   className={cn(
                     'group flex items-center gap-2 pl-4 pr-2 py-2.5 cursor-pointer text-sm transition-colors rounded-r-md select-none',
-                    isSelected && 'bg-[hsl(var(--tone-accent-100))]',
                     isDropTarget && 'outline-2 outline-dashed',
                     isPulsing && 'animate-drop-pulse',
                   )}
                   style={{
                     borderLeft: `3px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
-                    backgroundColor: isDropTarget
+                    backgroundColor: isDropTarget || isExpanded || isSelected
                       ? `${COLLECTION_COLOUR_HEX[coll.colour]}18`
-                      : isExpanded
-                        ? `${COLLECTION_COLOUR_HEX[coll.colour]}18`
-                        : undefined,
+                      : undefined,
                     outlineColor: isDropTarget ? COLLECTION_COLOUR_HEX[coll.colour] : undefined,
                   }}
                   onClick={() => {
@@ -540,18 +537,18 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                   {/* "All papers" entry (browse mode only) */}
                   {mode === 'browse' && (
                     <div
-                      className={cn(
-                        'flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors rounded-r-md',
-                        isSelected && selectedSubcollectionId === null
-                          ? 'bg-[hsl(var(--tone-accent-100))]'
-                          : 'hover:bg-muted/50',
-                      )}
+                      className="flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors rounded-r-md"
+                      style={{
+                        backgroundColor: isSelected && selectedSubcollectionId === null
+                          ? `${COLLECTION_COLOUR_HEX[coll.colour]}28`
+                          : undefined,
+                      }}
                       onClick={() => {
                         onSelectCollection(coll.id)
                         onSelectSubcollection(null)
                       }}
                     >
-                      <span className="flex-1 truncate text-sm">
+                      <span className="flex-1 truncate text-sm font-medium">
                         All papers
                       </span>
                     </div>
@@ -603,14 +600,15 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         key={sub.id}
                         className={cn(
                           'flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors rounded-r-md',
-                          isSubSelected && 'bg-[hsl(var(--tone-accent-100))]',
                           isSubDropTarget && 'outline-2 outline-dashed',
                           isSubPulsing && 'animate-drop-pulse',
                         )}
-                        style={isSubDropTarget ? {
-                          outlineColor: COLLECTION_COLOUR_HEX[coll.colour],
-                          backgroundColor: `${COLLECTION_COLOUR_HEX[coll.colour]}18`,
-                        } : undefined}
+                        style={{
+                          backgroundColor: isSubDropTarget || isSubSelected
+                            ? `${COLLECTION_COLOUR_HEX[coll.colour]}28`
+                            : undefined,
+                          outlineColor: isSubDropTarget ? COLLECTION_COLOUR_HEX[coll.colour] : undefined,
+                        }}
                         onClick={() => {
                           if (mode === 'browse') {
                             onSelectCollection(coll.id)
