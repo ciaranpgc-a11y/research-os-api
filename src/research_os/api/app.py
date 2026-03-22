@@ -260,6 +260,24 @@ from research_os.api.schemas import (
     WizardBootstrapResponse,
     WizardInferRequest,
     WizardInferResponse,
+    CollectionCreateRequest,
+    CollectionUpdateRequest,
+    CollectionReorderRequest,
+    CollectionResponse,
+    CollectionListResponse,
+    CollectionDeleteResponse,
+    SubcollectionCreateRequest,
+    SubcollectionUpdateRequest,
+    SubcollectionResponse,
+    SubcollectionListResponse,
+    SubcollectionDeleteResponse,
+    CollectionPublicationAddRequest,
+    CollectionPublicationReorderRequest,
+    CollectionPublicationsListResponse,
+    CollectionPublicationAddResponse,
+    CollectionPublicationRemoveResponse,
+    CollectionPublicationReorderResponse,
+    PublicationCollectionsListResponse,
 )
 from research_os.services.admin_service import (
     AdminNotFoundError,
@@ -565,6 +583,23 @@ from research_os.services.workspace_service import (
     set_active_workspace,
     update_workspace_invitation_status,
     update_workspace_record,
+)
+from research_os.services.collection_service import (
+    list_collections,
+    create_collection,
+    update_collection,
+    delete_collection,
+    reorder_collections,
+    list_subcollections,
+    create_subcollection,
+    update_subcollection,
+    delete_subcollection,
+    list_collection_publications,
+    add_publications_to_collection,
+    remove_publication_from_collection,
+    reorder_collection_publications,
+    list_subcollection_publications,
+    list_publication_collections,
 )
 
 configure_logging()
@@ -6506,3 +6541,390 @@ def draft_section(request: DraftSectionRequest, http_request: Request):
     if isinstance(response, JSONResponse):
         return response
     return {"section": response.section, "draft": response.draft}
+
+
+# ── Collections ─────────────────────────────────────────────────
+
+
+@app.get(
+    "/v1/collections",
+    response_model=CollectionListResponse,
+    responses=UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_collections(request: Request) -> CollectionListResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        items = list_collections(user_id)
+        return CollectionListResponse(items=items)
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.post(
+    "/v1/collections",
+    response_model=CollectionResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_create_collection(
+    request: Request, body: CollectionCreateRequest
+) -> CollectionResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        payload = create_collection(user_id, name=body.name, colour=body.colour)
+        return CollectionResponse(**payload)
+    except ValueError as exc:
+        return _build_bad_request_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.patch(
+    "/v1/collections/reorder",
+    response_model=CollectionListResponse,
+    responses=UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_reorder_collections(
+    request: Request, body: CollectionReorderRequest
+) -> CollectionListResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        items = reorder_collections(user_id, body.ordered_ids)
+        return CollectionListResponse(items=items)
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.patch(
+    "/v1/collections/{collection_id}",
+    response_model=CollectionResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_update_collection(
+    request: Request, collection_id: str, body: CollectionUpdateRequest
+) -> CollectionResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        payload = update_collection(user_id, collection_id, name=body.name, colour=body.colour)
+        return CollectionResponse(**payload)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.delete(
+    "/v1/collections/{collection_id}",
+    response_model=CollectionDeleteResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_delete_collection(
+    request: Request, collection_id: str
+) -> CollectionDeleteResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        payload = delete_collection(user_id, collection_id)
+        return CollectionDeleteResponse(**payload)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.get(
+    "/v1/collections/{collection_id}/subcollections",
+    response_model=SubcollectionListResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_subcollections(
+    request: Request, collection_id: str
+) -> SubcollectionListResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        items = list_subcollections(user_id, collection_id)
+        return SubcollectionListResponse(items=items)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.post(
+    "/v1/collections/{collection_id}/subcollections",
+    response_model=SubcollectionResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_create_subcollection(
+    request: Request, collection_id: str, body: SubcollectionCreateRequest
+) -> SubcollectionResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        payload = create_subcollection(user_id, collection_id, name=body.name)
+        return SubcollectionResponse(**payload)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.patch(
+    "/v1/collections/{collection_id}/subcollections/{subcollection_id}",
+    response_model=SubcollectionResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_update_subcollection(
+    request: Request, collection_id: str, subcollection_id: str,
+    body: SubcollectionUpdateRequest,
+) -> SubcollectionResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        payload = update_subcollection(
+            user_id, collection_id, subcollection_id, name=body.name
+        )
+        return SubcollectionResponse(**payload)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.delete(
+    "/v1/collections/{collection_id}/subcollections/{subcollection_id}",
+    response_model=SubcollectionDeleteResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_delete_subcollection(
+    request: Request, collection_id: str, subcollection_id: str,
+) -> SubcollectionDeleteResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        payload = delete_subcollection(user_id, collection_id, subcollection_id)
+        return SubcollectionDeleteResponse(**payload)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.get(
+    "/v1/collections/{collection_id}/publications",
+    response_model=CollectionPublicationsListResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_collection_publications(
+    request: Request, collection_id: str
+) -> CollectionPublicationsListResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        items = list_collection_publications(user_id, collection_id)
+        return CollectionPublicationsListResponse(items=items)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.post(
+    "/v1/collections/{collection_id}/publications",
+    response_model=CollectionPublicationAddResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_add_collection_publications(
+    request: Request, collection_id: str, body: CollectionPublicationAddRequest
+) -> CollectionPublicationAddResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        items = add_publications_to_collection(user_id, collection_id, body.work_ids)
+        return CollectionPublicationAddResponse(items=items)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.patch(
+    "/v1/collections/{collection_id}/publications/reorder",
+    response_model=CollectionPublicationReorderResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_reorder_collection_publications(
+    request: Request, collection_id: str, body: CollectionPublicationReorderRequest
+) -> CollectionPublicationReorderResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        payload = reorder_collection_publications(
+            user_id, collection_id, body.ordered_work_ids
+        )
+        return CollectionPublicationReorderResponse(**payload)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.delete(
+    "/v1/collections/{collection_id}/publications/{work_id}",
+    response_model=CollectionPublicationRemoveResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_remove_collection_publication(
+    request: Request, collection_id: str, work_id: str
+) -> CollectionPublicationRemoveResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        payload = remove_publication_from_collection(user_id, collection_id, work_id)
+        return CollectionPublicationRemoveResponse(**payload)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.get(
+    "/v1/collections/{collection_id}/subcollections/{subcollection_id}/publications",
+    response_model=CollectionPublicationsListResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_subcollection_publications(
+    request: Request, collection_id: str, subcollection_id: str
+) -> CollectionPublicationsListResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        items = list_subcollection_publications(user_id, collection_id, subcollection_id)
+        return CollectionPublicationsListResponse(items=items)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.post(
+    "/v1/collections/{collection_id}/subcollections/{subcollection_id}/publications",
+    response_model=CollectionPublicationAddResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_add_subcollection_publications(
+    request: Request, collection_id: str, subcollection_id: str,
+    body: CollectionPublicationAddRequest,
+) -> CollectionPublicationAddResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        items = add_publications_to_collection(
+            user_id, collection_id, body.work_ids, subcollection_id=subcollection_id
+        )
+        return CollectionPublicationAddResponse(items=items)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.delete(
+    "/v1/collections/{collection_id}/subcollections/{subcollection_id}/publications/{work_id}",
+    response_model=CollectionPublicationRemoveResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_remove_subcollection_publication(
+    request: Request, collection_id: str, subcollection_id: str, work_id: str,
+) -> CollectionPublicationRemoveResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        payload = remove_publication_from_collection(
+            user_id, collection_id, work_id, subcollection_id=subcollection_id
+        )
+        return CollectionPublicationRemoveResponse(**payload)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.patch(
+    "/v1/collections/{collection_id}/subcollections/{subcollection_id}/publications/reorder",
+    response_model=CollectionPublicationReorderResponse,
+    responses=UNAUTHORIZED_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_reorder_subcollection_publications(
+    request: Request, collection_id: str, subcollection_id: str,
+    body: CollectionPublicationReorderRequest,
+) -> CollectionPublicationReorderResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        payload = reorder_collection_publications(
+            user_id, collection_id, body.ordered_work_ids,
+            subcollection_id=subcollection_id,
+        )
+        return CollectionPublicationReorderResponse(**payload)
+    except ValueError as exc:
+        return _build_not_found_response(str(exc))
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.get(
+    "/v1/publications/{work_id}/collections",
+    response_model=PublicationCollectionsListResponse,
+    responses=UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_publication_collections(
+    request: Request, work_id: str
+) -> PublicationCollectionsListResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        items = list_publication_collections(user_id, work_id)
+        return PublicationCollectionsListResponse(items=items)
+    except Exception as exc:
+        return _build_error_response(exc)
