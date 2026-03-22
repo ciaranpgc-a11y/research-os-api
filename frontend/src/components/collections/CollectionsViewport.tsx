@@ -306,6 +306,16 @@ export function CollectionsViewport({
     try {
       await updateCollection(id, { colour })
       await refreshCollections()
+      // Update colour on any publication pills that reference this collection
+      setPubCollectionsMap((prev) => {
+        const next = new Map(prev)
+        for (const [workId, summaries] of next) {
+          if (summaries.some((s) => s.id === id)) {
+            next.set(workId, summaries.map((s) => s.id === id ? { ...s, colour } : s))
+          }
+        }
+        return next
+      })
     } catch {
       setToast('Failed to change colour')
     }

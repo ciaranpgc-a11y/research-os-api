@@ -243,7 +243,7 @@ def update_subcollection(
 
 
 def delete_subcollection(user_id: str, collection_id: str, subcollection_id: str) -> dict[str, Any]:
-    """Delete a subcollection (cascades to memberships)."""
+    """Delete a subcollection, moving its publications back to the parent collection."""
     with session_scope() as session:
         col = session.execute(
             select(Collection)
@@ -257,6 +257,14 @@ def delete_subcollection(user_id: str, collection_id: str, subcollection_id: str
         ).scalar_one_or_none()
         if not sub:
             raise ValueError(f"Subcollection {subcollection_id} not found.")
+        # Null out subcollection_id on memberships so they fall back to the parent collection
+        session.execute(
+            update(CollectionMembership)
+            .where(CollectionMembership.subcollection_id == subcollection_id)
+            .values(subcollection_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        session.expire(sub)
         session.delete(sub)
         return {"deleted": True, "id": subcollection_id}
 
