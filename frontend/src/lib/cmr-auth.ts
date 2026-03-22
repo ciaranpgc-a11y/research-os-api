@@ -48,8 +48,9 @@ function apiBase(): string {
   if (env) return env.replace(/\/+$/, '')
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    if (host === 'cmr.axiomos.studio') return 'https://cmr.axiomos.studio'
-    if (host === 'cmr.localhost') return `http://cmr.localhost:${window.location.port}`
+    if (host === 'cmr.axiomos.studio' || host === 'cmr.localhost') {
+      return window.location.origin
+    }
   }
   return 'http://127.0.0.1:8000'
 }

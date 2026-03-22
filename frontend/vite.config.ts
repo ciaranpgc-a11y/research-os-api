@@ -5,6 +5,24 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 const DATA_FILE = path.resolve(__dirname, 'src/data/cmr_reference_data.json')
+const DEFAULT_DEV_API_PROXY_TARGET = 'http://127.0.0.1:8000'
+
+function resolveDevApiProxyTarget() {
+  const raw = (
+    process.env.VITE_API_PROXY_TARGET
+    || process.env.VITE_API_BASE_URL
+    || DEFAULT_DEV_API_PROXY_TARGET
+  ).trim()
+  if (!raw) return DEFAULT_DEV_API_PROXY_TARGET
+
+  try {
+    const url = /^https?:\/\//i.test(raw) ? new URL(raw) : new URL(`http://${raw}`)
+    url.pathname = url.pathname.replace(/\/v1\/?$/i, '/')
+    return url.toString().replace(/\/+$/, '')
+  } catch {
+    return DEFAULT_DEV_API_PROXY_TARGET
+  }
+}
 
 function readJson() {
   return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'))
@@ -499,11 +517,26 @@ RULES:
 export default defineConfig({
   plugins: [react(), cmrDevApi()],
   server: {
+    host: '127.0.0.1',
     headers: {
       'Cache-Control': 'no-store',
     },
     hmr: {
       overlay: false,
+    },
+    proxy: {
+      '/v1': {
+        target: resolveDevApiProxyTarget(),
+        changeOrigin: true,
+      },
+      '/health': {
+        target: resolveDevApiProxyTarget(),
+        changeOrigin: true,
+      },
+      '/draft': {
+        target: resolveDevApiProxyTarget(),
+        changeOrigin: true,
+      },
     },
   },
   resolve: {

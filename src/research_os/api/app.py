@@ -807,9 +807,13 @@ _workspace_inbox_realtime_hub = WorkspaceInboxRealtimeHub()
 default_allow_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://cmr.localhost:5173",
     "http://localhost:5176",
+    "http://127.0.0.1:5176",
+    "http://cmr.localhost:5176",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
+    "http://cmr.localhost:4173",
     "http://localhost:6006",
     "http://localhost:6007",
     "https://app.axiomos.studio",
