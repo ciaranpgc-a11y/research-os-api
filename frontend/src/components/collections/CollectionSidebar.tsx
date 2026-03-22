@@ -257,7 +257,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
     (coll: CollectionPayload) => {
       setRenamingId(coll.id)
       setRenameValue(coll.name)
-      setMenuOpenId(null)
+      setContextMenu(null)
     },
     [],
   )
