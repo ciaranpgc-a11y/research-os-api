@@ -155,7 +155,7 @@ interface CollectionSidebarProps {
   newCollectionColour: CollectionColour
   onCreateCollection: () => void
   onCancelCreateCollection: () => void
-  newCollectionInputRef: React.RefObject<HTMLInputElement | null>
+  newCollectionInputRef: React.RefObject<HTMLInputElement>
   // collection management
   onRenameCollection: (id: string, name: string) => void
   onDeleteCollection: (id: string) => void
