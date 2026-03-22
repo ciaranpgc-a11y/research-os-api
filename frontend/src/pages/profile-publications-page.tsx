@@ -10376,13 +10376,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'overflow-hidden')}
                 data-ui="publication-library-view-toggle"
                 data-house-role="chart-toggle"
-                style={{ width: '15.25rem', minWidth: '15.25rem', maxWidth: '15.25rem', gridTemplateColumns: '1fr 1fr' }}
+                style={{ width: '22.5rem', minWidth: '22.5rem', maxWidth: '22.5rem', gridTemplateColumns: '1fr 1fr 1fr' }}
               >
                 {([
                   { value: 'publications', label: 'My publications' },
                   { value: 'journals', label: 'My journals' },
-                ] as Array<{ value: PublicationLibraryViewMode; label: string }>).map((option) => {
-                  const active = publicationLibraryViewMode === option.value
+                  { value: 'collections', label: 'My collections' },
+                ] as Array<{ value: PublicationLibraryViewMode | 'collections'; label: string }>).map((option, idx, arr) => {
+                  const active = option.value !== 'collections' && publicationLibraryViewMode === option.value
                   return (
                     <button
                       key={option.value}
@@ -10390,13 +10391,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       className={cn(
                         HOUSE_TOGGLE_BUTTON_CLASS,
                         'relative z-[1] min-w-0 px-3 text-center',
-                        option.value === 'publications' ? '!rounded-l-full !rounded-r-none' : '!rounded-l-none !rounded-r-full',
+                        idx === 0 ? '!rounded-l-full !rounded-r-none' : idx === arr.length - 1 ? '!rounded-l-none !rounded-r-full' : '!rounded-none',
                         active ? 'bg-foreground text-background shadow-sm' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
                       )}
                       aria-pressed={active}
                       onClick={() => {
-                        setPublicationLibraryViewMode(option.value)
-                        setPublicationLibraryPage(1)
+                        if (option.value === 'collections') {
+                          navigate('/profile/publications/collections')
+                        } else {
+                          setPublicationLibraryViewMode(option.value)
+                          setPublicationLibraryPage(1)
+                        }
                       }}
                     >
                       {option.label}
