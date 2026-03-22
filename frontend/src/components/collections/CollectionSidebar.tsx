@@ -136,6 +136,61 @@ function ContextMenu({
 }
 
 // ---------------------------------------------------------------------------
+// SubContextMenu — right-click menu for subcollection rows
+// ---------------------------------------------------------------------------
+
+function SubContextMenu({
+  x,
+  y,
+  onRename,
+  onDelete,
+  onClose,
+}: {
+  x: number
+  y: number
+  onRename: () => void
+  onDelete: () => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    function ctxHandler() { onClose() }
+    document.addEventListener('mousedown', handler)
+    document.addEventListener('contextmenu', ctxHandler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('contextmenu', ctxHandler)
+    }
+  }, [onClose])
+
+  const menuWidth = 176
+  const menuHeight = 90
+  const left = Math.min(x, window.innerWidth - menuWidth - 8)
+  const top = Math.min(y, window.innerHeight - menuHeight - 8)
+  const item = 'flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-sm text-foreground hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]'
+
+  return (
+    <div
+      ref={ref}
+      className="fixed z-[200] w-44 rounded-lg border border-border bg-card p-1 shadow-xl"
+      style={{ left, top }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <button type="button" className={item} onClick={onRename}>
+        <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> Rename
+      </button>
+      <div className="my-1 border-t border-border" />
+      <button type="button" className={cn(item, 'text-destructive hover:bg-destructive/10 hover:text-destructive')} onClick={onDelete}>
+        <Trash2 className="h-3.5 w-3.5 shrink-0" /> Delete
+      </button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main sidebar
 // ---------------------------------------------------------------------------
 
@@ -213,6 +268,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
 
   // ---- internal state ----
   const [contextMenu, setContextMenu] = useState<{ collectionId: string; x: number; y: number } | null>(null)
+  const [subContextMenu, setSubContextMenu] = useState<{ collectionId: string; subId: string; x: number; y: number } | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [colourPickerState, setColourPickerState] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -544,17 +600,25 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                       <div
                         key={sub.id}
                         className={cn(
-                          'group/sub flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors rounded-r-md',
+                          'flex items-center gap-2 px-3 py-2 cursor-pointer text-sm transition-colors rounded-r-md',
                           isSubSelected && 'bg-[hsl(var(--tone-accent-100))]',
-                          isSubDropTarget &&
-                            'outline-2 outline-dashed outline-[hsl(var(--tone-accent-500))] bg-[hsl(var(--tone-accent-50))]',
+                          isSubDropTarget && 'outline-2 outline-dashed',
                           isSubPulsing && 'animate-drop-pulse',
                         )}
+                        style={isSubDropTarget ? {
+                          outlineColor: COLLECTION_COLOUR_HEX[coll.colour],
+                          backgroundColor: `${COLLECTION_COLOUR_HEX[coll.colour]}18`,
+                        } : undefined}
                         onClick={() => {
                           if (mode === 'browse') {
                             onSelectCollection(coll.id)
                             onSelectSubcollection(sub.id)
                           }
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setSubContextMenu({ collectionId: coll.id, subId: sub.id, x: e.clientX, y: e.clientY })
                         }}
                         onDragOver={
                           mode === 'organise'
@@ -568,35 +632,9 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         }
                       >
                         <span className="flex-1 truncate text-foreground">{sub.name}</span>
-                        <span className="text-xs text-muted-foreground tabular-nums">
+                        <span className="text-xs font-bold text-muted-foreground tabular-nums">
                           {sub.publication_count}
                         </span>
-
-                        {/* Rename button (on hover) */}
-                        <button
-                          type="button"
-                          className="h-5 w-5 flex items-center justify-center rounded opacity-0 group-hover/sub:opacity-100 hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground transition-opacity"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            startSubRename(sub)
-                          }}
-                          title="Rename"
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </button>
-
-                        {/* Delete button (on hover) */}
-                        <button
-                          type="button"
-                          className="h-5 w-5 flex items-center justify-center rounded opacity-0 group-hover/sub:opacity-100 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-opacity"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onDeleteSubcollection(coll.id, sub.id)
-                          }}
-                          title="Delete"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
                       </div>
                     )
                   })}
@@ -694,7 +732,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
         )
       })()}
 
-      {/* Right-click context menu */}
+      {/* Right-click context menu — collection */}
       {contextMenu && (() => {
         const coll = collections.find((c) => c.id === contextMenu.collectionId)
         if (!coll) return null
@@ -707,6 +745,22 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
             onChangeColour={() => setColourPickerState({ id: coll.id, x: contextMenu.x, y: contextMenu.y })}
             onAddSubcollection={() => startCreateSub(coll.id)}
             onClose={() => setContextMenu(null)}
+          />
+        )
+      })()}
+
+      {/* Right-click context menu — subcollection */}
+      {subContextMenu && (() => {
+        const { collectionId, subId, x, y } = subContextMenu
+        const sub = (subcollectionsMap.get(collectionId) ?? []).find((s) => s.id === subId)
+        if (!sub) return null
+        return (
+          <SubContextMenu
+            x={x}
+            y={y}
+            onRename={() => { startSubRename(sub); setSubContextMenu(null) }}
+            onDelete={() => { onDeleteSubcollection(collectionId, subId); setSubContextMenu(null) }}
+            onClose={() => setSubContextMenu(null)}
           />
         )
       })()}
