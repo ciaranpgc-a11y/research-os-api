@@ -1263,7 +1263,18 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "severity_label": "regurgitation",
+      "severity_thresholds": {
+        "mild": null,
+        "moderate": 30,
+        "severe": 60
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild AR",
+        "moderate": "Suggests moderate AR",
+        "severe": "Suggests severe AR"
+      }
     },
     "AV maximum velocity": {
       "parameter": "AV maximum velocity",
@@ -1273,7 +1284,18 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "severity_label": "stenosis",
+      "severity_thresholds": {
+        "mild": 2,
+        "moderate": 3,
+        "severe": 4
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild AS",
+        "moderate": "Suggests moderate AS",
+        "severe": "Suggests severe AS"
+      }
     },
     "AV minimum velocity": {
       "parameter": "AV minimum velocity",
@@ -1293,7 +1315,18 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "severity_label": "regurgitation",
+      "severity_thresholds": {
+        "mild": 10,
+        "moderate": 20,
+        "severe": 40
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild AR",
+        "moderate": "Suggests moderate AR",
+        "severe": "Suggests severe AR"
+      }
     },
     "AV maximum pressure gradient": {
       "parameter": "AV maximum pressure gradient",
@@ -1303,7 +1336,18 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "severity_label": "stenosis",
+      "severity_thresholds": {
+        "mild": 16,
+        "moderate": 36,
+        "severe": 64
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild AS",
+        "moderate": "Suggests moderate AS",
+        "severe": "Suggests severe AS"
+      }
     },
     "AV mean pressure gradient": {
       "parameter": "AV mean pressure gradient",
@@ -1313,7 +1357,18 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "stenosis",
+      "severity_thresholds": {
+        "mild": 5,
+        "moderate": 20,
+        "severe": 40
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild AS",
+        "moderate": "Suggests moderate AS",
+        "severe": "Suggests severe AS"
+      }
     },
     "PV effective forward flow (per heartbeat)": {
       "parameter": "PV effective forward flow (per heartbeat)",
@@ -1363,7 +1418,18 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "regurgitation",
+      "severity_thresholds": {
+        "mild": null,
+        "moderate": 30,
+        "severe": 60
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild PR",
+        "moderate": "Suggests moderate PR",
+        "severe": "Suggests severe PR"
+      }
     },
     "PV maximum velocity": {
       "parameter": "PV maximum velocity",
@@ -1373,7 +1439,18 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "severity_label": "stenosis",
+      "severity_thresholds": {
+        "mild": 2,
+        "moderate": 3,
+        "severe": 4
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild PS",
+        "moderate": "Suggests moderate PS",
+        "severe": "Suggests severe PS"
+      }
     },
     "PV minimum velocity": {
       "parameter": "PV minimum velocity",
@@ -1393,7 +1470,18 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "regurgitation",
+      "severity_thresholds": {
+        "mild": 10,
+        "moderate": 20,
+        "severe": 40
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild PR",
+        "moderate": "Suggests moderate PR",
+        "severe": "Suggests severe PR"
+      }
     },
     "PV maximum pressure gradient": {
       "parameter": "PV maximum pressure gradient",
@@ -1403,7 +1491,18 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "severity_label": "stenosis",
+      "severity_thresholds": {
+        "mild": 16,
+        "moderate": 36,
+        "severe": 64
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild PS",
+        "moderate": "Suggests moderate PS",
+        "severe": "Suggests severe PS"
+      }
     },
     "PV mean pressure gradient": {
       "parameter": "PV mean pressure gradient",
@@ -1413,7 +1512,18 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "stenosis",
+      "severity_thresholds": {
+        "mild": 5,
+        "moderate": 20,
+        "severe": 40
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild PS",
+        "moderate": "Suggests moderate PS",
+        "severe": "Suggests severe PS"
+      }
     },
     "MR volume (per heartbeat)": {
       "parameter": "MR volume (per heartbeat)",
@@ -1423,7 +1533,18 @@
       "sub_section": "Mitral flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "regurgitation",
+      "severity_thresholds": {
+        "mild": null,
+        "moderate": 30,
+        "severe": 60
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild MR",
+        "moderate": "Suggests moderate MR",
+        "severe": "Suggests severe MR"
+      }
     },
     "MR regurgitant fraction": {
       "parameter": "MR regurgitant fraction",
@@ -1433,7 +1554,18 @@
       "sub_section": "Mitral flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "regurgitation",
+      "severity_thresholds": {
+        "mild": 10,
+        "moderate": 20,
+        "severe": 40
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild MR",
+        "moderate": "Suggests moderate MR",
+        "severe": "Suggests severe MR"
+      }
     },
     "TR volume (per heartbeat)": {
       "parameter": "TR volume (per heartbeat)",
@@ -1443,7 +1575,18 @@
       "sub_section": "Tricuspid flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "regurgitation",
+      "severity_thresholds": {
+        "mild": null,
+        "moderate": 30,
+        "severe": 60
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild TR",
+        "moderate": "Suggests moderate TR",
+        "severe": "Suggests severe TR"
+      }
     },
     "TR regurgitant fraction": {
       "parameter": "TR regurgitant fraction",
@@ -1453,7 +1596,18 @@
       "sub_section": "Tricuspid flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "regurgitation",
+      "severity_thresholds": {
+        "mild": 10,
+        "moderate": 20,
+        "severe": 40
+      },
+      "severity_label_override": {
+        "mild": "Suggests mild TR",
+        "moderate": "Suggests moderate TR",
+        "severe": "Suggests severe TR"
+      }
     },
     "Asc aorta distensibility": {
       "parameter": "Asc aorta distensibility",
@@ -17193,9 +17347,9 @@
       "age_max": null,
       "ll": null,
       "mean": null,
-      "ul": null,
+      "ul": 5,
       "sd": null,
-      "abnormal_direction": "both",
+      "abnormal_direction": "high",
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -17211,9 +17365,9 @@
       "age_max": null,
       "ll": null,
       "mean": null,
-      "ul": null,
+      "ul": 5,
       "sd": null,
-      "abnormal_direction": "both",
+      "abnormal_direction": "high",
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -17409,7 +17563,7 @@
       "age_max": null,
       "ll": null,
       "mean": null,
-      "ul": null,
+      "ul": 8,
       "sd": null,
       "abnormal_direction": "high",
       "ll_mass": null,
@@ -17427,7 +17581,7 @@
       "age_max": null,
       "ll": null,
       "mean": null,
-      "ul": null,
+      "ul": 8,
       "sd": null,
       "abnormal_direction": "high",
       "ll_mass": null,
@@ -17517,7 +17671,7 @@
       "age_max": null,
       "ll": null,
       "mean": null,
-      "ul": null,
+      "ul": 10,
       "sd": null,
       "abnormal_direction": "high",
       "ll_mass": null,
@@ -17535,7 +17689,7 @@
       "age_max": null,
       "ll": null,
       "mean": null,
-      "ul": null,
+      "ul": 10,
       "sd": null,
       "abnormal_direction": "high",
       "ll_mass": null,
@@ -17589,9 +17743,9 @@
       "age_max": null,
       "ll": null,
       "mean": null,
-      "ul": null,
+      "ul": 5,
       "sd": null,
-      "abnormal_direction": "both",
+      "abnormal_direction": "high",
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -17607,9 +17761,9 @@
       "age_max": null,
       "ll": null,
       "mean": null,
-      "ul": null,
+      "ul": 5,
       "sd": null,
-      "abnormal_direction": "both",
+      "abnormal_direction": "high",
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
