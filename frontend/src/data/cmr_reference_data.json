@@ -617,8 +617,7 @@
       "sub_section": "LA function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0,
-      "separator_before": true
+      "decimal_places": 0
     },
     "LA SV": {
       "parameter": "LA SV",
@@ -790,8 +789,7 @@
       "sub_section": "RA function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0,
-      "separator_before": true
+      "decimal_places": 0
     },
     "RA SV": {
       "parameter": "RA SV",
