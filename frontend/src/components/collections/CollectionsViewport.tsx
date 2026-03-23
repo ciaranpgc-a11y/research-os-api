@@ -547,6 +547,7 @@ export function CollectionsViewport({
             selectedSubcollectionId={selectedSubcollectionId}
             onSelectCollection={setSelectedCollectionId}
             onSelectSubcollection={setSelectedSubcollectionId}
+            isDragging={dragWorkId !== null}
             dropTargetId={dropTargetId}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}

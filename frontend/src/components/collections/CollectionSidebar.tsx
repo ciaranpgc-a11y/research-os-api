@@ -208,6 +208,7 @@ interface CollectionSidebarProps {
   onSelectCollection: (id: string) => void
   onSelectSubcollection: (id: string | null) => void
   // drag and drop
+  isDragging: boolean
   dropTargetId: string | null
   onDragOver: (e: React.DragEvent, targetId: string) => void
   onDragLeave: () => void
@@ -246,6 +247,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
     selectedSubcollectionId,
     onSelectCollection,
     onSelectSubcollection,
+    isDragging,
     dropTargetId,
     onDragOver,
     onDragLeave,
@@ -286,6 +288,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
   const newSubInputRef = useRef<HTMLInputElement>(null)
   const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dragExpandTargetRef = useRef<string | null>(null)
+  const dragAutoExpandedRef = useRef<Set<string>>(new Set())
 
   // ---- focus inputs when editing starts ----
   useEffect(() => {
@@ -323,28 +326,52 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
     dragExpandTargetRef.current = null
   }, [])
 
+  // Collapse any collections that were auto-expanded during this drag
+  const collapseAutoExpanded = useCallback(() => {
+    dragAutoExpandedRef.current.forEach((id) => {
+      if (expandedIds.has(id)) onToggleExpand(id)
+    })
+    dragAutoExpandedRef.current.clear()
+  }, [expandedIds, onToggleExpand])
+
+  // When drag ends (isDragging flips to false), collapse anything we auto-opened
+  useEffect(() => {
+    if (!isDragging) {
+      clearExpandTimer()
+      collapseAutoExpanded()
+    }
+  }, [isDragging]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Called from dragover on a collection row — starts a timer only when the target changes
   const handleCollectionDragOver = useCallback((e: React.DragEvent, collectionId: string) => {
     onDragOver(e, collectionId)
     if (expandedIds.has(collectionId)) return
     // Same target as before — timer already running, do nothing
     if (dragExpandTargetRef.current === collectionId) return
-    // New collection target — restart timer
+    // Moving to a new collection — collapse the previous auto-expanded one if different
+    const prev = dragExpandTargetRef.current
+    if (prev && dragAutoExpandedRef.current.has(prev) && expandedIds.has(prev)) {
+      onToggleExpand(prev)
+      dragAutoExpandedRef.current.delete(prev)
+    }
+    // Restart timer for new target
     clearExpandTimer()
     dragExpandTargetRef.current = collectionId
     dragExpandTimerRef.current = setTimeout(() => {
       dragExpandTimerRef.current = null
       dragExpandTargetRef.current = null
+      dragAutoExpandedRef.current.add(collectionId)
       void handleToggleExpand(collectionId)
     }, 300)
-  }, [onDragOver, expandedIds, handleToggleExpand, clearExpandTimer])
+  }, [onDragOver, expandedIds, handleToggleExpand, clearExpandTimer, onToggleExpand])
 
   // Cancel timer + drop highlight only when drag leaves the entire sidebar
   const handleSidebarDragLeave = useCallback((e: React.DragEvent) => {
     if (e.currentTarget.contains(e.relatedTarget as Node)) return
     onDragLeave()
     clearExpandTimer()
-  }, [onDragLeave, clearExpandTimer])
+    collapseAutoExpanded()
+  }, [onDragLeave, clearExpandTimer, collapseAutoExpanded])
 
   // ---- rename helpers ----
   const startRename = useCallback(
@@ -523,7 +550,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     setContextMenu({ collectionId: coll.id, x: e.clientX, y: e.clientY })
                   }}
                   onDragOver={mode === 'organise' ? (e) => handleCollectionDragOver(e, coll.id) : undefined}
-                  onDrop={mode === 'organise' ? () => { clearExpandTimer(); onDrop(coll.id) } : undefined}
+                  onDrop={mode === 'organise' ? () => { clearExpandTimer(); dragAutoExpandedRef.current.clear(); onDrop(coll.id) } : undefined}
                 >
                   {/* Name + count */}
                   <span className="flex-1 truncate text-foreground">{coll.name}</span>
@@ -609,7 +636,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         }
                         onDrop={
                           mode === 'organise'
-                            ? () => { clearExpandTimer(); onDrop(coll.id, sub.id) }
+                            ? () => { clearExpandTimer(); dragAutoExpandedRef.current.clear(); onDrop(coll.id, sub.id) }
                             : undefined
                         }
                       >
