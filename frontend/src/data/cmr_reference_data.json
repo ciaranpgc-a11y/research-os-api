@@ -609,9 +609,9 @@
       "pap_affected": false,
       "decimal_places": 1
     },
-    "LA SV": {
-      "parameter": "LA SV",
-      "unit": "mL",
+    "LA EF": {
+      "parameter": "LA EF",
+      "unit": "%",
       "indexing": "None",
       "major_section": "LEFT ATRIUM",
       "sub_section": "LA function",
@@ -620,20 +620,20 @@
       "decimal_places": 0,
       "separator_before": true
     },
-    "LA SV (i)": {
-      "parameter": "LA SV (i)",
-      "unit": "mL/m²",
-      "indexing": "BSA",
+    "LA SV": {
+      "parameter": "LA SV",
+      "unit": "mL",
+      "indexing": "None",
       "major_section": "LEFT ATRIUM",
       "sub_section": "LA function",
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0
     },
-    "LA EF": {
-      "parameter": "LA EF",
-      "unit": "%",
-      "indexing": "None",
+    "LA SV (i)": {
+      "parameter": "LA SV (i)",
+      "unit": "mL/m²",
+      "indexing": "BSA",
       "major_section": "LEFT ATRIUM",
       "sub_section": "LA function",
       "sources": [],
@@ -782,9 +782,9 @@
       "pap_affected": false,
       "decimal_places": 1
     },
-    "RA SV": {
-      "parameter": "RA SV",
-      "unit": "mL",
+    "RA EF": {
+      "parameter": "RA EF",
+      "unit": "%",
       "indexing": "None",
       "major_section": "RIGHT ATRIUM",
       "sub_section": "RA function",
@@ -793,20 +793,20 @@
       "decimal_places": 0,
       "separator_before": true
     },
-    "RA SV (i)": {
-      "parameter": "RA SV (i)",
-      "unit": "mL/m²",
-      "indexing": "BSA",
+    "RA SV": {
+      "parameter": "RA SV",
+      "unit": "mL",
+      "indexing": "None",
       "major_section": "RIGHT ATRIUM",
       "sub_section": "RA function",
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0
     },
-    "RA EF": {
-      "parameter": "RA EF",
-      "unit": "%",
-      "indexing": "None",
+    "RA SV (i)": {
+      "parameter": "RA SV (i)",
+      "unit": "mL/m²",
+      "indexing": "BSA",
       "major_section": "RIGHT ATRIUM",
       "sub_section": "RA function",
       "sources": [],
