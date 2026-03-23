@@ -556,7 +556,7 @@ function RangeChart({
           return (
             <div
               key={`tick-${i}`}
-              className="absolute top-1/2 h-5 w-[1.5px] -translate-x-1/2 -translate-y-1/2 bg-[hsl(var(--foreground)/0.35)]"
+              className="absolute top-1/2 h-5 w-px -translate-x-1/2 -translate-y-1/2 bg-[hsl(var(--foreground)/0.4)]"
               style={{ left: `${tickPos * 100}%` }}
             />
           )
