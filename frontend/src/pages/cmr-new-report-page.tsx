@@ -1346,13 +1346,13 @@ export function CmrNewReportPage() {
                               }
                               return (
                                 <Fragment key={p.parameter_key}>
-                                {p.separator_before && (
-                                  <tr><td colSpan={chartMode === 'on' ? 8 : 7} className="h-0 border-b-2 border-[hsl(var(--stroke-soft)/0.7)]" /></tr>
-                                )}
                                 <tr
                                   onClick={() => setSelectedParam(p)}
                                   className={cn(
-                                    'cursor-pointer border-b border-[hsl(var(--stroke-soft)/0.4)] transition-colors duration-100',
+                                    'cursor-pointer transition-colors duration-100',
+                                    p.separator_before
+                                      ? 'border-t-[3px] border-b border-t-[hsl(var(--stroke-soft)/0.6)] border-b-[hsl(var(--stroke-soft)/0.4)]'
+                                      : 'border-b border-[hsl(var(--stroke-soft)/0.4)]',
                                     !(severityMode === 'abnormal' && hasMeasuredVal) && 'hover:bg-[hsl(var(--tone-neutral-50)/0.65)]',
                                     severityMode === 'abnormal' && hasMeasuredVal && severity.grade === 'normal' && 'bg-[hsl(158_30%_94%)] hover:bg-[hsl(158_30%_91%)]',
                                     severityMode === 'abnormal' && hasMeasuredVal && severity.grade === 'mild' && 'bg-[hsl(46_60%_91%)] hover:bg-[hsl(46_60%_88%)]',
