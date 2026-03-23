@@ -1581,8 +1581,8 @@
       "parameter": "Asc aorta distensibility",
       "unit": "10⁻³ /mmHg",
       "indexing": "None",
-      "major_section": "DERIVED HAEMODYNAMIC PARAMETERS",
-      "sub_section": null,
+      "major_section": "AORTA",
+      "sub_section": "Aortic distensibility",
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1
@@ -1591,8 +1591,8 @@
       "parameter": "Prox desc aorta distensibility",
       "unit": "10⁻³ /mmHg",
       "indexing": "None",
-      "major_section": "DERIVED HAEMODYNAMIC PARAMETERS",
-      "sub_section": null,
+      "major_section": "AORTA",
+      "sub_section": "Aortic distensibility",
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1
@@ -1601,8 +1601,8 @@
       "parameter": "Dist desc aorta distensibility",
       "unit": "10⁻³ /mmHg",
       "indexing": "None",
-      "major_section": "DERIVED HAEMODYNAMIC PARAMETERS",
-      "sub_section": null,
+      "major_section": "AORTA",
+      "sub_section": "Aortic distensibility",
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1
