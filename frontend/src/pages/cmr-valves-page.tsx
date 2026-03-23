@@ -59,8 +59,8 @@ const FLOW_FIELDS: FlowFieldDef[] = [
     unit: 'mL/beat',
     column: 1,
     paramKey: {
-      aortic: 'AV backward flow',
-      pulmonary: 'PV backward flow',
+      aortic: 'AV backward flow (per heartbeat)',
+      pulmonary: 'PV backward flow (per heartbeat)',
       mitral: null,
       tricuspid: null,
     },

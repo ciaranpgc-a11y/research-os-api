@@ -382,6 +382,7 @@ function RangeChart({
   rangeWidth,
   previousMarkers,
   severityZones,
+  severityGrade,
 }: {
   measured: number
   ll: number
@@ -405,12 +406,12 @@ function RangeChart({
   // Build severity zone bands (only for params with thresholds)
   const zoneBands = severityZones ? (() => {
     const bands: Array<{ grade: SevGrade; leftPct: string; widthPct: string }> = []
-    const refUL = originalUL ?? ul // actual reference UL for normal zone boundary
-    // Normal zone: from LL to original UL
+    const refUL = originalUL ?? ul
+    // Normal zone: from 0% to original UL position
     const normalEndRel = computeMeasuredRel(refUL, ll, ul)
     const normalEndPos = computeMeasuredPos(normalEndRel, rangeStart, rangeWidth)
     bands.push({ grade: 'normal', leftPct: '0%', widthPct: `${normalEndPos * 100}%` })
-    // Severity zones: each extends from previous threshold to this threshold
+    // Severity zones
     const grades: SevGrade[] = ['mild', 'moderate', 'severe']
     let prevThreshold = refUL
     for (let i = 0; i < grades.length; i++) {
@@ -418,11 +419,17 @@ function RangeChart({
       if (!zone) continue
       const startRel = computeMeasuredRel(prevThreshold, ll, ul)
       const startPos = computeMeasuredPos(startRel, rangeStart, rangeWidth)
-      const endVal = zone.threshold ?? ul // severe zone extends to effective UL
-      const endRel = computeMeasuredRel(endVal, ll, ul)
-      const endPos = computeMeasuredPos(endRel, rangeStart, rangeWidth)
-      bands.push({ grade: grades[i], leftPct: `${startPos * 100}%`, widthPct: `${Math.max(0, endPos - startPos) * 100}%` })
-      prevThreshold = endVal
+      const isLast = i === grades.length - 1 || !severityZones.find((z) => z.grade === grades[i + 1])
+      if (isLast) {
+        // Last zone extends to 100% of the bar
+        bands.push({ grade: grades[i], leftPct: `${startPos * 100}%`, widthPct: `${(1 - startPos) * 100}%` })
+      } else {
+        const endVal = zone.threshold ?? ul
+        const endRel = computeMeasuredRel(endVal, ll, ul)
+        const endPos = computeMeasuredPos(endRel, rangeStart, rangeWidth)
+        bands.push({ grade: grades[i], leftPct: `${startPos * 100}%`, widthPct: `${Math.max(0, endPos - startPos) * 100}%` })
+        prevThreshold = endVal
+      }
     }
     return bands
   })() : null
