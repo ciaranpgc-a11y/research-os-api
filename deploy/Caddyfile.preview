@@ -1,6 +1,8 @@
-# Optional preview routes.
-#
-# Leave this file as comments-only until preview DNS records exist.
-# Once preview.axiomos.studio and preview-api.axiomos.studio point at the
-# Hetzner host, replace this file with deploy/Caddyfile.preview.example and
-# restart Caddy.
+# Preview SPA
+preview.axiomos.studio {
+	reverse_proxy frontend-preview:80
+}
+
+preview-api.axiomos.studio {
+	reverse_proxy api-preview:8000
+}
