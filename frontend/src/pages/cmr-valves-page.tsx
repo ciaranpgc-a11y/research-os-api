@@ -803,8 +803,12 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
     <TooltipProvider delayDuration={0}>
       <div className="flex justify-center">
         <div className="flex flex-col items-center">
-          <svg width="380" height="230" viewBox="20 0 260 175">
-            {/* Background track — no grey, severity zones cover the full arc */}
+          {/* Value and label above the gauge */}
+          <div className="text-center mb-1">
+            <div className="text-2xl font-bold tabular-nums">{!isNaN(rfVal) ? `${rfVal.toFixed(1)}%` : '—'}</div>
+            <div className="text-[11px] text-muted-foreground font-medium">Regurgitant fraction</div>
+          </div>
+          <svg width="380" height="190" viewBox="20 20 260 130">
             {/* Severity zone arcs — proportional to RF% range, butt caps */}
             {sevZones.map((z) => {
               const isActive = !isNaN(rfVal) && rfVal >= z.lo && rfVal < z.hi
@@ -862,21 +866,7 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
                 </TooltipContent>
               </Tooltip>
             )}
-            {/* Value and label — below the arc, clear of the gauge */}
-            <text x={CX} y={CY + 20} textAnchor="middle" className="fill-foreground font-bold" style={{ fontSize: '26px' }}>
-              {!isNaN(rfVal) ? `${rfVal.toFixed(1)}%` : '—'}
-            </text>
-            <text x={CX} y={CY + 36} textAnchor="middle" className="fill-muted-foreground font-medium" style={{ fontSize: '10px' }}>
-              Regurgitant fraction
-            </text>
           </svg>
-          {/* Severity pill */}
-          <span
-            className={cn('rounded-full px-3 py-1 text-xs font-semibold -mt-1', severity === 'mild' ? 'text-black' : 'text-white')}
-            style={{ backgroundColor: SEVERITY_COLORS[severity] }}
-          >
-            {SEVERITY_LABELS[severity]}
-          </span>
         </div>
 
       </div>
