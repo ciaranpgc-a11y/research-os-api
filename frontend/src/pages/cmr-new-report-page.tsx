@@ -621,43 +621,43 @@ export function CmrNewReportPage() {
   }, [])
 
   /** Build previous markers for a given canonical parameter key.
-   *  Includes comparison with current value, % change, and abnormality. */
+   *  Uses the severity system for clinical interpretation labels. */
   const getPrevMarkers = useCallback((
-    paramKey: string,
+    param: CmrCanonicalParam,
     currentVal: number | undefined,
-    unit: string,
-    ll: number | null,
-    ul: number | null,
-    direction: string,
   ): Array<{ value: number; label: string }> | undefined => {
     if (!prevVisible || prevStudies.length === 0) return undefined
     const markers: Array<{ value: number; label: string }> = []
+    const sevLabel = param.severity_label as SeverityLabelType | undefined
+    const resolvedLabel = sevLabel ?? inferSeverityLabel(param.parameter_key, param.major_section, param.sub_section)
     for (const s of prevStudies) {
-      const v = s.values[paramKey]
+      const v = s.values[param.parameter_key]
       if (v === undefined) continue
-      // Build tooltip parts
-      const parts: string[] = [`${s.label}`]
-      // Previous value
-      const dp = unit === '%' || unit === 'bpm' ? 0 : unit === 'm/s' ? 1 : 0
-      parts.push(`Previous: ${v.toFixed(dp)} ${unit}`)
-      // Current comparison
-      if (currentVal !== undefined) {
-        parts.push(`Current: ${currentVal.toFixed(dp)} ${unit}`)
-        // % change
-        if (v !== 0) {
-          const pctChange = ((currentVal - v) / Math.abs(v)) * 100
-          const sign = pctChange >= 0 ? '+' : ''
-          parts.push(`Change: ${sign}${pctChange.toFixed(0)}%`)
-        }
-      }
-      // Abnormality of previous value
-      if (ll != null && ul != null) {
-        const prevAbnormal = isAbnormalValue(v, ll, ul, direction)
-        if (prevAbnormal) {
-          parts.push(v < ll ? 'Previously below range' : 'Previously above range')
+      const dp = param.unit === '%' || param.unit === 'bpm' ? 0 : param.unit === 'm/s' ? 1 : 0
+      const parts: string[] = [s.label]
+      // Severity interpretation for previous value
+      const prevSev = computeSeverity(v, param.ll, param.ul, param.sd, param.abnormal_direction, resolvedLabel, param.severity_thresholds ?? null, param.severity_label_override ?? null)
+      // Severity interpretation for current value
+      const currSev = currentVal !== undefined
+        ? computeSeverity(currentVal, param.ll, param.ul, param.sd, param.abnormal_direction, resolvedLabel, param.severity_thresholds ?? null, param.severity_label_override ?? null)
+        : null
+      // Build interpretation line: "Previously normal, now mildly dilated"
+      if (currSev) {
+        if (prevSev.label === currSev.label) {
+          parts.push(`Unchanged: ${prevSev.label.toLowerCase()}`)
         } else {
-          parts.push('Previously within range')
+          parts.push(`Previously ${prevSev.label.toLowerCase()}, now ${currSev.label.toLowerCase()}`)
         }
+      } else {
+        parts.push(`Previously ${prevSev.label.toLowerCase()}`)
+      }
+      // Numeric comparison
+      parts.push(`${v.toFixed(dp)} → ${currentVal !== undefined ? currentVal.toFixed(dp) : '—'} ${param.unit}`)
+      // % change
+      if (currentVal !== undefined && v !== 0) {
+        const pctChange = ((currentVal - v) / Math.abs(v)) * 100
+        const sign = pctChange >= 0 ? '+' : ''
+        parts.push(`${sign}${pctChange.toFixed(0)}%`)
       }
       markers.push({ value: v, label: parts.join('\n') })
     }
@@ -1195,7 +1195,7 @@ export function CmrNewReportPage() {
                                           rangeWidth={
                                             (rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth
                                           }
-                                          previousMarkers={getPrevMarkers(p.parameter_key, measured, p.unit, p.ll, p.ul, p.abnormal_direction)}
+                                          previousMarkers={getPrevMarkers(p, measured)}
                                         />
                                       ) : null}
                                     </td>
@@ -1292,7 +1292,7 @@ export function CmrNewReportPage() {
                                               direction={cp.abnormal_direction}
                                               rangeStart={(rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeStart}
                                               rangeWidth={(rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth}
-                                              previousMarkers={getPrevMarkers(cp.parameter_key, cpMeasured, cp.unit, cp.ll, cp.ul, cp.abnormal_direction)}
+                                              previousMarkers={getPrevMarkers(cp, cpMeasured)}
                                             />
                                           ) : null}
                                         </td>
