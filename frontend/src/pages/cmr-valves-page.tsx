@@ -827,21 +827,6 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
                 />
               )
             })}
-            {/* Rounded end caps — drawn after arcs so they sit on top */}
-            {(() => {
-              const first = sevZones[0]
-              const last = sevZones[sevZones.length - 1]
-              const firstActive = !isNaN(rfVal) && rfVal >= first.lo && rfVal < first.hi
-              const lastActive = !isNaN(rfVal) && rfVal >= last.lo
-              const [sx, sy] = gaugePoint(first.startDeg, ARC_R)
-              const [ex, ey] = gaugePoint(last.endDeg, ARC_R)
-              return (
-                <>
-                  <circle cx={sx} cy={sy} r="11.5" fill={first.color} opacity={firstActive || isNaN(rfVal) ? 1 : 0.3} className="transition-opacity duration-300" />
-                  <circle cx={ex} cy={ey} r="11.5" fill={last.color} opacity={lastActive || isNaN(rfVal) ? 1 : 0.3} className="transition-opacity duration-300" />
-                </>
-              )
-            })()}
             {/* Gap lines between zones */}
             {sevZones.slice(1).map((z) => {
               const [gx1, gy1] = gaugePoint(z.startDeg, ARC_R - 12)
