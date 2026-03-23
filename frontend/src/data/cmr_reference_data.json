@@ -1145,68 +1145,73 @@
       "unit": "ms",
       "indexing": "None",
       "major_section": "MYOCARDIAL TISSUE CHARACTERISATION",
-      "sub_section": null,
+      "sub_section": "T1 mapping",
       "sources": [
         "Kawel-Boehm et al. JCMR 2020;22:87",
         "Roy et al. JCMR 2017;19:72"
       ],
       "pap_affected": false,
       "decimal_places": 0,
-      "abnormal_direction": "both"
+      "abnormal_direction": "both",
+      "sort_order": 1
     },
     "ECV": {
       "parameter": "ECV",
       "unit": "%",
       "indexing": "None",
       "major_section": "MYOCARDIAL TISSUE CHARACTERISATION",
-      "sub_section": null,
+      "sub_section": "T1 mapping",
       "sources": [
         "Roy et al. JCMR 2017;19:72"
       ],
       "pap_affected": false,
       "decimal_places": 1,
       "separator_before": true,
-      "abnormal_direction": "high"
+      "abnormal_direction": "high",
+      "sort_order": 3
     },
     "Post-contrast T1": {
       "parameter": "Post-contrast T1",
       "unit": "ms",
       "indexing": "None",
       "major_section": "MYOCARDIAL TISSUE CHARACTERISATION",
-      "sub_section": "",
+      "sub_section": "T1 mapping",
       "sources": [
         "SCMR Reference Values 2025 Update. JCMR 2025"
       ],
       "pap_affected": false,
       "decimal_places": 0,
-      "abnormal_direction": "low"
+      "abnormal_direction": "low",
+      "sort_order": 2
     },
     "Native T2": {
       "parameter": "Native T2",
       "unit": "ms",
       "indexing": "None",
       "major_section": "MYOCARDIAL TISSUE CHARACTERISATION",
-      "sub_section": null,
+      "sub_section": "T2 mapping",
       "sources": [
         "Roy et al. JCMR 2017;19:72"
       ],
       "pap_affected": false,
       "decimal_places": 0,
-      "abnormal_direction": "both"
+      "abnormal_direction": "both",
+      "sort_order": 4
     },
     "Myocardial T2*": {
       "parameter": "Myocardial T2*",
       "unit": "ms",
       "indexing": "None",
       "major_section": "MYOCARDIAL TISSUE CHARACTERISATION",
-      "sub_section": null,
+      "sub_section": "T2 mapping",
       "sources": [
         "Roy et al. JCMR 2017;19:72"
       ],
       "pap_affected": false,
       "decimal_places": 0,
       "separator_before": true,
-      "abnormal_direction": "both"
+      "abnormal_direction": "both",
+      "sort_order": 5
     },
     "Aortic annulus diameter": {
       "parameter": "Aortic annulus diameter",
@@ -20493,7 +20498,10 @@
     "VALVE MORPHOLOGY AND FUNCTION": [
       "Mitral valve morphology and function"
     ],
-    "MYOCARDIAL TISSUE CHARACTERISATION": [],
+    "MYOCARDIAL TISSUE CHARACTERISATION": [
+      "T1 mapping",
+      "T2 mapping"
+    ],
     "GREAT VESSELS": [
       "Aorta",
       "Pulmonary arteries"

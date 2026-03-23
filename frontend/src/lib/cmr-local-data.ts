@@ -207,7 +207,7 @@ export function resolveReferenceParameters(sex: string = 'Male', age?: number): 
       parameter_key: name,
       unit: op.unit,
       indexing: op.indexing,
-      abnormal_direction: sampleRow?.abnormal_direction || '',
+      abnormal_direction: op.abnormal_direction || sampleRow?.abnormal_direction || '',
       major_section: op.major_section,
       sub_section: op.sub_section || '',
       sort_order: i,
