@@ -504,11 +504,9 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     borderLeft: `3px solid ${COLLECTION_COLOUR_HEX[coll.colour]}`,
                     backgroundColor: isDropTarget
                       ? `${COLLECTION_COLOUR_HEX[coll.colour]}30`
-                      : subs.length > 0 && isSelected
-                        ? `${COLLECTION_COLOUR_HEX[coll.colour]}28`
-                        : subs.length > 0 && isExpanded
-                          ? `${COLLECTION_COLOUR_HEX[coll.colour]}18`
-                          : undefined,
+                      : subs.length > 0 && isExpanded
+                        ? `${COLLECTION_COLOUR_HEX[coll.colour]}18`
+                        : undefined,
                     outlineColor: isDropTarget ? COLLECTION_COLOUR_HEX[coll.colour] : undefined,
                     '--pulse-colour': `${COLLECTION_COLOUR_HEX[coll.colour]}60`,
                   } as React.CSSProperties}
