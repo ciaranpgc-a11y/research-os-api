@@ -13,6 +13,8 @@ type RefNavProps = {
   variant: 'reference' | 'database' | 'report' | 'admin'
   /** Optional override for section names (keys should be UPPERCASE). When provided, replaces locally-resolved sections. */
   sectionKeys?: string[]
+  /** Whether a report has been extracted. When false, VISUALISER and MODULES nav items are disabled. */
+  hasReport?: boolean
 }
 
 function sentenceCase(s: string): string {
@@ -55,6 +57,7 @@ export function CmrReferenceNavigator({
   onNavigate,
   variant,
   sectionKeys,
+  hasReport = true,
 }: RefNavProps) {
   const borderClass = variant === 'report'
     ? 'house-left-border-report'
@@ -129,18 +132,20 @@ export function CmrReferenceNavigator({
                   ))}
                 </div>
               </section>
-              <section className={houseLayout.sidebarSection}>
+              <section className={cn(houseLayout.sidebarSection, !hasReport && 'opacity-40')}>
                 <p className={houseNavigation.sectionLabel}>VISUALISER</p>
                 <div className={houseNavigation.list}>
                   {REPORT_VISUALISER_NAV.map((item) => (
                     <button
                       key={item.key}
                       type="button"
-                      onClick={() => { navigate(item.path); onNavigate?.() }}
+                      disabled={!hasReport}
+                      onClick={() => { if (hasReport) { navigate(item.path); onNavigate?.() } }}
                       className={cn(
                         houseNavigation.item,
                         navItemClass,
-                        pathname === item.path && houseNavigation.itemActive,
+                        pathname === item.path && hasReport && houseNavigation.itemActive,
+                        !hasReport && 'cursor-not-allowed',
                       )}
                     >
                       <span className={houseNavigation.itemLabel}>{item.label}</span>
@@ -148,18 +153,20 @@ export function CmrReferenceNavigator({
                   ))}
                 </div>
               </section>
-              <section className={houseLayout.sidebarSection}>
+              <section className={cn(houseLayout.sidebarSection, !hasReport && 'opacity-40')}>
                 <p className={houseNavigation.sectionLabel}>MODULES</p>
                 <div className={houseNavigation.list}>
                   {REPORT_MODULES_NAV.map((item) => (
                     <button
                       key={item.key}
                       type="button"
-                      onClick={() => { navigate(item.path); onNavigate?.() }}
+                      disabled={!hasReport}
+                      onClick={() => { if (hasReport) { navigate(item.path); onNavigate?.() } }}
                       className={cn(
                         houseNavigation.item,
                         navItemClass,
-                        pathname === item.path && houseNavigation.itemActive,
+                        pathname === item.path && hasReport && houseNavigation.itemActive,
+                        !hasReport && 'cursor-not-allowed',
                       )}
                     >
                       <span className={houseNavigation.itemLabel}>{item.label}</span>

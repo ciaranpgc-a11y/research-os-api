@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
 import { CmrTopBar } from '@/components/layout/cmr-top-bar'
 import { CmrReferenceNavigator } from '@/components/layout/cmr-reference-navigator'
 import { ScrollArea } from '@/components/ui'
 import { Sheet, SheetContent } from '@/components/ui'
+import { getExtractionResult, subscribeExtractionResult } from '@/lib/cmr-report-store'
 
 export function CmrReferenceLayout() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(false)
@@ -13,6 +14,9 @@ export function CmrReferenceLayout() {
   const [activeSection, setActiveSection] = useState<string | null>(() =>
     isAdminPage ? 'Overview' : null,
   )
+
+  const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
+  const hasReport = extraction !== null
 
   const variant = isAdminPage
     ? 'admin'
@@ -59,6 +63,7 @@ export function CmrReferenceLayout() {
             activeSection={activeSection}
             onSectionJump={handleSectionJump}
             variant={variant}
+            hasReport={hasReport}
           />
         </aside>
 
@@ -81,6 +86,7 @@ export function CmrReferenceLayout() {
             onSectionJump={handleSectionJump}
             onNavigate={() => setLeftPanelOpen(false)}
             variant={variant}
+            hasReport={hasReport}
           />
         </SheetContent>
       </Sheet>
