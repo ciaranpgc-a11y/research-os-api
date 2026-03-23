@@ -807,7 +807,7 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
     <TooltipProvider delayDuration={0}>
       <div className="flex justify-center">
         <div className="flex flex-col items-center">
-          <svg width="260" height="150" viewBox="20 10 260 150">
+          <svg width="380" height="210" viewBox="20 5 260 150">
             {/* Background track — no grey, severity zones cover the full arc */}
             {/* Severity zone arcs — proportional to RF% range, butt caps */}
             {sevZones.map((z) => {
