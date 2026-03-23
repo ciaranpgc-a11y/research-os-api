@@ -810,11 +810,15 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
         <div className="flex flex-col items-center">
           <svg width="300" height="175" viewBox="0 0 300 175">
             {/* Background track — no grey, severity zones cover the full arc */}
+            {/* Rounded caps at the outer ends only */}
+            {[sevZones[0], sevZones[sevZones.length - 1]].map((z, i) => {
+              const deg = i === 0 ? z.startDeg : z.endDeg
+              const [cx, cy] = gaugePoint(deg, ARC_R)
+              return <circle key={`cap-${i}`} cx={cx} cy={cy} r="12" fill={z.color} opacity={(!isNaN(rfVal) && rfVal >= z.lo && rfVal < z.hi) || isNaN(rfVal) ? 1 : 0.3} className="transition-opacity duration-300" />
+            })}
             {/* Severity zone arcs — proportional to RF% range */}
-            {sevZones.map((z, i) => {
+            {sevZones.map((z) => {
               const isActive = !isNaN(rfVal) && rfVal >= z.lo && rfVal < z.hi
-              const isFirst = i === 0
-              const isLast = i === sevZones.length - 1
               return (
                 <path
                   key={z.label}
@@ -822,7 +826,7 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
                   fill="none"
                   stroke={z.color}
                   strokeWidth="24"
-                  strokeLinecap={isFirst || isLast ? 'round' : 'butt'}
+                  strokeLinecap="butt"
                   opacity={isActive || isNaN(rfVal) ? 1 : 0.3}
                   className="transition-opacity duration-300"
                 />
