@@ -1276,6 +1276,27 @@
       "pap_affected": false,
       "decimal_places": 1
     },
+    "AV forward flow (per heartbeat)": {
+      "parameter": "AV forward flow (per heartbeat)",
+      "unit": "mL/beat",
+      "indexing": "None",
+      "major_section": "FLOW",
+      "sub_section": "Aortic flow",
+      "sources": [],
+      "pap_affected": false,
+      "decimal_places": 1
+    },
+    "AV forward flow (per minute)": {
+      "parameter": "AV forward flow (per minute)",
+      "unit": "L/min",
+      "indexing": "None",
+      "major_section": "FLOW",
+      "sub_section": "Aortic flow",
+      "sources": [],
+      "pap_affected": false,
+      "decimal_places": 1,
+      "nested_under": "AV forward flow (per heartbeat)"
+    },
     "AV effective forward flow (per heartbeat)": {
       "parameter": "AV effective forward flow (per heartbeat)",
       "unit": "mL/beat",
@@ -1300,8 +1321,8 @@
       "decimal_places": 1,
       "nested_under": "AV effective forward flow (per heartbeat)"
     },
-    "AV forward flow (per heartbeat)": {
-      "parameter": "AV forward flow (per heartbeat)",
+    "AV backward flow (per heartbeat)": {
+      "parameter": "AV backward flow (per heartbeat)",
       "unit": "mL/beat",
       "indexing": "None",
       "major_section": "FLOW",
@@ -1309,17 +1330,6 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1
-    },
-    "AV forward flow (per minute)": {
-      "parameter": "AV forward flow (per minute)",
-      "unit": "L/min",
-      "indexing": "None",
-      "major_section": "FLOW",
-      "sub_section": "Aortic flow",
-      "sources": [],
-      "pap_affected": false,
-      "decimal_places": 1,
-      "nested_under": "AV forward flow (per heartbeat)"
     },
     "AV regurgitant fraction": {
       "parameter": "AV regurgitant fraction",
@@ -1415,15 +1425,26 @@
         "severe": "Suggests severe AS"
       }
     },
-    "AV backward flow (per heartbeat)": {
-      "parameter": "AV backward flow (per heartbeat)",
+    "PV forward flow (per heartbeat)": {
+      "parameter": "PV forward flow (per heartbeat)",
       "unit": "mL/beat",
       "indexing": "None",
       "major_section": "FLOW",
-      "sub_section": "Aortic flow",
+      "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 0
+    },
+    "PV forward flow (per minute)": {
+      "parameter": "PV forward flow (per minute)",
+      "unit": "L/min",
+      "indexing": "None",
+      "major_section": "FLOW",
+      "sub_section": "Pulmonary flow",
+      "sources": [],
+      "pap_affected": false,
+      "decimal_places": 1,
+      "nested_under": "PV forward flow (per heartbeat)"
     },
     "PV effective forward flow (per heartbeat)": {
       "parameter": "PV effective forward flow (per heartbeat)",
@@ -1446,8 +1467,8 @@
       "decimal_places": 1,
       "nested_under": "PV effective forward flow (per heartbeat)"
     },
-    "PV forward flow (per heartbeat)": {
-      "parameter": "PV forward flow (per heartbeat)",
+    "PV backward flow (per heartbeat)": {
+      "parameter": "PV backward flow (per heartbeat)",
       "unit": "mL/beat",
       "indexing": "None",
       "major_section": "FLOW",
@@ -1455,17 +1476,6 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0
-    },
-    "PV forward flow (per minute)": {
-      "parameter": "PV forward flow (per minute)",
-      "unit": "L/min",
-      "indexing": "None",
-      "major_section": "FLOW",
-      "sub_section": "Pulmonary flow",
-      "sources": [],
-      "pap_affected": false,
-      "decimal_places": 1,
-      "nested_under": "PV forward flow (per heartbeat)"
     },
     "PV regurgitant fraction": {
       "parameter": "PV regurgitant fraction",
@@ -1560,16 +1570,6 @@
         "moderate": "Suggests moderate PS",
         "severe": "Suggests severe PS"
       }
-    },
-    "PV backward flow (per heartbeat)": {
-      "parameter": "PV backward flow (per heartbeat)",
-      "unit": "mL/beat",
-      "indexing": "None",
-      "major_section": "FLOW",
-      "sub_section": "Pulmonary flow",
-      "sources": [],
-      "pap_affected": false,
-      "decimal_places": 0
     },
     "MR volume (per heartbeat)": {
       "parameter": "MR volume (per heartbeat)",
