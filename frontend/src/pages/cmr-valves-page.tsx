@@ -926,9 +926,9 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
   return (
     <div className="rounded-xl border border-border/50 bg-card">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3">
+      <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3.5">
         <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
-        <h3 className="text-sm font-semibold text-foreground flex-1">Flow Assessment</h3>
+        <h3 className="text-sm font-semibold text-foreground flex-1">Flow assessment</h3>
         <div className="flex items-center gap-2">
           <span
             className={cn(
@@ -978,7 +978,7 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
         </div>
 
         {/* Severity grading */}
-        <div className="mt-5 pt-4 border-t border-border/30">
+        <div className="mt-5 pt-4 border-t-[3px] border-border/60">
           <div className="flex items-center gap-4">
             <span className="text-xs font-medium text-muted-foreground w-44 shrink-0">Severity</span>
             <div className="flex gap-1.5">
