@@ -558,7 +558,6 @@ export function CmrLgePage() {
         {/* Pattern selector */}
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-
             <div className="flex rounded-full bg-muted/50 p-0.5 ring-1 ring-border/50">
               {LGE_PATTERNS.slice(1).map((p) => {
                 const isActive = activePattern === p.code
@@ -595,6 +594,19 @@ export function CmrLgePage() {
           >
             Reset All
           </button>
+
+          <div className="h-5 w-px bg-border/40" />
+
+          {/* Pattern key (inline) */}
+          {LGE_PATTERNS.slice(1).map((p) => (
+            <span key={p.code} className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-3 w-3 rounded-sm border-2"
+                style={{ borderColor: p.strokeColor, backgroundColor: 'transparent' }}
+              />
+              <span className="text-[11px] text-muted-foreground">{p.label}</span>
+            </span>
+          ))}
         </div>
       </div>
 
@@ -709,30 +721,6 @@ export function CmrLgePage() {
         })}
       </div>
 
-      {/* ── Colour key ── */}
-      <div className="flex flex-col gap-2 pt-2">
-        <div className="flex items-center gap-5 flex-wrap">
-          <span className="text-xs font-semibold text-muted-foreground">TRANSMURALITY:</span>
-          {LGE_STATES.map((s) => (
-            <span key={s.code} className="flex items-center gap-1.5">
-              <span className="inline-block h-3.5 w-3.5 rounded-sm" style={{ backgroundColor: s.color }} />
-              <span className="text-xs">{s.label}</span>
-            </span>
-          ))}
-        </div>
-        <div className="flex items-center gap-5 flex-wrap">
-          <span className="text-xs font-semibold text-muted-foreground">PATTERN:</span>
-          {LGE_PATTERNS.slice(1).map((p) => (
-            <span key={p.code} className="flex items-center gap-1.5">
-              <span
-                className="inline-block h-3.5 w-3.5 rounded-sm border-2"
-                style={{ borderColor: p.strokeColor, backgroundColor: 'transparent' }}
-              />
-              <span className="text-xs">{p.label}</span>
-            </span>
-          ))}
-        </div>
-      </div>
 
       {/* ── Segment summary ── */}
       <div className="rounded-lg border border-border bg-muted/30 p-4">
