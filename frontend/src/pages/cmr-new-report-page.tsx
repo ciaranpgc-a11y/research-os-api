@@ -6,6 +6,17 @@ import { SectionMarker } from '@/components/patterns'
 import type { CmrCanonicalParam, CmrCanonicalTableResponse, PapillaryMode } from '@/lib/cmr-api'
 import { fetchConfig, fetchReferenceParameters, updateConfig } from '@/lib/cmr-api'
 import { getExtractionResult, subscribeExtractionResult } from '@/lib/cmr-report-store'
+import {
+  type PreviousStudy,
+  addPreviousStudy,
+  getPreviousStudies,
+  isPreviousVisible,
+  subscribePreviousStudies,
+  togglePreviousVisible,
+  mapEchoToCmr,
+  mapCmrToCmr,
+  nextStudyId,
+} from '@/lib/cmr-previous-study'
 import { cn } from '@/lib/utils'
 import { computeSeverity, inferSeverityLabel, type SeverityLabelType, type SeverityResult } from '@/lib/cmr-severity'
 import {
@@ -286,6 +297,7 @@ function RangeChart({
   direction,
   rangeStart,
   rangeWidth,
+  previousMarkers,
 }: {
   measured: number
   ll: number
@@ -293,6 +305,7 @@ function RangeChart({
   direction: string
   rangeStart: number
   rangeWidth: number
+  previousMarkers?: Array<{ value: number; label: string }>
 }) {
   const measuredRel = computeMeasuredRel(measured, ll, ul)
   const measuredPos = computeMeasuredPos(measuredRel, rangeStart, rangeWidth)
@@ -311,7 +324,21 @@ function RangeChart({
         className="absolute top-1/2 h-4 -translate-y-1/2 rounded border border-[hsl(var(--tone-positive-300)/0.18)] bg-[hsl(var(--tone-positive-300)/0.14)] transition-all duration-200 group-hover/chart:border-[hsl(var(--tone-positive-500)/0.25)] group-hover/chart:bg-[hsl(var(--tone-positive-300)/0.28)] group-hover/chart:shadow-[0_0_12px_hsl(var(--tone-positive-300)/0.15)]"
         style={{ left: bandLeftPct, width: bandWidthPct }}
       />
-      {/* Ring dot marker */}
+      {/* Previous study markers (diamonds) */}
+      {previousMarkers?.map((pm, i) => {
+        const prevRel = computeMeasuredRel(pm.value, ll, ul)
+        const prevPos = computeMeasuredPos(prevRel, rangeStart, rangeWidth)
+        const prevPct = `${prevPos * 100}%`
+        return (
+          <div
+            key={i}
+            className="absolute top-1/2 h-[8px] w-[8px] -translate-x-1/2 -translate-y-1/2 rotate-45 border-[1.5px] border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] transition-all duration-200 hover:border-[hsl(var(--foreground))] hover:bg-[hsl(var(--tone-neutral-400))]"
+            style={{ left: prevPct }}
+            title={pm.label}
+          />
+        )
+      })}
+      {/* Ring dot marker (current) */}
       <div
         className={cn(
           'absolute top-1/2 h-[10px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition-all duration-200',
@@ -473,8 +500,15 @@ export function CmrNewReportPage() {
   const [rangeParams, setRangeParams] = useState<Map<string, RangeParam>>(new Map())
   const [scalingMode, setScalingMode] = useState<'factory' | 'global' | 'per-meas'>('global')
   const [expandedNested, setExpandedNested] = useState<Set<string>>(new Set())
+  const [importOpen, setImportOpen] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
   // Pull demographics and measurements from the shared extraction store
   const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
+  // Previous studies
+  const prevStudies = useSyncExternalStore(subscribePreviousStudies, getPreviousStudies)
+  const prevVisible = useSyncExternalStore(subscribePreviousStudies, isPreviousVisible)
   const measuredValues = useMemo(() => {
     const map: Map<string, number> = new Map()
     if (extraction?.measurements) {
@@ -585,7 +619,21 @@ export function CmrNewReportPage() {
     return acc
   }, [])
 
-  /** Collect all measuredRel values for visible rows with valid ranges. */
+  /** Build previous markers for a given canonical parameter key. */
+  const getPrevMarkers = useCallback((paramKey: string): Array<{ value: number; label: string }> | undefined => {
+    if (!prevVisible || prevStudies.length === 0) return undefined
+    const markers: Array<{ value: number; label: string }> = []
+    for (const s of prevStudies) {
+      const v = s.values[paramKey]
+      if (v !== undefined) {
+        markers.push({ value: v, label: `${s.label}: ${v}` })
+      }
+    }
+    return markers.length > 0 ? markers : undefined
+  }, [prevStudies, prevVisible])
+
+  /** Collect all measuredRel values for visible rows with valid ranges,
+   *  optionally including previous study values when overlay is active. */
   const collectMeasuredRels = useCallback(() => {
     const rels: number[] = []
     for (const g of groups) {
@@ -594,10 +642,54 @@ export function CmrNewReportPage() {
         if (m !== undefined && hasValidRange(p.ll, p.ul)) {
           rels.push(computeMeasuredRel(m, p.ll!, p.ul!))
         }
+        // Include previous study values in scaling when visible
+        if (prevVisible && hasValidRange(p.ll, p.ul)) {
+          for (const s of prevStudies) {
+            const pv = s.values[p.parameter_key]
+            if (pv !== undefined) {
+              rels.push(computeMeasuredRel(pv, p.ll!, p.ul!))
+            }
+          }
+        }
       }
     }
     return rels
-  }, [groups, measuredValues])
+  }, [groups, measuredValues, prevStudies, prevVisible])
+
+  /** Handle importing a previous study from pasted report text. */
+  const handleImportPrevious = async () => {
+    if (!importText.trim()) return
+    setImporting(true)
+    setImportError(null)
+    try {
+      const res = await fetch('/api/cmr-import-previous', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report_text: importText }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Import failed' }))
+        throw new Error(err.error || 'Import failed')
+      }
+      const result = await res.json()
+      const source = result.source as 'cmr' | 'echo'
+      const dateStr = result.demographics?.study_date ?? result.demographics?.date ?? undefined
+      const label = source === 'echo'
+        ? `Echo${dateStr ? ' · ' + dateStr : ''}`
+        : `CMR${dateStr ? ' · ' + dateStr : ''}`
+      const values = source === 'echo'
+        ? mapEchoToCmr(result.echo_values ?? {})
+        : mapCmrToCmr(result.measurements ?? [])
+      addPreviousStudy({ id: nextStudyId(), source, label, date: dateStr, values })
+      if (!isPreviousVisible()) togglePreviousVisible(true)
+      setImportText('')
+      setImportOpen(false)
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : 'Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   // Apply global auto-adjust on initial load when data becomes available
   const hasAppliedInitialGlobal = useRef(false)
@@ -756,7 +848,85 @@ export function CmrNewReportPage() {
             )}
           </div>
         </div>
+
+        <div className="h-10 w-px self-end bg-[hsl(var(--stroke-soft)/0.3)]" />
+
+        {/* Import previous */}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 1v10M4 7l4 4 4-4" /><path d="M1 13h14" /></svg>
+            Previous
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-xs font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--tone-neutral-100))]"
+            >
+              Import
+            </button>
+            {prevStudies.length > 0 && (
+              <button
+                type="button"
+                onClick={() => togglePreviousVisible()}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+                  prevVisible
+                    ? 'border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-500))] text-white'
+                    : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--tone-neutral-100))]',
+                )}
+              >
+                <svg className="h-2 w-2 rotate-45" viewBox="0 0 8 8"><rect width="8" height="8" fill="currentColor" /></svg>
+                {prevStudies.length} imported
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Import modal */}
+      {importOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setImportOpen(false)}>
+          <div className="w-full max-w-xl rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-1 text-base font-semibold text-[hsl(var(--foreground))]">Import previous study</h2>
+            <p className="mb-4 text-xs text-[hsl(var(--muted-foreground))]">
+              Paste a previous CMR or Echo report. Values will be auto-extracted and overlaid on the range charts.
+            </p>
+            <textarea
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder="Paste previous CMR or Echo report text..."
+              rows={10}
+              className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm font-mono placeholder:text-[hsl(var(--muted-foreground)/0.5)] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--section-style-report-accent))]"
+            />
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleImportPrevious}
+                disabled={!importText.trim() || importing}
+                className={cn(
+                  'rounded-md px-5 py-2 text-sm font-semibold shadow-sm transition-colors',
+                  importText.trim() && !importing
+                    ? 'bg-[hsl(var(--section-style-report-accent))] text-white hover:opacity-90'
+                    : 'bg-[hsl(var(--tone-neutral-200))] text-[hsl(var(--muted-foreground))] cursor-not-allowed',
+                )}
+              >
+                {importing ? 'Extracting...' : 'Import'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportOpen(false)}
+                className="rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--tone-neutral-100))]"
+              >
+                Cancel
+              </button>
+              {importError && (
+                <span className="text-xs text-[hsl(var(--tone-danger-500))]">{importError}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <p className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">Loading reference data...</p>
@@ -951,6 +1121,7 @@ export function CmrNewReportPage() {
                                           rangeWidth={
                                             (rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth
                                           }
+                                          previousMarkers={getPrevMarkers(p.parameter_key)}
                                         />
                                       ) : null}
                                     </td>
@@ -1047,6 +1218,7 @@ export function CmrNewReportPage() {
                                               direction={cp.abnormal_direction}
                                               rangeStart={(rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeStart}
                                               rangeWidth={(rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth}
+                                              previousMarkers={getPrevMarkers(cp.parameter_key)}
                                             />
                                           ) : null}
                                         </td>

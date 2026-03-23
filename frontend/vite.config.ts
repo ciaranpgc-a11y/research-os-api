@@ -259,6 +259,211 @@ Do not include any parameters not in the canonical list. Do not include paramete
         }
       })
 
+      // POST /api/cmr-import-previous → auto-detect CMR vs Echo, extract values
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url !== '/api/cmr-import-previous' || req.method !== 'POST') return next()
+
+        try {
+          const { report_text } = JSON.parse(await readBody(req))
+
+          const apiKey = process.env.OPENAI_API_KEY
+          if (!apiKey) {
+            jsonRes(res, { error: 'OPENAI_API_KEY not set' }, 500)
+            return
+          }
+
+          // --- Step 1: Auto-detect report type ---
+          const detectPrompt = `You are a medical report classifier. Determine whether the following report is an echocardiography (Echo) report or a cardiac MRI (CMR) report.
+
+First determine if this is an echocardiography report or a cardiac MRI (CMR) report. Look for keywords: Echo reports typically mention 'transthoracic', 'TTE', 'echocardiogram', 'M-mode', 'Doppler', 'parasternal'. CMR reports typically mention 'MRI', 'CMR', 'cardiac MR', 'LGE', 'SSFP', 'cine', 'T1 mapping', 'T2 mapping', 'CVI42', 'Medis'.
+
+Return ONLY valid JSON: { "report_type": "cmr" } or { "report_type": "echo" }`
+
+          const detectRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              temperature: 0,
+              response_format: { type: 'json_object' },
+              messages: [
+                { role: 'system', content: detectPrompt },
+                { role: 'user', content: report_text },
+              ],
+            }),
+          })
+
+          if (!detectRes.ok) {
+            const err = await detectRes.text()
+            jsonRes(res, { error: `OpenAI API error (detect): ${err}` }, 500)
+            return
+          }
+
+          const detectCompletion = await detectRes.json() as {
+            choices: Array<{ message: { content: string } }>
+          }
+          const { report_type } = JSON.parse(detectCompletion.choices[0].message.content) as { report_type: string }
+
+          if (report_type === 'cmr') {
+            // --- CMR path: reuse same extraction logic as /api/cmr-extract ---
+            const data = readJson()
+            const params = Object.entries(data.output_params as Record<string, { parameter: string; unit: string; indexing: string }>)
+              .map(([name, p]) => ({ name, unit: p.unit, indexed: p.indexing === 'BSA' }))
+            const aliases = data.aliases as Record<string, string>
+
+            const paramList = params.map(p => `- "${p.name}" (unit: ${p.unit})${p.indexed ? ' [BSA-indexed]' : ''}`).join('\n')
+            const aliasList = Object.entries(aliases).map(([ext, canon]) => `- "${ext}" → "${canon}"`).join('\n')
+
+            const cmrSystemPrompt = `You are a CMR (Cardiac MR) report data extractor. You extract measured values from semi-structured text reports exported from cardiac imaging software (e.g. CVI42, Medis, TomTec).
+
+TASK: Extract numeric values ONLY for the canonical parameters listed below. Do NOT invent values. If a parameter is not present in the report, omit it entirely.
+
+CANONICAL PARAMETERS:
+${paramList}
+
+KNOWN ALIASES (report name → canonical name):
+${aliasList}
+
+EXTRACTION RULES:
+1. Match report fields to canonical parameters by name, known aliases, or obvious equivalence.
+2. For BSA-indexed parameters (marked [BSA-indexed]), extract the "Value / BSA" or "/BSA" column value, NOT the raw value.
+3. For non-indexed parameters, extract the raw "Value" column.
+4. Strip commas from numbers (e.g. "1,185" → 1185).
+5. Extract only the numeric value, not the unit or ± SD.
+6. For T1/T2 mapping values, use the GLOBAL value (not per-slice).
+7. For MAPSE, if individual wall values are given (inferior, anterior, lateral, septal), extract each one separately AND compute the mean as "MAPSE".
+8. For valve flow parameters, match the vessel name to the canonical parameter (e.g. "Aorta" section → AV parameters, "MPA" → PV parameters).
+9. Also extract demographics: sex, age (numeric), height_cm, weight_kg, bsa, heart_rate. For heart_rate, if a range is given (e.g. "60-80 bpm"), extract the mean (e.g. 70).
+
+Return ONLY valid JSON in this exact format:
+{
+  "demographics": {
+    "sex": "Male" or "Female",
+    "age": <number>,
+    "height_cm": <number>,
+    "weight_kg": <number>,
+    "bsa": <number>,
+    "heart_rate": <number>
+  },
+  "measurements": [
+    { "parameter": "<exact canonical name>", "value": <number> },
+    ...
+  ]
+}
+
+Do not include any parameters not in the canonical list. Do not include parameters you cannot find a value for.`
+
+            const cmrRes = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o',
+                temperature: 0,
+                response_format: { type: 'json_object' },
+                messages: [
+                  { role: 'system', content: cmrSystemPrompt },
+                  { role: 'user', content: `Extract values from this CMR report:\n\n${report_text}` },
+                ],
+              }),
+            })
+
+            if (!cmrRes.ok) {
+              const err = await cmrRes.text()
+              jsonRes(res, { error: `OpenAI API error (CMR extract): ${err}` }, 500)
+              return
+            }
+
+            const cmrCompletion = await cmrRes.json() as {
+              choices: Array<{ message: { content: string } }>
+            }
+            const extracted = JSON.parse(cmrCompletion.choices[0].message.content)
+
+            jsonRes(res, { source: 'cmr', demographics: extracted.demographics, measurements: extracted.measurements })
+          } else {
+            // --- Echo path: extract only numeric fields that map to CMR canonical params ---
+            const echoSystemPrompt = `You are an echocardiography report data extractor. Extract ONLY the following numeric fields from the echo report. If a field is not present, omit it entirely. Do NOT invent values.
+
+FIELDS TO EXTRACT:
+- lvef_percent: LV ejection fraction (%)
+- lvedv_index_ml_m2: LV end-diastolic volume index (ml/m2)
+- lvesv_index_ml_m2: LV end-systolic volume index (ml/m2)
+- lv_mass_index_g_m2: LV mass index (g/m2)
+- mapse_mm: Mitral annular plane systolic excursion (mm)
+- lvidd_mm: LV internal diameter in diastole (mm)
+- lvids_mm: LV internal diameter in systole (mm)
+- tapse_mm: Tricuspid annular plane systolic excursion (mm)
+- fac_percent: Fractional area change (%)
+- la_volume_ml: Left atrial volume (ml)
+- la_volume_index_ml_m2: Left atrial volume index (ml/m2)
+- la_diameter_mm: Left atrial diameter (mm)
+- ra_area_cm2: Right atrial area (cm2)
+- ao_annulus_mm: Aortic annulus diameter (mm)
+- ao_sinus_mm: Aortic sinus diameter (mm)
+- sino_tubular_junction_mm: Sino-tubular junction diameter (mm)
+- proximal_ascending_aorta_mm: Proximal ascending aorta diameter (mm)
+- main_pulmonary_artery_diameter_mm: Main pulmonary artery diameter (mm)
+- aortic_vmax_m_s: Aortic valve peak velocity (m/s)
+- aortic_peak_gradient_mmhg: Aortic valve peak gradient (mmHg)
+- aortic_mean_gradient_mmhg: Aortic valve mean gradient (mmHg)
+- pulmonary_valve_vmax_m_s: Pulmonary valve peak velocity (m/s)
+- study_date: Date of the study (string, any format found in report)
+- patient_name: Patient name (string)
+
+Return ONLY valid JSON in this exact format:
+{
+  "demographics": {
+    "study_date": "<string or null>",
+    "patient_name": "<string or null>"
+  },
+  "echo_values": {
+    "<field_name>": <number>,
+    ...
+  }
+}
+
+Only include fields you can find a value for. Do not include null numeric values.`
+
+            const echoRes = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o',
+                temperature: 0,
+                response_format: { type: 'json_object' },
+                messages: [
+                  { role: 'system', content: echoSystemPrompt },
+                  { role: 'user', content: `Extract values from this echocardiography report:\n\n${report_text}` },
+                ],
+              }),
+            })
+
+            if (!echoRes.ok) {
+              const err = await echoRes.text()
+              jsonRes(res, { error: `OpenAI API error (Echo extract): ${err}` }, 500)
+              return
+            }
+
+            const echoCompletion = await echoRes.json() as {
+              choices: Array<{ message: { content: string } }>
+            }
+            const echoExtracted = JSON.parse(echoCompletion.choices[0].message.content)
+
+            jsonRes(res, { source: 'echo', demographics: echoExtracted.demographics, echo_values: echoExtracted.echo_values })
+          }
+        } catch (e) {
+          jsonRes(res, { error: String(e) }, 500)
+        }
+      })
+
       // POST /api/cmr-lge-prose → LLM prose rewrite of LGE summary
       server.middlewares.use(async (req, res, next) => {
         if (req.url !== '/api/cmr-lge-prose' || req.method !== 'POST') return next()
