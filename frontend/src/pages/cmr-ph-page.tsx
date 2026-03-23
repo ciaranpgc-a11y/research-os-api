@@ -1115,7 +1115,6 @@ export function CmrPhPage() {
         <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
         <PageHeader
           heading="Pulmonary hypertension"
-          description="PH-specific review layer over the quantitative extraction table, with reference ranges and graph overlay for the numeric metrics."
           className="!ml-0 !mt-0"
         />
       </Row>
