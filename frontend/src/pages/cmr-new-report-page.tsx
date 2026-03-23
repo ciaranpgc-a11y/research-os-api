@@ -51,8 +51,11 @@ function groupBySections(params: CmrCanonicalParam[]): GroupedSection[] {
   return groups
 }
 
-function displayName(key: string): string {
-  return key.replace(/\s*\(i\)\s*$/, '')
+function displayName(key: string, isNested?: boolean): string {
+  let name = key.replace(/\s*\(i\)\s*$/, '')
+  // Strip "(per heartbeat)" from parent rows — nested children keep their qualifier
+  if (!isNested) name = name.replace(/\s*\(per heartbeat\)\s*$/, '')
+  return name
 }
 
 /** Format a row of numeric values to a fixed number of decimal places. */
@@ -1492,7 +1495,7 @@ export function CmrNewReportPage() {
                                       )}
                                     >
                                       <td className="house-table-cell-text whitespace-nowrap px-3 py-2 pl-8 font-medium text-[hsl(var(--foreground))]">
-                                        {displayName(cp.parameter_key)}
+                                        {displayName(cp.parameter_key, true)}
                                         {cpBsa && <BsaPill />}
                                         {cpIsDerived && (
                                           <span className="ml-1.5 inline-flex items-center text-[hsl(var(--tone-neutral-400))]" title="Calculated from LV/RV stroke volume and forward flow">
