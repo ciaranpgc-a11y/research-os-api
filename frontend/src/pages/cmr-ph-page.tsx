@@ -281,6 +281,33 @@ function SectionCard({ title, statusLabel, children }: { title: string; statusLa
   )
 }
 
+function QuantitativeSection({
+  title,
+  statusLabel,
+  children,
+}: {
+  title: string
+  statusLabel?: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="scroll-mt-20">
+      <div className="flex w-full items-stretch overflow-hidden rounded-t-lg border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-50))]">
+        <div className="w-1 shrink-0 bg-[hsl(var(--section-style-report-accent))]" />
+        <div className="flex flex-1 items-center gap-2.5 px-3.5 py-3">
+          <h2 className="flex-1 text-sm font-semibold tracking-tight text-[hsl(var(--foreground))]">
+            {title}
+          </h2>
+          {statusLabel ? <StatusPill label={statusLabel} /> : null}
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-b-lg border-x border-b border-[hsl(var(--stroke-soft)/0.72)] bg-white">
+        {children}
+      </div>
+    </section>
+  )
+}
+
 function Subsection({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn('rounded-lg border border-border/40 bg-background/60 p-4', className)}>
@@ -694,15 +721,17 @@ function QuantitativeTable({
   severityMode,
   rangeParams,
   onSelectRow,
+  framed = true,
 }: {
   rows: QuantitativeDisplayRow[]
   chartMode: 'off' | 'on'
   severityMode: 'off' | 'abnormal'
   rangeParams: Map<string, RangeParam>
   onSelectRow: (row: QuantitativeDisplayRow) => void
+  framed?: boolean
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-[hsl(var(--stroke-soft)/0.72)]">
+    <div className={cn(framed && 'overflow-hidden rounded-lg border border-[hsl(var(--stroke-soft)/0.72)]')}>
       <table data-house-no-column-resize="true" className="w-full table-fixed border-collapse text-sm">
         <colgroup>
           <col style={{ width: chartMode === 'on' ? '28%' : '31%' }} />
@@ -1140,21 +1169,17 @@ export function CmrPhPage() {
         />
       </Row>
 
-      <section className="rounded-xl border border-border/50 bg-card px-5 py-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--tone-danger-700))]">
-              Quantitative View
-            </p>
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              PH metrics are shown in the same reference-table format as the quantitative visualiser.
-            </p>
+      <div className="flex flex-wrap items-start gap-5">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 2h14M3 6h10M5 10h6M7 14h2" /></svg>
+            Filters
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
             <PillToggle
               options={[
-                { key: 'all', label: <AllRowsIcon />, tooltip: 'All PH table rows' },
                 { key: 'recorded', label: <RecordedIcon />, tooltip: 'Recorded rows only' },
+                { key: 'all', label: <AllRowsIcon />, tooltip: 'All PH table rows' },
               ]}
               compact
               value={showFilter}
@@ -1169,6 +1194,17 @@ export function CmrPhPage() {
               value={abnormalFilter}
               onChange={(value) => setAbnormalFilter(value as 'all' | 'abnormal')}
             />
+          </div>
+        </div>
+
+        <div className="h-10 w-px self-end bg-[hsl(var(--stroke-soft)/0.3)]" />
+
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5" /><path d="M1 6h14" /></svg>
+            Quantitative metrics
+          </div>
+          <div className="flex items-center gap-2">
             <PillToggle
               options={[
                 { key: 'off', label: <SeverityOffIcon />, tooltip: 'Severity colouring off' },
@@ -1192,11 +1228,11 @@ export function CmrPhPage() {
             )}
           </div>
         </div>
-      </section>
+      </div>
 
-      <SectionCard title="RV Size & Function" statusLabel={rvStatus}>
-        <QuantitativeTable rows={filteredRvRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} />
-      </SectionCard>
+      <QuantitativeSection title="RV Size & Function" statusLabel={rvStatus}>
+        <QuantitativeTable rows={filteredRvRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
+      </QuantitativeSection>
 
       <SectionCard title="Septal / Right Heart Signs" statusLabel={rightHeartStatus}>
         <div className="grid gap-6 xl:grid-cols-2">
@@ -1235,9 +1271,9 @@ export function CmrPhPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Pulmonary Artery & Flow" statusLabel={paStatus}>
-        <QuantitativeTable rows={filteredPaRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} />
-      </SectionCard>
+      <QuantitativeSection title="Pulmonary Artery & Flow" statusLabel={paStatus}>
+        <QuantitativeTable rows={filteredPaRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
+      </QuantitativeSection>
 
       <SectionCard title="Valvular Context" statusLabel={valveStatus}>
         <div className="grid gap-6">
