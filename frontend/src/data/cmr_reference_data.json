@@ -1818,8 +1818,8 @@
       "decimal_places": 0
     }
   },
-  "ref_ranges": [
-    {
+  "ref_ranges": {
+    "0": {
       "parameter": "LA EF",
       "sex": "Male",
       "unit": "%",
@@ -1837,7 +1837,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "1": {
       "parameter": "LA EF",
       "sex": "Male",
       "unit": "%",
@@ -1855,7 +1855,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "2": {
       "parameter": "LA EF",
       "sex": "Male",
       "unit": "%",
@@ -1873,7 +1873,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "3": {
       "parameter": "LA EF",
       "sex": "Male",
       "unit": "%",
@@ -1891,7 +1891,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "4": {
       "parameter": "LA EF",
       "sex": "Male",
       "unit": "%",
@@ -1909,7 +1909,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "5": {
       "parameter": "LA EF",
       "sex": "Male",
       "unit": "%",
@@ -1927,7 +1927,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "6": {
       "parameter": "LA EF",
       "sex": "Female",
       "unit": "%",
@@ -1945,7 +1945,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "7": {
       "parameter": "LA EF",
       "sex": "Female",
       "unit": "%",
@@ -1963,7 +1963,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "8": {
       "parameter": "LA EF",
       "sex": "Female",
       "unit": "%",
@@ -1981,7 +1981,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "9": {
       "parameter": "LA EF",
       "sex": "Female",
       "unit": "%",
@@ -1999,7 +1999,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "10": {
       "parameter": "LA EF",
       "sex": "Female",
       "unit": "%",
@@ -2017,7 +2017,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "11": {
       "parameter": "LA EF",
       "sex": "Female",
       "unit": "%",
@@ -2035,7 +2035,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "12": {
       "parameter": "LA SV",
       "sex": "Male",
       "unit": "mL",
@@ -2053,7 +2053,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "13": {
       "parameter": "LA SV",
       "sex": "Male",
       "unit": "mL",
@@ -2071,7 +2071,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "14": {
       "parameter": "LA SV",
       "sex": "Male",
       "unit": "mL",
@@ -2089,7 +2089,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "15": {
       "parameter": "LA SV",
       "sex": "Male",
       "unit": "mL",
@@ -2107,7 +2107,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "16": {
       "parameter": "LA SV",
       "sex": "Male",
       "unit": "mL",
@@ -2125,7 +2125,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "17": {
       "parameter": "LA SV",
       "sex": "Male",
       "unit": "mL",
@@ -2143,7 +2143,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "18": {
       "parameter": "LA SV",
       "sex": "Female",
       "unit": "mL",
@@ -2161,7 +2161,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "19": {
       "parameter": "LA SV",
       "sex": "Female",
       "unit": "mL",
@@ -2179,7 +2179,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "20": {
       "parameter": "LA SV",
       "sex": "Female",
       "unit": "mL",
@@ -2197,7 +2197,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "21": {
       "parameter": "LA SV",
       "sex": "Female",
       "unit": "mL",
@@ -2215,7 +2215,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "22": {
       "parameter": "LA SV",
       "sex": "Female",
       "unit": "mL",
@@ -2233,7 +2233,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "23": {
       "parameter": "LA SV",
       "sex": "Female",
       "unit": "mL",
@@ -2251,7 +2251,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "24": {
       "parameter": "LA SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2269,7 +2269,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "25": {
       "parameter": "LA SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2287,7 +2287,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "26": {
       "parameter": "LA SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2305,7 +2305,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "27": {
       "parameter": "LA SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2323,7 +2323,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "28": {
       "parameter": "LA SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2341,7 +2341,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "29": {
       "parameter": "LA SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2359,7 +2359,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "30": {
       "parameter": "LA SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2377,7 +2377,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "31": {
       "parameter": "LA SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2395,7 +2395,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "32": {
       "parameter": "LA SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2413,7 +2413,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "33": {
       "parameter": "LA SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2431,7 +2431,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "34": {
       "parameter": "LA SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2449,7 +2449,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "35": {
       "parameter": "LA SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2467,7 +2467,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "36": {
       "parameter": "LA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -2485,7 +2485,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "37": {
       "parameter": "LA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -2503,7 +2503,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "38": {
       "parameter": "LA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -2521,7 +2521,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "39": {
       "parameter": "LA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -2539,7 +2539,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "40": {
       "parameter": "LA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -2557,7 +2557,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "41": {
       "parameter": "LA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -2575,7 +2575,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "42": {
       "parameter": "LA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -2593,7 +2593,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "43": {
       "parameter": "LA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -2611,7 +2611,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "44": {
       "parameter": "LA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -2629,7 +2629,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "45": {
       "parameter": "LA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -2647,7 +2647,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "46": {
       "parameter": "LA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -2665,7 +2665,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "47": {
       "parameter": "LA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -2683,7 +2683,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "48": {
       "parameter": "LA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2701,7 +2701,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "49": {
       "parameter": "LA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2719,7 +2719,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "50": {
       "parameter": "LA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2737,7 +2737,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "51": {
       "parameter": "LA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2755,7 +2755,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "52": {
       "parameter": "LA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2773,7 +2773,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "53": {
       "parameter": "LA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -2791,7 +2791,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "54": {
       "parameter": "LA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2809,7 +2809,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "55": {
       "parameter": "LA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2827,7 +2827,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "56": {
       "parameter": "LA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2845,7 +2845,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "57": {
       "parameter": "LA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2863,7 +2863,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "58": {
       "parameter": "LA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2881,7 +2881,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "59": {
       "parameter": "LA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -2899,7 +2899,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "60": {
       "parameter": "LA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -2917,7 +2917,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "61": {
       "parameter": "LA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -2935,7 +2935,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "62": {
       "parameter": "LA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -2953,7 +2953,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "63": {
       "parameter": "LA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -2971,7 +2971,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "64": {
       "parameter": "LA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -2989,7 +2989,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "65": {
       "parameter": "LA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -3007,7 +3007,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "66": {
       "parameter": "LA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -3025,7 +3025,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "67": {
       "parameter": "LA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -3043,7 +3043,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "68": {
       "parameter": "LA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -3061,7 +3061,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "69": {
       "parameter": "LA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -3079,7 +3079,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "70": {
       "parameter": "LA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -3097,7 +3097,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "71": {
       "parameter": "LA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -3115,7 +3115,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "72": {
       "parameter": "LA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -3133,7 +3133,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "73": {
       "parameter": "LA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -3151,7 +3151,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "74": {
       "parameter": "LA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -3169,7 +3169,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "75": {
       "parameter": "LA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -3187,7 +3187,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "76": {
       "parameter": "LA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -3205,7 +3205,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "77": {
       "parameter": "LA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -3223,7 +3223,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "78": {
       "parameter": "LA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -3241,7 +3241,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "79": {
       "parameter": "LA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -3259,7 +3259,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "80": {
       "parameter": "LA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -3277,7 +3277,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "81": {
       "parameter": "LA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -3295,7 +3295,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "82": {
       "parameter": "LA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -3313,7 +3313,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "83": {
       "parameter": "LA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -3331,7 +3331,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "84": {
       "parameter": "LPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -3349,7 +3349,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "85": {
       "parameter": "LPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -3367,7 +3367,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "86": {
       "parameter": "LPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -3385,7 +3385,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "87": {
       "parameter": "LPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -3403,7 +3403,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "88": {
       "parameter": "LPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -3421,7 +3421,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "89": {
       "parameter": "LPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -3439,7 +3439,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "90": {
       "parameter": "LPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -3457,7 +3457,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "91": {
       "parameter": "LPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -3475,7 +3475,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "92": {
       "parameter": "LPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -3493,7 +3493,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "93": {
       "parameter": "LPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -3511,7 +3511,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "94": {
       "parameter": "LPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -3529,7 +3529,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "95": {
       "parameter": "LPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -3547,7 +3547,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "96": {
       "parameter": "LPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -3565,7 +3565,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "97": {
       "parameter": "LPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -3583,7 +3583,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "98": {
       "parameter": "LPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -3601,7 +3601,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "99": {
       "parameter": "LPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -3619,7 +3619,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "100": {
       "parameter": "LPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -3637,7 +3637,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "101": {
       "parameter": "LPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -3655,7 +3655,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "102": {
       "parameter": "LPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -3673,7 +3673,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "103": {
       "parameter": "LPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -3691,7 +3691,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "104": {
       "parameter": "LPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -3709,7 +3709,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "105": {
       "parameter": "LPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -3727,7 +3727,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "106": {
       "parameter": "LPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -3745,7 +3745,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "107": {
       "parameter": "LPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -3763,7 +3763,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "108": {
       "parameter": "LPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -3781,7 +3781,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "109": {
       "parameter": "LPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -3799,7 +3799,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "110": {
       "parameter": "LPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -3817,7 +3817,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "111": {
       "parameter": "LPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -3835,7 +3835,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "112": {
       "parameter": "LPA distension",
       "sex": "Male",
       "unit": "%",
@@ -3853,7 +3853,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "113": {
       "parameter": "LPA distension",
       "sex": "Male",
       "unit": "%",
@@ -3871,7 +3871,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "114": {
       "parameter": "LPA distension",
       "sex": "Male",
       "unit": "%",
@@ -3889,7 +3889,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "115": {
       "parameter": "LPA distension",
       "sex": "Male",
       "unit": "%",
@@ -3907,7 +3907,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "116": {
       "parameter": "LPA distension",
       "sex": "Male",
       "unit": "%",
@@ -3925,7 +3925,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "117": {
       "parameter": "LPA distension",
       "sex": "Male",
       "unit": "%",
@@ -3943,7 +3943,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "118": {
       "parameter": "LPA distension",
       "sex": "Male",
       "unit": "%",
@@ -3961,7 +3961,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "119": {
       "parameter": "LPA distension",
       "sex": "Female",
       "unit": "%",
@@ -3979,7 +3979,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "120": {
       "parameter": "LPA distension",
       "sex": "Female",
       "unit": "%",
@@ -3997,7 +3997,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "121": {
       "parameter": "LPA distension",
       "sex": "Female",
       "unit": "%",
@@ -4015,7 +4015,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "122": {
       "parameter": "LPA distension",
       "sex": "Female",
       "unit": "%",
@@ -4033,7 +4033,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "123": {
       "parameter": "LPA distension",
       "sex": "Female",
       "unit": "%",
@@ -4051,7 +4051,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "124": {
       "parameter": "LPA distension",
       "sex": "Female",
       "unit": "%",
@@ -4069,7 +4069,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "125": {
       "parameter": "LPA distension",
       "sex": "Female",
       "unit": "%",
@@ -4087,7 +4087,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "126": {
       "parameter": "LPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -4105,7 +4105,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "127": {
       "parameter": "LPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -4123,7 +4123,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "128": {
       "parameter": "LPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -4141,7 +4141,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "129": {
       "parameter": "LPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -4159,7 +4159,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "130": {
       "parameter": "LPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -4177,7 +4177,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "131": {
       "parameter": "LPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -4195,7 +4195,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "132": {
       "parameter": "LPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -4213,7 +4213,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "133": {
       "parameter": "LPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -4231,7 +4231,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "134": {
       "parameter": "LPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -4249,7 +4249,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "135": {
       "parameter": "LPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -4267,7 +4267,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "136": {
       "parameter": "LPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -4285,7 +4285,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "137": {
       "parameter": "LPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -4303,7 +4303,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "138": {
       "parameter": "LPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -4321,7 +4321,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "139": {
       "parameter": "LPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -4339,7 +4339,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "140": {
       "parameter": "LPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -4357,7 +4357,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "141": {
       "parameter": "LPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -4375,7 +4375,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "142": {
       "parameter": "LPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -4393,7 +4393,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "143": {
       "parameter": "LPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -4411,7 +4411,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "144": {
       "parameter": "LPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -4429,7 +4429,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "145": {
       "parameter": "LPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -4447,7 +4447,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "146": {
       "parameter": "LPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -4465,7 +4465,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "147": {
       "parameter": "LPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -4483,7 +4483,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "148": {
       "parameter": "LPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -4501,7 +4501,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "149": {
       "parameter": "LPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -4519,7 +4519,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "150": {
       "parameter": "LPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -4537,7 +4537,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "151": {
       "parameter": "LPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -4555,7 +4555,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "152": {
       "parameter": "LPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -4573,7 +4573,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "153": {
       "parameter": "LPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -4591,7 +4591,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "154": {
       "parameter": "LV CI",
       "sex": "Male",
       "unit": "L/min/m²",
@@ -4609,7 +4609,7 @@
       "ul_mass": 4.8,
       "sd_mass": 0.8
     },
-    {
+    "155": {
       "parameter": "LV CI",
       "sex": "Female",
       "unit": "L/min/m²",
@@ -4627,7 +4627,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "156": {
       "parameter": "LV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -4645,7 +4645,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "157": {
       "parameter": "LV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -4663,7 +4663,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "158": {
       "parameter": "LV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -4681,7 +4681,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "159": {
       "parameter": "LV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -4699,7 +4699,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "160": {
       "parameter": "LV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -4717,7 +4717,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "161": {
       "parameter": "LV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -4735,7 +4735,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "162": {
       "parameter": "LV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -4753,7 +4753,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "163": {
       "parameter": "LV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -4771,7 +4771,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "164": {
       "parameter": "LV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -4789,7 +4789,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "165": {
       "parameter": "LV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -4807,7 +4807,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "166": {
       "parameter": "LV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -4825,7 +4825,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "167": {
       "parameter": "LV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -4843,7 +4843,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "168": {
       "parameter": "LV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -4861,7 +4861,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "169": {
       "parameter": "LV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -4879,7 +4879,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "170": {
       "parameter": "LV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -4897,7 +4897,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "171": {
       "parameter": "LV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -4915,7 +4915,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "172": {
       "parameter": "LV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -4933,7 +4933,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "173": {
       "parameter": "LV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -4951,7 +4951,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "174": {
       "parameter": "LV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -4969,7 +4969,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "175": {
       "parameter": "LV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -4987,7 +4987,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "176": {
       "parameter": "LV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -5005,7 +5005,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "177": {
       "parameter": "LV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -5023,7 +5023,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "178": {
       "parameter": "LV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -5041,7 +5041,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "179": {
       "parameter": "LV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -5059,7 +5059,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "180": {
       "parameter": "LV EDV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5077,7 +5077,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "181": {
       "parameter": "LV EDV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5095,7 +5095,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "182": {
       "parameter": "LV EDV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5113,7 +5113,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "183": {
       "parameter": "LV EDV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5131,7 +5131,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "184": {
       "parameter": "LV EDV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5149,7 +5149,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "185": {
       "parameter": "LV EDV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5167,7 +5167,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "186": {
       "parameter": "LV EDV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5185,7 +5185,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "187": {
       "parameter": "LV EDV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5203,7 +5203,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "188": {
       "parameter": "LV EDV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5221,7 +5221,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "189": {
       "parameter": "LV EDV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5239,7 +5239,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "190": {
       "parameter": "LV EDV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5257,7 +5257,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "191": {
       "parameter": "LV EDV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5275,7 +5275,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "192": {
       "parameter": "LV EF",
       "sex": "Male",
       "unit": "%",
@@ -5293,7 +5293,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "193": {
       "parameter": "LV EF",
       "sex": "Male",
       "unit": "%",
@@ -5311,7 +5311,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "194": {
       "parameter": "LV EF",
       "sex": "Male",
       "unit": "%",
@@ -5329,7 +5329,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "195": {
       "parameter": "LV EF",
       "sex": "Male",
       "unit": "%",
@@ -5347,7 +5347,7 @@
       "ul_mass": 79,
       "sd_mass": 7
     },
-    {
+    "196": {
       "parameter": "LV EF",
       "sex": "Female",
       "unit": "%",
@@ -5365,7 +5365,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "197": {
       "parameter": "LV EF",
       "sex": "Female",
       "unit": "%",
@@ -5383,7 +5383,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "198": {
       "parameter": "LV EF",
       "sex": "Female",
       "unit": "%",
@@ -5401,7 +5401,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "199": {
       "parameter": "LV EF",
       "sex": "Female",
       "unit": "%",
@@ -5419,7 +5419,7 @@
       "ul_mass": 80,
       "sd_mass": 6
     },
-    {
+    "200": {
       "parameter": "LV ESV",
       "sex": "Male",
       "unit": "mL",
@@ -5437,7 +5437,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "201": {
       "parameter": "LV ESV",
       "sex": "Male",
       "unit": "mL",
@@ -5455,7 +5455,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "202": {
       "parameter": "LV ESV",
       "sex": "Male",
       "unit": "mL",
@@ -5473,7 +5473,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "203": {
       "parameter": "LV ESV",
       "sex": "Male",
       "unit": "mL",
@@ -5491,7 +5491,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "204": {
       "parameter": "LV ESV",
       "sex": "Male",
       "unit": "mL",
@@ -5509,7 +5509,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "205": {
       "parameter": "LV ESV",
       "sex": "Male",
       "unit": "mL",
@@ -5527,7 +5527,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "206": {
       "parameter": "LV ESV",
       "sex": "Female",
       "unit": "mL",
@@ -5545,7 +5545,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "207": {
       "parameter": "LV ESV",
       "sex": "Female",
       "unit": "mL",
@@ -5563,7 +5563,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "208": {
       "parameter": "LV ESV",
       "sex": "Female",
       "unit": "mL",
@@ -5581,7 +5581,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "209": {
       "parameter": "LV ESV",
       "sex": "Female",
       "unit": "mL",
@@ -5599,7 +5599,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "210": {
       "parameter": "LV ESV",
       "sex": "Female",
       "unit": "mL",
@@ -5617,7 +5617,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "211": {
       "parameter": "LV ESV",
       "sex": "Female",
       "unit": "mL",
@@ -5635,7 +5635,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "212": {
       "parameter": "LV ESV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5653,7 +5653,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "213": {
       "parameter": "LV ESV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5671,7 +5671,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "214": {
       "parameter": "LV ESV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5689,7 +5689,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "215": {
       "parameter": "LV ESV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5707,7 +5707,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "216": {
       "parameter": "LV ESV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5725,7 +5725,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "217": {
       "parameter": "LV ESV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -5743,7 +5743,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "218": {
       "parameter": "LV ESV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5761,7 +5761,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "219": {
       "parameter": "LV ESV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5779,7 +5779,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "220": {
       "parameter": "LV ESV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5797,7 +5797,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "221": {
       "parameter": "LV ESV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5815,7 +5815,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "222": {
       "parameter": "LV ESV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5833,7 +5833,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "223": {
       "parameter": "LV ESV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -5851,7 +5851,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "224": {
       "parameter": "LV mass",
       "sex": "Male",
       "unit": "g",
@@ -5869,7 +5869,7 @@
       "ul_mass": 169,
       "sd_mass": 23
     },
-    {
+    "225": {
       "parameter": "LV mass",
       "sex": "Female",
       "unit": "g",
@@ -5887,7 +5887,7 @@
       "ul_mass": 123,
       "sd_mass": 18
     },
-    {
+    "226": {
       "parameter": "LV mass / LV EDV",
       "sex": "Male",
       "unit": "g/mL",
@@ -5905,7 +5905,7 @@
       "ul_mass": 1.1,
       "sd_mass": 0.2
     },
-    {
+    "227": {
       "parameter": "LV mass / LV EDV",
       "sex": "Female",
       "unit": "g/mL",
@@ -5923,7 +5923,7 @@
       "ul_mass": 1,
       "sd_mass": 0.1
     },
-    {
+    "228": {
       "parameter": "LV mass (i)",
       "sex": "Male",
       "unit": "g/m²",
@@ -5941,7 +5941,7 @@
       "ul_mass": 84,
       "sd_mass": 10
     },
-    {
+    "229": {
       "parameter": "LV mass (i)",
       "sex": "Female",
       "unit": "g/m²",
@@ -5959,7 +5959,7 @@
       "ul_mass": 69,
       "sd_mass": 9
     },
-    {
+    "230": {
       "parameter": "LV SV",
       "sex": "Male",
       "unit": "mL",
@@ -5977,7 +5977,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "231": {
       "parameter": "LV SV",
       "sex": "Male",
       "unit": "mL",
@@ -5995,7 +5995,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "232": {
       "parameter": "LV SV",
       "sex": "Male",
       "unit": "mL",
@@ -6013,7 +6013,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "233": {
       "parameter": "LV SV",
       "sex": "Male",
       "unit": "mL",
@@ -6031,7 +6031,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "234": {
       "parameter": "LV SV",
       "sex": "Male",
       "unit": "mL",
@@ -6049,7 +6049,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "235": {
       "parameter": "LV SV",
       "sex": "Male",
       "unit": "mL",
@@ -6067,7 +6067,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "236": {
       "parameter": "LV SV",
       "sex": "Female",
       "unit": "mL",
@@ -6085,7 +6085,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "237": {
       "parameter": "LV SV",
       "sex": "Female",
       "unit": "mL",
@@ -6103,7 +6103,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "238": {
       "parameter": "LV SV",
       "sex": "Female",
       "unit": "mL",
@@ -6121,7 +6121,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "239": {
       "parameter": "LV SV",
       "sex": "Female",
       "unit": "mL",
@@ -6139,7 +6139,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "240": {
       "parameter": "LV SV",
       "sex": "Female",
       "unit": "mL",
@@ -6157,7 +6157,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "241": {
       "parameter": "LV SV",
       "sex": "Female",
       "unit": "mL",
@@ -6175,7 +6175,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "242": {
       "parameter": "LV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -6193,7 +6193,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "243": {
       "parameter": "LV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -6211,7 +6211,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "244": {
       "parameter": "LV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -6229,7 +6229,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "245": {
       "parameter": "LV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -6247,7 +6247,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "246": {
       "parameter": "LV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -6265,7 +6265,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "247": {
       "parameter": "LV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -6283,7 +6283,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "248": {
       "parameter": "LV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -6301,7 +6301,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "249": {
       "parameter": "LV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -6319,7 +6319,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "250": {
       "parameter": "LV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -6337,7 +6337,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "251": {
       "parameter": "LV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -6355,7 +6355,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "252": {
       "parameter": "LV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -6373,7 +6373,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "253": {
       "parameter": "LV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -6391,7 +6391,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "254": {
       "parameter": "MPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -6409,7 +6409,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "255": {
       "parameter": "MPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -6427,7 +6427,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "256": {
       "parameter": "MPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -6445,7 +6445,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "257": {
       "parameter": "MPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -6463,7 +6463,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "258": {
       "parameter": "MPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -6481,7 +6481,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "259": {
       "parameter": "MPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -6499,7 +6499,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "260": {
       "parameter": "MPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -6517,7 +6517,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "261": {
       "parameter": "MPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -6535,7 +6535,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "262": {
       "parameter": "MPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -6553,7 +6553,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "263": {
       "parameter": "MPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -6571,7 +6571,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "264": {
       "parameter": "MPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -6589,7 +6589,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "265": {
       "parameter": "MPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -6607,7 +6607,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "266": {
       "parameter": "MPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -6625,7 +6625,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "267": {
       "parameter": "MPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -6643,7 +6643,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "268": {
       "parameter": "MPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -6661,7 +6661,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "269": {
       "parameter": "MPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -6679,7 +6679,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "270": {
       "parameter": "MPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -6697,7 +6697,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "271": {
       "parameter": "MPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -6715,7 +6715,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "272": {
       "parameter": "MPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -6733,7 +6733,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "273": {
       "parameter": "MPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -6751,7 +6751,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "274": {
       "parameter": "MPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -6769,7 +6769,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "275": {
       "parameter": "MPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -6787,7 +6787,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "276": {
       "parameter": "MPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -6805,7 +6805,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "277": {
       "parameter": "MPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -6823,7 +6823,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "278": {
       "parameter": "MPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -6841,7 +6841,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "279": {
       "parameter": "MPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -6859,7 +6859,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "280": {
       "parameter": "MPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -6877,7 +6877,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "281": {
       "parameter": "MPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -6895,7 +6895,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "282": {
       "parameter": "MPA distension",
       "sex": "Male",
       "unit": "%",
@@ -6913,7 +6913,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "283": {
       "parameter": "MPA distension",
       "sex": "Male",
       "unit": "%",
@@ -6931,7 +6931,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "284": {
       "parameter": "MPA distension",
       "sex": "Male",
       "unit": "%",
@@ -6949,7 +6949,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "285": {
       "parameter": "MPA distension",
       "sex": "Male",
       "unit": "%",
@@ -6967,7 +6967,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "286": {
       "parameter": "MPA distension",
       "sex": "Male",
       "unit": "%",
@@ -6985,7 +6985,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "287": {
       "parameter": "MPA distension",
       "sex": "Male",
       "unit": "%",
@@ -7003,7 +7003,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "288": {
       "parameter": "MPA distension",
       "sex": "Male",
       "unit": "%",
@@ -7021,7 +7021,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "289": {
       "parameter": "MPA distension",
       "sex": "Female",
       "unit": "%",
@@ -7039,7 +7039,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "290": {
       "parameter": "MPA distension",
       "sex": "Female",
       "unit": "%",
@@ -7057,7 +7057,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "291": {
       "parameter": "MPA distension",
       "sex": "Female",
       "unit": "%",
@@ -7075,7 +7075,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "292": {
       "parameter": "MPA distension",
       "sex": "Female",
       "unit": "%",
@@ -7093,7 +7093,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "293": {
       "parameter": "MPA distension",
       "sex": "Female",
       "unit": "%",
@@ -7111,7 +7111,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "294": {
       "parameter": "MPA distension",
       "sex": "Female",
       "unit": "%",
@@ -7129,7 +7129,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "295": {
       "parameter": "MPA distension",
       "sex": "Female",
       "unit": "%",
@@ -7147,7 +7147,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "296": {
       "parameter": "MPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -7165,7 +7165,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "297": {
       "parameter": "MPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -7183,7 +7183,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "298": {
       "parameter": "MPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -7201,7 +7201,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "299": {
       "parameter": "MPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -7219,7 +7219,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "300": {
       "parameter": "MPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -7237,7 +7237,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "301": {
       "parameter": "MPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -7255,7 +7255,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "302": {
       "parameter": "MPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -7273,7 +7273,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "303": {
       "parameter": "MPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -7291,7 +7291,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "304": {
       "parameter": "MPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -7309,7 +7309,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "305": {
       "parameter": "MPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -7327,7 +7327,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "306": {
       "parameter": "MPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -7345,7 +7345,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "307": {
       "parameter": "MPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -7363,7 +7363,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "308": {
       "parameter": "MPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -7381,7 +7381,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "309": {
       "parameter": "MPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -7399,7 +7399,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "310": {
       "parameter": "MPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -7417,7 +7417,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "311": {
       "parameter": "MPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -7435,7 +7435,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "312": {
       "parameter": "MPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -7453,7 +7453,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "313": {
       "parameter": "MPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -7471,7 +7471,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "314": {
       "parameter": "MPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -7489,7 +7489,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "315": {
       "parameter": "MPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -7507,7 +7507,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "316": {
       "parameter": "MPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -7525,7 +7525,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "317": {
       "parameter": "MPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -7543,7 +7543,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "318": {
       "parameter": "MPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -7561,7 +7561,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "319": {
       "parameter": "MPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -7579,7 +7579,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "320": {
       "parameter": "MPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -7597,7 +7597,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "321": {
       "parameter": "MPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -7615,7 +7615,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "322": {
       "parameter": "MPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -7633,7 +7633,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "323": {
       "parameter": "MPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -7651,7 +7651,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "324": {
       "parameter": "LA max area (2ch)",
       "sex": "Male",
       "unit": "cm²",
@@ -7669,7 +7669,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "325": {
       "parameter": "LA max area (2ch)",
       "sex": "Female",
       "unit": "cm²",
@@ -7687,7 +7687,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "326": {
       "parameter": "LA max area (2ch) (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -7705,7 +7705,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "327": {
       "parameter": "LA max area (2ch) (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -7723,7 +7723,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "328": {
       "parameter": "LA max area (3ch)",
       "sex": "Male",
       "unit": "cm²",
@@ -7741,7 +7741,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "329": {
       "parameter": "LA max area (3ch)",
       "sex": "Female",
       "unit": "cm²",
@@ -7759,7 +7759,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "330": {
       "parameter": "LA max area (3ch) (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -7777,7 +7777,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "331": {
       "parameter": "LA max area (3ch) (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -7795,7 +7795,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "332": {
       "parameter": "LA max area (4ch)",
       "sex": "Male",
       "unit": "cm²",
@@ -7813,7 +7813,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "333": {
       "parameter": "LA max area (4ch)",
       "sex": "Female",
       "unit": "cm²",
@@ -7831,7 +7831,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "334": {
       "parameter": "LA max area (4ch) (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -7849,7 +7849,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "335": {
       "parameter": "LA max area (4ch) (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -7867,7 +7867,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "336": {
       "parameter": "LA max longitudinal diameter (2ch)",
       "sex": "Male",
       "unit": "cm",
@@ -7885,7 +7885,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "337": {
       "parameter": "LA max longitudinal diameter (2ch)",
       "sex": "Female",
       "unit": "cm",
@@ -7903,7 +7903,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "338": {
       "parameter": "LA max longitudinal diameter (2ch) (i)",
       "sex": "Male",
       "unit": "cm/m²",
@@ -7921,7 +7921,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "339": {
       "parameter": "LA max longitudinal diameter (2ch) (i)",
       "sex": "Female",
       "unit": "cm/m²",
@@ -7939,7 +7939,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "340": {
       "parameter": "LA max longitudinal diameter (3ch)",
       "sex": "Male",
       "unit": "cm",
@@ -7957,7 +7957,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "341": {
       "parameter": "LA max longitudinal diameter (3ch)",
       "sex": "Female",
       "unit": "cm",
@@ -7975,7 +7975,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "342": {
       "parameter": "LA max longitudinal diameter (3ch) (i)",
       "sex": "Male",
       "unit": "cm/m²",
@@ -7993,7 +7993,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "343": {
       "parameter": "LA max longitudinal diameter (3ch) (i)",
       "sex": "Female",
       "unit": "cm/m²",
@@ -8011,7 +8011,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "344": {
       "parameter": "LA max longitudinal diameter (4ch)",
       "sex": "Male",
       "unit": "cm",
@@ -8029,7 +8029,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "345": {
       "parameter": "LA max longitudinal diameter (4ch)",
       "sex": "Female",
       "unit": "cm",
@@ -8047,7 +8047,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "346": {
       "parameter": "LA max longitudinal diameter (4ch) (i)",
       "sex": "Male",
       "unit": "cm/m²",
@@ -8065,7 +8065,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "347": {
       "parameter": "LA max longitudinal diameter (4ch) (i)",
       "sex": "Female",
       "unit": "cm/m²",
@@ -8083,7 +8083,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "348": {
       "parameter": "LA max AP diameter (3ch)",
       "sex": "Male",
       "unit": "cm",
@@ -8101,7 +8101,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "349": {
       "parameter": "LA max AP diameter (3ch)",
       "sex": "Female",
       "unit": "cm",
@@ -8119,7 +8119,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "350": {
       "parameter": "LA max AP diameter (3ch) (i)",
       "sex": "Male",
       "unit": "cm/m²",
@@ -8137,7 +8137,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "351": {
       "parameter": "LA max AP diameter (3ch) (i)",
       "sex": "Female",
       "unit": "cm/m²",
@@ -8155,7 +8155,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "352": {
       "parameter": "LA max transverse diameter (2ch)",
       "sex": "Male",
       "unit": "cm",
@@ -8173,7 +8173,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "353": {
       "parameter": "LA max transverse diameter (2ch)",
       "sex": "Female",
       "unit": "cm",
@@ -8191,7 +8191,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "354": {
       "parameter": "LA max transverse diameter (2ch) (i)",
       "sex": "Male",
       "unit": "cm/m²",
@@ -8209,7 +8209,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "355": {
       "parameter": "LA max transverse diameter (2ch) (i)",
       "sex": "Female",
       "unit": "cm/m²",
@@ -8227,7 +8227,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "356": {
       "parameter": "LA max transverse diameter (4ch)",
       "sex": "Male",
       "unit": "cm",
@@ -8245,7 +8245,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "357": {
       "parameter": "LA max transverse diameter (4ch)",
       "sex": "Female",
       "unit": "cm",
@@ -8263,7 +8263,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "358": {
       "parameter": "LA max transverse diameter (4ch) (i)",
       "sex": "Male",
       "unit": "cm/m²",
@@ -8281,7 +8281,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "359": {
       "parameter": "LA max transverse diameter (4ch) (i)",
       "sex": "Female",
       "unit": "cm/m²",
@@ -8299,7 +8299,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "360": {
       "parameter": "RA max area (4ch)",
       "sex": "Male",
       "unit": "cm²",
@@ -8317,7 +8317,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "361": {
       "parameter": "RA max area (4ch)",
       "sex": "Female",
       "unit": "cm²",
@@ -8335,7 +8335,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "362": {
       "parameter": "RA max area (4ch) (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -8353,7 +8353,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "363": {
       "parameter": "RA max area (4ch) (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -8371,7 +8371,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "364": {
       "parameter": "RA max longitudinal diameter (2ch)",
       "sex": "Male",
       "unit": "cm",
@@ -8389,7 +8389,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "365": {
       "parameter": "RA max longitudinal diameter (2ch)",
       "sex": "Female",
       "unit": "cm",
@@ -8407,7 +8407,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "366": {
       "parameter": "RA max longitudinal diameter (2ch) (i)",
       "sex": "Male",
       "unit": "cm/m²",
@@ -8425,7 +8425,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "367": {
       "parameter": "RA max longitudinal diameter (2ch) (i)",
       "sex": "Female",
       "unit": "cm/m²",
@@ -8443,7 +8443,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "368": {
       "parameter": "RA max longitudinal diameter (4ch)",
       "sex": "Male",
       "unit": "cm",
@@ -8461,7 +8461,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "369": {
       "parameter": "RA max longitudinal diameter (4ch)",
       "sex": "Female",
       "unit": "cm",
@@ -8479,7 +8479,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "370": {
       "parameter": "RA max longitudinal diameter (4ch) (i)",
       "sex": "Male",
       "unit": "cm/m²",
@@ -8497,7 +8497,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "371": {
       "parameter": "RA max longitudinal diameter (4ch) (i)",
       "sex": "Female",
       "unit": "cm/m²",
@@ -8515,7 +8515,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "372": {
       "parameter": "RA max transverse diameter (2ch)",
       "sex": "Male",
       "unit": "cm",
@@ -8533,7 +8533,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "373": {
       "parameter": "RA max transverse diameter (2ch)",
       "sex": "Female",
       "unit": "cm",
@@ -8551,7 +8551,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "374": {
       "parameter": "RA max transverse diameter (2ch) (i)",
       "sex": "Male",
       "unit": "cm/m²",
@@ -8569,7 +8569,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "375": {
       "parameter": "RA max transverse diameter (2ch) (i)",
       "sex": "Female",
       "unit": "cm/m²",
@@ -8587,7 +8587,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "376": {
       "parameter": "RA max transverse diameter (4ch)",
       "sex": "Male",
       "unit": "cm",
@@ -8605,7 +8605,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "377": {
       "parameter": "RA max transverse diameter (4ch)",
       "sex": "Female",
       "unit": "cm",
@@ -8623,7 +8623,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "378": {
       "parameter": "RA max transverse diameter (4ch) (i)",
       "sex": "Male",
       "unit": "cm/m²",
@@ -8641,7 +8641,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "379": {
       "parameter": "RA max transverse diameter (4ch) (i)",
       "sex": "Female",
       "unit": "cm/m²",
@@ -8659,7 +8659,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "380": {
       "parameter": "RA EF",
       "sex": "Male",
       "unit": "%",
@@ -8677,7 +8677,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "381": {
       "parameter": "RA EF",
       "sex": "Male",
       "unit": "%",
@@ -8695,7 +8695,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "382": {
       "parameter": "RA EF",
       "sex": "Male",
       "unit": "%",
@@ -8713,7 +8713,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "383": {
       "parameter": "RA EF",
       "sex": "Male",
       "unit": "%",
@@ -8731,7 +8731,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "384": {
       "parameter": "RA EF",
       "sex": "Male",
       "unit": "%",
@@ -8749,7 +8749,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "385": {
       "parameter": "RA EF",
       "sex": "Male",
       "unit": "%",
@@ -8767,7 +8767,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "386": {
       "parameter": "RA EF",
       "sex": "Female",
       "unit": "%",
@@ -8785,7 +8785,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "387": {
       "parameter": "RA EF",
       "sex": "Female",
       "unit": "%",
@@ -8803,7 +8803,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "388": {
       "parameter": "RA EF",
       "sex": "Female",
       "unit": "%",
@@ -8821,7 +8821,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "389": {
       "parameter": "RA EF",
       "sex": "Female",
       "unit": "%",
@@ -8839,7 +8839,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "390": {
       "parameter": "RA EF",
       "sex": "Female",
       "unit": "%",
@@ -8857,7 +8857,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "391": {
       "parameter": "RA EF",
       "sex": "Female",
       "unit": "%",
@@ -8875,7 +8875,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "392": {
       "parameter": "RA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -8893,7 +8893,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "393": {
       "parameter": "RA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -8911,7 +8911,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "394": {
       "parameter": "RA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -8929,7 +8929,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "395": {
       "parameter": "RA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -8947,7 +8947,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "396": {
       "parameter": "RA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -8965,7 +8965,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "397": {
       "parameter": "RA max volume",
       "sex": "Male",
       "unit": "mL",
@@ -8983,7 +8983,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "398": {
       "parameter": "RA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -9001,7 +9001,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "399": {
       "parameter": "RA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -9019,7 +9019,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "400": {
       "parameter": "RA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -9037,7 +9037,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "401": {
       "parameter": "RA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -9055,7 +9055,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "402": {
       "parameter": "RA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -9073,7 +9073,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "403": {
       "parameter": "RA max volume",
       "sex": "Female",
       "unit": "mL",
@@ -9091,7 +9091,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "404": {
       "parameter": "RA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9109,7 +9109,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "405": {
       "parameter": "RA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9127,7 +9127,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "406": {
       "parameter": "RA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9145,7 +9145,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "407": {
       "parameter": "RA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9163,7 +9163,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "408": {
       "parameter": "RA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9181,7 +9181,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "409": {
       "parameter": "RA max volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9199,7 +9199,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "410": {
       "parameter": "RA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9217,7 +9217,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "411": {
       "parameter": "RA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9235,7 +9235,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "412": {
       "parameter": "RA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9253,7 +9253,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "413": {
       "parameter": "RA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9271,7 +9271,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "414": {
       "parameter": "RA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9289,7 +9289,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "415": {
       "parameter": "RA max volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9307,7 +9307,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "416": {
       "parameter": "RA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -9325,7 +9325,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "417": {
       "parameter": "RA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -9343,7 +9343,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "418": {
       "parameter": "RA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -9361,7 +9361,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "419": {
       "parameter": "RA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -9379,7 +9379,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "420": {
       "parameter": "RA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -9397,7 +9397,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "421": {
       "parameter": "RA min volume",
       "sex": "Male",
       "unit": "mL",
@@ -9415,7 +9415,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "422": {
       "parameter": "RA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -9433,7 +9433,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "423": {
       "parameter": "RA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -9451,7 +9451,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "424": {
       "parameter": "RA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -9469,7 +9469,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "425": {
       "parameter": "RA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -9487,7 +9487,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "426": {
       "parameter": "RA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -9505,7 +9505,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "427": {
       "parameter": "RA min volume",
       "sex": "Female",
       "unit": "mL",
@@ -9523,7 +9523,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "428": {
       "parameter": "RA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9541,7 +9541,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "429": {
       "parameter": "RA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9559,7 +9559,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "430": {
       "parameter": "RA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9577,7 +9577,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "431": {
       "parameter": "RA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9595,7 +9595,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "432": {
       "parameter": "RA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9613,7 +9613,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "433": {
       "parameter": "RA min volume (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -9631,7 +9631,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "434": {
       "parameter": "RA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9649,7 +9649,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "435": {
       "parameter": "RA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9667,7 +9667,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "436": {
       "parameter": "RA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9685,7 +9685,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "437": {
       "parameter": "RA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9703,7 +9703,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "438": {
       "parameter": "RA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9721,7 +9721,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "439": {
       "parameter": "RA min volume (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -9739,7 +9739,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "440": {
       "parameter": "RPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -9757,7 +9757,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "441": {
       "parameter": "RPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -9775,7 +9775,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "442": {
       "parameter": "RPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -9793,7 +9793,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "443": {
       "parameter": "RPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -9811,7 +9811,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "444": {
       "parameter": "RPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -9829,7 +9829,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "445": {
       "parameter": "RPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -9847,7 +9847,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "446": {
       "parameter": "RPA diastolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -9865,7 +9865,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "447": {
       "parameter": "RPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -9883,7 +9883,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "448": {
       "parameter": "RPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -9901,7 +9901,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "449": {
       "parameter": "RPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -9919,7 +9919,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "450": {
       "parameter": "RPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -9937,7 +9937,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "451": {
       "parameter": "RPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -9955,7 +9955,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "452": {
       "parameter": "RPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -9973,7 +9973,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "453": {
       "parameter": "RPA diastolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -9991,7 +9991,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "454": {
       "parameter": "RPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10009,7 +10009,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "455": {
       "parameter": "RPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10027,7 +10027,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "456": {
       "parameter": "RPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10045,7 +10045,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "457": {
       "parameter": "RPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10063,7 +10063,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "458": {
       "parameter": "RPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10081,7 +10081,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "459": {
       "parameter": "RPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10099,7 +10099,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "460": {
       "parameter": "RPA diastolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10117,7 +10117,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "461": {
       "parameter": "RPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10135,7 +10135,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "462": {
       "parameter": "RPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10153,7 +10153,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "463": {
       "parameter": "RPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10171,7 +10171,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "464": {
       "parameter": "RPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10189,7 +10189,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "465": {
       "parameter": "RPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10207,7 +10207,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "466": {
       "parameter": "RPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10225,7 +10225,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "467": {
       "parameter": "RPA diastolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10243,7 +10243,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "468": {
       "parameter": "RPA distension",
       "sex": "Male",
       "unit": "%",
@@ -10261,7 +10261,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "469": {
       "parameter": "RPA distension",
       "sex": "Male",
       "unit": "%",
@@ -10279,7 +10279,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "470": {
       "parameter": "RPA distension",
       "sex": "Male",
       "unit": "%",
@@ -10297,7 +10297,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "471": {
       "parameter": "RPA distension",
       "sex": "Male",
       "unit": "%",
@@ -10315,7 +10315,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "472": {
       "parameter": "RPA distension",
       "sex": "Male",
       "unit": "%",
@@ -10333,7 +10333,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "473": {
       "parameter": "RPA distension",
       "sex": "Male",
       "unit": "%",
@@ -10351,7 +10351,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "474": {
       "parameter": "RPA distension",
       "sex": "Male",
       "unit": "%",
@@ -10369,7 +10369,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "475": {
       "parameter": "RPA distension",
       "sex": "Female",
       "unit": "%",
@@ -10387,7 +10387,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "476": {
       "parameter": "RPA distension",
       "sex": "Female",
       "unit": "%",
@@ -10405,7 +10405,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "477": {
       "parameter": "RPA distension",
       "sex": "Female",
       "unit": "%",
@@ -10423,7 +10423,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "478": {
       "parameter": "RPA distension",
       "sex": "Female",
       "unit": "%",
@@ -10441,7 +10441,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "479": {
       "parameter": "RPA distension",
       "sex": "Female",
       "unit": "%",
@@ -10459,7 +10459,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "480": {
       "parameter": "RPA distension",
       "sex": "Female",
       "unit": "%",
@@ -10477,7 +10477,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "481": {
       "parameter": "RPA distension",
       "sex": "Female",
       "unit": "%",
@@ -10495,7 +10495,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "482": {
       "parameter": "RPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -10513,7 +10513,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "483": {
       "parameter": "RPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -10531,7 +10531,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "484": {
       "parameter": "RPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -10549,7 +10549,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "485": {
       "parameter": "RPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -10567,7 +10567,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "486": {
       "parameter": "RPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -10585,7 +10585,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "487": {
       "parameter": "RPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -10603,7 +10603,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "488": {
       "parameter": "RPA systolic area",
       "sex": "Male",
       "unit": "cm²",
@@ -10621,7 +10621,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "489": {
       "parameter": "RPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -10639,7 +10639,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "490": {
       "parameter": "RPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -10657,7 +10657,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "491": {
       "parameter": "RPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -10675,7 +10675,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "492": {
       "parameter": "RPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -10693,7 +10693,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "493": {
       "parameter": "RPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -10711,7 +10711,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "494": {
       "parameter": "RPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -10729,7 +10729,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "495": {
       "parameter": "RPA systolic area",
       "sex": "Female",
       "unit": "cm²",
@@ -10747,7 +10747,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "496": {
       "parameter": "RPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10765,7 +10765,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "497": {
       "parameter": "RPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10783,7 +10783,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "498": {
       "parameter": "RPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10801,7 +10801,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "499": {
       "parameter": "RPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10819,7 +10819,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "500": {
       "parameter": "RPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10837,7 +10837,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "501": {
       "parameter": "RPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10855,7 +10855,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "502": {
       "parameter": "RPA systolic diameter",
       "sex": "Male",
       "unit": "mm",
@@ -10873,7 +10873,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "503": {
       "parameter": "RPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10891,7 +10891,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "504": {
       "parameter": "RPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10909,7 +10909,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "505": {
       "parameter": "RPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10927,7 +10927,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "506": {
       "parameter": "RPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10945,7 +10945,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "507": {
       "parameter": "RPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10963,7 +10963,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "508": {
       "parameter": "RPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10981,7 +10981,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "509": {
       "parameter": "RPA systolic diameter",
       "sex": "Female",
       "unit": "mm",
@@ -10999,7 +10999,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "510": {
       "parameter": "RV CI",
       "sex": "Male",
       "unit": "L/min/m²",
@@ -11017,7 +11017,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "511": {
       "parameter": "RV CI",
       "sex": "Female",
       "unit": "L/min/m²",
@@ -11035,7 +11035,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "512": {
       "parameter": "RV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -11053,7 +11053,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "513": {
       "parameter": "RV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -11071,7 +11071,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "514": {
       "parameter": "RV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -11089,7 +11089,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "515": {
       "parameter": "RV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -11107,7 +11107,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "516": {
       "parameter": "RV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -11125,7 +11125,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "517": {
       "parameter": "RV CO",
       "sex": "Male",
       "unit": "L/min",
@@ -11143,7 +11143,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "518": {
       "parameter": "RV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -11161,7 +11161,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "519": {
       "parameter": "RV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -11179,7 +11179,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "520": {
       "parameter": "RV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -11197,7 +11197,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "521": {
       "parameter": "RV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -11215,7 +11215,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "522": {
       "parameter": "RV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -11233,7 +11233,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "523": {
       "parameter": "RV CO",
       "sex": "Female",
       "unit": "L/min",
@@ -11251,7 +11251,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "524": {
       "parameter": "RV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -11269,7 +11269,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "525": {
       "parameter": "RV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -11287,7 +11287,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "526": {
       "parameter": "RV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -11305,7 +11305,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "527": {
       "parameter": "RV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -11323,7 +11323,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "528": {
       "parameter": "RV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -11341,7 +11341,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "529": {
       "parameter": "RV EDV",
       "sex": "Male",
       "unit": "mL",
@@ -11359,7 +11359,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "530": {
       "parameter": "RV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -11377,7 +11377,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "531": {
       "parameter": "RV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -11395,7 +11395,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "532": {
       "parameter": "RV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -11413,7 +11413,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "533": {
       "parameter": "RV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -11431,7 +11431,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "534": {
       "parameter": "RV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -11449,7 +11449,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "535": {
       "parameter": "RV EDV",
       "sex": "Female",
       "unit": "mL",
@@ -11467,7 +11467,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "536": {
       "parameter": "RV EDV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -11485,7 +11485,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "537": {
       "parameter": "RV EDV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -11503,7 +11503,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "538": {
       "parameter": "RV EDV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -11521,7 +11521,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "539": {
       "parameter": "RV EDV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -11539,7 +11539,7 @@
       "ul_mass": 117,
       "sd_mass": 17
     },
-    {
+    "540": {
       "parameter": "RV EDV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -11557,7 +11557,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "541": {
       "parameter": "RV EDV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -11575,7 +11575,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "542": {
       "parameter": "RV EDV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -11593,7 +11593,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "543": {
       "parameter": "RV EDV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -11611,7 +11611,7 @@
       "ul_mass": 99,
       "sd_mass": 13
     },
-    {
+    "544": {
       "parameter": "RV EF",
       "sex": "Male",
       "unit": "%",
@@ -11629,7 +11629,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "545": {
       "parameter": "RV EF",
       "sex": "Male",
       "unit": "%",
@@ -11647,7 +11647,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "546": {
       "parameter": "RV EF",
       "sex": "Male",
       "unit": "%",
@@ -11665,7 +11665,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "547": {
       "parameter": "RV EF",
       "sex": "Male",
       "unit": "%",
@@ -11683,7 +11683,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "548": {
       "parameter": "RV EF",
       "sex": "Male",
       "unit": "%",
@@ -11701,7 +11701,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "549": {
       "parameter": "RV EF",
       "sex": "Male",
       "unit": "%",
@@ -11719,7 +11719,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "550": {
       "parameter": "RV EF",
       "sex": "Female",
       "unit": "%",
@@ -11737,7 +11737,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "551": {
       "parameter": "RV EF",
       "sex": "Female",
       "unit": "%",
@@ -11755,7 +11755,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "552": {
       "parameter": "RV EF",
       "sex": "Female",
       "unit": "%",
@@ -11773,7 +11773,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "553": {
       "parameter": "RV EF",
       "sex": "Female",
       "unit": "%",
@@ -11791,7 +11791,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "554": {
       "parameter": "RV EF",
       "sex": "Female",
       "unit": "%",
@@ -11809,7 +11809,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "555": {
       "parameter": "RV EF",
       "sex": "Female",
       "unit": "%",
@@ -11827,7 +11827,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "556": {
       "parameter": "RV ESV",
       "sex": "Male",
       "unit": "mL",
@@ -11845,7 +11845,7 @@
       "ul_mass": 113,
       "sd_mass": 21
     },
-    {
+    "557": {
       "parameter": "RV ESV",
       "sex": "Female",
       "unit": "mL",
@@ -11863,7 +11863,7 @@
       "ul_mass": 77,
       "sd_mass": 14
     },
-    {
+    "558": {
       "parameter": "RV ESV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -11881,7 +11881,7 @@
       "ul_mass": 56,
       "sd_mass": 11
     },
-    {
+    "559": {
       "parameter": "RV ESV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -11899,7 +11899,7 @@
       "ul_mass": 43,
       "sd_mass": 8
     },
-    {
+    "560": {
       "parameter": "RV mass",
       "sex": "Male",
       "unit": "g",
@@ -11917,7 +11917,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "561": {
       "parameter": "RV mass",
       "sex": "Male",
       "unit": "g",
@@ -11935,7 +11935,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "562": {
       "parameter": "RV mass",
       "sex": "Male",
       "unit": "g",
@@ -11953,7 +11953,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "563": {
       "parameter": "RV mass",
       "sex": "Male",
       "unit": "g",
@@ -11971,7 +11971,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "564": {
       "parameter": "RV mass",
       "sex": "Male",
       "unit": "g",
@@ -11989,7 +11989,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "565": {
       "parameter": "RV mass",
       "sex": "Male",
       "unit": "g",
@@ -12007,7 +12007,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "566": {
       "parameter": "RV mass",
       "sex": "Female",
       "unit": "g",
@@ -12025,7 +12025,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "567": {
       "parameter": "RV mass",
       "sex": "Female",
       "unit": "g",
@@ -12043,7 +12043,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "568": {
       "parameter": "RV mass",
       "sex": "Female",
       "unit": "g",
@@ -12061,7 +12061,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "569": {
       "parameter": "RV mass",
       "sex": "Female",
       "unit": "g",
@@ -12079,7 +12079,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "570": {
       "parameter": "RV mass",
       "sex": "Female",
       "unit": "g",
@@ -12097,7 +12097,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "571": {
       "parameter": "RV mass",
       "sex": "Female",
       "unit": "g",
@@ -12115,7 +12115,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "572": {
       "parameter": "RV mass (i)",
       "sex": "Male",
       "unit": "g/m²",
@@ -12133,7 +12133,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "573": {
       "parameter": "RV mass (i)",
       "sex": "Male",
       "unit": "g/m²",
@@ -12151,7 +12151,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "574": {
       "parameter": "RV mass (i)",
       "sex": "Male",
       "unit": "g/m²",
@@ -12169,7 +12169,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "575": {
       "parameter": "RV mass (i)",
       "sex": "Male",
       "unit": "g/m²",
@@ -12187,7 +12187,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "576": {
       "parameter": "RV mass (i)",
       "sex": "Male",
       "unit": "g/m²",
@@ -12205,7 +12205,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "577": {
       "parameter": "RV mass (i)",
       "sex": "Male",
       "unit": "g/m²",
@@ -12223,7 +12223,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "578": {
       "parameter": "RV mass (i)",
       "sex": "Female",
       "unit": "g/m²",
@@ -12241,7 +12241,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "579": {
       "parameter": "RV mass (i)",
       "sex": "Female",
       "unit": "g/m²",
@@ -12259,7 +12259,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "580": {
       "parameter": "RV mass (i)",
       "sex": "Female",
       "unit": "g/m²",
@@ -12277,7 +12277,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "581": {
       "parameter": "RV mass (i)",
       "sex": "Female",
       "unit": "g/m²",
@@ -12295,7 +12295,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "582": {
       "parameter": "RV mass (i)",
       "sex": "Female",
       "unit": "g/m²",
@@ -12313,7 +12313,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "583": {
       "parameter": "RV mass (i)",
       "sex": "Female",
       "unit": "g/m²",
@@ -12331,7 +12331,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "584": {
       "parameter": "RV SV",
       "sex": "Male",
       "unit": "mL",
@@ -12349,7 +12349,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "585": {
       "parameter": "RV SV",
       "sex": "Male",
       "unit": "mL",
@@ -12367,7 +12367,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "586": {
       "parameter": "RV SV",
       "sex": "Male",
       "unit": "mL",
@@ -12385,7 +12385,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "587": {
       "parameter": "RV SV",
       "sex": "Male",
       "unit": "mL",
@@ -12403,7 +12403,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "588": {
       "parameter": "RV SV",
       "sex": "Male",
       "unit": "mL",
@@ -12421,7 +12421,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "589": {
       "parameter": "RV SV",
       "sex": "Male",
       "unit": "mL",
@@ -12439,7 +12439,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "590": {
       "parameter": "RV SV",
       "sex": "Female",
       "unit": "mL",
@@ -12457,7 +12457,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "591": {
       "parameter": "RV SV",
       "sex": "Female",
       "unit": "mL",
@@ -12475,7 +12475,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "592": {
       "parameter": "RV SV",
       "sex": "Female",
       "unit": "mL",
@@ -12493,7 +12493,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "593": {
       "parameter": "RV SV",
       "sex": "Female",
       "unit": "mL",
@@ -12511,7 +12511,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "594": {
       "parameter": "RV SV",
       "sex": "Female",
       "unit": "mL",
@@ -12529,7 +12529,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "595": {
       "parameter": "RV SV",
       "sex": "Female",
       "unit": "mL",
@@ -12547,7 +12547,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "596": {
       "parameter": "RV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -12565,7 +12565,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "597": {
       "parameter": "RV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -12583,7 +12583,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "598": {
       "parameter": "RV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -12601,7 +12601,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "599": {
       "parameter": "RV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -12619,7 +12619,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "600": {
       "parameter": "RV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -12637,7 +12637,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "601": {
       "parameter": "RV SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -12655,7 +12655,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "602": {
       "parameter": "RV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -12673,7 +12673,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "603": {
       "parameter": "RV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -12691,7 +12691,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "604": {
       "parameter": "RV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -12709,7 +12709,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "605": {
       "parameter": "RV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -12727,7 +12727,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "606": {
       "parameter": "RV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -12745,7 +12745,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "607": {
       "parameter": "RV SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -12763,7 +12763,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "608": {
       "parameter": "RA SV",
       "sex": "Male",
       "unit": "mL",
@@ -12781,7 +12781,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "609": {
       "parameter": "RA SV",
       "sex": "Female",
       "unit": "mL",
@@ -12799,7 +12799,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "610": {
       "parameter": "RA SV (i)",
       "sex": "Male",
       "unit": "mL/m²",
@@ -12817,7 +12817,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "611": {
       "parameter": "RA SV (i)",
       "sex": "Female",
       "unit": "mL/m²",
@@ -12835,7 +12835,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "612": {
       "parameter": "Asc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -12853,7 +12853,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "613": {
       "parameter": "Asc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -12871,7 +12871,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "614": {
       "parameter": "Asc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -12889,7 +12889,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "615": {
       "parameter": "Asc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -12907,7 +12907,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "616": {
       "parameter": "Asc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -12925,7 +12925,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "617": {
       "parameter": "Asc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -12943,7 +12943,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "618": {
       "parameter": "Asc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -12961,7 +12961,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "619": {
       "parameter": "Asc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -12979,7 +12979,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "620": {
       "parameter": "Asc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -12997,7 +12997,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "621": {
       "parameter": "Asc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -13015,7 +13015,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "622": {
       "parameter": "Asc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -13033,7 +13033,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "623": {
       "parameter": "Asc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -13051,7 +13051,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "624": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -13069,7 +13069,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "625": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -13087,7 +13087,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "626": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -13105,7 +13105,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "627": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -13123,7 +13123,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "628": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -13141,7 +13141,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "629": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -13159,7 +13159,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "630": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -13177,7 +13177,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "631": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -13195,7 +13195,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "632": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -13213,7 +13213,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "633": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -13231,7 +13231,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "634": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -13249,7 +13249,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "635": {
       "parameter": "Dist desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -13267,7 +13267,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "636": {
       "parameter": "Aortic annulus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13285,7 +13285,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "637": {
       "parameter": "Aortic annulus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13303,7 +13303,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "638": {
       "parameter": "Aortic annulus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13321,7 +13321,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "639": {
       "parameter": "Aortic annulus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13339,7 +13339,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "640": {
       "parameter": "Aortic annulus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13357,7 +13357,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "641": {
       "parameter": "Aortic annulus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13375,7 +13375,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "642": {
       "parameter": "Aortic annulus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13393,7 +13393,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "643": {
       "parameter": "Aortic annulus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13411,7 +13411,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "644": {
       "parameter": "Aortic annulus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13429,7 +13429,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "645": {
       "parameter": "Aortic annulus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13447,7 +13447,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "646": {
       "parameter": "Aortic annulus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13465,7 +13465,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "647": {
       "parameter": "Aortic annulus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13483,7 +13483,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "648": {
       "parameter": "Aortic annulus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13501,7 +13501,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "649": {
       "parameter": "Aortic annulus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13519,7 +13519,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "650": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -13537,7 +13537,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "651": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -13555,7 +13555,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "652": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -13573,7 +13573,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "653": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -13591,7 +13591,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "654": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -13609,7 +13609,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "655": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -13627,7 +13627,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "656": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -13645,7 +13645,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "657": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -13663,7 +13663,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "658": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -13681,7 +13681,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "659": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -13699,7 +13699,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "660": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -13717,7 +13717,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "661": {
       "parameter": "Aortic annulus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -13735,7 +13735,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "662": {
       "parameter": "Aortic sinus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13753,7 +13753,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "663": {
       "parameter": "Aortic sinus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13771,7 +13771,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "664": {
       "parameter": "Aortic sinus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13789,7 +13789,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "665": {
       "parameter": "Aortic sinus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13807,7 +13807,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "666": {
       "parameter": "Aortic sinus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13825,7 +13825,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "667": {
       "parameter": "Aortic sinus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13843,7 +13843,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "668": {
       "parameter": "Aortic sinus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13861,7 +13861,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "669": {
       "parameter": "Aortic sinus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13879,7 +13879,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "670": {
       "parameter": "Aortic sinus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13897,7 +13897,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "671": {
       "parameter": "Aortic sinus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13915,7 +13915,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "672": {
       "parameter": "Aortic sinus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13933,7 +13933,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "673": {
       "parameter": "Aortic sinus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13951,7 +13951,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "674": {
       "parameter": "Aortic sinus diameter",
       "sex": "Male",
       "unit": "mm",
@@ -13969,7 +13969,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "675": {
       "parameter": "Aortic sinus diameter",
       "sex": "Female",
       "unit": "mm",
@@ -13987,7 +13987,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "676": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14005,7 +14005,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "677": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14023,7 +14023,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "678": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14041,7 +14041,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "679": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14059,7 +14059,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "680": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14077,7 +14077,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "681": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14095,7 +14095,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "682": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14113,7 +14113,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "683": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14131,7 +14131,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "684": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14149,7 +14149,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "685": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14167,7 +14167,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "686": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14185,7 +14185,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "687": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14203,7 +14203,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "688": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14221,7 +14221,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "689": {
       "parameter": "Aortic sinus diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14239,7 +14239,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "690": {
       "parameter": "STJ diameter",
       "sex": "Male",
       "unit": "mm",
@@ -14257,7 +14257,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "691": {
       "parameter": "STJ diameter",
       "sex": "Female",
       "unit": "mm",
@@ -14275,7 +14275,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "692": {
       "parameter": "STJ diameter",
       "sex": "Male",
       "unit": "mm",
@@ -14293,7 +14293,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "693": {
       "parameter": "STJ diameter",
       "sex": "Female",
       "unit": "mm",
@@ -14311,7 +14311,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "694": {
       "parameter": "STJ diameter",
       "sex": "Male",
       "unit": "mm",
@@ -14329,7 +14329,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "695": {
       "parameter": "STJ diameter",
       "sex": "Female",
       "unit": "mm",
@@ -14347,7 +14347,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "696": {
       "parameter": "STJ diameter",
       "sex": "Male",
       "unit": "mm",
@@ -14365,7 +14365,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "697": {
       "parameter": "STJ diameter",
       "sex": "Female",
       "unit": "mm",
@@ -14383,7 +14383,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "698": {
       "parameter": "STJ diameter",
       "sex": "Male",
       "unit": "mm",
@@ -14401,7 +14401,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "699": {
       "parameter": "STJ diameter",
       "sex": "Female",
       "unit": "mm",
@@ -14419,7 +14419,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "700": {
       "parameter": "STJ diameter",
       "sex": "Male",
       "unit": "mm",
@@ -14437,7 +14437,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "701": {
       "parameter": "STJ diameter",
       "sex": "Female",
       "unit": "mm",
@@ -14455,7 +14455,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "702": {
       "parameter": "STJ diameter",
       "sex": "Male",
       "unit": "mm",
@@ -14473,7 +14473,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "703": {
       "parameter": "STJ diameter",
       "sex": "Female",
       "unit": "mm",
@@ -14491,7 +14491,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "704": {
       "parameter": "STJ diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14509,7 +14509,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "705": {
       "parameter": "STJ diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14527,7 +14527,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "706": {
       "parameter": "STJ diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14545,7 +14545,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "707": {
       "parameter": "STJ diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14563,7 +14563,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "708": {
       "parameter": "STJ diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14581,7 +14581,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "709": {
       "parameter": "STJ diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14599,7 +14599,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "710": {
       "parameter": "STJ diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14617,7 +14617,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "711": {
       "parameter": "STJ diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14635,7 +14635,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "712": {
       "parameter": "STJ diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14653,7 +14653,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "713": {
       "parameter": "STJ diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14671,7 +14671,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "714": {
       "parameter": "STJ diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -14689,7 +14689,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "715": {
       "parameter": "STJ diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -14707,7 +14707,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "716": {
       "parameter": "Aortic sinus area",
       "sex": "Male",
       "unit": "cm²",
@@ -14725,7 +14725,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "717": {
       "parameter": "Aortic sinus area",
       "sex": "Female",
       "unit": "cm²",
@@ -14743,7 +14743,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "718": {
       "parameter": "Aortic sinus area",
       "sex": "Male",
       "unit": "cm²",
@@ -14761,7 +14761,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "719": {
       "parameter": "Aortic sinus area",
       "sex": "Female",
       "unit": "cm²",
@@ -14779,7 +14779,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "720": {
       "parameter": "Aortic sinus area",
       "sex": "Male",
       "unit": "cm²",
@@ -14797,7 +14797,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "721": {
       "parameter": "Aortic sinus area",
       "sex": "Female",
       "unit": "cm²",
@@ -14815,7 +14815,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "722": {
       "parameter": "Aortic sinus area",
       "sex": "Male",
       "unit": "cm²",
@@ -14833,7 +14833,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "723": {
       "parameter": "Aortic sinus area",
       "sex": "Female",
       "unit": "cm²",
@@ -14851,7 +14851,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "724": {
       "parameter": "Aortic sinus area",
       "sex": "Male",
       "unit": "cm²",
@@ -14869,7 +14869,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "725": {
       "parameter": "Aortic sinus area",
       "sex": "Female",
       "unit": "cm²",
@@ -14887,7 +14887,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "726": {
       "parameter": "Aortic sinus area",
       "sex": "Male",
       "unit": "cm²",
@@ -14905,7 +14905,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "727": {
       "parameter": "Aortic sinus area",
       "sex": "Female",
       "unit": "cm²",
@@ -14923,7 +14923,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "728": {
       "parameter": "Aortic sinus area",
       "sex": "Male",
       "unit": "cm²",
@@ -14941,7 +14941,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "729": {
       "parameter": "Aortic sinus area",
       "sex": "Female",
       "unit": "cm²",
@@ -14959,7 +14959,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "730": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -14977,7 +14977,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "731": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -14995,7 +14995,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "732": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -15013,7 +15013,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "733": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -15031,7 +15031,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "734": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -15049,7 +15049,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "735": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -15067,7 +15067,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "736": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -15085,7 +15085,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "737": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -15103,7 +15103,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "738": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -15121,7 +15121,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "739": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -15139,7 +15139,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "740": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -15157,7 +15157,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "741": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -15175,7 +15175,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "742": {
       "parameter": "Aortic sinus area (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -15193,7 +15193,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "743": {
       "parameter": "Asc aorta diameter",
       "sex": "Male",
       "unit": "mm",
@@ -15211,7 +15211,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "744": {
       "parameter": "Asc aorta diameter",
       "sex": "Male",
       "unit": "mm",
@@ -15229,7 +15229,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "745": {
       "parameter": "Asc aorta diameter",
       "sex": "Male",
       "unit": "mm",
@@ -15247,7 +15247,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "746": {
       "parameter": "Asc aorta diameter",
       "sex": "Male",
       "unit": "mm",
@@ -15265,7 +15265,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "747": {
       "parameter": "Asc aorta diameter",
       "sex": "Female",
       "unit": "mm",
@@ -15283,7 +15283,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "748": {
       "parameter": "Asc aorta diameter",
       "sex": "Female",
       "unit": "mm",
@@ -15301,7 +15301,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "749": {
       "parameter": "Asc aorta diameter",
       "sex": "Female",
       "unit": "mm",
@@ -15319,7 +15319,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "750": {
       "parameter": "Asc aorta diameter",
       "sex": "Female",
       "unit": "mm",
@@ -15337,7 +15337,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "751": {
       "parameter": "Asc aorta diameter",
       "sex": "Male",
       "unit": "mm",
@@ -15355,7 +15355,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "752": {
       "parameter": "Asc aorta diameter",
       "sex": "Female",
       "unit": "mm",
@@ -15373,7 +15373,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "753": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -15391,7 +15391,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "754": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -15409,7 +15409,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "755": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -15427,7 +15427,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "756": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -15445,7 +15445,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "757": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -15463,7 +15463,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "758": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -15481,7 +15481,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "759": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -15499,7 +15499,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "760": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -15517,7 +15517,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "761": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -15535,7 +15535,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "762": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -15553,7 +15553,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "763": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Male",
       "unit": "10⁻³ /mmHg",
@@ -15571,7 +15571,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "764": {
       "parameter": "Prox desc aorta distensibility",
       "sex": "Female",
       "unit": "10⁻³ /mmHg",
@@ -15589,7 +15589,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "765": {
       "parameter": "Prox desc aorta diameter",
       "sex": "Male",
       "unit": "mm",
@@ -15607,7 +15607,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "766": {
       "parameter": "Prox desc aorta diameter",
       "sex": "Female",
       "unit": "mm",
@@ -15625,7 +15625,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "767": {
       "parameter": "Prox desc aorta diameter",
       "sex": "Male",
       "unit": "mm",
@@ -15643,7 +15643,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "768": {
       "parameter": "Prox desc aorta diameter",
       "sex": "Female",
       "unit": "mm",
@@ -15661,7 +15661,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "769": {
       "parameter": "Dist desc aorta diameter",
       "sex": "Male",
       "unit": "mm",
@@ -15679,7 +15679,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "770": {
       "parameter": "Dist desc aorta diameter",
       "sex": "Female",
       "unit": "mm",
@@ -15697,7 +15697,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "771": {
       "parameter": "Native T1",
       "sex": "Male",
       "unit": "ms",
@@ -15715,7 +15715,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "772": {
       "parameter": "Native T1",
       "sex": "Female",
       "unit": "ms",
@@ -15733,7 +15733,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "773": {
       "parameter": "ECV",
       "sex": "Male",
       "unit": "%",
@@ -15751,7 +15751,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "774": {
       "parameter": "ECV",
       "sex": "Female",
       "unit": "%",
@@ -15769,7 +15769,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "775": {
       "parameter": "Native T2",
       "sex": "Male",
       "unit": "ms",
@@ -15787,7 +15787,7 @@
       "ul_mass": 58,
       "sd_mass": null
     },
-    {
+    "776": {
       "parameter": "Native T2",
       "sex": "Female",
       "unit": "ms",
@@ -15805,7 +15805,7 @@
       "ul_mass": 58,
       "sd_mass": null
     },
-    {
+    "777": {
       "parameter": "Myocardial T2*",
       "sex": "Male",
       "unit": "ms",
@@ -15823,7 +15823,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "778": {
       "parameter": "Myocardial T2*",
       "sex": "Female",
       "unit": "ms",
@@ -15841,7 +15841,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "779": {
       "parameter": "Asc aorta diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -15859,7 +15859,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "780": {
       "parameter": "Asc aorta diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -15877,7 +15877,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "781": {
       "parameter": "Asc aorta diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -15895,7 +15895,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "782": {
       "parameter": "Asc aorta diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -15913,7 +15913,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "783": {
       "parameter": "Asc aorta diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -15931,7 +15931,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "784": {
       "parameter": "Asc aorta diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -15949,7 +15949,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "785": {
       "parameter": "Asc aorta diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -15967,7 +15967,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "786": {
       "parameter": "Asc aorta diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -15985,7 +15985,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "787": {
       "parameter": "Asc aorta diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -16003,7 +16003,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "788": {
       "parameter": "Asc aorta diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -16021,7 +16021,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "789": {
       "parameter": "LV ED diameter (4ch)",
       "sex": "Male",
       "unit": "mm",
@@ -16039,7 +16039,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "790": {
       "parameter": "LV ED diameter (4ch)",
       "sex": "Female",
       "unit": "mm",
@@ -16057,7 +16057,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "791": {
       "parameter": "LV ED diameter (4ch) (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -16075,7 +16075,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "792": {
       "parameter": "LV ED diameter (4ch) (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -16093,7 +16093,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "793": {
       "parameter": "LV ED diameter (sax)",
       "sex": "Male",
       "unit": "mm",
@@ -16111,7 +16111,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "794": {
       "parameter": "LV ED diameter (sax)",
       "sex": "Female",
       "unit": "mm",
@@ -16129,7 +16129,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "795": {
       "parameter": "LV ED diameter (sax) (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -16147,7 +16147,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "796": {
       "parameter": "LV ED diameter (sax) (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -16165,7 +16165,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "797": {
       "parameter": "LV ES diameter (4ch)",
       "sex": "Male",
       "unit": "mm",
@@ -16183,7 +16183,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "798": {
       "parameter": "LV ES diameter (4ch)",
       "sex": "Female",
       "unit": "mm",
@@ -16201,7 +16201,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "799": {
       "parameter": "LV ES diameter (4ch) (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -16219,7 +16219,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "800": {
       "parameter": "LV ES diameter (4ch) (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -16237,7 +16237,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "801": {
       "parameter": "LV ES diameter (sax)",
       "sex": "Male",
       "unit": "mm",
@@ -16255,7 +16255,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "802": {
       "parameter": "LV ES diameter (sax)",
       "sex": "Female",
       "unit": "mm",
@@ -16273,7 +16273,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "803": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16291,7 +16291,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "804": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16309,7 +16309,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "805": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16327,7 +16327,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "806": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16345,7 +16345,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "807": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16363,7 +16363,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "808": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16381,7 +16381,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "809": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16399,7 +16399,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "810": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16417,7 +16417,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "811": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16435,7 +16435,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "812": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16453,7 +16453,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "813": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16471,7 +16471,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "814": {
       "parameter": "AV peak velocity [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16489,7 +16489,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "815": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16507,7 +16507,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "816": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16525,7 +16525,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "817": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16543,7 +16543,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "818": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16561,7 +16561,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "819": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16579,7 +16579,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "820": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16597,7 +16597,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "821": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16615,7 +16615,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "822": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16633,7 +16633,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "823": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16651,7 +16651,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "824": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16669,7 +16669,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "825": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -16687,7 +16687,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "826": {
       "parameter": "Asc aorta peak velocty [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -16705,7 +16705,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "827": {
       "parameter": "MV annulus diameter ED (4ch)",
       "sex": "Male",
       "unit": "cm",
@@ -16723,7 +16723,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "828": {
       "parameter": "MV annulus diameter ES (4ch)",
       "sex": "Male",
       "unit": "cm",
@@ -16741,7 +16741,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "829": {
       "parameter": "MV annulus diameter ED (3ch)",
       "sex": "Male",
       "unit": "cm",
@@ -16759,7 +16759,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "830": {
       "parameter": "MV annulus diameter ES (3ch)",
       "sex": "Male",
       "unit": "cm",
@@ -16777,7 +16777,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "831": {
       "parameter": "MV annulus diameter ED (2ch)",
       "sex": "Male",
       "unit": "cm",
@@ -16795,7 +16795,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "832": {
       "parameter": "MV annulus diameter ES (2ch)",
       "sex": "Male",
       "unit": "cm",
@@ -16813,7 +16813,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "833": {
       "parameter": "MV annulus diameter ED (4ch)",
       "sex": "Female",
       "unit": "cm",
@@ -16831,7 +16831,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "834": {
       "parameter": "MV annulus diameter ES (4ch)",
       "sex": "Female",
       "unit": "cm",
@@ -16849,7 +16849,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "835": {
       "parameter": "MV annulus diameter ED (3ch)",
       "sex": "Female",
       "unit": "cm",
@@ -16867,7 +16867,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "836": {
       "parameter": "MV annulus diameter ES (3ch)",
       "sex": "Female",
       "unit": "cm",
@@ -16885,7 +16885,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "837": {
       "parameter": "MV annulus diameter ED (2ch)",
       "sex": "Female",
       "unit": "cm",
@@ -16903,7 +16903,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "838": {
       "parameter": "MV annulus diameter ES (2ch)",
       "sex": "Female",
       "unit": "cm",
@@ -16921,7 +16921,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "839": {
       "parameter": "MV annulus diameter ED (4ch) (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -16939,7 +16939,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "840": {
       "parameter": "MV annulus diameter ES (4ch) (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -16957,7 +16957,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "841": {
       "parameter": "MV annulus diameter ED (3ch) (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -16975,7 +16975,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "842": {
       "parameter": "MV annulus diameter ES (3ch) (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -16993,7 +16993,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "843": {
       "parameter": "MV annulus diameter ED (2ch) (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -17011,7 +17011,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "844": {
       "parameter": "MV annulus diameter ES (2ch) (i)",
       "sex": "Male",
       "unit": "cm²/m²",
@@ -17029,7 +17029,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "845": {
       "parameter": "MV annulus diameter ED (4ch) (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -17047,7 +17047,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "846": {
       "parameter": "MV annulus diameter ES (4ch) (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -17065,7 +17065,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "847": {
       "parameter": "MV annulus diameter ED (3ch) (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -17083,7 +17083,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "848": {
       "parameter": "MV annulus diameter ES (3ch) (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -17101,7 +17101,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "849": {
       "parameter": "MV annulus diameter ED (2ch) (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -17119,7 +17119,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "850": {
       "parameter": "MV annulus diameter ES (2ch) (i)",
       "sex": "Female",
       "unit": "cm²/m²",
@@ -17137,7 +17137,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "851": {
       "parameter": "AV effective forward flow (per heartbeat)",
       "sex": "Male",
       "unit": "mL/beat",
@@ -17155,7 +17155,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "852": {
       "parameter": "AV effective forward flow (per heartbeat)",
       "sex": "Female",
       "unit": "mL/beat",
@@ -17173,7 +17173,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "853": {
       "parameter": "AV effective forward flow (per minute)",
       "sex": "Male",
       "unit": "L/min",
@@ -17191,7 +17191,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "854": {
       "parameter": "AV effective forward flow (per minute)",
       "sex": "Female",
       "unit": "L/min",
@@ -17209,7 +17209,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "855": {
       "parameter": "AV forward flow (per heartbeat)",
       "sex": "Male",
       "unit": "mL/beat",
@@ -17227,7 +17227,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "856": {
       "parameter": "AV forward flow (per heartbeat)",
       "sex": "Female",
       "unit": "mL/beat",
@@ -17245,7 +17245,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "857": {
       "parameter": "AV forward flow (per minute)",
       "sex": "Male",
       "unit": "L/min",
@@ -17263,7 +17263,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "858": {
       "parameter": "AV forward flow (per minute)",
       "sex": "Female",
       "unit": "L/min",
@@ -17281,7 +17281,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "859": {
       "parameter": "AV backward flow (per heartbeat)",
       "sex": "Male",
       "unit": "mL/beat",
@@ -17299,7 +17299,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "860": {
       "parameter": "AV backward flow (per heartbeat)",
       "sex": "Female",
       "unit": "mL/beat",
@@ -17317,7 +17317,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "861": {
       "parameter": "AV maximum velocity",
       "sex": "Male",
       "unit": "m/s",
@@ -17335,7 +17335,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "862": {
       "parameter": "AV maximum velocity",
       "sex": "Female",
       "unit": "m/s",
@@ -17353,9 +17353,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    null,
-    null,
-    {
+    "863": {
       "parameter": "AV regurgitant fraction",
       "sex": "Male",
       "unit": "%",
@@ -17373,7 +17371,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "864": {
       "parameter": "AV regurgitant fraction",
       "sex": "Female",
       "unit": "%",
@@ -17391,7 +17389,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "865": {
       "parameter": "AV maximum pressure gradient",
       "sex": "Male",
       "unit": "mmHg",
@@ -17409,7 +17407,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "866": {
       "parameter": "AV maximum pressure gradient",
       "sex": "Female",
       "unit": "mmHg",
@@ -17427,7 +17425,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "867": {
       "parameter": "AV mean pressure gradient",
       "sex": "Male",
       "unit": "mmHg",
@@ -17445,7 +17443,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "868": {
       "parameter": "AV mean pressure gradient",
       "sex": "Female",
       "unit": "mmHg",
@@ -17463,7 +17461,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "869": {
       "parameter": "PV peak velocity [4D-flow]",
       "sex": "Male",
       "unit": "m/s",
@@ -17481,7 +17479,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "870": {
       "parameter": "PV peak velocity [4D-flow]",
       "sex": "Female",
       "unit": "m/s",
@@ -17499,7 +17497,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "871": {
       "parameter": "PV effective forward flow (per heartbeat)",
       "sex": "Male",
       "unit": "mL/beat",
@@ -17517,7 +17515,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "872": {
       "parameter": "PV effective forward flow (per heartbeat)",
       "sex": "Female",
       "unit": "mL/beat",
@@ -17535,7 +17533,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "873": {
       "parameter": "PV effective forward flow (per minute)",
       "sex": "Male",
       "unit": "L/min",
@@ -17553,7 +17551,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "874": {
       "parameter": "PV effective forward flow (per minute)",
       "sex": "Female",
       "unit": "L/min",
@@ -17571,7 +17569,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "875": {
       "parameter": "PV forward flow (per heartbeat)",
       "sex": "Male",
       "unit": "mL/beat",
@@ -17589,7 +17587,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "876": {
       "parameter": "PV forward flow (per heartbeat)",
       "sex": "Female",
       "unit": "mL/beat",
@@ -17607,7 +17605,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "877": {
       "parameter": "PV forward flow (per minute)",
       "sex": "Male",
       "unit": "L/min",
@@ -17625,7 +17623,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "878": {
       "parameter": "PV forward flow (per minute)",
       "sex": "Female",
       "unit": "L/min",
@@ -17643,7 +17641,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "879": {
       "parameter": "PV backward flow (per heartbeat)",
       "sex": "Male",
       "unit": "mL/beat",
@@ -17661,7 +17659,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "880": {
       "parameter": "PV backward flow (per heartbeat)",
       "sex": "Female",
       "unit": "mL/beat",
@@ -17679,7 +17677,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "881": {
       "parameter": "PV maximum velocity",
       "sex": "Male",
       "unit": "m/s",
@@ -17697,7 +17695,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "882": {
       "parameter": "PV maximum velocity",
       "sex": "Female",
       "unit": "m/s",
@@ -17715,9 +17713,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    null,
-    null,
-    {
+    "883": {
       "parameter": "PV regurgitant fraction",
       "sex": "Male",
       "unit": "%",
@@ -17735,7 +17731,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "884": {
       "parameter": "PV regurgitant fraction",
       "sex": "Female",
       "unit": "%",
@@ -17753,7 +17749,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "885": {
       "parameter": "PV maximum pressure gradient",
       "sex": "Male",
       "unit": "mmHg",
@@ -17771,7 +17767,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "886": {
       "parameter": "PV maximum pressure gradient",
       "sex": "Female",
       "unit": "mmHg",
@@ -17789,7 +17785,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "887": {
       "parameter": "PV mean pressure gradient",
       "sex": "Male",
       "unit": "mmHg",
@@ -17807,7 +17803,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "888": {
       "parameter": "PV mean pressure gradient",
       "sex": "Female",
       "unit": "mmHg",
@@ -17825,7 +17821,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "889": {
       "parameter": "MAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -17843,7 +17839,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "890": {
       "parameter": "MAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -17861,7 +17857,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "891": {
       "parameter": "MAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -17879,7 +17875,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "892": {
       "parameter": "MAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -17897,7 +17893,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "893": {
       "parameter": "MAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -17915,7 +17911,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "894": {
       "parameter": "MAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -17933,7 +17929,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "895": {
       "parameter": "MAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -17951,7 +17947,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "896": {
       "parameter": "MAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -17969,7 +17965,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "897": {
       "parameter": "MAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -17987,7 +17983,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "898": {
       "parameter": "MAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -18005,7 +18001,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "899": {
       "parameter": "MAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -18023,7 +18019,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "900": {
       "parameter": "MAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -18041,7 +18037,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "901": {
       "parameter": "MAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -18059,7 +18055,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "902": {
       "parameter": "MAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -18077,7 +18073,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "903": {
       "parameter": "TAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -18095,7 +18091,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "904": {
       "parameter": "TAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -18113,7 +18109,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "905": {
       "parameter": "TAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -18131,7 +18127,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "906": {
       "parameter": "TAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -18149,7 +18145,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "907": {
       "parameter": "TAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -18167,7 +18163,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "908": {
       "parameter": "TAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -18185,7 +18181,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "909": {
       "parameter": "TAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -18203,7 +18199,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "910": {
       "parameter": "TAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -18221,7 +18217,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "911": {
       "parameter": "TAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -18239,7 +18235,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "912": {
       "parameter": "TAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -18257,7 +18253,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "913": {
       "parameter": "TAPSE",
       "sex": "Male",
       "unit": "mm",
@@ -18275,7 +18271,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "914": {
       "parameter": "TAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -18293,7 +18289,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "915": {
       "parameter": "TAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -18311,7 +18307,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "916": {
       "parameter": "TAPSE",
       "sex": "Female",
       "unit": "mm",
@@ -18329,7 +18325,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "917": {
       "parameter": "PCWP",
       "sex": "Male",
       "unit": "mmHg",
@@ -18347,7 +18343,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "918": {
       "parameter": "PCWP",
       "sex": "Female",
       "unit": "mmHg",
@@ -18365,7 +18361,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "919": {
       "parameter": "MR volume (per heartbeat)",
       "sex": "Male",
       "unit": "mL",
@@ -18383,7 +18379,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "920": {
       "parameter": "MR volume (per heartbeat)",
       "sex": "Female",
       "unit": "mL",
@@ -18401,7 +18397,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "921": {
       "parameter": "MR regurgitant fraction",
       "sex": "Male",
       "unit": "%",
@@ -18419,7 +18415,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "922": {
       "parameter": "MR regurgitant fraction",
       "sex": "Female",
       "unit": "%",
@@ -18437,7 +18433,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "923": {
       "parameter": "LV peak wall thickness",
       "sex": "Female",
       "unit": "mm",
@@ -18455,7 +18451,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "924": {
       "parameter": "LV peak wall thickness",
       "sex": "Male",
       "unit": "mm",
@@ -18473,7 +18469,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "925": {
       "parameter": "MAPSE anterior",
       "sex": "Male",
       "unit": "mm",
@@ -18491,7 +18487,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "926": {
       "parameter": "MAPSE anterior",
       "sex": "Female",
       "unit": "mm",
@@ -18509,7 +18505,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "927": {
       "parameter": "MAPSE inferior",
       "sex": "Male",
       "unit": "mm",
@@ -18527,7 +18523,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "928": {
       "parameter": "MAPSE inferior",
       "sex": "Female",
       "unit": "mm",
@@ -18545,7 +18541,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "929": {
       "parameter": "MAPSE lateral",
       "sex": "Male",
       "unit": "mm",
@@ -18563,7 +18559,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "930": {
       "parameter": "MAPSE lateral",
       "sex": "Female",
       "unit": "mm",
@@ -18581,7 +18577,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "931": {
       "parameter": "MAPSE septal",
       "sex": "Male",
       "unit": "mm",
@@ -18599,7 +18595,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "932": {
       "parameter": "MAPSE septal",
       "sex": "Female",
       "unit": "mm",
@@ -18617,7 +18613,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "933": {
       "parameter": "TR volume (per heartbeat)",
       "sex": "Male",
       "unit": "ml",
@@ -18635,7 +18631,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "934": {
       "parameter": "TR volume (per heartbeat)",
       "sex": "Female",
       "unit": "ml",
@@ -18653,7 +18649,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "935": {
       "parameter": "TR regurgitant fraction",
       "sex": "Male",
       "unit": "%",
@@ -18671,7 +18667,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "936": {
       "parameter": "TR regurgitant fraction",
       "sex": "Female",
       "unit": "%",
@@ -18689,7 +18685,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "937": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18707,7 +18703,7 @@
       "sd": 5,
       "abnormal_direction": "high"
     },
-    {
+    "938": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18725,7 +18721,7 @@
       "sd": 5,
       "abnormal_direction": "high"
     },
-    {
+    "939": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18743,7 +18739,7 @@
       "sd": 2.5,
       "abnormal_direction": "high"
     },
-    {
+    "940": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18761,7 +18757,7 @@
       "sd": 3,
       "abnormal_direction": "high"
     },
-    {
+    "941": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18779,7 +18775,7 @@
       "sd": 4,
       "abnormal_direction": "high"
     },
-    {
+    "942": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18797,7 +18793,7 @@
       "sd": 4,
       "abnormal_direction": "high"
     },
-    {
+    "943": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18815,7 +18811,7 @@
       "sd": 3.5,
       "abnormal_direction": "high"
     },
-    {
+    "944": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18833,7 +18829,7 @@
       "sd": 3.5,
       "abnormal_direction": "high"
     },
-    {
+    "945": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18851,7 +18847,7 @@
       "sd": 2.5,
       "abnormal_direction": "high"
     },
-    {
+    "946": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18869,7 +18865,7 @@
       "sd": 2.5,
       "abnormal_direction": "high"
     },
-    {
+    "947": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18887,7 +18883,7 @@
       "sd": 40,
       "abnormal_direction": "low"
     },
-    {
+    "948": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18905,7 +18901,7 @@
       "sd": 40,
       "abnormal_direction": "low"
     },
-    {
+    "949": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18923,7 +18919,7 @@
       "sd": 0.4,
       "abnormal_direction": "high"
     },
-    {
+    "950": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18941,7 +18937,7 @@
       "sd": 0.35,
       "abnormal_direction": "high"
     },
-    {
+    "951": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18959,7 +18955,7 @@
       "sd": 0.2,
       "abnormal_direction": "high"
     },
-    {
+    "952": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18977,7 +18973,7 @@
       "sd": 0.23,
       "abnormal_direction": "high"
     },
-    {
+    "953": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -18995,7 +18991,7 @@
       "sd": 0.35,
       "abnormal_direction": "high"
     },
-    {
+    "954": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -19013,7 +19009,7 @@
       "sd": 0.33,
       "abnormal_direction": "high"
     },
-    {
+    "955": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -19031,7 +19027,7 @@
       "sd": 0.2,
       "abnormal_direction": "high"
     },
-    {
+    "956": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -19049,7 +19045,7 @@
       "sd": 0.23,
       "abnormal_direction": "high"
     },
-    {
+    "957": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -19067,7 +19063,7 @@
       "sd": 3,
       "abnormal_direction": "high"
     },
-    {
+    "958": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -19085,7 +19081,7 @@
       "sd": 3,
       "abnormal_direction": "high"
     },
-    {
+    "959": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -19103,7 +19099,7 @@
       "sd": 1.5,
       "abnormal_direction": "high"
     },
-    {
+    "960": {
       "ll_mass": null,
       "mean_mass": null,
       "ul_mass": null,
@@ -19121,7 +19117,7 @@
       "sd": 2,
       "abnormal_direction": "high"
     },
-    {
+    "961": {
       "parameter": "SOV diameter",
       "sex": "Male",
       "unit": "mm",
@@ -19139,7 +19135,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "962": {
       "parameter": "SOV diameter",
       "sex": "Female",
       "unit": "mm",
@@ -19157,7 +19153,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "963": {
       "parameter": "SOV diameter",
       "sex": "Male",
       "unit": "mm",
@@ -19175,7 +19171,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "964": {
       "parameter": "SOV diameter",
       "sex": "Female",
       "unit": "mm",
@@ -19193,7 +19189,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "965": {
       "parameter": "SOV diameter",
       "sex": "Male",
       "unit": "mm",
@@ -19211,7 +19207,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "966": {
       "parameter": "SOV diameter",
       "sex": "Female",
       "unit": "mm",
@@ -19229,7 +19225,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "967": {
       "parameter": "SOV diameter",
       "sex": "Male",
       "unit": "mm",
@@ -19247,7 +19243,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "968": {
       "parameter": "SOV diameter",
       "sex": "Female",
       "unit": "mm",
@@ -19265,7 +19261,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "969": {
       "parameter": "SOV diameter",
       "sex": "Male",
       "unit": "mm",
@@ -19283,7 +19279,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "970": {
       "parameter": "SOV diameter",
       "sex": "Female",
       "unit": "mm",
@@ -19301,7 +19297,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "971": {
       "parameter": "SOV diameter",
       "sex": "Male",
       "unit": "mm",
@@ -19319,7 +19315,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "972": {
       "parameter": "SOV diameter",
       "sex": "Female",
       "unit": "mm",
@@ -19337,7 +19333,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "973": {
       "parameter": "SOV diameter",
       "sex": "Male",
       "unit": "mm",
@@ -19355,7 +19351,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "974": {
       "parameter": "SOV diameter",
       "sex": "Female",
       "unit": "mm",
@@ -19373,7 +19369,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "975": {
       "parameter": "SOV diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -19391,7 +19387,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "976": {
       "parameter": "SOV diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -19409,7 +19405,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "977": {
       "parameter": "SOV diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -19427,7 +19423,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "978": {
       "parameter": "SOV diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -19445,7 +19441,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "979": {
       "parameter": "SOV diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -19463,7 +19459,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "980": {
       "parameter": "SOV diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -19481,7 +19477,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "981": {
       "parameter": "SOV diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -19499,7 +19495,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "982": {
       "parameter": "SOV diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -19517,7 +19513,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "983": {
       "parameter": "SOV diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -19535,7 +19531,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "984": {
       "parameter": "SOV diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -19553,7 +19549,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "985": {
       "parameter": "SOV diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -19571,7 +19567,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "986": {
       "parameter": "SOV diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -19589,7 +19585,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "987": {
       "parameter": "SOV diameter (i)",
       "sex": "Male",
       "unit": "mm/m²",
@@ -19607,7 +19603,7 @@
       "ul_mass": null,
       "sd_mass": null
     },
-    {
+    "988": {
       "parameter": "SOV diameter (i)",
       "sex": "Female",
       "unit": "mm/m²",
@@ -19625,7 +19621,7 @@
       "ul_mass": null,
       "sd_mass": null
     }
-  ],
+  },
   "aliases": {
     "MAPSE Inferior": "MAPSE inferior",
     "MAPSE Anterior": "MAPSE anterior",
