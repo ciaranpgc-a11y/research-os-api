@@ -396,6 +396,14 @@ function buildSeverityTicks(param: CmrCanonicalParam): number[] | undefined {
  *  clearly visible and not squeezed into a small strip. */
 const SEV_ZONE_SCALING = { rangeStart: 0.05, rangeWidth: 0.9 } as const
 
+/** Compute SD tick positions as measuredRel values (for scaling). */
+function sdTickRels(param: CmrCanonicalParam): number[] | undefined {
+  const ticks = buildSeverityTicks(param)
+  if (!ticks || param.ll == null || param.ul == null) return undefined
+  const eul = hasSevZones(param) ? effectiveUL(param) : param.ul
+  return ticks.map(t => computeMeasuredRel(t, param.ll!, eul))
+}
+
 /** Build severity zones from explicit thresholds only (valve params). */
 function buildSeverityZones(param: CmrCanonicalParam): SeverityZone[] | undefined {
   const t = param.severity_thresholds
@@ -1203,7 +1211,7 @@ export function CmrNewReportPage() {
                       if (m !== undefined && hasValidRange(p.ll, p.ul)) {
                         const eul = hasSevZones(p) ? effectiveUL(p) : p.ul!
                         const rel = computeMeasuredRel(m, p.ll!, eul)
-                        newMap.set(p.parameter_key, perMeasurementAutoAdjust(rel))
+                        newMap.set(p.parameter_key, perMeasurementAutoAdjust(rel, sdTickRels(p)))
                       }
                     }
                   }
@@ -1515,7 +1523,7 @@ export function CmrNewReportPage() {
                                               if (!hasExplicit && !hasSevZones(p)) {
                                                 const rel = computeMeasuredRel(measured!, p.ll!, eul)
                                                 const isAbn = isAbnormalValue(measured!, p.ll, p.ul, p.abnormal_direction)
-                                                if (isAbn) return perMeasurementAutoAdjust(rel).rangeStart
+                                                if (isAbn) return perMeasurementAutoAdjust(rel, sdTickRels(p)).rangeStart
                                               }
                                               return base.rangeStart
                                             })()
@@ -1528,7 +1536,7 @@ export function CmrNewReportPage() {
                                               if (!hasExplicit && !hasSevZones(p)) {
                                                 const rel = computeMeasuredRel(measured!, p.ll!, eul)
                                                 const isAbn = isAbnormalValue(measured!, p.ll, p.ul, p.abnormal_direction)
-                                                if (isAbn) return perMeasurementAutoAdjust(rel).rangeWidth
+                                                if (isAbn) return perMeasurementAutoAdjust(rel, sdTickRels(p)).rangeWidth
                                               }
                                               return base.rangeWidth
                                             })()
@@ -1636,7 +1644,7 @@ export function CmrNewReportPage() {
                                                 const eul = hasSevZones(cp) ? effectiveUL(cp) : cp.ul!
                                                 const hasExplicit = rangeParams.has(cp.parameter_key) || rangeParams.has('__global__')
                                                 const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (chasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
-                                                if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeStart; }
+                                                if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel, sdTickRels(cp)).rangeStart; }
                                                 return base.rangeStart
                                               })()}
                                               rangeWidth={(() => {
@@ -1644,7 +1652,7 @@ export function CmrNewReportPage() {
                                                 const hasExplicit = rangeParams.has(cp.parameter_key) || rangeParams.has('__global__')
                                                 const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (chasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
                                                 if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeWidth; }
-                                                return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel).rangeWidth : base.rangeWidth
+                                                return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel, sdTickRels(cp)).rangeWidth : base.rangeWidth
                                               })()}
                                               previousMarkers={getPrevMarkers(cp, cpMeasured)}
                                               severityZones={buildSeverityZones(cp)}

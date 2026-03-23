@@ -174,13 +174,11 @@ const PER_MEAS_MIN_WIDTH = 0.05
  * The goal: each row is independently scaled to best visualise WHERE
  * the measured value sits relative to its own reference range.
  */
-export function perMeasurementAutoAdjust(measuredRel: number): RangeParam {
-  // Target: place the dot at a position that gives good visual context
-  // For normal values (rel 0–1), dot should be within the band
-  // For abnormal values, dot should be outside but visible with context
-
-  // Strategy: place the dot at a target position, then derive band scaling.
-  // The further from normal, the more the band compresses and the dot pushes to the edge.
+export function perMeasurementAutoAdjust(measuredRel: number, sdTickRels?: number[]): RangeParam {
+  // For normal values: factory baseline.
+  // For abnormal: scale so the dot AND the furthest severity tick (2SD)
+  // are both visible on the chart, with the tick at ~90% and the dot
+  // proportionally positioned.
 
   let rw: number
   let rs: number
@@ -190,13 +188,17 @@ export function perMeasurementAutoAdjust(measuredRel: number): RangeParam {
     rw = FACTORY_RANGE_WIDTH
     rs = FACTORY_RANGE_START
   } else if (measuredRel > 1) {
-    // Above range: stretch so dot is visible with ticks spread out.
-    // Place dot at ~85% of bar, LL at ~5%.
+    // Above range: ensure the furthest tick (or dot if beyond ticks) is visible
+    // The outermost point should map to ~90% of the bar
+    const furthest = sdTickRels ? Math.max(measuredRel, ...sdTickRels.filter(t => t > 1)) : measuredRel
+    const maxExtent = furthest * 1.1 // 10% headroom beyond furthest point
     rs = 0.05
-    rw = 0.80 / measuredRel
+    rw = 0.85 / maxExtent
   } else {
-    // Below range: stretch so dot is visible, UL at ~95%.
-    rw = 0.80 / (1 - measuredRel)
+    // Below range: mirror
+    const furthest = sdTickRels ? Math.min(measuredRel, ...sdTickRels.filter(t => t < 0)) : measuredRel
+    const minExtent = furthest * 1.1
+    rw = 0.85 / (1 - minExtent)
     rs = 0.95 - rw
   }
 
