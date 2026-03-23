@@ -93,6 +93,8 @@ export type CmrParameterRangesResponse = {
   nested_under?: string
   // Display formatting
   decimal_places?: number
+  // Separator
+  separator_before?: boolean
 }
 
 export async function fetchParameterRanges(parameterKey: string): Promise<CmrParameterRangesResponse> {

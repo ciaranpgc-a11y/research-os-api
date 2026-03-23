@@ -1019,10 +1019,11 @@ export function CmrNewReportPage() {
         }
         // Include previous study values in scaling when visible
         if (prevVisible && hasValidRange(p.ll, p.ul)) {
+          const eulPrev = hasSevZones(p) ? effectiveUL(p) : p.ul!
           for (const s of prevStudies) {
             const pv = s.values[p.parameter_key]
             if (pv !== undefined) {
-              rels.push(computeMeasuredRel(pv, p.ll!, eul))
+              rels.push(computeMeasuredRel(pv, p.ll!, eulPrev))
             }
           }
         }
@@ -1669,16 +1670,16 @@ export function CmrNewReportPage() {
                                               rangeStart={(() => {
                                                 const eul = hasSevZones(cp) ? effectiveUL(cp) : cp.ul!
                                                 const hasExplicit = rangeParams.has(cp.parameter_key) || rangeParams.has('__global__')
-                                                const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (chasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
+                                                const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (hasSevZones(cp) ? SEV_ZONE_SCALING : factoryBaseline())
                                                 if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel, sdTickRels(cp, cpMeasured!)).rangeStart; }
                                                 return base.rangeStart
                                               })()}
                                               rangeWidth={(() => {
                                                 const eul = hasSevZones(cp) ? effectiveUL(cp) : cp.ul!
                                                 const hasExplicit = rangeParams.has(cp.parameter_key) || rangeParams.has('__global__')
-                                                const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (chasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
-                                                if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeWidth; }
-                                                return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel, sdTickRels(cp, cpMeasured!)).rangeWidth : base.rangeWidth
+                                                const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (hasSevZones(cp) ? SEV_ZONE_SCALING : factoryBaseline())
+                                                if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel, sdTickRels(cp, cpMeasured!)).rangeWidth; }
+                                                return base.rangeWidth
                                               })()}
                                               previousMarkers={getPrevMarkers(cp, cpMeasured)}
                                               severityZones={buildSeverityZones(cp)}

@@ -42,6 +42,7 @@ type RawOutputParam = {
   nested_under?: string
   decimal_places?: number
   separator_before?: boolean
+  abnormal_direction?: string
 }
 
 type RawRefRange = {

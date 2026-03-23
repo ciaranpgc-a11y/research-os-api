@@ -158,8 +158,8 @@ export function globalAutoAdjust(measuredRels: number[]): RangeParam | null {
 // Per-measurement auto-adjust
 // ---------------------------------------------------------------------------
 
-const PER_MEAS_TARGET_LO = 0.1
-const PER_MEAS_TARGET_HI = 0.9
+const _PER_MEAS_TARGET_LO = 0.1
+const _PER_MEAS_TARGET_HI = 0.9
 const PER_MEAS_MIN_WIDTH = 0.05
 
 /**

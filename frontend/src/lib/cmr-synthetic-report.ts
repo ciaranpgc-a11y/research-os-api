@@ -404,7 +404,7 @@ function generateValue(
   refRanges: RefRange[],
   demographics: Demographics,
   overrides: ProfileOverrides,
-  generatedValues: Record<string, number>,
+  _generatedValues: Record<string, number>,
 ): number {
   const override = overrides[paramName];
   const ref =
@@ -461,7 +461,7 @@ function enforceConsistency(
   const hr = demographics.hr;
 
   // Helper to set indexed value
-  const setIndexed = (base: string, indexed: string) => {
+  const _setIndexed = (base: string, indexed: string) => {
     if (vals[base] !== undefined && bsa > 0) {
       const dp = outputParams[indexed]?.decimal_places ?? 0;
       vals[indexed] = roundTo(vals[base] / bsa, dp);
