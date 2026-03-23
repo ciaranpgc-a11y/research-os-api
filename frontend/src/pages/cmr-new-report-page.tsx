@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExt
 import { ExternalLink } from 'lucide-react'
 
 import { PageHeader, Row, Stack, DrilldownSheet } from '@/components/primitives'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { SectionMarker } from '@/components/patterns'
 import type { CmrCanonicalParam, CmrCanonicalTableResponse, PapillaryMode } from '@/lib/cmr-api'
 import { fetchConfig, fetchReferenceParameters, updateConfig } from '@/lib/cmr-api'
@@ -315,39 +316,57 @@ function RangeChart({
   const dotPct = `${measuredPos * 100}%`
 
   return (
-    <div className="group/chart relative mx-[5px] h-[22px] w-[calc(100%-10px)]">
-      {/* Background track */}
-      <div className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 rounded-sm bg-[hsl(var(--tone-neutral-300))]" />
-      {/* Frosted band */}
-      <div
-        className="absolute top-1/2 h-4 -translate-y-1/2 rounded border border-[hsl(var(--tone-positive-300)/0.18)] bg-[hsl(var(--tone-positive-300)/0.14)] transition-all duration-200 group-hover/chart:border-[hsl(var(--tone-positive-500)/0.25)] group-hover/chart:bg-[hsl(var(--tone-positive-300)/0.28)] group-hover/chart:shadow-[0_0_12px_hsl(var(--tone-positive-300)/0.15)]"
-        style={{ left: bandLeftPct, width: bandWidthPct }}
-      />
-      {/* Previous study markers (diamonds) */}
-      {previousMarkers?.map((pm, i) => {
-        const prevRel = computeMeasuredRel(pm.value, ll, ul)
-        const prevPos = computeMeasuredPos(prevRel, rangeStart, rangeWidth)
-        const prevPct = `${prevPos * 100}%`
-        return (
-          <div
-            key={i}
-            className="absolute top-1/2 h-[8px] w-[8px] -translate-x-1/2 -translate-y-1/2 rotate-45 border-[1.5px] border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] transition-all duration-200 hover:border-[hsl(var(--foreground))] hover:bg-[hsl(var(--tone-neutral-400))]"
-            style={{ left: prevPct }}
-            title={pm.label}
-          />
-        )
-      })}
-      {/* Ring dot marker (current) */}
-      <div
-        className={cn(
-          'absolute top-1/2 h-[10px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition-all duration-200',
-          abnormal
-            ? 'border-[hsl(var(--tone-danger-500))] bg-white shadow-[0_1px_3px_hsl(var(--tone-danger-600)/0.15)] group-hover/chart:bg-[hsl(var(--tone-danger-500))] group-hover/chart:shadow-[0_0_0_3px_hsl(var(--tone-danger-500)/0.2),0_0_8px_hsl(var(--tone-danger-500)/0.3)]'
-            : 'border-[hsl(var(--tone-positive-500))] bg-white shadow-[0_1px_3px_hsl(var(--tone-positive-600)/0.15)] group-hover/chart:bg-[hsl(var(--tone-positive-500))] group-hover/chart:shadow-[0_0_0_3px_hsl(var(--tone-positive-500)/0.2),0_0_8px_hsl(var(--tone-positive-500)/0.3)]',
-        )}
-        style={{ left: dotPct }}
-      />
-    </div>
+    <TooltipProvider delayDuration={0}>
+      <div className="group/chart relative mx-[5px] h-[22px] w-[calc(100%-10px)]">
+        {/* Background track */}
+        <div className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 rounded-sm bg-[hsl(var(--tone-neutral-300))]" />
+        {/* Frosted band */}
+        <div
+          className="absolute top-1/2 h-4 -translate-y-1/2 rounded border border-[hsl(var(--tone-positive-300)/0.18)] bg-[hsl(var(--tone-positive-300)/0.14)] transition-all duration-200 group-hover/chart:border-[hsl(var(--tone-positive-500)/0.25)] group-hover/chart:bg-[hsl(var(--tone-positive-300)/0.28)] group-hover/chart:shadow-[0_0_12px_hsl(var(--tone-positive-300)/0.15)]"
+          style={{ left: bandLeftPct, width: bandWidthPct }}
+        />
+        {/* Previous study markers (diamonds) */}
+        {previousMarkers?.map((pm, i) => {
+          const prevRel = computeMeasuredRel(pm.value, ll, ul)
+          const prevPos = computeMeasuredPos(prevRel, rangeStart, rangeWidth)
+          const prevPct = `${prevPos * 100}%`
+          const lines = pm.label.split('\n')
+          return (
+            <div
+              key={i}
+              className="absolute top-0 h-full flex items-center pointer-events-none"
+              style={{ left: prevPct, transform: 'translateX(-50%)' }}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="pointer-events-auto cursor-default">
+                    <div className="h-[8px] w-[8px] rotate-45 border-[1.5px] border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] transition-all duration-200 hover:border-[hsl(var(--foreground))] hover:bg-[hsl(var(--tone-neutral-400))] hover:scale-150" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="px-3 py-2 max-w-[220px]">
+                  <div className="text-center space-y-0.5">
+                    <div className="text-[10px] text-muted-foreground font-medium">{lines[0]}</div>
+                    {lines[1] && <div className="text-xs font-bold">{lines[1]}</div>}
+                    {lines[2] && <div className="text-[10px] text-muted-foreground">{lines[2]}</div>}
+                    {lines[3] && <div className="text-[10px] text-muted-foreground">{lines[3]}</div>}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          )
+        })}
+        {/* Ring dot marker (current) */}
+        <div
+          className={cn(
+            'absolute top-1/2 h-[10px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition-all duration-200',
+            abnormal
+              ? 'border-[hsl(var(--tone-danger-500))] bg-white shadow-[0_1px_3px_hsl(var(--tone-danger-600)/0.15)] group-hover/chart:bg-[hsl(var(--tone-danger-500))] group-hover/chart:shadow-[0_0_0_3px_hsl(var(--tone-danger-500)/0.2),0_0_8px_hsl(var(--tone-danger-500)/0.3)]'
+              : 'border-[hsl(var(--tone-positive-500))] bg-white shadow-[0_1px_3px_hsl(var(--tone-positive-600)/0.15)] group-hover/chart:bg-[hsl(var(--tone-positive-500))] group-hover/chart:shadow-[0_0_0_3px_hsl(var(--tone-positive-500)/0.2),0_0_8px_hsl(var(--tone-positive-500)/0.3)]',
+          )}
+          style={{ left: dotPct }}
+        />
+      </div>
+    </TooltipProvider>
   )
 }
 
