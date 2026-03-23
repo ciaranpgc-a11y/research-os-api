@@ -772,130 +772,131 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
 
   const markerPos = !isNaN(rfVal) ? rfToPosition(rfVal) : 0
 
-  // Gradient with smooth transitions between severity colors
-  const gradientStops = (() => {
-    const colors = bandSeverities.map((s) => SEVERITY_COLORS[s])
-    let cum = 0
-    const stops: string[] = []
-    for (let i = 0; i < bandWidths.length; i++) {
-      if (i === 0) {
-        stops.push(`${colors[i]} 0%`)
-      }
-      const midPt = cum + bandWidths[i] * 0.5
-      stops.push(`${colors[i]} ${midPt}%`)
-      cum += bandWidths[i]
+
+  // Determine which band the marker falls in
+  const activeBandIdx = (() => {
+    if (isNaN(rfVal)) return -1
+    for (let i = 0; i < bandBreakpoints.length - 1; i++) {
+      if (rfVal <= bandBreakpoints[i + 1]) return i
     }
-    stops.push(`${colors[colors.length - 1]} 100%`)
-    return stops.join(', ')
+    return bandWidths.length - 1
   })()
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="space-y-3">
-        {/* Severity scale */}
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Regurgitant Fraction — Severity Scale</p>
-        <div className="relative">
-          {/* Gradient bar with labels */}
-          <div
-            className="h-7 rounded-lg overflow-hidden"
-            style={{ background: `linear-gradient(90deg, ${gradientStops})` }}
-          >
-            <div className="flex h-full">
+      <div className="space-y-5">
+        {/* ── Severity scale ── */}
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Regurgitant fraction</p>
+          <div className="relative">
+            {/* Discrete severity zones */}
+            <div className="flex h-9 rounded-lg overflow-hidden">
               {bandWidths.map((w, i) => {
-                const isActive = severity === bandSeverities[i]
+                const isActive = activeBandIdx === i
                 return (
                   <div
                     key={bandSeverities[i]}
                     className={cn(
-                      'flex items-center justify-center text-[9px] font-semibold transition-opacity duration-300',
-                      isActive ? 'text-white' : 'text-white/50',
+                      'flex items-center justify-center text-[11px] font-semibold transition-all duration-300 relative',
+                      isActive ? 'text-white' : 'text-white/40',
                     )}
-                    style={{ width: `${w}%` }}
+                    style={{
+                      width: `${w}%`,
+                      backgroundColor: SEVERITY_COLORS[bandSeverities[i]],
+                      opacity: isActive || activeBandIdx === -1 ? 1 : 0.55,
+                    }}
                   >
+                    {/* Divider line between zones */}
+                    {i > 0 && <div className="absolute left-0 top-[15%] bottom-[15%] w-px bg-white/30" />}
                     {bandLabels[i]}
                   </div>
                 )
               })}
             </div>
-          </div>
 
-          {/* RF marker — circular dot with hover tooltip */}
-          {!isNaN(rfVal) && (
-            <div
-              className="absolute top-0 h-full flex items-center pointer-events-none"
-              style={{ left: `${markerPos}%`, transform: 'translateX(-50%)' }}
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="pointer-events-auto cursor-default group relative">
-                    {/* Outer pulse ring */}
-                    <div className="absolute inset-0 rounded-full bg-white/40 animate-ping" style={{ animationDuration: '2s' }} />
-                    {/* Marker dot */}
-                    <div className="relative w-4 h-4 rounded-full bg-white border-2 border-foreground/80 shadow-md transition-transform duration-200 group-hover:scale-150" />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="px-3 py-2">
-                  <div className="text-center">
-                    <div className="text-sm font-bold">{rfVal.toFixed(1)}%</div>
-                    <div className="text-[10px] text-muted-foreground">Regurgitant Fraction</div>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          )}
+            {/* RF marker */}
+            {!isNaN(rfVal) && (
+              <div
+                className="absolute top-0 h-full flex items-center pointer-events-none"
+                style={{ left: `${markerPos}%`, transform: 'translateX(-50%)' }}
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="pointer-events-auto cursor-default group relative">
+                      <div className="relative w-5 h-5 rounded-full bg-white border-[2.5px] border-foreground/80 shadow-lg transition-transform duration-200 group-hover:scale-[1.4]" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="p-0 overflow-hidden max-w-[200px]">
+                    <div className="px-4 py-2.5 bg-muted/60 border-b border-border/40 text-center">
+                      <div className="text-lg font-bold tabular-nums">{rfVal.toFixed(1)}%</div>
+                    </div>
+                    <div className="px-4 py-2 text-center">
+                      <span
+                        className={cn('rounded-full px-2.5 py-1 text-xs font-semibold', severity === 'mild' ? 'text-black' : 'text-white')}
+                        style={{ backgroundColor: SEVERITY_COLORS[severity] }}
+                      >
+                        {SEVERITY_LABELS[severity]} regurgitation
+                      </span>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Flow composition bar */}
+        {/* ── Flow composition ── */}
         {hasFlow && !isNaN(effectivePct) && (
-          <>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mt-1">Flow Composition</p>
-            <div className="flex h-6 rounded-lg overflow-hidden border border-border/40">
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Flow composition</p>
+            <div className="flex h-8 rounded-lg overflow-hidden border border-border/30 shadow-sm">
+              {/* Effective forward segment */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div
-                    className="flex items-center justify-center text-[10px] font-bold text-white cursor-default transition-opacity hover:opacity-90"
-                    style={{ width: `${effectivePct}%`, background: 'linear-gradient(90deg, hsl(217 70% 58%), hsl(217 70% 44%))' }}
+                    className="flex items-center justify-center text-xs font-bold text-white cursor-default transition-opacity hover:opacity-90 relative"
+                    style={{ width: `${effectivePct}%`, background: 'linear-gradient(180deg, hsl(217 70% 62%), hsl(217 70% 46%))' }}
                   >
-                    {!isNaN(effectiveVal) && `${effectiveVal.toFixed(0)} mL`}
+                    {!isNaN(effectiveVal) && `${effectiveVal.toFixed(0)} mL (${effectivePct.toFixed(0)}%)`}
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="px-3 py-2">
-                  <div className="text-center">
-                    <div className="text-sm font-bold">{effectiveVal.toFixed(1)} mL</div>
-                    <div className="text-[10px] text-muted-foreground">Effective Forward ({effectivePct.toFixed(0)}%)</div>
+                <TooltipContent side="top" className="p-0 overflow-hidden">
+                  <div className="px-4 py-2.5 text-center">
+                    <div className="text-base font-bold tabular-nums">{effectiveVal.toFixed(1)} mL</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">Effective forward flow ({effectivePct.toFixed(0)}%)</div>
                   </div>
                 </TooltipContent>
               </Tooltip>
+              {/* Divider */}
+              <div className="w-px bg-white/50 shrink-0" />
+              {/* Regurgitant segment */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div
-                    className="flex items-center justify-center text-[10px] font-bold text-white cursor-default transition-opacity hover:opacity-90"
-                    style={{ width: `${regurgPct}%`, background: 'linear-gradient(90deg, hsl(3 55% 55%), hsl(3 55% 42%))' }}
+                    className="flex items-center justify-center text-xs font-bold text-white cursor-default transition-opacity hover:opacity-90 relative"
+                    style={{
+                      width: `${regurgPct}%`,
+                      background: `repeating-linear-gradient(
+                        -45deg,
+                        hsl(3 55% 50%),
+                        hsl(3 55% 50%) 3px,
+                        hsl(3 55% 44%) 3px,
+                        hsl(3 55% 44%) 6px
+                      )`,
+                    }}
                   >
-                    {backward > 0 && `${backward.toFixed(0)} mL`}
+                    {backward > 0 && `${backward.toFixed(0)} mL (${regurgPct.toFixed(0)}%)`}
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="px-3 py-2">
-                  <div className="text-center">
-                    <div className="text-sm font-bold">{backward.toFixed(1)} mL</div>
-                    <div className="text-[10px] text-muted-foreground">Regurgitant ({regurgPct.toFixed(0)}%)</div>
+                <TooltipContent side="top" className="p-0 overflow-hidden">
+                  <div className="px-4 py-2.5 text-center">
+                    <div className="text-base font-bold tabular-nums">{backward.toFixed(1)} mL</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">Regurgitant volume ({regurgPct.toFixed(0)}%)</div>
                   </div>
                 </TooltipContent>
               </Tooltip>
             </div>
-
-            {/* Legend */}
-            <div className="flex gap-5 mt-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-sm" style={{ background: 'hsl(217 70% 54%)' }} />
-                <span className="text-[10px] text-muted-foreground">Effective Forward ({effectivePct.toFixed(0)}%)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-sm" style={{ background: 'hsl(3 55% 52%)' }} />
-                <span className="text-[10px] text-muted-foreground">Regurgitant ({regurgPct.toFixed(0)}%)</span>
-              </div>
-            </div>
-          </>
+          </div>
         )}
       </div>
     </TooltipProvider>
