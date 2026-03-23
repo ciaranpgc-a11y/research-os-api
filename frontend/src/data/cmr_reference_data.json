@@ -1266,9 +1266,9 @@
       "decimal_places": 1,
       "severity_label": "regurgitation",
       "severity_thresholds": {
-        "mild": null,
-        "moderate": 30,
-        "severe": 60
+        "mild": 30,
+        "moderate": 60,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild AR",
@@ -1287,9 +1287,9 @@
       "decimal_places": 1,
       "severity_label": "stenosis",
       "severity_thresholds": {
-        "mild": 2,
-        "moderate": 3,
-        "severe": 4
+        "mild": 3,
+        "moderate": 4,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild AS",
@@ -1318,9 +1318,9 @@
       "decimal_places": 1,
       "severity_label": "regurgitation",
       "severity_thresholds": {
-        "mild": 10,
-        "moderate": 20,
-        "severe": 40
+        "mild": 20,
+        "moderate": 40,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild AR",
@@ -1339,9 +1339,9 @@
       "decimal_places": 1,
       "severity_label": "stenosis",
       "severity_thresholds": {
-        "mild": 16,
-        "moderate": 36,
-        "severe": 64
+        "mild": 36,
+        "moderate": 64,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild AS",
@@ -1360,9 +1360,9 @@
       "decimal_places": 0,
       "severity_label": "stenosis",
       "severity_thresholds": {
-        "mild": 5,
-        "moderate": 20,
-        "severe": 40
+        "mild": 20,
+        "moderate": 40,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild AS",
@@ -1421,9 +1421,9 @@
       "decimal_places": 0,
       "severity_label": "regurgitation",
       "severity_thresholds": {
-        "mild": null,
-        "moderate": 30,
-        "severe": 60
+        "mild": 30,
+        "moderate": 60,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild PR",
@@ -1442,9 +1442,9 @@
       "decimal_places": 1,
       "severity_label": "stenosis",
       "severity_thresholds": {
-        "mild": 2,
-        "moderate": 3,
-        "severe": 4
+        "mild": 3,
+        "moderate": 4,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild PS",
@@ -1473,9 +1473,9 @@
       "decimal_places": 0,
       "severity_label": "regurgitation",
       "severity_thresholds": {
-        "mild": 10,
-        "moderate": 20,
-        "severe": 40
+        "mild": 20,
+        "moderate": 40,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild PR",
@@ -1494,9 +1494,9 @@
       "decimal_places": 1,
       "severity_label": "stenosis",
       "severity_thresholds": {
-        "mild": 16,
-        "moderate": 36,
-        "severe": 64
+        "mild": 36,
+        "moderate": 64,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild PS",
@@ -1515,9 +1515,9 @@
       "decimal_places": 0,
       "severity_label": "stenosis",
       "severity_thresholds": {
-        "mild": 5,
-        "moderate": 20,
-        "severe": 40
+        "mild": 20,
+        "moderate": 40,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild PS",
@@ -1536,9 +1536,9 @@
       "decimal_places": 0,
       "severity_label": "regurgitation",
       "severity_thresholds": {
-        "mild": null,
-        "moderate": 30,
-        "severe": 60
+        "mild": 30,
+        "moderate": 60,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild MR",
@@ -1557,9 +1557,9 @@
       "decimal_places": 0,
       "severity_label": "regurgitation",
       "severity_thresholds": {
-        "mild": 10,
-        "moderate": 20,
-        "severe": 40
+        "mild": 20,
+        "moderate": 40,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild MR",
@@ -1578,9 +1578,9 @@
       "decimal_places": 0,
       "severity_label": "regurgitation",
       "severity_thresholds": {
-        "mild": null,
-        "moderate": 30,
-        "severe": 60
+        "mild": 30,
+        "moderate": 60,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild TR",
@@ -1599,9 +1599,9 @@
       "decimal_places": 0,
       "severity_label": "regurgitation",
       "severity_thresholds": {
-        "mild": 10,
-        "moderate": 20,
-        "severe": 40
+        "mild": 20,
+        "moderate": 40,
+        "severe": null
       },
       "severity_label_override": {
         "mild": "Suggests mild TR",

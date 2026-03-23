@@ -299,6 +299,17 @@ const SEV_PILL_STYLES: Record<SevGrade, string> = {
   severe:   'bg-[hsl(2_52%_25%)] text-white ring-1 ring-[hsl(2_52%_20%)]',
 }
 
+/** HSL band colours for severity zones on range charts */
+const SEV_ZONE_COLORS: Record<SevGrade, string> = {
+  normal:   'hsl(158 30% 88%)',
+  mild:     'hsl(46 60% 85%)',
+  moderate: 'hsl(20 55% 82%)',
+  severe:   'hsl(4 55% 76%)',
+}
+
+type SeverityZone = { grade: SevGrade; threshold: number | null }
+
+
 type PrevMarker = {
   value: number
   sourceType: string       // "CMR" or "Echo"
@@ -333,6 +344,17 @@ function formatInterval(fromStr: string, toStr: string): string | null {
   return `${years} years`
 }
 
+/** Build severity zones from a param's threshold data (if present). */
+function buildSeverityZones(param: CmrCanonicalParam): SeverityZone[] | undefined {
+  const t = param.severity_thresholds
+  if (!t) return undefined
+  return [
+    { grade: 'mild', threshold: t.mild },
+    { grade: 'moderate', threshold: t.moderate },
+    { grade: 'severe', threshold: t.severe },
+  ]
+}
+
 function RangeChart({
   measured,
   ll,
@@ -341,6 +363,7 @@ function RangeChart({
   rangeStart,
   rangeWidth,
   previousMarkers,
+  severityZones,
 }: {
   measured: number
   ll: number
@@ -349,6 +372,7 @@ function RangeChart({
   rangeStart: number
   rangeWidth: number
   previousMarkers?: PrevMarker[]
+  severityZones?: SeverityZone[]
 }) {
   const measuredRel = computeMeasuredRel(measured, ll, ul)
   const measuredPos = computeMeasuredPos(measuredRel, rangeStart, rangeWidth)
@@ -358,16 +382,60 @@ function RangeChart({
   const bandWidthPct = `${rangeWidth * 100}%`
   const dotPct = `${measuredPos * 100}%`
 
+  // Build severity zone bands (only for params with thresholds)
+  const zoneBands = severityZones ? (() => {
+    const bands: Array<{ grade: SevGrade; leftPct: string; widthPct: string }> = []
+    // Normal zone: from 0 (or start of visible area) to UL
+    const normalEnd = computeMeasuredPos(1, rangeStart, rangeWidth) // UL position
+    bands.push({ grade: 'normal', leftPct: '0%', widthPct: `${normalEnd * 100}%` })
+    // Severity zones: each extends from its start threshold to its end threshold
+    const grades: SevGrade[] = ['mild', 'moderate', 'severe']
+    let prevThreshold = ul // start after UL
+    for (let i = 0; i < grades.length; i++) {
+      const zone = severityZones.find((z) => z.grade === grades[i])
+      if (!zone) continue
+      const startRel = computeMeasuredRel(prevThreshold, ll, ul)
+      const startPos = computeMeasuredPos(startRel, rangeStart, rangeWidth)
+      const endVal = zone.threshold ?? (prevThreshold * 1.5) // extend beyond for severe
+      const endRel = computeMeasuredRel(endVal, ll, ul)
+      const endPos = computeMeasuredPos(endRel, rangeStart, rangeWidth)
+      bands.push({ grade: grades[i], leftPct: `${startPos * 100}%`, widthPct: `${(endPos - startPos) * 100}%` })
+      prevThreshold = endVal
+    }
+    return bands
+  })() : null
+
   return (
     <TooltipProvider delayDuration={0}>
       <div className="group/chart relative mx-[5px] h-[22px] w-[calc(100%-10px)]">
         {/* Background track */}
         <div className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 rounded-sm bg-[hsl(var(--tone-neutral-300))]" />
-        {/* Frosted band */}
-        <div
-          className="absolute top-1/2 h-4 -translate-y-1/2 rounded border border-[hsl(var(--tone-positive-300)/0.18)] bg-[hsl(var(--tone-positive-300)/0.14)] transition-all duration-200 group-hover/chart:border-[hsl(var(--tone-positive-500)/0.25)] group-hover/chart:bg-[hsl(var(--tone-positive-300)/0.28)] group-hover/chart:shadow-[0_0_12px_hsl(var(--tone-positive-300)/0.15)]"
-          style={{ left: bandLeftPct, width: bandWidthPct }}
-        />
+        {zoneBands ? (
+          /* Severity zone bands */
+          <>
+            {zoneBands.map((b) => (
+              <div
+                key={b.grade}
+                className="absolute top-1/2 h-4 -translate-y-1/2 transition-all duration-200"
+                style={{ left: b.leftPct, width: b.widthPct, backgroundColor: SEV_ZONE_COLORS[b.grade] }}
+              />
+            ))}
+            {/* Thin dividers between zones */}
+            {zoneBands.slice(1).map((b) => (
+              <div
+                key={`div-${b.grade}`}
+                className="absolute top-1/2 h-4 w-px -translate-y-1/2 bg-white/70"
+                style={{ left: b.leftPct }}
+              />
+            ))}
+          </>
+        ) : (
+          /* Standard frosted band */
+          <div
+            className="absolute top-1/2 h-4 -translate-y-1/2 rounded border border-[hsl(var(--tone-positive-300)/0.18)] bg-[hsl(var(--tone-positive-300)/0.14)] transition-all duration-200 group-hover/chart:border-[hsl(var(--tone-positive-500)/0.25)] group-hover/chart:bg-[hsl(var(--tone-positive-300)/0.28)] group-hover/chart:shadow-[0_0_12px_hsl(var(--tone-positive-300)/0.15)]"
+            style={{ left: bandLeftPct, width: bandWidthPct }}
+          />
+        )}
         {/* Previous study markers (diamonds) */}
         {previousMarkers?.map((pm, i) => {
           const prevRel = computeMeasuredRel(pm.value, ll, ul)
@@ -378,11 +446,6 @@ function RangeChart({
             : pm.improved === false
               ? 'text-[hsl(var(--tone-danger-500))]'
               : 'text-muted-foreground'
-          const changeBg = pm.improved === true
-            ? 'bg-[hsl(var(--tone-positive-100))]'
-            : pm.improved === false
-              ? 'bg-[hsl(var(--tone-danger-50))]'
-              : 'bg-muted/50'
           return (
             <div
               key={i}
@@ -1316,6 +1379,7 @@ export function CmrNewReportPage() {
                                             (rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth
                                           }
                                           previousMarkers={getPrevMarkers(p, measured)}
+                                          severityZones={buildSeverityZones(p)}
                                         />
                                       ) : null}
                                     </td>
@@ -1413,6 +1477,7 @@ export function CmrNewReportPage() {
                                               rangeStart={(rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeStart}
                                               rangeWidth={(rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth}
                                               previousMarkers={getPrevMarkers(cp, cpMeasured)}
+                                              severityZones={buildSeverityZones(cp)}
                                             />
                                           ) : null}
                                         </td>
