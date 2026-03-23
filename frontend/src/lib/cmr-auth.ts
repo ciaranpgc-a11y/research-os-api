@@ -51,14 +51,16 @@ export function clearCmrSession(): void {
 // --- API base URL ---
 
 function apiBase(): string {
-  const env = (import.meta.env.VITE_API_BASE_URL || '').trim()
-  if (env) return env.replace(/\/+$/, '')
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    if (host === 'cmr.axiomos.studio' || host === 'cmr.localhost' || isLocalCmrDevRoute()) {
+    // On local dev CMR routes, always use the local backend via Vite proxy
+    if (isLocalCmrDevRoute()) return window.location.origin
+    if (host === 'cmr.axiomos.studio' || host === 'cmr.localhost') {
       return window.location.origin
     }
   }
+  const env = (import.meta.env.VITE_API_BASE_URL || '').trim()
+  if (env) return env.replace(/\/+$/, '')
   return 'http://127.0.0.1:8000'
 }
 
