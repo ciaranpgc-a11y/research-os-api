@@ -1446,22 +1446,29 @@ export function CmrNewReportPage() {
                                           rangeStart={
                                             (() => {
                                               const eul = p.severity_thresholds ? effectiveUL(p) : p.ul!
+                                              const hasExplicitScaling = rangeParams.has(p.parameter_key) || rangeParams.has('__global__')
                                               const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? (p.severity_thresholds ? SEV_ZONE_SCALING : factoryBaseline())
-                                              const rel = computeMeasuredRel(measured!, p.ll!, eul)
-                                              const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
-                                              if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeStart
+                                              // Only auto-fix clipping in factory/default mode — global and per-meas are intentional
+                                              if (!hasExplicitScaling) {
+                                                const rel = computeMeasuredRel(measured!, p.ll!, eul)
+                                                const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
+                                                if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeStart
+                                              }
                                               return base.rangeStart
                                             })()
                                           }
                                           rangeWidth={
                                             (() => {
                                               const eul = p.severity_thresholds ? effectiveUL(p) : p.ul!
+                                              const hasExplicitScaling = rangeParams.has(p.parameter_key) || rangeParams.has('__global__')
                                               const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? (p.severity_thresholds ? SEV_ZONE_SCALING : factoryBaseline())
-                                              const rel = computeMeasuredRel(measured!, p.ll!, eul)
-                                              const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
-                                              if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeWidth
+                                              if (!hasExplicitScaling) {
+                                                const rel = computeMeasuredRel(measured!, p.ll!, eul)
+                                                const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
+                                                if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeWidth
+                                              }
                                               return base.rangeWidth
-                                                })()
+                                            })()
                                           }
                                           previousMarkers={getPrevMarkers(p, measured)}
                                           severityZones={buildSeverityZones(p)}
@@ -1563,16 +1570,16 @@ export function CmrNewReportPage() {
                                               direction={cp.abnormal_direction}
                                               rangeStart={(() => {
                                                 const eul = cp.severity_thresholds ? effectiveUL(cp) : cp.ul!
+                                                const hasExplicit = rangeParams.has(cp.parameter_key) || rangeParams.has('__global__')
                                                 const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (cp.severity_thresholds ? SEV_ZONE_SCALING : factoryBaseline())
-                                                const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul)
-                                                const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
-                                                return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel).rangeStart : base.rangeStart
+                                                if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeStart; }
+                                                return base.rangeStart
                                               })()}
                                               rangeWidth={(() => {
                                                 const eul = cp.severity_thresholds ? effectiveUL(cp) : cp.ul!
+                                                const hasExplicit = rangeParams.has(cp.parameter_key) || rangeParams.has('__global__')
                                                 const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (cp.severity_thresholds ? SEV_ZONE_SCALING : factoryBaseline())
-                                                const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul)
-                                                const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
+                                                if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeWidth; }
                                                 return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel).rangeWidth : base.rangeWidth
                                               })()}
                                               previousMarkers={getPrevMarkers(cp, cpMeasured)}
