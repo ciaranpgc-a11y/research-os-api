@@ -32,7 +32,7 @@ const LABEL_OVERRIDES: Record<string, string> = {
 }
 
 const REPORT_RAW_NAV = [
-  { key: 'upload', path: '/cmr-upload-report', label: 'Upload Report' },
+  { key: 'upload', path: '/cmr-upload-report', label: 'Upload report' },
 ]
 
 const REPORT_VISUALISER_NAV = [
