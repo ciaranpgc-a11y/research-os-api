@@ -460,14 +460,6 @@ function enforceConsistency(
   const bsa = demographics.bsa;
   const hr = demographics.hr;
 
-  // Helper to set indexed value
-  const _setIndexed = (base: string, indexed: string) => {
-    if (vals[base] !== undefined && bsa > 0) {
-      const dp = outputParams[indexed]?.decimal_places ?? 0;
-      vals[indexed] = roundTo(vals[base] / bsa, dp);
-    }
-  };
-
   // LV volumes -> EF/SV consistency
   if (vals['LV EDV'] !== undefined && vals['LV EF'] !== undefined) {
     const ef = vals['LV EF'] / 100;
