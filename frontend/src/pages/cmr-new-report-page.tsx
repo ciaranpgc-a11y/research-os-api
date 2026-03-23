@@ -60,8 +60,8 @@ function displayName(key: string, isNested?: boolean): string {
     .replace(/^AV /, 'Aortic ')
     .replace(/^PV /, 'Pulmonary ')
     .replace(/^MV /, 'Mitral ')
-    .replace(/^MR /, 'Mitral ')
-    .replace(/^TR /, 'Tricuspid ')
+    .replace(/^MR /, 'Mitral regurgitant ')
+    .replace(/^TR /, 'Tricuspid regurgitant ')
   return name
 }
 
