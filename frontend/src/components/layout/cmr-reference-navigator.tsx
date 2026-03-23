@@ -37,7 +37,7 @@ const REPORT_RAW_NAV = [
 
 const REPORT_VISUALISER_NAV = [
   { key: 'quantitative', path: '/cmr-new-report', label: 'Quantitative metrics' },
-  { key: 'rwma', path: '/cmr-rwma', label: 'RWMA' },
+  { key: 'rwma', path: '/cmr-rwma', label: 'Wall motion' },
   { key: 'lge', path: '/cmr-lge', label: 'LGE Analysis' },
   { key: 'valves', path: '/cmr-valves', label: 'Valves' },
 ]
