@@ -5,6 +5,7 @@ import { PageHeader, Row, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { extractFromReport } from '@/lib/cmr-api'
 import { setExtractionResult, getNonContrast, setNonContrast } from '@/lib/cmr-report-store'
+import { generateSyntheticReportAuto } from '@/lib/cmr-synthetic-report'
 import { cn } from '@/lib/utils'
 
 export function CmrUploadReportPage() {
@@ -154,6 +155,19 @@ export function CmrUploadReportPage() {
               {extractionError}
             </span>
           )}
+
+          <div className="ml-auto">
+            <button
+              type="button"
+              onClick={() => {
+                const result = generateSyntheticReportAuto()
+                setReportText(result.text)
+              }}
+              className="rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.6)] px-4 py-2.5 text-sm font-medium text-[hsl(var(--tone-neutral-400))] transition-colors hover:border-[hsl(var(--stroke-soft))] hover:text-[hsl(var(--tone-neutral-600))] hover:bg-[hsl(var(--tone-neutral-50))]"
+            >
+              Generate test report
+            </button>
+          </div>
         </div>
       </div>
     </Stack>
