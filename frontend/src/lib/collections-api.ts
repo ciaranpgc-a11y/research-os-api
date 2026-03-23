@@ -188,45 +188,6 @@ export async function reorderCollectionPublications(
 }
 
 // ---------------------------------------------------------------------------
-// Subcollection publications
-// ---------------------------------------------------------------------------
-
-export async function fetchSubcollectionPublications(
-  collectionId: string,
-  subcollectionId: string,
-): Promise<CollectionPublicationPayload[]> {
-  return requestJson<CollectionPublicationPayload[]>(
-    `${API_BASE_URL}/v1/collections/${collectionId}/subcollections/${subcollectionId}/publications`,
-    { method: 'GET', headers: authHeaders() },
-    'Failed to fetch subcollection publications',
-  )
-}
-
-export async function addPublicationsToSubcollection(
-  collectionId: string,
-  subcollectionId: string,
-  workIds: string[],
-): Promise<void> {
-  return requestVoid(
-    `${API_BASE_URL}/v1/collections/${collectionId}/subcollections/${subcollectionId}/publications`,
-    { method: 'POST', headers: authHeaders(), body: JSON.stringify({ work_ids: workIds }) },
-    'Failed to add publications to subcollection',
-  )
-}
-
-export async function removePublicationFromSubcollection(
-  collectionId: string,
-  subcollectionId: string,
-  workId: string,
-): Promise<void> {
-  return requestVoid(
-    `${API_BASE_URL}/v1/collections/${collectionId}/subcollections/${subcollectionId}/publications/${workId}`,
-    { method: 'DELETE', headers: authHeaders() },
-    'Failed to remove publication from subcollection',
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Publication → collections lookup
 // ---------------------------------------------------------------------------
 

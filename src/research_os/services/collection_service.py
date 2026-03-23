@@ -337,11 +337,16 @@ def add_publications_to_collection(
         ).scalar() or 0
         created = []
         for idx, wid in enumerate(work_ids):
+            sub_filter = (
+                CollectionMembership.subcollection_id.is_(None)
+                if subcollection_id is None
+                else CollectionMembership.subcollection_id == subcollection_id
+            )
             existing = session.execute(
                 select(CollectionMembership)
                 .where(
                     CollectionMembership.collection_id == collection_id,
-                    CollectionMembership.subcollection_id == subcollection_id,
+                    sub_filter,
                     CollectionMembership.work_id == wid,
                 )
             ).scalar_one_or_none()

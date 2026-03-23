@@ -273,7 +273,7 @@ export function CollectionsViewport({
       setToast('Failed to add publication')
     }
     setDragWorkId(null)
-  }, [dragWorkId, collections, refreshCollections, refreshPubCollections])
+  }, [dragWorkId, collections, refreshCollections, refreshPubCollections, handleSubcollectionsFetched])
 
   // ---- collection CRUD ----
   const handleStartCreateCollection = useCallback(() => {
@@ -679,7 +679,6 @@ export function CollectionsViewport({
                         setBrowseDropIdx(null)
                       }
                     }}
-                    onDrop={handleBrowseDrop}
                   >
                     {browsePubs.map((pub, idx) => (
                       <div key={pub.membership_id}>

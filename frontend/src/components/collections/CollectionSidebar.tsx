@@ -324,13 +324,15 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
     dragExpandTargetRef.current = null
   }, [])
 
+  // Keep a stable ref to onToggleExpand so the drag-end effect never has a stale closure
+  const onToggleExpandRef = useRef(onToggleExpand)
+  useEffect(() => { onToggleExpandRef.current = onToggleExpand }, [onToggleExpand])
+
   // Collapse any collections that were auto-expanded during this drag
   const collapseAutoExpanded = useCallback(() => {
-    dragAutoExpandedRef.current.forEach((id) => {
-      if (expandedIds.has(id)) onToggleExpand(id)
-    })
+    dragAutoExpandedRef.current.forEach((id) => onToggleExpandRef.current(id))
     dragAutoExpandedRef.current.clear()
-  }, [expandedIds, onToggleExpand])
+  }, [])
 
   // When drag ends (isDragging flips to false), collapse anything we auto-opened
   useEffect(() => {
@@ -338,7 +340,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
       clearExpandTimer()
       collapseAutoExpanded()
     }
-  }, [isDragging]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isDragging, clearExpandTimer, collapseAutoExpanded])
 
   // Called from dragover on a collection row — starts a timer only when the target changes
   const handleCollectionDragOver = useCallback((e: React.DragEvent, collectionId: string) => {
