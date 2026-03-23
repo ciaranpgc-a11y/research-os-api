@@ -1260,9 +1260,6 @@ export function CmrPhPage() {
               <div className="space-y-2">
                 <FieldLabel>Severity</FieldLabel>
                 <ChoicePills options={REGURGITATION_OPTIONS} value={choices.prSeverity} onChange={(value) => updateChoice('prSeverity', value)} />
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  Quantitative PR fraction remains visible under Pulmonary Artery &amp; Flow.
-                </p>
               </div>
             </Subsection>
           </div>
