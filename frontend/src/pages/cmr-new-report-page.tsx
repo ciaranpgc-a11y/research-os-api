@@ -432,7 +432,7 @@ function RangeChart({
                       <div className="flex flex-col items-center gap-0.5">
                         <svg className="h-4 w-4 text-muted-foreground/60" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8h10M9 4l4 4-4 4" /></svg>
                         {pm.pctChange !== null && (
-                          <span className={cn('text-[11px] font-bold tabular-nums', changeColor)}>
+                          <span className={cn('text-xs font-bold tabular-nums', changeColor)}>
                             {pm.pctChange >= 0 ? '+' : ''}{pm.pctChange.toFixed(0)}%
                           </span>
                         )}
@@ -848,9 +848,7 @@ export function CmrNewReportPage() {
       const result = await res.json()
       const source = result.source as 'cmr' | 'echo'
       const dateStr = result.demographics?.study_date ?? result.demographics?.date ?? undefined
-      const label = source === 'echo'
-        ? `Echo${dateStr ? ' · ' + dateStr : ''}`
-        : `CMR${dateStr ? ' · ' + dateStr : ''}`
+      const label = source === 'echo' ? 'Echo' : 'CMR'
       const values = source === 'echo'
         ? mapEchoToCmr(result.echo_values ?? {})
         : mapCmrToCmr(result.measurements ?? [])
