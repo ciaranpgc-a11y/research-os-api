@@ -780,6 +780,12 @@ export function CmrNewReportPage() {
   const sex = extraction?.demographics?.sex ?? 'Male'
   const age = extraction?.demographics?.age ?? undefined
   const heartRate = extraction?.demographics?.heart_rate ?? undefined
+  const bmi = (() => {
+    const h = extraction?.demographics?.height_cm
+    const w = extraction?.demographics?.weight_kg
+    if (h && w && h > 0) return w / ((h / 100) ** 2)
+    return undefined
+  })()
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   useEffect(() => {
@@ -1017,6 +1023,11 @@ export function CmrNewReportPage() {
         {heartRate != null && (
           <div className="rounded-md border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-50))] px-4 py-2">
             <span className="text-sm font-semibold text-[hsl(var(--foreground))]">{Math.round(heartRate)} bpm</span>
+          </div>
+        )}
+        {bmi != null && (
+          <div className="rounded-md border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-50))] px-4 py-2">
+            <span className="text-sm font-semibold text-[hsl(var(--foreground))]">BMI {bmi.toFixed(1)}</span>
           </div>
         )}
       </div>
