@@ -745,7 +745,15 @@ function MorphologySection({ valve, morphology, onMorphologyChange }: {
 // Flow detail panel
 // ---------------------------------------------------------------------------
 
-function FlowViz({ values, severity }: { values: Record<string, string>; severity: Severity }) {
+const VALVE_REGURG_ABBR: Record<ValveId, string> = {
+  mitral: 'MR',
+  aortic: 'AR',
+  tricuspid: 'TR',
+  pulmonary: 'PR',
+}
+
+function FlowViz({ values, severity, valveId }: { values: Record<string, string>; severity: Severity; valveId: ValveId }) {
+  const regurgAbbr = VALVE_REGURG_ABBR[valveId]
   const forward = parseFloat(values.forwardFlow || '')
   const backward = Math.abs(parseFloat(values.backwardFlow || ''))
   const rf = parseFloat(values.regurgitantFraction || '')
@@ -887,7 +895,7 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
             )}
             style={{ backgroundColor: SEVERITY_COLORS[effectiveSeverity] }}
           >
-            {SEVERITY_LABELS[effectiveSeverity]}
+            {SEVERITY_LABELS[effectiveSeverity]} {VALVE_REGURG_ABBR[valve.id]}
             {isOverridden && ' ✎'}
           </span>
         </div>
@@ -918,7 +926,7 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
               })}
             </div>
             <div className="w-[440px] shrink-0 flex flex-col justify-center">
-              <FlowViz values={values} severity={effectiveSeverity} />
+              <FlowViz values={values} severity={effectiveSeverity} valveId={valve.id} />
             </div>
           </div>
         </div>
@@ -936,7 +944,7 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
             )}
             style={{ backgroundColor: SEVERITY_COLORS[effectiveSeverity] }}
           >
-            {SEVERITY_LABELS[effectiveSeverity]}
+            {SEVERITY_LABELS[effectiveSeverity]} {VALVE_REGURG_ABBR[valve.id]}
           </span>
         </div>
         <div className="p-5">
