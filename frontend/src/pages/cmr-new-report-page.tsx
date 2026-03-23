@@ -290,15 +290,26 @@ function ChartControlStrip({
   )
 }
 
+type SevGrade = 'normal' | 'mild' | 'moderate' | 'severe'
+
+const SEV_PILL_STYLES: Record<SevGrade, string> = {
+  normal:   'bg-[hsl(162_22%_90%)] text-[hsl(164_30%_28%)] ring-1 ring-[hsl(163_22%_80%)]',
+  mild:     'bg-[hsl(38_40%_90%)] text-[hsl(34_50%_35%)] ring-1 ring-[hsl(36_36%_80%)]',
+  moderate: 'bg-[hsl(16_45%_86%)] text-[hsl(5_48%_32%)] ring-1 ring-[hsl(10_32%_76%)]',
+  severe:   'bg-[hsl(2_52%_25%)] text-white ring-1 ring-[hsl(2_52%_20%)]',
+}
+
 type PrevMarker = {
   value: number
-  source: string           // e.g. "CMR · 17 Dec 2025"
-  prevLabel: string        // e.g. "Normal"
-  currLabel: string | null // e.g. "Mildly dilated"
-  prevVal: string          // formatted, e.g. "104 mL/m²"
-  currVal: string | null   // formatted
-  pctChange: number | null // e.g. +15
-  improved: boolean | null // true = improved, false = worsened, null = unchanged/unknown
+  source: string
+  prevLabel: string
+  prevGrade: SevGrade
+  currLabel: string | null
+  currGrade: SevGrade | null
+  prevVal: string
+  currVal: string | null
+  pctChange: number | null
+  improved: boolean | null
 }
 
 function RangeChart({
@@ -363,7 +374,7 @@ function RangeChart({
                     <div className="h-[8px] w-[8px] rotate-45 border-[1.5px] border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] transition-all duration-200 hover:border-[hsl(var(--foreground))] hover:bg-[hsl(var(--tone-neutral-400))] hover:scale-150" />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="p-0 overflow-hidden max-w-[240px]">
+                <TooltipContent side="top" className="p-0 overflow-hidden max-w-[260px]">
                   {/* Header */}
                   <div className="px-3 py-1.5 bg-muted/60 border-b border-border/40">
                     <div className="flex items-center gap-1.5">
@@ -372,37 +383,40 @@ function RangeChart({
                     </div>
                   </div>
                   {/* Body */}
-                  <div className="px-3 py-2 space-y-2">
-                    {/* Interpretation */}
-                    {pm.currLabel && (
-                      <div className={cn('rounded px-2 py-1 text-center text-[11px] font-semibold', changeBg, changeColor)}>
-                        {pm.prevLabel === pm.currLabel
-                          ? `Unchanged: ${pm.prevLabel}`
-                          : `${pm.prevLabel} → ${pm.currLabel}`}
-                      </div>
-                    )}
-                    {/* Numeric comparison */}
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="text-center">
-                        <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Previous</div>
-                        <div className="text-xs font-bold">{pm.prevVal}</div>
-                      </div>
-                      <svg className="h-3 w-3 text-muted-foreground shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8h10M9 4l4 4-4 4" /></svg>
-                      {pm.currVal && (
-                        <div className="text-center">
-                          <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Current</div>
-                          <div className="text-xs font-bold">{pm.currVal}</div>
-                        </div>
-                      )}
-                    </div>
-                    {/* % change pill */}
-                    {pm.pctChange !== null && (
-                      <div className="flex justify-center">
-                        <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold', changeBg, changeColor)}>
-                          {pm.pctChange >= 0 ? '↑' : '↓'} {pm.pctChange >= 0 ? '+' : ''}{pm.pctChange.toFixed(0)}%
+                  <div className="px-3 py-2.5 space-y-2.5">
+                    {/* Severity transition pills */}
+                    {pm.currGrade && (
+                      <div className="flex items-center justify-center gap-1.5">
+                        <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', SEV_PILL_STYLES[pm.prevGrade])}>
+                          {pm.prevLabel}
+                        </span>
+                        <svg className="h-3 w-3 text-muted-foreground shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8h10M9 4l4 4-4 4" /></svg>
+                        <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', SEV_PILL_STYLES[pm.currGrade])}>
+                          {pm.currLabel}
                         </span>
                       </div>
                     )}
+                    {/* Numeric comparison */}
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="text-center">
+                        <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Previous</div>
+                        <div className="text-sm font-bold tabular-nums">{pm.prevVal}</div>
+                      </div>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <svg className="h-3 w-3 text-muted-foreground/60" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8h10M9 4l4 4-4 4" /></svg>
+                        {pm.pctChange !== null && (
+                          <span className={cn('text-[9px] font-bold tabular-nums', changeColor)}>
+                            {pm.pctChange >= 0 ? '+' : ''}{pm.pctChange.toFixed(0)}%
+                          </span>
+                        )}
+                      </div>
+                      {pm.currVal && (
+                        <div className="text-center">
+                          <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Current</div>
+                          <div className="text-sm font-bold tabular-nums">{pm.currVal}</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -728,7 +742,9 @@ export function CmrNewReportPage() {
         value: v,
         source: s.label,
         prevLabel: prevSev.label,
+        prevGrade: prevSev.grade as SevGrade,
         currLabel: currSev?.label ?? null,
+        currGrade: (currSev?.grade as SevGrade) ?? null,
         prevVal: `${v.toFixed(dp)} ${param.unit}`,
         currVal: currentVal !== undefined ? `${currentVal.toFixed(dp)} ${param.unit}` : null,
         pctChange,
