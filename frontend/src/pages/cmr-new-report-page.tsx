@@ -55,6 +55,13 @@ function displayName(key: string, isNested?: boolean): string {
   let name = key.replace(/\s*\(i\)\s*$/, '')
   // Strip "(per heartbeat)" from parent rows — nested children keep their qualifier
   if (!isNested) name = name.replace(/\s*\(per heartbeat\)\s*$/, '')
+  // Expand valve abbreviations to full names
+  name = name
+    .replace(/^AV /, 'Aortic ')
+    .replace(/^PV /, 'Pulmonary ')
+    .replace(/^MV /, 'Mitral ')
+    .replace(/^MR /, 'Mitral ')
+    .replace(/^TR /, 'Tricuspid ')
   return name
 }
 
