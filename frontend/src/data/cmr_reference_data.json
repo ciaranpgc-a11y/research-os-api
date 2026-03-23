@@ -1276,16 +1276,6 @@
       "pap_affected": false,
       "decimal_places": 1
     },
-    "PCWP": {
-      "parameter": "PCWP",
-      "unit": "mmHg",
-      "indexing": "None",
-      "major_section": "DERIVED HAEMODYNAMIC PARAMETERS",
-      "sub_section": null,
-      "sources": [],
-      "pap_affected": false,
-      "decimal_places": 0
-    },
     "AV effective forward flow (per heartbeat)": {
       "parameter": "AV effective forward flow (per heartbeat)",
       "unit": "mL/beat",
@@ -1423,6 +1413,16 @@
         "severe": "Suggests severe AS"
       }
     },
+    "AV backward flow (per heartbeat)": {
+      "parameter": "AV backward flow (per heartbeat)",
+      "unit": "mL/beat",
+      "indexing": "None",
+      "major_section": "FLOW",
+      "sub_section": "Aortic flow",
+      "sources": [],
+      "pap_affected": false,
+      "decimal_places": 1
+    },
     "PV effective forward flow (per heartbeat)": {
       "parameter": "PV effective forward flow (per heartbeat)",
       "unit": "mL/beat",
@@ -1557,6 +1557,16 @@
         "severe": "Suggests severe PS"
       }
     },
+    "PV backward flow (per heartbeat)": {
+      "parameter": "PV backward flow (per heartbeat)",
+      "unit": "mL/beat",
+      "indexing": "None",
+      "major_section": "FLOW",
+      "sub_section": "Pulmonary flow",
+      "sources": [],
+      "pap_affected": false,
+      "decimal_places": 0
+    },
     "MR volume (per heartbeat)": {
       "parameter": "MR volume (per heartbeat)",
       "unit": "mL",
@@ -1619,22 +1629,12 @@
         "severe": "Suggests severe TR"
       }
     },
-    "AV backward flow (per heartbeat)": {
-      "parameter": "AV backward flow (per heartbeat)",
-      "unit": "mL/beat",
+    "PCWP": {
+      "parameter": "PCWP",
+      "unit": "mmHg",
       "indexing": "None",
-      "major_section": "FLOW",
-      "sub_section": "Aortic flow",
-      "sources": [],
-      "pap_affected": false,
-      "decimal_places": 1
-    },
-    "PV backward flow (per heartbeat)": {
-      "parameter": "PV backward flow (per heartbeat)",
-      "unit": "mL/beat",
-      "indexing": "None",
-      "major_section": "FLOW",
-      "sub_section": "Pulmonary flow",
+      "major_section": "DERIVED HAEMODYNAMIC PARAMETERS",
+      "sub_section": null,
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0
