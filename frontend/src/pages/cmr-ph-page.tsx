@@ -1194,13 +1194,13 @@ export function CmrPhPage() {
         </div>
       </div>
 
-      <QuantitativeSection title="RV Size & Function">
+      <QuantitativeSection title="RV size & function">
         <QuantitativeTable rows={filteredRvRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
       </QuantitativeSection>
 
-      <SectionCard title="Septal / Right Heart Signs">
+      <SectionCard title="Septal / right heart signs">
         <div className="grid gap-6 xl:grid-cols-2">
-          <Subsection title="Septal Geometry">
+          <Subsection title="Septal geometry">
             <div className="space-y-4">
               <div className="space-y-2">
                 <FieldLabel>Septal flattening</FieldLabel>
@@ -1217,7 +1217,7 @@ export function CmrPhPage() {
             </div>
           </Subsection>
 
-          <Subsection title="Ancillary Signs">
+          <Subsection title="Ancillary signs">
             <div className="space-y-4">
               <div className="space-y-2">
                 <FieldLabel>Pericardial effusion</FieldLabel>
@@ -1235,28 +1235,28 @@ export function CmrPhPage() {
         </div>
       </SectionCard>
 
-      <QuantitativeSection title="Pulmonary Artery & Flow">
+      <QuantitativeSection title="Pulmonary artery & flow">
         <QuantitativeTable rows={filteredPaRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
       </QuantitativeSection>
 
-      <SectionCard title="Valvular Context">
+      <SectionCard title="Valvular context">
         <div className="grid gap-6">
           <div className="grid gap-6 xl:grid-cols-3">
-            <Subsection title="Tricuspid Regurgitation">
+            <Subsection title="Tricuspid regurgitation">
               <div className="space-y-2">
                 <FieldLabel>Severity</FieldLabel>
                 <ChoicePills options={REGURGITATION_OPTIONS} value={choices.trSeverity} onChange={(value) => updateChoice('trSeverity', value)} />
               </div>
             </Subsection>
 
-            <Subsection title="Mitral Regurgitation">
+            <Subsection title="Mitral regurgitation">
               <div className="space-y-2">
                 <FieldLabel>Severity</FieldLabel>
                 <ChoicePills options={REGURGITATION_OPTIONS} value={choices.mrSeverity} onChange={(value) => updateChoice('mrSeverity', value)} />
               </div>
             </Subsection>
 
-            <Subsection title="Pulmonary Regurgitation">
+            <Subsection title="Pulmonary regurgitation">
               <div className="space-y-2">
                 <FieldLabel>Severity</FieldLabel>
                 <ChoicePills options={REGURGITATION_OPTIONS} value={choices.prSeverity} onChange={(value) => updateChoice('prSeverity', value)} />
@@ -1276,7 +1276,7 @@ export function CmrPhPage() {
           <QuantitativeTable rows={filteredAdditionalRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} />
 
           <div className="grid gap-6 xl:grid-cols-2">
-            <Subsection title="Additional Notes">
+            <Subsection title="Additional notes">
               <div className="grid gap-4">
                 <TextareaField label="Ancillary findings" value={texts.ancillaryFindings} onChange={(value) => updateText('ancillaryFindings', value)} placeholder="-" />
                 <TextareaField label="Additional details" value={texts.additionalDetails} onChange={(value) => updateText('additionalDetails', value)} placeholder="-" />
@@ -1289,7 +1289,7 @@ export function CmrPhPage() {
       <SectionCard title="4D Flow">
         <div className="grid gap-6">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-            <Subsection title="Qualitative Flow Pattern">
+            <Subsection title="Qualitative flow pattern">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <FieldLabel>Vortex formation</FieldLabel>
@@ -1314,7 +1314,7 @@ export function CmrPhPage() {
               </div>
             </Subsection>
 
-            <Subsection title="Branch Flow Quantification">
+            <Subsection title="Branch flow quantification">
               <div className="space-y-4">
                 <MeasurementRow field={NUMERIC_FIELDS.mainPaNetFlow} value={resolveNumericValue('mainPaNetFlow')} onChange={(value) => updateManualNumeric('mainPaNetFlow', value)} />
                 <MeasurementRow field={NUMERIC_FIELDS.rpaNetFlow} value={resolveNumericValue('rpaNetFlow')} onChange={(value) => updateManualNumeric('rpaNetFlow', value)} />

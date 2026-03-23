@@ -15,20 +15,17 @@ type RefNavProps = {
   sectionKeys?: string[]
 }
 
-function titleCase(s: string): string {
-  return s
-    .toLowerCase()
-    .split(' ')
-    .map((w) => (w.length <= 2 && w !== 'of' ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
-    .join(' ')
+function sentenceCase(s: string): string {
+  const lower = s.toLowerCase()
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
 }
 
 /** Short display labels for long section names */
 const LABEL_OVERRIDES: Record<string, string> = {
-  'Valve Morphology And Function': 'Valve Morphology & Function',
-  'Myocardial Tissue Characterisation': 'Tissue Characterisation',
-  'Derived Haemodynamic Parameters': 'Haemodynamic Parameters',
-  'Additional Granular Details': 'Additional Details',
+  'Valve morphology and function': 'Valve morphology & function',
+  'Myocardial tissue characterisation': 'Tissue characterisation',
+  'Derived haemodynamic parameters': 'Haemodynamic parameters',
+  'Additional granular details': 'Additional details',
 }
 
 const REPORT_RAW_NAV = [
@@ -80,7 +77,7 @@ export function CmrReferenceNavigator({
   const paramSections = useMemo(() => {
     const keys = sectionKeys ?? Object.keys(resolveSections())
     return keys.map((key) => {
-      const tc = titleCase(key)
+      const tc = sentenceCase(key)
       return { key: tc, label: LABEL_OVERRIDES[tc] || tc }
     })
   }, [sectionKeys])

@@ -24,12 +24,9 @@ import { cn } from '@/lib/utils'
 // Helpers
 // ---------------------------------------------------------------------------
 
-function titleCase(s: string): string {
-  return s
-    .toLowerCase()
-    .split(' ')
-    .map((w) => (w.length <= 2 && w !== 'of' ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
-    .join(' ')
+function sentenceCase(s: string): string {
+  const lower = s.toLowerCase()
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
 }
 
 function displayName(key: string): string {
@@ -276,7 +273,7 @@ function ParameterEditor({
   const newBandRef = useRef<HTMLInputElement | null>(null)
 
   const majorSectionOptions = Object.keys(sectionsConfig) as readonly string[]
-  const majorSectionLabels = Object.fromEntries(majorSectionOptions.map((k) => [k, titleCase(k)]))
+  const majorSectionLabels = Object.fromEntries(majorSectionOptions.map((k) => [k, sentenceCase(k)]))
   const subSectionOptions = (metaSection ? ['', ...(sectionsConfig[metaSection] || [])] : ['']) as readonly string[]
 
   useEffect(() => {
@@ -1338,7 +1335,7 @@ export function CmrReferenceDatabasePage() {
                 <div className="w-1 self-stretch rounded bg-[hsl(var(--tone-warning-500))]" />
                 <input
                   type="text"
-                  defaultValue={titleCase(sg.sectionDisplay)}
+                  defaultValue={sentenceCase(sg.sectionDisplay)}
                   onBlur={(e) => {
                     const newVal = e.target.value.trim().toUpperCase()
                     if (newVal && newVal !== sg.sectionKey) {
@@ -1579,7 +1576,7 @@ export function CmrReferenceDatabasePage() {
               <div
                 key={major}
                 ref={(el) => { sectionRefs.current[major] = el }}
-                data-section-key={titleCase(major)}
+                data-section-key={sentenceCase(major)}
                 className="scroll-mt-20"
               >
                 <button
@@ -1594,7 +1591,7 @@ export function CmrReferenceDatabasePage() {
                   <div className="flex flex-1 items-center gap-2.5 px-3.5 py-3">
                     <ChevronIcon open={!isCollapsed} />
                     <h2 className="flex-1 text-sm font-semibold tracking-tight text-[hsl(var(--foreground))]">
-                      {titleCase(major)}
+                      {sentenceCase(major)}
                     </h2>
                   </div>
                 </button>

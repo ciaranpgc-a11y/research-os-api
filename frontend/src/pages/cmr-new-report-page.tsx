@@ -55,12 +55,9 @@ function fmtRow(values: (number | null)[], dp: number = 0): string[] {
 /** Parameters whose measured value should be shown as absolute (magnitude only). */
 const ABS_VALUE_PARAMS = new Set(['AV backward flow', 'PV backward flow'])
 
-function titleCase(s: string): string {
-  return s
-    .toLowerCase()
-    .split(' ')
-    .map((w) => (w.length <= 2 && w !== 'of' ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
-    .join(' ')
+function sentenceCase(s: string): string {
+  const lower = s.toLowerCase()
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
 }
 
 // ---------------------------------------------------------------------------
@@ -359,12 +356,12 @@ function ParameterDrilldown({
       <DrilldownSheet.Header title={displayName(param.parameter_key)} variant="workspace">
         {param.sub_section && (
           <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
-            {titleCase(param.major_section)} &rsaquo; {param.sub_section}
+            {sentenceCase(param.major_section)} &rsaquo; {param.sub_section}
           </p>
         )}
         {!param.sub_section && (
           <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
-            {titleCase(param.major_section)}
+            {sentenceCase(param.major_section)}
           </p>
         )}
       </DrilldownSheet.Header>
@@ -767,7 +764,7 @@ export function CmrNewReportPage() {
               <div
                 key={major}
                 ref={(el) => { sectionRefs.current[major] = el }}
-                data-section-key={titleCase(major)}
+                data-section-key={sentenceCase(major)}
                 className="scroll-mt-20"
               >
                 {/* Section heading — left accent bar, flush with table */}
@@ -783,7 +780,7 @@ export function CmrNewReportPage() {
                   <div className="flex flex-1 items-center gap-2.5 px-3.5 py-3">
                     <ChevronIcon open={!isCollapsed} />
                     <h2 className="flex-1 text-sm font-semibold tracking-tight text-[hsl(var(--foreground))]">
-                      {titleCase(major)}
+                      {sentenceCase(major)}
                     </h2>
                   </div>
                 </button>
