@@ -199,11 +199,6 @@
       "sources": [],
       "pap_affected": false,
       "severity_label": "impaired",
-      "severity_thresholds": {
-        "mild": 41,
-        "moderate": 30,
-        "severe": null
-      },
       "decimal_places": 0
     },
     "MAPSE": {
@@ -335,11 +330,6 @@
       "sources": [],
       "pap_affected": false,
       "severity_label": "impaired",
-      "severity_thresholds": {
-        "mild": 40,
-        "moderate": 30,
-        "severe": null
-      },
       "decimal_places": 0
     },
     "LA max volume": {
