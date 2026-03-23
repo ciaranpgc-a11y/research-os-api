@@ -1,99 +1,123 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ArrowRightLeft, Layers3, Search, X } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 
-import { cn } from '@/lib/utils'
 import {
-  fetchCollections,
+  addPublicationsToCollection,
   createCollection,
-  updateCollection,
-  deleteCollection,
-  fetchSubcollections,
   createSubcollection,
+  deleteCollection,
   deleteSubcollection,
   fetchCollectionPublications,
-  addPublicationsToCollection,
-  removePublicationFromCollection,
-  reorderCollectionPublications,
-  fetchPublicationCollections,
+  fetchCollections,
+  fetchPublicationCollectionsBatch,
+  fetchSubcollections,
   movePublicationSubcollection,
+  removePublicationFromCollection,
+  updateCollection,
   updateSubcollection,
 } from '@/lib/collections-api'
+import { cn } from '@/lib/utils'
 import {
   type CollectionColour,
   type CollectionPayload,
-  type SubcollectionPayload,
   type CollectionPublicationPayload,
   type PublicationCollectionSummary,
+  type SubcollectionPayload,
 } from '@/types/collections'
 import type { PersonaWork } from '@/types/impact'
 import { CollectionSidebar } from './CollectionSidebar'
-import { PublicationCard } from './PublicationCard'
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog'
-import { autoAssignColour, type ViewportMode, type PubFilter } from './collections-utils'
+import { PublicationCard } from './PublicationCard'
+import { autoAssignColour } from './collections-utils'
 
-// ---------------------------------------------------------------------------
-// Toast
-// ---------------------------------------------------------------------------
+type ViewKind = 'all' | 'uncollected' | 'collection'
+type SortKey = 'recent' | 'oldest' | 'title' | 'citations'
 
 function Toast({ message, onDone }: { message: string; onDone: () => void }) {
   useEffect(() => {
-    const t = setTimeout(onDone, 2400)
-    return () => clearTimeout(t)
-  }, [onDone])
+    const timer = setTimeout(onDone, 2400)
+    return () => clearTimeout(timer)
+  }, [message, onDone])
+
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-foreground text-background text-sm px-4 py-2.5 rounded-lg shadow-lg animate-slide-up">
+    <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-foreground px-4 py-2.5 text-sm text-background shadow-lg">
       {message}
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Main viewport component
-// ---------------------------------------------------------------------------
+function parseView(value: string | null): ViewKind {
+  return value === 'uncollected' || value === 'collection' ? value : 'all'
+}
+
+function parseSort(value: string | null, view: ViewKind): SortKey {
+  const normalized = value === 'oldest' || value === 'title' || value === 'citations' ? value : 'recent'
+  return view === 'collection' ? normalized : normalized === 'citations' ? 'recent' : normalized
+}
+
+function matchesLibraryWork(work: PersonaWork, query: string) {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return (
+    work.title.toLowerCase().includes(q) ||
+    work.venue_name.toLowerCase().includes(q) ||
+    String(work.doi || '').toLowerCase().includes(q)
+  )
+}
+
+function matchesCollectionPublication(publication: CollectionPublicationPayload, query: string) {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return (
+    publication.title.toLowerCase().includes(q) ||
+    String(publication.journal || '').toLowerCase().includes(q) ||
+    String(publication.doi || '').toLowerCase().includes(q)
+  )
+}
+
+function sortByYear<T extends { year: number | null }>(items: T[], sort: Exclude<SortKey, 'citations'>) {
+  const next = [...items]
+  if (sort === 'title') {
+    next.sort((a, b) => String((a as { title?: string }).title || '').localeCompare(String((b as { title?: string }).title || '')))
+    return next
+  }
+  next.sort((a, b) => {
+    const left = a.year ?? 0
+    const right = b.year ?? 0
+    if (sort === 'oldest') return left - right
+    return right - left
+  })
+  return next
+}
 
 export function CollectionsViewport({
   works,
-  onClose,
   onOpenPublication,
   pageMode = false,
+  onClose,
 }: {
   works: PersonaWork[]
-  onClose?: () => void
   onOpenPublication: (workId: string) => void
   pageMode?: boolean
+  onClose?: () => void
 }) {
-  // ---- state ----
-  const [mode, setMode] = useState<ViewportMode>(pageMode ? 'browse' : 'organise')
+  const [searchParams, setSearchParams] = useSearchParams()
   const [collections, setCollections] = useState<CollectionPayload[]>([])
+  const [subcollectionsMap, setSubcollectionsMap] = useState<Map<string, SubcollectionPayload[]>>(new Map())
   const [pubCollectionsMap, setPubCollectionsMap] = useState<Map<string, PublicationCollectionSummary[]>>(new Map())
-  const [loading, setLoading] = useState(true)
-
-  // organise mode
-  const [pubFilter, setPubFilter] = useState<PubFilter>('all')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [dragWorkId, setDragWorkId] = useState<string | null>(null)
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
-
-  // browse mode
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
-  const [selectedSubcollectionId, setSelectedSubcollectionId] = useState<string | null>(null)
   const [collectionPubs, setCollectionPubs] = useState<CollectionPublicationPayload[]>([])
-
-  // collection management
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [selectedWorkIds, setSelectedWorkIds] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [loadingCollection, setLoadingCollection] = useState(false)
   const [creatingCollection, setCreatingCollection] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
   const [newCollectionColour, setNewCollectionColour] = useState<CollectionColour>('indigo')
-
-  // expand/collapse tree
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
-
-  // subcollections cache (lazy loaded)
-  const [subcollectionsMap, setSubcollectionsMap] = useState<Map<string, SubcollectionPayload[]>>(new Map())
-
-  // drop pulse animation
-  const [pulsingId, setPulsingId] = useState<string | null>(null)
-
-  // delete confirmation
+  const [bulkTargetCollectionId, setBulkTargetCollectionId] = useState('')
+  const [bulkTargetSubcollectionId, setBulkTargetSubcollectionId] = useState('')
+  const [bulkMoveTargetId, setBulkMoveTargetId] = useState('')
+  const [toast, setToast] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{
     type: 'collection' | 'subcollection'
     id: string
@@ -102,180 +126,170 @@ export function CollectionsViewport({
     parentId?: string
   } | null>(null)
 
-  // toast
-  const [toast, setToast] = useState<string | null>(null)
+  const selectedViewKind = parseView(searchParams.get('view'))
+  const selectedCollectionId = selectedViewKind === 'collection' ? String(searchParams.get('collection') || '').trim() || null : null
+  const selectedSubcollectionId = selectedViewKind === 'collection' ? String(searchParams.get('subcollection') || '').trim() || null : null
+  const query = String(searchParams.get('q') || '').trim()
+  const sort = parseSort(searchParams.get('sort'), selectedViewKind)
 
-  // refs
-  const newCollectionInputRef = useRef<HTMLInputElement>(null)
+  const setWorkspaceParams = useCallback((updates: Record<string, string | null | undefined>) => {
+    const next = new URLSearchParams(searchParams)
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value) next.set(key, value)
+      else next.delete(key)
+    })
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
 
-  // browse drag reorder
-  const [browseDragIdx, setBrowseDragIdx] = useState<number | null>(null)
-  const [browseDropIdx, setBrowseDropIdx] = useState<number | null>(null)
+  const refreshCollections = useCallback(async () => {
+    const items = await fetchCollections().catch(() => [] as CollectionPayload[])
+    setCollections(items)
+    return items
+  }, [])
 
-  // ---- bootstrap ----
+  const refreshPublicationCollections = useCallback(async () => {
+    const items = await fetchPublicationCollectionsBatch(works.map((work) => work.id)).catch(() => [] as Array<{ work_id: string; items: PublicationCollectionSummary[] }>)
+    setPubCollectionsMap(new Map(items.map((entry) => [entry.work_id, entry.items])))
+  }, [works])
+
+  const refreshCollectionPublications = useCallback(async (collectionId: string | null) => {
+    if (!collectionId) {
+      setCollectionPubs([])
+      return
+    }
+    const items = await fetchCollectionPublications(collectionId).catch(() => [] as CollectionPublicationPayload[])
+    setCollectionPubs(items)
+  }, [])
+
+  const refreshSubcollections = useCallback(async (collectionId: string | null) => {
+    if (!collectionId) return
+    const items = await fetchSubcollections(collectionId).catch(() => [] as SubcollectionPayload[])
+    setSubcollectionsMap((current) => new Map(current).set(collectionId, items))
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     async function load() {
       setLoading(true)
-      try {
-        const colls = await fetchCollections().catch(() => [] as CollectionPayload[])
-        if (cancelled) return
-        setCollections(colls)
-
-        const entries = await Promise.all(
-          works.map(async (w) => {
-            const sums = await fetchPublicationCollections(w.id).catch(() => [] as PublicationCollectionSummary[])
-            return [w.id, sums] as const
-          }),
-        )
-        if (cancelled) return
-        setPubCollectionsMap(new Map(entries))
-      } catch {
-        // ignore bootstrap errors
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+      const [nextCollections, batch] = await Promise.all([
+        fetchCollections().catch(() => [] as CollectionPayload[]),
+        fetchPublicationCollectionsBatch(works.map((work) => work.id)).catch(() => [] as Array<{ work_id: string; items: PublicationCollectionSummary[] }>),
+      ])
+      if (cancelled) return
+      setCollections(nextCollections)
+      setPubCollectionsMap(new Map(batch.map((entry) => [entry.work_id, entry.items])))
+      setLoading(false)
     }
     void load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [works])
 
-  // ---- helpers ----
-  const refreshCollections = useCallback(async () => {
-    const colls = await fetchCollections().catch(() => [] as CollectionPayload[])
-    setCollections(colls)
-  }, [])
+  useEffect(() => {
+    if (loading) return
+    const hasSelectedCollection = selectedCollectionId && collections.some((collection) => collection.id === selectedCollectionId)
+    if (selectedViewKind === 'collection' && hasSelectedCollection) return
+    if (selectedViewKind === 'uncollected') return
+    if (collections.length === 0) {
+      if (selectedViewKind !== 'all') setWorkspaceParams({ view: 'all', collection: null, subcollection: null })
+      return
+    }
+    setWorkspaceParams({ view: 'collection', collection: collections[0].id, subcollection: null })
+  }, [collections, loading, selectedCollectionId, selectedViewKind, setWorkspaceParams])
 
-  const refreshPubCollections = useCallback(async (workId: string) => {
-    const sums = await fetchPublicationCollections(workId).catch(() => [] as PublicationCollectionSummary[])
-    setPubCollectionsMap((prev) => {
-      const next = new Map(prev)
-      next.set(workId, sums)
+  useEffect(() => {
+    if (selectedViewKind !== 'collection' || !selectedCollectionId) {
+      setCollectionPubs([])
+      return
+    }
+    const collectionId: string = selectedCollectionId
+    let cancelled = false
+    async function loadCollection() {
+      setLoadingCollection(true)
+      const [subs, pubs] = await Promise.all([
+        fetchSubcollections(collectionId).catch(() => [] as SubcollectionPayload[]),
+        fetchCollectionPublications(collectionId).catch(() => [] as CollectionPublicationPayload[]),
+      ])
+      if (cancelled) return
+      setSubcollectionsMap((current) => new Map(current).set(collectionId, subs))
+      setCollectionPubs(pubs)
+      setExpandedIds((current) => new Set(current).add(collectionId))
+      setLoadingCollection(false)
+    }
+    void loadCollection()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCollectionId, selectedViewKind])
+
+  useEffect(() => {
+    setSelectedWorkIds(new Set())
+  }, [selectedCollectionId, selectedSubcollectionId, selectedViewKind, query, sort])
+
+  useEffect(() => {
+    if (bulkTargetCollectionId && !subcollectionsMap.has(bulkTargetCollectionId)) {
+      void refreshSubcollections(bulkTargetCollectionId)
+    }
+  }, [bulkTargetCollectionId, refreshSubcollections, subcollectionsMap])
+
+  const libraryItems = useMemo(
+    () => works.map((work) => ({ ...work, collectionMemberships: pubCollectionsMap.get(work.id) ?? [] })),
+    [pubCollectionsMap, works],
+  )
+  const selectedCollection = useMemo(
+    () => collections.find((collection) => collection.id === selectedCollectionId) ?? null,
+    [collections, selectedCollectionId],
+  )
+  const selectedSubcollections = selectedCollectionId ? (subcollectionsMap.get(selectedCollectionId) ?? []) : []
+  const selectedSubcollection = selectedSubcollections.find((sub) => sub.id === selectedSubcollectionId) ?? null
+  const uncollectedCount = libraryItems.filter((item) => item.collectionMemberships.length === 0).length
+  const visibleLibraryItems = useMemo(() => {
+    const base = selectedViewKind === 'uncollected'
+      ? libraryItems.filter((item) => item.collectionMemberships.length === 0)
+      : libraryItems
+    return sortByYear(base.filter((item) => matchesLibraryWork(item, query)), sort === 'citations' ? 'recent' : sort)
+  }, [libraryItems, query, selectedViewKind, sort])
+  const visibleCollectionItems = useMemo(() => {
+    const filtered = collectionPubs.filter((item) => (!selectedSubcollectionId || item.subcollection_id === selectedSubcollectionId) && matchesCollectionPublication(item, query))
+    if (sort === 'citations') return [...filtered].sort((a, b) => b.citations - a.citations)
+    return sortByYear(filtered, sort)
+  }, [collectionPubs, query, selectedSubcollectionId, sort])
+  const visibleWorkIds = selectedViewKind === 'collection'
+    ? visibleCollectionItems.map((item) => item.work_id)
+    : visibleLibraryItems.map((item) => item.id)
+  const selectedVisibleCount = visibleWorkIds.filter((workId) => selectedWorkIds.has(workId)).length
+  const allVisibleSelected = visibleWorkIds.length > 0 && selectedVisibleCount === visibleWorkIds.length
+
+  const toggleSelectedWork = useCallback((workId: string) => {
+    setSelectedWorkIds((current) => {
+      const next = new Set(current)
+      if (next.has(workId)) next.delete(workId)
+      else next.add(workId)
       return next
     })
   }, [])
 
-  const refreshCollectionPubs = useCallback(async () => {
-    if (!selectedCollectionId) return
-    const pubs = await fetchCollectionPublications(selectedCollectionId).catch(() => [] as CollectionPublicationPayload[])
-    setCollectionPubs(pubs)
-  }, [selectedCollectionId])
-
-  // ---- subcollections cache ----
-  const handleSubcollectionsFetched = useCallback((collectionId: string, subs: SubcollectionPayload[]) => {
-    setSubcollectionsMap((prev) => {
-      const next = new Map(prev)
-      next.set(collectionId, subs)
-      return next
+  const toggleSelectAllVisible = useCallback(() => {
+    setSelectedWorkIds((current) => {
+      if (allVisibleSelected) {
+        const next = new Set(current)
+        visibleWorkIds.forEach((workId) => next.delete(workId))
+        return next
+      }
+      return new Set(visibleWorkIds)
     })
-  }, [])
+  }, [allVisibleSelected, visibleWorkIds])
 
   const handleToggleExpand = useCallback((collectionId: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev)
+    setExpandedIds((current) => {
+      const next = new Set(current)
       if (next.has(collectionId)) next.delete(collectionId)
       else next.add(collectionId)
       return next
     })
   }, [])
 
-  // ---- load subcollections + pubs when collection selected (browse) ----
-  useEffect(() => {
-    if (mode !== 'browse' || !selectedCollectionId) {
-      setCollectionPubs([])
-      return
-    }
-    let cancelled = false
-    async function load() {
-      const [subs, pubs] = await Promise.all([
-        fetchSubcollections(selectedCollectionId!).catch(() => [] as SubcollectionPayload[]),
-        fetchCollectionPublications(selectedCollectionId!).catch(() => [] as CollectionPublicationPayload[]),
-      ])
-      if (cancelled) return
-      handleSubcollectionsFetched(selectedCollectionId!, subs)
-      setCollectionPubs(pubs)
-      setSelectedSubcollectionId(null)
-    }
-    void load()
-    return () => { cancelled = true }
-  }, [mode, selectedCollectionId, handleSubcollectionsFetched])
-
-  // ---- filtered publications (organise mode) ----
-  const filteredWorks = useMemo(() => {
-    let list = works
-    if (pubFilter === 'uncollected') {
-      list = list.filter((w) => {
-        const sums = pubCollectionsMap.get(w.id)
-        return !sums || sums.length === 0
-      })
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      list = list.filter((w) =>
-        w.title.toLowerCase().includes(q) ||
-        w.venue_name.toLowerCase().includes(q) ||
-        (w.doi || '').toLowerCase().includes(q),
-      )
-    }
-    return list
-  }, [works, pubFilter, searchQuery, pubCollectionsMap])
-
-  // ---- drag and drop (organise: publication -> collection sidebar) ----
-  const handleDragStart = useCallback((workId: string) => {
-    setDragWorkId(workId)
-  }, [])
-
-  // Reset drag state when drag is cancelled (dropped outside a target or Escape pressed)
-  useEffect(() => {
-    function onDragEnd() {
-      setDragWorkId(null)
-      setDropTargetId(null)
-    }
-    document.addEventListener('dragend', onDragEnd)
-    return () => document.removeEventListener('dragend', onDragEnd)
-  }, [])
-
-  const handleDragOver = useCallback((e: React.DragEvent, collectionId: string) => {
-    e.preventDefault()
-    setDropTargetId(collectionId)
-  }, [])
-
-  const handleDragLeave = useCallback(() => {
-    setDropTargetId(null)
-  }, [])
-
-  const handleDrop = useCallback(async (collectionId: string, subcollectionId?: string) => {
-    setDropTargetId(null)
-    if (!dragWorkId) return
-    try {
-      const memberships = await addPublicationsToCollection(collectionId, [dragWorkId])
-      if (subcollectionId) {
-        const membership = memberships.find((m) => m.work_id === dragWorkId)
-        if (membership) {
-          await movePublicationSubcollection(collectionId, membership.id, subcollectionId)
-        }
-      }
-      const pulseTarget = subcollectionId ?? collectionId
-      setPulsingId(pulseTarget)
-      setTimeout(() => setPulsingId(null), 700)
-      const coll = collections.find((c) => c.id === collectionId)
-      setToast(`Added to ${coll?.name || 'collection'}`)
-      const refreshTasks: Promise<unknown>[] = [refreshCollections(), refreshPubCollections(dragWorkId)]
-      if (subcollectionId) {
-        refreshTasks.push(
-          fetchSubcollections(collectionId)
-            .then((subs) => handleSubcollectionsFetched(collectionId, subs))
-            .catch(() => {}),
-        )
-      }
-      await Promise.all(refreshTasks)
-    } catch {
-      setToast('Failed to add publication')
-    }
-    setDragWorkId(null)
-  }, [dragWorkId, collections, refreshCollections, refreshPubCollections, handleSubcollectionsFetched])
-
-  // ---- collection CRUD ----
   const handleStartCreateCollection = useCallback(() => {
     setNewCollectionColour(autoAssignColour(collections))
     setCreatingCollection(true)
@@ -285,20 +299,22 @@ export function CollectionsViewport({
     const name = newCollectionName.trim()
     if (!name) return
     try {
-      await createCollection({ name, colour: newCollectionColour })
-      setNewCollectionName('')
-      setNewCollectionColour('indigo')
+      const created = await createCollection({ name, colour: newCollectionColour })
       setCreatingCollection(false)
+      setNewCollectionName('')
       await refreshCollections()
+      setWorkspaceParams({ view: 'collection', collection: created.id, subcollection: null })
+      setToast(`Created ${created.name}`)
     } catch {
       setToast('Failed to create collection')
     }
-  }, [newCollectionName, newCollectionColour, refreshCollections])
+  }, [newCollectionColour, newCollectionName, refreshCollections, setWorkspaceParams])
 
-  const handleRenameCollection = useCallback(async (id: string, newName: string) => {
+  const handleRenameCollection = useCallback(async (id: string, name: string) => {
     try {
-      await updateCollection(id, { name: newName })
+      await updateCollection(id, { name })
       await refreshCollections()
+      setToast('Collection renamed')
     } catch {
       setToast('Failed to rename collection')
     }
@@ -308,457 +324,480 @@ export function CollectionsViewport({
     try {
       await updateCollection(id, { colour })
       await refreshCollections()
-      // Update colour on any publication pills that reference this collection
-      setPubCollectionsMap((prev) => {
-        const next = new Map(prev)
-        for (const [workId, summaries] of next) {
-          if (summaries.some((s) => s.id === id)) {
-            next.set(workId, summaries.map((s) => s.id === id ? { ...s, colour } : s))
+      setPubCollectionsMap((current) => {
+        const next = new Map(current)
+        for (const [workId, items] of next) {
+          if (items.some((item) => item.id === id)) {
+            next.set(workId, items.map((item) => item.id === id ? { ...item, colour } : item))
           }
         }
         return next
       })
     } catch {
-      setToast('Failed to change colour')
+      setToast('Failed to update colour')
     }
   }, [refreshCollections])
 
-  // ---- delete confirmation flow ----
-  const handleRequestDeleteCollection = useCallback((id: string) => {
-    const coll = collections.find((c) => c.id === id)
-    if (!coll) return
-    setDeleteConfirm({ type: 'collection', id, name: coll.name, count: coll.publication_count })
-  }, [collections])
-
-  const handleRequestDeleteSubcollection = useCallback((collectionId: string, subId: string) => {
-    const subs = subcollectionsMap.get(collectionId) ?? []
-    const sub = subs.find((s) => s.id === subId)
-    if (!sub) return
-    setDeleteConfirm({ type: 'subcollection', id: subId, name: sub.name, count: 0, parentId: collectionId })
-  }, [subcollectionsMap])
-
-  const handleConfirmDelete = useCallback(async () => {
-    if (!deleteConfirm) return
-    try {
-      if (deleteConfirm.type === 'collection') {
-        await deleteCollection(deleteConfirm.id)
-        if (selectedCollectionId === deleteConfirm.id) setSelectedCollectionId(null)
-        await refreshCollections()
-        // Remove this collection from all publication pills immediately
-        setPubCollectionsMap((prev) => {
-          const next = new Map(prev)
-          for (const [workId, summaries] of next) {
-            const filtered = summaries.filter((s) => s.id !== deleteConfirm.id)
-            if (filtered.length !== summaries.length) next.set(workId, filtered)
-          }
-          return next
-        })
-      } else {
-        if (deleteConfirm.parentId) {
-          await deleteSubcollection(deleteConfirm.parentId, deleteConfirm.id)
-          const subs = await fetchSubcollections(deleteConfirm.parentId).catch(() => [] as SubcollectionPayload[])
-          handleSubcollectionsFetched(deleteConfirm.parentId, subs)
-        }
-      }
-    } catch {
-      setToast(`Failed to delete ${deleteConfirm.type}`)
-    }
-    setDeleteConfirm(null)
-  }, [deleteConfirm, selectedCollectionId, refreshCollections, handleSubcollectionsFetched])
-
-  // ---- add to collection (from "+" button on card) ----
-  const handleAddToCollection = useCallback(async (workId: string, collectionId: string) => {
-    try {
-      await addPublicationsToCollection(collectionId, [workId])
-      const coll = collections.find((c) => c.id === collectionId)
-      setToast(`Added to ${coll?.name || 'collection'}`)
-      await Promise.all([refreshCollections(), refreshPubCollections(workId)])
-    } catch {
-      setToast('Failed to add publication')
-    }
-  }, [collections, refreshCollections, refreshPubCollections])
-
-  // ---- subcollection CRUD ----
   const handleCreateSubcollection = useCallback(async (collectionId: string, name: string) => {
     try {
       await createSubcollection(collectionId, { name })
-      const subs = await fetchSubcollections(collectionId).catch(() => [] as SubcollectionPayload[])
-      handleSubcollectionsFetched(collectionId, subs)
-      await refreshCollections()
+      await Promise.all([refreshSubcollections(collectionId), refreshCollections()])
+      setExpandedIds((current) => new Set(current).add(collectionId))
+      setToast('Subcollection created')
     } catch {
       setToast('Failed to create subcollection')
     }
-  }, [handleSubcollectionsFetched, refreshCollections])
+  }, [refreshCollections, refreshSubcollections])
 
   const handleRenameSubcollection = useCallback(async (collectionId: string, subId: string, name: string) => {
     try {
       await updateSubcollection(collectionId, subId, { name })
-      const subs = await fetchSubcollections(collectionId).catch(() => [] as SubcollectionPayload[])
-      handleSubcollectionsFetched(collectionId, subs)
+      await refreshSubcollections(collectionId)
+      setToast('Subcollection renamed')
     } catch {
       setToast('Failed to rename subcollection')
     }
-  }, [handleSubcollectionsFetched])
+  }, [refreshSubcollections])
 
-  // ---- browse mode: remove pub from collection ----
-  const handleRemovePub = useCallback(async (workId: string) => {
-    if (!selectedCollectionId) return
+  const handleDeleteConfirmed = useCallback(async () => {
+    if (!deleteConfirm) return
     try {
-      await removePublicationFromCollection(selectedCollectionId, workId)
-      await Promise.all([refreshCollectionPubs(), refreshCollections()])
+      if (deleteConfirm.type === 'collection') {
+        await deleteCollection(deleteConfirm.id)
+        await Promise.all([refreshCollections(), refreshPublicationCollections()])
+        if (selectedCollectionId === deleteConfirm.id) {
+          setWorkspaceParams({ view: 'all', collection: null, subcollection: null })
+        }
+        setCollectionPubs([])
+      } else if (deleteConfirm.parentId) {
+        await deleteSubcollection(deleteConfirm.parentId, deleteConfirm.id)
+        await Promise.all([refreshSubcollections(deleteConfirm.parentId), refreshCollections(), refreshCollectionPublications(deleteConfirm.parentId)])
+        if (selectedSubcollectionId === deleteConfirm.id) {
+          setWorkspaceParams({ subcollection: null })
+        }
+      }
+      setToast(`Deleted ${deleteConfirm.name}`)
     } catch {
-      setToast('Failed to remove publication')
+      setToast(`Failed to delete ${deleteConfirm.type}`)
+    } finally {
+      setDeleteConfirm(null)
     }
-  }, [selectedCollectionId, refreshCollectionPubs, refreshCollections])
+  }, [
+    deleteConfirm,
+    refreshCollectionPublications,
+    refreshCollections,
+    refreshPublicationCollections,
+    refreshSubcollections,
+    selectedCollectionId,
+    selectedSubcollectionId,
+    setWorkspaceParams,
+  ])
 
-  // ---- browse mode: move publication to subcollection ----
-  const handleMoveToSubcollection = useCallback(async (membershipId: string, targetSubcollectionId: string | null) => {
-    if (!selectedCollectionId) return
-    try {
-      await movePublicationSubcollection(selectedCollectionId, membershipId, targetSubcollectionId)
-      setPulsingId(targetSubcollectionId || selectedCollectionId)
-      setTimeout(() => setPulsingId(null), 700)
-      await refreshCollectionPubs()
-    } catch {
-      setToast('Failed to move publication')
-    }
-  }, [selectedCollectionId, refreshCollectionPubs])
-
-  // ---- browse mode: reorder pubs via drag ----
-  const handleBrowseDragStart = useCallback((idx: number) => {
-    setBrowseDragIdx(idx)
-    setBrowseDropIdx(null)
-  }, [])
-
-  const handleBrowseDragOver = useCallback((e: React.DragEvent, idx: number) => {
-    e.preventDefault()
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    setBrowseDropIdx(e.clientY < rect.top + rect.height / 2 ? idx : idx + 1)
-  }, [])
-
-  const handleBrowseDrop = useCallback(async () => {
-    if (browseDragIdx === null || browseDropIdx === null || !selectedCollectionId) {
-      setBrowseDragIdx(null)
-      setBrowseDropIdx(null)
+  const addWorkIdsToCollection = useCallback(async (workIds: string[], collectionId: string, subcollectionId: string | null) => {
+    if (!collectionId || workIds.length === 0) return
+    const uniqueWorkIds = Array.from(new Set(workIds))
+    const toAdd = uniqueWorkIds.filter((workId) => !(pubCollectionsMap.get(workId) ?? []).some((membership) => membership.id === collectionId))
+    if (toAdd.length === 0) {
+      setToast('Selected publications are already in that collection')
       return
     }
-    // Adjust for removal of dragged item
-    const insertAt = browseDropIdx > browseDragIdx ? browseDropIdx - 1 : browseDropIdx
-    if (insertAt === browseDragIdx) {
-      setBrowseDragIdx(null)
-      setBrowseDropIdx(null)
-      return
-    }
-    const reordered = [...collectionPubs]
-    const [moved] = reordered.splice(browseDragIdx, 1)
-    reordered.splice(insertAt, 0, moved)
-    setCollectionPubs(reordered)
-    setBrowseDragIdx(null)
-    setBrowseDropIdx(null)
     try {
-      await reorderCollectionPublications(selectedCollectionId, reordered.map((p) => p.work_id))
+      const memberships = await addPublicationsToCollection(collectionId, toAdd)
+      if (subcollectionId) {
+        await Promise.allSettled(memberships.map((membership) => movePublicationSubcollection(collectionId, membership.id, subcollectionId)))
+      }
+      await Promise.all([
+        refreshCollections(),
+        refreshPublicationCollections(),
+        selectedCollectionId === collectionId ? refreshCollectionPublications(collectionId) : Promise.resolve(),
+        refreshSubcollections(collectionId),
+      ])
+      const collectionName = collections.find((collection) => collection.id === collectionId)?.name || 'collection'
+      setToast(`Added to ${collectionName}`)
     } catch {
-      setToast('Failed to reorder')
+      setToast('Failed to add publications')
     }
-  }, [browseDragIdx, browseDropIdx, collectionPubs, selectedCollectionId])
+  }, [
+    collections,
+    pubCollectionsMap,
+    refreshCollectionPublications,
+    refreshCollections,
+    refreshPublicationCollections,
+    refreshSubcollections,
+    selectedCollectionId,
+  ])
 
-  // ---- focus effects ----
-  useEffect(() => {
-    if (creatingCollection) newCollectionInputRef.current?.focus()
-  }, [creatingCollection])
+  const moveMemberships = useCallback(async (memberships: Array<{ membership_id: string; work_id: string }>, targetSubcollectionId: string | null) => {
+    if (!selectedCollectionId || memberships.length === 0) return
+    try {
+      await Promise.allSettled(memberships.map((membership) => movePublicationSubcollection(selectedCollectionId, membership.membership_id, targetSubcollectionId)))
+      await Promise.all([refreshCollectionPublications(selectedCollectionId), refreshCollections(), refreshSubcollections(selectedCollectionId)])
+      setToast('Moved publication selection')
+    } catch {
+      setToast('Failed to move publications')
+    }
+  }, [refreshCollectionPublications, refreshCollections, refreshSubcollections, selectedCollectionId])
 
-  // ---- browse filtered pubs ----
-  const browsePubs = useMemo(() => {
-    if (!selectedSubcollectionId) return collectionPubs
-    return collectionPubs.filter((p) => p.subcollection_id === selectedSubcollectionId)
-  }, [collectionPubs, selectedSubcollectionId])
+  const removeWorkIdsFromCollection = useCallback(async (workIds: string[]) => {
+    if (!selectedCollectionId || workIds.length === 0) return
+    try {
+      await Promise.allSettled(workIds.map((workId) => removePublicationFromCollection(selectedCollectionId, workId)))
+      await Promise.all([refreshCollectionPublications(selectedCollectionId), refreshCollections(), refreshPublicationCollections(), refreshSubcollections(selectedCollectionId)])
+      setSelectedWorkIds((current) => {
+        const next = new Set(current)
+        workIds.forEach((workId) => next.delete(workId))
+        return next
+      })
+      setToast('Removed from collection')
+    } catch {
+      setToast('Failed to remove publications')
+    }
+  }, [refreshCollectionPublications, refreshCollections, refreshPublicationCollections, refreshSubcollections, selectedCollectionId])
 
-  // ---- render ----
+  const selectedLibraryItems = visibleLibraryItems.filter((item) => selectedWorkIds.has(item.id))
+  const selectedCollectionItems = visibleCollectionItems.filter((item) => selectedWorkIds.has(item.work_id))
+
   return (
-    <div className={cn(
-      'flex flex-col bg-[hsl(var(--surface-drilldown-elevated))]',
-      pageMode ? 'min-h-[calc(100vh-11rem)]' : 'h-full min-h-0',
-    )}>
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-6 py-3">
-        <div className="flex items-center gap-4">
-          <div className="space-y-1">
-            <h2 className="text-base font-semibold text-foreground">Collections</h2>
-            {pageMode ? (
-              <p className="text-sm text-muted-foreground">
-                Browse, curate, and group publications before opening the full publication detail view.
-              </p>
-            ) : null}
-          </div>
-          <div className="flex gap-1">
-            {(['organise', 'browse'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                className={cn(
-                  'px-3 py-1.5 text-sm capitalize rounded-md transition-colors',
-                  mode === m
-                    ? 'bg-foreground text-background font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted',
-                )}
-                onClick={() => setMode(m)}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
+    <div className={cn('flex flex-col bg-[hsl(var(--surface-drilldown-elevated))]', pageMode ? 'min-h-[calc(100vh-11rem)]' : 'h-full min-h-0')}>
+      <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold text-foreground">Collections workspace</h2>
+          <p className="text-sm text-muted-foreground">
+            Curate paper sets in batch, then open the publication detail view without losing context.
+          </p>
         </div>
         {onClose && !pageMode ? (
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Close collections"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             onClick={onClose}
+            aria-label="Close collections"
           >
             <X className="h-4 w-4" />
           </button>
         ) : null}
       </div>
 
-      {/* Body */}
       {loading ? (
-        <div className="flex items-center justify-center h-64 text-sm text-muted-foreground">
-          Loading collections...
-        </div>
+        <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">Loading collections...</div>
       ) : (
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Shared sidebar for both modes */}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <CollectionSidebar
             collections={collections}
-            mode={mode}
+            mode="browse"
             expandedIds={expandedIds}
             onToggleExpand={handleToggleExpand}
             subcollectionsMap={subcollectionsMap}
-            onSubcollectionsFetched={handleSubcollectionsFetched}
+            onSubcollectionsFetched={(collectionId, subs) => setSubcollectionsMap((current) => new Map(current).set(collectionId, subs))}
             selectedCollectionId={selectedCollectionId}
             selectedSubcollectionId={selectedSubcollectionId}
-            onSelectCollection={setSelectedCollectionId}
-            onSelectSubcollection={setSelectedSubcollectionId}
-            isDragging={dragWorkId !== null}
-            dropTargetId={dropTargetId}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            pulsingId={pulsingId}
+            onSelectCollection={(collectionId) => setWorkspaceParams({ view: 'collection', collection: collectionId, subcollection: null })}
+            onSelectSubcollection={(collectionId, subcollectionId) => setWorkspaceParams({ view: 'collection', collection: collectionId, subcollection: subcollectionId })}
+            pulsingId={null}
             creatingCollection={creatingCollection}
             onStartCreateCollection={handleStartCreateCollection}
             newCollectionName={newCollectionName}
             setNewCollectionName={setNewCollectionName}
             newCollectionColour={newCollectionColour}
-            onCreateCollection={handleCreateCollection}
-            onCancelCreateCollection={() => setCreatingCollection(false)}
-            newCollectionInputRef={newCollectionInputRef}
+            onCreateCollection={() => { void handleCreateCollection() }}
+            onCancelCreateCollection={() => {
+              setCreatingCollection(false)
+              setNewCollectionName('')
+            }}
             pageMode={pageMode}
-            onRenameCollection={handleRenameCollection}
-            onDeleteCollection={handleRequestDeleteCollection}
-            onColourChange={handleColourChange}
-            onCreateSubcollection={handleCreateSubcollection}
-            onRenameSubcollection={handleRenameSubcollection}
-            onDeleteSubcollection={handleRequestDeleteSubcollection}
+            onRenameCollection={(id, name) => { void handleRenameCollection(id, name) }}
+            onDeleteCollection={(id) => {
+              const collection = collections.find((item) => item.id === id)
+              if (!collection) return
+              setDeleteConfirm({ type: 'collection', id, name: collection.name, count: collection.publication_count })
+            }}
+            onColourChange={(id, colour) => { void handleColourChange(id, colour) }}
+            onCreateSubcollection={(collectionId, name) => { void handleCreateSubcollection(collectionId, name) }}
+            onRenameSubcollection={(collectionId, subId, name) => { void handleRenameSubcollection(collectionId, subId, name) }}
+            onDeleteSubcollection={(collectionId, subId) => {
+              const subcollection = (subcollectionsMap.get(collectionId) ?? []).find((item) => item.id === subId)
+              if (!subcollection) return
+              setDeleteConfirm({
+                type: 'subcollection',
+                id: subId,
+                name: subcollection.name,
+                count: subcollection.publication_count,
+                parentId: collectionId,
+              })
+            }}
+            allPublicationsCount={libraryItems.length}
+            uncollectedCount={uncollectedCount}
+            selectedViewKind={selectedViewKind}
+            onSelectAllPublications={() => setWorkspaceParams({ view: 'all', collection: null, subcollection: null })}
+            onSelectUncollected={() => setWorkspaceParams({ view: 'uncollected', collection: null, subcollection: null })}
           />
 
-          {/* Main content panel */}
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            {mode === 'organise' ? (
-              <>
-                {/* Organise toolbar */}
-                <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border">
-                  {/* Filter toggle */}
-                  <div className="relative inline-flex rounded-full border border-border bg-muted p-0.5 text-xs">
-                    {/* Sliding indicator */}
-                    <div
-                      className={cn(
-                        'absolute inset-y-0.5 w-[50%] rounded-full bg-card shadow-sm transition-transform duration-200 ease-in-out',
-                        pubFilter === 'uncollected' ? 'translate-x-full' : 'translate-x-0',
-                      )}
-                    />
-                    {([
-                      { value: 'all' as PubFilter, label: 'All publications' },
-                      { value: 'uncollected' as PubFilter, label: 'Uncollected' },
-                    ]).map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        className={cn(
-                          'relative z-10 w-[50%] px-3 py-1 rounded-full whitespace-nowrap transition-colors duration-200',
-                          pubFilter === opt.value ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground',
-                        )}
-                        onClick={() => setPubFilter(opt.value)}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+          <div className="flex min-w-0 flex-1 flex-col bg-white">
+            <div className="border-b border-border px-6 py-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-xl font-semibold text-foreground">
+                      {selectedViewKind === 'collection'
+                        ? selectedSubcollection
+                          ? `${selectedCollection?.name || 'Collection'} / ${selectedSubcollection.name}`
+                          : (selectedCollection?.name || 'Collection')
+                        : selectedViewKind === 'uncollected'
+                          ? 'Uncollected publications'
+                          : 'All publications'}
+                    </h3>
+                    <span className="rounded-full bg-[hsl(var(--tone-neutral-100))] px-2.5 py-1 text-[0.72rem] font-semibold text-[hsl(var(--tone-neutral-600))]">
+                      {selectedViewKind === 'collection' ? visibleCollectionItems.length : visibleLibraryItems.length}
+                    </span>
                   </div>
-                  <div className="relative flex-1 max-w-xs">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <input
-                      className="house-input w-full pl-8 pr-3 py-1.5 text-sm rounded-md"
-                      aria-label="Search publications"
-                      placeholder="Search publications..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    {searchQuery && (
-                      <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearchQuery('')}>
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  <span className="text-xs text-muted-foreground">{filteredWorks.length} publications</span>
+                  <p className="max-w-3xl text-sm text-muted-foreground">
+                    {selectedViewKind === 'collection'
+                      ? selectedSubcollection
+                        ? 'Focused subgroup inside this collection.'
+                        : 'Browse and maintain the publications in this collection.'
+                      : 'Use bulk actions to organise publications without leaving the profile workspace.'}
+                  </p>
                 </div>
-                {/* Organise publication cards */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                  {filteredWorks.map((work) => {
-                    const colls = pubCollectionsMap.get(work.id) ?? []
-                    return (
-                      <PublicationCard
-                        key={work.id}
-                        mode="organise"
-                        workId={work.id}
-                        title={work.title}
-                        venue={work.venue_name}
-                        year={work.year}
-                        isDragging={dragWorkId === work.id}
-                        collectionMemberships={colls}
-                        collections={collections}
-                        subcollectionsMap={subcollectionsMap}
-                        onSubcollectionsFetched={handleSubcollectionsFetched}
-                        onDragStart={() => handleDragStart(work.id)}
-                        onDragEnd={() => { setDragWorkId(null); setDropTargetId(null) }}
-                        onAddToCollection={(collId) => handleAddToCollection(work.id, collId)}
-                      />
-                    )
-                  })}
-                  {/* Organise empty states */}
-                  {filteredWorks.length === 0 && (
-                    <div className="text-center text-sm text-muted-foreground py-12">
-                      {searchQuery
-                        ? 'No publications match your search or filters.'
-                        : pubFilter === 'uncollected'
-                          ? 'All publications are in at least one collection.'
-                          : 'No publications found.'}
-                    </div>
-                  )}
+                <div className="rounded-[1.25rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-4 py-3 text-right">
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Visible Items</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">
+                    {selectedViewKind === 'collection' ? visibleCollectionItems.length : visibleLibraryItems.length}
+                  </p>
                 </div>
-              </>
-            ) : (
-              <>
-                {/* Browse mode content */}
-                {!selectedCollectionId ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center text-sm text-muted-foreground">
-                    {collections.length === 0 ? (
-                      <>
-                        <p className="text-base font-medium text-foreground">No collections yet.</p>
-                        <p>Create your first collection from the left rail, then add publications to it.</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-base font-medium text-foreground">Select a collection to browse its publications.</p>
-                        <p>Choose a collection from the sidebar, or switch to Organise to assign publications.</p>
-                      </>
-                    )}
-                  </div>
-                ) : browsePubs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center text-sm text-muted-foreground">
-                    <p className="text-base font-medium text-foreground">This collection is empty.</p>
-                    <p>No publications are assigned here yet. Switch to Organise to add publications or create a subcollection for a narrower view.</p>
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <label className="relative min-w-[18rem] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setWorkspaceParams({ q: event.target.value || null })}
+                    className="house-input h-10 w-full rounded-xl border-border bg-background pl-10 pr-10 text-sm"
+                    placeholder="Search this workspace"
+                    aria-label="Search this workspace"
+                  />
+                  {query ? (
                     <button
                       type="button"
-                      className="text-[hsl(var(--tone-accent-700))] hover:text-[hsl(var(--tone-accent-900))] font-medium"
-                      onClick={() => setMode('organise')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                      onClick={() => setWorkspaceParams({ q: null })}
+                      aria-label="Clear search"
                     >
-                      Switch to Organise to add papers
+                      <X className="h-4 w-4" />
                     </button>
-                  </div>
-                ) : (
-                  <div
-                    className="flex-1 overflow-y-auto p-4"
-                    onDragLeave={(e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                        setBrowseDropIdx(null)
-                      }
-                    }}
+                  ) : null}
+                </label>
+                <label className="flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+                  <span>Sort</span>
+                  <select
+                    className="bg-transparent text-foreground outline-none"
+                    value={sort}
+                    onChange={(event) => setWorkspaceParams({ sort: event.target.value })}
                   >
-                    {browsePubs.map((pub, idx) => (
-                      <div key={pub.membership_id}>
-                        {/* Insertion line above */}
-                        <div className={cn(
-                          'h-0.5 rounded-full mx-1 transition-all duration-100',
-                          browseDragIdx !== null && browseDropIdx === idx && browseDragIdx !== idx && browseDragIdx !== idx - 1
-                            ? 'bg-[hsl(var(--tone-accent-500))] mb-1.5 mt-0.5'
-                            : 'mb-2',
-                        )} />
-                        <div className={cn(browseDragIdx === idx && 'opacity-25 scale-[0.98] transition-transform')}>
-                          <PublicationCard
-                            mode="browse"
-                            workId={pub.work_id}
-                            membershipId={pub.membership_id}
-                            title={pub.title}
-                            venue={pub.journal}
-                            year={pub.year}
-                            citations={pub.citations}
-                            subcollectionId={pub.subcollection_id}
-                            isDragging={browseDragIdx === idx}
-                            collections={collections}
-                            subcollectionsMap={subcollectionsMap}
-                            onSubcollectionsFetched={handleSubcollectionsFetched}
-                            currentCollectionId={selectedCollectionId}
-                            onDragStart={() => handleBrowseDragStart(idx)}
-                            onDragOver={(e) => handleBrowseDragOver(e, idx)}
-                            onDrop={handleBrowseDrop}
-                            onRemove={() => handleRemovePub(pub.work_id)}
-                            onMoveToSubcollection={(subId) => handleMoveToSubcollection(pub.membership_id, subId)}
-                            onClick={() => onOpenPublication(pub.work_id)}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    {/* Insertion line at the end */}
-                    <div className={cn(
-                      'h-0.5 rounded-full mx-1 mt-1 transition-all duration-100',
-                      browseDragIdx !== null && browseDropIdx === browsePubs.length && browseDragIdx !== browsePubs.length - 1
-                        ? 'bg-[hsl(var(--tone-accent-500))]'
-                        : 'bg-transparent',
-                    )} />
+                    <option value="recent">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="title">Title A-Z</option>
+                    {selectedViewKind === 'collection' ? <option value="citations">Most cited</option> : null}
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div className="border-b border-border px-6 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-border text-[hsl(var(--tone-accent-600))] focus:ring-[hsl(var(--tone-accent-500))]"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Select all visible publications"
+                  />
+                  <span>{selectedVisibleCount > 0 ? `${selectedVisibleCount} selected` : `${visibleWorkIds.length} visible`}</span>
+                </label>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {selectedViewKind === 'collection' ? (
+                    <>
+                      <label className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+                        <ArrowRightLeft className="h-4 w-4" />
+                        <select
+                          className="bg-transparent text-foreground outline-none"
+                          value={bulkMoveTargetId}
+                          onChange={(event) => setBulkMoveTargetId(event.target.value)}
+                        >
+                          <option value="">Move to...</option>
+                          <option value="__top__">Top level</option>
+                          {selectedSubcollections.map((subcollection) => (
+                            <option key={subcollection.id} value={subcollection.id}>{subcollection.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-[hsl(var(--tone-accent-100))] disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!bulkMoveTargetId || selectedVisibleCount === 0}
+                        onClick={() => {
+                          void moveMemberships(
+                            selectedCollectionItems.map((item) => ({ membership_id: item.membership_id, work_id: item.work_id })),
+                            bulkMoveTargetId === '__top__' ? null : bulkMoveTargetId,
+                          )
+                        }}
+                      >
+                        Move selection
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-full border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm font-medium text-[hsl(var(--tone-danger-700))] transition-colors hover:bg-[hsl(var(--tone-danger-100))] disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={selectedVisibleCount === 0}
+                        onClick={() => { void removeWorkIdsFromCollection(selectedCollectionItems.map((item) => item.work_id)) }}
+                      >
+                        Remove from collection
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <label className="rounded-full border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+                        <select
+                          className="bg-transparent text-foreground outline-none"
+                          value={bulkTargetCollectionId}
+                          onChange={(event) => {
+                            setBulkTargetCollectionId(event.target.value)
+                            setBulkTargetSubcollectionId('')
+                          }}
+                        >
+                          <option value="">Choose collection...</option>
+                          {collections.map((collection) => (
+                            <option key={collection.id} value={collection.id}>{collection.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="rounded-full border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+                        <select
+                          className="bg-transparent text-foreground outline-none"
+                          value={bulkTargetSubcollectionId}
+                          onChange={(event) => setBulkTargetSubcollectionId(event.target.value)}
+                          disabled={!bulkTargetCollectionId}
+                        >
+                          <option value="">Top level</option>
+                          {(subcollectionsMap.get(bulkTargetCollectionId) ?? []).map((subcollection) => (
+                            <option key={subcollection.id} value={subcollection.id}>{subcollection.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-[hsl(var(--tone-accent-100))] disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!bulkTargetCollectionId || selectedVisibleCount === 0}
+                        onClick={() => { void addWorkIdsToCollection(selectedLibraryItems.map((item) => item.id), bulkTargetCollectionId, bulkTargetSubcollectionId || null) }}
+                      >
+                        Add selected
+                      </button>
+                    </>
+                  )}
+                  {selectedVisibleCount > 0 ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-full border border-border bg-transparent px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--tone-neutral-100))] hover:text-foreground"
+                      onClick={() => setSelectedWorkIds(new Set())}
+                    >
+                      Clear selection
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {loadingCollection ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading collection...</div>
+              ) : (selectedViewKind === 'collection' ? visibleCollectionItems.length : visibleLibraryItems.length) === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+                  <div className="rounded-full bg-[hsl(var(--tone-accent-100))] p-3 text-[hsl(var(--tone-accent-700))]">
+                    <Layers3 className="h-6 w-6" />
                   </div>
-                )}
-              </>
-            )}
+                  <div className="space-y-1">
+                    <p className="text-base font-medium text-foreground">
+                      {selectedViewKind === 'collection'
+                        ? selectedSubcollection ? 'This subcollection is empty.' : 'This collection is empty.'
+                        : selectedViewKind === 'uncollected'
+                          ? 'Everything is already assigned to a collection.'
+                          : 'No publications match this search.'}
+                    </p>
+                    <p className="max-w-lg text-sm text-muted-foreground">
+                      {selectedViewKind === 'collection'
+                        ? 'Add papers from your library, then return here to curate them in context.'
+                        : 'Try a broader query or switch to another library view.'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedViewKind === 'collection'
+                    ? visibleCollectionItems.map((item) => (
+                        <PublicationCard
+                          key={item.membership_id}
+                          variant="collection"
+                          workId={item.work_id}
+                          membershipId={item.membership_id}
+                          title={item.title}
+                          venue={item.journal}
+                          year={item.year}
+                          doi={item.doi}
+                          citations={item.citations}
+                          checked={selectedWorkIds.has(item.work_id)}
+                          onToggleChecked={() => toggleSelectedWork(item.work_id)}
+                          onOpen={() => onOpenPublication(item.work_id)}
+                          collections={collections}
+                          subcollectionsMap={subcollectionsMap}
+                          onSubcollectionsFetched={(collectionId, subs) => setSubcollectionsMap((current) => new Map(current).set(collectionId, subs))}
+                          currentCollectionId={selectedCollectionId || ''}
+                          subcollectionLabel={item.subcollection_id ? selectedSubcollections.find((subcollection) => subcollection.id === item.subcollection_id)?.name || null : null}
+                          onMoveToSubcollection={(subcollectionId) => { void moveMemberships([{ membership_id: item.membership_id, work_id: item.work_id }], subcollectionId) }}
+                          onRemoveFromCollection={() => { void removeWorkIdsFromCollection([item.work_id]) }}
+                        />
+                      ))
+                    : visibleLibraryItems.map((item) => (
+                        <PublicationCard
+                          key={item.id}
+                          variant="library"
+                          workId={item.id}
+                          title={item.title}
+                          venue={item.venue_name}
+                          year={item.year}
+                          doi={item.doi}
+                          checked={selectedWorkIds.has(item.id)}
+                          onToggleChecked={() => toggleSelectedWork(item.id)}
+                          onOpen={() => onOpenPublication(item.id)}
+                          collections={collections}
+                          subcollectionsMap={subcollectionsMap}
+                          onSubcollectionsFetched={(collectionId, subs) => setSubcollectionsMap((current) => new Map(current).set(collectionId, subs))}
+                          collectionMemberships={item.collectionMemberships}
+                          onAddToCollection={(collectionId, subcollectionId) => { void addWorkIdsToCollection([item.id], collectionId, subcollectionId) }}
+                        />
+                      ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Confirmation dialog */}
-      {deleteConfirm && (
+      {deleteConfirm ? (
         <ConfirmDeleteDialog
-          open={!!deleteConfirm}
-          title={`Delete ${deleteConfirm.type === 'collection' ? 'collection' : 'subcollection'}`}
+          open={Boolean(deleteConfirm)}
+          title={`Delete ${deleteConfirm.type}`}
           description={
             deleteConfirm.type === 'collection'
-              ? `Delete '${deleteConfirm.name}'? This will remove ${deleteConfirm.count} publication${deleteConfirm.count !== 1 ? 's' : ''} from this collection. This cannot be undone.`
+              ? `Delete '${deleteConfirm.name}'? This will remove ${deleteConfirm.count} publication${deleteConfirm.count === 1 ? '' : 's'} from this collection. This cannot be undone.`
               : `Delete '${deleteConfirm.name}'? Publications will remain in the parent collection.`
           }
-          onConfirm={handleConfirmDelete}
+          onConfirm={() => { void handleDeleteConfirmed() }}
           onCancel={() => setDeleteConfirm(null)}
         />
-      )}
-
-      {/* Toast */}
-      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
-
-      {/* Animation keyframe */}
-      <style>{`
-        @keyframes slide-up {
-          from { opacity: 0; transform: translate(-50%, 12px); }
-          to { opacity: 1; transform: translate(-50%, 0); }
-        }
-        .animate-slide-up { animation: slide-up 0.2s ease-out; }
-      `}</style>
+      ) : null}
+      {toast ? <Toast message={toast} onDone={() => setToast(null)} /> : null}
     </div>
   )
 }

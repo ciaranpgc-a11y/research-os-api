@@ -1,165 +1,205 @@
-import { useState } from 'react'
-import { GripVertical, Plus, ArrowRightLeft, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ArrowRightLeft, ExternalLink, Plus, X } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
-import { COLLECTION_COLOUR_HEX, type CollectionPayload, type SubcollectionPayload, type PublicationCollectionSummary } from '@/types/collections'
+import {
+  COLLECTION_COLOUR_HEX,
+  type CollectionPayload,
+  type PublicationCollectionSummary,
+  type SubcollectionPayload,
+} from '@/types/collections'
 import { CollectionDropdown } from './CollectionDropdown'
 
-interface PublicationCardOrganiseProps {
-  mode: 'organise'
+type SharedPublicationCardProps = {
   workId: string
   title: string
   venue: string | null
   year: number | null
-  isDragging: boolean
-  collectionMemberships: PublicationCollectionSummary[]
+  doi: string | null
+  checked: boolean
+  onToggleChecked: () => void
+  onOpen: () => void
   collections: CollectionPayload[]
   subcollectionsMap: Map<string, SubcollectionPayload[]>
   onSubcollectionsFetched: (collectionId: string, subs: SubcollectionPayload[]) => void
-  onDragStart: () => void
-  onDragEnd: () => void
+}
+
+type LibraryPublicationCardProps = SharedPublicationCardProps & {
+  variant: 'library'
+  collectionMemberships: PublicationCollectionSummary[]
   onAddToCollection: (collectionId: string, subcollectionId: string | null) => void
 }
 
-interface PublicationCardBrowseProps {
-  mode: 'browse'
-  workId: string
+type CollectionPublicationCardProps = SharedPublicationCardProps & {
+  variant: 'collection'
   membershipId: string
-  title: string
-  venue: string | null
-  year: number | null
   citations: number
-  subcollectionId: string | null
-  isDragging: boolean
-  collections: CollectionPayload[]
-  subcollectionsMap: Map<string, SubcollectionPayload[]>
-  onSubcollectionsFetched: (collectionId: string, subs: SubcollectionPayload[]) => void
   currentCollectionId: string
-  onDragStart: () => void
-  onDragOver: (e: React.DragEvent) => void
-  onDrop: () => void
-  onRemove: () => void
+  subcollectionLabel: string | null
   onMoveToSubcollection: (subcollectionId: string | null) => void
-  onClick: () => void
+  onRemoveFromCollection: () => void
 }
 
-type PublicationCardProps = PublicationCardOrganiseProps | PublicationCardBrowseProps
+type PublicationCardProps = LibraryPublicationCardProps | CollectionPublicationCardProps
+
+function MetaPill({ children }: { children: string }) {
+  return (
+    <span className="rounded-full bg-[hsl(var(--tone-neutral-100))] px-2.5 py-1 text-[0.72rem] font-medium text-[hsl(var(--tone-neutral-700))]">
+      {children}
+    </span>
+  )
+}
 
 export function PublicationCard(props: PublicationCardProps) {
   const [showDropdown, setShowDropdown] = useState(false)
-  const metaLine = [props.venue, props.year].filter(Boolean).join(' · ')
 
-  if (props.mode === 'organise') {
-    const { title, isDragging, collectionMemberships, collections, subcollectionsMap, onSubcollectionsFetched, onDragStart, onDragEnd, onAddToCollection } = props
-    const existingIds = new Set(collectionMemberships.map((m) => m.id))
-    return (
-      <div
-        draggable
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        className={cn(
-          'group relative flex items-center p-3 bg-muted/40 border border-border rounded-lg gap-2.5 cursor-grab active:cursor-grabbing',
-          isDragging && 'opacity-50',
-        )}
-      >
-        <GripVertical className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-foreground truncate">{title}</div>
-          <div className="flex items-center gap-2 mt-0.5 min-w-0">
-            <span className="text-xs text-muted-foreground truncate shrink-0">{metaLine}</span>
-            {collectionMemberships.length > 0 && (
-              <span className="flex items-center gap-1 flex-wrap min-w-0">
-                {collectionMemberships.map((c) => (
-                  <span
-                    key={c.id}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium max-w-[120px] truncate"
-                    style={{
-                      backgroundColor: `${COLLECTION_COLOUR_HEX[c.colour]}20`,
-                      color: COLLECTION_COLOUR_HEX[c.colour],
-                    }}
-                  >
-                    {c.name}
-                  </span>
-                ))}
-              </span>
-            )}
-          </div>
-        </div>
-        <button
-          type="button"
-          className="house-section-tool-button opacity-0 group-hover:opacity-100 inline-flex h-6 w-6 items-center justify-center rounded flex-shrink-0"
-          title="Add to collection"
-          aria-label="Add publication to collection"
-          onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown) }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-        {showDropdown && (
-          <CollectionDropdown
-            collections={collections}
-            subcollectionsMap={subcollectionsMap}
-            onSubcollectionsFetched={onSubcollectionsFetched}
-            existingMembershipIds={existingIds}
-            onSelect={(collId, subId) => { onAddToCollection(collId, subId); setShowDropdown(false) }}
-            onClose={() => setShowDropdown(false)}
-            style={{ top: '100%', right: 0, marginTop: 4 }}
-          />
-        )}
-      </div>
-    )
-  }
+  const metaPills = useMemo(() => {
+    const next: string[] = []
+    const venue = String(props.venue || '').trim()
+    const doi = String(props.doi || '').trim()
+    if (venue) {
+      next.push(venue)
+    }
+    if (props.year) {
+      next.push(String(props.year))
+    }
+    if (doi) {
+      next.push(`DOI ${doi}`)
+    }
+    if (props.variant === 'collection' && props.citations > 0) {
+      next.push(`${props.citations} citations`)
+    }
+    return next
+  }, [props])
 
-  // Browse mode
-  const { title, isDragging, currentCollectionId, collections, subcollectionsMap, onSubcollectionsFetched, onDragStart, onDragOver, onDrop, onRemove, onMoveToSubcollection, onClick } = props
   return (
-    <div
-      draggable
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      className={cn(
-        'group relative flex items-center p-3 bg-muted/40 border border-border rounded-lg gap-2.5 cursor-grab active:cursor-grabbing',
-        isDragging && 'opacity-50',
-      )}
-    >
-      <GripVertical className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
-      <div
-        className="flex-1 min-w-0 cursor-pointer"
-        onClick={onClick}
-      >
-        <div className="text-sm font-medium text-foreground truncate">{title}</div>
-        <div className="text-xs text-muted-foreground mt-0.5 truncate">{metaLine}</div>
+    <article className="group rounded-[1.15rem] border border-[hsl(var(--tone-neutral-200))] bg-white px-4 py-3 shadow-[0_14px_34px_hsl(var(--tone-neutral-900)/0.04)] transition-colors hover:border-[hsl(var(--tone-neutral-300))]">
+      <div className="flex items-start gap-3">
+        <label className="mt-1 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-[hsl(var(--tone-neutral-300))] text-[hsl(var(--tone-accent-600))] focus:ring-[hsl(var(--tone-accent-500))]"
+            checked={props.checked}
+            onChange={props.onToggleChecked}
+            aria-label={`Select ${props.title}`}
+          />
+        </label>
+
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            className="block text-left text-[0.98rem] font-semibold leading-tight text-[hsl(var(--tone-neutral-900))] transition-colors hover:text-[hsl(var(--tone-accent-700))]"
+            onClick={props.onOpen}
+          >
+            {props.title}
+          </button>
+
+          {metaPills.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {metaPills.map((item) => (
+                <MetaPill key={item}>{item}</MetaPill>
+              ))}
+            </div>
+          ) : null}
+
+          {props.variant === 'library' && props.collectionMemberships.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {props.collectionMemberships.map((membership) => (
+                <span
+                  key={membership.id}
+                  className="inline-flex max-w-[13rem] items-center gap-1 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold"
+                  style={{
+                    backgroundColor: `${COLLECTION_COLOUR_HEX[membership.colour]}1f`,
+                    color: COLLECTION_COLOUR_HEX[membership.colour],
+                  }}
+                  title={membership.name}
+                >
+                  <span className="truncate">{membership.name}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {props.variant === 'collection' ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="inline-flex items-center rounded-full bg-[hsl(var(--tone-accent-100))] px-2.5 py-1 text-[0.72rem] font-semibold text-[hsl(var(--tone-accent-800))]">
+                {props.subcollectionLabel || 'Top level'}
+              </span>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-start gap-2">
+          <div className="relative">
+            {props.variant === 'library' ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white px-2.5 py-1.5 text-[0.72rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-neutral-350))] hover:text-[hsl(var(--tone-neutral-900))]"
+                onClick={() => setShowDropdown((current) => !current)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-neutral-250))] bg-white px-2.5 py-1.5 text-[0.72rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-neutral-350))] hover:text-[hsl(var(--tone-neutral-900))]"
+                onClick={() => setShowDropdown((current) => !current)}
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                <span>Move</span>
+              </button>
+            )}
+
+            {showDropdown ? (
+              <CollectionDropdown
+                collections={props.collections}
+                subcollectionsMap={props.subcollectionsMap}
+                onSubcollectionsFetched={props.onSubcollectionsFetched}
+                existingMembershipIds={
+                  props.variant === 'library'
+                    ? new Set(props.collectionMemberships.map((membership) => membership.id))
+                    : new Set<string>()
+                }
+                onSelect={(collectionId, subcollectionId) => {
+                  if (props.variant === 'library') {
+                    props.onAddToCollection(collectionId, subcollectionId)
+                  } else {
+                    props.onMoveToSubcollection(subcollectionId)
+                  }
+                  setShowDropdown(false)
+                }}
+                onClose={() => setShowDropdown(false)}
+                style={{ top: 'calc(100% + 0.45rem)', right: 0 }}
+                limitToCollectionId={props.variant === 'collection' ? props.currentCollectionId : undefined}
+              />
+            ) : null}
+          </div>
+
+          {props.variant === 'collection' ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-2.5 py-1.5 text-[0.72rem] font-medium text-[hsl(var(--tone-danger-700))] transition-colors hover:bg-[hsl(var(--tone-danger-100))]"
+              onClick={props.onRemoveFromCollection}
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>Remove</span>
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-neutral-250))] bg-[hsl(var(--tone-neutral-50))] px-2.5 py-1.5 text-[0.72rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-neutral-350))] hover:text-[hsl(var(--tone-neutral-900))]',
+              props.variant === 'collection' && 'bg-white',
+            )}
+            onClick={props.onOpen}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            <span>Open</span>
+          </button>
+        </div>
       </div>
-      <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">{props.citations} cited</span>
-      <button
-        type="button"
-        className="house-section-tool-button opacity-0 group-hover:opacity-100 inline-flex h-6 w-6 items-center justify-center rounded flex-shrink-0"
-        title="Move to subcollection"
-        aria-label="Move publication to subcollection"
-        onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown) }}
-      >
-        <ArrowRightLeft className="h-3.5 w-3.5" />
-      </button>
-      <button
-        type="button"
-        className="text-muted-foreground hover:text-destructive p-0.5 flex-shrink-0"
-        onClick={onRemove}
-        title="Remove from collection"
-        aria-label="Remove publication from collection"
-      >
-        <X className="w-3.5 h-3.5" />
-      </button>
-      {showDropdown && (
-        <CollectionDropdown
-          collections={collections}
-          subcollectionsMap={subcollectionsMap}
-          onSubcollectionsFetched={onSubcollectionsFetched}
-          existingMembershipIds={new Set()}
-          onSelect={(_collId, subId) => { onMoveToSubcollection(subId); setShowDropdown(false) }}
-          onClose={() => setShowDropdown(false)}
-          style={{ top: '100%', right: 0, marginTop: 4 }}
-          limitToCollectionId={currentCollectionId}
-        />
-      )}
-    </div>
+    </article>
   )
 }
