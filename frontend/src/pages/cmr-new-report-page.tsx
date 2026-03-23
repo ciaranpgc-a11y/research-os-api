@@ -397,10 +397,10 @@ function buildSeverityTicks(param: CmrCanonicalParam, grade?: string): number[] 
   // Filter based on severity grade:
   // Mild: show moderate boundary only (next threshold ahead)
   // Moderate: show both boundaries (either side)
-  // Severe: show moderate boundary only (boundary behind)
+  // Severe: show both boundaries behind (mild + moderate) for context
   if (grade === 'mild') return [modSevBoundary]
   if (grade === 'moderate') return [mildModBoundary, modSevBoundary]
-  if (grade === 'severe') return [mildModBoundary]
+  if (grade === 'severe') return [mildModBoundary, modSevBoundary]
   return undefined
 }
 

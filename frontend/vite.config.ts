@@ -425,31 +425,86 @@ Do not include any parameters not in the canonical list. Do not include paramete
             jsonRes(res, { source: 'cmr', demographics: extracted.demographics, measurements: extracted.measurements })
           } else {
             // --- Echo path: extract only numeric fields that map to CMR canonical params ---
+            // Build Echo field list dynamically from ECHO_TO_CMR_MAP
+            const echoFieldDescriptions: Record<string, string> = {
+              lvef_percent: 'LV ejection fraction (%)',
+              lvedv_ml: 'LV end-diastolic volume (mL)',
+              lvedv_index_ml_m2: 'LV end-diastolic volume index (mL/m²)',
+              lvesv_ml: 'LV end-systolic volume (mL)',
+              lvesv_index_ml_m2: 'LV end-systolic volume index (mL/m²)',
+              lv_sv_ml: 'LV stroke volume (mL)',
+              lv_sv_index_ml_m2: 'LV stroke volume index (mL/m²)',
+              lv_co_l_min: 'LV cardiac output (L/min)',
+              lv_ci_l_min_m2: 'LV cardiac index (L/min/m²)',
+              lv_mass_g: 'LV mass (g)',
+              lv_mass_index_g_m2: 'LV mass index (g/m²)',
+              mapse_mm: 'Mitral annular plane systolic excursion — mean (mm)',
+              mapse_septal_mm: 'MAPSE septal (mm)',
+              mapse_lateral_mm: 'MAPSE lateral (mm)',
+              mapse_anterior_mm: 'MAPSE anterior (mm)',
+              mapse_inferior_mm: 'MAPSE inferior (mm)',
+              lvidd_mm: 'LV internal diameter in diastole (mm)',
+              lvids_mm: 'LV internal diameter in systole (mm)',
+              lv_wall_thickness_mm: 'LV wall thickness / septal thickness (mm)',
+              rvef_percent: 'RV ejection fraction (%)',
+              rvedv_ml: 'RV end-diastolic volume (mL)',
+              rvedv_index_ml_m2: 'RV end-diastolic volume index (mL/m²)',
+              rvesv_ml: 'RV end-systolic volume (mL)',
+              rvesv_index_ml_m2: 'RV end-systolic volume index (mL/m²)',
+              rv_sv_ml: 'RV stroke volume (mL)',
+              rv_sv_index_ml_m2: 'RV stroke volume index (mL/m²)',
+              tapse_mm: 'Tricuspid annular plane systolic excursion (mm)',
+              fac_percent: 'RV fractional area change (%)',
+              rv_basal_diameter_mm: 'RV basal diameter (mm)',
+              rvot_diameter_mm: 'RV outflow tract diameter (mm)',
+              la_volume_ml: 'Left atrial max volume (mL)',
+              la_volume_index_ml_m2: 'Left atrial max volume index (mL/m²)',
+              la_min_volume_ml: 'Left atrial min volume (mL)',
+              la_min_volume_index_ml_m2: 'Left atrial min volume index (mL/m²)',
+              la_ef_percent: 'Left atrial emptying fraction (%)',
+              la_diameter_mm: 'Left atrial AP diameter (mm)',
+              la_area_cm2: 'Left atrial area (cm²)',
+              ra_volume_ml: 'Right atrial max volume (mL)',
+              ra_volume_index_ml_m2: 'Right atrial max volume index (mL/m²)',
+              ra_area_cm2: 'Right atrial area (cm²)',
+              ra_ef_percent: 'Right atrial emptying fraction (%)',
+              ao_annulus_mm: 'Aortic annulus diameter (mm)',
+              ao_sinus_mm: 'Aortic sinus / sinus of Valsalva diameter (mm)',
+              sov_diameter_mm: 'Sinus of Valsalva diameter (mm)',
+              sino_tubular_junction_mm: 'Sino-tubular junction diameter (mm)',
+              proximal_ascending_aorta_mm: 'Proximal ascending aorta diameter (mm)',
+              aortic_arch_mm: 'Aortic arch diameter (mm)',
+              desc_aorta_mm: 'Descending aorta diameter (mm)',
+              main_pulmonary_artery_diameter_mm: 'Main pulmonary artery diameter (mm)',
+              aortic_vmax_m_s: 'Aortic valve peak velocity (m/s)',
+              aortic_peak_gradient_mmhg: 'Aortic valve peak / max pressure gradient (mmHg)',
+              aortic_mean_gradient_mmhg: 'Aortic valve mean pressure gradient (mmHg)',
+              aortic_valve_area_cm2: 'Aortic valve area / AVA (cm²)',
+              aortic_dvi: 'Dimensionless velocity index / DVI (ratio)',
+              aortic_regurgitant_fraction_percent: 'Aortic regurgitant fraction (%)',
+              pulmonary_valve_vmax_m_s: 'Pulmonary valve peak velocity (m/s)',
+              pulmonary_peak_gradient_mmhg: 'Pulmonary valve peak gradient (mmHg)',
+              pulmonary_mean_gradient_mmhg: 'Pulmonary valve mean gradient (mmHg)',
+              pulmonary_regurgitant_fraction_percent: 'Pulmonary regurgitant fraction (%)',
+              mr_regurgitant_fraction_percent: 'Mitral regurgitant fraction (%)',
+              mr_volume_ml: 'Mitral regurgitant volume (mL)',
+              mv_annulus_diameter_mm: 'Mitral annulus diameter (mm)',
+              tr_regurgitant_fraction_percent: 'Tricuspid regurgitant fraction (%)',
+              tr_volume_ml: 'Tricuspid regurgitant volume (mL)',
+              tr_vmax_m_s: 'TR peak velocity / TR Vmax (m/s)',
+              tv_annulus_diameter_mm: 'Tricuspid annulus diameter (mm)',
+              native_t1_ms: 'Native T1 (ms)',
+              native_t2_ms: 'Native T2 (ms)',
+              pcwp_mmhg: 'Estimated PCWP / pulmonary capillary wedge pressure (mmHg)',
+            }
+            const echoFieldList = Object.entries(echoFieldDescriptions)
+              .map(([k, desc]) => `- ${k}: ${desc}`)
+              .join('\n')
+
             const echoSystemPrompt = `You are an echocardiography report data extractor. Extract ONLY the following numeric fields from the echo report. If a field is not present, omit it entirely. Do NOT invent values.
 
 FIELDS TO EXTRACT:
-- lvef_percent: LV ejection fraction (%)
-- lvedv_index_ml_m2: LV end-diastolic volume index (ml/m2)
-- lvesv_index_ml_m2: LV end-systolic volume index (ml/m2)
-- lv_mass_index_g_m2: LV mass index (g/m2)
-- mapse_mm: Mitral annular plane systolic excursion (mm)
-- lvidd_mm: LV internal diameter in diastole (mm)
-- lvids_mm: LV internal diameter in systole (mm)
-- tapse_mm: Tricuspid annular plane systolic excursion (mm)
-- fac_percent: Fractional area change (%)
-- la_volume_ml: Left atrial volume (ml)
-- la_volume_index_ml_m2: Left atrial volume index (ml/m2)
-- la_diameter_mm: Left atrial diameter (mm)
-- ra_area_cm2: Right atrial area (cm2)
-- ao_annulus_mm: Aortic annulus diameter (mm)
-- ao_sinus_mm: Aortic sinus diameter (mm)
-- sino_tubular_junction_mm: Sino-tubular junction diameter (mm)
-- proximal_ascending_aorta_mm: Proximal ascending aorta diameter (mm)
-- main_pulmonary_artery_diameter_mm: Main pulmonary artery diameter (mm)
-- aortic_vmax_m_s: Aortic valve peak velocity (m/s)
-- aortic_peak_gradient_mmhg: Aortic valve peak gradient (mmHg)
-- aortic_mean_gradient_mmhg: Aortic valve mean gradient (mmHg)
-- pulmonary_valve_vmax_m_s: Pulmonary valve peak velocity (m/s)
+${echoFieldList}
 - study_date: Date of the study (string, any format found in report)
 - patient_name: Patient name (string)
 
