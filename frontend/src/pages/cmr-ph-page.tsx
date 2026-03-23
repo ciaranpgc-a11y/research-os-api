@@ -1,8 +1,23 @@
-﻿import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { ExternalLink } from 'lucide-react'
 
 import { SectionMarker } from '@/components/patterns'
-import { PageHeader, Row, Stack } from '@/components/primitives'
+import { DrilldownSheet, PageHeader, Row, Stack } from '@/components/primitives'
+import type { CmrCanonicalParam, CmrCanonicalTableResponse } from '@/lib/cmr-api'
+import { fetchReferenceParameters } from '@/lib/cmr-api'
+import {
+  computeMeasuredPos,
+  computeMeasuredRel,
+  constrainRange,
+  factoryBaseline,
+  globalAutoAdjust,
+  hasValidRange,
+  isAbnormal as isAbnormalValue,
+  perMeasurementAutoAdjust,
+  type RangeParam,
+} from '@/lib/cmr-chart-scaling'
 import { getExtractionResult, subscribeExtractionResult } from '@/lib/cmr-report-store'
+import { computeSeverity, inferSeverityLabel, type SeverityLabelType, type SeverityResult } from '@/lib/cmr-severity'
 import { cn } from '@/lib/utils'
 
 type NumericKey =
@@ -91,6 +106,13 @@ type TextState = {
   flowComment: string
 }
 
+type QuantitativeDisplayRow = {
+  key: NumericKey
+  field: NumericFieldDef
+  value: number | null
+  canonical: CmrCanonicalParam | null
+}
+
 const NUMERIC_FIELDS: Record<NumericKey, NumericFieldDef> = {
   rvEdv: { key: 'rvEdv', label: 'RV EDV', unit: 'mL', decimals: 0, extractedParam: 'RV EDV' },
   rvEdvi: { key: 'rvEdvi', label: 'RV EDVi', unit: 'mL/m2', decimals: 0, extractedParam: 'RV EDV (i)' },
@@ -138,10 +160,10 @@ const NUMERIC_FIELDS: Record<NumericKey, NumericFieldDef> = {
   lpaPercent: { key: 'lpaPercent', label: 'LPA %', unit: '%', decimals: 0 },
 }
 
-const RV_FIELDS: NumericKey[] = [
-  'rvEdv', 'rvEdvi', 'rvEsv', 'rvEsvi', 'rvSv', 'rvSvi', 'rvEf', 'rvMass',
-  'rvMassIndex', 'rvCo', 'rvCi', 'raMaxVolume', 'raMaxVolumeIndex', 'lvEdvi', 'lvSvi', 'tapse',
-]
+const RV_QUANT_KEYS: NumericKey[] = ['rvEdv', 'rvEdvi', 'rvEsv', 'rvEsvi', 'rvSv', 'rvSvi', 'rvEf', 'rvMass', 'rvMassIndex', 'rvCo', 'rvCi', 'raMaxVolume', 'raMaxVolumeIndex', 'lvEdvi', 'lvSvi', 'tapse']
+const PA_QUANT_KEYS: NumericKey[] = ['mainPaDiameter', 'mainPaSystolicArea', 'mainPaDiastolicArea', 'paRelativeAreaChange', 'paDistensibility', 'rpaDiameter', 'lpaDiameter', 'pvEffectiveForwardFlow', 'pvForwardFlow', 'pvBackwardFlow', 'pvRegurgitantFraction', 'peakVelocity', 'maxPressureGradient', 'meanPressureGradient']
+const VALVE_QUANT_KEYS: NumericKey[] = ['trRegurgitantFraction', 'trRegurgitantVolume', 'mrRegurgitantFraction', 'mrRegurgitantVolume']
+const ADDITIONAL_QUANT_KEYS: NumericKey[] = ['rvLvVolumeRatio', 'rpaDistension', 'lpaDistension']
 
 const SEPTAL_FLATTENING_OPTIONS: Option<SeptalFlattening>[] = [
   { value: 'none', label: 'None' },
@@ -149,12 +171,14 @@ const SEPTAL_FLATTENING_OPTIONS: Option<SeptalFlattening>[] = [
   { value: 'diastolic', label: 'Diastolic' },
   { value: 'both', label: 'Both' },
 ]
+
 const SEPTAL_MOTION_OPTIONS: Option<SeptalMotion>[] = [
   { value: 'normal', label: 'Normal' },
   { value: 'paradoxical', label: 'Paradoxical' },
   { value: 'dyskinetic', label: 'Dyskinetic' },
   { value: 'not-assessed', label: 'Not assessed' },
 ]
+
 const INTERATRIAL_BOWING_OPTIONS: Option<InteratrialBowing>[] = [
   { value: 'none', label: 'None' },
   { value: 'toward-la', label: 'Toward LA' },
@@ -162,17 +186,20 @@ const INTERATRIAL_BOWING_OPTIONS: Option<InteratrialBowing>[] = [
   { value: 'bidirectional', label: 'Bidirectional' },
   { value: 'not-assessed', label: 'Not assessed' },
 ]
+
 const PERICARDIAL_EFFUSION_OPTIONS: Option<PericardialEffusion>[] = [
   { value: 'none', label: 'None' },
   { value: 'small', label: 'Small' },
   { value: 'moderate', label: 'Moderate' },
   { value: 'large', label: 'Large' },
 ]
+
 const VENA_CAVA_OPTIONS: Option<VenaCavaState>[] = [
   { value: 'normal', label: 'Normal' },
   { value: 'dilated', label: 'Dilated' },
   { value: 'not-assessed', label: 'Not assessed' },
 ]
+
 const REGURGITATION_OPTIONS: Option<RegurgitationSeverity>[] = [
   { value: 'none', label: 'None' },
   { value: 'trace', label: 'Trace' },
@@ -180,11 +207,13 @@ const REGURGITATION_OPTIONS: Option<RegurgitationSeverity>[] = [
   { value: 'moderate', label: 'Moderate' },
   { value: 'severe', label: 'Severe' },
 ]
+
 const PRESENCE_OPTIONS: Option<PresenceState>[] = [
   { value: 'not-assessed', label: 'Not assessed' },
   { value: 'absent', label: 'Absent' },
   { value: 'present', label: 'Present' },
 ]
+
 const ADVANCED_SEVERITY_OPTIONS: Option<AdvancedSeverity>[] = [
   { value: 'mild', label: 'Mild' },
   { value: 'moderate', label: 'Moderate' },
@@ -209,8 +238,22 @@ function formatNumber(value: number | null | undefined, decimals: number = 0): s
   return rounded.toFixed(decimals).replace(/\.?0+$/, '')
 }
 
+function fmtRow(values: (number | null)[], decimals: number = 0): string[] {
+  return values.map((value) => {
+    if (value === null) return '\u2014'
+    return formatNumber(value, decimals)
+  })
+}
+
 function countDefined(values: Array<string | boolean | null | undefined>): number {
   return values.filter((value) => value !== null && value !== undefined && value !== '' && value !== false).length
+}
+
+function DirectionIndicator({ dir }: { dir: string }) {
+  if (dir === 'high') return <span className="text-[hsl(var(--tone-danger-500))]" title="Abnormal if high">&#9650;</span>
+  if (dir === 'low') return <span className="text-[hsl(var(--tone-accent-500))]" title="Abnormal if low">&#9660;</span>
+  if (dir === 'both') return <span className="text-[hsl(var(--tone-warning-500))]" title="Abnormal if high or low">&#9670;</span>
+  return null
 }
 
 function StatusPill({ label }: { label: string }) {
@@ -249,7 +292,15 @@ function Subsection({ title, children, className }: { title: string; children: R
   )
 }
 
-function MeasurementRow({ field, value, onChange }: { field: NumericFieldDef; value: string; onChange: (value: string) => void }) {
+function MeasurementRow({
+  field,
+  value,
+  onChange,
+}: {
+  field: NumericFieldDef
+  value: string
+  onChange: (value: string) => void
+}) {
   return (
     <label className="grid grid-cols-[minmax(0,1fr)_5.5rem_auto] items-center gap-x-2 gap-y-1">
       <span className="text-sm text-[hsl(var(--foreground))]">{field.label}</span>
@@ -266,7 +317,15 @@ function MeasurementRow({ field, value, onChange }: { field: NumericFieldDef; va
   )
 }
 
-function ChoicePills<T extends string>({ options, value, onChange }: { options: Option<T>[]; value: T; onChange: (value: T) => void }) {
+function ChoicePills<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: Option<T>[]
+  value: T
+  onChange: (value: T) => void
+}) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {options.map((option) => {
@@ -315,27 +374,479 @@ function TextareaField({
   )
 }
 
+function CmrTooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <span className="group/tip relative inline-flex">
+      {children}
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-[hsl(var(--foreground))] px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/tip:opacity-100">
+        {text}
+        <span className="absolute left-1/2 -bottom-1 h-2 w-2 -translate-x-1/2 rotate-45 bg-[hsl(var(--foreground))]" />
+      </span>
+    </span>
+  )
+}
+
+function PillToggle({
+  options,
+  value,
+  onChange,
+  compact,
+}: {
+  options: { key: string; label: React.ReactNode; tooltip?: string }[]
+  value: string
+  onChange: (key: string) => void
+  compact?: boolean
+}) {
+  return (
+    <div className="flex rounded-full bg-[hsl(var(--tone-danger-100)/0.5)] p-0.5 ring-1 ring-[hsl(var(--tone-danger-200)/0.5)]">
+      {options.map((option) => {
+        const button = (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => onChange(option.key)}
+            className={cn(
+              'flex items-center gap-1 rounded-full py-1.5 text-xs font-medium transition-all',
+              compact ? 'px-2.5' : 'px-4',
+              value === option.key
+                ? 'bg-[hsl(var(--section-style-report-accent))] text-white shadow-sm'
+                : 'text-[hsl(var(--tone-danger-600))] hover:text-[hsl(var(--tone-danger-800))]',
+            )}
+          >
+            {option.label}
+          </button>
+        )
+        return option.tooltip ? (
+          <CmrTooltip key={option.key} text={option.tooltip}>
+            {button}
+          </CmrTooltip>
+        ) : button
+      })}
+    </div>
+  )
+}
+
+function ChartIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="8" width="3" height="7" rx="0.5" />
+      <rect x="6.5" y="4" width="3" height="11" rx="0.5" />
+      <rect x="12" y="1" width="3" height="14" rx="0.5" />
+    </svg>
+  )
+}
+
+function RecordedIcon() {
+  return <span className="text-[10px] font-bold tabular-nums tracking-tight">123</span>
+}
+
+function AllRowsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <line x1="1" y1="4" x2="15" y2="4" />
+      <line x1="1" y1="8" x2="15" y2="8" />
+      <line x1="1" y1="12" x2="15" y2="12" />
+    </svg>
+  )
+}
+
+function SeverityIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="currentColor">
+      <circle cx="3.5" cy="3.5" r="3" fill="hsl(158 30% 50%)" />
+      <circle cx="12.5" cy="3.5" r="3" fill="hsl(38 60% 55%)" />
+      <circle cx="8" cy="12" r="3" fill="hsl(4 55% 50%)" />
+    </svg>
+  )
+}
+
+function SeverityOffIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="currentColor" stroke="currentColor">
+      <circle cx="3.5" cy="3.5" r="3" fill="hsl(158 30% 50%)" opacity="0.35" />
+      <circle cx="12.5" cy="3.5" r="3" fill="hsl(38 60% 55%)" opacity="0.35" />
+      <circle cx="8" cy="12" r="3" fill="hsl(4 55% 50%)" opacity="0.35" />
+      <line x1="1" y1="1" x2="15" y2="15" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ChartOffIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="8" width="3" height="7" rx="0.5" opacity="0.4" />
+      <rect x="6.5" y="4" width="3" height="11" rx="0.5" opacity="0.4" />
+      <rect x="12" y="1" width="3" height="14" rx="0.5" opacity="0.4" />
+      <line x1="2" y1="2" x2="14" y2="14" strokeWidth="2" />
+    </svg>
+  )
+}
+
+function ChartChipIcon({ variant }: { variant: 'global' | 'per-meas' }) {
+  return (
+    <svg width="16" height="12" viewBox="0 0 16 12" fill="none" className="shrink-0">
+      <line x1="0" y1="6" x2="16" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.4" />
+      <circle cx={variant === 'global' ? 10 : 5} cy="6" r="3" fill="currentColor" />
+    </svg>
+  )
+}
+
+function ChartControlStrip({
+  onGlobalAuto,
+  onPerMeasAuto,
+  scalingMode,
+}: {
+  onGlobalAuto: () => void
+  onPerMeasAuto: () => void
+  scalingMode: 'factory' | 'global' | 'per-meas'
+}) {
+  const chipClass = (active: boolean) =>
+    cn(
+      'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-colors',
+      active
+        ? 'border-[hsl(var(--section-style-report-accent))] bg-[hsl(var(--section-style-report-accent))] text-white'
+        : 'border-[hsl(var(--stroke-soft)/0.5)] bg-white text-[hsl(var(--tone-neutral-600))] hover:bg-[hsl(var(--tone-neutral-100))]',
+    )
+
+  return (
+    <div className="flex items-center gap-1">
+      <button type="button" onClick={onGlobalAuto} className={chipClass(scalingMode === 'global')}>
+        <ChartChipIcon variant="global" /> Global
+      </button>
+      <button type="button" onClick={onPerMeasAuto} className={chipClass(scalingMode === 'per-meas')}>
+        <ChartChipIcon variant="per-meas" /> Per measurement
+      </button>
+    </div>
+  )
+}
+
+function BsaPill() {
+  return (
+    <span className="ml-1.5 inline-flex items-center rounded-full bg-[hsl(var(--tone-neutral-200))] px-[7px] py-[1px] text-[10px] font-semibold tracking-wide text-[hsl(var(--tone-neutral-600))]">
+      BSA
+    </span>
+  )
+}
+
+function RangeChart({
+  measured,
+  ll,
+  ul,
+  direction,
+  rangeStart,
+  rangeWidth,
+}: {
+  measured: number
+  ll: number
+  ul: number
+  direction: string
+  rangeStart: number
+  rangeWidth: number
+}) {
+  const measuredRel = computeMeasuredRel(measured, ll, ul)
+  const measuredPos = computeMeasuredPos(measuredRel, rangeStart, rangeWidth)
+  const abnormal = isAbnormalValue(measured, ll, ul, direction)
+
+  return (
+    <div className="group/chart relative mx-[5px] h-[22px] w-[calc(100%-10px)]">
+      <div className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 rounded-sm bg-[hsl(var(--tone-neutral-300))]" />
+      <div
+        className="absolute top-1/2 h-4 -translate-y-1/2 rounded border border-[hsl(var(--tone-positive-300)/0.18)] bg-[hsl(var(--tone-positive-300)/0.14)] transition-all duration-200 group-hover/chart:border-[hsl(var(--tone-positive-500)/0.25)] group-hover/chart:bg-[hsl(var(--tone-positive-300)/0.28)] group-hover/chart:shadow-[0_0_12px_hsl(var(--tone-positive-300)/0.15)]"
+        style={{ left: `${rangeStart * 100}%`, width: `${rangeWidth * 100}%` }}
+      />
+      <div
+        className={cn(
+          'absolute top-1/2 h-[10px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition-all duration-200',
+          abnormal
+            ? 'border-[hsl(var(--tone-danger-500))] bg-white shadow-[0_1px_3px_hsl(var(--tone-danger-600)/0.15)] group-hover/chart:bg-[hsl(var(--tone-danger-500))] group-hover/chart:shadow-[0_0_0_3px_hsl(var(--tone-danger-500)/0.2),0_0_8px_hsl(var(--tone-danger-500)/0.3)]'
+            : 'border-[hsl(var(--tone-positive-500))] bg-white shadow-[0_1px_3px_hsl(var(--tone-positive-600)/0.15)] group-hover/chart:bg-[hsl(var(--tone-positive-500))] group-hover/chart:shadow-[0_0_0_3px_hsl(var(--tone-positive-500)/0.2),0_0_8px_hsl(var(--tone-positive-500)/0.3)]',
+        )}
+        style={{ left: `${measuredPos * 100}%` }}
+      />
+    </div>
+  )
+}
+
+function QuantitativeParameterDrilldown({
+  row,
+  onClose,
+}: {
+  row: QuantitativeDisplayRow
+  onClose: () => void
+}) {
+  const param = row.canonical
+  if (!param) return null
+
+  const decimals = param.decimal_places ?? row.field.decimals ?? 0
+  const [fLL, fMean, fUL, fSD] = fmtRow([param.ll, param.mean, param.ul, param.sd], decimals)
+
+  let status: 'normal' | 'abnormal' | undefined
+  if (row.value !== null) {
+    const dir = param.abnormal_direction
+    if (dir === 'high' && param.ul !== null && row.value > param.ul) status = 'abnormal'
+    else if (dir === 'low' && param.ll !== null && row.value < param.ll) status = 'abnormal'
+    else if (dir === 'both' && ((param.ul !== null && row.value > param.ul) || (param.ll !== null && row.value < param.ll))) status = 'abnormal'
+    else status = 'normal'
+  }
+
+  return (
+    <DrilldownSheet open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DrilldownSheet.Header title={row.field.label} variant="workspace">
+        <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+          {param.major_section} &rsaquo; {param.sub_section || 'Reference values'}
+        </p>
+      </DrilldownSheet.Header>
+
+      <DrilldownSheet.Content>
+        {row.value !== null && (
+          <div className="space-y-2">
+            <DrilldownSheet.Heading>Measured Value</DrilldownSheet.Heading>
+            <div
+              className={cn(
+                'rounded-lg border-2 p-4 text-center',
+                status === 'abnormal'
+                  ? 'border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))]'
+                  : 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))]',
+              )}
+            >
+              <p
+                className={cn(
+                  'text-3xl font-bold tabular-nums',
+                  status === 'abnormal'
+                    ? 'text-[hsl(var(--tone-danger-600))]'
+                    : 'text-[hsl(var(--tone-positive-600))]',
+                )}
+              >
+                {formatNumber(row.value, decimals)}
+              </p>
+              <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                {row.field.unit || param.unit}
+                {status ? ` · ${status === 'abnormal' ? 'Outside reference range' : 'Within reference range'}` : ''}
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <DrilldownSheet.Heading>Reference Values</DrilldownSheet.Heading>
+          <div className="grid grid-cols-2 gap-3">
+            <DrilldownSheet.StatCard title="Lower Limit" value={fLL} />
+            <DrilldownSheet.StatCard title="Mean" value={fMean} tone="positive" />
+            <DrilldownSheet.StatCard title="Upper Limit" value={fUL} />
+            <DrilldownSheet.StatCard title="SD" value={fSD} />
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <div>
+              <span className="text-[hsl(var(--muted-foreground))]">Unit</span>
+              <span className="ml-2 font-medium">{param.unit}</span>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--muted-foreground))]">Band</span>
+              <span className="ml-2 font-medium">{param.age_band || 'Adult'}</span>
+            </div>
+            {param.abnormal_direction && (
+              <div>
+                <span className="text-[hsl(var(--muted-foreground))]">Direction</span>
+                <span className="ml-2 font-medium">
+                  <DirectionIndicator dir={param.abnormal_direction} />
+                  <span className="ml-1 capitalize">{param.abnormal_direction}</span>
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-6 space-y-3">
+          <DrilldownSheet.Heading>Sources</DrilldownSheet.Heading>
+          {param.sources.length > 0 ? (
+            <div className="space-y-3">
+              {param.sources.map((source) => (
+                <a
+                  key={source.doi}
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block rounded-lg border border-[hsl(var(--stroke-soft)/0.72)] p-3 transition-colors hover:border-[hsl(var(--tone-positive-300))] hover:bg-[hsl(var(--tone-positive-50)/0.5)]"
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium leading-snug text-[hsl(var(--foreground))]">{source.short_ref}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">{source.title}</p>
+                      <p className="mt-1 text-xs text-[hsl(var(--tone-neutral-400))]">{source.journal}</p>
+                    </div>
+                    <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" />
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm italic text-[hsl(var(--muted-foreground))]">No sources linked yet.</p>
+          )}
+        </div>
+      </DrilldownSheet.Content>
+    </DrilldownSheet>
+  )
+}
+
+function QuantitativeTable({
+  rows,
+  chartMode,
+  severityMode,
+  rangeParams,
+  onSelectRow,
+}: {
+  rows: QuantitativeDisplayRow[]
+  chartMode: 'off' | 'on'
+  severityMode: 'off' | 'abnormal'
+  rangeParams: Map<string, RangeParam>
+  onSelectRow: (row: QuantitativeDisplayRow) => void
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-[hsl(var(--stroke-soft)/0.72)]">
+      <table data-house-no-column-resize="true" className="w-full table-fixed border-collapse text-sm">
+        <colgroup>
+          <col style={{ width: chartMode === 'on' ? '28%' : '31%' }} />
+          <col style={{ width: chartMode === 'on' ? '8%' : '10%' }} />
+          <col style={{ width: chartMode === 'on' ? '9%' : '11%' }} />
+          <col style={{ width: chartMode === 'on' ? '8%' : '10%' }} />
+          <col style={{ width: chartMode === 'on' ? '8%' : '10%' }} />
+          <col style={{ width: chartMode === 'on' ? '8%' : '10%' }} />
+          <col style={{ width: chartMode === 'on' ? '15%' : '18%' }} />
+          {chartMode === 'on' && <col style={{ width: '24%' }} />}
+        </colgroup>
+        <thead>
+          <tr className="border-b-2 border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))]">
+            <th className="house-table-head-text px-3 py-2 text-left">Parameter</th>
+            <th className="house-table-head-text px-3 py-2 text-center">Unit</th>
+            <th className="house-table-head-text px-3 py-2 text-center">Measured</th>
+            <th className="house-table-head-text px-3 py-2 text-center">LL</th>
+            <th className="house-table-head-text px-3 py-2 text-center">Mean</th>
+            <th className="house-table-head-text px-3 py-2 text-center">UL</th>
+            <th className="house-table-head-text px-3 py-2 text-center">Interpretation</th>
+            {chartMode === 'on' && <th className="house-table-head-text px-3 py-2 text-center">Range</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={chartMode === 'on' ? 8 : 7} className="px-4 py-5 text-center text-sm text-[hsl(var(--muted-foreground))]">
+                No quantitative values available for the current filters.
+              </td>
+            </tr>
+          ) : rows.map((row) => {
+            const decimals = row.canonical?.decimal_places ?? row.field.decimals ?? 0
+            const hasMeasured = row.value !== null
+            const [fLL, fMean, fUL] = fmtRow([row.canonical?.ll ?? null, row.canonical?.mean ?? null, row.canonical?.ul ?? null], decimals)
+
+            let severity: SeverityResult | null = null
+            if (hasMeasured && row.canonical) {
+              severity = computeSeverity(
+                row.value!,
+                row.canonical.ll,
+                row.canonical.ul,
+                row.canonical.sd,
+                row.canonical.abnormal_direction,
+                (row.canonical.severity_label as SeverityLabelType) ?? inferSeverityLabel(row.canonical.parameter_key, row.canonical.major_section, row.canonical.sub_section),
+                row.canonical.severity_thresholds ?? null,
+                row.canonical.severity_label_override ?? null,
+              )
+            }
+
+            const interactive = !!row.canonical
+            const severityClass =
+              severityMode === 'abnormal' && hasMeasured && severity
+                ? cn(
+                    severity.grade === 'normal' && 'bg-[hsl(158_30%_94%)] hover:bg-[hsl(158_30%_91%)]',
+                    severity.grade === 'mild' && 'bg-[hsl(46_60%_91%)] hover:bg-[hsl(46_60%_88%)]',
+                    severity.grade === 'moderate' && 'bg-[hsl(20_55%_87%)] hover:bg-[hsl(20_55%_84%)]',
+                    severity.grade === 'severe' && 'bg-[hsl(4_55%_82%)] hover:bg-[hsl(4_55%_79%)]',
+                  )
+                : interactive
+                  ? 'hover:bg-[hsl(var(--tone-neutral-50)/0.65)]'
+                  : ''
+
+            return (
+              <tr
+                key={row.key}
+                onClick={interactive ? () => onSelectRow(row) : undefined}
+                className={cn('border-b border-[hsl(var(--stroke-soft)/0.4)] transition-colors duration-100', interactive && 'cursor-pointer', severityClass)}
+              >
+                <td className="house-table-cell-text whitespace-nowrap px-3 py-2 font-medium text-[hsl(var(--foreground))]">
+                  {row.field.label}
+                  {row.canonical?.indexing === 'BSA' && <BsaPill />}
+                </td>
+                <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center text-[hsl(var(--tone-neutral-500))]">
+                  {row.canonical?.unit ?? row.field.unit ?? '\u2014'}
+                </td>
+                <td className={cn('house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums font-semibold', !hasMeasured && 'text-[hsl(var(--tone-neutral-300))]')}>
+                  {hasMeasured ? formatNumber(row.value, decimals) : '\u2014'}
+                </td>
+                <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">{fLL}</td>
+                <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums font-medium">{fMean}</td>
+                <td className="house-table-cell-text whitespace-nowrap px-3 py-2 text-center tabular-nums">{fUL}</td>
+                <td className="house-table-cell-text whitespace-nowrap px-3 py-0 text-center align-middle">
+                  {hasMeasured && severity ? (
+                    <span
+                      className={cn(
+                        'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
+                        severity.grade === 'normal' && 'bg-[hsl(162_22%_90%)] text-[hsl(164_30%_28%)] ring-[hsl(163_22%_80%)]',
+                        severity.grade === 'mild' && 'bg-[hsl(38_40%_90%)] text-[hsl(34_50%_35%)] ring-[hsl(36_36%_80%)]',
+                        severity.grade === 'moderate' && 'bg-[hsl(16_45%_86%)] text-[hsl(5_48%_32%)] ring-[hsl(10_32%_76%)]',
+                        severity.grade === 'severe' && 'bg-[hsl(2_52%_25%)] text-white ring-[hsl(2_52%_20%)]',
+                      )}
+                    >
+                      {severity.label}
+                    </span>
+                  ) : hasMeasured ? (
+                    <span className="inline-flex items-center rounded-full bg-[hsl(var(--tone-neutral-100))] px-2.5 py-0.5 text-[11px] font-semibold text-[hsl(var(--tone-neutral-600))] ring-1 ring-inset ring-[hsl(var(--stroke-soft)/0.6)]">
+                      Derived
+                    </span>
+                  ) : (
+                    '\u2014'
+                  )}
+                </td>
+                {chartMode === 'on' && (
+                  <td className="bg-white px-2 py-1">
+                    {hasMeasured && row.canonical && hasValidRange(row.canonical.ll, row.canonical.ul) ? (
+                      <RangeChart
+                        measured={row.value!}
+                        ll={row.canonical.ll!}
+                        ul={row.canonical.ul!}
+                        direction={row.canonical.abnormal_direction}
+                        rangeStart={(rangeParams.get(row.key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeStart}
+                        rangeWidth={(rangeParams.get(row.key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth}
+                      />
+                    ) : null}
+                  </td>
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export function CmrPhPage() {
   const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
   const demographics = extraction?.demographics ?? {}
+  const sex = demographics.sex ?? 'Male'
+  const age = demographics.age ?? undefined
   const bsa = demographics.bsa ?? null
   const heartRate = demographics.heart_rate ?? null
 
-  const extractedNumeric = useMemo(() => {
-    const measurements = new Map<string, number>()
-    for (const measurement of extraction?.measurements ?? []) measurements.set(measurement.parameter, measurement.value)
+  const [referenceData, setReferenceData] = useState<CmrCanonicalTableResponse | null>(null)
+  const [referenceLoading, setReferenceLoading] = useState(true)
+  const [showFilter, setShowFilter] = useState<'all' | 'recorded'>('recorded')
+  const [abnormalFilter, setAbnormalFilter] = useState<'all' | 'abnormal'>('all')
+  const [chartMode, setChartMode] = useState<'off' | 'on'>('on')
+  const [severityMode, setSeverityMode] = useState<'off' | 'abnormal'>('off')
+  const [rangeParams, setRangeParams] = useState<Map<string, RangeParam>>(new Map())
+  const [scalingMode, setScalingMode] = useState<'factory' | 'global' | 'per-meas'>('global')
+  const [selectedRow, setSelectedRow] = useState<QuantitativeDisplayRow | null>(null)
+  const [manualNumeric, setManualNumeric] = useState<Partial<Record<NumericKey, string>>>({})
 
-    const next: Partial<Record<NumericKey, number>> = {}
-    ;(Object.keys(NUMERIC_FIELDS) as NumericKey[]).forEach((key) => {
-      const param = NUMERIC_FIELDS[key].extractedParam
-      if (!param) return
-      const value = measurements.get(param)
-      if (value !== undefined) next[key] = value
-    })
-    return next
-  }, [extraction])
-
-  const [numericOverrides, setNumericOverrides] = useState<Partial<Record<NumericKey, string>>>({})
   const [choices, setChoices] = useState<ChoiceState>({
     septalFlattening: 'none',
     septalMotion: 'normal',
@@ -356,18 +867,53 @@ export function CmrPhPage() {
     flowComment: '',
   })
 
+  useEffect(() => {
+    let cancelled = false
+    setReferenceLoading(true)
+    void fetchReferenceParameters(sex, age)
+      .then((result) => {
+        if (!cancelled) setReferenceData(result)
+      })
+      .catch(() => {
+        if (!cancelled) setReferenceData(null)
+      })
+      .finally(() => {
+        if (!cancelled) setReferenceLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [age, sex])
+
+  const extractedNumeric = useMemo(() => {
+    const measurements = new Map<string, number>()
+    for (const measurement of extraction?.measurements ?? []) {
+      measurements.set(measurement.parameter, measurement.value)
+    }
+
+    const next: Partial<Record<NumericKey, number>> = {}
+    ;(Object.keys(NUMERIC_FIELDS) as NumericKey[]).forEach((key) => {
+      const param = NUMERIC_FIELDS[key].extractedParam
+      if (!param) return
+      const value = measurements.get(param)
+      if (value !== undefined) next[key] = value
+    })
+    return next
+  }, [extraction])
+
   const getBaseNumeric = useCallback((key: NumericKey): number | null => {
-    const override = numericOverrides[key]
-    if (override !== undefined) return parseNumber(override)
+    const manual = manualNumeric[key]
+    if (manual !== undefined) return parseNumber(manual)
     return extractedNumeric[key] ?? null
-  }, [extractedNumeric, numericOverrides])
+  }, [extractedNumeric, manualNumeric])
 
   const derivedNumeric = useMemo(() => {
     const next: Partial<Record<NumericKey, number>> = {}
     const rvEdv = getBaseNumeric('rvEdv')
     const rvEsv = getBaseNumeric('rvEsv')
-    const rvSv = getBaseNumeric('rvSv') ?? (rvEdv !== null && rvEsv !== null ? rvEdv - rvEsv : null)
-    const rvCo = getBaseNumeric('rvCo') ?? (rvSv !== null && heartRate !== null ? (rvSv * heartRate) / 1000 : null)
+    const rvSv = extractedNumeric.rvSv ?? (rvEdv !== null && rvEsv !== null ? rvEdv - rvEsv : null)
+    const rvCo = extractedNumeric.rvCo ?? (rvSv !== null && heartRate !== null ? (rvSv * heartRate) / 1000 : null)
     const mainPaSystolicArea = getBaseNumeric('mainPaSystolicArea')
     const mainPaDiastolicArea = getBaseNumeric('mainPaDiastolicArea')
     const pvForwardFlow = getBaseNumeric('pvForwardFlow')
@@ -376,58 +922,62 @@ export function CmrPhPage() {
     const rpaNetFlow = getBaseNumeric('rpaNetFlow')
     const lpaNetFlow = getBaseNumeric('lpaNetFlow')
 
-    if (getBaseNumeric('rvSv') === null && rvSv !== null) next.rvSv = round(rvSv, 1)
-    if (getBaseNumeric('rvEf') === null && rvSv !== null && rvEdv) next.rvEf = round((rvSv / rvEdv) * 100, 1)
-    if (getBaseNumeric('rvEdvi') === null && rvEdv !== null && bsa) next.rvEdvi = round(rvEdv / bsa, 1)
-    if (getBaseNumeric('rvEsvi') === null && rvEsv !== null && bsa) next.rvEsvi = round(rvEsv / bsa, 1)
-    if (getBaseNumeric('rvSvi') === null && rvSv !== null && bsa) next.rvSvi = round(rvSv / bsa, 1)
-    if (getBaseNumeric('rvMassIndex') === null && getBaseNumeric('rvMass') !== null && bsa) {
+    if (extractedNumeric.rvSv === undefined && rvSv !== null) next.rvSv = round(rvSv, 1)
+    if (extractedNumeric.rvEf === undefined && rvSv !== null && rvEdv) next.rvEf = round((rvSv / rvEdv) * 100, 1)
+    if (extractedNumeric.rvEdvi === undefined && rvEdv !== null && bsa) next.rvEdvi = round(rvEdv / bsa, 1)
+    if (extractedNumeric.rvEsvi === undefined && rvEsv !== null && bsa) next.rvEsvi = round(rvEsv / bsa, 1)
+    if (extractedNumeric.rvSvi === undefined && rvSv !== null && bsa) next.rvSvi = round(rvSv / bsa, 1)
+    if (extractedNumeric.rvMassIndex === undefined && getBaseNumeric('rvMass') !== null && bsa) {
       next.rvMassIndex = round(getBaseNumeric('rvMass')! / bsa, 1)
     }
-    if (getBaseNumeric('rvCo') === null && rvCo !== null) next.rvCo = round(rvCo, 1)
-    if (getBaseNumeric('rvCi') === null && rvCo !== null && bsa) next.rvCi = round(rvCo / bsa, 1)
-    if (getBaseNumeric('raMaxVolumeIndex') === null && getBaseNumeric('raMaxVolume') !== null && bsa) {
+    if (extractedNumeric.rvCo === undefined && rvCo !== null) next.rvCo = round(rvCo, 1)
+    if (extractedNumeric.rvCi === undefined && rvCo !== null && bsa) next.rvCi = round(rvCo / bsa, 1)
+    if (extractedNumeric.raMaxVolumeIndex === undefined && getBaseNumeric('raMaxVolume') !== null && bsa) {
       next.raMaxVolumeIndex = round(getBaseNumeric('raMaxVolume')! / bsa, 1)
     }
-    if (getBaseNumeric('paRelativeAreaChange') === null && mainPaSystolicArea !== null && mainPaDiastolicArea) {
+    if (mainPaSystolicArea !== null && mainPaDiastolicArea) {
       next.paRelativeAreaChange = round(((mainPaSystolicArea - mainPaDiastolicArea) / mainPaDiastolicArea) * 100, 1)
     }
-    if (getBaseNumeric('paDistensibility') === null && next.paRelativeAreaChange !== undefined) {
+    if (extractedNumeric.paDistensibility === undefined && next.paRelativeAreaChange !== undefined) {
       next.paDistensibility = next.paRelativeAreaChange
     }
-    if (getBaseNumeric('pvRegurgitantFraction') === null && pvForwardFlow !== null && pvBackwardFlow !== null && pvForwardFlow !== 0) {
+    if (extractedNumeric.pvRegurgitantFraction === undefined && pvForwardFlow !== null && pvBackwardFlow !== null && pvForwardFlow !== 0) {
       next.pvRegurgitantFraction = round((Math.abs(pvBackwardFlow) / pvForwardFlow) * 100, 1)
     }
-    if (getBaseNumeric('maxPressureGradient') === null && peakVelocity !== null) {
+    if (extractedNumeric.maxPressureGradient === undefined && peakVelocity !== null) {
       next.maxPressureGradient = round(4 * peakVelocity * peakVelocity, 1)
     }
 
-    const rvEdvi = getBaseNumeric('rvEdvi') ?? next.rvEdvi ?? null
+    const rvEdvi = extractedNumeric.rvEdvi ?? next.rvEdvi ?? null
     const lvEdvi = getBaseNumeric('lvEdvi')
-    if (getBaseNumeric('rvLvVolumeRatio') === null && rvEdvi !== null && lvEdvi) {
+    if (rvEdvi !== null && lvEdvi) {
       next.rvLvVolumeRatio = round(rvEdvi / lvEdvi, 2)
     }
 
-    if (getBaseNumeric('rpaPercent') === null && rpaNetFlow !== null && lpaNetFlow !== null && rpaNetFlow + lpaNetFlow !== 0) {
+    if (rpaNetFlow !== null && lpaNetFlow !== null && rpaNetFlow + lpaNetFlow !== 0) {
       next.rpaPercent = round((rpaNetFlow / (rpaNetFlow + lpaNetFlow)) * 100, 1)
-    }
-    if (getBaseNumeric('lpaPercent') === null && rpaNetFlow !== null && lpaNetFlow !== null && rpaNetFlow + lpaNetFlow !== 0) {
       next.lpaPercent = round((lpaNetFlow / (rpaNetFlow + lpaNetFlow)) * 100, 1)
     }
 
     return next
-  }, [bsa, getBaseNumeric, heartRate])
+  }, [bsa, extractedNumeric, getBaseNumeric, heartRate])
+
+  const resolveNumericNumber = useCallback((key: NumericKey): number | null => {
+    const manual = manualNumeric[key]
+    if (manual !== undefined) return parseNumber(manual)
+    if (extractedNumeric[key] !== undefined) return extractedNumeric[key] ?? null
+    if (derivedNumeric[key] !== undefined) return derivedNumeric[key] ?? null
+    return null
+  }, [derivedNumeric, extractedNumeric, manualNumeric])
 
   const resolveNumericValue = useCallback((key: NumericKey): string => {
-    const override = numericOverrides[key]
-    if (override !== undefined) return override
-    if (extractedNumeric[key] !== undefined) return formatNumber(extractedNumeric[key], NUMERIC_FIELDS[key].decimals)
-    if (derivedNumeric[key] !== undefined) return formatNumber(derivedNumeric[key], NUMERIC_FIELDS[key].decimals)
-    return ''
-  }, [derivedNumeric, extractedNumeric, numericOverrides])
+    const manual = manualNumeric[key]
+    if (manual !== undefined) return manual
+    return formatNumber(resolveNumericNumber(key), NUMERIC_FIELDS[key].decimals)
+  }, [manualNumeric, resolveNumericNumber])
 
-  const updateNumeric = useCallback((key: NumericKey, value: string) => {
-    setNumericOverrides((prev) => {
+  const updateManualNumeric = useCallback((key: NumericKey, value: string) => {
+    setManualNumeric((prev) => {
       const next = { ...prev }
       if (value.trim() === '') delete next[key]
       else next[key] = value
@@ -443,7 +993,100 @@ export function CmrPhPage() {
     setTexts((prev) => ({ ...prev, [key]: value }))
   }, [])
 
-  const rvStatus = `${countDefined(RV_FIELDS.map((key) => resolveNumericValue(key)))} set`
+  const canonicalLookup = useMemo(() => {
+    const map = new Map<string, CmrCanonicalParam>()
+    for (const param of referenceData?.parameters ?? []) {
+      map.set(param.parameter_key, param)
+    }
+    return map
+  }, [referenceData])
+
+  const buildRows = useCallback((keys: NumericKey[]): QuantitativeDisplayRow[] => (
+    keys.map((key) => {
+      const field = NUMERIC_FIELDS[key]
+      return {
+        key,
+        field,
+        value: resolveNumericNumber(key),
+        canonical: field.extractedParam ? canonicalLookup.get(field.extractedParam) ?? null : null,
+      }
+    })
+  ), [canonicalLookup, resolveNumericNumber])
+
+  const rvRows = useMemo(() => buildRows(RV_QUANT_KEYS), [buildRows])
+  const paRows = useMemo(() => buildRows(PA_QUANT_KEYS), [buildRows])
+  const valveRows = useMemo(() => buildRows(VALVE_QUANT_KEYS), [buildRows])
+  const additionalRows = useMemo(() => buildRows(ADDITIONAL_QUANT_KEYS), [buildRows])
+
+  const allQuantRows = useMemo(() => [...rvRows, ...paRows, ...valveRows, ...additionalRows], [additionalRows, paRows, rvRows, valveRows])
+
+  const filterRows = useCallback((rows: QuantitativeDisplayRow[]) => (
+    rows.filter((row) => {
+      if (showFilter === 'recorded' && row.value === null) return false
+      if (abnormalFilter === 'abnormal') {
+        if (row.value === null || !row.canonical) return false
+        return isAbnormalValue(row.value, row.canonical.ll, row.canonical.ul, row.canonical.abnormal_direction)
+      }
+      return true
+    })
+  ), [abnormalFilter, showFilter])
+
+  const filteredRvRows = useMemo(() => filterRows(rvRows), [filterRows, rvRows])
+  const filteredPaRows = useMemo(() => filterRows(paRows), [filterRows, paRows])
+  const filteredValveRows = useMemo(() => filterRows(valveRows), [filterRows, valveRows])
+  const filteredAdditionalRows = useMemo(() => filterRows(additionalRows), [additionalRows, filterRows])
+
+  const collectMeasuredRels = useCallback(() => {
+    const rels: number[] = []
+    for (const row of allQuantRows) {
+      if (row.value === null || !row.canonical || !hasValidRange(row.canonical.ll, row.canonical.ul)) continue
+      rels.push(computeMeasuredRel(row.value, row.canonical.ll!, row.canonical.ul!))
+    }
+    return rels
+  }, [allQuantRows])
+
+  useEffect(() => {
+    if (scalingMode !== 'global') return
+    const rels = collectMeasuredRels()
+    if (rels.length === 0) return
+    const result = globalAutoAdjust(rels)
+    if (result) {
+      setRangeParams(new Map([['__global__', constrainRange(result, rels)]]))
+    }
+  }, [collectMeasuredRels, scalingMode])
+
+  const handleGlobalAuto = useCallback(() => {
+    if (scalingMode === 'global') {
+      setScalingMode('factory')
+      setRangeParams(new Map())
+      return
+    }
+    const rels = collectMeasuredRels()
+    const result = globalAutoAdjust(rels)
+    if (result) {
+      setScalingMode('global')
+      setRangeParams(new Map([['__global__', constrainRange(result, rels)]]))
+    }
+  }, [collectMeasuredRels, scalingMode])
+
+  const handlePerMeasurementAuto = useCallback(() => {
+    if (scalingMode === 'per-meas') {
+      setScalingMode('factory')
+      setRangeParams(new Map())
+      return
+    }
+
+    const next = new Map<string, RangeParam>()
+    for (const row of allQuantRows) {
+      if (row.value === null || !row.canonical || !hasValidRange(row.canonical.ll, row.canonical.ul)) continue
+      const rel = computeMeasuredRel(row.value, row.canonical.ll!, row.canonical.ul!)
+      next.set(row.key, perMeasurementAutoAdjust(rel))
+    }
+    setScalingMode('per-meas')
+    setRangeParams(next)
+  }, [allQuantRows, scalingMode])
+
+  const rvStatus = `${rvRows.filter((row) => row.value !== null).length}/${rvRows.length} recorded`
   const rightHeartStatus = `${countDefined([
     choices.septalFlattening !== 'none',
     choices.septalMotion !== 'normal',
@@ -452,36 +1095,15 @@ export function CmrPhPage() {
     choices.venaCava !== 'normal',
     resolveNumericValue('pericardialEffusionSize'),
   ])} set`
-  const paStatus = `${countDefined([
-    resolveNumericValue('mainPaDiameter'),
-    resolveNumericValue('mainPaSystolicArea'),
-    resolveNumericValue('mainPaDiastolicArea'),
-    resolveNumericValue('paRelativeAreaChange'),
-    resolveNumericValue('paDistensibility'),
-    resolveNumericValue('rpaDiameter'),
-    resolveNumericValue('lpaDiameter'),
-    resolveNumericValue('pvEffectiveForwardFlow'),
-    resolveNumericValue('pvForwardFlow'),
-    resolveNumericValue('pvBackwardFlow'),
-    resolveNumericValue('pvRegurgitantFraction'),
-    resolveNumericValue('peakVelocity'),
-    resolveNumericValue('maxPressureGradient'),
-    resolveNumericValue('meanPressureGradient'),
-  ])} set`
+  const paStatus = `${paRows.filter((row) => row.value !== null).length}/${paRows.length} recorded`
   const valveStatus = `${countDefined([
     choices.trSeverity !== 'none',
-    resolveNumericValue('trRegurgitantFraction'),
-    resolveNumericValue('trRegurgitantVolume'),
     choices.mrSeverity !== 'none',
-    resolveNumericValue('mrRegurgitantFraction'),
-    resolveNumericValue('mrRegurgitantVolume'),
     choices.prSeverity !== 'none',
-    resolveNumericValue('prRegurgitantFraction'),
+    ...valveRows.map((row) => row.value !== null),
   ])} set`
   const additionalStatus = `${countDefined([
-    resolveNumericValue('rvLvVolumeRatio'),
-    resolveNumericValue('rpaDistension'),
-    resolveNumericValue('lpaDistension'),
+    ...additionalRows.map((row) => row.value !== null),
     texts.ancillaryFindings,
     texts.additionalDetails,
   ])} set`
@@ -502,7 +1124,7 @@ export function CmrPhPage() {
     <div className="flex flex-wrap items-center gap-2">
       {bsa !== null && <StatusPill label={`BSA ${formatNumber(bsa, 2)} m2`} />}
       {heartRate !== null && <StatusPill label={`HR ${formatNumber(heartRate, 0)} bpm`} />}
-      <StatusPill label="Capture only" />
+      <StatusPill label={referenceLoading ? 'Reference loading' : `Sex ${sex}`} />
     </div>
   )
 
@@ -512,18 +1134,68 @@ export function CmrPhPage() {
         <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
         <PageHeader
           heading="Pulmonary Hypertension"
-          description="Structured capture of PH-relevant CMR findings, with auto-calculations but no generated conclusion."
+          description="PH-specific review layer over the quantitative extraction table, with reference ranges and graph overlay for the numeric metrics."
           actions={headerActions}
           className="!ml-0 !mt-0"
         />
       </Row>
 
-      <SectionCard title="RV Size & Function" statusLabel={rvStatus}>
-        <div className="grid gap-x-8 gap-y-4 xl:grid-cols-2">
-          {RV_FIELDS.map((key) => (
-            <MeasurementRow key={key} field={NUMERIC_FIELDS[key]} value={resolveNumericValue(key)} onChange={(value) => updateNumeric(key, value)} />
-          ))}
+      <section className="rounded-xl border border-border/50 bg-card px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--tone-danger-700))]">
+              Quantitative View
+            </p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              PH metrics are shown in the same reference-table format as the quantitative visualiser.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <PillToggle
+              options={[
+                { key: 'all', label: <AllRowsIcon />, tooltip: 'All PH table rows' },
+                { key: 'recorded', label: <RecordedIcon />, tooltip: 'Recorded rows only' },
+              ]}
+              compact
+              value={showFilter}
+              onChange={(value) => setShowFilter(value as 'all' | 'recorded')}
+            />
+            <PillToggle
+              options={[
+                { key: 'all', label: <SeverityIcon />, tooltip: 'All findings' },
+                { key: 'abnormal', label: <svg className="h-3.5 w-3.5" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="hsl(4 55% 50%)" /></svg>, tooltip: 'Abnormal only' },
+              ]}
+              compact
+              value={abnormalFilter}
+              onChange={(value) => setAbnormalFilter(value as 'all' | 'abnormal')}
+            />
+            <PillToggle
+              options={[
+                { key: 'off', label: <SeverityOffIcon />, tooltip: 'Severity colouring off' },
+                { key: 'abnormal', label: <SeverityIcon />, tooltip: 'Colour rows by severity' },
+              ]}
+              compact
+              value={severityMode}
+              onChange={(value) => setSeverityMode(value as 'off' | 'abnormal')}
+            />
+            <PillToggle
+              options={[
+                { key: 'on', label: <ChartIcon />, tooltip: 'Show range charts' },
+                { key: 'off', label: <ChartOffIcon />, tooltip: 'Table only' },
+              ]}
+              compact
+              value={chartMode}
+              onChange={(value) => setChartMode(value as 'off' | 'on')}
+            />
+            {chartMode === 'on' && (
+              <ChartControlStrip scalingMode={scalingMode} onGlobalAuto={handleGlobalAuto} onPerMeasAuto={handlePerMeasurementAuto} />
+            )}
+          </div>
         </div>
+      </section>
+
+      <SectionCard title="RV Size & Function" statusLabel={rvStatus}>
+        <QuantitativeTable rows={filteredRvRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} />
       </SectionCard>
 
       <SectionCard title="Septal / Right Heart Signs" statusLabel={rightHeartStatus}>
@@ -552,7 +1224,7 @@ export function CmrPhPage() {
                 <ChoicePills options={PERICARDIAL_EFFUSION_OPTIONS} value={choices.pericardialEffusion} onChange={(value) => updateChoice('pericardialEffusion', value)} />
               </div>
               {choices.pericardialEffusion !== 'none' && (
-                <MeasurementRow field={NUMERIC_FIELDS.pericardialEffusionSize} value={resolveNumericValue('pericardialEffusionSize')} onChange={(value) => updateNumeric('pericardialEffusionSize', value)} />
+                <MeasurementRow field={NUMERIC_FIELDS.pericardialEffusionSize} value={resolveNumericValue('pericardialEffusionSize')} onChange={(value) => updateManualNumeric('pericardialEffusionSize', value)} />
               )}
               <div className="space-y-2">
                 <FieldLabel>Vena cava</FieldLabel>
@@ -564,85 +1236,53 @@ export function CmrPhPage() {
       </SectionCard>
 
       <SectionCard title="Pulmonary Artery & Flow" statusLabel={paStatus}>
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Subsection title="PA Morphology">
-            <div className="space-y-4">
-              <MeasurementRow field={NUMERIC_FIELDS.mainPaDiameter} value={resolveNumericValue('mainPaDiameter')} onChange={(value) => updateNumeric('mainPaDiameter', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.mainPaSystolicArea} value={resolveNumericValue('mainPaSystolicArea')} onChange={(value) => updateNumeric('mainPaSystolicArea', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.mainPaDiastolicArea} value={resolveNumericValue('mainPaDiastolicArea')} onChange={(value) => updateNumeric('mainPaDiastolicArea', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.paRelativeAreaChange} value={resolveNumericValue('paRelativeAreaChange')} onChange={(value) => updateNumeric('paRelativeAreaChange', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.paDistensibility} value={resolveNumericValue('paDistensibility')} onChange={(value) => updateNumeric('paDistensibility', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.rpaDiameter} value={resolveNumericValue('rpaDiameter')} onChange={(value) => updateNumeric('rpaDiameter', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.lpaDiameter} value={resolveNumericValue('lpaDiameter')} onChange={(value) => updateNumeric('lpaDiameter', value)} />
-            </div>
-          </Subsection>
-
-          <Subsection title="Pulmonary Valve / Through-Plane Flow">
-            <div className="space-y-4">
-              <MeasurementRow field={NUMERIC_FIELDS.pvEffectiveForwardFlow} value={resolveNumericValue('pvEffectiveForwardFlow')} onChange={(value) => updateNumeric('pvEffectiveForwardFlow', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.pvForwardFlow} value={resolveNumericValue('pvForwardFlow')} onChange={(value) => updateNumeric('pvForwardFlow', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.pvBackwardFlow} value={resolveNumericValue('pvBackwardFlow')} onChange={(value) => updateNumeric('pvBackwardFlow', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.pvRegurgitantFraction} value={resolveNumericValue('pvRegurgitantFraction')} onChange={(value) => updateNumeric('pvRegurgitantFraction', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.peakVelocity} value={resolveNumericValue('peakVelocity')} onChange={(value) => updateNumeric('peakVelocity', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.maxPressureGradient} value={resolveNumericValue('maxPressureGradient')} onChange={(value) => updateNumeric('maxPressureGradient', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.meanPressureGradient} value={resolveNumericValue('meanPressureGradient')} onChange={(value) => updateNumeric('meanPressureGradient', value)} />
-            </div>
-          </Subsection>
-        </div>
+        <QuantitativeTable rows={filteredPaRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} />
       </SectionCard>
 
       <SectionCard title="Valvular Context" statusLabel={valveStatus}>
-        <div className="grid gap-6 xl:grid-cols-3">
-          <Subsection title="Tricuspid Regurgitation">
-            <div className="space-y-4">
+        <div className="grid gap-6">
+          <div className="grid gap-6 xl:grid-cols-3">
+            <Subsection title="Tricuspid Regurgitation">
               <div className="space-y-2">
                 <FieldLabel>Severity</FieldLabel>
                 <ChoicePills options={REGURGITATION_OPTIONS} value={choices.trSeverity} onChange={(value) => updateChoice('trSeverity', value)} />
               </div>
-              <MeasurementRow field={NUMERIC_FIELDS.trRegurgitantFraction} value={resolveNumericValue('trRegurgitantFraction')} onChange={(value) => updateNumeric('trRegurgitantFraction', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.trRegurgitantVolume} value={resolveNumericValue('trRegurgitantVolume')} onChange={(value) => updateNumeric('trRegurgitantVolume', value)} />
-            </div>
-          </Subsection>
+            </Subsection>
 
-          <Subsection title="Mitral Regurgitation">
-            <div className="space-y-4">
+            <Subsection title="Mitral Regurgitation">
               <div className="space-y-2">
                 <FieldLabel>Severity</FieldLabel>
                 <ChoicePills options={REGURGITATION_OPTIONS} value={choices.mrSeverity} onChange={(value) => updateChoice('mrSeverity', value)} />
               </div>
-              <MeasurementRow field={NUMERIC_FIELDS.mrRegurgitantFraction} value={resolveNumericValue('mrRegurgitantFraction')} onChange={(value) => updateNumeric('mrRegurgitantFraction', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.mrRegurgitantVolume} value={resolveNumericValue('mrRegurgitantVolume')} onChange={(value) => updateNumeric('mrRegurgitantVolume', value)} />
-            </div>
-          </Subsection>
+            </Subsection>
 
-          <Subsection title="Pulmonary Regurgitation">
-            <div className="space-y-4">
+            <Subsection title="Pulmonary Regurgitation">
               <div className="space-y-2">
                 <FieldLabel>Severity</FieldLabel>
                 <ChoicePills options={REGURGITATION_OPTIONS} value={choices.prSeverity} onChange={(value) => updateChoice('prSeverity', value)} />
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  Quantitative PR fraction remains visible under Pulmonary Artery &amp; Flow.
+                </p>
               </div>
-              <MeasurementRow field={NUMERIC_FIELDS.prRegurgitantFraction} value={resolveNumericValue('prRegurgitantFraction')} onChange={(value) => updateNumeric('prRegurgitantFraction', value)} />
-            </div>
-          </Subsection>
+            </Subsection>
+          </div>
+
+          <QuantitativeTable rows={filteredValveRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} />
         </div>
       </SectionCard>
 
       <SectionCard title="Additional" statusLabel={additionalStatus}>
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-          <Subsection title="Derived / Ancillary Metrics">
-            <div className="space-y-4">
-              <MeasurementRow field={NUMERIC_FIELDS.rvLvVolumeRatio} value={resolveNumericValue('rvLvVolumeRatio')} onChange={(value) => updateNumeric('rvLvVolumeRatio', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.rpaDistension} value={resolveNumericValue('rpaDistension')} onChange={(value) => updateNumeric('rpaDistension', value)} />
-              <MeasurementRow field={NUMERIC_FIELDS.lpaDistension} value={resolveNumericValue('lpaDistension')} onChange={(value) => updateNumeric('lpaDistension', value)} />
-            </div>
-          </Subsection>
+        <div className="grid gap-6">
+          <QuantitativeTable rows={filteredAdditionalRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} />
 
-          <Subsection title="Additional Notes">
-            <div className="grid gap-4">
-              <TextareaField label="Ancillary findings" value={texts.ancillaryFindings} onChange={(value) => updateText('ancillaryFindings', value)} placeholder="-" />
-              <TextareaField label="Additional details" value={texts.additionalDetails} onChange={(value) => updateText('additionalDetails', value)} placeholder="-" />
-            </div>
-          </Subsection>
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Subsection title="Additional Notes">
+              <div className="grid gap-4">
+                <TextareaField label="Ancillary findings" value={texts.ancillaryFindings} onChange={(value) => updateText('ancillaryFindings', value)} placeholder="-" />
+                <TextareaField label="Additional details" value={texts.additionalDetails} onChange={(value) => updateText('additionalDetails', value)} placeholder="-" />
+              </div>
+            </Subsection>
+          </div>
         </div>
       </SectionCard>
 
@@ -676,11 +1316,11 @@ export function CmrPhPage() {
 
             <Subsection title="Branch Flow Quantification">
               <div className="space-y-4">
-                <MeasurementRow field={NUMERIC_FIELDS.mainPaNetFlow} value={resolveNumericValue('mainPaNetFlow')} onChange={(value) => updateNumeric('mainPaNetFlow', value)} />
-                <MeasurementRow field={NUMERIC_FIELDS.rpaNetFlow} value={resolveNumericValue('rpaNetFlow')} onChange={(value) => updateNumeric('rpaNetFlow', value)} />
-                <MeasurementRow field={NUMERIC_FIELDS.lpaNetFlow} value={resolveNumericValue('lpaNetFlow')} onChange={(value) => updateNumeric('lpaNetFlow', value)} />
-                <MeasurementRow field={NUMERIC_FIELDS.rpaPercent} value={resolveNumericValue('rpaPercent')} onChange={(value) => updateNumeric('rpaPercent', value)} />
-                <MeasurementRow field={NUMERIC_FIELDS.lpaPercent} value={resolveNumericValue('lpaPercent')} onChange={(value) => updateNumeric('lpaPercent', value)} />
+                <MeasurementRow field={NUMERIC_FIELDS.mainPaNetFlow} value={resolveNumericValue('mainPaNetFlow')} onChange={(value) => updateManualNumeric('mainPaNetFlow', value)} />
+                <MeasurementRow field={NUMERIC_FIELDS.rpaNetFlow} value={resolveNumericValue('rpaNetFlow')} onChange={(value) => updateManualNumeric('rpaNetFlow', value)} />
+                <MeasurementRow field={NUMERIC_FIELDS.lpaNetFlow} value={resolveNumericValue('lpaNetFlow')} onChange={(value) => updateManualNumeric('lpaNetFlow', value)} />
+                <MeasurementRow field={NUMERIC_FIELDS.rpaPercent} value={resolveNumericValue('rpaPercent')} onChange={(value) => updateManualNumeric('rpaPercent', value)} />
+                <MeasurementRow field={NUMERIC_FIELDS.lpaPercent} value={resolveNumericValue('lpaPercent')} onChange={(value) => updateManualNumeric('lpaPercent', value)} />
               </div>
             </Subsection>
           </div>
@@ -690,7 +1330,8 @@ export function CmrPhPage() {
           </Subsection>
         </div>
       </SectionCard>
+
+      {selectedRow?.canonical && <QuantitativeParameterDrilldown row={selectedRow} onClose={() => setSelectedRow(null)} />}
     </Stack>
   )
 }
-
