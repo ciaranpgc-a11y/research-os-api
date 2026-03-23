@@ -139,6 +139,9 @@ export function inferSeverityLabel(
   // MAPSE / TAPSE → reduced (length excursion, not function)
   if (key === 'mapse' || key === 'tapse' || key.startsWith('mapse ') || key.startsWith('tapse ')) return 'reduced'
 
+  // Distensibility → reduced (low distensibility = stiff vessel)
+  if (key.includes('distensibility')) return 'reduced'
+
   // Backward flow → elevated
   if (key.includes('backward flow')) return 'elevated'
 
