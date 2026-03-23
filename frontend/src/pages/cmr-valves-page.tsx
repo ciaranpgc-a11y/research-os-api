@@ -736,7 +736,6 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
   const effective = parseFloat(values.effectiveForwardFlow || '')
   const rf = parseFloat(values.regurgitantFraction || '')
 
-  // Need at least forward and backward to show anything
   const hasFlow = !isNaN(forward) && forward > 0 && !isNaN(backward)
   const hasRF = !isNaN(rf)
 
@@ -747,154 +746,178 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
   const effectivePct = hasFlow ? ((effectiveVal / forward) * 100) : (hasRF ? 100 - rfVal : NaN)
   const regurgPct = hasFlow ? ((backward / forward) * 100) : rfVal
 
-  // Severity band definitions with RF% breakpoints for marker positioning
-  // None: 0–5%, Trivial: 5–10%, Mild: 10–20%, Moderate: 20–40%, Severe: 40%+
-  const bandBreakpoints = [0, 5, 10, 20, 40, 100] // RF% thresholds
-  const bandWidths = [10, 10, 15, 15, 50] // % of bar width per band
-  const bandLabels = ['None', 'Trivial', 'Mild', 'Moderate', 'Severe']
-  const bandSeverities: Severity[] = ['none', 'trivial', 'mild', 'moderate', 'severe']
+  // Gauge arc: map RF 0–60% to 0–180 degrees (clamped)
+  const gaugeAngle = !isNaN(rfVal) ? Math.min(rfVal / 60, 1) * 180 : 0
 
-  // Map RF% to position on the bar
-  function rfToPosition(rfPct: number): number {
-    const clamped = Math.max(0, Math.min(rfPct, 100))
-    let cumWidth = 0
-    for (let i = 0; i < bandBreakpoints.length - 1; i++) {
-      const lo = bandBreakpoints[i]
-      const hi = bandBreakpoints[i + 1]
-      if (clamped <= hi) {
-        const frac = (clamped - lo) / (hi - lo)
-        return cumWidth + frac * bandWidths[i]
-      }
-      cumWidth += bandWidths[i]
-    }
-    return 100
+  // Severity zone arcs on the gauge (same breakpoints as before)
+  const sevZones = [
+    { label: 'None', lo: 0, hi: 5, color: SEVERITY_COLORS.none },
+    { label: 'Trivial', lo: 5, hi: 10, color: SEVERITY_COLORS.trivial },
+    { label: 'Mild', lo: 10, hi: 20, color: SEVERITY_COLORS.mild },
+    { label: 'Moderate', lo: 20, hi: 40, color: SEVERITY_COLORS.moderate },
+    { label: 'Severe', lo: 40, hi: 60, color: SEVERITY_COLORS.severe },
+  ]
+
+  // SVG arc helper (center 120,120, radius r, from startDeg to endDeg)
+  function arcPath(r: number, startDeg: number, endDeg: number): string {
+    const s = (startDeg - 90) * (Math.PI / 180)
+    const e = (endDeg - 90) * (Math.PI / 180)
+    const x1 = 120 + r * Math.cos(s)
+    const y1 = 120 + r * Math.sin(s)
+    const x2 = 120 + r * Math.cos(e)
+    const y2 = 120 + r * Math.sin(e)
+    const largeArc = endDeg - startDeg > 180 ? 1 : 0
+    return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`
   }
 
-  const markerPos = !isNaN(rfVal) ? rfToPosition(rfVal) : 0
-
-
-  // Determine which band the marker falls in
-  const activeBandIdx = (() => {
-    if (isNaN(rfVal)) return -1
-    for (let i = 0; i < bandBreakpoints.length - 1; i++) {
-      if (rfVal <= bandBreakpoints[i + 1]) return i
-    }
-    return bandWidths.length - 1
-  })()
+  // Needle endpoint
+  const needleAngle = (gaugeAngle - 90) * (Math.PI / 180)
+  const needleR = 68
+  const nx = 120 + needleR * Math.cos(needleAngle)
+  const ny = 120 + needleR * Math.sin(needleAngle)
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="space-y-5">
-        {/* ── Severity scale ── */}
-        <div>
-          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Regurgitant fraction</p>
-          <div className="relative">
-            {/* Discrete severity zones */}
-            <div className="flex h-9 rounded-lg overflow-hidden">
-              {bandWidths.map((w, i) => {
-                const isActive = activeBandIdx === i
-                return (
-                  <div
-                    key={bandSeverities[i]}
-                    className={cn(
-                      'flex items-center justify-center text-[11px] font-semibold transition-all duration-300 relative',
-                      isActive ? 'text-white' : 'text-white/40',
-                    )}
-                    style={{
-                      width: `${w}%`,
-                      backgroundColor: SEVERITY_COLORS[bandSeverities[i]],
-                      opacity: isActive || activeBandIdx === -1 ? 1 : 0.55,
-                    }}
-                  >
-                    {/* Divider line between zones */}
-                    {i > 0 && <div className="absolute left-0 top-[15%] bottom-[15%] w-px bg-white/30" />}
-                    {bandLabels[i]}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* RF marker */}
+      <div className="flex items-start gap-6">
+        {/* ── RF Gauge ── */}
+        <div className="flex flex-col items-center">
+          <svg width="240" height="140" viewBox="0 0 240 140">
+            {/* Background track */}
+            <path d={arcPath(85, 0, 180)} fill="none" stroke="hsl(0 0% 90%)" strokeWidth="22" strokeLinecap="round" />
+            {/* Severity zones */}
+            {sevZones.map((z) => {
+              const startAngle = (z.lo / 60) * 180
+              const endAngle = Math.min(z.hi / 60, 1) * 180
+              const isActive = !isNaN(rfVal) && rfVal >= z.lo && rfVal < (z.hi === 60 ? Infinity : z.hi)
+              return (
+                <path
+                  key={z.label}
+                  d={arcPath(85, startAngle, endAngle)}
+                  fill="none"
+                  stroke={z.color}
+                  strokeWidth="22"
+                  strokeLinecap="butt"
+                  opacity={isActive || isNaN(rfVal) ? 1 : 0.35}
+                  className="transition-opacity duration-300"
+                />
+              )
+            })}
+            {/* Zone labels */}
+            {sevZones.map((z) => {
+              const midAngle = ((z.lo + z.hi) / 2 / 60) * 180
+              const labelR = 110
+              const a = (midAngle - 90) * (Math.PI / 180)
+              const lx = 120 + labelR * Math.cos(a)
+              const ly = 120 + labelR * Math.sin(a)
+              return (
+                <text
+                  key={z.label}
+                  x={lx}
+                  y={ly}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="fill-muted-foreground text-[8px] font-medium"
+                >
+                  {z.label}
+                </text>
+              )
+            })}
+            {/* Needle */}
             {!isNaN(rfVal) && (
-              <div
-                className="absolute top-0 h-full flex items-center pointer-events-none"
-                style={{ left: `${markerPos}%`, transform: 'translateX(-50%)' }}
-              >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="pointer-events-auto cursor-default group relative">
-                      <div className="relative w-5 h-5 rounded-full bg-white border-[2.5px] border-foreground/80 shadow-lg transition-transform duration-200 group-hover:scale-[1.4]" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="p-0 overflow-hidden max-w-[200px]">
-                    <div className="px-4 py-2.5 bg-muted/60 border-b border-border/40 text-center">
-                      <div className="text-lg font-bold tabular-nums">{rfVal.toFixed(1)}%</div>
-                    </div>
-                    <div className="px-4 py-2 text-center">
-                      <span
-                        className={cn('rounded-full px-2.5 py-1 text-xs font-semibold', severity === 'mild' ? 'text-black' : 'text-white')}
-                        style={{ backgroundColor: SEVERITY_COLORS[severity] }}
-                      >
-                        {SEVERITY_LABELS[severity]} regurgitation
-                      </span>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
+              <>
+                <line x1={120} y1={120} x2={nx} y2={ny} stroke="hsl(0 0% 20%)" strokeWidth="2.5" strokeLinecap="round" />
+                <circle cx={120} cy={120} r="5" fill="hsl(0 0% 20%)" />
+              </>
             )}
-          </div>
+            {/* Center value */}
+            <text x={120} y={105} textAnchor="middle" className="fill-foreground text-xl font-bold" style={{ fontSize: '22px' }}>
+              {!isNaN(rfVal) ? `${rfVal.toFixed(1)}%` : '—'}
+            </text>
+            <text x={120} y={130} textAnchor="middle" className="fill-muted-foreground text-[9px] font-medium">
+              Regurgitant fraction
+            </text>
+          </svg>
+          {/* Severity pill */}
+          <span
+            className={cn('rounded-full px-3 py-1 text-xs font-semibold -mt-1', severity === 'mild' ? 'text-black' : 'text-white')}
+            style={{ backgroundColor: SEVERITY_COLORS[severity] }}
+          >
+            {SEVERITY_LABELS[severity]}
+          </span>
         </div>
 
-        {/* ── Flow composition ── */}
-        {hasFlow && !isNaN(effectivePct) && (
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Flow composition</p>
-            <div className="flex h-8 rounded-lg overflow-hidden border border-border/30 shadow-sm">
-              {/* Effective forward segment */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    className="flex items-center justify-center text-xs font-bold text-white cursor-default transition-opacity hover:opacity-90 relative"
-                    style={{ width: `${effectivePct}%`, background: 'linear-gradient(180deg, hsl(217 70% 62%), hsl(217 70% 46%))' }}
-                  >
-                    {!isNaN(effectiveVal) && `${effectiveVal.toFixed(0)} mL (${effectivePct.toFixed(0)}%)`}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="p-0 overflow-hidden">
-                  <div className="px-4 py-2.5 text-center">
-                    <div className="text-base font-bold tabular-nums">{effectiveVal.toFixed(1)} mL</div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">Effective forward flow ({effectivePct.toFixed(0)}%)</div>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-              {/* Divider */}
-              <div className="w-px bg-white/50 shrink-0" />
-              {/* Regurgitant segment */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    className="flex items-center justify-center text-xs font-bold text-white cursor-default transition-opacity hover:opacity-90 relative"
-                    style={{
-                      width: `${regurgPct}%`,
-                      background: `repeating-linear-gradient(
-                        -45deg,
-                        hsl(3 55% 50%),
-                        hsl(3 55% 50%) 3px,
-                        hsl(3 55% 44%) 3px,
-                        hsl(3 55% 44%) 6px
-                      )`,
-                    }}
-                  >
-                    {backward > 0 && `${backward.toFixed(0)} mL (${regurgPct.toFixed(0)}%)`}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="p-0 overflow-hidden">
-                  <div className="px-4 py-2.5 text-center">
-                    <div className="text-base font-bold tabular-nums">{backward.toFixed(1)} mL</div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">Regurgitant volume ({regurgPct.toFixed(0)}%)</div>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
+        {/* ── Flow split ── */}
+        {hasFlow && (
+          <div className="flex-1 min-w-0 flex flex-col gap-3 pt-2">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Flow breakdown</p>
+            {/* Forward flow (total) */}
+            <div className="flex items-center gap-3">
+              <div className="w-28 shrink-0 text-right">
+                <div className="text-xs text-muted-foreground">Forward</div>
+                <div className="text-sm font-bold tabular-nums">{forward.toFixed(0)} mL</div>
+              </div>
+              <div className="flex-1 h-7 rounded-md overflow-hidden bg-muted/30 border border-border/30 relative">
+                <div className="absolute inset-0 flex">
+                  {/* Effective portion */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        className="h-full flex items-center justify-center text-[11px] font-semibold text-white cursor-default hover:brightness-110 transition-all"
+                        style={{ width: `${effectivePct}%`, background: 'hsl(217 70% 52%)' }}
+                      >
+                        {effectivePct > 20 && `${effectiveVal.toFixed(0)} mL`}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="px-3 py-2">
+                      <div className="text-sm font-bold">{effectiveVal.toFixed(1)} mL</div>
+                      <div className="text-[10px] text-muted-foreground">Effective forward ({effectivePct.toFixed(0)}%)</div>
+                    </TooltipContent>
+                  </Tooltip>
+                  {/* Regurgitant portion */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        className="h-full flex items-center justify-center text-[11px] font-semibold text-white cursor-default hover:brightness-110 transition-all"
+                        style={{ width: `${regurgPct}%`, background: 'hsl(3 55% 50%)' }}
+                      >
+                        {regurgPct > 12 && `${backward.toFixed(0)} mL`}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="px-3 py-2">
+                      <div className="text-sm font-bold">{backward.toFixed(1)} mL</div>
+                      <div className="text-[10px] text-muted-foreground">Regurgitant ({regurgPct.toFixed(0)}%)</div>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+            </div>
+            {/* Effective forward */}
+            <div className="flex items-center gap-3">
+              <div className="w-28 shrink-0 text-right">
+                <div className="text-xs text-muted-foreground">Effective</div>
+                <div className="text-sm font-bold tabular-nums" style={{ color: 'hsl(217 70% 48%)' }}>{effectiveVal.toFixed(0)} mL</div>
+              </div>
+              <div className="flex-1 h-3 rounded-full overflow-hidden bg-muted/30">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${effectivePct}%`, background: 'hsl(217 70% 52%)' }}
+                />
+              </div>
+              <span className="text-xs font-semibold tabular-nums text-muted-foreground w-10">{effectivePct.toFixed(0)}%</span>
+            </div>
+            {/* Regurgitant */}
+            <div className="flex items-center gap-3">
+              <div className="w-28 shrink-0 text-right">
+                <div className="text-xs text-muted-foreground">Regurgitant</div>
+                <div className="text-sm font-bold tabular-nums" style={{ color: 'hsl(3 55% 50%)' }}>{backward.toFixed(0)} mL</div>
+              </div>
+              <div className="flex-1 h-3 rounded-full overflow-hidden bg-muted/30">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${regurgPct}%`, background: 'hsl(3 55% 50%)' }}
+                />
+              </div>
+              <span className="text-xs font-semibold tabular-nums text-muted-foreground w-10">{regurgPct.toFixed(0)}%</span>
             </div>
           </div>
         )}
