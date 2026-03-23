@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 
 import { PageHeader, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { getExtractionResult, subscribeExtractionResult } from '@/lib/cmr-report-store'
 
@@ -752,8 +751,7 @@ const VALVE_REGURG_ABBR: Record<ValveId, string> = {
   pulmonary: 'PR',
 }
 
-function FlowViz({ values, severity, valveId }: { values: Record<string, string>; severity: Severity; valveId: ValveId }) {
-  const regurgAbbr = VALVE_REGURG_ABBR[valveId]
+function FlowViz({ values }: { values: Record<string, string> }) {
   const forward = parseFloat(values.forwardFlow || '')
   const backward = Math.abs(parseFloat(values.backwardFlow || ''))
   const rf = parseFloat(values.regurgitantFraction || '')
@@ -926,68 +924,8 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
               })}
             </div>
             <div className="w-[440px] shrink-0 flex flex-col justify-center">
-              <FlowViz values={values} severity={effectiveSeverity} valveId={valve.id} />
+              <FlowViz values={values} />
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Severity card */}
-      <section className="rounded-xl border border-border/50 bg-card">
-        <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3.5">
-          <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
-          <h3 className="text-sm font-semibold text-foreground flex-1">Severity</h3>
-          <span
-            className={cn(
-              'rounded-full px-3 py-1 text-xs font-semibold',
-              effectiveSeverity === 'mild' ? 'text-black' : 'text-white',
-            )}
-            style={{ backgroundColor: SEVERITY_COLORS[effectiveSeverity] }}
-          >
-            {SEVERITY_LABELS[effectiveSeverity]} {VALVE_REGURG_ABBR[valve.id]}
-          </span>
-        </div>
-        <div className="p-5">
-          <div className="flex items-center gap-4">
-            <div className="flex gap-1.5">
-              {(Object.keys(SEVERITY_LABELS) as Severity[]).map((s) => {
-                const isActive = effectiveSeverity === s
-                const isAuto = autoSeverity === s && manualSeverity === null
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => {
-                      if (manualSeverity === s) {
-                        onManualSeverityChange(null)
-                      } else {
-                        onManualSeverityChange(s)
-                      }
-                    }}
-                    className={cn(
-                      'rounded-full px-3 py-1 text-xs font-medium transition-all',
-                      isActive
-                        ? s === 'mild' ? 'text-black' : 'text-white'
-                        : 'text-muted-foreground hover:text-foreground',
-                      !isActive && 'ring-1 ring-border/50 hover:ring-foreground/20',
-                    )}
-                    style={isActive ? { backgroundColor: SEVERITY_COLORS[s] } : undefined}
-                  >
-                    {SEVERITY_LABELS[s]}
-                    {isAuto && ' •'}
-                  </button>
-                )
-              })}
-            </div>
-            {autoSeverity && manualSeverity !== null && (
-              <button
-                type="button"
-                onClick={() => onManualSeverityChange(null)}
-                className="text-xs text-muted-foreground hover:text-foreground underline"
-              >
-                Reset to auto
-              </button>
-            )}
           </div>
         </div>
       </section>
