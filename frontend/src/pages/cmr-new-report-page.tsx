@@ -1278,14 +1278,14 @@ export function CmrNewReportPage() {
                   <div className="overflow-x-auto rounded-b-lg border-x border-b border-[hsl(var(--stroke-soft)/0.72)]">
                     <table data-house-no-column-resize="true" className="w-full table-fixed border-collapse text-sm">
                       <colgroup>
-                        <col style={{ width: chartMode === 'on' ? '22%' : '28%' }} />
+                        <col style={{ width: chartMode === 'on' ? '21%' : '28%' }} />
                         <col style={{ width: chartMode === 'on' ? '8%' : '10%' }} />
-                        <col style={{ width: chartMode === 'on' ? '6%' : '10%' }} />
-                        <col style={{ width: chartMode === 'on' ? '5%' : '8%' }} />
-                        <col style={{ width: chartMode === 'on' ? '5%' : '8%' }} />
-                        <col style={{ width: chartMode === 'on' ? '5%' : '8%' }} />
-                        <col style={{ width: chartMode === 'on' ? '14%' : '28%' }} />
-                        {chartMode === 'on' && <col style={{ width: '35%' }} />}
+                        <col style={{ width: chartMode === 'on' ? '7%' : '10%' }} />
+                        <col style={{ width: chartMode === 'on' ? '6%' : '8%' }} />
+                        <col style={{ width: chartMode === 'on' ? '6%' : '8%' }} />
+                        <col style={{ width: chartMode === 'on' ? '6%' : '8%' }} />
+                        <col style={{ width: chartMode === 'on' ? '16%' : '28%' }} />
+                        {chartMode === 'on' && <col style={{ width: '30%' }} />}
                       </colgroup>
                       <thead>
                         <tr className="border-b-2 border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))]">
