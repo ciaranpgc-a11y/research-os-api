@@ -190,21 +190,20 @@ export function perMeasurementAutoAdjust(measuredRel: number): RangeParam {
     rw = FACTORY_RANGE_WIDTH
     rs = FACTORY_RANGE_START
   } else if (measuredRel > 1) {
-    // Above range: scale so dot lands at ~80% of the bar, LL at ~5%
-    // dot position = rs + rw * measuredRel = 0.80
-    // LL position  = rs + rw * 0           = rs = 0.05
-    // So: rw = (0.80 - 0.05) / measuredRel = 0.75 / measuredRel
+    // Above range: scale 0 → 5% of bar, measuredRel+headroom → 95%
+    // This means the band and dot position are proportional to the actual value.
+    // Mildly abnormal (rel 1.2): dot at ~70%, band 5–60%, ticks visible
+    // Severely abnormal (rel 3.0): dot at ~80%, band 5–30%, ticks spread out
+    // headroom: 15% beyond measured so the dot doesn't pin at the edge
+    const maxRel = measuredRel * 1.15
     rs = 0.05
-    rw = 0.75 / measuredRel
+    rw = 0.90 / maxRel
   } else {
-    // Below range: scale so dot lands at ~20% of the bar, UL at ~95%
-    // dot position = rs + rw * measuredRel = 0.20
-    // UL position  = rs + rw * 1           = 0.95
-    // rw = 0.95 - rs, and rs + rw * measuredRel = 0.20
-    // rs = 0.95 - rw, so (0.95 - rw) + rw * measuredRel = 0.20
-    // 0.95 + rw * (measuredRel - 1) = 0.20
-    // rw = (0.20 - 0.95) / (measuredRel - 1) = -0.75 / (measuredRel - 1) = 0.75 / (1 - measuredRel)
-    rw = 0.75 / (1 - measuredRel)
+    // Below range: scale measuredRel-headroom → 5%, 1 → 95%
+    const minRel = measuredRel * 1.15 // more negative = more headroom on left
+    // We want: rs + rw * minRel = 0.05, rs + rw * 1 = 0.95
+    // rw = (0.95 - 0.05) / (1 - minRel) = 0.90 / (1 - minRel)
+    rw = 0.90 / (1 - minRel)
     rs = 0.95 - rw
   }
 
