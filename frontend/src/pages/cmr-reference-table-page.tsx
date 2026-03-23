@@ -529,13 +529,6 @@ export function CmrReferenceTablePage() {
         </div>
       )}
 
-      {/* Footer */}
-      <div className="mt-4 border-t border-[hsl(var(--stroke-soft)/0.3)] pt-4">
-        <p className="text-xs text-[hsl(var(--muted-foreground))]">
-          Petersen et al. JCMR 2017;19:51 &middot; Kawel-Boehm et al. JCMR 2015;17:29
-        </p>
-      </div>
-
       {/* Parameter drilldown */}
       {selectedParam && (
         <ParameterDrilldown
