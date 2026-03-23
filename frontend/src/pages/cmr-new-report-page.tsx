@@ -417,6 +417,7 @@ function RangeChart({
   rangeWidth,
   previousMarkers,
   severityZones,
+  severityTicks,
   severityGrade,
 }: {
   measured: number
