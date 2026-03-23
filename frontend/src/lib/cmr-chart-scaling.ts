@@ -190,29 +190,22 @@ export function perMeasurementAutoAdjust(measuredRel: number): RangeParam {
     rw = FACTORY_RANGE_WIDTH
     rs = FACTORY_RANGE_START
   } else if (measuredRel > 1) {
-    // Above range: the normal band should compress to ~20% of the bar
-    // and the abnormal region (UL to ~2.5 SD beyond) fills the rest.
-    // We want: UL position at ~20%, dot at a proportional position in the remaining 80%.
-    // Formula: rs + rw * 0 = LL position, rs + rw * 1 = UL position = ~0.20
-    // rs + rw * measuredRel = dot position
-    // If we fix UL at 0.20 of bar: rw = 0.20 - rs (since UL is rel=1, rs + rw*1 = 0.20)
-    // And LL at ~0.03: rs = 0.03, so rw = 0.17
-    // Dot at: 0.03 + 0.17 * measuredRel
-    // For rel=1.5: 0.03 + 0.17*1.5 = 0.285 — still left-ish, good
-    // For rel=3.0: 0.03 + 0.17*3.0 = 0.54 — middle, good
-    // For rel=5.0: 0.03 + 0.17*5.0 = 0.88 — near right edge, good
-    rs = 0.03
-    rw = 0.17
+    // Above range: scale so dot lands at ~80% of the bar, LL at ~5%
+    // dot position = rs + rw * measuredRel = 0.80
+    // LL position  = rs + rw * 0           = rs = 0.05
+    // So: rw = (0.80 - 0.05) / measuredRel = 0.75 / measuredRel
+    rs = 0.05
+    rw = 0.75 / measuredRel
   } else {
-    // Below range: mirror — band on the right, abnormal region on the left
-    // UL at ~0.80, LL at ~0.97 of bar
-    // rs + rw * 1 = 0.97, rs + rw * 0 = 0.80 → rs = 0.80, rw = 0.17
-    // Dot at: 0.80 + 0.17 * measuredRel
-    // For rel=-0.5: 0.80 + 0.17*(-0.5) = 0.715
-    // For rel=-2.0: 0.80 + 0.17*(-2.0) = 0.46 — middle, good
-    // For rel=-4.0: 0.80 + 0.17*(-4.0) = 0.12 — near left edge, good
-    rs = 0.80
-    rw = 0.17
+    // Below range: scale so dot lands at ~20% of the bar, UL at ~95%
+    // dot position = rs + rw * measuredRel = 0.20
+    // UL position  = rs + rw * 1           = 0.95
+    // rw = 0.95 - rs, and rs + rw * measuredRel = 0.20
+    // rs = 0.95 - rw, so (0.95 - rw) + rw * measuredRel = 0.20
+    // 0.95 + rw * (measuredRel - 1) = 0.20
+    // rw = (0.20 - 0.95) / (measuredRel - 1) = -0.75 / (measuredRel - 1) = 0.75 / (1 - measuredRel)
+    rw = 0.75 / (1 - measuredRel)
+    rs = 0.95 - rw
   }
 
   rs = roundToStep(clamp(rs, 0.02, 0.6), ROUND_STEP)
