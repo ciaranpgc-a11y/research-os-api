@@ -107,6 +107,7 @@ export function CollectionDropdown({
                   type="button"
                   className="p-1 text-muted-foreground hover:text-foreground rounded"
                   onClick={(e) => { e.stopPropagation(); void handleExpand(coll.id) }}
+                  aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${coll.name} subcollections`}
                 >
                   <ChevronRight className={cn('h-3 w-3 transition-transform', isExpanded && 'rotate-90')} />
                 </button>

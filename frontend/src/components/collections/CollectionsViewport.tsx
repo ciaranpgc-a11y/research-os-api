@@ -55,13 +55,15 @@ export function CollectionsViewport({
   works,
   onClose,
   onOpenPublication,
+  pageMode = false,
 }: {
   works: PersonaWork[]
-  onClose: () => void
+  onClose?: () => void
   onOpenPublication: (workId: string) => void
+  pageMode?: boolean
 }) {
   // ---- state ----
-  const [mode, setMode] = useState<ViewportMode>('organise')
+  const [mode, setMode] = useState<ViewportMode>(pageMode ? 'browse' : 'organise')
   const [collections, setCollections] = useState<CollectionPayload[]>([])
   const [pubCollectionsMap, setPubCollectionsMap] = useState<Map<string, PublicationCollectionSummary[]>>(new Map())
   const [loading, setLoading] = useState(true)
@@ -99,7 +101,6 @@ export function CollectionsViewport({
     count: number
     parentId?: string
   } | null>(null)
-  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false)
 
   // toast
   const [toast, setToast] = useState<string | null>(null)
@@ -121,7 +122,6 @@ export function CollectionsViewport({
         if (cancelled) return
         setCollections(colls)
 
-        // load publication -> collection memberships
         const entries = await Promise.all(
           works.map(async (w) => {
             const sums = await fetchPublicationCollections(w.id).catch(() => [] as PublicationCollectionSummary[])
@@ -366,28 +366,8 @@ export function CollectionsViewport({
     setDeleteConfirm(null)
   }, [deleteConfirm, selectedCollectionId, refreshCollections, handleSubcollectionsFetched])
 
-  // ---- delete all collections ----
-  const handleDeleteAll = useCallback(async () => {
-    setDeleteAllConfirm(false)
-    try {
-      await Promise.all(collections.map((c) => deleteCollection(c.id)))
-      setCollections([])
-      setSelectedCollectionId(null)
-      setExpandedIds(new Set())
-      setSubcollectionsMap(new Map())
-      setPubCollectionsMap((prev) => {
-        const next = new Map(prev)
-        for (const workId of next.keys()) next.set(workId, [])
-        return next
-      })
-    } catch {
-      setToast('Failed to delete all collections')
-      await refreshCollections()
-    }
-  }, [collections, refreshCollections])
-
   // ---- add to collection (from "+" button on card) ----
-  const handleAddToCollection = useCallback(async (workId: string, collectionId: string, _subcollectionId: string | null) => {
+  const handleAddToCollection = useCallback(async (workId: string, collectionId: string) => {
     try {
       await addPublicationsToCollection(collectionId, [workId])
       const coll = collections.find((c) => c.id === collectionId)
@@ -463,7 +443,7 @@ export function CollectionsViewport({
       return
     }
     // Adjust for removal of dragged item
-    let insertAt = browseDropIdx > browseDragIdx ? browseDropIdx - 1 : browseDropIdx
+    const insertAt = browseDropIdx > browseDragIdx ? browseDropIdx - 1 : browseDropIdx
     if (insertAt === browseDragIdx) {
       setBrowseDragIdx(null)
       setBrowseDropIdx(null)
@@ -495,11 +475,21 @@ export function CollectionsViewport({
 
   // ---- render ----
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[hsl(var(--surface-drilldown-elevated))]">
+    <div className={cn(
+      'flex flex-col bg-[hsl(var(--surface-drilldown-elevated))]',
+      pageMode ? 'min-h-[calc(100vh-11rem)]' : 'h-full min-h-0',
+    )}>
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-6 py-3">
         <div className="flex items-center gap-4">
-          <h2 className="text-base font-semibold text-foreground">Collections</h2>
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold text-foreground">Collections</h2>
+            {pageMode ? (
+              <p className="text-sm text-muted-foreground">
+                Browse, curate, and group publications before opening the full publication detail view.
+              </p>
+            ) : null}
+          </div>
           <div className="flex gap-1">
             {(['organise', 'browse'] as const).map((m) => (
               <button
@@ -518,14 +508,16 @@ export function CollectionsViewport({
             ))}
           </div>
         </div>
-        <button
-          type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Close collections"
-          onClick={onClose}
-        >
-          <X className="h-4 w-4" />
-        </button>
+        {onClose && !pageMode ? (
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Close collections"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
 
       {/* Body */}
@@ -561,10 +553,10 @@ export function CollectionsViewport({
             onCreateCollection={handleCreateCollection}
             onCancelCreateCollection={() => setCreatingCollection(false)}
             newCollectionInputRef={newCollectionInputRef}
+            pageMode={pageMode}
             onRenameCollection={handleRenameCollection}
             onDeleteCollection={handleRequestDeleteCollection}
             onColourChange={handleColourChange}
-            onDeleteAll={() => setDeleteAllConfirm(true)}
             onCreateSubcollection={handleCreateSubcollection}
             onRenameSubcollection={handleRenameSubcollection}
             onDeleteSubcollection={handleRequestDeleteSubcollection}
@@ -606,6 +598,7 @@ export function CollectionsViewport({
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                     <input
                       className="house-input w-full pl-8 pr-3 py-1.5 text-sm rounded-md"
+                      aria-label="Search publications"
                       placeholder="Search publications..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -637,7 +630,7 @@ export function CollectionsViewport({
                         onSubcollectionsFetched={handleSubcollectionsFetched}
                         onDragStart={() => handleDragStart(work.id)}
                         onDragEnd={() => { setDragWorkId(null); setDropTargetId(null) }}
-                        onAddToCollection={(collId, subId) => handleAddToCollection(work.id, collId, subId)}
+                        onAddToCollection={(collId) => handleAddToCollection(work.id, collId)}
                       />
                     )
                   })}
@@ -645,7 +638,7 @@ export function CollectionsViewport({
                   {filteredWorks.length === 0 && (
                     <div className="text-center text-sm text-muted-foreground py-12">
                       {searchQuery
-                        ? 'No publications match your search.'
+                        ? 'No publications match your search or filters.'
                         : pubFilter === 'uncollected'
                           ? 'All publications are in at least one collection.'
                           : 'No publications found.'}
@@ -657,12 +650,23 @@ export function CollectionsViewport({
               <>
                 {/* Browse mode content */}
                 {!selectedCollectionId ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3 text-sm text-muted-foreground">
-                    <p>Select a collection from the sidebar to browse its publications.</p>
+                  <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center text-sm text-muted-foreground">
+                    {collections.length === 0 ? (
+                      <>
+                        <p className="text-base font-medium text-foreground">No collections yet.</p>
+                        <p>Create your first collection from the left rail, then add publications to it.</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-base font-medium text-foreground">Select a collection to browse its publications.</p>
+                        <p>Choose a collection from the sidebar, or switch to Organise to assign publications.</p>
+                      </>
+                    )}
                   </div>
                 ) : browsePubs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3 text-sm text-muted-foreground">
-                    <p>No publications in this collection yet.</p>
+                  <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center text-sm text-muted-foreground">
+                    <p className="text-base font-medium text-foreground">This collection is empty.</p>
+                    <p>No publications are assigned here yet. Switch to Organise to add publications or create a subcollection for a narrower view.</p>
                     <button
                       type="button"
                       className="text-[hsl(var(--tone-accent-700))] hover:text-[hsl(var(--tone-accent-900))] font-medium"
@@ -741,17 +745,6 @@ export function CollectionsViewport({
           }
           onConfirm={handleConfirmDelete}
           onCancel={() => setDeleteConfirm(null)}
-        />
-      )}
-
-      {/* Delete all confirmation */}
-      {deleteAllConfirm && (
-        <ConfirmDeleteDialog
-          open
-          title="Delete all collections"
-          description={`Delete all ${collections.length} collection${collections.length !== 1 ? 's' : ''}? Publications will not be deleted. This cannot be undone.`}
-          onConfirm={handleDeleteAll}
-          onCancel={() => setDeleteAllConfirm(false)}
         />
       )}
 

@@ -277,6 +277,8 @@ from research_os.api.schemas import (
     CollectionPublicationAddResponse,
     CollectionPublicationRemoveResponse,
     CollectionPublicationReorderResponse,
+    PublicationCollectionsBatchRequest,
+    PublicationCollectionsBatchResponse,
     PublicationCollectionsListResponse,
     MovePublicationSubcollectionRequest,
     MovePublicationSubcollectionResponse,
@@ -602,6 +604,7 @@ from research_os.services.collection_service import (
     reorder_collection_publications,
     list_subcollection_publications,
     list_publication_collections,
+    list_publication_collections_batch,
     move_publication_subcollection,
 )
 
@@ -6958,5 +6961,24 @@ def v1_list_publication_collections(
     try:
         items = list_publication_collections(user_id, work_id)
         return PublicationCollectionsListResponse(items=items)
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
+@app.post(
+    "/v1/publications/collections/batch",
+    response_model=PublicationCollectionsBatchResponse,
+    responses=UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_batch_list_publication_collections(
+    request: Request, body: PublicationCollectionsBatchRequest
+) -> PublicationCollectionsBatchResponse | JSONResponse:
+    user_id, err = _resolve_request_user_required(request)
+    if err:
+        return err
+    try:
+        items = list_publication_collections_batch(user_id, body.work_ids)
+        return PublicationCollectionsBatchResponse(items=items)
     except Exception as exc:
         return _build_error_response(exc)

@@ -1,5 +1,43 @@
 # Change Log
 
+## 2026-03-23
+
+### Profile Collections Dedicated Page + Batch Membership Read
+
+- **Area:** Profile research navigation, collections workspace UX, and collections API efficiency.
+- **What changed:**
+  - Added a dedicated `Collections` page under the standard Profile left navigation at `/profile/collections`.
+  - Replaced the old publications-page overlay entrypoint so `My collections` on the Publications page now routes into the dedicated collections workspace instead of opening a sheet on top of Publications.
+  - Promoted the collections viewport into a page-mode experience with stronger empty states, no global `Delete all collections` action, and clearer page-level framing.
+  - Added accessibility labels to icon-only controls in the collections workspace and related publication controls.
+  - Added a new batch API endpoint, `POST /v1/publications/collections/batch`, so the collections surface can hydrate publication membership data without one request per publication.
+- **Why it changed:**
+  - The previous overlay behavior created conflicting UI state and made Collections feel like a mode layered awkwardly over Publications instead of a first-class workspace.
+  - The collections experience needed to fit the standard Profile shell and preserve a cleaner path back into publication detail.
+  - The old per-publication membership lookup pattern did unnecessary N+1 fetching for larger libraries.
+- **Key files touched:**
+  - `frontend/src/AppRouter.tsx`
+  - `frontend/src/components/layout/account-navigator.tsx`
+  - `frontend/src/pages/profile-collections-page.tsx`
+  - `frontend/src/pages/profile-publications-page.tsx`
+  - `frontend/src/components/collections/CollectionsViewport.tsx`
+  - `frontend/src/components/collections/CollectionSidebar.tsx`
+  - `frontend/src/components/collections/CollectionDropdown.tsx`
+  - `frontend/src/components/collections/PublicationCard.tsx`
+  - `frontend/src/lib/collections-api.ts`
+  - `frontend/src/types/collections.ts`
+  - `src/research_os/api/app.py`
+  - `src/research_os/api/schemas.py`
+  - `src/research_os/services/collection_service.py`
+- **Verification performed:**
+  - `python -m compileall src/research_os/api/app.py src/research_os/api/schemas.py src/research_os/services/collection_service.py`
+  - `cmd /c npm run typecheck --prefix frontend`
+  - `cmd /c npm run build --prefix frontend`
+  - Browser smoke on localhost covering `/profile/collections`, collection create/delete, and Publications -> `My collections` route handoff.
+- **Follow-up:**
+  - Reuse the publication drilldown more deeply from Collections so previous/next and return context are collection-aware, not just route-linked back into Publications.
+  - Add a dedicated story/spec for bulk collection operations once multi-select and batch moves are implemented.
+
 ## 2026-03-15
 
 ### Hetzner Self-Hosted Deployment + Polling Timeout Fix

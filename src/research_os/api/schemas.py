@@ -3479,3 +3479,16 @@ class PublicationCollectionSummary(BaseModel):
 class PublicationCollectionsListResponse(BaseModel):
     items: list[PublicationCollectionSummary]
     works_used: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PublicationCollectionsBatchRequest(BaseModel):
+    work_ids: list[str] = Field(default_factory=list)
+
+
+class PublicationCollectionsByWorkResponse(BaseModel):
+    work_id: str
+    items: list[PublicationCollectionSummary] = Field(default_factory=list)
+
+
+class PublicationCollectionsBatchResponse(BaseModel):
+    items: list[PublicationCollectionsByWorkResponse] = Field(default_factory=list)

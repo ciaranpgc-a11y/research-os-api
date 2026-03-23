@@ -11,7 +11,6 @@ import { PublicationsPerYearChart, PublicationsTopStrip } from '@/components/pub
 import { drilldownTabFlexGrow } from '@/components/publications/house-drilldown-header-utils'
 import { publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
 import { Badge, Button, DrilldownSheet, Input, SelectContent, SelectItem, SelectPrimitive, SelectTrigger, SelectValue, Sheet, SheetContent, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
-import { CollectionsViewport } from '@/components/collections/CollectionsViewport'
 import { API_BASE_URL } from '@/lib/api'
 import { houseForms, houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
@@ -4049,7 +4048,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationFileTagMenuState, setPublicationFileTagMenuState] = useState<PublicationFileTagMenuState | null>(null)
   const [publicationFileTagEditorState, setPublicationFileTagEditorState] = useState<PublicationFileTagEditorState | null>(null)
   const [publicationFileOtherLabelEditorState, setPublicationFileOtherLabelEditorState] = useState<PublicationFileOtherLabelEditorState | null>(null)
-  const [collectionsViewportOpen, setCollectionsViewportOpen] = useState(false)
   const [publicationReaderOpen, setPublicationReaderOpen] = useState(false)
   const [publicationReaderLoading, setPublicationReaderLoading] = useState(false)
   const [publicationReaderError, setPublicationReaderError] = useState('')
@@ -10399,7 +10397,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       aria-pressed={active}
                       onClick={() => {
                         if (option.value === 'collections') {
-                          setCollectionsViewportOpen(true)
+                          navigate('/profile/collections')
                         } else {
                           setPublicationLibraryViewMode(option.value)
                           setPublicationLibraryPage(1)
@@ -13009,28 +13007,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                     </div>
                   </div>
                 ) : null}
-              </SheetContent>
-            </Sheet>
-
-            <Sheet
-              open={collectionsViewportOpen}
-              onOpenChange={(open) => {
-                setCollectionsViewportOpen(open)
-              }}
-            >
-              <SheetContent
-                side="right"
-                hideClose
-                className="inset-[1.2vh_1vw_1.2vh_2vw] h-auto max-w-none overflow-hidden rounded-[1.55rem] border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--surface-drilldown-elevated))] p-0 shadow-[0_28px_90px_hsl(var(--tone-neutral-900)/0.18)]"
-              >
-                <CollectionsViewport
-                  works={personaState?.works || []}
-                  onClose={() => setCollectionsViewportOpen(false)}
-                  onOpenPublication={(workId) => {
-                    setCollectionsViewportOpen(false)
-                    setSelectedWorkId(workId)
-                  }}
-                />
               </SheetContent>
             </Sheet>
 

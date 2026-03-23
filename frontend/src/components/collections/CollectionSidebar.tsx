@@ -55,6 +55,7 @@ function ColourPicker({
             c === value ? 'border-foreground' : 'border-transparent',
           )}
           style={{ backgroundColor: COLLECTION_COLOUR_HEX[c] }}
+          aria-label={`Set collection colour to ${c}`}
           onClick={() => {
             onChange(c)
             onClose()
@@ -117,18 +118,18 @@ function ContextMenu({
       style={{ left, top }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <button type="button" className={item} onClick={() => { onRename(); onClose() }}>
+      <button type="button" className={item} onClick={() => { onRename(); onClose() }} aria-label="Rename collection">
         <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> Rename
       </button>
-      <button type="button" className={item} onClick={() => { onChangeColour(); onClose() }}>
+      <button type="button" className={item} onClick={() => { onChangeColour(); onClose() }} aria-label="Change collection colour">
         <Palette className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> Change colour
       </button>
       <div className="my-1 border-t border-border" />
-      <button type="button" className={item} onClick={() => { onAddSubcollection(); onClose() }}>
+      <button type="button" className={item} onClick={() => { onAddSubcollection(); onClose() }} aria-label="Add subcollection">
         <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> Add subcollection
       </button>
       <div className="my-1 border-t border-border" />
-      <button type="button" className={cn(item, 'text-destructive hover:bg-destructive/10 hover:text-destructive')} onClick={() => { onDelete(); onClose() }}>
+      <button type="button" className={cn(item, 'text-destructive hover:bg-destructive/10 hover:text-destructive')} onClick={() => { onDelete(); onClose() }} aria-label="Delete collection">
         <Trash2 className="h-3.5 w-3.5 shrink-0" /> Delete
       </button>
     </div>
@@ -179,11 +180,11 @@ function SubContextMenu({
       style={{ left, top }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <button type="button" className={item} onClick={onRename}>
+      <button type="button" className={item} onClick={onRename} aria-label="Rename subcollection">
         <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> Rename
       </button>
       <div className="my-1 border-t border-border" />
-      <button type="button" className={cn(item, 'text-destructive hover:bg-destructive/10 hover:text-destructive')} onClick={onDelete}>
+      <button type="button" className={cn(item, 'text-destructive hover:bg-destructive/10 hover:text-destructive')} onClick={onDelete} aria-label="Delete subcollection">
         <Trash2 className="h-3.5 w-3.5 shrink-0" /> Delete
       </button>
     </div>
@@ -224,11 +225,11 @@ interface CollectionSidebarProps {
   onCreateCollection: () => void
   onCancelCreateCollection: () => void
   newCollectionInputRef: React.RefObject<HTMLInputElement>
+  pageMode?: boolean
   // collection management
   onRenameCollection: (id: string, name: string) => void
   onDeleteCollection: (id: string) => void
   onColourChange: (id: string, colour: CollectionColour) => void
-  onDeleteAll: () => void
   // subcollection CRUD
   onCreateSubcollection: (collectionId: string, name: string) => void
   onRenameSubcollection: (collectionId: string, subId: string, name: string) => void
@@ -259,10 +260,10 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
     onCreateCollection,
     onCancelCreateCollection,
     newCollectionInputRef,
+    pageMode = false,
     onRenameCollection,
     onDeleteCollection,
     onColourChange,
-    onDeleteAll,
     onCreateSubcollection,
     onRenameSubcollection,
     onDeleteSubcollection,
@@ -448,14 +449,27 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-sm font-medium text-foreground">Collections</span>
-        <button
-          type="button"
-          className="h-7 w-7 flex items-center justify-center rounded hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground hover:text-foreground transition-colors"
-          onClick={onStartCreateCollection}
-          title="New collection"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+        {pageMode ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-[hsl(var(--tone-accent-100))]"
+            onClick={onStartCreateCollection}
+            aria-label="Create new collection"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New collection</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="h-7 w-7 flex items-center justify-center rounded hover:bg-[hsl(var(--tone-accent-100))] text-muted-foreground hover:text-foreground transition-colors"
+            onClick={onStartCreateCollection}
+            title="New collection"
+            aria-label="Create new collection"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Collection list */}
@@ -494,6 +508,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     ref={renameInputRef}
                     type="text"
                     className="house-input h-8 flex-1 rounded-md px-2 text-sm"
+                    aria-label={`Rename ${coll.name}`}
                     value={renameValue}
                     onChange={(e) => setRenameValue(e.target.value)}
                     onKeyDown={(e) => {
@@ -506,6 +521,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     className="house-collaborator-action-icon-save h-6 w-6 flex items-center justify-center rounded"
                     onClick={commitRename}
                     title="Save"
+                    aria-label="Save collection rename"
                   >
                     <Check className="h-3.5 w-3.5" />
                   </button>
@@ -514,6 +530,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                     className="house-collaborator-action-icon-discard h-6 w-6 flex items-center justify-center rounded"
                     onClick={cancelRename}
                     title="Cancel"
+                    aria-label="Cancel collection rename"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -578,6 +595,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           ref={subRenameInputRef}
                           type="text"
                           className="house-input h-8 flex-1 rounded-md px-2 text-sm"
+                          aria-label={`Rename ${sub.name}`}
                           value={subRenameValue}
                           onChange={(e) => setSubRenameValue(e.target.value)}
                           onKeyDown={(e) => {
@@ -590,6 +608,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           className="house-collaborator-action-icon-save h-5 w-5 flex items-center justify-center rounded"
                           onClick={() => commitSubRename(coll.id)}
                           title="Save"
+                          aria-label="Save subcollection rename"
                         >
                           <Check className="h-3 w-3" />
                         </button>
@@ -598,6 +617,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           className="house-collaborator-action-icon-discard h-5 w-5 flex items-center justify-center rounded"
                           onClick={cancelSubRename}
                           title="Cancel"
+                          aria-label="Cancel subcollection rename"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -653,6 +673,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         ref={newSubInputRef}
                         type="text"
                         className="house-input h-8 flex-1 rounded-md px-2 text-sm"
+                        aria-label="Subcollection name"
                         placeholder="Subcollection name"
                         value={newSubName}
                         onChange={(e) => setNewSubName(e.target.value)}
@@ -666,6 +687,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         className="house-collaborator-action-icon-save h-6 w-6 flex items-center justify-center rounded"
                         onClick={commitCreateSub}
                         title="Save"
+                        aria-label="Save subcollection"
                       >
                         <Check className="h-3.5 w-3.5" />
                       </button>
@@ -674,6 +696,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                         className="house-collaborator-action-icon-discard h-6 w-6 flex items-center justify-center rounded"
                         onClick={cancelCreateSub}
                         title="Cancel"
+                        aria-label="Cancel subcollection"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -696,6 +719,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
               ref={newCollectionInputRef}
               type="text"
               className="house-input h-8 flex-1 rounded-md px-2 text-sm"
+              aria-label="Collection name"
               placeholder="Collection name"
               value={newCollectionName}
               onChange={(e) => setNewCollectionName(e.target.value)}
@@ -709,6 +733,7 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
               className="house-collaborator-action-icon-save h-6 w-6 flex items-center justify-center rounded"
               onClick={onCreateCollection}
               title="Save"
+              aria-label="Save new collection"
             >
               <Check className="h-3.5 w-3.5" />
             </button>
@@ -717,25 +742,13 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
               className="house-collaborator-action-icon-discard h-6 w-6 flex items-center justify-center rounded"
               onClick={onCancelCreateCollection}
               title="Cancel"
+              aria-label="Cancel new collection"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
         )}
       </div>
-
-      {/* Footer — delete all (organise mode only, only when collections exist) */}
-      {mode === 'organise' && collections.length > 0 && (
-        <div className="border-t border-border px-4 py-2.5">
-          <button
-            type="button"
-            className="w-full text-xs text-muted-foreground hover:text-destructive transition-colors text-left"
-            onClick={onDeleteAll}
-          >
-            Delete all collections
-          </button>
-        </div>
-      )}
 
       {/* Fixed-position colour picker */}
       {colourPickerState && (() => {

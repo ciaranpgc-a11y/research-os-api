@@ -88,6 +88,7 @@ export function PublicationCard(props: PublicationCardProps) {
           type="button"
           className="house-section-tool-button opacity-0 group-hover:opacity-100 inline-flex h-6 w-6 items-center justify-center rounded flex-shrink-0"
           title="Add to collection"
+          aria-label="Add publication to collection"
           onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown) }}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -133,6 +134,7 @@ export function PublicationCard(props: PublicationCardProps) {
         type="button"
         className="house-section-tool-button opacity-0 group-hover:opacity-100 inline-flex h-6 w-6 items-center justify-center rounded flex-shrink-0"
         title="Move to subcollection"
+        aria-label="Move publication to subcollection"
         onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown) }}
       >
         <ArrowRightLeft className="h-3.5 w-3.5" />
@@ -142,6 +144,7 @@ export function PublicationCard(props: PublicationCardProps) {
         className="text-muted-foreground hover:text-destructive p-0.5 flex-shrink-0"
         onClick={onRemove}
         title="Remove from collection"
+        aria-label="Remove publication from collection"
       >
         <X className="w-3.5 h-3.5" />
       </button>

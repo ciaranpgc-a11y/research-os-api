@@ -6,6 +6,7 @@ import type {
   SubcollectionPayload,
   CollectionPublicationPayload,
   PublicationCollectionSummary,
+  PublicationCollectionsBatchEntry,
 } from '@/types/collections'
 
 function authHeaders(): Record<string, string> {
@@ -200,6 +201,30 @@ export async function fetchPublicationCollections(
     'Failed to fetch publication collections',
   )
   return res.items
+}
+
+export async function fetchPublicationCollectionsBatch(
+  workIds: string[],
+): Promise<PublicationCollectionsBatchEntry[]> {
+  const normalizedWorkIds = workIds
+    .map((workId) => String(workId || '').trim())
+    .filter(Boolean)
+  if (normalizedWorkIds.length === 0) {
+    return []
+  }
+  const res = await requestJson<{ items: Array<{ work_id: string; items: PublicationCollectionSummary[] }> }>(
+    `${API_BASE_URL}/v1/publications/collections/batch`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ work_ids: normalizedWorkIds }),
+    },
+    'Failed to fetch publication collections',
+  )
+  return res.items.map((item) => ({
+    work_id: item.work_id,
+    items: item.items,
+  }))
 }
 
 // ---------------------------------------------------------------------------

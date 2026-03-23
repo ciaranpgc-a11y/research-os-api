@@ -22,6 +22,7 @@ import { ImpactPage } from '@/pages/impact-page'
 import { ProfileIntegrationsPage } from '@/pages/profile-integrations-page'
 import { ProfileManageAccountPage } from '@/pages/profile-manage-account-page'
 import { ProfilePage } from '@/pages/profile-page'
+import { ProfileCollectionsPage } from '@/pages/profile-collections-page'
 import { ProfilePersonalDetailsPage } from '@/pages/profile-personal-details-page'
 import { ProfileGrantsPage } from '@/pages/profile-grants-page'
 import { ProfileCollaborationPage } from '@/pages/profile-collaboration-page'
@@ -295,6 +296,7 @@ export function AppRouter() {
         <Route element={<AccountLayout />}>
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/profile/publications" element={<ProfilePublicationsPage />} />
+          <Route path="/profile/collections" element={<ProfileCollectionsPage />} />
           <Route path="/profile/grants" element={<ProfileGrantsPage />} />
           <Route path="/profile/personal-details" element={<ProfilePersonalDetailsPage />} />
           <Route path="/profile/integrations" element={<ProfileIntegrationsPage />} />

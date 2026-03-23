@@ -53,3 +53,8 @@ export type PublicationCollectionSummary = {
   name: string
   colour: CollectionColour
 }
+
+export type PublicationCollectionsBatchEntry = {
+  work_id: string
+  items: PublicationCollectionSummary[]
+}

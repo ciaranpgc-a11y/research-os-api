@@ -496,6 +496,69 @@ def list_publication_collections(user_id: str, work_id: str) -> list[dict[str, A
         return result
 
 
+def list_publication_collections_batch(
+    user_id: str,
+    work_ids: list[str],
+) -> list[dict[str, Any]]:
+    """List collections for multiple publications grouped by work_id."""
+    ordered_work_ids = [
+        requested_work_id
+        for requested_work_id in dict.fromkeys(
+            str(work_id).strip() for work_id in work_ids
+        )
+        if requested_work_id
+    ]
+    if not ordered_work_ids:
+        return []
+
+    with session_scope() as session:
+        rows = (
+            session.execute(
+                select(
+                    CollectionMembership.work_id,
+                    Collection.id,
+                    Collection.name,
+                    Collection.colour,
+                )
+                .join(Collection, CollectionMembership.collection_id == Collection.id)
+                .where(
+                    CollectionMembership.work_id.in_(ordered_work_ids),
+                    Collection.user_id == user_id,
+                )
+                .order_by(
+                    CollectionMembership.work_id,
+                    Collection.sort_order,
+                    CollectionMembership.created_at,
+                )
+            )
+            .all()
+        )
+
+    grouped: dict[str, list[dict[str, Any]]] = {work_id: [] for work_id in ordered_work_ids}
+    seen_collections_by_work: dict[str, set[str]] = {
+        work_id: set() for work_id in ordered_work_ids
+    }
+    for work_id, collection_id, name, colour in rows:
+        if work_id not in grouped:
+            continue
+        if collection_id in seen_collections_by_work[work_id]:
+            continue
+        seen_collections_by_work[work_id].add(collection_id)
+        grouped[work_id].append({
+            "id": collection_id,
+            "name": name,
+            "colour": colour,
+        })
+
+    return [
+        {
+            "work_id": work_id,
+            "items": grouped[work_id],
+        }
+        for work_id in ordered_work_ids
+    ]
+
+
 def move_publication_subcollection(
     user_id: str,
     collection_id: str,
