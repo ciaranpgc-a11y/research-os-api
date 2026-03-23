@@ -527,8 +527,8 @@ function RangeChart({
             style={{ left: bandLeftPct, width: bandWidthPct }}
           />
         )}
-        {/* SD severity tick marks (thin black lines at 1SD and 2SD boundaries) */}
-        {severityTicks?.map((tickVal, i) => {
+        {/* SD severity tick marks — only shown when value is abnormal */}
+        {abnormal && severityTicks?.map((tickVal, i) => {
           const tickRel = computeMeasuredRel(tickVal, ll, ul)
           const tickPos = computeMeasuredPos(tickRel, rangeStart, rangeWidth)
           if (tickPos <= 0.01 || tickPos >= 0.99) return null
