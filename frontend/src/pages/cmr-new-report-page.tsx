@@ -1395,12 +1395,25 @@ export function CmrNewReportPage() {
                                           rangeStart={
                                             p.severity_thresholds
                                               ? factoryBaseline().rangeStart
-                                              : (rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeStart
+                                              : (() => {
+                                                  const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()
+                                                  // Fall back to per-measurement if dot would clip
+                                                  const rel = computeMeasuredRel(measured!, p.ll!, p.ul!)
+                                                  const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
+                                                  if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeStart
+                                                  return base.rangeStart
+                                                })()
                                           }
                                           rangeWidth={
                                             p.severity_thresholds
                                               ? factoryBaseline().rangeWidth
-                                              : (rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth
+                                              : (() => {
+                                                  const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()
+                                                  const rel = computeMeasuredRel(measured!, p.ll!, p.ul!)
+                                                  const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
+                                                  if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeWidth
+                                                  return base.rangeWidth
+                                                })()
                                           }
                                           previousMarkers={getPrevMarkers(p, measured)}
                                           severityZones={buildSeverityZones(p)}
@@ -1499,8 +1512,18 @@ export function CmrNewReportPage() {
                                               ul={cp.severity_thresholds ? effectiveUL(cp) : cp.ul!}
                                               originalUL={cp.severity_thresholds ? cp.ul! : undefined}
                                               direction={cp.abnormal_direction}
-                                              rangeStart={cp.severity_thresholds ? factoryBaseline().rangeStart : (rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeStart}
-                                              rangeWidth={cp.severity_thresholds ? factoryBaseline().rangeWidth : (rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth}
+                                              rangeStart={cp.severity_thresholds ? factoryBaseline().rangeStart : (() => {
+                                                const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()
+                                                const rel = computeMeasuredRel(cpMeasured!, cp.ll!, cp.ul!)
+                                                const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
+                                                return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel).rangeStart : base.rangeStart
+                                              })()}
+                                              rangeWidth={cp.severity_thresholds ? factoryBaseline().rangeWidth : (() => {
+                                                const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()
+                                                const rel = computeMeasuredRel(cpMeasured!, cp.ll!, cp.ul!)
+                                                const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
+                                                return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel).rangeWidth : base.rangeWidth
+                                              })()}
                                               previousMarkers={getPrevMarkers(cp, cpMeasured)}
                                               severityZones={buildSeverityZones(cp)}
                                             />
