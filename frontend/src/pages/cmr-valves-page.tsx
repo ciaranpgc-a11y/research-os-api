@@ -808,7 +808,7 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
       <div className="flex items-start gap-6">
         {/* ── RF Gauge ── */}
         <div className="flex flex-col items-center">
-          <svg width="300" height="175" viewBox="0 0 300 175">
+          <svg width="260" height="150" viewBox="20 10 260 150">
             {/* Background track — no grey, severity zones cover the full arc */}
             {/* Severity zone arcs — proportional to RF% range, butt caps */}
             {sevZones.map((z) => {
@@ -840,30 +840,32 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
                 />
               )
             })}
-            {/* Zone labels outside the arc */}
-            {sevZones.map((z) => {
-              const midDeg = (z.startDeg + z.endDeg) / 2
-              const [lx, ly] = gaugePoint(midDeg, ARC_R + 22)
-              return (
-                <text
-                  key={z.label}
-                  x={lx}
-                  y={ly}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className="fill-muted-foreground font-medium"
-                  style={{ fontSize: '10px' }}
-                >
-                  {z.label}
-                </text>
-              )
-            })}
-            {/* Needle */}
+            {/* Needle with tooltip */}
             {!isNaN(rfVal) && (
-              <>
-                <line x1={CX} y1={CY} x2={nx} y2={ny} stroke="hsl(0 0% 15%)" strokeWidth="2.5" strokeLinecap="round" />
-                <circle cx={CX} cy={CY} r="5" fill="hsl(0 0% 15%)" />
-              </>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <g className="cursor-default">
+                    <line x1={CX} y1={CY} x2={nx} y2={ny} stroke="hsl(0 0% 15%)" strokeWidth="2.5" strokeLinecap="round" />
+                    <circle cx={CX} cy={CY} r="5" fill="hsl(0 0% 15%)" />
+                    {/* Invisible hit area for easier hover */}
+                    <circle cx={CX} cy={CY} r="30" fill="transparent" />
+                  </g>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="p-0 overflow-hidden">
+                  <div className="px-4 py-2.5 text-center">
+                    <div className="text-lg font-bold tabular-nums">{rfVal.toFixed(1)}%</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">Regurgitant fraction</div>
+                  </div>
+                  <div className="px-4 py-2 border-t border-border/40 text-center">
+                    <span
+                      className={cn('rounded-full px-2.5 py-1 text-xs font-semibold', severity === 'mild' ? 'text-black' : 'text-white')}
+                      style={{ backgroundColor: SEVERITY_COLORS[severity] }}
+                    >
+                      {SEVERITY_LABELS[severity]} regurgitation
+                    </span>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
             )}
             {/* Center value */}
             <text x={CX} y={CY - 16} textAnchor="middle" className="fill-foreground font-bold" style={{ fontSize: '26px' }}>
