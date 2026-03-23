@@ -363,7 +363,7 @@ export function CmrRwmaPage() {
       <Row align="center" gap="md" wrap={false} className="house-page-title-row">
         <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
         <PageHeader
-          heading="RWMA"
+          heading="Wall motion"
           className="!ml-0 !mt-0"
         />
       </Row>
