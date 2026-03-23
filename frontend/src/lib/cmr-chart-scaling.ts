@@ -189,17 +189,17 @@ export function perMeasurementAutoAdjust(measuredRel: number, sdTickRels?: numbe
     rs = FACTORY_RANGE_START
   } else if (measuredRel > 1) {
     // Above range: ensure the furthest tick (or dot if beyond ticks) is visible
-    // The outermost point should map to ~90% of the bar
+    // The outermost point should map to ~93% of the bar
     const furthest = sdTickRels ? Math.max(measuredRel, ...sdTickRels.filter(t => t > 1)) : measuredRel
-    const maxExtent = furthest * 1.1 // 10% headroom beyond furthest point
-    rs = 0.05
-    rw = 0.85 / maxExtent
+    const maxExtent = furthest * 1.05 // 5% headroom beyond furthest point
+    rs = 0.03
+    rw = 0.90 / maxExtent
   } else {
     // Below range: mirror
     const furthest = sdTickRels ? Math.min(measuredRel, ...sdTickRels.filter(t => t < 0)) : measuredRel
-    const minExtent = furthest * 1.1
-    rw = 0.85 / (1 - minExtent)
-    rs = 0.95 - rw
+    const minExtent = furthest * 1.05
+    rw = 0.90 / (1 - minExtent)
+    rs = 0.97 - rw
   }
 
   rs = roundToStep(clamp(rs, 0.02, 0.6), ROUND_STEP)
