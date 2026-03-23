@@ -198,7 +198,7 @@ EXTRACTION RULES:
 6. For T1/T2 mapping values, use the GLOBAL value (not per-slice).
 7. For MAPSE, if individual wall values are given (inferior, anterior, lateral, septal), extract each one separately AND compute the mean as "MAPSE".
 8. For valve flow parameters, match the vessel name to the canonical parameter (e.g. "Aorta" section → AV parameters, "MPA" → PV parameters).
-9. Also extract demographics: sex, age (numeric), height_cm, weight_kg, bsa, heart_rate. For heart_rate, if a range is given (e.g. "60-80 bpm"), extract the mean (e.g. 70).
+9. Also extract demographics: sex, age (numeric), height_cm, weight_kg, bsa, heart_rate, study_date (string, any date format found). For heart_rate, if a range is given (e.g. "60-80 bpm"), extract the mean (e.g. 70).
 
 Return ONLY valid JSON in this exact format:
 {
@@ -208,7 +208,8 @@ Return ONLY valid JSON in this exact format:
     "height_cm": <number>,
     "weight_kg": <number>,
     "bsa": <number>,
-    "heart_rate": <number>
+    "heart_rate": <number>,
+    "study_date": "<string or null>"
   },
   "measurements": [
     { "parameter": "<exact canonical name>", "value": <number> },
@@ -372,7 +373,7 @@ EXTRACTION RULES:
 6. For T1/T2 mapping values, use the GLOBAL value (not per-slice).
 7. For MAPSE, if individual wall values are given (inferior, anterior, lateral, septal), extract each one separately AND compute the mean as "MAPSE".
 8. For valve flow parameters, match the vessel name to the canonical parameter (e.g. "Aorta" section → AV parameters, "MPA" → PV parameters).
-9. Also extract demographics: sex, age (numeric), height_cm, weight_kg, bsa, heart_rate. For heart_rate, if a range is given (e.g. "60-80 bpm"), extract the mean (e.g. 70).
+9. Also extract demographics: sex, age (numeric), height_cm, weight_kg, bsa, heart_rate, study_date (string, any date format found). For heart_rate, if a range is given (e.g. "60-80 bpm"), extract the mean (e.g. 70).
 
 Return ONLY valid JSON in this exact format:
 {
@@ -382,7 +383,8 @@ Return ONLY valid JSON in this exact format:
     "height_cm": <number>,
     "weight_kg": <number>,
     "bsa": <number>,
-    "heart_rate": <number>
+    "heart_rate": <number>,
+    "study_date": "<string or null>"
   },
   "measurements": [
     { "parameter": "<exact canonical name>", "value": <number> },

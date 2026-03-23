@@ -301,7 +301,9 @@ const SEV_PILL_STYLES: Record<SevGrade, string> = {
 
 type PrevMarker = {
   value: number
-  source: string
+  sourceType: string       // "CMR" or "Echo"
+  date: string | null      // e.g. "17 Dec 2025"
+  interval: string | null  // e.g. "3 months ago"
   prevLabel: string
   prevGrade: SevGrade
   currLabel: string | null
@@ -310,6 +312,25 @@ type PrevMarker = {
   currVal: string | null
   pctChange: number | null
   improved: boolean | null
+}
+
+/** Compute a human-readable interval between two date strings. */
+function formatInterval(fromStr: string, toStr: string): string | null {
+  const from = new Date(fromStr)
+  const to = new Date(toStr)
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) return null
+  const diffMs = to.getTime() - from.getTime()
+  if (diffMs < 0) return null
+  const days = Math.round(diffMs / 86400000)
+  if (days === 0) return 'Same day'
+  if (days === 1) return '1 day'
+  if (days < 30) return `${days} days`
+  const months = Math.round(days / 30.44)
+  if (months === 1) return '1 month'
+  if (months < 12) return `${months} months`
+  const years = Math.round(days / 365.25)
+  if (years === 1) return '1 year'
+  return `${years} years`
 }
 
 function RangeChart({
@@ -377,9 +398,15 @@ function RangeChart({
                 <TooltipContent side="top" className="p-0 overflow-hidden max-w-[260px]">
                   {/* Header */}
                   <div className="px-3 py-1.5 bg-muted/60 border-b border-border/40">
-                    <div className="flex items-center gap-1.5">
-                      <svg className="h-2 w-2 rotate-45 text-muted-foreground shrink-0" viewBox="0 0 8 8"><rect width="8" height="8" fill="currentColor" /></svg>
-                      <span className="text-[10px] font-medium text-muted-foreground">{pm.source}</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <svg className="h-2 w-2 rotate-45 text-muted-foreground shrink-0" viewBox="0 0 8 8"><rect width="8" height="8" fill="currentColor" /></svg>
+                        <span className="text-[10px] font-semibold text-foreground/70">{pm.sourceType}</span>
+                        {pm.date && <span className="text-[10px] text-muted-foreground">{pm.date}</span>}
+                      </div>
+                      {pm.interval && (
+                        <span className="text-[9px] font-medium text-muted-foreground/70 tabular-nums">{pm.interval} prior</span>
+                      )}
                     </div>
                   </div>
                   {/* Body */}
@@ -738,9 +765,14 @@ export function CmrNewReportPage() {
       if (currentVal !== undefined && v !== 0) {
         pctChange = ((currentVal - v) / Math.abs(v)) * 100
       }
+      // Compute interval between previous and current study dates
+      const currentDate = extraction?.demographics?.study_date ?? undefined
+      const interval = (s.date && currentDate) ? formatInterval(s.date, currentDate) : null
       markers.push({
         value: v,
-        source: s.label,
+        sourceType: s.source === 'echo' ? 'Echo' : 'CMR',
+        date: s.date ?? null,
+        interval,
         prevLabel: prevSev.label,
         prevGrade: prevSev.grade as SevGrade,
         currLabel: currSev?.label ?? null,

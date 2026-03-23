@@ -257,6 +257,7 @@ export type CmrExtractedDemographics = {
   weight_kg?: number
   bsa?: number
   heart_rate?: number
+  study_date?: string
 }
 
 export type CmrExtractedMeasurement = {
