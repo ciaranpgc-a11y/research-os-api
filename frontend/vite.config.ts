@@ -283,7 +283,8 @@ Do not include any parameters not in the canonical list. Do not include paramete
           }
 
           // Build user message content parts for OpenAI (supports multimodal)
-          const userParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const userParts: any[] = []
           if (reportText?.trim()) {
             userParts.push({ type: 'text', text: reportText })
           }
@@ -291,12 +292,14 @@ Do not include any parameters not in the canonical list. Do not include paramete
             const ext = (fileName ?? '').split('.').pop()?.toLowerCase() ?? ''
             const isImage = ['png', 'jpg', 'jpeg', 'webp', 'heic', 'gif', 'bmp'].includes(ext)
             const isPdf = ext === 'pdf'
-            if (isImage || isPdf) {
-              // GPT-4o vision handles images and PDFs natively as data URLs
+            if (isImage) {
+              // Images: use image_url content type
               userParts.push({ type: 'image_url', image_url: { url: fileDataUrl } })
+            } else if (isPdf) {
+              // PDFs: use the file content type (supported by gpt-4o)
+              userParts.push({ type: 'file', file: { filename: fileName ?? 'report.pdf', file_data: fileDataUrl } })
             } else {
-              // For docx/txt/csv, extract the base64 text and send as text
-              // (Word docs will be best-effort; GPT-4o can read the raw XML in docx)
+              // For docx/txt/csv: decode base64 to text
               const base64 = fileDataUrl.split(',')[1] ?? ''
               const decoded = Buffer.from(base64, 'base64').toString('utf-8')
               userParts.push({ type: 'text', text: `[File: ${fileName}]\n${decoded}` })
