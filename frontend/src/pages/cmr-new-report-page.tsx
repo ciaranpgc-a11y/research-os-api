@@ -299,12 +299,14 @@ const SEV_PILL_STYLES: Record<SevGrade, string> = {
   severe:   'bg-[hsl(2_52%_25%)] text-white ring-1 ring-[hsl(2_52%_20%)]',
 }
 
-/** HSL band colours for severity zones on range charts */
+/** HSL band colours for severity zones on range charts.
+ *  Same hues as the table row severity colours, slightly more saturated
+ *  for visual clarity at small sizes. */
 const SEV_ZONE_COLORS: Record<SevGrade, string> = {
-  normal:   'hsl(158 30% 88%)',
-  mild:     'hsl(46 60% 85%)',
-  moderate: 'hsl(20 55% 82%)',
-  severe:   'hsl(4 55% 76%)',
+  normal:   'hsl(158 35% 82%)',
+  mild:     'hsl(46 55% 80%)',
+  moderate: 'hsl(20 50% 76%)',
+  severe:   'hsl(4 50% 68%)',
 }
 
 type SeverityZone = { grade: SevGrade; threshold: number | null }
