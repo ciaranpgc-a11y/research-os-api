@@ -393,11 +393,21 @@ export function CmrRwmaPage() {
           </div>
         </div>
 
-        {/* Reset */}
+        <div className="h-5 w-px bg-border/40" />
+
+        {/* Colour key (inline) */}
+        {RWMA_STATES.map((s) => (
+          <span key={s.code} className="flex items-center gap-1.5">
+            <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: s.color }} />
+            <span className="text-[11px] text-muted-foreground">{s.label}</span>
+          </span>
+        ))}
+
+        {/* Reset — far right */}
         <button
           type="button"
           onClick={resetAll}
-          className="rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 hover:bg-red-50 hover:text-red-700 transition-all"
+          className="ml-auto rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 hover:bg-red-50 hover:text-red-700 transition-all"
         >
           Reset All
         </button>
@@ -504,16 +514,6 @@ export function CmrRwmaPage() {
         })}
       </div>
 
-      {/* ── Colour key ── */}
-      <div className="flex items-center gap-5 pt-2">
-        <span className="text-xs font-semibold text-muted-foreground">KEY:</span>
-        {RWMA_STATES.map((s) => (
-          <span key={s.code} className="flex items-center gap-1.5">
-            <span className="inline-block h-3.5 w-3.5 rounded-sm" style={{ backgroundColor: s.color }} />
-            <span className="text-xs">{s.label}</span>
-          </span>
-        ))}
-      </div>
 
       {/* ── BSCMR Summary ── */}
       <div className="rounded-lg border border-border bg-muted/30 p-4">
