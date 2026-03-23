@@ -198,7 +198,7 @@ EXTRACTION RULES:
 6. For T1/T2 mapping values, use the GLOBAL value (not per-slice).
 7. For MAPSE, if individual wall values are given (inferior, anterior, lateral, septal), extract each one separately AND compute the mean as "MAPSE".
 8. For valve flow parameters, match the vessel name to the canonical parameter (e.g. "Aorta" section → AV parameters, "MPA" → PV parameters).
-9. Also extract demographics: sex, age (numeric), height_cm, weight_kg, bsa, heart_rate.
+9. Also extract demographics: sex, age (numeric), height_cm, weight_kg, bsa, heart_rate. For heart_rate, if a range is given (e.g. "60-80 bpm"), extract the mean (e.g. 70).
 
 Return ONLY valid JSON in this exact format:
 {

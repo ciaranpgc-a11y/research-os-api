@@ -513,6 +513,7 @@ export function CmrNewReportPage() {
   }, [measuredValues])
   const sex = extraction?.demographics?.sex ?? 'Male'
   const age = extraction?.demographics?.age ?? undefined
+  const heartRate = extraction?.demographics?.heart_rate ?? undefined
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   useEffect(() => {
@@ -629,6 +630,11 @@ export function CmrNewReportPage() {
         <div className="rounded-md border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-50))] px-4 py-2">
           <span className="text-sm font-semibold text-[hsl(var(--foreground))]">{age != null ? `${age} years` : '—'}</span>
         </div>
+        {heartRate != null && (
+          <div className="rounded-md border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-50))] px-4 py-2">
+            <span className="text-sm font-semibold text-[hsl(var(--foreground))]">{Math.round(heartRate)} bpm</span>
+          </div>
+        )}
       </div>
 
       {/* Controls bar */}
