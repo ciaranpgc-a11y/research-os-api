@@ -294,7 +294,7 @@ export function CmrReferenceTablePage() {
       <Row align="center" gap="md" wrap={false} className="house-page-title-row">
         <SectionMarker tone="accent" size="title" className="self-stretch h-auto" />
         <PageHeader
-          heading="Reference Table"
+          heading="Reference table"
           className="!ml-0 !mt-0"
         />
       </Row>

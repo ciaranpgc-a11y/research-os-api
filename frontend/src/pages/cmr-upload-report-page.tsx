@@ -47,7 +47,7 @@ export function CmrUploadReportPage() {
       <Row align="center" gap="md" wrap={false} className="house-page-title-row">
         <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
         <PageHeader
-          heading="Upload Report"
+          heading="Upload report"
           className="!ml-0 !mt-0"
         />
       </Row>

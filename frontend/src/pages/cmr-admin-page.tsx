@@ -249,7 +249,7 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
     <Row align="center" gap="md" wrap={false} className="house-page-title-row">
       <SectionMarker tone="admin" size="title" className="self-stretch h-auto" />
       <PageHeader
-        heading="CMR Access Management"
+        heading="CMR access management"
         description="Manage access codes inside the CMR reporting workspace."
         className="!ml-0 !mt-0"
       />

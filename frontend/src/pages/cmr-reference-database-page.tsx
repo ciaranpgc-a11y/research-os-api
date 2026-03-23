@@ -1298,7 +1298,7 @@ export function CmrReferenceDatabasePage() {
       <Stack data-house-role="page" space="lg">
         <Row align="center" gap="md" wrap={false} className="house-page-title-row">
           <SectionMarker tone="warning" size="title" className="self-stretch h-auto" />
-          <PageHeader heading="Edit Sections & Order" className="!ml-0 !mt-0" />
+          <PageHeader heading="Edit sections & order" className="!ml-0 !mt-0" />
         </Row>
 
         <div className="flex flex-col gap-4 pb-20">
@@ -1538,7 +1538,7 @@ export function CmrReferenceDatabasePage() {
       <Row align="center" gap="md" wrap={false} className="house-page-title-row">
         <SectionMarker tone="warning" size="title" className="self-stretch h-auto" />
         <PageHeader
-          heading="Reference Database"
+          heading="Reference database"
           className="!ml-0 !mt-0"
         />
       </Row>
