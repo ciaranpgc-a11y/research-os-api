@@ -19,6 +19,8 @@ interface CollectionDropdownProps {
   onClose: () => void
   /** Positioning style */
   style?: React.CSSProperties
+  /** Positioning mode for the dropdown root */
+  positioning?: 'absolute' | 'fixed'
   /** Optional: limit to subcollections of a specific collection (for "Move to" in Browse) */
   limitToCollectionId?: string
 }
@@ -31,6 +33,7 @@ export function CollectionDropdown({
   onSelect,
   onClose,
   style,
+  positioning = 'absolute',
   limitToCollectionId,
 }: CollectionDropdownProps) {
   const ref = useRef<HTMLDivElement>(null)
@@ -65,7 +68,10 @@ export function CollectionDropdown({
   return (
     <div
       ref={ref}
-      className="absolute z-50 w-[14rem] max-h-[18rem] overflow-y-auto rounded-md border border-border bg-card p-1 shadow-lg"
+      className={cn(
+        positioning === 'fixed' ? 'fixed' : 'absolute',
+        'z-50 w-[14rem] max-h-[18rem] overflow-y-auto rounded-md border border-border bg-card p-1 shadow-lg',
+      )}
       style={style}
     >
       {limitToCollectionId && (

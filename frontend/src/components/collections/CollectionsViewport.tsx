@@ -32,7 +32,7 @@ import { PublicationCard } from './PublicationCard'
 import { autoAssignColour } from './collections-utils'
 
 type ViewKind = 'all' | 'uncollected' | 'collection'
-type SortKey = 'recent' | 'oldest' | 'title' | 'citations'
+type SortKey = 'recent' | 'oldest' | 'title'
 
 function Toast({ message, onDone }: { message: string; onDone: () => void }) {
   useEffect(() => {
@@ -51,9 +51,9 @@ function parseView(value: string | null): ViewKind {
   return value === 'uncollected' || value === 'collection' ? value : 'all'
 }
 
-function parseSort(value: string | null, view: ViewKind): SortKey {
-  const normalized = value === 'oldest' || value === 'title' || value === 'citations' ? value : 'recent'
-  return view === 'collection' ? normalized : normalized === 'citations' ? 'recent' : normalized
+function parseSort(value: string | null, _view: ViewKind): SortKey {
+  const normalized = value === 'oldest' || value === 'title' ? value : 'recent'
+  return normalized
 }
 
 function matchesLibraryWork(work: PersonaWork, query: string) {
@@ -248,11 +248,10 @@ export function CollectionsViewport({
     const base = selectedViewKind === 'uncollected'
       ? libraryItems.filter((item) => item.collectionMemberships.length === 0)
       : libraryItems
-    return sortByYear(base.filter((item) => matchesLibraryWork(item, query)), sort === 'citations' ? 'recent' : sort)
+    return sortByYear(base.filter((item) => matchesLibraryWork(item, query)), sort)
   }, [libraryItems, query, selectedViewKind, sort])
   const visibleCollectionItems = useMemo(() => {
     const filtered = collectionPubs.filter((item) => (!selectedSubcollectionId || item.subcollection_id === selectedSubcollectionId) && matchesCollectionPublication(item, query))
-    if (sort === 'citations') return [...filtered].sort((a, b) => b.citations - a.citations)
     return sortByYear(filtered, sort)
   }, [collectionPubs, query, selectedSubcollectionId, sort])
   const visibleWorkIds = selectedViewKind === 'collection'
@@ -461,10 +460,7 @@ export function CollectionsViewport({
     <div className={cn('flex flex-col bg-[hsl(var(--surface-drilldown-elevated))]', pageMode ? 'min-h-[calc(100vh-11rem)]' : 'h-full min-h-0')}>
       <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
         <div className="space-y-1">
-          <h2 className="text-base font-semibold text-foreground">Collections workspace</h2>
-          <p className="text-sm text-muted-foreground">
-            Curate paper sets in batch, then open the publication detail view without losing context.
-          </p>
+          <h2 className="text-base font-semibold text-foreground">Collections</h2>
         </div>
         {onClose && !pageMode ? (
           <button
@@ -535,7 +531,7 @@ export function CollectionsViewport({
           <div className="flex min-w-0 flex-1 flex-col bg-white">
             <div className="border-b border-border px-6 py-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-1">
+                <div>
                   <div className="flex items-center gap-3">
                     <h3 className="text-xl font-semibold text-foreground">
                       {selectedViewKind === 'collection'
@@ -550,19 +546,6 @@ export function CollectionsViewport({
                       {selectedViewKind === 'collection' ? visibleCollectionItems.length : visibleLibraryItems.length}
                     </span>
                   </div>
-                  <p className="max-w-3xl text-sm text-muted-foreground">
-                    {selectedViewKind === 'collection'
-                      ? selectedSubcollection
-                        ? 'Focused subgroup inside this collection.'
-                        : 'Browse and maintain the publications in this collection.'
-                      : 'Use bulk actions to organise publications without leaving the profile workspace.'}
-                  </p>
-                </div>
-                <div className="rounded-[1.25rem] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-4 py-3 text-right">
-                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Visible Items</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">
-                    {selectedViewKind === 'collection' ? visibleCollectionItems.length : visibleLibraryItems.length}
-                  </p>
                 </div>
               </div>
 
@@ -598,7 +581,6 @@ export function CollectionsViewport({
                     <option value="recent">Newest first</option>
                     <option value="oldest">Oldest first</option>
                     <option value="title">Title A-Z</option>
-                    {selectedViewKind === 'collection' ? <option value="citations">Most cited</option> : null}
                   </select>
                 </label>
               </div>
@@ -614,7 +596,7 @@ export function CollectionsViewport({
                     onChange={toggleSelectAllVisible}
                     aria-label="Select all visible publications"
                   />
-                  <span>{selectedVisibleCount > 0 ? `${selectedVisibleCount} selected` : `${visibleWorkIds.length} visible`}</span>
+                  <span>{selectedVisibleCount > 0 ? `${selectedVisibleCount} selected` : 'Select all'}</span>
                 </label>
 
                 <div className="flex flex-wrap items-center gap-2">

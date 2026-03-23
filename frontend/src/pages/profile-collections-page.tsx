@@ -70,7 +70,6 @@ export function ProfileCollectionsPage() {
         <SectionMarker tone={getSectionMarkerTone('research')} size="title" className="self-stretch h-auto" />
         <PageHeader
           heading="Collections"
-          description="Organise publication groups from your profile library and jump back into publication detail when you need it."
           className="!ml-0 !mt-0"
         />
       </Row>
