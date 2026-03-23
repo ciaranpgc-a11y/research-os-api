@@ -188,25 +188,31 @@ export function perMeasurementAutoAdjust(measuredRel: number): RangeParam {
   if (measuredRel >= 0 && measuredRel <= 1) {
     // Within range: standard band, dot naturally within it
     rw = FACTORY_RANGE_WIDTH
-    rs = 0.3 + (measuredRel - 0.5) * 0.1 - rw * measuredRel + rw * 0.5
-    // Simplify: just center the band so the dot is well-positioned
-    rs = 0.5 - rw * measuredRel + (measuredRel - 0.5) * 0.05
-    rs = clamp(rs, 0.08, 0.5)
+    rs = FACTORY_RANGE_START
   } else if (measuredRel > 1) {
-    // Above range: compress band left, push dot right
-    // Target: band occupies ~20-35% of bar on the left, dot sits at 65-85%
-    const excess = measuredRel - 1 // how far above UL (in UL-LL units)
-    const bandWidth = clamp(0.35 - excess * 0.06, 0.1, 0.35)
-    rw = bandWidth
-    // Position: band starts near left, dot = rs + rw * measuredRel
-    rs = clamp(0.08 + excess * 0.01, 0.04, 0.2)
+    // Above range: the normal band should compress to ~20% of the bar
+    // and the abnormal region (UL to ~2.5 SD beyond) fills the rest.
+    // We want: UL position at ~20%, dot at a proportional position in the remaining 80%.
+    // Formula: rs + rw * 0 = LL position, rs + rw * 1 = UL position = ~0.20
+    // rs + rw * measuredRel = dot position
+    // If we fix UL at 0.20 of bar: rw = 0.20 - rs (since UL is rel=1, rs + rw*1 = 0.20)
+    // And LL at ~0.03: rs = 0.03, so rw = 0.17
+    // Dot at: 0.03 + 0.17 * measuredRel
+    // For rel=1.5: 0.03 + 0.17*1.5 = 0.285 — still left-ish, good
+    // For rel=3.0: 0.03 + 0.17*3.0 = 0.54 — middle, good
+    // For rel=5.0: 0.03 + 0.17*5.0 = 0.88 — near right edge, good
+    rs = 0.03
+    rw = 0.17
   } else {
-    // Below range: compress band right, push dot left
-    const deficit = Math.abs(measuredRel) // how far below LL
-    const bandWidth = clamp(0.35 - deficit * 0.06, 0.1, 0.35)
-    rw = bandWidth
-    // Band should be on the right side
-    rs = clamp(0.55 - deficit * 0.05, 0.3, 0.7)
+    // Below range: mirror — band on the right, abnormal region on the left
+    // UL at ~0.80, LL at ~0.97 of bar
+    // rs + rw * 1 = 0.97, rs + rw * 0 = 0.80 → rs = 0.80, rw = 0.17
+    // Dot at: 0.80 + 0.17 * measuredRel
+    // For rel=-0.5: 0.80 + 0.17*(-0.5) = 0.715
+    // For rel=-2.0: 0.80 + 0.17*(-2.0) = 0.46 — middle, good
+    // For rel=-4.0: 0.80 + 0.17*(-4.0) = 0.12 — near left edge, good
+    rs = 0.80
+    rw = 0.17
   }
 
   rs = roundToStep(clamp(rs, 0.02, 0.6), ROUND_STEP)
