@@ -15,6 +15,8 @@ type RefNavProps = {
   sectionKeys?: string[]
   /** Whether a report has been extracted. When false, VISUALISER and MODULES nav items are disabled. */
   hasReport?: boolean
+  /** Whether non-contrast scan is selected. When true, Tissue characterisation is greyed out. */
+  nonContrast?: boolean
 }
 
 function sentenceCase(s: string): string {
@@ -58,6 +60,7 @@ export function CmrReferenceNavigator({
   variant,
   sectionKeys,
   hasReport = true,
+  nonContrast = false,
 }: RefNavProps) {
   const borderClass = variant === 'report'
     ? 'house-left-border-report'
@@ -135,22 +138,26 @@ export function CmrReferenceNavigator({
               <section className={cn(houseLayout.sidebarSection, !hasReport && 'opacity-40')}>
                 <p className={houseNavigation.sectionLabel}>VISUALISER</p>
                 <div className={houseNavigation.list}>
-                  {REPORT_VISUALISER_NAV.map((item) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      disabled={!hasReport}
-                      onClick={() => { if (hasReport) { navigate(item.path); onNavigate?.() } }}
-                      className={cn(
-                        houseNavigation.item,
-                        navItemClass,
-                        pathname === item.path && hasReport && houseNavigation.itemActive,
-                        !hasReport && 'cursor-not-allowed',
-                      )}
-                    >
-                      <span className={houseNavigation.itemLabel}>{item.label}</span>
-                    </button>
-                  ))}
+                  {REPORT_VISUALISER_NAV.map((item) => {
+                    const isLge = item.key === 'lge'
+                    const disabled = !hasReport || (isLge && nonContrast)
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => { if (!disabled) { navigate(item.path); onNavigate?.() } }}
+                        className={cn(
+                          houseNavigation.item,
+                          navItemClass,
+                          pathname === item.path && !disabled && houseNavigation.itemActive,
+                          disabled && 'cursor-not-allowed opacity-40',
+                        )}
+                      >
+                        <span className={houseNavigation.itemLabel}>{item.label}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </section>
               <section className={cn(houseLayout.sidebarSection, !hasReport && 'opacity-40')}>

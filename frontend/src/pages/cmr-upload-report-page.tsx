@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { PageHeader, Row, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { extractFromReport } from '@/lib/cmr-api'
-import { setExtractionResult } from '@/lib/cmr-report-store'
+import { setExtractionResult, getNonContrast, setNonContrast } from '@/lib/cmr-report-store'
 import { cn } from '@/lib/utils'
 
 export function CmrUploadReportPage() {
@@ -13,6 +13,7 @@ export function CmrUploadReportPage() {
   const [extractionError, setExtractionError] = useState<string | null>(null)
   const [reportType, setReportType] = useState<'standard' | 'stress'>('standard')
   const [fourDFlow, setFourDFlow] = useState(false)
+  const [nonContrast, setNonContrastLocal] = useState(() => getNonContrast())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
@@ -94,6 +95,19 @@ export function CmrUploadReportPage() {
             )}
           >
             4D flow
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { const v = !nonContrast; setNonContrastLocal(v); setNonContrast(v) }}
+            className={cn(
+              'flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors',
+              nonContrast
+                ? 'border-[hsl(var(--section-style-report-accent))] bg-[hsl(var(--section-style-report-accent))] text-white'
+                : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--tone-neutral-100))]',
+            )}
+          >
+            Non-contrast
           </button>
         </div>
 

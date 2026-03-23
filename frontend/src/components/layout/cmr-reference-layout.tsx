@@ -5,7 +5,7 @@ import { CmrTopBar } from '@/components/layout/cmr-top-bar'
 import { CmrReferenceNavigator } from '@/components/layout/cmr-reference-navigator'
 import { ScrollArea } from '@/components/ui'
 import { Sheet, SheetContent } from '@/components/ui'
-import { getExtractionResult, subscribeExtractionResult } from '@/lib/cmr-report-store'
+import { getExtractionResult, subscribeExtractionResult, getNonContrast, subscribeNonContrast } from '@/lib/cmr-report-store'
 
 export function CmrReferenceLayout() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(false)
@@ -17,6 +17,7 @@ export function CmrReferenceLayout() {
 
   const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
   const hasReport = extraction !== null
+  const nonContrast = useSyncExternalStore(subscribeNonContrast, getNonContrast)
 
   const variant = isAdminPage
     ? 'admin'
@@ -64,6 +65,7 @@ export function CmrReferenceLayout() {
             onSectionJump={handleSectionJump}
             variant={variant}
             hasReport={hasReport}
+            nonContrast={nonContrast}
           />
         </aside>
 
@@ -87,6 +89,7 @@ export function CmrReferenceLayout() {
             onNavigate={() => setLeftPanelOpen(false)}
             variant={variant}
             hasReport={hasReport}
+            nonContrast={nonContrast}
           />
         </SheetContent>
       </Sheet>
