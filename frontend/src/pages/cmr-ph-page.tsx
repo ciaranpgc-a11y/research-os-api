@@ -245,10 +245,6 @@ function fmtRow(values: (number | null)[], decimals: number = 0): string[] {
   })
 }
 
-function countDefined(values: Array<string | boolean | null | undefined>): number {
-  return values.filter((value) => value !== null && value !== undefined && value !== '' && value !== false).length
-}
-
 function DirectionIndicator({ dir }: { dir: string }) {
   if (dir === 'high') return <span className="text-[hsl(var(--tone-danger-500))]" title="Abnormal if high">&#9650;</span>
   if (dir === 'low') return <span className="text-[hsl(var(--tone-accent-500))]" title="Abnormal if low">&#9660;</span>
@@ -256,25 +252,16 @@ function DirectionIndicator({ dir }: { dir: string }) {
   return null
 }
 
-function StatusPill({ label }: { label: string }) {
-  return (
-    <span className="rounded-full border border-[hsl(var(--stroke-soft)/0.7)] bg-[hsl(var(--tone-neutral-50))] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-      {label}
-    </span>
-  )
-}
-
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return <span className="house-field-label">{children}</span>
 }
 
-function SectionCard({ title, statusLabel, children }: { title: string; statusLabel: string; children: React.ReactNode }) {
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="overflow-hidden rounded-xl border border-border/50 bg-card">
       <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3">
         <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
         <h2 className="flex-1 text-sm font-semibold text-foreground">{title}</h2>
-        <StatusPill label={statusLabel} />
       </div>
       <div className="p-5">{children}</div>
     </section>
@@ -283,11 +270,9 @@ function SectionCard({ title, statusLabel, children }: { title: string; statusLa
 
 function QuantitativeSection({
   title,
-  statusLabel,
   children,
 }: {
   title: string
-  statusLabel?: string
   children: React.ReactNode
 }) {
   return (
@@ -298,7 +283,6 @@ function QuantitativeSection({
           <h2 className="flex-1 text-sm font-semibold tracking-tight text-[hsl(var(--foreground))]">
             {title}
           </h2>
-          {statusLabel ? <StatusPill label={statusLabel} /> : null}
         </div>
       </div>
       <div className="overflow-hidden rounded-b-lg border-x border-b border-[hsl(var(--stroke-soft)/0.72)] bg-white">
@@ -868,6 +852,7 @@ export function CmrPhPage() {
   const [referenceData, setReferenceData] = useState<CmrCanonicalTableResponse | null>(null)
   const [referenceLoading, setReferenceLoading] = useState(true)
   const [showFilter, setShowFilter] = useState<'all' | 'recorded'>('recorded')
+  const [indexFilter, setIndexFilter] = useState<'all' | 'indexed'>('all')
   const [abnormalFilter, setAbnormalFilter] = useState<'all' | 'abnormal'>('all')
   const [chartMode, setChartMode] = useState<'off' | 'on'>('on')
   const [severityMode, setSeverityMode] = useState<'off' | 'abnormal'>('off')
@@ -1052,13 +1037,14 @@ export function CmrPhPage() {
   const filterRows = useCallback((rows: QuantitativeDisplayRow[]) => (
     rows.filter((row) => {
       if (showFilter === 'recorded' && row.value === null) return false
+      if (indexFilter === 'indexed' && row.canonical?.indexing !== 'BSA') return false
       if (abnormalFilter === 'abnormal') {
         if (row.value === null || !row.canonical) return false
         return isAbnormalValue(row.value, row.canonical.ll, row.canonical.ul, row.canonical.abnormal_direction)
       }
       return true
     })
-  ), [abnormalFilter, showFilter])
+  ), [abnormalFilter, indexFilter, showFilter])
 
   const filteredRvRows = useMemo(() => filterRows(rvRows), [filterRows, rvRows])
   const filteredPaRows = useMemo(() => filterRows(paRows), [filterRows, paRows])
@@ -1115,48 +1101,6 @@ export function CmrPhPage() {
     setRangeParams(next)
   }, [allQuantRows, scalingMode])
 
-  const rvStatus = `${rvRows.filter((row) => row.value !== null).length}/${rvRows.length} recorded`
-  const rightHeartStatus = `${countDefined([
-    choices.septalFlattening !== 'none',
-    choices.septalMotion !== 'normal',
-    choices.interatrialSeptalBowing !== 'none',
-    choices.pericardialEffusion !== 'none',
-    choices.venaCava !== 'normal',
-    resolveNumericValue('pericardialEffusionSize'),
-  ])} set`
-  const paStatus = `${paRows.filter((row) => row.value !== null).length}/${paRows.length} recorded`
-  const valveStatus = `${countDefined([
-    choices.trSeverity !== 'none',
-    choices.mrSeverity !== 'none',
-    choices.prSeverity !== 'none',
-    ...valveRows.map((row) => row.value !== null),
-  ])} set`
-  const additionalStatus = `${countDefined([
-    ...additionalRows.map((row) => row.value !== null),
-    texts.ancillaryFindings,
-    texts.additionalDetails,
-  ])} set`
-  const flow4dStatus = `${countDefined([
-    choices.vortexFormation !== 'not-assessed',
-    choices.vortexSeverity,
-    choices.helicity !== 'not-assessed',
-    choices.helicitySeverity,
-    resolveNumericValue('mainPaNetFlow'),
-    resolveNumericValue('rpaNetFlow'),
-    resolveNumericValue('lpaNetFlow'),
-    resolveNumericValue('rpaPercent'),
-    resolveNumericValue('lpaPercent'),
-    texts.flowComment,
-  ])} set`
-
-  const headerActions = (
-    <div className="flex flex-wrap items-center gap-2">
-      {bsa !== null && <StatusPill label={`BSA ${formatNumber(bsa, 2)} m2`} />}
-      {heartRate !== null && <StatusPill label={`HR ${formatNumber(heartRate, 0)} bpm`} />}
-      <StatusPill label={referenceLoading ? 'Reference loading' : `Sex ${sex}`} />
-    </div>
-  )
-
   return (
     <Stack className="gap-6">
       <Row align="center" gap="md" wrap={false} className="house-page-title-row">
@@ -1164,10 +1108,18 @@ export function CmrPhPage() {
         <PageHeader
           heading="Pulmonary Hypertension"
           description="PH-specific review layer over the quantitative extraction table, with reference ranges and graph overlay for the numeric metrics."
-          actions={headerActions}
           className="!ml-0 !mt-0"
         />
       </Row>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="rounded-md border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-50))] px-4 py-2">
+          <span className="text-sm font-semibold text-[hsl(var(--foreground))]">{referenceLoading ? 'Loading...' : sex}</span>
+        </div>
+        <div className="rounded-md border border-[hsl(var(--stroke-soft)/0.72)] bg-[hsl(var(--tone-neutral-50))] px-4 py-2">
+          <span className="text-sm font-semibold text-[hsl(var(--foreground))]">{age != null ? `${age} years` : '\u2014'}</span>
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-start gap-5">
         <div className="flex flex-col gap-1">
@@ -1187,6 +1139,15 @@ export function CmrPhPage() {
             />
             <PillToggle
               options={[
+                { key: 'all', label: <AllRowsIcon />, tooltip: 'Absolute + indexed' },
+                { key: 'indexed', label: <BsaPill />, tooltip: 'Indexed only' },
+              ]}
+              compact
+              value={indexFilter}
+              onChange={(value) => setIndexFilter(value as 'all' | 'indexed')}
+            />
+            <PillToggle
+              options={[
                 { key: 'all', label: <SeverityIcon />, tooltip: 'All findings' },
                 { key: 'abnormal', label: <svg className="h-3.5 w-3.5" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="hsl(4 55% 50%)" /></svg>, tooltip: 'Abnormal only' },
               ]}
@@ -1202,7 +1163,7 @@ export function CmrPhPage() {
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5" /><path d="M1 6h14" /></svg>
-            Quantitative metrics
+            Viewing
           </div>
           <div className="flex items-center gap-2">
             <PillToggle
@@ -1230,11 +1191,11 @@ export function CmrPhPage() {
         </div>
       </div>
 
-      <QuantitativeSection title="RV Size & Function" statusLabel={rvStatus}>
+      <QuantitativeSection title="RV Size & Function">
         <QuantitativeTable rows={filteredRvRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
       </QuantitativeSection>
 
-      <SectionCard title="Septal / Right Heart Signs" statusLabel={rightHeartStatus}>
+      <SectionCard title="Septal / Right Heart Signs">
         <div className="grid gap-6 xl:grid-cols-2">
           <Subsection title="Septal Geometry">
             <div className="space-y-4">
@@ -1271,11 +1232,11 @@ export function CmrPhPage() {
         </div>
       </SectionCard>
 
-      <QuantitativeSection title="Pulmonary Artery & Flow" statusLabel={paStatus}>
+      <QuantitativeSection title="Pulmonary Artery & Flow">
         <QuantitativeTable rows={filteredPaRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
       </QuantitativeSection>
 
-      <SectionCard title="Valvular Context" statusLabel={valveStatus}>
+      <SectionCard title="Valvular Context">
         <div className="grid gap-6">
           <div className="grid gap-6 xl:grid-cols-3">
             <Subsection title="Tricuspid Regurgitation">
@@ -1307,7 +1268,7 @@ export function CmrPhPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Additional" statusLabel={additionalStatus}>
+      <SectionCard title="Additional">
         <div className="grid gap-6">
           <QuantitativeTable rows={filteredAdditionalRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} />
 
@@ -1322,7 +1283,7 @@ export function CmrPhPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="4D Flow" statusLabel={flow4dStatus}>
+      <SectionCard title="4D Flow">
         <div className="grid gap-6">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
             <Subsection title="Qualitative Flow Pattern">
