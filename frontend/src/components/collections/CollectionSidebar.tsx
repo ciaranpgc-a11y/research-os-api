@@ -243,8 +243,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
     onToggleExpand,
     subcollectionsMap,
     onSubcollectionsFetched,
-    selectedCollectionId,
-    selectedSubcollectionId,
     onSelectCollection,
     onSelectSubcollection,
     isDragging,
@@ -477,7 +475,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
         {/* Collections */}
         {collections.map((coll) => {
           const isExpanded = expandedIds.has(coll.id)
-          const isSelected = selectedCollectionId === coll.id
           const isDropTarget = dropTargetId === coll.id
           const isPulsing = pulsingId === coll.id
           const subs = subcollectionsMap.get(coll.id) ?? []
@@ -566,7 +563,6 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                 <div className="ml-4">
                   {/* Subcollection rows */}
                   {subs.map((sub) => {
-                    const isSubSelected = selectedSubcollectionId === sub.id
                     const isSubDropTarget = dropTargetId === sub.id
                     const isSubPulsing = pulsingId === sub.id
 
