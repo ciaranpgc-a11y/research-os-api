@@ -698,7 +698,7 @@ function MorphologySection({ valve, morphology, onMorphologyChange }: {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-3 border-t-[3px] border-border/60 px-5 py-3 w-full text-left hover:bg-muted/20 transition-colors"
+        className="flex items-center gap-3 border-b border-border/30 px-5 py-3.5 w-full text-left hover:bg-muted/20 transition-colors"
       >
         <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
         <h3 className="text-sm font-semibold text-foreground flex-1">Morphology</h3>
@@ -924,12 +924,12 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
   const relevantFields = FLOW_FIELDS.filter((f) => f.paramKey[valve.id] !== null)
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card">
-      {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3.5">
-        <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
-        <h3 className="text-sm font-semibold text-foreground flex-1">Flow assessment</h3>
-        <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-4">
+      {/* Flow assessment card */}
+      <section className="rounded-xl border border-border/50 bg-card">
+        <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3.5">
+          <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
+          <h3 className="text-sm font-semibold text-foreground flex-1">Flow assessment</h3>
           <span
             className={cn(
               'rounded-full px-3 py-1 text-xs font-semibold',
@@ -941,46 +941,56 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
             {isOverridden && ' ✎'}
           </span>
         </div>
-      </div>
-
-      <div className="p-5">
-        <div className="flex gap-4">
-          {/* Flow fields — 2-column grid */}
-          <div className="flex-1 min-w-0 grid grid-cols-2 gap-x-6 gap-y-4">
-            {relevantFields.map((field) => {
-              const paramKey = field.paramKey[valve.id]!
-              return (
-                <div key={field.key} className="flex items-center gap-2">
-                  <label className="text-xs font-medium text-muted-foreground w-36 shrink-0 flex items-center" title={paramKey}>
-                    {field.label}
-                    {derivedKeys.has(field.key) && <CalculatorIcon />}
-                  </label>
-                  <div className="flex items-center gap-1.5 flex-1">
-                    <input
-                      type="number"
-                      step="any"
-                      value={values[field.key] ?? ''}
-                      onChange={(e) => onValueChange(field.key, e.target.value)}
-                      placeholder="—"
-                      className="h-8 w-20 rounded-md border border-border/50 bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/20"
-                    />
-                    <span className="text-xs text-muted-foreground">{field.unit}</span>
+        <div className="p-5">
+          <div className="flex gap-4">
+            <div className="flex-1 min-w-0 grid grid-cols-2 gap-x-6 gap-y-4">
+              {relevantFields.map((field) => {
+                const paramKey = field.paramKey[valve.id]!
+                return (
+                  <div key={field.key} className="flex items-center gap-2">
+                    <label className="text-xs font-medium text-muted-foreground w-36 shrink-0 flex items-center" title={paramKey}>
+                      {field.label}
+                      {derivedKeys.has(field.key) && <CalculatorIcon />}
+                    </label>
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <input
+                        type="number"
+                        step="any"
+                        value={values[field.key] ?? ''}
+                        onChange={(e) => onValueChange(field.key, e.target.value)}
+                        placeholder="—"
+                        className="h-8 w-20 rounded-md border border-border/50 bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/20"
+                      />
+                      <span className="text-xs text-muted-foreground">{field.unit}</span>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Flow visualisation — right column */}
-          <div className="w-[440px] shrink-0 flex flex-col justify-center">
-            <FlowViz values={values} severity={effectiveSeverity} />
+                )
+              })}
+            </div>
+            <div className="w-[440px] shrink-0 flex flex-col justify-center">
+              <FlowViz values={values} severity={effectiveSeverity} />
+            </div>
           </div>
         </div>
+      </section>
 
-        {/* Severity grading */}
-        <div className="mt-5 pt-4 border-t-[3px] border-border/60">
+      {/* Severity card */}
+      <section className="rounded-xl border border-border/50 bg-card">
+        <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3.5">
+          <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
+          <h3 className="text-sm font-semibold text-foreground flex-1">Severity</h3>
+          <span
+            className={cn(
+              'rounded-full px-3 py-1 text-xs font-semibold',
+              effectiveSeverity === 'mild' ? 'text-black' : 'text-white',
+            )}
+            style={{ backgroundColor: SEVERITY_COLORS[effectiveSeverity] }}
+          >
+            {SEVERITY_LABELS[effectiveSeverity]}
+          </span>
+        </div>
+        <div className="p-5">
           <div className="flex items-center gap-4">
-            <span className="text-xs font-medium text-muted-foreground w-44 shrink-0">Severity</span>
             <div className="flex gap-1.5">
               {(Object.keys(SEVERITY_LABELS) as Severity[]).map((s) => {
                 const isActive = effectiveSeverity === s
@@ -1022,15 +1032,16 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
             )}
           </div>
         </div>
+      </section>
 
-      </div>
-
-      {/* Morphology section with its own header */}
-      <MorphologySection
-        valve={valve}
-        morphology={morphology}
-        onMorphologyChange={onMorphologyChange}
-      />
+      {/* Morphology card */}
+      <section className="rounded-xl border border-border/50 bg-card">
+        <MorphologySection
+          valve={valve}
+          morphology={morphology}
+          onMorphologyChange={onMorphologyChange}
+        />
+      </section>
     </div>
   )
 }
