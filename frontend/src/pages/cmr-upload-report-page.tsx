@@ -11,6 +11,8 @@ export function CmrUploadReportPage() {
   const [reportText, setReportText] = useState('')
   const [extracting, setExtracting] = useState(false)
   const [extractionError, setExtractionError] = useState<string | null>(null)
+  const [reportType, setReportType] = useState<'standard' | 'stress'>('standard')
+  const [fourDFlow, setFourDFlow] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
@@ -53,6 +55,48 @@ export function CmrUploadReportPage() {
       </Row>
 
       <div className="space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center rounded-md border border-[hsl(var(--border))] overflow-hidden text-sm font-medium">
+            <button
+              type="button"
+              onClick={() => setReportType('standard')}
+              className={cn(
+                'px-4 py-2 transition-colors',
+                reportType === 'standard'
+                  ? 'bg-[hsl(var(--section-style-report-accent))] text-white'
+                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--tone-neutral-100))]',
+              )}
+            >
+              Standard
+            </button>
+            <button
+              type="button"
+              onClick={() => setReportType('stress')}
+              className={cn(
+                'px-4 py-2 transition-colors border-l border-[hsl(var(--border))]',
+                reportType === 'stress'
+                  ? 'bg-[hsl(var(--section-style-report-accent))] text-white'
+                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--tone-neutral-100))]',
+              )}
+            >
+              Stress
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setFourDFlow((v) => !v)}
+            className={cn(
+              'flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors',
+              fourDFlow
+                ? 'border-[hsl(var(--section-style-report-accent))] bg-[hsl(var(--section-style-report-accent))] text-white'
+                : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--tone-neutral-100))]',
+            )}
+          >
+            4D flow
+          </button>
+        </div>
+
         <textarea
           value={reportText}
           onChange={(e) => setReportText(e.target.value)}
