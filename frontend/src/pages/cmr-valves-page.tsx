@@ -809,11 +809,12 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
         {/* ── RF Gauge ── */}
         <div className="flex flex-col items-center">
           <svg width="300" height="175" viewBox="0 0 300 175">
-            {/* Background track */}
-            <path d={arcPath(ARC_R, 0, 180)} fill="none" stroke="hsl(0 0% 92%)" strokeWidth="24" strokeLinecap="round" />
-            {/* Severity zone arcs — equal angular width */}
-            {sevZones.map((z) => {
+            {/* Background track — no grey, severity zones cover the full arc */}
+            {/* Severity zone arcs — proportional to RF% range */}
+            {sevZones.map((z, i) => {
               const isActive = !isNaN(rfVal) && rfVal >= z.lo && rfVal < z.hi
+              const isFirst = i === 0
+              const isLast = i === sevZones.length - 1
               return (
                 <path
                   key={z.label}
@@ -821,7 +822,7 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
                   fill="none"
                   stroke={z.color}
                   strokeWidth="24"
-                  strokeLinecap="butt"
+                  strokeLinecap={isFirst || isLast ? 'round' : 'butt'}
                   opacity={isActive || isNaN(rfVal) ? 1 : 0.3}
                   className="transition-opacity duration-300"
                 />
