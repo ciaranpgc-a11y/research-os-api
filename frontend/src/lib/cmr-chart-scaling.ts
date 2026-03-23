@@ -185,25 +185,22 @@ export function perMeasurementAutoAdjust(measuredRel: number): RangeParam {
   let rw: number
   let rs: number
 
-  if (measuredRel >= 0 && measuredRel <= 1) {
-    // Within range: standard band, dot naturally within it
+  if (measuredRel >= -0.3 && measuredRel <= 1.3) {
+    // Within or near range: factory baseline — band reflects the true LL-to-UL proportionally
     rw = FACTORY_RANGE_WIDTH
     rs = FACTORY_RANGE_START
-  } else if (measuredRel > 1) {
-    // Above range: scale 0 → 5% of bar, measuredRel+headroom → 95%
-    // This means the band and dot position are proportional to the actual value.
-    // Mildly abnormal (rel 1.2): dot at ~70%, band 5–60%, ticks visible
-    // Severely abnormal (rel 3.0): dot at ~80%, band 5–30%, ticks spread out
-    // headroom: 15% beyond measured so the dot doesn't pin at the edge
-    const maxRel = measuredRel * 1.15
+  } else if (measuredRel > 1.3) {
+    // Above range: keep the band shape but stretch the chart so the dot
+    // doesn't clip. Place the dot at ~85% of the bar.
+    // dot = rs + rw * measuredRel = 0.85
+    // Keep rs = 0.05 so LL is visible at the left edge
     rs = 0.05
-    rw = 0.90 / maxRel
+    rw = 0.80 / measuredRel
   } else {
-    // Below range: scale measuredRel-headroom → 5%, 1 → 95%
-    const minRel = measuredRel * 1.15 // more negative = more headroom on left
-    // We want: rs + rw * minRel = 0.05, rs + rw * 1 = 0.95
-    // rw = (0.95 - 0.05) / (1 - minRel) = 0.90 / (1 - minRel)
-    rw = 0.90 / (1 - minRel)
+    // Below range: mirror — dot at ~15%, UL visible at right
+    // dot = rs + rw * measuredRel = 0.15
+    // UL = rs + rw * 1 = 0.95
+    rw = 0.80 / (1 - measuredRel)
     rs = 0.95 - rw
   }
 
