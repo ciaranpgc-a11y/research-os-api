@@ -185,21 +185,17 @@ export function perMeasurementAutoAdjust(measuredRel: number): RangeParam {
   let rw: number
   let rs: number
 
-  if (measuredRel >= -0.3 && measuredRel <= 1.3) {
-    // Within or near range: factory baseline — band reflects the true LL-to-UL proportionally
+  if (measuredRel >= 0 && measuredRel <= 1) {
+    // Within range: factory baseline
     rw = FACTORY_RANGE_WIDTH
     rs = FACTORY_RANGE_START
-  } else if (measuredRel > 1.3) {
-    // Above range: keep the band shape but stretch the chart so the dot
-    // doesn't clip. Place the dot at ~85% of the bar.
-    // dot = rs + rw * measuredRel = 0.85
-    // Keep rs = 0.05 so LL is visible at the left edge
+  } else if (measuredRel > 1) {
+    // Above range: stretch so dot is visible with ticks spread out.
+    // Place dot at ~85% of bar, LL at ~5%.
     rs = 0.05
     rw = 0.80 / measuredRel
   } else {
-    // Below range: mirror — dot at ~15%, UL visible at right
-    // dot = rs + rw * measuredRel = 0.15
-    // UL = rs + rw * 1 = 0.95
+    // Below range: stretch so dot is visible, UL at ~95%.
     rw = 0.80 / (1 - measuredRel)
     rs = 0.95 - rw
   }
