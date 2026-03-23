@@ -358,75 +358,53 @@ function formatInterval(fromStr: string, toStr: string): string | null {
   return `${years} years`
 }
 
-/** For params with severity thresholds or SD-based grading, compute an effective UL
- *  that spans the full severity scale so the chart shows all zones. */
+/** For params with explicit severity thresholds, compute an effective UL that spans
+ *  the full severity scale so the chart shows all zones. */
 function effectiveUL(param: CmrCanonicalParam): number {
   const t = param.severity_thresholds
-  if (t && param.ul != null) {
-    const highest = t.severe ?? t.moderate ?? t.mild ?? param.ul
-    if (highest != null) return highest * 1.15
-    return param.ul
-  }
-  // SD-based: severe is ~2 SD beyond the breached limit
-  if (param.sd && param.sd > 0 && param.ul != null && param.ll != null) {
-    const dir = param.abnormal_direction
-    if (dir === 'high' || dir === 'both') return param.ul + 2.5 * param.sd
-    if (dir === 'low') return param.ul // UL stays as-is for low-direction
-  }
-  return param.ul ?? 0
+  if (!t || param.ul == null) return param.ul ?? 0
+  const highest = t.severe ?? t.moderate ?? t.mild ?? param.ul
+  if (highest == null) return param.ul
+  return highest * 1.15
 }
 
-/** For low-direction params, compute an effective LL that extends below for severity zones. */
-function effectiveLL(param: CmrCanonicalParam): number {
-  if (param.severity_thresholds) return param.ll ?? 0
-  if (param.sd && param.sd > 0 && param.ll != null) {
-    const dir = param.abnormal_direction
-    if (dir === 'low' || dir === 'both') return param.ll - 2.5 * param.sd
-  }
-  return param.ll ?? 0
-}
-
-/** Check if a param has any severity zones (explicit thresholds or SD-based). */
+/** Check if a param has coloured severity zones (explicit thresholds only — valve params). */
 function hasSevZones(param: CmrCanonicalParam): boolean {
-  if (param.severity_thresholds) return true
-  if (param.sd && param.sd > 0 && param.ll != null && param.ul != null && param.abnormal_direction !== 'both') return true
-  return false
+  return !!param.severity_thresholds
+}
+
+/** Check if a param has SD-based severity tick marks (non-valve abnormal params). */
+function hasSevTicks(param: CmrCanonicalParam): boolean {
+  if (param.severity_thresholds) return false // valve params use coloured zones instead
+  return !!(param.sd && param.sd > 0 && param.ll != null && param.ul != null && param.abnormal_direction !== 'both')
+}
+
+/** Compute SD-based severity tick positions (absolute values). */
+function buildSeverityTicks(param: CmrCanonicalParam): number[] | undefined {
+  if (!hasSevTicks(param)) return undefined
+  const dir = param.abnormal_direction
+  if (dir === 'high' && param.ul != null && param.sd) {
+    return [param.ul + param.sd, param.ul + 2 * param.sd]
+  }
+  if (dir === 'low' && param.ll != null && param.sd) {
+    return [param.ll - param.sd, param.ll - 2 * param.sd]
+  }
+  return undefined
 }
 
 /** Scaling for severity-zone charts: use 90% of bar width so zones are
  *  clearly visible and not squeezed into a small strip. */
 const SEV_ZONE_SCALING = { rangeStart: 0.05, rangeWidth: 0.9 } as const
 
-/** Build severity zones from explicit thresholds or SD-based grading. */
+/** Build severity zones from explicit thresholds only (valve params). */
 function buildSeverityZones(param: CmrCanonicalParam): SeverityZone[] | undefined {
-  // Explicit thresholds (valve params)
   const t = param.severity_thresholds
-  if (t) return [
+  if (!t) return undefined
+  return [
     { grade: 'mild', threshold: t.mild },
     { grade: 'moderate', threshold: t.moderate },
     { grade: 'severe', threshold: t.severe },
   ]
-  // SD-based zones for non-valve abnormal params
-  if (param.sd && param.sd > 0 && param.ll != null && param.ul != null) {
-    const dir = param.abnormal_direction
-    if (dir === 'high') {
-      // Abnormal when above UL: mild = UL → UL+1SD, moderate = UL+1SD → UL+2SD, severe = >UL+2SD
-      return [
-        { grade: 'mild', threshold: param.ul + param.sd },
-        { grade: 'moderate', threshold: param.ul + 2 * param.sd },
-        { grade: 'severe', threshold: null },
-      ]
-    }
-    if (dir === 'low') {
-      // Abnormal when below LL: mild = LL → LL-1SD, moderate = LL-1SD → LL-2SD, severe = <LL-2SD
-      return [
-        { grade: 'mild', threshold: param.ll - param.sd },
-        { grade: 'moderate', threshold: param.ll - 2 * param.sd },
-        { grade: 'severe', threshold: null },
-      ]
-    }
-  }
-  return undefined
 }
 
 function RangeChart({
@@ -450,6 +428,7 @@ function RangeChart({
   rangeWidth: number
   previousMarkers?: PrevMarker[]
   severityZones?: SeverityZone[]
+  severityTicks?: number[]
   severityGrade?: SevGrade
 }) {
   const measuredRel = computeMeasuredRel(measured, ll, ul)
@@ -547,6 +526,19 @@ function RangeChart({
             style={{ left: bandLeftPct, width: bandWidthPct }}
           />
         )}
+        {/* SD severity tick marks (thin black lines at 1SD and 2SD boundaries) */}
+        {severityTicks?.map((tickVal, i) => {
+          const tickRel = computeMeasuredRel(tickVal, ll, ul)
+          const tickPos = computeMeasuredPos(tickRel, rangeStart, rangeWidth)
+          if (tickPos <= 0.01 || tickPos >= 0.99) return null
+          return (
+            <div
+              key={`tick-${i}`}
+              className="absolute top-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2 bg-[hsl(var(--foreground)/0.3)]"
+              style={{ left: `${tickPos * 100}%` }}
+            />
+          )
+        })}
         {/* Previous study markers (diamonds) */}
         {previousMarkers?.map((pm, i) => {
           const prevRel = computeMeasuredRel(pm.value, ll, ul)
@@ -1542,6 +1534,7 @@ export function CmrNewReportPage() {
                                           }
                                           previousMarkers={getPrevMarkers(p, measured)}
                                           severityZones={buildSeverityZones(p)}
+                                          severityTicks={buildSeverityTicks(p)}
                                           severityGrade={severity.grade as SevGrade}
                                         />
                                       ) : null}
@@ -1654,6 +1647,7 @@ export function CmrNewReportPage() {
                                               })()}
                                               previousMarkers={getPrevMarkers(cp, cpMeasured)}
                                               severityZones={buildSeverityZones(cp)}
+                                              severityTicks={buildSeverityTicks(cp)}
                                               severityGrade={cpSeverity.grade as SevGrade}
                                             />
                                           ) : null}
