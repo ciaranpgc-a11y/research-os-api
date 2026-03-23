@@ -800,8 +800,7 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
   const [nx, ny] = gaugePoint(gaugeAngle, ARC_R - 22)
 
   return (
-    <TooltipProvider delayDuration={0}>
-      <div className="flex justify-center">
+    <div className="flex justify-center">
         <div className="flex flex-col items-center">
           {/* Value and label above the gauge */}
           <div className="text-center mb-1">
@@ -839,38 +838,17 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
                 />
               )
             })}
-            {/* Needle with tooltip */}
+            {/* Needle */}
             {!isNaN(rfVal) && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <g className="cursor-default">
-                    <line x1={CX} y1={CY} x2={nx} y2={ny} stroke="hsl(0 0% 15%)" strokeWidth="2.5" strokeLinecap="round" />
-                    <circle cx={CX} cy={CY} r="5" fill="hsl(0 0% 15%)" />
-                    {/* Invisible hit area for easier hover */}
-                    <circle cx={CX} cy={CY} r="30" fill="transparent" />
-                  </g>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="p-0 overflow-hidden">
-                  <div className="px-4 py-2.5 text-center">
-                    <div className="text-lg font-bold tabular-nums">{rfVal.toFixed(1)}%</div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">Regurgitant fraction</div>
-                  </div>
-                  <div className="px-4 py-2 border-t border-border/40 text-center">
-                    <span
-                      className={cn('rounded-full px-2.5 py-1 text-xs font-semibold', severity === 'mild' ? 'text-black' : 'text-white')}
-                      style={{ backgroundColor: SEVERITY_COLORS[severity] }}
-                    >
-                      {SEVERITY_LABELS[severity]} regurgitation
-                    </span>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
+              <>
+                <line x1={CX} y1={CY} x2={nx} y2={ny} stroke="hsl(0 0% 15%)" strokeWidth="2.5" strokeLinecap="round" />
+                <circle cx={CX} cy={CY} r="5" fill="hsl(0 0% 15%)" />
+              </>
             )}
           </svg>
         </div>
 
       </div>
-    </TooltipProvider>
   )
 }
 
