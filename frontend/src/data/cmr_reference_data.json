@@ -8,7 +8,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV EDV (i)": {
       "parameter": "LV EDV (i)",
@@ -18,7 +19,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV ESV": {
       "parameter": "LV ESV",
@@ -28,7 +30,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV ESV (i)": {
       "parameter": "LV ESV (i)",
@@ -38,7 +41,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV ED diameter (4ch)": {
       "parameter": "LV ED diameter (4ch)",
@@ -49,7 +53,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "LV ED diameter (4ch) (i)": {
       "parameter": "LV ED diameter (4ch) (i)",
@@ -59,7 +64,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV ED diameter (sax)": {
       "parameter": "LV ED diameter (sax)",
@@ -69,7 +75,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV ED diameter (sax) (i)": {
       "parameter": "LV ED diameter (sax) (i)",
@@ -79,7 +86,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV ES diameter (4ch)": {
       "parameter": "LV ES diameter (4ch)",
@@ -89,7 +97,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV ES diameter (4ch) (i)": {
       "parameter": "LV ES diameter (4ch) (i)",
@@ -99,7 +108,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV ES diameter (sax)": {
       "parameter": "LV ES diameter (sax)",
@@ -109,7 +119,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV mass": {
       "parameter": "LV mass",
@@ -120,7 +131,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "LV mass (i)": {
       "parameter": "LV mass (i)",
@@ -130,7 +142,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LV mass / LV EDV": {
       "parameter": "LV mass / LV EDV",
@@ -140,7 +153,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LV peak wall thickness": {
       "parameter": "LV peak wall thickness",
@@ -150,7 +164,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LV EF": {
       "parameter": "LV EF",
@@ -164,7 +179,8 @@
       ],
       "pap_affected": false,
       "severity_label": "impaired",
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "low"
     },
     "LV SV": {
       "parameter": "LV SV",
@@ -174,7 +190,8 @@
       "sub_section": "LV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "LV SV (i)": {
       "parameter": "LV SV (i)",
@@ -184,7 +201,8 @@
       "sub_section": "LV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "LV CO": {
       "parameter": "LV CO",
@@ -194,7 +212,8 @@
       "sub_section": "LV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "both"
     },
     "LV CI": {
       "parameter": "LV CI",
@@ -204,7 +223,8 @@
       "sub_section": "LV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "both"
     },
     "MAPSE": {
       "parameter": "MAPSE",
@@ -215,7 +235,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "low"
     },
     "MAPSE anterior": {
       "parameter": "MAPSE anterior",
@@ -226,7 +247,8 @@
       "sources": [],
       "pap_affected": false,
       "nested_under": "MAPSE",
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "low"
     },
     "MAPSE septal": {
       "parameter": "MAPSE septal",
@@ -237,7 +259,8 @@
       "sources": [],
       "pap_affected": false,
       "nested_under": "MAPSE",
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "low"
     },
     "MAPSE inferior": {
       "parameter": "MAPSE inferior",
@@ -248,7 +271,8 @@
       "sources": [],
       "pap_affected": false,
       "nested_under": "MAPSE",
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "low"
     },
     "MAPSE lateral": {
       "parameter": "MAPSE lateral",
@@ -259,7 +283,8 @@
       "sources": [],
       "pap_affected": false,
       "nested_under": "MAPSE",
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "low"
     },
     "RV EDV": {
       "parameter": "RV EDV",
@@ -269,7 +294,8 @@
       "sub_section": "RV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RV EDV (i)": {
       "parameter": "RV EDV (i)",
@@ -279,7 +305,8 @@
       "sub_section": "RV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RV ESV": {
       "parameter": "RV ESV",
@@ -289,7 +316,8 @@
       "sub_section": "RV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RV ESV (i)": {
       "parameter": "RV ESV (i)",
@@ -299,7 +327,8 @@
       "sub_section": "RV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RV mass": {
       "parameter": "RV mass",
@@ -310,7 +339,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "RV mass (i)": {
       "parameter": "RV mass (i)",
@@ -320,7 +350,8 @@
       "sub_section": "RV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RV basal diameter": {
       "parameter": "RV basal diameter",
@@ -332,7 +363,8 @@
         "SCMR Reference Values 2025 Update. JCMR 2025"
       ],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RV basal diameter (i)": {
       "parameter": "RV basal diameter (i)",
@@ -344,7 +376,8 @@
         "SCMR Reference Values 2025 Update. JCMR 2025"
       ],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RVOT diameter": {
       "parameter": "RVOT diameter",
@@ -357,7 +390,8 @@
       ],
       "pap_affected": false,
       "decimal_places": 0,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "RV EF": {
       "parameter": "RV EF",
@@ -371,7 +405,8 @@
       ],
       "pap_affected": false,
       "severity_label": "impaired",
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "low"
     },
     "RV SV": {
       "parameter": "RV SV",
@@ -381,7 +416,8 @@
       "sub_section": "RV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "RV SV (i)": {
       "parameter": "RV SV (i)",
@@ -391,7 +427,8 @@
       "sub_section": "RV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "RV CO": {
       "parameter": "RV CO",
@@ -401,7 +438,8 @@
       "sub_section": "RV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "both"
     },
     "RV CI": {
       "parameter": "RV CI",
@@ -411,7 +449,8 @@
       "sub_section": "RV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "both"
     },
     "TAPSE": {
       "parameter": "TAPSE",
@@ -422,7 +461,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "low"
     },
     "LA max volume": {
       "parameter": "LA max volume",
@@ -432,7 +472,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LA max volume (i)": {
       "parameter": "LA max volume (i)",
@@ -442,7 +483,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LA min volume": {
       "parameter": "LA min volume",
@@ -452,7 +494,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LA min volume (i)": {
       "parameter": "LA min volume (i)",
@@ -462,7 +505,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LA max area (2ch)": {
       "parameter": "LA max area (2ch)",
@@ -473,7 +517,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "LA max area (2ch) (i)": {
       "parameter": "LA max area (2ch) (i)",
@@ -483,7 +528,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LA max area (3ch)": {
       "parameter": "LA max area (3ch)",
@@ -493,7 +539,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LA max area (3ch) (i)": {
       "parameter": "LA max area (3ch) (i)",
@@ -503,7 +550,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LA max area (4ch)": {
       "parameter": "LA max area (4ch)",
@@ -513,7 +561,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LA max area (4ch) (i)": {
       "parameter": "LA max area (4ch) (i)",
@@ -523,7 +572,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "LA max longitudinal diameter (2ch)": {
       "parameter": "LA max longitudinal diameter (2ch)",
@@ -534,7 +584,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "LA max longitudinal diameter (2ch) (i)": {
       "parameter": "LA max longitudinal diameter (2ch) (i)",
@@ -544,7 +595,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA max longitudinal diameter (3ch)": {
       "parameter": "LA max longitudinal diameter (3ch)",
@@ -554,7 +606,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA max longitudinal diameter (3ch) (i)": {
       "parameter": "LA max longitudinal diameter (3ch) (i)",
@@ -564,7 +617,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA max longitudinal diameter (4ch)": {
       "parameter": "LA max longitudinal diameter (4ch)",
@@ -574,7 +628,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA max longitudinal diameter (4ch) (i)": {
       "parameter": "LA max longitudinal diameter (4ch) (i)",
@@ -584,7 +639,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA max AP diameter (3ch)": {
       "parameter": "LA max AP diameter (3ch)",
@@ -594,7 +650,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA max AP diameter (3ch) (i)": {
       "parameter": "LA max AP diameter (3ch) (i)",
@@ -604,7 +661,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA max transverse diameter (2ch)": {
       "parameter": "LA max transverse diameter (2ch)",
@@ -614,7 +672,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA max transverse diameter (2ch) (i)": {
       "parameter": "LA max transverse diameter (2ch) (i)",
@@ -624,7 +683,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA max transverse diameter (4ch)": {
       "parameter": "LA max transverse diameter (4ch)",
@@ -634,7 +694,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA max transverse diameter (4ch) (i)": {
       "parameter": "LA max transverse diameter (4ch) (i)",
@@ -644,7 +705,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LA EF": {
       "parameter": "LA EF",
@@ -654,7 +716,8 @@
       "sub_section": "LA function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "low"
     },
     "LA SV": {
       "parameter": "LA SV",
@@ -664,7 +727,8 @@
       "sub_section": "LA function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "LA SV (i)": {
       "parameter": "LA SV (i)",
@@ -674,7 +738,8 @@
       "sub_section": "LA function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "RA max volume": {
       "parameter": "RA max volume",
@@ -684,7 +749,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RA max volume (i)": {
       "parameter": "RA max volume (i)",
@@ -694,7 +760,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RA min volume": {
       "parameter": "RA min volume",
@@ -704,7 +771,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RA min volume (i)": {
       "parameter": "RA min volume (i)",
@@ -714,7 +782,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RA max area (4ch)": {
       "parameter": "RA max area (4ch)",
@@ -725,7 +794,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "RA max area (4ch) (i)": {
       "parameter": "RA max area (4ch) (i)",
@@ -735,7 +805,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "RA max longitudinal diameter (2ch)": {
       "parameter": "RA max longitudinal diameter (2ch)",
@@ -746,7 +817,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "RA max longitudinal diameter (2ch) (i)": {
       "parameter": "RA max longitudinal diameter (2ch) (i)",
@@ -756,7 +828,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "RA max longitudinal diameter (4ch)": {
       "parameter": "RA max longitudinal diameter (4ch)",
@@ -766,7 +839,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "RA max longitudinal diameter (4ch) (i)": {
       "parameter": "RA max longitudinal diameter (4ch) (i)",
@@ -776,7 +850,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "RA max transverse diameter (2ch)": {
       "parameter": "RA max transverse diameter (2ch)",
@@ -786,7 +861,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "RA max transverse diameter (2ch) (i)": {
       "parameter": "RA max transverse diameter (2ch) (i)",
@@ -796,7 +872,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "RA max transverse diameter (4ch)": {
       "parameter": "RA max transverse diameter (4ch)",
@@ -806,7 +883,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "RA max transverse diameter (4ch) (i)": {
       "parameter": "RA max transverse diameter (4ch) (i)",
@@ -816,7 +894,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "RA EF": {
       "parameter": "RA EF",
@@ -826,7 +905,8 @@
       "sub_section": "RA function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "low"
     },
     "RA SV": {
       "parameter": "RA SV",
@@ -836,7 +916,8 @@
       "sub_section": "RA function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "RA SV (i)": {
       "parameter": "RA SV (i)",
@@ -846,7 +927,8 @@
       "sub_section": "RA function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "MV annulus diameter ED (4ch)": {
       "parameter": "MV annulus diameter ED (4ch)",
@@ -856,7 +938,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ES (4ch)": {
       "parameter": "MV annulus diameter ES (4ch)",
@@ -866,7 +949,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ED (3ch)": {
       "parameter": "MV annulus diameter ED (3ch)",
@@ -876,7 +960,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ES (3ch)": {
       "parameter": "MV annulus diameter ES (3ch)",
@@ -886,7 +971,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ED (2ch)": {
       "parameter": "MV annulus diameter ED (2ch)",
@@ -896,7 +982,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ES (2ch)": {
       "parameter": "MV annulus diameter ES (2ch)",
@@ -906,7 +993,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ED (4ch) (i)": {
       "parameter": "MV annulus diameter ED (4ch) (i)",
@@ -916,7 +1004,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ES (4ch) (i)": {
       "parameter": "MV annulus diameter ES (4ch) (i)",
@@ -926,7 +1015,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ED (3ch) (i)": {
       "parameter": "MV annulus diameter ED (3ch) (i)",
@@ -936,7 +1026,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ES (3ch) (i)": {
       "parameter": "MV annulus diameter ES (3ch) (i)",
@@ -946,7 +1037,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ED (2ch) (i)": {
       "parameter": "MV annulus diameter ED (2ch) (i)",
@@ -956,7 +1048,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MV annulus diameter ES (2ch) (i)": {
       "parameter": "MV annulus diameter ES (2ch) (i)",
@@ -966,7 +1059,8 @@
       "sub_section": "Mitral valve morphology and function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "TV annulus diameter ED (4ch)": {
       "parameter": "TV annulus diameter ED (4ch)",
@@ -978,7 +1072,8 @@
         "Ren et al. JCMR 2020;22:99"
       ],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "TV annulus diameter ED (4ch) (i)": {
       "parameter": "TV annulus diameter ED (4ch) (i)",
@@ -990,7 +1085,8 @@
         "Ren et al. JCMR 2020;22:99"
       ],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "TV annulus diameter ES (4ch)": {
       "parameter": "TV annulus diameter ES (4ch)",
@@ -1002,7 +1098,8 @@
         "Ren et al. JCMR 2020;22:99"
       ],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "TV annulus diameter ES (4ch) (i)": {
       "parameter": "TV annulus diameter ES (4ch) (i)",
@@ -1014,7 +1111,8 @@
         "Ren et al. JCMR 2020;22:99"
       ],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "PV annulus diameter": {
       "parameter": "PV annulus diameter",
@@ -1026,7 +1124,8 @@
         "SCMR Reference Values 2025 Update. JCMR 2025"
       ],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "PV annulus diameter (i)": {
       "parameter": "PV annulus diameter (i)",
@@ -1038,7 +1137,8 @@
         "SCMR Reference Values 2025 Update. JCMR 2025"
       ],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "Native T1": {
       "parameter": "Native T1",
@@ -1051,7 +1151,8 @@
         "Roy et al. JCMR 2017;19:72"
       ],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "ECV": {
       "parameter": "ECV",
@@ -1064,7 +1165,8 @@
       ],
       "pap_affected": false,
       "decimal_places": 1,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "Post-contrast T1": {
       "parameter": "Post-contrast T1",
@@ -1076,7 +1178,8 @@
         "SCMR Reference Values 2025 Update. JCMR 2025"
       ],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "low"
     },
     "Native T2": {
       "parameter": "Native T2",
@@ -1088,7 +1191,8 @@
         "Roy et al. JCMR 2017;19:72"
       ],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "Myocardial T2*": {
       "parameter": "Myocardial T2*",
@@ -1101,7 +1205,8 @@
       ],
       "pap_affected": false,
       "decimal_places": 0,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "both"
     },
     "Aortic annulus diameter": {
       "parameter": "Aortic annulus diameter",
@@ -1111,7 +1216,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "Aortic annulus diameter (i)": {
       "parameter": "Aortic annulus diameter (i)",
@@ -1121,7 +1227,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "Aortic sinus diameter": {
       "parameter": "Aortic sinus diameter",
@@ -1131,7 +1238,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "Aortic sinus diameter (i)": {
       "parameter": "Aortic sinus diameter (i)",
@@ -1141,7 +1249,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "Aortic sinus area": {
       "parameter": "Aortic sinus area",
@@ -1151,7 +1260,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "Aortic sinus area (i)": {
       "parameter": "Aortic sinus area (i)",
@@ -1161,7 +1271,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "SOV diameter": {
       "parameter": "SOV diameter",
@@ -1171,7 +1282,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "SOV diameter (i)": {
       "parameter": "SOV diameter (i)",
@@ -1181,7 +1293,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "STJ diameter": {
       "parameter": "STJ diameter",
@@ -1191,7 +1304,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "STJ diameter (i)": {
       "parameter": "STJ diameter (i)",
@@ -1201,7 +1315,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "Asc aorta diameter": {
       "parameter": "Asc aorta diameter",
@@ -1211,7 +1326,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "Asc aorta diameter (i)": {
       "parameter": "Asc aorta diameter (i)",
@@ -1221,7 +1337,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     },
     "Prox desc aorta diameter": {
       "parameter": "Prox desc aorta diameter",
@@ -1232,7 +1349,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "Dist desc aorta diameter": {
       "parameter": "Dist desc aorta diameter",
@@ -1242,7 +1360,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "Aortic arch diameter": {
       "parameter": "Aortic arch diameter",
@@ -1254,7 +1373,8 @@
         "Kawel-Boehm et al. JCMR 2020;22:87"
       ],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "Desc aorta diameter (diaphragm)": {
       "parameter": "Desc aorta diameter (diaphragm)",
@@ -1266,7 +1386,8 @@
         "Kawel-Boehm et al. JCMR 2020;22:87"
       ],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MPA systolic diameter": {
       "parameter": "MPA systolic diameter",
@@ -1276,7 +1397,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MPA diastolic diameter": {
       "parameter": "MPA diastolic diameter",
@@ -1286,7 +1408,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MPA systolic area": {
       "parameter": "MPA systolic area",
@@ -1296,7 +1419,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MPA diastolic area": {
       "parameter": "MPA diastolic area",
@@ -1306,7 +1430,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "MPA distension": {
       "parameter": "MPA distension",
@@ -1316,7 +1441,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "low"
     },
     "RPA systolic diameter": {
       "parameter": "RPA systolic diameter",
@@ -1327,7 +1453,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "RPA diastolic diameter": {
       "parameter": "RPA diastolic diameter",
@@ -1337,7 +1464,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "RPA systolic area": {
       "parameter": "RPA systolic area",
@@ -1347,7 +1475,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "RPA diastolic area": {
       "parameter": "RPA diastolic area",
@@ -1357,7 +1486,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "RPA distension": {
       "parameter": "RPA distension",
@@ -1367,7 +1497,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "low"
     },
     "LPA systolic diameter": {
       "parameter": "LPA systolic diameter",
@@ -1378,7 +1509,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "LPA diastolic diameter": {
       "parameter": "LPA diastolic diameter",
@@ -1388,7 +1520,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LPA systolic area": {
       "parameter": "LPA systolic area",
@@ -1398,7 +1531,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LPA diastolic area": {
       "parameter": "LPA diastolic area",
@@ -1408,7 +1542,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "high"
     },
     "LPA distension": {
       "parameter": "LPA distension",
@@ -1418,7 +1553,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "low"
     },
     "Asc aorta distensibility": {
       "parameter": "Asc aorta distensibility",
@@ -1428,7 +1564,8 @@
       "sub_section": "Aortic distensibility",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "low"
     },
     "Prox desc aorta distensibility": {
       "parameter": "Prox desc aorta distensibility",
@@ -1438,7 +1575,8 @@
       "sub_section": "Aortic distensibility",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "low"
     },
     "Dist desc aorta distensibility": {
       "parameter": "Dist desc aorta distensibility",
@@ -1448,7 +1586,8 @@
       "sub_section": "Aortic distensibility",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "low"
     },
     "AV forward flow (per heartbeat)": {
       "parameter": "AV forward flow (per heartbeat)",
@@ -1458,7 +1597,8 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "abnormal_direction": "both"
     },
     "AV forward flow (per minute)": {
       "parameter": "AV forward flow (per minute)",
@@ -1469,7 +1609,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "nested_under": "AV forward flow (per heartbeat)"
+      "nested_under": "AV forward flow (per heartbeat)",
+      "abnormal_direction": "both"
     },
     "AV effective forward flow (per heartbeat)": {
       "parameter": "AV effective forward flow (per heartbeat)",
@@ -1482,7 +1623,8 @@
       "decimal_places": 0,
       "severity_label": null,
       "severity_thresholds": null,
-      "severity_label_override": null
+      "severity_label_override": null,
+      "abnormal_direction": "both"
     },
     "AV effective forward flow (per minute)": {
       "parameter": "AV effective forward flow (per minute)",
@@ -1493,7 +1635,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "nested_under": "AV effective forward flow (per heartbeat)"
+      "nested_under": "AV effective forward flow (per heartbeat)",
+      "abnormal_direction": "both"
     },
     "AV backward flow (per heartbeat)": {
       "parameter": "AV backward flow (per heartbeat)",
@@ -1504,7 +1647,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "severity_label": "elevated"
+      "severity_label": "elevated",
+      "abnormal_direction": "high"
     },
     "AV regurgitant fraction": {
       "parameter": "AV regurgitant fraction",
@@ -1528,7 +1672,8 @@
         "moderate": "Suggests moderate AR",
         "severe": "Suggests severe AR"
       },
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "AV maximum velocity": {
       "parameter": "AV maximum velocity",
@@ -1552,7 +1697,8 @@
         "moderate": "Suggests moderate AS",
         "severe": "Suggests severe AS"
       },
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "AV maximum pressure gradient": {
       "parameter": "AV maximum pressure gradient",
@@ -1575,7 +1721,8 @@
         "mild": "Suggests mild AS",
         "moderate": "Suggests moderate AS",
         "severe": "Suggests severe AS"
-      }
+      },
+      "abnormal_direction": "high"
     },
     "AV mean pressure gradient": {
       "parameter": "AV mean pressure gradient",
@@ -1596,7 +1743,8 @@
         "mild": "Suggests mild AS",
         "moderate": "Suggests moderate AS",
         "severe": "Suggests severe AS"
-      }
+      },
+      "abnormal_direction": "high"
     },
     "PV forward flow (per heartbeat)": {
       "parameter": "PV forward flow (per heartbeat)",
@@ -1606,7 +1754,8 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "PV forward flow (per minute)": {
       "parameter": "PV forward flow (per minute)",
@@ -1617,7 +1766,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "nested_under": "PV forward flow (per heartbeat)"
+      "nested_under": "PV forward flow (per heartbeat)",
+      "abnormal_direction": "both"
     },
     "PV effective forward flow (per heartbeat)": {
       "parameter": "PV effective forward flow (per heartbeat)",
@@ -1627,7 +1777,8 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "both"
     },
     "PV effective forward flow (per minute)": {
       "parameter": "PV effective forward flow (per minute)",
@@ -1638,7 +1789,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1,
-      "nested_under": "PV effective forward flow (per heartbeat)"
+      "nested_under": "PV effective forward flow (per heartbeat)",
+      "abnormal_direction": "both"
     },
     "PV backward flow (per heartbeat)": {
       "parameter": "PV backward flow (per heartbeat)",
@@ -1649,7 +1801,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0,
-      "severity_label": "elevated"
+      "severity_label": "elevated",
+      "abnormal_direction": "high"
     },
     "PV regurgitant fraction": {
       "parameter": "PV regurgitant fraction",
@@ -1671,7 +1824,8 @@
         "moderate": "Suggests moderate PR",
         "severe": "Suggests severe PR"
       },
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "PV maximum velocity": {
       "parameter": "PV maximum velocity",
@@ -1695,7 +1849,8 @@
         "moderate": "Suggests moderate PS",
         "severe": "Suggests severe PS"
       },
-      "separator_before": true
+      "separator_before": true,
+      "abnormal_direction": "high"
     },
     "PV maximum pressure gradient": {
       "parameter": "PV maximum pressure gradient",
@@ -1718,7 +1873,8 @@
         "mild": "Suggests mild PS",
         "moderate": "Suggests moderate PS",
         "severe": "Suggests severe PS"
-      }
+      },
+      "abnormal_direction": "high"
     },
     "PV mean pressure gradient": {
       "parameter": "PV mean pressure gradient",
@@ -1739,7 +1895,8 @@
         "mild": "Suggests mild PS",
         "moderate": "Suggests moderate PS",
         "severe": "Suggests severe PS"
-      }
+      },
+      "abnormal_direction": "high"
     },
     "MR volume (per heartbeat)": {
       "parameter": "MR volume (per heartbeat)",
@@ -1750,7 +1907,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0,
-      "severity_label": "elevated"
+      "severity_label": "elevated",
+      "abnormal_direction": "high"
     },
     "MR regurgitant fraction": {
       "parameter": "MR regurgitant fraction",
@@ -1773,7 +1931,8 @@
         "mild": "Suggests mild MR",
         "moderate": "Suggests moderate MR",
         "severe": "Suggests severe MR"
-      }
+      },
+      "abnormal_direction": "high"
     },
     "TR volume (per heartbeat)": {
       "parameter": "TR volume (per heartbeat)",
@@ -1784,7 +1943,8 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0,
-      "severity_label": "elevated"
+      "severity_label": "elevated",
+      "abnormal_direction": "high"
     },
     "TR regurgitant fraction": {
       "parameter": "TR regurgitant fraction",
@@ -1807,7 +1967,8 @@
         "mild": "Suggests mild TR",
         "moderate": "Suggests moderate TR",
         "severe": "Suggests severe TR"
-      }
+      },
+      "abnormal_direction": "high"
     },
     "PCWP": {
       "parameter": "PCWP",
@@ -1819,7 +1980,8 @@
         "SCMR Reference Values 2025 Update. JCMR 2025"
       ],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "abnormal_direction": "high"
     }
   },
   "ref_ranges": [
