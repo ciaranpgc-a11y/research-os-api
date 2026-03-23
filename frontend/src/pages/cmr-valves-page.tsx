@@ -810,15 +810,10 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
         <div className="flex flex-col items-center">
           <svg width="300" height="175" viewBox="0 0 300 175">
             {/* Background track — no grey, severity zones cover the full arc */}
-            {/* Rounded caps at the outer ends only */}
-            {[sevZones[0], sevZones[sevZones.length - 1]].map((z, i) => {
-              const deg = i === 0 ? z.startDeg : z.endDeg
-              const [cx, cy] = gaugePoint(deg, ARC_R)
-              return <circle key={`cap-${i}`} cx={cx} cy={cy} r="12" fill={z.color} opacity={(!isNaN(rfVal) && rfVal >= z.lo && rfVal < z.hi) || isNaN(rfVal) ? 1 : 0.3} className="transition-opacity duration-300" />
-            })}
-            {/* Severity zone arcs — proportional to RF% range */}
+            {/* Severity zone arcs — proportional to RF% range, butt caps */}
             {sevZones.map((z) => {
               const isActive = !isNaN(rfVal) && rfVal >= z.lo && rfVal < z.hi
+              const op = isActive || isNaN(rfVal) ? 1 : 0.3
               return (
                 <path
                   key={z.label}
@@ -827,11 +822,26 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
                   stroke={z.color}
                   strokeWidth="24"
                   strokeLinecap="butt"
-                  opacity={isActive || isNaN(rfVal) ? 1 : 0.3}
+                  opacity={op}
                   className="transition-opacity duration-300"
                 />
               )
             })}
+            {/* Rounded end caps — drawn after arcs so they sit on top */}
+            {(() => {
+              const first = sevZones[0]
+              const last = sevZones[sevZones.length - 1]
+              const firstActive = !isNaN(rfVal) && rfVal >= first.lo && rfVal < first.hi
+              const lastActive = !isNaN(rfVal) && rfVal >= last.lo
+              const [sx, sy] = gaugePoint(first.startDeg, ARC_R)
+              const [ex, ey] = gaugePoint(last.endDeg, ARC_R)
+              return (
+                <>
+                  <circle cx={sx} cy={sy} r="11.5" fill={first.color} opacity={firstActive || isNaN(rfVal) ? 1 : 0.3} className="transition-opacity duration-300" />
+                  <circle cx={ex} cy={ey} r="11.5" fill={last.color} opacity={lastActive || isNaN(rfVal) ? 1 : 0.3} className="transition-opacity duration-300" />
+                </>
+              )
+            })()}
             {/* Gap lines between zones */}
             {sevZones.slice(1).map((z) => {
               const [gx1, gy1] = gaugePoint(z.startDeg, ARC_R - 12)
