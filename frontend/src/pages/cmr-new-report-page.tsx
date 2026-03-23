@@ -7,7 +7,6 @@ import type { CmrCanonicalParam, CmrCanonicalTableResponse, PapillaryMode } from
 import { fetchConfig, fetchReferenceParameters, updateConfig } from '@/lib/cmr-api'
 import { getExtractionResult, subscribeExtractionResult } from '@/lib/cmr-report-store'
 import {
-  type PreviousStudy,
   addPreviousStudy,
   getPreviousStudies,
   isPreviousVisible,
@@ -621,15 +620,46 @@ export function CmrNewReportPage() {
     return acc
   }, [])
 
-  /** Build previous markers for a given canonical parameter key. */
-  const getPrevMarkers = useCallback((paramKey: string): Array<{ value: number; label: string }> | undefined => {
+  /** Build previous markers for a given canonical parameter key.
+   *  Includes comparison with current value, % change, and abnormality. */
+  const getPrevMarkers = useCallback((
+    paramKey: string,
+    currentVal: number | undefined,
+    unit: string,
+    ll: number | null,
+    ul: number | null,
+    direction: string,
+  ): Array<{ value: number; label: string }> | undefined => {
     if (!prevVisible || prevStudies.length === 0) return undefined
     const markers: Array<{ value: number; label: string }> = []
     for (const s of prevStudies) {
       const v = s.values[paramKey]
-      if (v !== undefined) {
-        markers.push({ value: v, label: `${s.label}: ${v}` })
+      if (v === undefined) continue
+      // Build tooltip parts
+      const parts: string[] = [`${s.label}`]
+      // Previous value
+      const dp = unit === '%' || unit === 'bpm' ? 0 : unit === 'm/s' ? 1 : 0
+      parts.push(`Previous: ${v.toFixed(dp)} ${unit}`)
+      // Current comparison
+      if (currentVal !== undefined) {
+        parts.push(`Current: ${currentVal.toFixed(dp)} ${unit}`)
+        // % change
+        if (v !== 0) {
+          const pctChange = ((currentVal - v) / Math.abs(v)) * 100
+          const sign = pctChange >= 0 ? '+' : ''
+          parts.push(`Change: ${sign}${pctChange.toFixed(0)}%`)
+        }
       }
+      // Abnormality of previous value
+      if (ll != null && ul != null) {
+        const prevAbnormal = isAbnormalValue(v, ll, ul, direction)
+        if (prevAbnormal) {
+          parts.push(v < ll ? 'Previously below range' : 'Previously above range')
+        } else {
+          parts.push('Previously within range')
+        }
+      }
+      markers.push({ value: v, label: parts.join('\n') })
     }
     return markers.length > 0 ? markers : undefined
   }, [prevStudies, prevVisible])
@@ -888,8 +918,9 @@ export function CmrNewReportPage() {
             >
               Import
             </button>
-            {prevStudies.length > 0 && (
+            {prevStudies.map((s) => (
               <button
+                key={s.id}
                 type="button"
                 onClick={() => togglePreviousVisible()}
                 className={cn(
@@ -900,9 +931,9 @@ export function CmrNewReportPage() {
                 )}
               >
                 <svg className="h-2 w-2 rotate-45" viewBox="0 0 8 8"><rect width="8" height="8" fill="currentColor" /></svg>
-                {prevStudies.length} imported
+                {s.label}
               </button>
-            )}
+            ))}
           </div>
         </div>
       </div>
@@ -1164,7 +1195,7 @@ export function CmrNewReportPage() {
                                           rangeWidth={
                                             (rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth
                                           }
-                                          previousMarkers={getPrevMarkers(p.parameter_key)}
+                                          previousMarkers={getPrevMarkers(p.parameter_key, measured, p.unit, p.ll, p.ul, p.abnormal_direction)}
                                         />
                                       ) : null}
                                     </td>
@@ -1261,7 +1292,7 @@ export function CmrNewReportPage() {
                                               direction={cp.abnormal_direction}
                                               rangeStart={(rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeStart}
                                               rangeWidth={(rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()).rangeWidth}
-                                              previousMarkers={getPrevMarkers(cp.parameter_key)}
+                                              previousMarkers={getPrevMarkers(cp.parameter_key, cpMeasured, cp.unit, cp.ll, cp.ul, cp.abnormal_direction)}
                                             />
                                           ) : null}
                                         </td>
