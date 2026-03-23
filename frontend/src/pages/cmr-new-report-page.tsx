@@ -358,30 +358,75 @@ function formatInterval(fromStr: string, toStr: string): string | null {
   return `${years} years`
 }
 
-/** For params with severity thresholds, compute an effective UL that spans
- *  the full severity scale so the chart isn't compressed into the normal zone. */
+/** For params with severity thresholds or SD-based grading, compute an effective UL
+ *  that spans the full severity scale so the chart shows all zones. */
 function effectiveUL(param: CmrCanonicalParam): number {
   const t = param.severity_thresholds
-  if (!t || param.ul == null) return param.ul ?? 0
-  // Use the highest defined threshold + 15% headroom
-  const highest = t.severe ?? t.moderate ?? t.mild ?? param.ul
-  if (highest == null) return param.ul
-  return highest * 1.15
+  if (t && param.ul != null) {
+    const highest = t.severe ?? t.moderate ?? t.mild ?? param.ul
+    if (highest != null) return highest * 1.15
+    return param.ul
+  }
+  // SD-based: severe is ~2 SD beyond the breached limit
+  if (param.sd && param.sd > 0 && param.ul != null && param.ll != null) {
+    const dir = param.abnormal_direction
+    if (dir === 'high' || dir === 'both') return param.ul + 2.5 * param.sd
+    if (dir === 'low') return param.ul // UL stays as-is for low-direction
+  }
+  return param.ul ?? 0
+}
+
+/** For low-direction params, compute an effective LL that extends below for severity zones. */
+function effectiveLL(param: CmrCanonicalParam): number {
+  if (param.severity_thresholds) return param.ll ?? 0
+  if (param.sd && param.sd > 0 && param.ll != null) {
+    const dir = param.abnormal_direction
+    if (dir === 'low' || dir === 'both') return param.ll - 2.5 * param.sd
+  }
+  return param.ll ?? 0
+}
+
+/** Check if a param has any severity zones (explicit thresholds or SD-based). */
+function hasSevZones(param: CmrCanonicalParam): boolean {
+  if (param.severity_thresholds) return true
+  if (param.sd && param.sd > 0 && param.ll != null && param.ul != null && param.abnormal_direction !== 'both') return true
+  return false
 }
 
 /** Scaling for severity-zone charts: use 90% of bar width so zones are
  *  clearly visible and not squeezed into a small strip. */
 const SEV_ZONE_SCALING = { rangeStart: 0.05, rangeWidth: 0.9 } as const
 
-/** Build severity zones from a param's threshold data (if present). */
+/** Build severity zones from explicit thresholds or SD-based grading. */
 function buildSeverityZones(param: CmrCanonicalParam): SeverityZone[] | undefined {
+  // Explicit thresholds (valve params)
   const t = param.severity_thresholds
-  if (!t) return undefined
-  return [
+  if (t) return [
     { grade: 'mild', threshold: t.mild },
     { grade: 'moderate', threshold: t.moderate },
     { grade: 'severe', threshold: t.severe },
   ]
+  // SD-based zones for non-valve abnormal params
+  if (param.sd && param.sd > 0 && param.ll != null && param.ul != null) {
+    const dir = param.abnormal_direction
+    if (dir === 'high') {
+      // Abnormal when above UL: mild = UL → UL+1SD, moderate = UL+1SD → UL+2SD, severe = >UL+2SD
+      return [
+        { grade: 'mild', threshold: param.ul + param.sd },
+        { grade: 'moderate', threshold: param.ul + 2 * param.sd },
+        { grade: 'severe', threshold: null },
+      ]
+    }
+    if (dir === 'low') {
+      // Abnormal when below LL: mild = LL → LL-1SD, moderate = LL-1SD → LL-2SD, severe = <LL-2SD
+      return [
+        { grade: 'mild', threshold: param.ll - param.sd },
+        { grade: 'moderate', threshold: param.ll - 2 * param.sd },
+        { grade: 'severe', threshold: null },
+      ]
+    }
+  }
+  return undefined
 }
 
 function RangeChart({
@@ -415,32 +460,57 @@ function RangeChart({
   const bandWidthPct = `${rangeWidth * 100}%`
   const dotPct = `${measuredPos * 100}%`
 
-  // Build severity zone bands (only for params with thresholds)
+  // Build severity zone bands
   const zoneBands = severityZones ? (() => {
     const bands: Array<{ grade: SevGrade; leftPct: string; widthPct: string }> = []
-    const refUL = originalUL ?? ul
-    // Normal zone: from 0% to original UL position
-    const normalEndRel = computeMeasuredRel(refUL, ll, ul)
-    const normalEndPos = computeMeasuredPos(normalEndRel, rangeStart, rangeWidth)
-    bands.push({ grade: 'normal', leftPct: '0%', widthPct: `${normalEndPos * 100}%` })
-    // Severity zones
-    const grades: SevGrade[] = ['mild', 'moderate', 'severe']
-    let prevThreshold = refUL
-    for (let i = 0; i < grades.length; i++) {
-      const zone = severityZones.find((z) => z.grade === grades[i])
-      if (!zone) continue
-      const startRel = computeMeasuredRel(prevThreshold, ll, ul)
-      const startPos = computeMeasuredPos(startRel, rangeStart, rangeWidth)
-      const isLast = i === grades.length - 1 || !severityZones.find((z) => z.grade === grades[i + 1])
-      if (isLast) {
-        // Last zone extends to 100% of the bar
-        bands.push({ grade: grades[i], leftPct: `${startPos * 100}%`, widthPct: `${(1 - startPos) * 100}%` })
-      } else {
-        const endVal = zone.threshold ?? ul
-        const endRel = computeMeasuredRel(endVal, ll, ul)
-        const endPos = computeMeasuredPos(endRel, rangeStart, rangeWidth)
+    const isLowDir = direction === 'low'
+
+    if (isLowDir) {
+      // Low direction: severity zones extend LEFT from LL
+      // Layout: [severe][moderate][mild][normal → 100%]
+      const grades: SevGrade[] = ['severe', 'moderate', 'mild']
+      let prevThreshold: number | null = null // start from left edge
+      for (let i = 0; i < grades.length; i++) {
+        const zone = severityZones.find((z) => z.grade === grades[i])
+        if (!zone) continue
+        const startPos = prevThreshold !== null
+          ? computeMeasuredPos(computeMeasuredRel(prevThreshold, ll, ul), rangeStart, rangeWidth)
+          : 0
+        const endVal = zone.threshold ?? ll
+        const endPos = computeMeasuredPos(computeMeasuredRel(endVal, ll, ul), rangeStart, rangeWidth)
         bands.push({ grade: grades[i], leftPct: `${startPos * 100}%`, widthPct: `${Math.max(0, endPos - startPos) * 100}%` })
         prevThreshold = endVal
+      }
+      // Normal zone: from LL position to 100%
+      const refLL = originalUL ?? ll // originalUL stores the original LL for low-direction
+      const normalStartRel = computeMeasuredRel(refLL, ll, ul)
+      const normalStartPos = computeMeasuredPos(normalStartRel, rangeStart, rangeWidth)
+      bands.push({ grade: 'normal', leftPct: `${normalStartPos * 100}%`, widthPct: `${(1 - normalStartPos) * 100}%` })
+    } else {
+      // High direction: severity zones extend RIGHT from UL
+      const refUL = originalUL ?? ul
+      // Normal zone: from 0% to UL
+      const normalEndRel = computeMeasuredRel(refUL, ll, ul)
+      const normalEndPos = computeMeasuredPos(normalEndRel, rangeStart, rangeWidth)
+      bands.push({ grade: 'normal', leftPct: '0%', widthPct: `${normalEndPos * 100}%` })
+      // Severity zones
+      const grades: SevGrade[] = ['mild', 'moderate', 'severe']
+      let prevThreshold = refUL
+      for (let i = 0; i < grades.length; i++) {
+        const zone = severityZones.find((z) => z.grade === grades[i])
+        if (!zone) continue
+        const startRel = computeMeasuredRel(prevThreshold, ll, ul)
+        const startPos = computeMeasuredPos(startRel, rangeStart, rangeWidth)
+        const isLastZone = i === grades.length - 1 || !severityZones.find((z) => z.grade === grades[i + 1])
+        if (isLastZone) {
+          bands.push({ grade: grades[i], leftPct: `${startPos * 100}%`, widthPct: `${(1 - startPos) * 100}%` })
+        } else {
+          const endVal = zone.threshold ?? ul
+          const endRel = computeMeasuredRel(endVal, ll, ul)
+          const endPos = computeMeasuredPos(endRel, rangeStart, rangeWidth)
+          bands.push({ grade: grades[i], leftPct: `${startPos * 100}%`, widthPct: `${Math.max(0, endPos - startPos) * 100}%` })
+          prevThreshold = endVal
+        }
       }
     }
     return bands
@@ -917,7 +987,7 @@ export function CmrNewReportPage() {
       for (const p of g.params) {
         const m = measuredValues.get(p.parameter_key)
         if (m !== undefined && hasValidRange(p.ll, p.ul)) {
-          const eul = p.severity_thresholds ? effectiveUL(p) : p.ul!
+          const eul = hasSevZones(p) ? effectiveUL(p) : p.ul!
           rels.push(computeMeasuredRel(m, p.ll!, eul))
         }
         // Include previous study values in scaling when visible
@@ -1138,7 +1208,7 @@ export function CmrNewReportPage() {
                     for (const p of g.params) {
                       const m = measuredValues.get(p.parameter_key)
                       if (m !== undefined && hasValidRange(p.ll, p.ul)) {
-                        const eul = p.severity_thresholds ? effectiveUL(p) : p.ul!
+                        const eul = hasSevZones(p) ? effectiveUL(p) : p.ul!
                         const rel = computeMeasuredRel(m, p.ll!, eul)
                         newMap.set(p.parameter_key, perMeasurementAutoAdjust(rel))
                       }
@@ -1440,14 +1510,14 @@ export function CmrNewReportPage() {
                                         <RangeChart
                                           measured={measured!}
                                           ll={p.ll!}
-                                          ul={p.severity_thresholds ? effectiveUL(p) : p.ul!}
-                                          originalUL={p.severity_thresholds ? p.ul! : undefined}
+                                          ul={hasSevZones(p) ? effectiveUL(p) : p.ul!}
+                                          originalUL={hasSevZones(p) ? p.ul! : undefined}
                                           direction={p.abnormal_direction}
                                           rangeStart={
                                             (() => {
-                                              const eul = p.severity_thresholds ? effectiveUL(p) : p.ul!
+                                              const eul = hasSevZones(p) ? effectiveUL(p) : p.ul!
                                               const hasExplicitScaling = rangeParams.has(p.parameter_key) || rangeParams.has('__global__')
-                                              const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? (p.severity_thresholds ? SEV_ZONE_SCALING : factoryBaseline())
+                                              const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? (hasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
                                               // Only auto-fix clipping in factory/default mode — global and per-meas are intentional
                                               if (!hasExplicitScaling) {
                                                 const rel = computeMeasuredRel(measured!, p.ll!, eul)
@@ -1459,9 +1529,9 @@ export function CmrNewReportPage() {
                                           }
                                           rangeWidth={
                                             (() => {
-                                              const eul = p.severity_thresholds ? effectiveUL(p) : p.ul!
+                                              const eul = hasSevZones(p) ? effectiveUL(p) : p.ul!
                                               const hasExplicitScaling = rangeParams.has(p.parameter_key) || rangeParams.has('__global__')
-                                              const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? (p.severity_thresholds ? SEV_ZONE_SCALING : factoryBaseline())
+                                              const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? (hasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
                                               if (!hasExplicitScaling) {
                                                 const rel = computeMeasuredRel(measured!, p.ll!, eul)
                                                 const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
@@ -1565,20 +1635,20 @@ export function CmrNewReportPage() {
                                             <RangeChart
                                               measured={cpMeasured!}
                                               ll={cp.ll!}
-                                              ul={cp.severity_thresholds ? effectiveUL(cp) : cp.ul!}
-                                              originalUL={cp.severity_thresholds ? cp.ul! : undefined}
+                                              ul={hasSevZones(cp) ? effectiveUL(cp) : cp.ul!}
+                                              originalUL={hasSevZones(cp) ? cp.ul! : undefined}
                                               direction={cp.abnormal_direction}
                                               rangeStart={(() => {
-                                                const eul = cp.severity_thresholds ? effectiveUL(cp) : cp.ul!
+                                                const eul = hasSevZones(cp) ? effectiveUL(cp) : cp.ul!
                                                 const hasExplicit = rangeParams.has(cp.parameter_key) || rangeParams.has('__global__')
-                                                const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (cp.severity_thresholds ? SEV_ZONE_SCALING : factoryBaseline())
+                                                const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (chasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
                                                 if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeStart; }
                                                 return base.rangeStart
                                               })()}
                                               rangeWidth={(() => {
-                                                const eul = cp.severity_thresholds ? effectiveUL(cp) : cp.ul!
+                                                const eul = hasSevZones(cp) ? effectiveUL(cp) : cp.ul!
                                                 const hasExplicit = rangeParams.has(cp.parameter_key) || rangeParams.has('__global__')
-                                                const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (cp.severity_thresholds ? SEV_ZONE_SCALING : factoryBaseline())
+                                                const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (chasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
                                                 if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeWidth; }
                                                 return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel).rangeWidth : base.rangeWidth
                                               })()}
