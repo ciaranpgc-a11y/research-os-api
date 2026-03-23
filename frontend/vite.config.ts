@@ -260,11 +260,21 @@ Do not include any parameters not in the canonical list. Do not include paramete
       })
 
       // POST /api/cmr-import-previous → auto-detect CMR vs Echo, extract values
+      // Supports text (report_text) and/or file uploads (file_data_url + file_name)
+      // Files can be PDF, Word, images (screenshots), or text
       server.middlewares.use(async (req, res, next) => {
         if (req.url !== '/api/cmr-import-previous' || req.method !== 'POST') return next()
 
         try {
-          const { report_text } = JSON.parse(await readBody(req))
+          const body = JSON.parse(await readBody(req))
+          const reportText: string | undefined = body.report_text
+          const fileDataUrl: string | undefined = body.file_data_url
+          const fileName: string | undefined = body.file_name
+
+          if (!reportText?.trim() && !fileDataUrl) {
+            jsonRes(res, { error: 'Provide report_text or file_data_url' }, 400)
+            return
+          }
 
           const apiKey = process.env.OPENAI_API_KEY
           if (!apiKey) {
@@ -272,10 +282,33 @@ Do not include any parameters not in the canonical list. Do not include paramete
             return
           }
 
+          // Build user message content parts for OpenAI (supports multimodal)
+          const userParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
+          if (reportText?.trim()) {
+            userParts.push({ type: 'text', text: reportText })
+          }
+          if (fileDataUrl) {
+            const ext = (fileName ?? '').split('.').pop()?.toLowerCase() ?? ''
+            const isImage = ['png', 'jpg', 'jpeg', 'webp', 'heic', 'gif', 'bmp'].includes(ext)
+            const isPdf = ext === 'pdf'
+            if (isImage || isPdf) {
+              // GPT-4o vision handles images and PDFs natively as data URLs
+              userParts.push({ type: 'image_url', image_url: { url: fileDataUrl } })
+            } else {
+              // For docx/txt/csv, extract the base64 text and send as text
+              // (Word docs will be best-effort; GPT-4o can read the raw XML in docx)
+              const base64 = fileDataUrl.split(',')[1] ?? ''
+              const decoded = Buffer.from(base64, 'base64').toString('utf-8')
+              userParts.push({ type: 'text', text: `[File: ${fileName}]\n${decoded}` })
+            }
+          }
+
           // --- Step 1: Auto-detect report type ---
           const detectPrompt = `You are a medical report classifier. Determine whether the following report is an echocardiography (Echo) report or a cardiac MRI (CMR) report.
 
-First determine if this is an echocardiography report or a cardiac MRI (CMR) report. Look for keywords: Echo reports typically mention 'transthoracic', 'TTE', 'echocardiogram', 'M-mode', 'Doppler', 'parasternal'. CMR reports typically mention 'MRI', 'CMR', 'cardiac MR', 'LGE', 'SSFP', 'cine', 'T1 mapping', 'T2 mapping', 'CVI42', 'Medis'.
+Look for keywords: Echo reports typically mention 'transthoracic', 'TTE', 'echocardiogram', 'M-mode', 'Doppler', 'parasternal'. CMR reports typically mention 'MRI', 'CMR', 'cardiac MR', 'LGE', 'SSFP', 'cine', 'T1 mapping', 'T2 mapping', 'CVI42', 'Medis'.
+
+If the input is an image/screenshot/PDF of a report, read the content and classify accordingly.
 
 Return ONLY valid JSON: { "report_type": "cmr" } or { "report_type": "echo" }`
 
@@ -291,7 +324,7 @@ Return ONLY valid JSON: { "report_type": "cmr" } or { "report_type": "echo" }`
               response_format: { type: 'json_object' },
               messages: [
                 { role: 'system', content: detectPrompt },
-                { role: 'user', content: report_text },
+                { role: 'user', content: userParts },
               ],
             }),
           })
@@ -368,7 +401,7 @@ Do not include any parameters not in the canonical list. Do not include paramete
                 response_format: { type: 'json_object' },
                 messages: [
                   { role: 'system', content: cmrSystemPrompt },
-                  { role: 'user', content: `Extract values from this CMR report:\n\n${report_text}` },
+                  { role: 'user', content: [{ type: 'text', text: 'Extract values from this CMR report:' }, ...userParts] },
                 ],
               }),
             })
@@ -441,7 +474,7 @@ Only include fields you can find a value for. Do not include null numeric values
                 response_format: { type: 'json_object' },
                 messages: [
                   { role: 'system', content: echoSystemPrompt },
-                  { role: 'user', content: `Extract values from this echocardiography report:\n\n${report_text}` },
+                  { role: 'user', content: [{ type: 'text', text: 'Extract values from this echocardiography report:' }, ...userParts] },
                 ],
               }),
             })

@@ -502,8 +502,10 @@ export function CmrNewReportPage() {
   const [expandedNested, setExpandedNested] = useState<Set<string>>(new Set())
   const [importOpen, setImportOpen] = useState(false)
   const [importText, setImportText] = useState('')
+  const [importFile, setImportFile] = useState<{ name: string; dataUrl: string } | null>(null)
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const importFileRef = useRef<HTMLInputElement>(null)
   // Pull demographics and measurements from the shared extraction store
   const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
   // Previous studies
@@ -656,16 +658,36 @@ export function CmrNewReportPage() {
     return rels
   }, [groups, measuredValues, prevStudies, prevVisible])
 
-  /** Handle importing a previous study from pasted report text. */
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result
+      if (typeof dataUrl === 'string') setImportFile({ name: file.name, dataUrl })
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  /** Handle importing a previous study from pasted text or uploaded file. */
   const handleImportPrevious = async () => {
-    if (!importText.trim()) return
+    const hasText = importText.trim().length > 0
+    const hasFile = importFile !== null
+    if (!hasText && !hasFile) return
     setImporting(true)
     setImportError(null)
     try {
+      const body: Record<string, string> = {}
+      if (hasText) body.report_text = importText
+      if (hasFile) {
+        body.file_data_url = importFile!.dataUrl
+        body.file_name = importFile!.name
+      }
       const res = await fetch('/api/cmr-import-previous', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ report_text: importText }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Import failed' }))
@@ -683,6 +705,7 @@ export function CmrNewReportPage() {
       addPreviousStudy({ id: nextStudyId(), source, label, date: dateStr, values })
       if (!isPreviousVisible()) togglePreviousVisible(true)
       setImportText('')
+      setImportFile(null)
       setImportOpen(false)
     } catch (e) {
       setImportError(e instanceof Error ? e.message : 'Import failed')
@@ -888,14 +911,11 @@ export function CmrNewReportPage() {
       {importOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setImportOpen(false)}>
           <div className="w-full max-w-xl rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="mb-1 text-base font-semibold text-[hsl(var(--foreground))]">Import previous study</h2>
-            <p className="mb-4 text-xs text-[hsl(var(--muted-foreground))]">
-              Paste a previous CMR or Echo report. Values will be auto-extracted and overlaid on the range charts.
-            </p>
+            <h2 className="mb-4 text-base font-semibold text-[hsl(var(--foreground))]">Import previous study</h2>
             <textarea
               value={importText}
               onChange={(e) => setImportText(e.target.value)}
-              placeholder="Paste previous CMR or Echo report text..."
+              placeholder="Paste report text..."
               rows={10}
               className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm font-mono placeholder:text-[hsl(var(--muted-foreground)/0.5)] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--section-style-report-accent))]"
             />
@@ -903,16 +923,39 @@ export function CmrNewReportPage() {
               <button
                 type="button"
                 onClick={handleImportPrevious}
-                disabled={!importText.trim() || importing}
+                disabled={(!importText.trim() && !importFile) || importing}
                 className={cn(
                   'rounded-md px-5 py-2 text-sm font-semibold shadow-sm transition-colors',
-                  importText.trim() && !importing
+                  (importText.trim() || importFile) && !importing
                     ? 'bg-[hsl(var(--section-style-report-accent))] text-white hover:opacity-90'
                     : 'bg-[hsl(var(--tone-neutral-200))] text-[hsl(var(--muted-foreground))] cursor-not-allowed',
                 )}
               >
                 {importing ? 'Extracting...' : 'Import'}
               </button>
+
+              <input
+                ref={importFileRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt,.csv,.png,.jpg,.jpeg,.webp,.heic"
+                onChange={handleImportFileChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => importFileRef.current?.click()}
+                className="rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--tone-neutral-100))]"
+              >
+                Upload file
+              </button>
+              {importFile && (
+                <span className="flex items-center gap-1.5 text-xs text-[hsl(var(--foreground))]">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 10v3a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-3" /><path d="M8 2v8M4 6l4-4 4 4" /></svg>
+                  {importFile.name}
+                  <button type="button" onClick={() => setImportFile(null)} className="ml-1 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">&times;</button>
+                </span>
+              )}
+
               <button
                 type="button"
                 onClick={() => setImportOpen(false)}
