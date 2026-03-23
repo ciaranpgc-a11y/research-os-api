@@ -552,11 +552,11 @@ function RangeChart({
         {abnormal && severityTicks?.map((tickVal, i) => {
           const tickRel = computeMeasuredRel(tickVal, ll, ul)
           const tickPos = computeMeasuredPos(tickRel, rangeStart, rangeWidth)
-          if (tickPos <= 0.01 || tickPos >= 0.99) return null
+          if (tickPos <= 0.01 || tickPos >= 0.995) return null
           return (
             <div
               key={`tick-${i}`}
-              className="absolute top-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2 bg-[hsl(var(--foreground)/0.3)]"
+              className="absolute top-1/2 h-5 w-[1.5px] -translate-x-1/2 -translate-y-1/2 bg-[hsl(var(--foreground)/0.35)]"
               style={{ left: `${tickPos * 100}%` }}
             />
           )
