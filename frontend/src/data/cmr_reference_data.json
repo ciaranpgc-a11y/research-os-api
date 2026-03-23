@@ -1263,18 +1263,7 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
-      "severity_label": "regurgitation",
-      "severity_thresholds": {
-        "mild": 30,
-        "moderate": 60,
-        "severe": null
-      },
-      "severity_label_override": {
-        "mild": "Suggests mild AR",
-        "moderate": "Suggests moderate AR",
-        "severe": "Suggests severe AR"
-      }
+      "decimal_places": 1
     },
     "AV maximum velocity": {
       "parameter": "AV maximum velocity",
@@ -1418,18 +1407,7 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0,
-      "severity_label": "regurgitation",
-      "severity_thresholds": {
-        "mild": 30,
-        "moderate": 60,
-        "severe": null
-      },
-      "severity_label_override": {
-        "mild": "Suggests mild PR",
-        "moderate": "Suggests moderate PR",
-        "severe": "Suggests severe PR"
-      }
+      "decimal_places": 0
     },
     "PV maximum velocity": {
       "parameter": "PV maximum velocity",
