@@ -290,6 +290,17 @@ function ChartControlStrip({
   )
 }
 
+type PrevMarker = {
+  value: number
+  source: string           // e.g. "CMR · 17 Dec 2025"
+  prevLabel: string        // e.g. "Normal"
+  currLabel: string | null // e.g. "Mildly dilated"
+  prevVal: string          // formatted, e.g. "104 mL/m²"
+  currVal: string | null   // formatted
+  pctChange: number | null // e.g. +15
+  improved: boolean | null // true = improved, false = worsened, null = unchanged/unknown
+}
+
 function RangeChart({
   measured,
   ll,
@@ -305,7 +316,7 @@ function RangeChart({
   direction: string
   rangeStart: number
   rangeWidth: number
-  previousMarkers?: Array<{ value: number; label: string }>
+  previousMarkers?: PrevMarker[]
 }) {
   const measuredRel = computeMeasuredRel(measured, ll, ul)
   const measuredPos = computeMeasuredPos(measuredRel, rangeStart, rangeWidth)
@@ -330,7 +341,16 @@ function RangeChart({
           const prevRel = computeMeasuredRel(pm.value, ll, ul)
           const prevPos = computeMeasuredPos(prevRel, rangeStart, rangeWidth)
           const prevPct = `${prevPos * 100}%`
-          const lines = pm.label.split('\n')
+          const changeColor = pm.improved === true
+            ? 'text-[hsl(var(--tone-positive-600))]'
+            : pm.improved === false
+              ? 'text-[hsl(var(--tone-danger-500))]'
+              : 'text-muted-foreground'
+          const changeBg = pm.improved === true
+            ? 'bg-[hsl(var(--tone-positive-100))]'
+            : pm.improved === false
+              ? 'bg-[hsl(var(--tone-danger-50))]'
+              : 'bg-muted/50'
           return (
             <div
               key={i}
@@ -343,12 +363,46 @@ function RangeChart({
                     <div className="h-[8px] w-[8px] rotate-45 border-[1.5px] border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] transition-all duration-200 hover:border-[hsl(var(--foreground))] hover:bg-[hsl(var(--tone-neutral-400))] hover:scale-150" />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="px-3 py-2 max-w-[220px]">
-                  <div className="text-center space-y-0.5">
-                    <div className="text-[10px] text-muted-foreground font-medium">{lines[0]}</div>
-                    {lines[1] && <div className="text-xs font-bold">{lines[1]}</div>}
-                    {lines[2] && <div className="text-[10px] text-muted-foreground">{lines[2]}</div>}
-                    {lines[3] && <div className="text-[10px] text-muted-foreground">{lines[3]}</div>}
+                <TooltipContent side="top" className="p-0 overflow-hidden max-w-[240px]">
+                  {/* Header */}
+                  <div className="px-3 py-1.5 bg-muted/60 border-b border-border/40">
+                    <div className="flex items-center gap-1.5">
+                      <svg className="h-2 w-2 rotate-45 text-muted-foreground shrink-0" viewBox="0 0 8 8"><rect width="8" height="8" fill="currentColor" /></svg>
+                      <span className="text-[10px] font-medium text-muted-foreground">{pm.source}</span>
+                    </div>
+                  </div>
+                  {/* Body */}
+                  <div className="px-3 py-2 space-y-2">
+                    {/* Interpretation */}
+                    {pm.currLabel && (
+                      <div className={cn('rounded px-2 py-1 text-center text-[11px] font-semibold', changeBg, changeColor)}>
+                        {pm.prevLabel === pm.currLabel
+                          ? `Unchanged: ${pm.prevLabel}`
+                          : `${pm.prevLabel} → ${pm.currLabel}`}
+                      </div>
+                    )}
+                    {/* Numeric comparison */}
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="text-center">
+                        <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Previous</div>
+                        <div className="text-xs font-bold">{pm.prevVal}</div>
+                      </div>
+                      <svg className="h-3 w-3 text-muted-foreground shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8h10M9 4l4 4-4 4" /></svg>
+                      {pm.currVal && (
+                        <div className="text-center">
+                          <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Current</div>
+                          <div className="text-xs font-bold">{pm.currVal}</div>
+                        </div>
+                      )}
+                    </div>
+                    {/* % change pill */}
+                    {pm.pctChange !== null && (
+                      <div className="flex justify-center">
+                        <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold', changeBg, changeColor)}>
+                          {pm.pctChange >= 0 ? '↑' : '↓'} {pm.pctChange >= 0 ? '+' : ''}{pm.pctChange.toFixed(0)}%
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -644,41 +698,42 @@ export function CmrNewReportPage() {
   const getPrevMarkers = useCallback((
     param: CmrCanonicalParam,
     currentVal: number | undefined,
-  ): Array<{ value: number; label: string }> | undefined => {
+  ): PrevMarker[] | undefined => {
     if (!prevVisible || prevStudies.length === 0) return undefined
-    const markers: Array<{ value: number; label: string }> = []
+    const markers: PrevMarker[] = []
     const sevLabel = param.severity_label as SeverityLabelType | undefined
     const resolvedLabel = sevLabel ?? inferSeverityLabel(param.parameter_key, param.major_section, param.sub_section)
+    const SEVERITY_RANK: Record<string, number> = { normal: 0, mild: 1, moderate: 2, severe: 3 }
     for (const s of prevStudies) {
       const v = s.values[param.parameter_key]
       if (v === undefined) continue
       const dp = param.unit === '%' || param.unit === 'bpm' ? 0 : param.unit === 'm/s' ? 1 : 0
-      const parts: string[] = [s.label]
-      // Severity interpretation for previous value
       const prevSev = computeSeverity(v, param.ll, param.ul, param.sd, param.abnormal_direction, resolvedLabel, param.severity_thresholds ?? null, param.severity_label_override ?? null)
-      // Severity interpretation for current value
       const currSev = currentVal !== undefined
         ? computeSeverity(currentVal, param.ll, param.ul, param.sd, param.abnormal_direction, resolvedLabel, param.severity_thresholds ?? null, param.severity_label_override ?? null)
         : null
-      // Build interpretation line: "Previously normal, now mildly dilated"
+      // Determine if improved/worsened based on severity grade
+      let improved: boolean | null = null
       if (currSev) {
-        if (prevSev.label === currSev.label) {
-          parts.push(`Unchanged: ${prevSev.label.toLowerCase()}`)
-        } else {
-          parts.push(`Previously ${prevSev.label.toLowerCase()}, now ${currSev.label.toLowerCase()}`)
-        }
-      } else {
-        parts.push(`Previously ${prevSev.label.toLowerCase()}`)
+        const prevRank = SEVERITY_RANK[prevSev.grade] ?? 0
+        const currRank = SEVERITY_RANK[currSev.grade] ?? 0
+        if (currRank < prevRank) improved = true
+        else if (currRank > prevRank) improved = false
       }
-      // Numeric comparison
-      parts.push(`${v.toFixed(dp)} → ${currentVal !== undefined ? currentVal.toFixed(dp) : '—'} ${param.unit}`)
-      // % change
+      let pctChange: number | null = null
       if (currentVal !== undefined && v !== 0) {
-        const pctChange = ((currentVal - v) / Math.abs(v)) * 100
-        const sign = pctChange >= 0 ? '+' : ''
-        parts.push(`${sign}${pctChange.toFixed(0)}%`)
+        pctChange = ((currentVal - v) / Math.abs(v)) * 100
       }
-      markers.push({ value: v, label: parts.join('\n') })
+      markers.push({
+        value: v,
+        source: s.label,
+        prevLabel: prevSev.label,
+        currLabel: currSev?.label ?? null,
+        prevVal: `${v.toFixed(dp)} ${param.unit}`,
+        currVal: currentVal !== undefined ? `${currentVal.toFixed(dp)} ${param.unit}` : null,
+        pctChange,
+        improved,
+      })
     }
     return markers.length > 0 ? markers : undefined
   }, [prevStudies, prevVisible])
