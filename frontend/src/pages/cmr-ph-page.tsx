@@ -451,6 +451,14 @@ function RecordedIcon() {
   return <span className="text-[10px] font-bold tabular-nums tracking-tight">123</span>
 }
 
+function BsaIcon() {
+  return <span className="text-[10px] font-semibold tracking-wide">BSA</span>
+}
+
+function BsaOffIcon() {
+  return <span className="relative text-[10px] font-semibold tracking-wide opacity-60">BSA<span className="absolute inset-0 flex items-center"><span className="block h-[1.5px] w-full rotate-[-20deg] bg-current" /></span></span>
+}
+
 function AllRowsIcon({ className }: { className?: string }) {
   return (
     <svg className={cn('h-3.5 w-3.5', className)} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -1130,8 +1138,8 @@ export function CmrPhPage() {
           <div className="flex items-center gap-2">
             <PillToggle
               options={[
-                { key: 'recorded', label: <RecordedIcon />, tooltip: 'Recorded rows only' },
-                { key: 'all', label: <AllRowsIcon />, tooltip: 'All PH table rows' },
+                { key: 'recorded', label: <RecordedIcon />, tooltip: 'Recorded values only' },
+                { key: 'all', label: <AllRowsIcon />, tooltip: 'All parameters' },
               ]}
               compact
               value={showFilter}
@@ -1139,19 +1147,17 @@ export function CmrPhPage() {
             />
             <PillToggle
               options={[
-                { key: 'all', label: <AllRowsIcon />, tooltip: 'Absolute + indexed' },
-                { key: 'indexed', label: <BsaPill />, tooltip: 'Indexed only' },
+                { key: 'all', label: <BsaOffIcon />, tooltip: 'Absolute + indexed' },
+                { key: 'indexed', label: <BsaIcon />, tooltip: 'BSA-indexed only' },
               ]}
-              compact
               value={indexFilter}
               onChange={(value) => setIndexFilter(value as 'all' | 'indexed')}
             />
             <PillToggle
               options={[
-                { key: 'all', label: <SeverityIcon />, tooltip: 'All findings' },
+                { key: 'all', label: <SeverityIcon />, tooltip: 'All severities' },
                 { key: 'abnormal', label: <svg className="h-3.5 w-3.5" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="hsl(4 55% 50%)" /></svg>, tooltip: 'Abnormal only' },
               ]}
-              compact
               value={abnormalFilter}
               onChange={(value) => setAbnormalFilter(value as 'all' | 'abnormal')}
             />
@@ -1171,7 +1177,6 @@ export function CmrPhPage() {
                 { key: 'off', label: <SeverityOffIcon />, tooltip: 'Severity colouring off' },
                 { key: 'abnormal', label: <SeverityIcon />, tooltip: 'Colour rows by severity' },
               ]}
-              compact
               value={severityMode}
               onChange={(value) => setSeverityMode(value as 'off' | 'abnormal')}
             />
@@ -1180,7 +1185,6 @@ export function CmrPhPage() {
                 { key: 'on', label: <ChartIcon />, tooltip: 'Show range charts' },
                 { key: 'off', label: <ChartOffIcon />, tooltip: 'Table only' },
               ]}
-              compact
               value={chartMode}
               onChange={(value) => setChartMode(value as 'off' | 'on')}
             />
