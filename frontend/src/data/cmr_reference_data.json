@@ -1,19 +1,19 @@
 {
   "output_params": {
-    "LV EDV (i)": {
-      "parameter": "LV EDV (i)",
-      "unit": "mL/m²",
-      "indexing": "BSA",
+    "LV EDV": {
+      "parameter": "LV EDV",
+      "unit": "mL",
+      "indexing": "None",
       "major_section": "LEFT VENTRICLE",
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
       "decimal_places": 0
     },
-    "LV EDV": {
-      "parameter": "LV EDV",
-      "unit": "mL",
-      "indexing": "None",
+    "LV EDV (i)": {
+      "parameter": "LV EDV (i)",
+      "unit": "mL/m²",
+      "indexing": "BSA",
       "major_section": "LEFT VENTRICLE",
       "sub_section": "LV size and geometry",
       "sources": [],
@@ -150,6 +150,17 @@
       "pap_affected": false,
       "decimal_places": 1
     },
+    "LV EF": {
+      "parameter": "LV EF",
+      "unit": "%",
+      "indexing": "None",
+      "major_section": "LEFT VENTRICLE",
+      "sub_section": "LV function",
+      "sources": [],
+      "pap_affected": false,
+      "severity_label": "impaired",
+      "decimal_places": 0
+    },
     "LV SV": {
       "parameter": "LV SV",
       "unit": "mL",
@@ -190,17 +201,6 @@
       "pap_affected": false,
       "decimal_places": 1
     },
-    "LV EF": {
-      "parameter": "LV EF",
-      "unit": "%",
-      "indexing": "None",
-      "major_section": "LEFT VENTRICLE",
-      "sub_section": "LV function",
-      "sources": [],
-      "pap_affected": false,
-      "severity_label": "impaired",
-      "decimal_places": 0
-    },
     "MAPSE": {
       "parameter": "MAPSE",
       "unit": "mm",
@@ -210,6 +210,50 @@
       "sources": [],
       "pap_affected": false,
       "decimal_places": 1
+    },
+    "MAPSE anterior": {
+      "parameter": "MAPSE anterior",
+      "unit": "mm",
+      "indexing": "None",
+      "major_section": "LEFT VENTRICLE",
+      "sub_section": "LV function",
+      "sources": [],
+      "pap_affected": false,
+      "nested_under": "MAPSE",
+      "decimal_places": 0
+    },
+    "MAPSE septal": {
+      "parameter": "MAPSE septal",
+      "unit": "mm",
+      "indexing": "None",
+      "major_section": "LEFT VENTRICLE",
+      "sub_section": "LV function",
+      "sources": [],
+      "pap_affected": false,
+      "nested_under": "MAPSE",
+      "decimal_places": 0
+    },
+    "MAPSE inferior": {
+      "parameter": "MAPSE inferior",
+      "unit": "mm",
+      "indexing": "None",
+      "major_section": "LEFT VENTRICLE",
+      "sub_section": "LV function",
+      "sources": [],
+      "pap_affected": false,
+      "nested_under": "MAPSE",
+      "decimal_places": 0
+    },
+    "MAPSE lateral": {
+      "parameter": "MAPSE lateral",
+      "unit": "mm",
+      "indexing": "None",
+      "major_section": "LEFT VENTRICLE",
+      "sub_section": "LV function",
+      "sources": [],
+      "pap_affected": false,
+      "nested_under": "MAPSE",
+      "decimal_places": 0
     },
     "RV EDV": {
       "parameter": "RV EDV",
@@ -271,15 +315,16 @@
       "pap_affected": false,
       "decimal_places": 0
     },
-    "TAPSE": {
-      "parameter": "TAPSE",
-      "unit": "mm",
+    "RV EF": {
+      "parameter": "RV EF",
+      "unit": "%",
       "indexing": "None",
       "major_section": "RIGHT VENTRICLE",
       "sub_section": "RV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "severity_label": "impaired",
+      "decimal_places": 0
     },
     "RV SV": {
       "parameter": "RV SV",
@@ -321,16 +366,15 @@
       "pap_affected": false,
       "decimal_places": 1
     },
-    "RV EF": {
-      "parameter": "RV EF",
-      "unit": "%",
+    "TAPSE": {
+      "parameter": "TAPSE",
+      "unit": "mm",
       "indexing": "None",
       "major_section": "RIGHT VENTRICLE",
       "sub_section": "RV function",
       "sources": [],
       "pap_affected": false,
-      "severity_label": "impaired",
-      "decimal_places": 0
+      "decimal_places": 1
     },
     "LA max volume": {
       "parameter": "LA max volume",
@@ -1615,50 +1659,6 @@
       "sub_section": null,
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
-    },
-    "MAPSE anterior": {
-      "parameter": "MAPSE anterior",
-      "unit": "mm",
-      "indexing": "None",
-      "major_section": "LEFT VENTRICLE",
-      "sub_section": "LV function",
-      "sources": [],
-      "pap_affected": false,
-      "nested_under": "MAPSE",
-      "decimal_places": 0
-    },
-    "MAPSE septal": {
-      "parameter": "MAPSE septal",
-      "unit": "mm",
-      "indexing": "None",
-      "major_section": "LEFT VENTRICLE",
-      "sub_section": "LV function",
-      "sources": [],
-      "pap_affected": false,
-      "nested_under": "MAPSE",
-      "decimal_places": 0
-    },
-    "MAPSE inferior": {
-      "parameter": "MAPSE inferior",
-      "unit": "mm",
-      "indexing": "None",
-      "major_section": "LEFT VENTRICLE",
-      "sub_section": "LV function",
-      "sources": [],
-      "pap_affected": false,
-      "nested_under": "MAPSE",
-      "decimal_places": 0
-    },
-    "MAPSE lateral": {
-      "parameter": "MAPSE lateral",
-      "unit": "mm",
-      "indexing": "None",
-      "major_section": "LEFT VENTRICLE",
-      "sub_section": "LV function",
-      "sources": [],
-      "pap_affected": false,
-      "nested_under": "MAPSE",
       "decimal_places": 0
     }
   },
