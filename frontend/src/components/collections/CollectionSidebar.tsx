@@ -510,7 +510,8 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                           ? `${COLLECTION_COLOUR_HEX[coll.colour]}18`
                           : undefined,
                     outlineColor: isDropTarget ? COLLECTION_COLOUR_HEX[coll.colour] : undefined,
-                  }}
+                    '--pulse-colour': `${COLLECTION_COLOUR_HEX[coll.colour]}60`,
+                  } as React.CSSProperties}
                   onClick={() => {
                     handleToggleExpand(coll.id)
                     if (mode === 'browse') {
@@ -592,7 +593,8 @@ export function CollectionSidebar(props: CollectionSidebarProps) {
                             ? `${COLLECTION_COLOUR_HEX[coll.colour]}28`
                             : undefined,
                           outlineColor: isSubDropTarget ? COLLECTION_COLOUR_HEX[coll.colour] : undefined,
-                        }}
+                          '--pulse-colour': `${COLLECTION_COLOUR_HEX[coll.colour]}60`,
+                        } as React.CSSProperties}
                         onClick={() => {
                           onSelectCollection(coll.id)
                           onSelectSubcollection(sub.id)

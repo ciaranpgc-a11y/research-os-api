@@ -614,7 +614,7 @@
 
 @layer components {
   @keyframes drop-pulse {
-    0% { background-color: hsl(var(--tone-positive-100)); }
+    0% { background-color: var(--pulse-colour, hsl(var(--tone-positive-100))); }
     100% { background-color: transparent; }
   }
   .animate-drop-pulse {
