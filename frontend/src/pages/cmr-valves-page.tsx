@@ -805,8 +805,7 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="flex items-start gap-6">
-        {/* ── RF Gauge ── */}
+      <div className="flex justify-center">
         <div className="flex flex-col items-center">
           <svg width="260" height="150" viewBox="20 10 260 150">
             {/* Background track — no grey, severity zones cover the full arc */}
@@ -884,81 +883,6 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
           </span>
         </div>
 
-        {/* ── Flow split ── */}
-        {hasFlow && (
-          <div className="flex-1 min-w-0 flex flex-col gap-3 pt-2">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Flow breakdown</p>
-            {/* Forward flow (total) */}
-            <div className="flex items-center gap-3">
-              <div className="w-28 shrink-0 text-right">
-                <div className="text-xs text-muted-foreground">Forward</div>
-                <div className="text-sm font-bold tabular-nums">{forward.toFixed(0)} mL</div>
-              </div>
-              <div className="flex-1 h-7 rounded-md overflow-hidden bg-muted/30 border border-border/30 relative">
-                <div className="absolute inset-0 flex">
-                  {/* Effective portion */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div
-                        className="h-full flex items-center justify-center text-[11px] font-semibold text-white cursor-default hover:brightness-110 transition-all"
-                        style={{ width: `${effectivePct}%`, background: 'hsl(217 70% 52%)' }}
-                      >
-                        {effectivePct > 20 && `${effectiveVal.toFixed(0)} mL`}
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="px-3 py-2">
-                      <div className="text-sm font-bold">{effectiveVal.toFixed(1)} mL</div>
-                      <div className="text-[10px] text-muted-foreground">Effective forward ({effectivePct.toFixed(0)}%)</div>
-                    </TooltipContent>
-                  </Tooltip>
-                  {/* Regurgitant portion */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div
-                        className="h-full flex items-center justify-center text-[11px] font-semibold text-white cursor-default hover:brightness-110 transition-all"
-                        style={{ width: `${regurgPct}%`, background: 'hsl(3 55% 50%)' }}
-                      >
-                        {regurgPct > 12 && `${backward.toFixed(0)} mL`}
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="px-3 py-2">
-                      <div className="text-sm font-bold">{backward.toFixed(1)} mL</div>
-                      <div className="text-[10px] text-muted-foreground">Regurgitant ({regurgPct.toFixed(0)}%)</div>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              </div>
-            </div>
-            {/* Effective forward */}
-            <div className="flex items-center gap-3">
-              <div className="w-28 shrink-0 text-right">
-                <div className="text-xs text-muted-foreground">Effective</div>
-                <div className="text-sm font-bold tabular-nums" style={{ color: 'hsl(217 70% 48%)' }}>{effectiveVal.toFixed(0)} mL</div>
-              </div>
-              <div className="flex-1 h-3 rounded-full overflow-hidden bg-muted/30">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${effectivePct}%`, background: 'hsl(217 70% 52%)' }}
-                />
-              </div>
-              <span className="text-xs font-semibold tabular-nums text-muted-foreground w-10">{effectivePct.toFixed(0)}%</span>
-            </div>
-            {/* Regurgitant */}
-            <div className="flex items-center gap-3">
-              <div className="w-28 shrink-0 text-right">
-                <div className="text-xs text-muted-foreground">Regurgitant</div>
-                <div className="text-sm font-bold tabular-nums" style={{ color: 'hsl(3 55% 50%)' }}>{backward.toFixed(0)} mL</div>
-              </div>
-              <div className="flex-1 h-3 rounded-full overflow-hidden bg-muted/30">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${regurgPct}%`, background: 'hsl(3 55% 50%)' }}
-                />
-              </div>
-              <span className="text-xs font-semibold tabular-nums text-muted-foreground w-10">{regurgPct.toFixed(0)}%</span>
-            </div>
-          </div>
-        )}
       </div>
     </TooltipProvider>
   )
