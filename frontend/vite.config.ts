@@ -232,7 +232,7 @@ Do not include any parameters not in the canonical list. Do not include paramete
               'Authorization': `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-              model: 'gpt-4o',
+              model: 'gpt-5.4',
               temperature: 0,
               response_format: { type: 'json_object' },
               messages: [
@@ -322,7 +322,7 @@ Return ONLY valid JSON: { "report_type": "cmr" } or { "report_type": "echo" }`
               'Authorization': `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-              model: 'gpt-4o',
+              model: 'gpt-5.4',
               temperature: 0,
               response_format: { type: 'json_object' },
               messages: [
@@ -399,7 +399,7 @@ Do not include any parameters not in the canonical list. Do not include paramete
                 'Authorization': `Bearer ${apiKey}`,
               },
               body: JSON.stringify({
-                model: 'gpt-4o',
+                model: 'gpt-5.4',
                 temperature: 0,
                 response_format: { type: 'json_object' },
                 messages: [
@@ -472,7 +472,7 @@ Only include fields you can find a value for. Do not include null numeric values
                 'Authorization': `Bearer ${apiKey}`,
               },
               body: JSON.stringify({
-                model: 'gpt-4o',
+                model: 'gpt-5.4',
                 temperature: 0,
                 response_format: { type: 'json_object' },
                 messages: [
@@ -616,7 +616,7 @@ RULES:
               'Authorization': `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-              model: 'gpt-4o',
+              model: 'gpt-5.4',
               temperature: 0.5,
               messages: [
                 { role: 'system', content: systemPrompt },
