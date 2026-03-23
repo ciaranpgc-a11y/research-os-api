@@ -139,8 +139,23 @@ export function inferSeverityLabel(
   // MAPSE / TAPSE → reduced (length excursion, not function)
   if (key === 'mapse' || key === 'tapse' || key.startsWith('mapse ') || key.startsWith('tapse ')) return 'reduced'
 
+  // Backward flow → elevated
+  if (key.includes('backward flow')) return 'elevated'
+
+  // Forward flow / effective forward flow → elevated (direction-dependent)
+  if (key.includes('forward flow')) return 'elevated'
+
+  // Regurgitant volume → regurgitation
+  if (key.includes('volume (per heartbeat)') && (key.startsWith('mr') || key.startsWith('tr'))) return 'regurgitation'
+
   // Regurgitant fraction → regurgitation
   if (key.includes('regurgitant fraction')) return 'regurgitation'
+
+  // Velocity → elevated
+  if (key.includes('velocity')) return 'elevated'
+
+  // Pressure gradient → elevated
+  if (key.includes('pressure gradient')) return 'elevated'
 
   // Mass → hypertrophied
   if (key.includes('mass') && !key.includes('mass/')) return 'hypertrophied'
