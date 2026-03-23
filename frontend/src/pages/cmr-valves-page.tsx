@@ -782,30 +782,25 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
     return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`
   }
 
-  // Severity zones derived from the single source of truth
-  const sevZones = RF_SEVERITY_THRESHOLDS.map((t, i) => ({
-    label: SEVERITY_LABELS[t.grade],
-    lo: t.lo,
-    hi: t.hi === Infinity ? 100 : t.hi,
-    startDeg: i * 36,
-    endDeg: (i + 1) * 36,
-    color: SEVERITY_COLORS[t.grade],
-    grade: t.grade,
-  }))
-
-  // Map RF% to gauge angle
-  function rfToAngle(rfPct: number): number {
-    const clamped = Math.max(0, rfPct)
-    for (const z of sevZones) {
-      if (clamped <= z.hi) {
-        const frac = (clamped - z.lo) / (z.hi - z.lo)
-        return z.startDeg + frac * (z.endDeg - z.startDeg)
-      }
+  // Severity zones — arc width proportional to RF% range
+  // Gauge maps 0–60% RF to 0–180° (values beyond 60% pin at the end)
+  const RF_MAX = 60
+  const sevZones = RF_SEVERITY_THRESHOLDS.map((t) => {
+    const lo = t.lo
+    const hi = Math.min(t.hi === Infinity ? RF_MAX : t.hi, RF_MAX)
+    return {
+      label: SEVERITY_LABELS[t.grade],
+      lo,
+      hi,
+      startDeg: (lo / RF_MAX) * 180,
+      endDeg: (hi / RF_MAX) * 180,
+      color: SEVERITY_COLORS[t.grade],
+      grade: t.grade,
     }
-    return 180
-  }
+  })
 
-  const gaugeAngle = !isNaN(rfVal) ? rfToAngle(rfVal) : 0
+  // Linear mapping: RF% → gauge angle (proportional to actual value)
+  const gaugeAngle = !isNaN(rfVal) ? Math.min(rfVal / RF_MAX, 1) * 180 : 0
   const [nx, ny] = gaugePoint(gaugeAngle, ARC_R - 22)
 
   return (
