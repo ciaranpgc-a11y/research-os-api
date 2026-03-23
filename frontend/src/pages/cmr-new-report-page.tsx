@@ -380,15 +380,27 @@ function hasSevTicks(param: CmrCanonicalParam): boolean {
 }
 
 /** Compute SD-based severity tick positions (absolute values). */
-function buildSeverityTicks(param: CmrCanonicalParam): number[] | undefined {
+function buildSeverityTicks(param: CmrCanonicalParam, grade?: string): number[] | undefined {
   if (!hasSevTicks(param)) return undefined
   const dir = param.abnormal_direction
+  let mildModBoundary: number | undefined
+  let modSevBoundary: number | undefined
   if (dir === 'high' && param.ul != null && param.sd) {
-    return [param.ul + param.sd, param.ul + 2 * param.sd]
+    mildModBoundary = param.ul + param.sd
+    modSevBoundary = param.ul + 2 * param.sd
+  } else if (dir === 'low' && param.ll != null && param.sd) {
+    mildModBoundary = param.ll - param.sd
+    modSevBoundary = param.ll - 2 * param.sd
+  } else {
+    return undefined
   }
-  if (dir === 'low' && param.ll != null && param.sd) {
-    return [param.ll - param.sd, param.ll - 2 * param.sd]
-  }
+  // Filter based on severity grade:
+  // Mild: show moderate boundary only (next threshold ahead)
+  // Moderate: show both boundaries (either side)
+  // Severe: show moderate boundary only (boundary behind)
+  if (grade === 'mild') return [modSevBoundary]
+  if (grade === 'moderate') return [mildModBoundary, modSevBoundary]
+  if (grade === 'severe') return [mildModBoundary]
   return undefined
 }
 
@@ -396,9 +408,10 @@ function buildSeverityTicks(param: CmrCanonicalParam): number[] | undefined {
  *  clearly visible and not squeezed into a small strip. */
 const SEV_ZONE_SCALING = { rangeStart: 0.05, rangeWidth: 0.9 } as const
 
-/** Compute SD tick positions as measuredRel values (for scaling). */
+/** Compute SD tick positions as measuredRel values (for scaling).
+ *  Always returns both boundaries (used for scaling, not display). */
 function sdTickRels(param: CmrCanonicalParam): number[] | undefined {
-  const ticks = buildSeverityTicks(param)
+  const ticks = buildSeverityTicks(param, 'moderate')
   if (!ticks || param.ll == null || param.ul == null) return undefined
   const eul = hasSevZones(param) ? effectiveUL(param) : param.ul
   return ticks.map(t => computeMeasuredRel(t, param.ll!, eul))
@@ -1543,7 +1556,7 @@ export function CmrNewReportPage() {
                                           }
                                           previousMarkers={getPrevMarkers(p, measured)}
                                           severityZones={buildSeverityZones(p)}
-                                          severityTicks={buildSeverityTicks(p)}
+                                          severityTicks={buildSeverityTicks(p, severity.grade)}
                                           severityGrade={severity.grade as SevGrade}
                                         />
                                       ) : null}
@@ -1656,7 +1669,7 @@ export function CmrNewReportPage() {
                                               })()}
                                               previousMarkers={getPrevMarkers(cp, cpMeasured)}
                                               severityZones={buildSeverityZones(cp)}
-                                              severityTicks={buildSeverityTicks(cp)}
+                                              severityTicks={buildSeverityTicks(cp, cpSeverity.grade)}
                                               severityGrade={cpSeverity.grade as SevGrade}
                                             />
                                           ) : null}
