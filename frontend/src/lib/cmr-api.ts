@@ -41,6 +41,8 @@ export type CmrCanonicalParam = {
   nested_under?: string
   // Display formatting: number of decimal places for table values
   decimal_places?: number
+  // Visual separator: when true, render a thicker border above this row
+  separator_before?: boolean
 }
 
 export type CmrCanonicalTableResponse = {

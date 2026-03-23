@@ -1346,6 +1346,9 @@ export function CmrNewReportPage() {
                               }
                               return (
                                 <Fragment key={p.parameter_key}>
+                                {p.separator_before && (
+                                  <tr><td colSpan={chartMode === 'on' ? 8 : 7} className="h-0 border-b-2 border-[hsl(var(--stroke-soft)/0.7)]" /></tr>
+                                )}
                                 <tr
                                   onClick={() => setSelectedParam(p)}
                                   className={cn(

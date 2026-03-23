@@ -48,7 +48,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "separator_before": true
     },
     "LV ED diameter (4ch) (i)": {
       "parameter": "LV ED diameter (4ch) (i)",
@@ -118,7 +119,8 @@
       "sub_section": "LV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "separator_before": true
     },
     "LV mass (i)": {
       "parameter": "LV mass (i)",
@@ -212,7 +214,8 @@
       "sub_section": "LV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "separator_before": true
     },
     "MAPSE anterior": {
       "parameter": "MAPSE anterior",
@@ -306,7 +309,8 @@
       "sub_section": "RV size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "separator_before": true
     },
     "RV mass (i)": {
       "parameter": "RV mass (i)",
@@ -380,7 +384,8 @@
       "sub_section": "RV function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "separator_before": true
     },
     "LA max volume": {
       "parameter": "LA max volume",
@@ -430,7 +435,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "separator_before": true
     },
     "LA max area (2ch) (i)": {
       "parameter": "LA max area (2ch) (i)",
@@ -490,7 +496,8 @@
       "sub_section": "LA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "separator_before": true
     },
     "LA max longitudinal diameter (2ch) (i)": {
       "parameter": "LA max longitudinal diameter (2ch) (i)",
@@ -610,7 +617,8 @@
       "sub_section": "LA function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "separator_before": true
     },
     "LA SV (i)": {
       "parameter": "LA SV (i)",
@@ -680,7 +688,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "separator_before": true
     },
     "RA max area (4ch) (i)": {
       "parameter": "RA max area (4ch) (i)",
@@ -700,7 +709,8 @@
       "sub_section": "RA size and geometry",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "separator_before": true
     },
     "RA max longitudinal diameter (2ch) (i)": {
       "parameter": "RA max longitudinal diameter (2ch) (i)",
@@ -780,7 +790,8 @@
       "sub_section": "RA function",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "separator_before": true
     },
     "RA SV (i)": {
       "parameter": "RA SV (i)",
@@ -945,7 +956,8 @@
         "Roy et al. JCMR 2017;19:72"
       ],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "separator_before": true
     },
     "Native T2": {
       "parameter": "Native T2",
@@ -969,7 +981,8 @@
         "Roy et al. JCMR 2017;19:72"
       ],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "separator_before": true
     },
     "Aortic annulus diameter": {
       "parameter": "Aortic annulus diameter",
@@ -1099,7 +1112,8 @@
       "sub_section": "Aorta",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "separator_before": true
     },
     "Dist desc aorta diameter": {
       "parameter": "Dist desc aorta diameter",
@@ -1169,7 +1183,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "separator_before": true
     },
     "RPA diastolic diameter": {
       "parameter": "RPA diastolic diameter",
@@ -1219,7 +1234,8 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "separator_before": true
     },
     "LPA diastolic diameter": {
       "parameter": "LPA diastolic diameter",
@@ -1367,7 +1383,8 @@
         "mild": "Suggests mild AR",
         "moderate": "Suggests moderate AR",
         "severe": "Suggests severe AR"
-      }
+      },
+      "separator_before": true
     },
     "AV maximum velocity": {
       "parameter": "AV maximum velocity",
@@ -1390,7 +1407,8 @@
         "mild": "Suggests mild AS",
         "moderate": "Suggests moderate AS",
         "severe": "Suggests severe AS"
-      }
+      },
+      "separator_before": true
     },
     "AV minimum velocity": {
       "parameter": "AV minimum velocity",
@@ -1517,7 +1535,8 @@
         "mild": "Suggests mild PR",
         "moderate": "Suggests moderate PR",
         "severe": "Suggests severe PR"
-      }
+      },
+      "separator_before": true
     },
     "PV maximum velocity": {
       "parameter": "PV maximum velocity",
@@ -1540,7 +1559,8 @@
         "mild": "Suggests mild PS",
         "moderate": "Suggests moderate PS",
         "severe": "Suggests severe PS"
-      }
+      },
+      "separator_before": true
     },
     "PV minimum velocity": {
       "parameter": "PV minimum velocity",

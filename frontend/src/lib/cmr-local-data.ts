@@ -41,6 +41,7 @@ type RawOutputParam = {
   severity_label_override?: { mild: string | null; moderate: string | null; severe: string | null }
   nested_under?: string
   decimal_places?: number
+  separator_before?: boolean
 }
 
 type RawRefRange = {
@@ -222,6 +223,7 @@ export function resolveReferenceParameters(sex: string = 'Male', age?: number): 
       severity_label_override: op.severity_label_override,
       nested_under: op.nested_under,
       decimal_places: op.decimal_places,
+      separator_before: op.separator_before,
     })
   }
 
@@ -292,6 +294,7 @@ export function resolveParameterRanges(parameterKey: string): CmrParameterRanges
     severity_label_override: op?.severity_label_override,
     nested_under: op?.nested_under,
     decimal_places: op?.decimal_places,
+    separator_before: op?.separator_before,
   }
 }
 
