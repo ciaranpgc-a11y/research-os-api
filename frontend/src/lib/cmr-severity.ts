@@ -136,8 +136,8 @@ export function inferSeverityLabel(
   // EF parameters → impaired
   if (key.endsWith(' ef') || key === 'lv ef' || key === 'rv ef' || key === 'la ef' || key === 'ra ef') return 'impaired'
 
-  // MAPSE / TAPSE → impaired
-  if (key === 'mapse' || key === 'tapse' || key.startsWith('mapse ') || key.startsWith('tapse ')) return 'impaired'
+  // MAPSE / TAPSE → reduced (length excursion, not function)
+  if (key === 'mapse' || key === 'tapse' || key.startsWith('mapse ') || key.startsWith('tapse ')) return 'reduced'
 
   // Regurgitant fraction → regurgitation
   if (key.includes('regurgitant fraction')) return 'regurgitation'
