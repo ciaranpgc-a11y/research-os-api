@@ -362,24 +362,39 @@ const SEVERITY_COLORS: Record<Severity, string> = {
   severe: 'hsl(3 55% 48%)',
 }
 
+/** RF% severity thresholds — single source of truth for gauge zones and auto-grading.
+ *  Based on SCMR/ASE valve regurgitation grading guidelines. */
+const RF_SEVERITY_THRESHOLDS = [
+  { lo: 0, hi: 5, grade: 'none' as Severity },
+  { lo: 5, hi: 10, grade: 'trivial' as Severity },
+  { lo: 10, hi: 20, grade: 'mild' as Severity },
+  { lo: 20, hi: 40, grade: 'moderate' as Severity },
+  { lo: 40, hi: Infinity, grade: 'severe' as Severity },
+]
+
+function rfToSeverity(rf: number): Severity {
+  for (const t of RF_SEVERITY_THRESHOLDS) {
+    if (rf < t.hi) return t.grade
+  }
+  return 'severe'
+}
+
 function autoGradeSeverity(values: Record<string, string>): Severity | null {
   const rv = parseFloat(values.regurgitantVolume ?? '')
   const rf = parseFloat(values.regurgitantFraction ?? '')
 
   if (isNaN(rv) && isNaN(rf)) return null
 
-  // Regurgitant volume thresholds (ASE 2017 — same for MR and AR)
+  // Prefer RF-based grading (matches the gauge exactly)
+  if (!isNaN(rf)) return rfToSeverity(rf)
+
+  // Fallback: regurgitant volume thresholds (ASE 2017)
   if (!isNaN(rv)) {
     if (rv >= 60) return 'severe'
     if (rv >= 30) return 'moderate'
-    if (rv > 0) return 'mild'
-  }
-
-  // Regurgitant fraction thresholds
-  if (!isNaN(rf)) {
-    if (rf >= 50) return 'severe'
-    if (rf >= 30) return 'moderate'
-    if (rf > 0) return 'mild'
+    if (rv >= 15) return 'mild'
+    if (rv > 0) return 'trivial'
+    return 'none'
   }
 
   return null
@@ -767,14 +782,16 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
     return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`
   }
 
-  // Severity zones with equal-width arcs (36° each)
-  const sevZones = [
-    { label: 'None', lo: 0, hi: 5, startDeg: 0, endDeg: 36, color: SEVERITY_COLORS.none },
-    { label: 'Trivial', lo: 5, hi: 10, startDeg: 36, endDeg: 72, color: SEVERITY_COLORS.trivial },
-    { label: 'Mild', lo: 10, hi: 20, startDeg: 72, endDeg: 108, color: SEVERITY_COLORS.mild },
-    { label: 'Moderate', lo: 20, hi: 40, startDeg: 108, endDeg: 144, color: SEVERITY_COLORS.moderate },
-    { label: 'Severe', lo: 40, hi: 100, startDeg: 144, endDeg: 180, color: SEVERITY_COLORS.severe },
-  ]
+  // Severity zones derived from the single source of truth
+  const sevZones = RF_SEVERITY_THRESHOLDS.map((t, i) => ({
+    label: SEVERITY_LABELS[t.grade],
+    lo: t.lo,
+    hi: t.hi === Infinity ? 100 : t.hi,
+    startDeg: i * 36,
+    endDeg: (i + 1) * 36,
+    color: SEVERITY_COLORS[t.grade],
+    grade: t.grade,
+  }))
 
   // Map RF% to gauge angle
   function rfToAngle(rfPct: number): number {
