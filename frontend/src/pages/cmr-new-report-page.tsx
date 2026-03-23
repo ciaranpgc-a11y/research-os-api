@@ -374,15 +374,28 @@ function hasSevZones(param: CmrCanonicalParam): boolean {
 }
 
 /** Check if a param has SD-based severity tick marks (non-valve abnormal params). */
-function hasSevTicks(param: CmrCanonicalParam): boolean {
+function hasSevTicks(param: CmrCanonicalParam, measured?: number): boolean {
   if (param.severity_thresholds) return false // valve params use coloured zones instead
-  return !!(param.sd && param.sd > 0 && param.ll != null && param.ul != null && param.abnormal_direction !== 'both')
+  if (!param.sd || param.sd <= 0 || param.ll == null || param.ul == null) return false
+  const dir = param.abnormal_direction
+  if (dir === 'high' || dir === 'low') return true
+  // For 'both': only show ticks if we know the breach direction from the measured value
+  if (dir === 'both' && measured != null) {
+    return measured > param.ul || measured < param.ll
+  }
+  return false
 }
 
 /** Compute SD-based severity tick positions (absolute values). */
-function buildSeverityTicks(param: CmrCanonicalParam, grade?: string): number[] | undefined {
-  if (!hasSevTicks(param)) return undefined
-  const dir = param.abnormal_direction
+function buildSeverityTicks(param: CmrCanonicalParam, grade?: string, measured?: number): number[] | undefined {
+  if (!hasSevTicks(param, measured)) return undefined
+  // Resolve effective direction: for 'both', determine from measured value
+  let dir = param.abnormal_direction
+  if (dir === 'both' && measured != null && param.ll != null && param.ul != null) {
+    if (measured > param.ul) dir = 'high'
+    else if (measured < param.ll) dir = 'low'
+    else return undefined // within range, no ticks
+  }
   let mildModBoundary: number | undefined
   let modSevBoundary: number | undefined
   if (dir === 'high' && param.ul != null && param.sd) {
@@ -410,8 +423,8 @@ const SEV_ZONE_SCALING = { rangeStart: 0.05, rangeWidth: 0.9 } as const
 
 /** Compute SD tick positions as measuredRel values (for scaling).
  *  Always returns both boundaries (used for scaling, not display). */
-function sdTickRels(param: CmrCanonicalParam): number[] | undefined {
-  const ticks = buildSeverityTicks(param, 'moderate')
+function sdTickRels(param: CmrCanonicalParam, measured?: number): number[] | undefined {
+  const ticks = buildSeverityTicks(param, 'moderate', measured)
   if (!ticks || param.ll == null || param.ul == null) return undefined
   const eul = hasSevZones(param) ? effectiveUL(param) : param.ul
   return ticks.map(t => computeMeasuredRel(t, param.ll!, eul))
@@ -1224,7 +1237,7 @@ export function CmrNewReportPage() {
                       if (m !== undefined && hasValidRange(p.ll, p.ul)) {
                         const eul = hasSevZones(p) ? effectiveUL(p) : p.ul!
                         const rel = computeMeasuredRel(m, p.ll!, eul)
-                        newMap.set(p.parameter_key, perMeasurementAutoAdjust(rel, sdTickRels(p)))
+                        newMap.set(p.parameter_key, perMeasurementAutoAdjust(rel, sdTickRels(p, m)))
                       }
                     }
                   }
@@ -1536,7 +1549,7 @@ export function CmrNewReportPage() {
                                               if (!hasExplicit && !hasSevZones(p)) {
                                                 const rel = computeMeasuredRel(measured!, p.ll!, eul)
                                                 const isAbn = isAbnormalValue(measured!, p.ll, p.ul, p.abnormal_direction)
-                                                if (isAbn) return perMeasurementAutoAdjust(rel, sdTickRels(p)).rangeStart
+                                                if (isAbn) return perMeasurementAutoAdjust(rel, sdTickRels(p, measured!)).rangeStart
                                               }
                                               return base.rangeStart
                                             })()
@@ -1549,14 +1562,14 @@ export function CmrNewReportPage() {
                                               if (!hasExplicit && !hasSevZones(p)) {
                                                 const rel = computeMeasuredRel(measured!, p.ll!, eul)
                                                 const isAbn = isAbnormalValue(measured!, p.ll, p.ul, p.abnormal_direction)
-                                                if (isAbn) return perMeasurementAutoAdjust(rel, sdTickRels(p)).rangeWidth
+                                                if (isAbn) return perMeasurementAutoAdjust(rel, sdTickRels(p, measured!)).rangeWidth
                                               }
                                               return base.rangeWidth
                                             })()
                                           }
                                           previousMarkers={getPrevMarkers(p, measured)}
                                           severityZones={buildSeverityZones(p)}
-                                          severityTicks={buildSeverityTicks(p, severity.grade)}
+                                          severityTicks={buildSeverityTicks(p, severity.grade, measured!)}
                                           severityGrade={severity.grade as SevGrade}
                                         />
                                       ) : null}
@@ -1657,7 +1670,7 @@ export function CmrNewReportPage() {
                                                 const eul = hasSevZones(cp) ? effectiveUL(cp) : cp.ul!
                                                 const hasExplicit = rangeParams.has(cp.parameter_key) || rangeParams.has('__global__')
                                                 const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (chasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
-                                                if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel, sdTickRels(cp)).rangeStart; }
+                                                if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel, sdTickRels(cp, cpMeasured!)).rangeStart; }
                                                 return base.rangeStart
                                               })()}
                                               rangeWidth={(() => {
@@ -1665,11 +1678,11 @@ export function CmrNewReportPage() {
                                                 const hasExplicit = rangeParams.has(cp.parameter_key) || rangeParams.has('__global__')
                                                 const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? (chasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
                                                 if (!hasExplicit) { const rel = computeMeasuredRel(cpMeasured!, cp.ll!, eul); const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth); if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeWidth; }
-                                                return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel, sdTickRels(cp)).rangeWidth : base.rangeWidth
+                                                return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel, sdTickRels(cp, cpMeasured!)).rangeWidth : base.rangeWidth
                                               })()}
                                               previousMarkers={getPrevMarkers(cp, cpMeasured)}
                                               severityZones={buildSeverityZones(cp)}
-                                              severityTicks={buildSeverityTicks(cp, cpSeverity.grade)}
+                                              severityTicks={buildSeverityTicks(cp, cpSeverity.grade, cpMeasured!)}
                                               severityGrade={cpSeverity.grade as SevGrade}
                                             />
                                           ) : null}
