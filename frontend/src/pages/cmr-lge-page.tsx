@@ -586,15 +586,6 @@ export function CmrLgePage() {
             </div>
           </div>
 
-          {/* Reset */}
-          <button
-            type="button"
-            onClick={resetAll}
-            className="rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 hover:bg-red-50 hover:text-red-700 transition-all"
-          >
-            Reset All
-          </button>
-
           <div className="h-5 w-px bg-border/40" />
 
           {/* Pattern key (inline) */}
@@ -607,6 +598,15 @@ export function CmrLgePage() {
               <span className="text-[11px] text-muted-foreground">{p.label}</span>
             </span>
           ))}
+
+          {/* Reset — pushed to far right */}
+          <button
+            type="button"
+            onClick={resetAll}
+            className="ml-auto rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 hover:bg-red-50 hover:text-red-700 transition-all"
+          >
+            Reset All
+          </button>
         </div>
       </div>
 
