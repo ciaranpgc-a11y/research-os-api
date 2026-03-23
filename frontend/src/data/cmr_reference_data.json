@@ -1297,7 +1297,8 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "nested_under": "AV effective forward flow (per heartbeat)"
     },
     "AV forward flow (per heartbeat)": {
       "parameter": "AV forward flow (per heartbeat)",
@@ -1317,7 +1318,8 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "nested_under": "AV forward flow (per heartbeat)"
     },
     "AV regurgitant fraction": {
       "parameter": "AV regurgitant fraction",
@@ -1441,7 +1443,8 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "nested_under": "PV effective forward flow (per heartbeat)"
     },
     "PV forward flow (per heartbeat)": {
       "parameter": "PV forward flow (per heartbeat)",
@@ -1461,7 +1464,8 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "nested_under": "PV forward flow (per heartbeat)"
     },
     "PV regurgitant fraction": {
       "parameter": "PV regurgitant fraction",
