@@ -1509,13 +1509,13 @@ export function CmrNewReportPage() {
                                           rangeStart={
                                             (() => {
                                               const eul = hasSevZones(p) ? effectiveUL(p) : p.ul!
-                                              const hasExplicitScaling = rangeParams.has(p.parameter_key) || rangeParams.has('__global__')
+                                              const hasExplicit = rangeParams.has(p.parameter_key) || rangeParams.has('__global__')
                                               const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? (hasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
-                                              // Only auto-fix clipping in factory/default mode — global and per-meas are intentional
-                                              if (!hasExplicitScaling) {
+                                              // In factory/default mode: auto-zoom abnormal rows for better context
+                                              if (!hasExplicit && !hasSevZones(p)) {
                                                 const rel = computeMeasuredRel(measured!, p.ll!, eul)
-                                                const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
-                                                if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeStart
+                                                const isAbn = isAbnormalValue(measured!, p.ll, p.ul, p.abnormal_direction)
+                                                if (isAbn) return perMeasurementAutoAdjust(rel).rangeStart
                                               }
                                               return base.rangeStart
                                             })()
@@ -1523,12 +1523,12 @@ export function CmrNewReportPage() {
                                           rangeWidth={
                                             (() => {
                                               const eul = hasSevZones(p) ? effectiveUL(p) : p.ul!
-                                              const hasExplicitScaling = rangeParams.has(p.parameter_key) || rangeParams.has('__global__')
+                                              const hasExplicit = rangeParams.has(p.parameter_key) || rangeParams.has('__global__')
                                               const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? (hasSevZones(p) ? SEV_ZONE_SCALING : factoryBaseline())
-                                              if (!hasExplicitScaling) {
+                                              if (!hasExplicit && !hasSevZones(p)) {
                                                 const rel = computeMeasuredRel(measured!, p.ll!, eul)
-                                                const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
-                                                if (pos >= 0.98 || pos <= 0.02) return perMeasurementAutoAdjust(rel).rangeWidth
+                                                const isAbn = isAbnormalValue(measured!, p.ll, p.ul, p.abnormal_direction)
+                                                if (isAbn) return perMeasurementAutoAdjust(rel).rangeWidth
                                               }
                                               return base.rangeWidth
                                             })()

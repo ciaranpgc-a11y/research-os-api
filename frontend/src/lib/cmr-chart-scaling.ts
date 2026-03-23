@@ -179,41 +179,34 @@ export function perMeasurementAutoAdjust(measuredRel: number): RangeParam {
   // For normal values (rel 0–1), dot should be within the band
   // For abnormal values, dot should be outside but visible with context
 
-  let targetDotPos: number
-  if (measuredRel >= 0 && measuredRel <= 1) {
-    // Within range: map dot to 0.3–0.7 of bar (centered region)
-    targetDotPos = 0.3 + measuredRel * 0.4
-  } else if (measuredRel > 1) {
-    // Above range: dot should be 0.7–0.9 depending on how extreme
-    targetDotPos = clamp(0.7 + (measuredRel - 1) * 0.1, 0.7, 0.92)
-  } else {
-    // Below range: dot should be 0.08–0.3 depending on how extreme
-    targetDotPos = clamp(0.3 + measuredRel * 0.2, 0.08, 0.3)
-  }
+  // Strategy: place the dot at a target position, then derive band scaling.
+  // The further from normal, the more the band compresses and the dot pushes to the edge.
 
-  // Compute rangeWidth and rangeStart such that:
-  // targetDotPos = rangeStart + rangeWidth * measuredRel
-  // AND the band (0→1 in rel space) maps to a reasonable width
-
-  // The band spans from rangeStart (rel=0) to rangeStart+rangeWidth (rel=1)
-  // We want band to be visible but proportioned to the dot position
   let rw: number
   let rs: number
 
   if (measuredRel >= 0 && measuredRel <= 1) {
-    // Normal: keep band at 0.4 width, adjust position so dot lands at target
+    // Within range: standard band, dot naturally within it
     rw = FACTORY_RANGE_WIDTH
-    rs = targetDotPos - rw * measuredRel
+    rs = 0.3 + (measuredRel - 0.5) * 0.1 - rw * measuredRel + rw * 0.5
+    // Simplify: just center the band so the dot is well-positioned
+    rs = 0.5 - rw * measuredRel + (measuredRel - 0.5) * 0.05
+    rs = clamp(rs, 0.08, 0.5)
   } else if (measuredRel > 1) {
-    // Above range: shrink band to leave room for dot
-    // rangeStart + rangeWidth * measuredRel = targetDotPos
-    // rangeStart + rangeWidth = right edge of band (should be < targetDotPos)
-    rw = clamp((targetDotPos - 0.05) / measuredRel, PER_MEAS_MIN_WIDTH, FACTORY_RANGE_WIDTH)
-    rs = targetDotPos - rw * measuredRel
+    // Above range: compress band left, push dot right
+    // Target: band occupies ~20-35% of bar on the left, dot sits at 65-85%
+    const excess = measuredRel - 1 // how far above UL (in UL-LL units)
+    const bandWidth = clamp(0.35 - excess * 0.06, 0.1, 0.35)
+    rw = bandWidth
+    // Position: band starts near left, dot = rs + rw * measuredRel
+    rs = clamp(0.08 + excess * 0.01, 0.04, 0.2)
   } else {
-    // Below range: shift band right
-    rw = clamp((0.95 - targetDotPos) / (1 - measuredRel), PER_MEAS_MIN_WIDTH, FACTORY_RANGE_WIDTH)
-    rs = targetDotPos - rw * measuredRel
+    // Below range: compress band right, push dot left
+    const deficit = Math.abs(measuredRel) // how far below LL
+    const bandWidth = clamp(0.35 - deficit * 0.06, 0.1, 0.35)
+    rw = bandWidth
+    // Band should be on the right side
+    rs = clamp(0.55 - deficit * 0.05, 0.3, 0.7)
   }
 
   rs = roundToStep(clamp(rs, 0.02, 0.6), ROUND_STEP)
